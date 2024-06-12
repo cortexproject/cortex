@@ -326,6 +326,14 @@ func TestTSDBMetrics(t *testing.T) {
         	# HELP cortex_ingester_tsdb_mmap_chunks_total Total number of chunks that were memory-mapped.
         	# TYPE cortex_ingester_tsdb_mmap_chunks_total gauge
         	cortex_ingester_tsdb_mmap_chunks_total 0
+        	# HELP cortex_ingester_tsdb_out_of_order_samples_total Total number of out of order samples ingestion failed attempts due to out of order being disabled.
+			# TYPE cortex_ingester_tsdb_out_of_order_samples_total counter
+        	cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="user1"} 102
+        	cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="user2"} 102
+			cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="user3"} 102
+        	cortex_ingester_tsdb_out_of_order_samples_total{type="histogram",user="user1"} 103
+			cortex_ingester_tsdb_out_of_order_samples_total{type="histogram",user="user2"} 103
+        	cortex_ingester_tsdb_out_of_order_samples_total{type="histogram",user="user3"} 103
 			# HELP cortex_ingester_tsdb_blocks_loaded Number of currently loaded data blocks
 			# TYPE cortex_ingester_tsdb_blocks_loaded gauge
 			cortex_ingester_tsdb_blocks_loaded 15
@@ -570,6 +578,12 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
         	# HELP cortex_ingester_tsdb_mmap_chunks_total Total number of chunks that were memory-mapped.
         	# TYPE cortex_ingester_tsdb_mmap_chunks_total gauge
         	cortex_ingester_tsdb_mmap_chunks_total 0
+        	# HELP cortex_ingester_tsdb_out_of_order_samples_total Total number of out of order samples ingestion failed attempts due to out of order being disabled.
+			# TYPE cortex_ingester_tsdb_out_of_order_samples_total counter
+        	cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="user1"} 102
+			cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="user2"} 102
+        	cortex_ingester_tsdb_out_of_order_samples_total{type="histogram",user="user1"} 103
+			cortex_ingester_tsdb_out_of_order_samples_total{type="histogram",user="user2"} 103
 			# HELP cortex_ingester_tsdb_blocks_loaded Number of currently loaded data blocks
 			# TYPE cortex_ingester_tsdb_blocks_loaded gauge
 			cortex_ingester_tsdb_blocks_loaded 10
@@ -832,6 +846,13 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 	}, []string{"type"})
 	outOfOrderSamplesAppended.WithLabelValues(sampleMetricTypeFloat).Add(102)
 	outOfOrderSamplesAppended.WithLabelValues(sampleMetricTypeHistogram).Add(103)
+
+	oooSamples := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_out_of_order_samples_total",
+		Help: "Total number of out of order samples ingestion failed attempts due to out of order being disabled.",
+	}, []string{"type"})
+	oooSamples.WithLabelValues(sampleMetricTypeFloat).Add(102)
+	oooSamples.WithLabelValues(sampleMetricTypeHistogram).Add(103)
 
 	snapshotReplayErrorTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_snapshot_replay_error_total",

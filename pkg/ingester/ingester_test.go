@@ -658,6 +658,8 @@ func TestIngester_Push(t *testing.T) {
 	}
 	userID := "test"
 
+	testHistogram := cortexpb.HistogramToHistogramProto(10, histogram_util.GenerateTestHistogram(1))
+	testFloatHistogram := cortexpb.FloatHistogramToHistogramProto(11, histogram_util.GenerateTestFloatHistogram(1))
 	tests := map[string]struct {
 		reqs                      []*cortexpb.WriteRequest
 		expectedErr               error
@@ -950,12 +952,18 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
-					nil,
+					[]cortexpb.Histogram{
+						cortexpb.HistogramToHistogramProto(9, histogram_util.GenerateTestHistogram(1)),
+					},
 					cortexpb.API),
 			},
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfOrderSample, model.Time(9), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 10}}},
+			},
+			additionalMetrics: []string{
+				"cortex_ingester_tsdb_out_of_order_samples_total",
+				"cortex_ingester_tsdb_head_out_of_order_samples_appended_total",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -963,10 +971,17 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_ingested_samples_total 1
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
-				cortex_ingester_ingested_samples_failures_total 1
+				cortex_ingester_ingested_samples_failures_total 2
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
+        	    # HELP cortex_ingester_tsdb_head_out_of_order_samples_appended_total Total number of appended out of order samples.
+        	    # TYPE cortex_ingester_tsdb_head_out_of_order_samples_appended_total counter
+        	    cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="float",user="test"} 0
+        	    # HELP cortex_ingester_tsdb_out_of_order_samples_total Total number of out of order samples ingestion failed attempts due to out of order being disabled.
+        	    # TYPE cortex_ingester_tsdb_out_of_order_samples_total counter
+        	    cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="test"} 1
+        	    cortex_ingester_tsdb_out_of_order_samples_total{type="histogram",user="test"} 1
 				# HELP cortex_ingester_memory_series The current number of series in memory.
 				# TYPE cortex_ingester_memory_series gauge
 				cortex_ingester_memory_series 1
@@ -978,7 +993,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_memory_series_removed_total{user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-out-of-order",user="test"} 1
+				cortex_discarded_samples_total{reason="sample-out-of-order",user="test"} 2
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -996,7 +1011,9 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
 					nil,
-					nil,
+					[]cortexpb.Histogram{
+						cortexpb.HistogramToHistogramProto(1575043969-(86400*1000), histogram_util.GenerateTestHistogram(1)),
+					},
 					cortexpb.API),
 			},
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
@@ -1009,7 +1026,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_ingested_samples_total 1
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
-				cortex_ingester_ingested_samples_failures_total 1
+				cortex_ingester_ingested_samples_failures_total 2
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
@@ -1024,7 +1041,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_memory_series_removed_total{user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-out-of-bounds",user="test"} 1
+				cortex_discarded_samples_total{reason="sample-out-of-bounds",user="test"} 2
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -1242,6 +1259,155 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total 0
 			`,
 		},
+		"should succeed when only native histogram present if enabled": {
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					nil,
+					nil,
+					[]cortexpb.Histogram{testHistogram},
+					cortexpb.API),
+			},
+			expectedErr: nil,
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{testHistogram}},
+			},
+			additionalMetrics: []string{
+				"cortex_ingester_tsdb_head_samples_appended_total",
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 1
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+        	    # HELP cortex_ingester_tsdb_head_out_of_order_samples_appended_total Total number of appended out of order samples.
+        	    # TYPE cortex_ingester_tsdb_head_out_of_order_samples_appended_total counter
+        	    cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="float",user="test"} 0
+        	    # HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
+        	    # TYPE cortex_ingester_tsdb_head_samples_appended_total counter
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="float",user="test"} 0
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="test"} 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
+		"should succeed when only float native histogram present if enabled": {
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					nil,
+					nil,
+					[]cortexpb.Histogram{testFloatHistogram},
+					cortexpb.API),
+			},
+			expectedErr: nil,
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{testFloatHistogram}},
+			},
+			additionalMetrics: []string{
+				"cortex_ingester_tsdb_head_samples_appended_total",
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 1
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+        	    # HELP cortex_ingester_tsdb_head_out_of_order_samples_appended_total Total number of appended out of order samples.
+        	    # TYPE cortex_ingester_tsdb_head_out_of_order_samples_appended_total counter
+        	    cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="float",user="test"} 0
+        	    # HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
+        	    # TYPE cortex_ingester_tsdb_head_samples_appended_total counter
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="float",user="test"} 0
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="test"} 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
+		"should fail to ingest histogram due to OOO native histogram. Sample and histogram has same timestamp but sample got ingested first": {
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
+					nil,
+					[]cortexpb.Histogram{testHistogram},
+					cortexpb.API),
+			},
+			expectedErr: nil,
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 10}}},
+			},
+			additionalMetrics: []string{
+				"cortex_ingester_tsdb_head_samples_appended_total",
+				"cortex_ingester_tsdb_out_of_order_samples_total",
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 2
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+        	    # HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
+        	    # TYPE cortex_ingester_tsdb_head_samples_appended_total counter
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="float",user="test"} 1
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="test"} 0
+        	    # HELP cortex_ingester_tsdb_out_of_order_samples_total Total number of out of order samples ingestion failed attempts due to out of order being disabled.
+        	    # TYPE cortex_ingester_tsdb_out_of_order_samples_total counter
+        	    cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="test"} 0
+        	    cortex_ingester_tsdb_out_of_order_samples_total{type="histogram",user="test"} 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -1330,6 +1496,179 @@ func TestIngester_Push(t *testing.T) {
 			// Check tracked Prometheus metrics
 			err = testutil.GatherAndCompare(registry, strings.NewReader(testData.expectedMetrics), mn...)
 			assert.NoError(t, err)
+		})
+	}
+}
+
+// Referred from https://github.com/prometheus/prometheus/blob/v2.52.1/model/histogram/histogram_test.go#L985.
+func TestIngester_PushNativeHistogramErrors(t *testing.T) {
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+	for _, tc := range []struct {
+		name        string
+		histograms  []cortexpb.Histogram
+		expectedErr error
+	}{
+		{
+			name: "rejects histogram with NaN observations that has its Count (2) lower than the actual total of buckets (2 + 1)",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					ZeroCount:       2,
+					Count:           2,
+					Sum:             math.NaN(),
+					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
+					PositiveBuckets: []int64{1},
+				}),
+			},
+			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 2: %w", histogram.ErrHistogramCountNotBigEnough),
+		},
+		{
+			name: "rejects histogram without NaN observations that has its Count (4) higher than the actual total of buckets (2 + 1)",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					ZeroCount:       2,
+					Count:           4,
+					Sum:             333,
+					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
+					PositiveBuckets: []int64{1},
+				}),
+			},
+			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 4: %w", histogram.ErrHistogramCountMismatch),
+		},
+		{
+			name: "rejects histogram that has too few negative buckets",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					NegativeSpans:   []histogram.Span{{Offset: 0, Length: 1}},
+					NegativeBuckets: []int64{},
+				}),
+			},
+			expectedErr: fmt.Errorf("negative side: spans need 1 buckets, have 0 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
+		},
+		{
+			name: "rejects histogram that has too few positive buckets",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
+					PositiveBuckets: []int64{},
+				}),
+			},
+			expectedErr: fmt.Errorf("positive side: spans need 1 buckets, have 0 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
+		},
+		{
+			name: "rejects histogram that has too many negative buckets",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					NegativeSpans:   []histogram.Span{{Offset: 0, Length: 1}},
+					NegativeBuckets: []int64{1, 2},
+				}),
+			},
+			expectedErr: fmt.Errorf("negative side: spans need 1 buckets, have 2 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
+		},
+		{
+			name: "rejects histogram that has too many positive buckets",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
+					PositiveBuckets: []int64{1, 2},
+				}),
+			},
+			expectedErr: fmt.Errorf("positive side: spans need 1 buckets, have 2 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
+		},
+		{
+			name: "rejects a histogram that has a negative span with a negative offset",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}, {Offset: -1, Length: 1}},
+					NegativeBuckets: []int64{1, 2},
+				}),
+			},
+			expectedErr: fmt.Errorf("negative side: span number 2 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
+		},
+		{
+			name: "rejects a histogram that has a positive span with a negative offset",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}, {Offset: -1, Length: 1}},
+					PositiveBuckets: []int64{1, 2},
+				}),
+			},
+			expectedErr: fmt.Errorf("positive side: span number 2 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
+		},
+		{
+			name: "rejects a histogram that has a negative span with a negative count",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
+					NegativeBuckets: []int64{-1},
+				}),
+			},
+			expectedErr: fmt.Errorf("negative side: bucket number 1 has observation count of -1: %w", histogram.ErrHistogramNegativeBucketCount),
+		},
+		{
+			name: "rejects a histogram that has a positive span with a negative count",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
+					PositiveBuckets: []int64{-1},
+				}),
+			},
+			expectedErr: fmt.Errorf("positive side: bucket number 1 has observation count of -1: %w", histogram.ErrHistogramNegativeBucketCount),
+		},
+		{
+			name: "rejects a histogram that has a lower count than count in buckets",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:           0,
+					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
+					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
+					NegativeBuckets: []int64{1},
+					PositiveBuckets: []int64{1},
+				}),
+			},
+			expectedErr: fmt.Errorf("2 observations found in buckets, but the Count field is 0: %w", histogram.ErrHistogramCountMismatch),
+		},
+		{
+			name: "rejects a histogram that doesn't count the zero bucket in its count",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:           2,
+					ZeroCount:       1,
+					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
+					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
+					NegativeBuckets: []int64{1},
+					PositiveBuckets: []int64{1},
+				}),
+			},
+			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 2: %w", histogram.ErrHistogramCountMismatch),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := prometheus.NewRegistry()
+
+			// Create a mocked ingester
+			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.JoinAfter = 0
+
+			limits := defaultLimitsTestConfig()
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry, true)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			ctx := user.InjectOrgID(context.Background(), userID)
+
+			// Wait until the ingester is ACTIVE
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			req := cortexpb.ToWriteRequest([]labels.Labels{metricLabels}, nil, nil, tc.histograms, cortexpb.API)
+			// Push timeseries
+			_, err = i.Push(ctx, req)
+			assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(tc.expectedErr, model.Time(10), metricLabelAdapters), userID).Error()), err)
+
+			require.Equal(t, testutil.ToFloat64(i.metrics.ingestedSamplesFail), float64(1))
 		})
 	}
 }

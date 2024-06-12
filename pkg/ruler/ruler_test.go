@@ -17,6 +17,8 @@ import (
 	"time"
 	"unsafe"
 
+	dto "github.com/prometheus/client_model/go"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
@@ -351,6 +353,15 @@ func TestGetRules(t *testing.T) {
 		expectedError              error
 		replicationFactor          int
 		enableZoneAwareReplication bool
+		alertsCountChecker         func(t *testing.T, count int)
+	}
+
+	noAlertsExpected := func(t *testing.T, count int) {
+		require.Equal(t, 0, count)
+	}
+
+	alertsExpected := func(t *testing.T, count int) {
+		require.GreaterOrEqual(t, count, 1)
 	}
 
 	ruleMap := rulesMap{
@@ -361,7 +372,7 @@ func TestGetRules(t *testing.T) {
 			},
 			{
 				Alert: "atest_user1_1",
-				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Expr:  "1 < bool 2",
 			},
 		},
 		"ruler1-user1-rule-group2": []*rulespb.RuleDesc{
@@ -383,7 +394,7 @@ func TestGetRules(t *testing.T) {
 			},
 			{
 				Alert: "atest_user1_1",
-				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Expr:  "1 < bool 2",
 			},
 		},
 		"ruler2-user2-rule-group1": []*rulespb.RuleDesc{
@@ -393,7 +404,7 @@ func TestGetRules(t *testing.T) {
 			},
 			{
 				Alert: "atest_user1_1",
-				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Expr:  "1 < bool 2",
 			},
 		},
 		"ruler2-user2-rule-group2": []*rulespb.RuleDesc{
@@ -403,13 +414,13 @@ func TestGetRules(t *testing.T) {
 			},
 			{
 				Alert: "atest_user2_1",
-				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Expr:  "1 < bool 2",
 			},
 		},
 		"ruler2-user3-rule-group1": []*rulespb.RuleDesc{
 			{
 				Alert: "atest_user3_1",
-				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Expr:  "1 < bool 2",
 			},
 		},
 		"ruler3-user2-rule-group1": []*rulespb.RuleDesc{
@@ -419,7 +430,7 @@ func TestGetRules(t *testing.T) {
 			},
 			{
 				Alert: "atest_user1_1",
-				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Expr:  "1 < bool 2",
 			},
 		},
 		"ruler3-user2-rule-group2": []*rulespb.RuleDesc{
@@ -429,7 +440,7 @@ func TestGetRules(t *testing.T) {
 			},
 			{
 				Alert: "atest_user1_1",
-				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Expr:  "1 < bool 2",
 			},
 		},
 		"ruler3-user3-rule-group1": []*rulespb.RuleDesc{
@@ -439,7 +450,7 @@ func TestGetRules(t *testing.T) {
 			},
 			{
 				Alert: "atest_user1_1",
-				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Expr:  "1 < bool 2",
 			},
 		},
 	}
@@ -482,32 +493,32 @@ func TestGetRules(t *testing.T) {
 	expectedRules := expectedRulesMap{
 		"ruler1": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Rules: ruleMap["ruler1-user1-rule-group1"]},
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Rules: ruleMap["ruler1-user1-rule-group2"]},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 5 * time.Millisecond, Rules: ruleMap["ruler1-user1-rule-group1"]},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 5 * time.Millisecond, Rules: ruleMap["ruler1-user1-rule-group2"]},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Rules: ruleMap["ruler1-user2-rule-group1"]},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 5 * time.Millisecond, Rules: ruleMap["ruler1-user2-rule-group1"]},
 			},
 		},
 		"ruler2": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user1-rule-group3"]},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 5 * time.Millisecond, Rules: ruleMap["ruler2-user1-rule-group3"]},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user2-rule-group1"]},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user2-rule-group2"]},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 5 * time.Millisecond, Rules: ruleMap["ruler2-user2-rule-group1"]},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 5 * time.Millisecond, Rules: ruleMap["ruler2-user2-rule-group2"]},
 			},
 			"user3": {
-				&rulespb.RuleGroupDesc{User: "user3", Namespace: "latency-test", Name: "first", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user3-rule-group1"]},
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "latency-test", Name: "first", Interval: 5 * time.Millisecond, Rules: ruleMap["ruler2-user3-rule-group1"]},
 			},
 		},
 		"ruler3": map[string]rulespb.RuleGroupList{
 			"user3": {
-				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Rules: ruleMap["ruler3-user3-rule-group1"]},
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 5 * time.Millisecond, Rules: ruleMap["ruler3-user3-rule-group1"]},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second, Rules: ruleMap["ruler3-user2-rule-group1"]},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second, Rules: ruleMap["ruler3-user2-rule-group2"]},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 5 * time.Millisecond, Rules: ruleMap["ruler3-user2-rule-group1"]},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 5 * time.Millisecond, Rules: ruleMap["ruler3-user2-rule-group2"]},
 			},
 		},
 	}
@@ -525,6 +536,21 @@ func TestGetRules(t *testing.T) {
 				"user3": 2,
 			},
 			expectedClientCallCount: len(expectedRules),
+			alertsCountChecker:      alertsExpected,
+		},
+		"No Sharding with Exclude Alerts Filter": {
+			sharding: false,
+			rulesRequest: RulesRequest{
+				ExcludeAlerts: true,
+			},
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 5,
+				"user2": 9,
+				"user3": 3,
+			},
+			expectedClientCallCount: len(expectedRules),
+			alertsCountChecker:      noAlertsExpected,
 		},
 		"Default Sharding with No Filter": {
 			sharding:         true,
@@ -536,6 +562,19 @@ func TestGetRules(t *testing.T) {
 				"user3": 3,
 			},
 			expectedClientCallCount: len(expectedRules),
+		},
+		"Default Sharding with Exclude Alerts Filter": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			rulesRequest:     RulesRequest{ExcludeAlerts: true},
+			rulerStateMap:    rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 5,
+				"user2": 9,
+				"user3": 3,
+			},
+			expectedClientCallCount: len(expectedRules),
+			alertsCountChecker:      noAlertsExpected,
 		},
 		"Default Sharding with No Filter but with API Rules backup enabled": {
 			sharding:         true,
@@ -563,6 +602,20 @@ func TestGetRules(t *testing.T) {
 				"user3": 1,
 			},
 			expectedClientCallCount: 2,
+		},
+		"Shuffle Sharding and ShardSize = 2 with Exclude Alerts Filter": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulerStateMap:    rulerStateMapAllActive,
+			rulesRequest:     RulesRequest{ExcludeAlerts: true},
+			expectedCount: map[string]int{
+				"user1": 5,
+				"user2": 9,
+				"user3": 3,
+			},
+			expectedClientCallCount: 2,
+			alertsCountChecker:      noAlertsExpected,
 		},
 		"Shuffle Sharding and ShardSize = 2 and Rule Group Name Filter": {
 			sharding:         true,
@@ -757,8 +810,9 @@ func TestGetRules(t *testing.T) {
 			allRulesByRuler := map[string]rulespb.RuleGroupList{}
 			allTokensByRuler := map[string][]uint32{}
 			rulerAddrMap := map[string]*Ruler{}
+			rulerManagerMap := map[string]*DefaultMultiTenantManager{}
 
-			createRuler := func(id string) *Ruler {
+			createRuler := func(id string) (*Ruler, *DefaultMultiTenantManager) {
 				store := newMockRuleStore(allRulesByUser, nil)
 				cfg := defaultRulerConfig(t)
 
@@ -781,18 +835,19 @@ func TestGetRules(t *testing.T) {
 					cfg.Ring.InstanceZone = tc.rulerAZMap[id]
 				}
 
-				r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
+				r, mgr := buildRuler(t, cfg, nil, store, rulerAddrMap)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
 				rulerAddrMap[id] = r
 				if r.ring != nil {
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
 					t.Cleanup(r.ring.StopAsync)
 				}
-				return r
+				return r, mgr
 			}
 
 			for rID, r := range expectedRules {
-				createRuler(rID)
+				_, mgr := createRuler(rID)
+				rulerManagerMap[rID] = mgr
 				for user, rules := range r {
 					allRulesByUser[user] = append(allRulesByUser[user], rules...)
 					allRulesByRuler[rID] = append(allRulesByRuler[rID], rules...)
@@ -844,9 +899,90 @@ func TestGetRules(t *testing.T) {
 				time.Sleep(100 * time.Millisecond)
 			}
 
+			scrape := func(rID string, scrapeCh chan prometheus.Metric, doneCh chan struct{}) {
+				go func() {
+					tick := time.NewTicker(10 * time.Millisecond)
+					for {
+						select {
+						case <-tick.C:
+							if len(scrapeCh) >= 100 {
+								continue
+							}
+							m := rulerManagerMap[rID]
+							data := m.userManagerMetrics.regs.BuildMetricFamiliesPerUser()
+							data.SendSumOfCountersPerUserWithLabels(scrapeCh, m.userManagerMetrics.IterationsScheduled, "prometheus_rule_group_iterations_total", "rule_group")
+						case <-doneCh:
+							return
+						}
+					}
+				}()
+			}
+
+			waitUntil := func(rID string, user string, ruleGroupList rulespb.RuleGroupList) {
+				scrapeCh := make(chan prometheus.Metric, 100)
+				doneCh := make(chan struct{})
+				scrape(rID, scrapeCh, doneCh)
+				m := map[string]float64{}
+				for _, rgDesc := range ruleGroupList {
+					ruler := rulerAddrMap[rID]
+					if tc.sharding {
+						subRing := ruler.ring.ShuffleShard(user, tc.shuffleShardSize)
+						owns, err := instanceOwnsRuleGroup(subRing, rgDesc, validation.DisabledRuleGroups{}, ruler.lifecycler.GetInstanceAddr(), false)
+						if err == nil && owns {
+							m[rgDesc.GetName()] = 0
+						}
+					} else {
+						m[rgDesc.GetName()] = 0
+					}
+				}
+				if len(m) == 0 {
+					close(doneCh)
+					return
+				}
+				go func() {
+					defer close(doneCh)
+					for metric := range scrapeCh {
+						collected := &dto.Metric{}
+						_ = metric.Write(collected)
+						userLabel := ""
+						ruleGroupName := ""
+						for _, lp := range collected.GetLabel() {
+							if lp.GetName() == "user" && lp.GetValue() == user {
+								userLabel = lp.GetValue()
+							}
+							if lp.GetName() == "rule_group" {
+								ruleGroupName = lp.GetValue()
+							}
+						}
+						if userLabel != "" && ruleGroupName != "" {
+							for k := range m {
+								if strings.Contains(ruleGroupName, k) {
+									m[k] = m[k] + collected.Counter.GetValue()
+								}
+							}
+						}
+						done := true
+						for k := range m {
+							if m[k] < 3 {
+								done = false
+								break
+							}
+						}
+						if done {
+							t.Logf("Ruler %s, User %s, Eval stats %v", rID, user, m)
+							return
+						}
+					}
+				}()
+				<-doneCh
+			}
+
 			for u := range allRulesByUser {
 				ctx := user.InjectOrgID(context.Background(), u)
-				forEachRuler(func(_ string, r *Ruler) {
+				forEachRuler(func(rulerID string, r *Ruler) {
+					if tc.alertsCountChecker != nil {
+						waitUntil(rulerID, u, allRulesByUser[u])
+					}
 					ruleStateDescriptions, err := r.GetRules(ctx, tc.rulesRequest)
 					if tc.expectedError != nil {
 						require.Error(t, tc.expectedError)
@@ -855,10 +991,18 @@ func TestGetRules(t *testing.T) {
 						require.NoError(t, err)
 					}
 					rct := 0
+					alertsCount := 0
 					for _, ruleStateDesc := range ruleStateDescriptions {
 						rct += len(ruleStateDesc.ActiveRules)
+						for _, r := range ruleStateDesc.GetActiveRules() {
+							alertsCount += len(r.Alerts)
+						}
 					}
 					require.Equal(t, tc.expectedCount[u], rct)
+					if tc.alertsCountChecker != nil {
+						tc.alertsCountChecker(t, alertsCount)
+					}
+
 					if tc.sharding {
 						mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
 

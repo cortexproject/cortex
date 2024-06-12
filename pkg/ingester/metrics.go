@@ -298,11 +298,14 @@ type tsdbMetrics struct {
 	tsdbMmapChunkCorruptionTotal       *prometheus.Desc
 	tsdbChunkwriteQueueOperationsTotal *prometheus.Desc
 	tsdbSamplesAppended                *prometheus.Desc
-	tsdbOutOfOrderSamplesAppended      *prometheus.Desc
-	tsdbSnapshotReplayErrorTotal       *prometheus.Desc
-	tsdbOOOHistogram                   *prometheus.Desc
-	tsdbMmapChunksTotal                *prometheus.Desc
-	tsdbDataTotalReplayDuration        *prometheus.Desc
+	// Although there is an existing sample-out-of-order discarded samples metric, some samples can still
+	// be dropped silently due to OOO at commit phase, and it doesn't increment the discarded samples metric.
+	tsdbOOOSamples                *prometheus.Desc
+	tsdbOutOfOrderSamplesAppended *prometheus.Desc
+	tsdbSnapshotReplayErrorTotal  *prometheus.Desc
+	tsdbOOOHistogram              *prometheus.Desc
+	tsdbMmapChunksTotal           *prometheus.Desc
+	tsdbDataTotalReplayDuration   *prometheus.Desc
 
 	tsdbExemplarsTotal          *prometheus.Desc
 	tsdbExemplarsInStorage      *prometheus.Desc
@@ -478,6 +481,10 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_head_samples_appended_total",
 			"Total number of appended samples.",
 			[]string{"user", "type"}, nil),
+		tsdbOOOSamples: prometheus.NewDesc(
+			"cortex_ingester_tsdb_out_of_order_samples_total",
+			"Total number of out of order samples ingestion failed attempts due to out of order being disabled.",
+			[]string{"user", "type"}, nil),
 		tsdbOutOfOrderSamplesAppended: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_out_of_order_samples_appended_total",
 			"Total number of appended out of order samples.",
@@ -564,6 +571,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbTimeRetentionCount
 	out <- sm.tsdbBlocksBytes
 	out <- sm.tsdbSamplesAppended
+	out <- sm.tsdbOOOSamples
 	out <- sm.tsdbOutOfOrderSamplesAppended
 	out <- sm.tsdbSnapshotReplayErrorTotal
 	out <- sm.tsdbOOOHistogram
@@ -620,6 +628,7 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbTimeRetentionCount, "prometheus_tsdb_time_retentions_total")
 	data.SendSumOfGaugesPerUser(out, sm.tsdbBlocksBytes, "prometheus_tsdb_storage_blocks_bytes")
 	data.SendSumOfCountersPerUserWithLabels(out, sm.tsdbSamplesAppended, "prometheus_tsdb_head_samples_appended_total", "type")
+	data.SendSumOfCountersPerUserWithLabels(out, sm.tsdbOOOSamples, "prometheus_tsdb_out_of_order_samples_total", "type")
 	data.SendSumOfCountersPerUserWithLabels(out, sm.tsdbOutOfOrderSamplesAppended, "prometheus_tsdb_head_out_of_order_samples_appended_total", "type")
 	data.SendSumOfCounters(out, sm.tsdbSnapshotReplayErrorTotal, "prometheus_tsdb_snapshot_replay_error_total")
 	data.SendSumOfHistograms(out, sm.tsdbOOOHistogram, "prometheus_tsdb_sample_ooo_delta")

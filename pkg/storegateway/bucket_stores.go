@@ -35,6 +35,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -72,6 +73,11 @@ type BucketStores struct {
 	// Keeps the last sync error for the  bucket store for each tenant.
 	storesErrorsMu sync.RWMutex
 	storesErrors   map[string]error
+
+	podTokenBucket *util.TokenBucket
+
+	userTokenBucketsMu sync.RWMutex
+	userTokenBuckets   map[string]*util.TokenBucket
 
 	// Keeps number of inflight requests
 	inflightRequestCnt int
@@ -115,6 +121,11 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
 		queryGate:          queryGate,
 		partitioner:        newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
+		podTokenBucket: util.NewTokenBucket(cfg.BucketStore.PodTokenBucketSize, cfg.BucketStore.PodTokenBucketSize, promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_bucket_stores_pod_token_bucket_remaining",
+			Help: "Number of tokens left in pod token bucket.",
+		})),
+		userTokenBuckets: make(map[string]*util.TokenBucket),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_bucket_stores_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
@@ -475,6 +486,10 @@ func (u *BucketStores) closeEmptyBucketStore(userID string) error {
 	unlockInDefer = false
 	u.storesMu.Unlock()
 
+	u.userTokenBucketsMu.Lock()
+	delete(u.userTokenBuckets, userID)
+	u.userTokenBucketsMu.Unlock()
+
 	u.metaFetcherMetrics.RemoveUserRegistry(userID)
 	u.bucketStoreMetrics.RemoveUserRegistry(userID)
 	return bs.Close()
@@ -618,7 +633,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.syncDirForUser(userID),
 		newChunksLimiterFactory(u.limits, userID),
 		newSeriesLimiterFactory(u.limits, userID),
-		newBytesLimiterFactory(u.limits, userID),
+		newBytesLimiterFactory(u.limits, userID, u.podTokenBucket, u.getUserTokenBucket(userID), u.getTokensToRetrieve, u.cfg.BucketStore.RequestTokenBucketSize),
 		u.partitioner,
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
@@ -631,6 +646,10 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	if err != nil {
 		return nil, err
 	}
+
+	u.userTokenBucketsMu.Lock()
+	u.userTokenBuckets[userID] = util.NewTokenBucket(u.cfg.BucketStore.UserTokenBucketSize, u.cfg.BucketStore.UserTokenBucketSize, nil)
+	u.userTokenBucketsMu.Unlock()
 
 	u.stores[userID] = bs
 	u.metaFetcherMetrics.AddUserRegistry(userID, fetcherReg)
@@ -678,6 +697,31 @@ func (u *BucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[str
 			level.Warn(u.logger).Log("msg", "failed to delete user sync directory", "dir", userSyncDir, "err", err)
 		}
 	}
+}
+
+func (u *BucketStores) getUserTokenBucket(userID string) *util.TokenBucket {
+	u.userTokenBucketsMu.RLock()
+	defer u.userTokenBucketsMu.RUnlock()
+	return u.userTokenBuckets[userID]
+}
+
+func (u *BucketStores) getTokensToRetrieve(tokens uint64, dataType store.StoreDataType) int64 {
+	tokensToRetrieve := tokens
+	switch dataType {
+	case store.PostingsFetched:
+		tokensToRetrieve *= uint64(u.cfg.BucketStore.FetchedPostingsTokenFactor)
+	case store.PostingsTouched:
+		tokensToRetrieve *= uint64(u.cfg.BucketStore.TouchedPostingsTokenFactor)
+	case store.SeriesFetched:
+		tokensToRetrieve *= uint64(u.cfg.BucketStore.FetchedSeriesTokenFactor)
+	case store.SeriesTouched:
+		tokensToRetrieve *= uint64(u.cfg.BucketStore.TouchedSeriesTokenFactor)
+	case store.ChunksFetched:
+		tokensToRetrieve *= uint64(u.cfg.BucketStore.FetchedChunksTokenFactor)
+	case store.ChunksTouched:
+		tokensToRetrieve *= uint64(u.cfg.BucketStore.TouchedChunksTokenFactor)
+	}
+	return int64(tokensToRetrieve)
 }
 
 func getUserIDFromGRPCContext(ctx context.Context) string {
@@ -748,6 +792,65 @@ func (c *limiter) ReserveWithType(num uint64, _ store.StoreDataType) error {
 	return nil
 }
 
+type compositeLimiter struct {
+	limiters []store.BytesLimiter
+}
+
+func (c *compositeLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
+	for _, l := range c.limiters {
+		if err := l.ReserveWithType(num, dataType); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type tokenBucketLimiter struct {
+	podTokenBucket      *util.TokenBucket
+	userTokenBucket     *util.TokenBucket
+	requestTokenBucket  *util.TokenBucket
+	getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64
+}
+
+func (t *tokenBucketLimiter) Reserve(_ uint64) error {
+	return nil
+}
+
+func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
+	tokensToRetrieve := t.getTokensToRetrieve(num, dataType)
+
+	// check provisioned bucket
+	retrieved := t.requestTokenBucket.Retrieve(tokensToRetrieve)
+	if retrieved {
+		t.userTokenBucket.ForceRetrieve(tokensToRetrieve)
+		t.podTokenBucket.ForceRetrieve(tokensToRetrieve)
+		return nil
+	}
+
+	// if provisioned bucket is not enough, check burst buckets
+	retrieved = t.userTokenBucket.Retrieve(tokensToRetrieve)
+	if !retrieved {
+		return fmt.Errorf("not enough tokens in user bucket")
+	}
+
+	retrieved = t.podTokenBucket.Retrieve(tokensToRetrieve)
+	if !retrieved {
+		t.userTokenBucket.Refund(tokensToRetrieve)
+		return fmt.Errorf("not enough tokens in pod bucket")
+	}
+
+	return nil
+}
+
+func newTokenBucketLimiter(podTokenBucket, userTokenBucket, requestTokenBucket *util.TokenBucket, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketLimiter {
+	return &tokenBucketLimiter{
+		podTokenBucket:      podTokenBucket,
+		userTokenBucket:     userTokenBucket,
+		requestTokenBucket:  requestTokenBucket,
+		getTokensToRetrieve: getTokensToRetrieve,
+	}
+}
+
 func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.ChunksLimiterFactory {
 	return func(failedCounter prometheus.Counter) store.ChunksLimiter {
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
@@ -768,12 +871,15 @@ func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.
 	}
 }
 
-func newBytesLimiterFactory(limits *validation.Overrides, userID string) store.BytesLimiterFactory {
+func newBytesLimiterFactory(limits *validation.Overrides, userID string, podTokenBucket, userTokenBucket *util.TokenBucket, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64, requestTokenBucketSize int64) store.BytesLimiterFactory {
 	return func(failedCounter prometheus.Counter) store.BytesLimiter {
+		limiters := []store.BytesLimiter{}
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
-		return &limiter{
-			limiter: store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter),
+		limiters = append(limiters, store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter))
+		limiters = append(limiters, newTokenBucketLimiter(podTokenBucket, userTokenBucket, util.NewTokenBucket(requestTokenBucketSize, requestTokenBucketSize, nil), getTokensToRetrieve))
+		return &compositeLimiter{
+			limiters: limiters,
 		}
 	}
 }

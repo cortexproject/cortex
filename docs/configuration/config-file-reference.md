@@ -3285,6 +3285,15 @@ query_priority:
   # List of priority definitions.
   [priorities: <list of PriorityDef> | default = []]
 
+# Configuration for query rejection.
+query_rejection:
+  # Whether query rejection is enabled.
+  # CLI flag: -frontend.query-rejection.enabled
+  [enabled: <boolean> | default = false]
+
+  # List of query attributes for rejection.
+  [query_attributes: <list of QueryAttribute> | default = []]
+
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
@@ -5368,6 +5377,22 @@ time_window:
   # lookback delta) that the query should be within. If set to 0, it won't be
   # checked.
   [end: <int> | default = 0]
+
+# Limit that query step should be within. It will check subquery steps as well.
+# If not set, it won't be checked.
+query_step_limit:
+  [min: <int> | default = ]
+
+  [max: <int> | default = ]
+
+# User agent for the query. If not set, it won't be checked.
+[user_agent: <string> | default = ""]
+
+# Dashboard UID for the query. If not set, it won't be checked.
+[dashboard_uid: <string> | default = ""]
+
+# Panel Id for the query. If not set, it won't be checked.
+[panel_id: <string> | default = ""]
 ```
 
 ### `DisabledRuleGroup`

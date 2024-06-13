@@ -330,7 +330,7 @@ func main() {
 	flags := parseFlags(cfg)
 
 	// Parse the config, mapping each config field with the related CLI flag.
-	blocks, err := parseConfig(nil, cfg, flags)
+	blocks, err := parseConfig(nil, cfg, flags, map[string]struct{}{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "An error occurred while generating the doc: %s\n", err.Error())
 		os.Exit(1)

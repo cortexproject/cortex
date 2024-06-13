@@ -736,6 +736,10 @@ type limiter struct {
 }
 
 func (c *limiter) Reserve(num uint64) error {
+	return c.ReserveWithType(num, 0)
+}
+
+func (c *limiter) ReserveWithType(num uint64, _ store.StoreDataType) error {
 	err := c.limiter.Reserve(num)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())

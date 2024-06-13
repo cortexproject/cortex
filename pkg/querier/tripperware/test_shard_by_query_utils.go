@@ -478,6 +478,7 @@ type mockLimits struct {
 	maxCacheFreshness time.Duration
 	shardSize         int
 	queryPriority     validation.QueryPriority
+	queryRejection    validation.QueryRejection
 }
 
 func (m mockLimits) MaxQueryLookback(string) time.Duration {
@@ -502,6 +503,10 @@ func (m mockLimits) QueryVerticalShardSize(userID string) int {
 
 func (m mockLimits) QueryPriority(userID string) validation.QueryPriority {
 	return m.queryPriority
+}
+
+func (m mockLimits) QueryRejection(userID string) validation.QueryRejection {
+	return m.queryRejection
 }
 
 type singleHostRoundTripper struct {

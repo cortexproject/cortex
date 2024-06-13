@@ -28,4 +28,6 @@ type Limits interface {
 
 	// QueryPriority returns the query priority config for the tenant, including different priorities and their attributes.
 	QueryPriority(userID string) validation.QueryPriority
+
+	QueryRejection(userID string) validation.QueryRejection
 }

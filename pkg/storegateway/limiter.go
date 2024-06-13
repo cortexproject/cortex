@@ -55,7 +55,7 @@ func (t *tokenBucketLimiter) Reserve(_ uint64) error {
 func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
 	tokensToRetrieve := t.getTokensToRetrieve(num, dataType)
 
-	// check provisioned bucket
+	// check request bucket
 	retrieved := t.requestTokenBucket.Retrieve(tokensToRetrieve)
 	if retrieved {
 		t.userTokenBucket.ForceRetrieve(tokensToRetrieve)
@@ -63,16 +63,16 @@ func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDat
 		return nil
 	}
 
-	// if provisioned bucket is not enough, check burst buckets
+	// if request bucket is running low, check shared buckets
 	retrieved = t.userTokenBucket.Retrieve(tokensToRetrieve)
 	if !retrieved {
-		return fmt.Errorf("not enough tokens in user bucket")
+		return fmt.Errorf("not enough tokens in user token bucket")
 	}
 
 	retrieved = t.podTokenBucket.Retrieve(tokensToRetrieve)
 	if !retrieved {
 		t.userTokenBucket.Refund(tokensToRetrieve)
-		return fmt.Errorf("not enough tokens in pod bucket")
+		return fmt.Errorf("not enough tokens in pod token bucket")
 	}
 
 	return nil

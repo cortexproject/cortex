@@ -1466,6 +1466,51 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.series-batch-size
     [series_batch_size: <int> | default = 10000]
 
+    token_bucket_limiter:
+      # Whether token bucket limiter is enabled
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.enabled
+      [enabled: <boolean> | default = false]
+
+      # Whether the token bucket limiter is in dry run mode
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.dry-run
+      [dry_run: <boolean> | default = false]
+
+      # Pod token bucket size
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.pod-token-bucket-size
+      [pod_token_bucket_size: <int> | default = 859832320]
+
+      # User token bucket size
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.user-token-bucket-size
+      [user_token_bucket_size: <int> | default = 644874240]
+
+      # Request token bucket size
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.request-token-bucket-size
+      [request_token_bucket_size: <int> | default = 4194304]
+
+      # Multiplication factor used for fetched postings token
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.fetched-postings-token-factor
+      [fetched_postings_token_factor: <float> | default = 2]
+
+      # Multiplication factor used for touched postings token
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.touched-postings-token-factor
+      [touched_postings_token_factor: <float> | default = 2]
+
+      # Multiplication factor used for fetched series token
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.fetched-series-token-factor
+      [fetched_series_token_factor: <float> | default = 2.5]
+
+      # Multiplication factor used for touched series token
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.touched-series-token-factor
+      [touched_series_token_factor: <float> | default = 10]
+
+      # Multiplication factor used for fetched chunks token
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.fetched-chunks-token-factor
+      [fetched_chunks_token_factor: <float> | default = 0.5]
+
+      # Multiplication factor used for touched chunks token
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.touched-chunks-token-factor
+      [touched_chunks_token_factor: <float> | default = 0.5]
+
   tsdb:
     # Local directory to store TSDBs in the ingesters.
     # CLI flag: -blocks-storage.tsdb.dir

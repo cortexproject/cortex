@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,6 +47,7 @@ type tokenBucketLimiter struct {
 	userTokenBucket     *util.TokenBucket
 	requestTokenBucket  *util.TokenBucket
 	getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64
+	dryRun              bool
 }
 
 func (t *tokenBucketLimiter) Reserve(_ uint64) error {
@@ -78,12 +80,13 @@ func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDat
 	return nil
 }
 
-func newTokenBucketLimiter(podTokenBucket, userTokenBucket, requestTokenBucket *util.TokenBucket, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketLimiter {
+func newTokenBucketLimiter(podTokenBucket, userTokenBucket, requestTokenBucket *util.TokenBucket, dryRun bool, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketLimiter {
 	return &tokenBucketLimiter{
 		podTokenBucket:      podTokenBucket,
 		userTokenBucket:     userTokenBucket,
 		requestTokenBucket:  requestTokenBucket,
 		getTokensToRetrieve: getTokensToRetrieve,
+		dryRun:              dryRun,
 	}
 }
 
@@ -107,13 +110,18 @@ func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.
 	}
 }
 
-func newBytesLimiterFactory(limits *validation.Overrides, userID string, podTokenBucket, userTokenBucket *util.TokenBucket, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64, requestTokenBucketSize int64) store.BytesLimiterFactory {
+func newBytesLimiterFactory(limits *validation.Overrides, userID string, podTokenBucket, userTokenBucket *util.TokenBucket, tokenBucketLimiterCfg tsdb.TokenBucketLimiterConfig, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) store.BytesLimiterFactory {
 	return func(failedCounter prometheus.Counter) store.BytesLimiter {
 		limiters := []store.BytesLimiter{}
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
 		limiters = append(limiters, store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter))
-		limiters = append(limiters, newTokenBucketLimiter(podTokenBucket, userTokenBucket, util.NewTokenBucket(requestTokenBucketSize, requestTokenBucketSize, nil), getTokensToRetrieve))
+
+		if tokenBucketLimiterCfg.Enabled {
+			requestTokenBucket := util.NewTokenBucket(tokenBucketLimiterCfg.RequestTokenBucketSize, tokenBucketLimiterCfg.RequestTokenBucketSize, nil)
+			limiters = append(limiters, newTokenBucketLimiter(podTokenBucket, userTokenBucket, requestTokenBucket, tokenBucketLimiterCfg.DryRun, getTokensToRetrieve))
+		}
+
 		return &compositeLimiter{
 			limiters: limiters,
 		}

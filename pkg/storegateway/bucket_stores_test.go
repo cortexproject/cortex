@@ -212,8 +212,6 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	}
 
 	require.NoError(t, stores.InitialSync(ctx))
-	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
-	assert.NotNil(t, stores.getUserTokenBucket("user-2"))
 
 	// Query series after the initial sync.
 	for userID, metricName := range userToMetric {
@@ -720,8 +718,6 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	sharding.users = []string{user1}
 	require.NoError(t, stores.SyncBlocks(ctx))
 	require.Equal(t, []string{user1}, getUsersInDir(t, cfg.BucketStore.SyncDir))
-	assert.NotNil(t, stores.getUserTokenBucket(user1))
-	assert.Nil(t, stores.getUserTokenBucket(user2))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
         	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
@@ -739,8 +735,6 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	sharding.users = nil
 	require.NoError(t, stores.SyncBlocks(ctx))
 	require.Equal(t, []string(nil), getUsersInDir(t, cfg.BucketStore.SyncDir))
-	assert.Nil(t, stores.getUserTokenBucket(user1))
-	assert.Nil(t, stores.getUserTokenBucket(user2))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
         	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
@@ -769,22 +763,76 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	`), metricNames...))
 }
 
+func TestBucketStores_getUserTokenBucket(t *testing.T) {
+	const (
+		user1 = "user-1"
+		user2 = "user-2"
+	)
+
+	ctx := context.Background()
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.TokenBucketLimiter.Enabled = true
+
+	storageDir := t.TempDir()
+	userToMetric := map[string]string{
+		user1: "series_1",
+		user2: "series_2",
+	}
+	for userID, metricName := range userToMetric {
+		generateStorageBlock(t, storageDir, userID, metricName, 10, 100, 15)
+	}
+
+	sharding := userShardingStrategy{}
+	sharding.users = []string{user1, user2}
+
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	assert.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	stores, err := NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	assert.NoError(t, err)
+
+	assert.NoError(t, stores.InitialSync(ctx))
+	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
+	assert.NotNil(t, stores.getUserTokenBucket("user-2"))
+
+	sharding.users = []string{user1}
+	assert.NoError(t, stores.SyncBlocks(ctx))
+	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
+	assert.Nil(t, stores.getUserTokenBucket("user-2"))
+
+	sharding.users = []string{}
+	assert.NoError(t, stores.SyncBlocks(ctx))
+	assert.Nil(t, stores.getUserTokenBucket("user-1"))
+	assert.Nil(t, stores.getUserTokenBucket("user-2"))
+
+	cfg.BucketStore.TokenBucketLimiter.Enabled = false
+	sharding.users = []string{user1, user2}
+	reg = prometheus.NewPedanticRegistry()
+	stores, err = NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	assert.NoError(t, err)
+
+	assert.NoError(t, stores.InitialSync(ctx))
+	assert.Nil(t, stores.getUserTokenBucket("user-1"))
+	assert.Nil(t, stores.getUserTokenBucket("user-2"))
+}
+
 func TestBucketStores_getTokensToRetrieve(t *testing.T) {
 	cfg := prepareStorageConfig(t)
-	cfg.BucketStore.FetchedPostingsTokenFactor = 1
-	cfg.BucketStore.TouchedPostingsTokenFactor = 2
-	cfg.BucketStore.FetchedSeriesTokenFactor = 3
-	cfg.BucketStore.TouchedSeriesTokenFactor = 4
-	cfg.BucketStore.FetchedChunksTokenFactor = 0
-	cfg.BucketStore.TouchedChunksTokenFactor = 0.5
+	cfg.BucketStore.TokenBucketLimiter.FetchedPostingsTokenFactor = 1
+	cfg.BucketStore.TokenBucketLimiter.TouchedPostingsTokenFactor = 2
+	cfg.BucketStore.TokenBucketLimiter.FetchedSeriesTokenFactor = 3
+	cfg.BucketStore.TokenBucketLimiter.TouchedSeriesTokenFactor = 4
+	cfg.BucketStore.TokenBucketLimiter.FetchedChunksTokenFactor = 0
+	cfg.BucketStore.TokenBucketLimiter.TouchedChunksTokenFactor = 0.5
 
 	storageDir := t.TempDir()
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, int64(2), stores.getTokensToRetrieve(2, store.PostingsFetched))
 	assert.Equal(t, int64(4), stores.getTokensToRetrieve(2, store.PostingsTouched))

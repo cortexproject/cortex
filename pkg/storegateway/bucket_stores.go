@@ -120,7 +120,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
 		queryGate:          queryGate,
 		partitioner:        newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
-		podTokenBucket: util.NewTokenBucket(cfg.BucketStore.PodTokenBucketSize, cfg.BucketStore.PodTokenBucketSize, promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		podTokenBucket: util.NewTokenBucket(cfg.BucketStore.TokenBucketLimiter.PodTokenBucketSize, cfg.BucketStore.TokenBucketLimiter.PodTokenBucketSize, promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_bucket_stores_pod_token_bucket_remaining",
 			Help: "Number of tokens left in pod token bucket.",
 		})),
@@ -485,9 +485,11 @@ func (u *BucketStores) closeEmptyBucketStore(userID string) error {
 	unlockInDefer = false
 	u.storesMu.Unlock()
 
-	u.userTokenBucketsMu.Lock()
-	delete(u.userTokenBuckets, userID)
-	u.userTokenBucketsMu.Unlock()
+	if u.cfg.BucketStore.TokenBucketLimiter.Enabled {
+		u.userTokenBucketsMu.Lock()
+		delete(u.userTokenBuckets, userID)
+		u.userTokenBucketsMu.Unlock()
+	}
 
 	u.metaFetcherMetrics.RemoveUserRegistry(userID)
 	u.bucketStoreMetrics.RemoveUserRegistry(userID)
@@ -626,9 +628,11 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())
 	}
 
-	u.userTokenBucketsMu.Lock()
-	u.userTokenBuckets[userID] = util.NewTokenBucket(u.cfg.BucketStore.UserTokenBucketSize, u.cfg.BucketStore.UserTokenBucketSize, nil)
-	u.userTokenBucketsMu.Unlock()
+	if u.cfg.BucketStore.TokenBucketLimiter.Enabled {
+		u.userTokenBucketsMu.Lock()
+		u.userTokenBuckets[userID] = util.NewTokenBucket(u.cfg.BucketStore.TokenBucketLimiter.UserTokenBucketSize, u.cfg.BucketStore.TokenBucketLimiter.UserTokenBucketSize, nil)
+		u.userTokenBucketsMu.Unlock()
+	}
 
 	bs, err := store.NewBucketStore(
 		userBkt,
@@ -636,7 +640,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.syncDirForUser(userID),
 		newChunksLimiterFactory(u.limits, userID),
 		newSeriesLimiterFactory(u.limits, userID),
-		newBytesLimiterFactory(u.limits, userID, u.podTokenBucket, u.getUserTokenBucket(userID), u.getTokensToRetrieve, u.cfg.BucketStore.RequestTokenBucketSize),
+		newBytesLimiterFactory(u.limits, userID, u.podTokenBucket, u.getUserTokenBucket(userID), u.cfg.BucketStore.TokenBucketLimiter, u.getTokensToRetrieve),
 		u.partitioner,
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
@@ -708,17 +712,17 @@ func (u *BucketStores) getTokensToRetrieve(tokens uint64, dataType store.StoreDa
 	tokensToRetrieve := float64(tokens)
 	switch dataType {
 	case store.PostingsFetched:
-		tokensToRetrieve *= u.cfg.BucketStore.FetchedPostingsTokenFactor
+		tokensToRetrieve *= u.cfg.BucketStore.TokenBucketLimiter.FetchedPostingsTokenFactor
 	case store.PostingsTouched:
-		tokensToRetrieve *= u.cfg.BucketStore.TouchedPostingsTokenFactor
+		tokensToRetrieve *= u.cfg.BucketStore.TokenBucketLimiter.TouchedPostingsTokenFactor
 	case store.SeriesFetched:
-		tokensToRetrieve *= u.cfg.BucketStore.FetchedSeriesTokenFactor
+		tokensToRetrieve *= u.cfg.BucketStore.TokenBucketLimiter.FetchedSeriesTokenFactor
 	case store.SeriesTouched:
-		tokensToRetrieve *= u.cfg.BucketStore.TouchedSeriesTokenFactor
+		tokensToRetrieve *= u.cfg.BucketStore.TokenBucketLimiter.TouchedSeriesTokenFactor
 	case store.ChunksFetched:
-		tokensToRetrieve *= u.cfg.BucketStore.FetchedChunksTokenFactor
+		tokensToRetrieve *= u.cfg.BucketStore.TokenBucketLimiter.FetchedChunksTokenFactor
 	case store.ChunksTouched:
-		tokensToRetrieve *= u.cfg.BucketStore.TouchedChunksTokenFactor
+		tokensToRetrieve *= u.cfg.BucketStore.TokenBucketLimiter.TouchedChunksTokenFactor
 	}
 	return int64(tokensToRetrieve)
 }

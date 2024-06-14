@@ -36,7 +36,7 @@ func TestNewTokenBucketLimiter(t *testing.T) {
 	podTokenBucket := util.NewTokenBucket(3, 3, nil)
 	userTokenBucket := util.NewTokenBucket(2, 2, nil)
 	requestTokenBucket := util.NewTokenBucket(1, 1, nil)
-	l := newTokenBucketLimiter(podTokenBucket, userTokenBucket, requestTokenBucket, func(tokens uint64, dataType store.StoreDataType) int64 {
+	l := newTokenBucketLimiter(podTokenBucket, userTokenBucket, requestTokenBucket, true, func(tokens uint64, dataType store.StoreDataType) int64 {
 		if dataType == store.SeriesFetched {
 			return int64(tokens) * 5
 		}
@@ -71,3 +71,4 @@ func TestNewTokenBucketLimiter(t *testing.T) {
 	userTokenBucket.ForceRetrieve(2)
 	assert.NoError(t, l.ReserveWithType(1, store.PostingsFetched))
 }
+

@@ -5381,9 +5381,13 @@ time_window:
 # Limit that query step should be within. It will check subquery steps as well.
 # If not set, it won't be checked.
 query_step_limit:
-  [min: <int> | default = ]
+  # Query step should be above or equal to this value to match. If set to 0, it
+  # won't be checked.
+  [min: <int> | default = 0]
 
-  [max: <int> | default = ]
+  # Query step should be below or equal to this value to match. If set to 0, it
+  # won't be checked.
+  [max: <int> | default = 0]
 
 # User agent for the query. If not set, it won't be checked.
 [user_agent: <string> | default = ""]

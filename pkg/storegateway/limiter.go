@@ -6,7 +6,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/weaveworks/common/httpgrpc"
@@ -65,18 +67,36 @@ func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDat
 		return nil
 	}
 
-	// if request bucket is running low, check shared buckets
+	// if we can't retrieve from request bucket, check shared buckets
 	retrieved = t.userTokenBucket.Retrieve(tokensToRetrieve)
 	if !retrieved {
+		// if dry run, force retrieve all tokens and return nil
+		if t.dryRun {
+			t.requestTokenBucket.ForceRetrieve(tokensToRetrieve)
+			t.userTokenBucket.ForceRetrieve(tokensToRetrieve)
+			t.podTokenBucket.ForceRetrieve(tokensToRetrieve)
+			level.Warn(util_log.Logger).Log("msg", "not enough tokens in user token bucket", "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve)
+			return nil
+		}
 		return fmt.Errorf("not enough tokens in user token bucket")
 	}
 
 	retrieved = t.podTokenBucket.Retrieve(tokensToRetrieve)
 	if !retrieved {
 		t.userTokenBucket.Refund(tokensToRetrieve)
+
+		// if dry run, force retrieve all tokens and return nil
+		if t.dryRun {
+			// user bucket is already retrieved
+			t.requestTokenBucket.ForceRetrieve(tokensToRetrieve)
+			t.podTokenBucket.ForceRetrieve(tokensToRetrieve)
+			level.Warn(util_log.Logger).Log("msg", "not enough tokens in pod token bucket", "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve)
+			return nil
+		}
 		return fmt.Errorf("not enough tokens in pod token bucket")
 	}
 
+	t.requestTokenBucket.ForceRetrieve(tokensToRetrieve)
 	return nil
 }
 

@@ -74,6 +74,15 @@ func (t *TokenBucket) Refund(amount int64) {
 	}
 }
 
+func (t *TokenBucket) RemainingTokens() int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.updateTokens()
+
+	return t.remainingTokens
+}
+
 func (t *TokenBucket) updateTokens() {
 	now := time.Now()
 	refilledTokens := int64(now.Sub(t.lastRefill).Seconds() * float64(t.refillRate))

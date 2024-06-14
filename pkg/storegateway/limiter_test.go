@@ -36,6 +36,55 @@ func TestNewTokenBucketLimiter(t *testing.T) {
 	podTokenBucket := util.NewTokenBucket(3, 3, nil)
 	userTokenBucket := util.NewTokenBucket(2, 2, nil)
 	requestTokenBucket := util.NewTokenBucket(1, 1, nil)
+	l := newTokenBucketLimiter(podTokenBucket, userTokenBucket, requestTokenBucket, false, func(tokens uint64, dataType store.StoreDataType) int64 {
+		if dataType == store.SeriesFetched {
+			return int64(tokens) * 5
+		}
+		return int64(tokens)
+	})
+
+	// should force retrieve tokens from all buckets upon succeeding
+	assert.NoError(t, l.ReserveWithType(2, store.PostingsFetched))
+	assert.Equal(t, int64(1), podTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(0), userTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(-1), requestTokenBucket.RemainingTokens())
+
+	// should fail if user token bucket is running low
+	podTokenBucket.Refund(2)
+	userTokenBucket.Refund(2)
+	requestTokenBucket.Refund(2)
+	assert.ErrorContains(t, l.ReserveWithType(3, store.PostingsFetched), "not enough tokens in user token bucket")
+	assert.Equal(t, int64(3), podTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(2), userTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(1), requestTokenBucket.RemainingTokens())
+
+	// should fail if pod token bucket is running low
+	podTokenBucket.ForceRetrieve(2)
+	assert.ErrorContains(t, l.ReserveWithType(2, store.PostingsFetched), "not enough tokens in pod token bucket")
+	assert.Equal(t, int64(1), podTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(2), userTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(1), requestTokenBucket.RemainingTokens())
+
+	// should retrieve different amount of tokens based on data type
+	podTokenBucket.Refund(2)
+	assert.ErrorContains(t, l.ReserveWithType(1, store.SeriesFetched), "not enough tokens in user token bucket")
+	assert.Equal(t, int64(3), podTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(2), userTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(1), requestTokenBucket.RemainingTokens())
+
+	// should always succeed if retrieve token bucket has enough tokens, although shared buckets are empty
+	podTokenBucket.ForceRetrieve(3)
+	userTokenBucket.ForceRetrieve(2)
+	assert.NoError(t, l.ReserveWithType(1, store.PostingsFetched))
+	assert.Equal(t, int64(-1), podTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(-1), userTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(0), requestTokenBucket.RemainingTokens())
+}
+
+func TestNewTokenBucketLimter_DryRun(t *testing.T) {
+	podTokenBucket := util.NewTokenBucket(3, 3, nil)
+	userTokenBucket := util.NewTokenBucket(2, 2, nil)
+	requestTokenBucket := util.NewTokenBucket(1, 1, nil)
 	l := newTokenBucketLimiter(podTokenBucket, userTokenBucket, requestTokenBucket, true, func(tokens uint64, dataType store.StoreDataType) int64 {
 		if dataType == store.SeriesFetched {
 			return int64(tokens) * 5
@@ -46,29 +95,16 @@ func TestNewTokenBucketLimiter(t *testing.T) {
 	// should force retrieve tokens from all buckets upon succeeding
 	assert.NoError(t, l.ReserveWithType(2, store.PostingsFetched))
 	assert.False(t, podTokenBucket.Retrieve(2))
+	assert.Equal(t, int64(1), podTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(0), userTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(-1), requestTokenBucket.RemainingTokens())
 
-	// should fail if user token bucket is running low
-	podTokenBucket.Refund(3)
+	// should not fail even if tokens are not enough
+	podTokenBucket.Refund(2)
 	userTokenBucket.Refund(2)
-	requestTokenBucket.Refund(1)
-	assert.ErrorContains(t, l.ReserveWithType(3, store.PostingsFetched), "not enough tokens in user token bucket")
-
-	// should fail if pod token bucket is running low
-	podTokenBucket.Refund(3)
-	userTokenBucket.Refund(2)
-	requestTokenBucket.Refund(1)
-	podTokenBucket.ForceRetrieve(3)
-	assert.ErrorContains(t, l.ReserveWithType(2, store.PostingsFetched), "not enough tokens in pod token bucket")
-
-	// should retrieve different amount of tokens based on data type
-	podTokenBucket.Refund(3)
-	userTokenBucket.Refund(2)
-	requestTokenBucket.Refund(1)
-	assert.ErrorContains(t, l.ReserveWithType(1, store.SeriesFetched), "not enough tokens in user token bucket")
-
-	// should always succeed if retrieve token bucket has enough tokens, although shared buckets are empty
-	podTokenBucket.ForceRetrieve(3)
-	userTokenBucket.ForceRetrieve(2)
-	assert.NoError(t, l.ReserveWithType(1, store.PostingsFetched))
+	requestTokenBucket.Refund(2)
+	assert.NoError(t, l.ReserveWithType(5, store.PostingsFetched))
+	assert.Equal(t, int64(-2), podTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(-3), userTokenBucket.RemainingTokens())
+	assert.Equal(t, int64(-4), requestTokenBucket.RemainingTokens())
 }
-

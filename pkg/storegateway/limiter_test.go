@@ -3,10 +3,11 @@ package storegateway
 import (
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/thanos/pkg/store"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestLimiter(t *testing.T) {

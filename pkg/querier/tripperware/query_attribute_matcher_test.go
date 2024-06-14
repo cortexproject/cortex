@@ -240,11 +240,10 @@ func Test_isWithinQueryStepLimit(t *testing.T) {
 			step:           "15s",
 			expectedResult: true,
 		},
-		"query should be considered within the step limit if query doesn't have steps": {
+		"query should be considered outside of the step limit if query doesn't have steps": {
 			queryString:    "count(sum(up))",
 			step:           "not_parseable",
 			queryStepLimit: queryStepLimit,
-			expectedResult: true,
 		},
 		"should match if step limit set and step is within the range": {
 			step:           "15s",

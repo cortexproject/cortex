@@ -120,11 +120,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
 		queryGate:          queryGate,
 		partitioner:        newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
-		podTokenBucket: util.NewTokenBucket(cfg.BucketStore.TokenBucketLimiter.PodTokenBucketSize, cfg.BucketStore.TokenBucketLimiter.PodTokenBucketSize, promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_bucket_stores_pod_token_bucket_remaining",
-			Help: "Number of tokens left in pod token bucket.",
-		})),
-		userTokenBuckets: make(map[string]*util.TokenBucket),
+		userTokenBuckets:   make(map[string]*util.TokenBucket),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_bucket_stores_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
@@ -152,6 +148,13 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 	// Init the chunks bytes pool.
 	if u.chunksPool, err = newChunkBytesPool(cfg.BucketStore.ChunkPoolMinBucketSizeBytes, cfg.BucketStore.ChunkPoolMaxBucketSizeBytes, cfg.BucketStore.MaxChunkPoolBytes, reg); err != nil {
 		return nil, errors.Wrap(err, "create chunks bytes pool")
+	}
+
+	if u.cfg.BucketStore.TokenBucketLimiter.Enabled {
+		u.podTokenBucket = util.NewTokenBucket(cfg.BucketStore.TokenBucketLimiter.PodTokenBucketSize, cfg.BucketStore.TokenBucketLimiter.PodTokenBucketSize, promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_bucket_stores_pod_token_bucket_remaining",
+			Help: "Number of tokens left in pod token bucket.",
+		}))
 	}
 
 	if reg != nil {

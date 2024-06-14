@@ -763,7 +763,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	`), metricNames...))
 }
 
-func TestBucketStores_getUserTokenBucket(t *testing.T) {
+func TestBucketStores_tokenBuckets(t *testing.T) {
 	const (
 		user1 = "user-1"
 		user2 = "user-2"
@@ -791,6 +791,7 @@ func TestBucketStores_getUserTokenBucket(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	assert.NoError(t, err)
+	assert.NotNil(t, stores.podTokenBucket)
 
 	assert.NoError(t, stores.InitialSync(ctx))
 	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
@@ -813,6 +814,7 @@ func TestBucketStores_getUserTokenBucket(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.NoError(t, stores.InitialSync(ctx))
+	assert.Nil(t, stores.podTokenBucket)
 	assert.Nil(t, stores.getUserTokenBucket("user-1"))
 	assert.Nil(t, stores.getUserTokenBucket("user-2"))
 }

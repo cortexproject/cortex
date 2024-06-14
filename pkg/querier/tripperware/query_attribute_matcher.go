@@ -15,7 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-const queryRejectErrorMessage = "Query was rejected by operator. Please contact the support for further questions"
+const queryRejectErrorMessage = "This query has been rejected by the service operator. Please contact customer support for more information."
 
 func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time.Duration, limits Limits, userStr string, rejectedQueriesPerTenant *prometheus.CounterVec) error {
 	if limits == nil || !(limits.QueryPriority(userStr).Enabled || limits.QueryRejection(userStr).Enabled) {
@@ -162,14 +162,14 @@ func isWithinQueryStepLimit(queryStepLimit validation.QueryStepLimit, r *http.Re
 	}
 
 	step, err := util.ParseDurationMs(r.FormValue("step"))
-	if err == nil {
-		if queryStepLimit.Min != 0 && time.Duration(queryStepLimit.Min).Milliseconds() > step {
-			return false
-		}
-
-		if queryStepLimit.Max != 0 && time.Duration(queryStepLimit.Max).Milliseconds() < step {
-			return false
-		}
+	if err != nil {
+		return false
+	}
+	if queryStepLimit.Min != 0 && time.Duration(queryStepLimit.Min).Milliseconds() > step {
+		return false
+	}
+	if queryStepLimit.Max != 0 && time.Duration(queryStepLimit.Max).Milliseconds() < step {
+		return false
 	}
 
 	var subQueryStep time.Duration

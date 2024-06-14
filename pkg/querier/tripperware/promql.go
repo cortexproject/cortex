@@ -5,8 +5,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // FindNonOverlapQueryLength iterates through all the vector selectors in the statement and finds the time interval

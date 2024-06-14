@@ -87,8 +87,8 @@ type TimeWindow struct {
 }
 
 type QueryStepLimit struct {
-	Min model.Duration `yaml:"min" json:"min" doc:"nocli|Query step should be above or equal to this value to match. If set to 0, it won't be checked."`
-	Max model.Duration `yaml:"max" json:"max" doc:"nocli|Query step should be below or equal to this value to match. If set to 0, it won't be checked."`
+	Min model.Duration `yaml:"min" json:"min" doc:"nocli|description=Query step should be above or equal to this value to match. If set to 0, it won't be checked.|default=0"`
+	Max model.Duration `yaml:"max" json:"max" doc:"nocli|description=Query step should be below or equal to this value to match. If set to 0, it won't be checked.|default=0"`
 }
 
 type LimitsPerLabelSetEntry struct {

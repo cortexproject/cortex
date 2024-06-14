@@ -61,6 +61,10 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 			maxQueryLength: thirtyDays,
 			expectedErr:    "the query time range exceeds the limit",
 		},
+		"shouldn't exceed time range when having multiple selects with offset": {
+			query:          `rate(up[5m]) + rate(up[5m] offset 40d) + rate(up[5m] offset 80d)`,
+			maxQueryLength: thirtyDays,
+		},
 	}
 
 	for testName, testData := range tests {

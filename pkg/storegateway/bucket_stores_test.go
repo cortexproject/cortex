@@ -212,6 +212,8 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	}
 
 	require.NoError(t, stores.InitialSync(ctx))
+	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
+	assert.NotNil(t, stores.getUserTokenBucket("user-2"))
 
 	// Query series after the initial sync.
 	for userID, metricName := range userToMetric {
@@ -718,6 +720,8 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	sharding.users = []string{user1}
 	require.NoError(t, stores.SyncBlocks(ctx))
 	require.Equal(t, []string{user1}, getUsersInDir(t, cfg.BucketStore.SyncDir))
+	assert.NotNil(t, stores.getUserTokenBucket(user1))
+	assert.Nil(t, stores.getUserTokenBucket(user2))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
         	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
@@ -735,6 +739,8 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	sharding.users = nil
 	require.NoError(t, stores.SyncBlocks(ctx))
 	require.Equal(t, []string(nil), getUsersInDir(t, cfg.BucketStore.SyncDir))
+	assert.Nil(t, stores.getUserTokenBucket(user1))
+	assert.Nil(t, stores.getUserTokenBucket(user2))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
         	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
@@ -761,6 +767,31 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
         	            	# TYPE cortex_bucket_store_blocks_loaded gauge
         	            	cortex_bucket_store_blocks_loaded{user="user-1"} 1
 	`), metricNames...))
+}
+
+func TestBucketStores_getTokensToRetrieve(t *testing.T) {
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.FetchedPostingsTokenFactor = 1
+	cfg.BucketStore.TouchedPostingsTokenFactor = 2
+	cfg.BucketStore.FetchedSeriesTokenFactor = 3
+	cfg.BucketStore.TouchedSeriesTokenFactor = 4
+	cfg.BucketStore.FetchedChunksTokenFactor = 0
+	cfg.BucketStore.TouchedChunksTokenFactor = 0.5
+
+	storageDir := t.TempDir()
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(2), stores.getTokensToRetrieve(2, store.PostingsFetched))
+	assert.Equal(t, int64(4), stores.getTokensToRetrieve(2, store.PostingsTouched))
+	assert.Equal(t, int64(6), stores.getTokensToRetrieve(2, store.SeriesFetched))
+	assert.Equal(t, int64(8), stores.getTokensToRetrieve(2, store.SeriesTouched))
+	assert.Equal(t, int64(0), stores.getTokensToRetrieve(2, store.ChunksFetched))
+	assert.Equal(t, int64(1), stores.getTokensToRetrieve(2, store.ChunksTouched))
 }
 
 func getUsersInDir(t *testing.T, dir string) []string {

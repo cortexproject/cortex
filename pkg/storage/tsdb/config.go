@@ -345,8 +345,8 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.TouchedPostingsTokenFactor, "blocks-storage.bucket-store.touched-postings-token-factor", 2, "Multiplication factor used for touched postings token")
 	f.Float64Var(&cfg.FetchedSeriesTokenFactor, "blocks-storage.bucket-store.fetched-series-token-factor", 2.5, "Multiplication factor used for fetched series token")
 	f.Float64Var(&cfg.TouchedSeriesTokenFactor, "blocks-storage.bucket-store.touched-series-token-factor", 10, "Multiplication factor used for touched series token")
-	f.Float64Var(&cfg.FetchedChunksTokenFactor, "blocks-storage.bucket-store.fetched-chunks-token-factor", 0, "Multiplication factor used for fetched chunks token")
-	f.Float64Var(&cfg.TouchedChunksTokenFactor, "blocks-storage.bucket-store.touched-chunks-token-factor", 0, "Multiplication factor used for touched chunks token")
+	f.Float64Var(&cfg.FetchedChunksTokenFactor, "blocks-storage.bucket-store.fetched-chunks-token-factor", 0.5, "Multiplication factor used for fetched chunks token")
+	f.Float64Var(&cfg.TouchedChunksTokenFactor, "blocks-storage.bucket-store.touched-chunks-token-factor", 0.5, "Multiplication factor used for touched chunks token")
 }
 
 // Validate the config.

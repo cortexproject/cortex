@@ -626,6 +626,10 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())
 	}
 
+	u.userTokenBucketsMu.Lock()
+	u.userTokenBuckets[userID] = util.NewTokenBucket(u.cfg.BucketStore.UserTokenBucketSize, u.cfg.BucketStore.UserTokenBucketSize, nil)
+	u.userTokenBucketsMu.Unlock()
+
 	bs, err := store.NewBucketStore(
 		userBkt,
 		fetcher,
@@ -645,10 +649,6 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	if err != nil {
 		return nil, err
 	}
-
-	u.userTokenBucketsMu.Lock()
-	u.userTokenBuckets[userID] = util.NewTokenBucket(u.cfg.BucketStore.UserTokenBucketSize, u.cfg.BucketStore.UserTokenBucketSize, nil)
-	u.userTokenBucketsMu.Unlock()
 
 	u.stores[userID] = bs
 	u.metaFetcherMetrics.AddUserRegistry(userID, fetcherReg)
@@ -705,20 +705,20 @@ func (u *BucketStores) getUserTokenBucket(userID string) *util.TokenBucket {
 }
 
 func (u *BucketStores) getTokensToRetrieve(tokens uint64, dataType store.StoreDataType) int64 {
-	tokensToRetrieve := tokens
+	tokensToRetrieve := float64(tokens)
 	switch dataType {
 	case store.PostingsFetched:
-		tokensToRetrieve *= uint64(u.cfg.BucketStore.FetchedPostingsTokenFactor)
+		tokensToRetrieve *= u.cfg.BucketStore.FetchedPostingsTokenFactor
 	case store.PostingsTouched:
-		tokensToRetrieve *= uint64(u.cfg.BucketStore.TouchedPostingsTokenFactor)
+		tokensToRetrieve *= u.cfg.BucketStore.TouchedPostingsTokenFactor
 	case store.SeriesFetched:
-		tokensToRetrieve *= uint64(u.cfg.BucketStore.FetchedSeriesTokenFactor)
+		tokensToRetrieve *= u.cfg.BucketStore.FetchedSeriesTokenFactor
 	case store.SeriesTouched:
-		tokensToRetrieve *= uint64(u.cfg.BucketStore.TouchedSeriesTokenFactor)
+		tokensToRetrieve *= u.cfg.BucketStore.TouchedSeriesTokenFactor
 	case store.ChunksFetched:
-		tokensToRetrieve *= uint64(u.cfg.BucketStore.FetchedChunksTokenFactor)
+		tokensToRetrieve *= u.cfg.BucketStore.FetchedChunksTokenFactor
 	case store.ChunksTouched:
-		tokensToRetrieve *= uint64(u.cfg.BucketStore.TouchedChunksTokenFactor)
+		tokensToRetrieve *= u.cfg.BucketStore.TouchedChunksTokenFactor
 	}
 	return int64(tokensToRetrieve)
 }

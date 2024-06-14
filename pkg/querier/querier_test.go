@@ -853,6 +853,42 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 	}
 }
 
+func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Series(t *testing.T) {
+	t.Parallel()
+	const maxQueryLength = 30 * 24 * time.Hour
+
+	//parallel testing causes data race
+	var cfg Config
+	flagext.DefaultValues(&cfg)
+	// Disable active query tracker to avoid mmap error.
+	cfg.ActiveQueryTrackerDir = ""
+	// Ignore max query length check at Querier but it still enforces it for Series.
+	cfg.IgnoreMaxQueryLength = true
+
+	limits := DefaultLimitsConfig()
+	limits.MaxQueryLength = model.Duration(maxQueryLength)
+	overrides, err := validation.NewOverrides(limits, nil)
+	require.NoError(t, err)
+
+	chunkStore := &emptyChunkStore{}
+	distributor := &emptyDistributor{}
+
+	queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
+	queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	now := time.Now()
+	end := now.Add(-time.Minute)
+	start := end.Add(-maxQueryLength - time.Hour)
+	minT := util.TimeToMillis(start)
+	maxT := util.TimeToMillis(end)
+	q, err := queryable.Querier(minT, maxT)
+	require.NoError(t, err)
+	ss := q.Select(ctx, false, &storage.SelectHints{Func: "series", Start: minT, End: maxT})
+	require.False(t, ss.Next())
+	require.True(t, strings.Contains(ss.Err().Error(), "the query time range exceeds the limit (query length: 721h0m0s, limit: 720h0m0s)"))
+}
+
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 	t.Parallel()
 	const (

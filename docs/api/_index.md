@@ -212,6 +212,18 @@ _For more information, please check out Prometheus [Remote storage integrations]
 
 _Requires [authentication](#authentication)._
 
+### OTLP Receiver
+
+```
+POST /api/v1/otlp/v1/metrics
+```
+
+Entrypoint for the OTLP Receiver
+
+This API endpoint accepts a HTTP POST request using [OTLP](https://opentelemetry.io/docs/specs/otlp/) format
+
+_Requires [authentication](#authentication)._
+
 ### Distributor ring status
 
 ```

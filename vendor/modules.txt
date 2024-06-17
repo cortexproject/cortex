@@ -1541,4 +1541,3 @@ k8s.io/utils/clock
 # github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 # gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 # github.com/sercand/kuberesolver/v4 => github.com/sercand/kuberesolver/v5 v5.1.1
-# github.com/prometheus/common v0.54.0 => github.com/prometheus/common v0.53.0

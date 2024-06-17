@@ -268,6 +268,3 @@ replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0
 
 // Pin kuberesolver/v5 to support new grpc version. Need to upgrade kuberesolver version on weaveworks/common.
 replace github.com/sercand/kuberesolver/v4 => github.com/sercand/kuberesolver/v5 v5.1.1
-
-// Temporarily pinning prometheus common: see https://github.com/thanos-io/thanos/pull/7416#issuecomment-2150585994
-replace github.com/prometheus/common v0.54.0 => github.com/prometheus/common v0.53.0

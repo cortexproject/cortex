@@ -24,6 +24,7 @@ import (
 	htransport "google.golang.org/api/transport/http"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/experimental"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
 
@@ -100,6 +101,18 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 		option.WithUserAgent(fmt.Sprintf("thanos-%s/%s (%s)", component, version.Version, runtime.Version())),
 	)
 
+	if !gc.UseGRPC {
+		var err error
+		opts, err = appendHttpOptions(gc, opts)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return newBucket(ctx, logger, gc, opts)
+}
+
+func appendHttpOptions(gc Config, opts []option.ClientOption) ([]option.ClientOption, error) {
 	// Check if a roundtripper has been set in the config
 	// otherwise build the default transport.
 	var rt http.RoundTripper
@@ -126,9 +139,7 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 		Transport: gRT,
 		Timeout:   time.Duration(gc.HTTPConfig.IdleConnTimeout),
 	}
-	opts = append(opts, option.WithHTTPClient(httpCli))
-
-	return newBucket(ctx, logger, gc, opts)
+	return append(opts, option.WithHTTPClient(httpCli)), nil
 }
 
 func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.ClientOption) (*Bucket, error) {
@@ -138,7 +149,7 @@ func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.
 	)
 	if gc.UseGRPC {
 		opts = append(opts,
-			option.WithGRPCDialOption(grpc.WithRecvBufferPool(grpc.NewSharedBufferPool())),
+			option.WithGRPCDialOption(experimental.WithRecvBufferPool(grpc.NewSharedBufferPool())),
 			option.WithGRPCConnectionPool(gc.GRPCConnPoolSize),
 		)
 		gcsClient, err = storage.NewGRPCClient(ctx, opts...)

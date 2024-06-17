@@ -11,6 +11,8 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 ## Unreleased
 
 ### Fixed
+- [#117](https://github.com/thanos-io/objstore/pull/117) Metrics: Fix `objstore_bucket_operation_failures_total` incorrectly incremented if context is cancelled while reading object contents.
+- [#115](https://github.com/thanos-io/objstore/pull/115) GCS: Fix creation of bucket with GRPC connections. Also update storage client to `v1.40.0`.
 - [#102](https://github.com/thanos-io/objstore/pull/102) Azure: bump azblob sdk to get concurrency fixes.
 - [#33](https://github.com/thanos-io/objstore/pull/33) Tracing: Add `ContextWithTracer()` to inject the tracer into the context.
 - [#34](https://github.com/thanos-io/objstore/pull/34) Fix ignored options when creating shared credential Azure client.
@@ -43,6 +45,8 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#86](https://github.com/thanos-io/objstore/pull/86) GCS: Add HTTP Config to GCS
 - [#99](https://github.com/thanos-io/objstore/pull/99) Swift: Add HTTP_Config
 - [#108](https://github.com/thanos-io/objstore/pull/108) Metrics: Add native histogram definitions to histograms
+- [#112](https://github.com/thanos-io/objstore/pull/112) S3: Add `DisableDualstack option.
+- [#100](https://github.com/thanos-io/objstore/pull/100) s3: add DisableMultipart option
 
 ### Changed
 - [#38](https://github.com/thanos-io/objstore/pull/38) *: Upgrade minio-go version to `v7.0.45`.

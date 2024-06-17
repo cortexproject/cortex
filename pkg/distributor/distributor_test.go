@@ -633,6 +633,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 		testData := testData
 
 		for _, enableHistogram := range []bool{false, true} {
+			enableHistogram := enableHistogram
 			t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(enableHistogram)), func(t *testing.T) {
 				t.Parallel()
 				limits := &validation.Limits{}
@@ -895,6 +896,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 		testData := testData
 
 		for _, enableHistogram := range []bool{true, false} {
+			enableHistogram := enableHistogram
 			t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(enableHistogram)), func(t *testing.T) {
 				t.Parallel()
 				limits := &validation.Limits{}
@@ -997,6 +999,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 			tc := tc
 			shardByAllLabels := shardByAllLabels
 			for _, enableHistogram := range []bool{true, false} {
+				enableHistogram := enableHistogram
 				t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v, histogram=%v)", i, shardByAllLabels, enableHistogram), func(t *testing.T) {
 					t.Parallel()
 					var limits validation.Limits
@@ -1763,6 +1766,7 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	for testName, tc := range tests {
 		tc := tc
 		for _, histogram := range []bool{true, false} {
+			histogram := histogram
 			t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(histogram)), func(t *testing.T) {
 				t.Parallel()
 				ds, _, _, _ := prepare(t, prepConfig{
@@ -2410,6 +2414,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 	for testName, testData := range tests {
 		testData := testData
 		for _, histogram := range []bool{true, false} {
+			histogram := histogram
 			t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(histogram)), func(t *testing.T) {
 				t.Parallel()
 				now := model.Now()

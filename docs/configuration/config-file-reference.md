@@ -2447,11 +2447,6 @@ ha_tracker:
 # CLI flag: -distributor.sharding-strategy
 [sharding_strategy: <string> | default = "default"]
 
-# Distribute samples based on all labels, as opposed to solely by user and
-# metric name.
-# CLI flag: -distributor.shard-by-all-labels
-[shard_by_all_labels: <boolean> | default = false]
-
 # Try writing to an additional ingester in the presence of an ingester not in
 # the ACTIVE state. It is useful to disable this along with
 # -ingester.unregister-on-shutdown=false in order to not spread samples to extra

@@ -1,4 +1,4 @@
-package tripperware
+package promql
 
 import (
 	"testing"

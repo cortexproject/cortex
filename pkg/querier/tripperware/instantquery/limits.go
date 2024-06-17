@@ -10,6 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/promql"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -50,7 +51,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r tripperware.Request) (trippe
 		}
 
 		// Enforce query length across all selectors in the query.
-		length := tripperware.FindNonOverlapQueryLength(expr, 0, 0, l.lookbackDelta)
+		length := promql.FindNonOverlapQueryLength(expr, 0, 0, l.lookbackDelta)
 		if length > maxQueryLength {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, length, maxQueryLength)
 		}

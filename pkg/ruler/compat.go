@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/prometheus/prometheus/promql"
 	"time"
 
 	"github.com/go-kit/log"
@@ -15,7 +16,6 @@ import (
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
@@ -25,8 +25,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	promql_util "github.com/cortexproject/cortex/pkg/util/promql"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -167,10 +167,9 @@ func EngineQueryFunc(engine promql.QueryEngine, q storage.Queryable, overrides R
 			// Fail the query in the engine.
 			if err == nil {
 				// Enforce query length across all selectors in the query.
-				min, max := promql.FindMinMaxTime(&parser.EvalStmt{Expr: expr, Start: util.TimeFromMillis(0), End: util.TimeFromMillis(0), LookbackDelta: lookbackDelta})
-				diff := util.TimeFromMillis(max).Sub(util.TimeFromMillis(min))
-				if diff > maxQueryLength {
-					return nil, validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, diff, maxQueryLength))
+				length := promql_util.FindNonOverlapQueryLength(expr, 0, 0, lookbackDelta)
+				if length > maxQueryLength {
+					return nil, validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, length, maxQueryLength))
 				}
 			}
 		}

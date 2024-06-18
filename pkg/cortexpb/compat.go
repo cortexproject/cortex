@@ -44,6 +44,15 @@ func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMe
 	return req
 }
 
+func (w *WriteRequest) AddHistogramTimeSeries(lbls []labels.Labels, histograms []Histogram) {
+	for i := 0; i < len(lbls); i++ {
+		ts := TimeseriesFromPool()
+		ts.Labels = append(ts.Labels, FromLabelsToLabelAdapters(lbls[i])...)
+		ts.Histograms = append(ts.Histograms, histograms[i])
+		w.Timeseries = append(w.Timeseries, PreallocTimeseries{TimeSeries: ts})
+	}
+}
+
 // FromLabelAdaptersToLabels casts []LabelAdapter to labels.Labels.
 // It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
 // This allows us to use labels.Labels directly in protos.

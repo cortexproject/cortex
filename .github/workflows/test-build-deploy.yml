@@ -7,11 +7,11 @@ on:
       - v[0-9]+.[0-9]+.[0-9]+** # Tag filters not as strict due to different regex system on Github Actions
     paths-ignore:
       - 'build-image/**'
-      - '.github/workflows/build-image.yaml'
+      - '.github/workflows/build-image.yml'
   pull_request:
     paths-ignore:
       - 'build-image/**'
-      - '.github/workflows/build-image.yaml'
+      - '.github/workflows/build-image.yml'
 
 jobs:
   lint:

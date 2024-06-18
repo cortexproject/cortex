@@ -60,4 +60,4 @@ jobs:
           password: ${{secrets.QUAY_REGISTRY_PASSWORD}}
 
       - name: Push image
-        run: echo make push-multiarch-build-image
+        run: make push-multiarch-build-image

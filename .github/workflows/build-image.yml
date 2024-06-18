@@ -28,18 +28,13 @@ jobs:
       - name: Save image
         run: make save-multiarch-build-image
 
-      - name: Upload Docker Images Artifact
+      - name: Upload Docker Images Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-image
-          path: ./build-image-amd64.tar
-          if-no-files-found: error
-
-      - name: Upload Docker Images Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-image
-          path: ./build-image-arm64.tar
+          path: |
+            ./build-image-amd64.tar
+            ./build-image-arm64.tar
           if-no-files-found: error
 
   push:
@@ -65,4 +60,4 @@ jobs:
           password: ${{secrets.QUAY_REGISTRY_PASSWORD}}
 
       - name: Push image
-        run: push-multiarch-build-image
+        run: echo make push-multiarch-build-image

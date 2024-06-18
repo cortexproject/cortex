@@ -1,0 +1,55 @@
+name: Build Image
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'build-image/**'
+      - '.github/workflows/build-image.yaml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'build-image/**'
+      - '.github/workflows/build-image.yaml'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout
+
+      - name: Save image
+        run: save-multiarch-build-image
+
+      - name: Upload Docker Images Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-image
+          path: ./build-image.tar
+          if-no-files-found: error
+
+  push:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout
+
+      - name: Download Docker Images Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-image
+
+      - name: Load image
+        run: make load-multiarch-build-image
+
+      - name: Login to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{secrets.QUAY_REGISTRY_USER}}
+          password: ${{secrets.QUAY_REGISTRY_PASSWORD}}
+
+      - name: Push image
+        run: push-multiarch-build-image

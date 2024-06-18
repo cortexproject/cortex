@@ -53,14 +53,21 @@ fetch-build-image:
 	docker tag $(BUILD_IMAGE):$(LATEST_BUILD_IMAGE_TAG) $(BUILD_IMAGE):latest
 	touch build-image/.uptodate
 
-push-multiarch-build-image:
+save-multiarch-build-image:
 	@echo
 	# Build image for each platform separately... it tends to generate fewer errors.
-	$(SUDO) docker buildx build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) build-image/
-	$(SUDO) docker buildx build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) build-image/
-	# This command will run the same build as above, but it will reuse existing platform-specific images,
+	$(SUDO) docker buildx build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)build-image:$(IMAGE_TAG)-amd64 --output type=docker,dest=./build-image-amd64.tar build-image/
+	$(SUDO) docker buildx build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)build-image:$(IMAGE_TAG)-arm64 --output type=docker,dest=./build-image-arm64.tar build-image/
+
+load-multiarch-build-image:
+	$(SUDO) docker load -i build-image-amd64.tar
+	$(SUDO) docker load -i build-image-arm64.tar
+
+push-multiarch-build-image:
+	# This command will run the same build as multiarch-build-image, but it will reuse existing platform-specific images,
 	# put them together and push to registry.
-	$(SUDO) docker buildx build -o type=registry --platform linux/amd64,linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)build-image:$(IMAGE_TAG) build-image/
+	$(SUDO) docker manifest create $(IMAGE_PREFIX)build-image:$(IMAGE_TAG) --amend $(IMAGE_PREFIX)build-image:${IMAGE_TAG}-amd64 --amend $(IMAGE_PREFIX)build-image:${IMAGE_TAG}-arm64
+	$(SUDO) docker manifest push $(IMAGE_PREFIX)build-image:$(IMAGE_TAG)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/cortexproject/cortex' phase.

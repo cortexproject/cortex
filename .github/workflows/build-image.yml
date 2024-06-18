@@ -2,12 +2,12 @@ name: Build Image
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
     paths:
       - 'build-image/**'
       - '.github/workflows/build-image.yml'
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
     paths:
       - 'build-image/**'
       - '.github/workflows/build-image.yml'

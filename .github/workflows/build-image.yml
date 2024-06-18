@@ -18,6 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         name: Checkout
+        with:
+          fetch-depth: 0
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -44,6 +46,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         name: Checkout
+        with:
+          fetch-depth: 0
 
       - name: Download Docker Images Artifacts
         uses: actions/download-artifact@v4

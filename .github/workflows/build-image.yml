@@ -20,7 +20,7 @@ jobs:
         name: Checkout
 
       - name: Save image
-        run: save-multiarch-build-image
+        run: make save-multiarch-build-image
 
       - name: Upload Docker Images Artifact
         uses: actions/upload-artifact@v4

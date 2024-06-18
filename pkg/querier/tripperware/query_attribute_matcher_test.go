@@ -194,7 +194,7 @@ func Test_isWithinTimeAttributes(t *testing.T) {
 			end:            now.Add(-10 * time.Minute),
 			expectedResult: true,
 		},
-		"should not consider start on empty start": {
+		"should not consider start on empty start limit": {
 			timeWindow: validation.TimeWindow{
 				End: model.Duration(15 * time.Minute),
 			},
@@ -202,7 +202,7 @@ func Test_isWithinTimeAttributes(t *testing.T) {
 			end:            now.Add(-20 * time.Minute),
 			expectedResult: true,
 		},
-		"should not consider end on empty end time": {
+		"should not consider end on empty end limit": {
 			timeWindow: validation.TimeWindow{
 				Start: model.Duration(45 * time.Minute),
 			},
@@ -210,11 +210,86 @@ func Test_isWithinTimeAttributes(t *testing.T) {
 			end:            now.Add(-10 * time.Minute),
 			expectedResult: true,
 		},
+		"should miss if start time for query is missing but start for limits exists": {
+			timeWindow: validation.TimeWindow{
+				Start: model.Duration(45 * time.Minute),
+				End:   model.Duration(15 * time.Minute),
+			},
+			start:          time.UnixMilli(0),
+			end:            now.Add(-20 * time.Minute),
+			expectedResult: false,
+		},
+		"should miss if end time for query is missing but end for limits exists": {
+			timeWindow: validation.TimeWindow{
+				Start: model.Duration(45 * time.Minute),
+				End:   model.Duration(15 * time.Minute),
+			},
+			start:          now.Add(-40 * time.Minute),
+			end:            time.UnixMilli(0),
+			expectedResult: false,
+		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			priority := isWithinTimeAttributes(testData.timeWindow, now, testData.start.UnixMilli(), testData.end.UnixMilli())
+			assert.Equal(t, testData.expectedResult, priority)
+		})
+	}
+}
+
+func Test_isWithinTimeRangeAttribute(t *testing.T) {
+	timeRangeLimit := validation.TimeRangeLimit{
+		Min: model.Duration(12 * time.Hour),
+		Max: model.Duration(15 * 24 * time.Hour),
+	}
+
+	type testCase struct {
+		timeRangeLimit validation.TimeRangeLimit
+		queryTimeRange int64
+		expectedResult bool
+	}
+
+	tests := map[string]testCase{
+		"valid if within timeRange": {
+			timeRangeLimit: timeRangeLimit,
+			queryTimeRange: (20 * time.Hour).Milliseconds(),
+			expectedResult: true,
+		},
+		"valid if queryTimeRange is equal to the limit": {
+			timeRangeLimit: timeRangeLimit,
+			queryTimeRange: (12 * time.Hour).Milliseconds(),
+			expectedResult: true,
+		},
+		"not valid if queryTimeRange is smaller than the limit min": {
+			timeRangeLimit: timeRangeLimit,
+			queryTimeRange: (11 * time.Hour).Milliseconds(),
+			expectedResult: false,
+		},
+		"not valid if queryTimeRange is bigger than the limit max": {
+			timeRangeLimit: timeRangeLimit,
+			queryTimeRange: (35 * 24 * time.Hour).Milliseconds(),
+			expectedResult: false,
+		},
+		"valid if max is not provided and queryRange is bigger than min": {
+			timeRangeLimit: validation.TimeRangeLimit{
+				Min: model.Duration(12 * time.Hour),
+			},
+			queryTimeRange: (35 * 24 * time.Hour).Milliseconds(),
+			expectedResult: true,
+		},
+		"valid if min is not provided and queryRange is smaller than max": {
+			timeRangeLimit: validation.TimeRangeLimit{
+				Max: model.Duration(15 * 24 * time.Hour),
+			},
+			queryTimeRange: (14 * 24 * time.Hour).Milliseconds(),
+			expectedResult: true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			priority := isWithinTimeRangeAttribute(testData.timeRangeLimit, testData.queryTimeRange)
 			assert.Equal(t, testData.expectedResult, priority)
 		})
 	}

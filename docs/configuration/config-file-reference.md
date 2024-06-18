@@ -5378,6 +5378,16 @@ time_window:
   # checked.
   [end: <int> | default = 0]
 
+# Limit that query time range should be within. If not set, it won't be checked.
+time_range_limit:
+  # Query time range should be above or equal to this value to match. If set to
+  # 0, it won't be checked.
+  [min: <int> | default = 0]
+
+  # Query time range should be below or equal to this value to match. If set to
+  # 0, it won't be checked.
+  [max: <int> | default = 0]
+
 # Limit that query step should be within. It will check subquery steps as well.
 # If not set, it won't be checked.
 query_step_limit:

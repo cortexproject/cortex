@@ -66,6 +66,8 @@ load-multiarch-build-image:
 push-multiarch-build-image:
 	# This command will run the same build as multiarch-build-image, but it will reuse existing platform-specific images,
 	# put them together and push to registry.
+	$(SUDO) docker push $(IMAGE_PREFIX)build-image:${IMAGE_TAG}-amd64
+	$(SUDO) docker push $(IMAGE_PREFIX)build-image:${IMAGE_TAG}-arm64
 	$(SUDO) docker manifest create $(IMAGE_PREFIX)build-image:$(IMAGE_TAG) --amend $(IMAGE_PREFIX)build-image:${IMAGE_TAG}-amd64 --amend $(IMAGE_PREFIX)build-image:${IMAGE_TAG}-arm64
 	$(SUDO) docker manifest push $(IMAGE_PREFIX)build-image:$(IMAGE_TAG)
 

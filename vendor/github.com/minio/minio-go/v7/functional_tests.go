@@ -1216,6 +1216,130 @@ func testPutObjectWithVersioning() {
 	logSuccess(testName, function, args, startTime)
 }
 
+func testListMultipartUpload() {
+	// initialize logging params
+	startTime := time.Now()
+	testName := getFuncName()
+	function := "GetObject()"
+	args := map[string]interface{}{}
+
+	// Instantiate new minio client object.
+	opts := &minio.Options{
+		Creds:     credentials.NewStaticV4(os.Getenv(accessKey), os.Getenv(secretKey), ""),
+		Transport: createHTTPTransport(),
+		Secure:    mustParseBool(os.Getenv(enableHTTPS)),
+	}
+	c, err := minio.New(os.Getenv(serverEndpoint), opts)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
+		return
+	}
+	core, err := minio.NewCore(os.Getenv(serverEndpoint), opts)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO core client object creation failed", err)
+		return
+	}
+
+	// Enable tracing, write to stderr.
+	// c.TraceOn(os.Stderr)
+
+	// Set user agent.
+	c.SetAppInfo("MinIO-go-FunctionalTest", appVersion)
+
+	// Generate a new random bucket name.
+	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
+	args["bucketName"] = bucketName
+
+	// Make a new bucket.
+	ctx := context.Background()
+	err = c.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{Region: "us-east-1", ObjectLocking: true})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Make bucket failed", err)
+		return
+	}
+	defer func() {
+		if err = cleanupVersionedBucket(bucketName, c); err != nil {
+			logError(testName, function, args, startTime, "", "CleanupBucket failed", err)
+		}
+	}()
+	objName := "prefix/objectName"
+
+	want := minio.ListMultipartUploadsResult{
+		Bucket:             bucketName,
+		KeyMarker:          "",
+		UploadIDMarker:     "",
+		NextKeyMarker:      "",
+		NextUploadIDMarker: "",
+		EncodingType:       "url",
+		MaxUploads:         1000,
+		IsTruncated:        false,
+		Prefix:             "prefix/objectName",
+		Delimiter:          "/",
+		CommonPrefixes:     nil,
+	}
+	for i := 0; i < 5; i++ {
+		uid, err := core.NewMultipartUpload(ctx, bucketName, objName, minio.PutObjectOptions{})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "NewMultipartUpload failed", err)
+			return
+		}
+		want.Uploads = append(want.Uploads, minio.ObjectMultipartInfo{
+			Initiated:    time.Time{},
+			StorageClass: "",
+			Key:          objName,
+			Size:         0,
+			UploadID:     uid,
+			Err:          nil,
+		})
+
+		for j := 0; j < 5; j++ {
+			cmpGot := func(call string, got minio.ListMultipartUploadsResult) bool {
+				for i := range got.Uploads {
+					got.Uploads[i].Initiated = time.Time{}
+				}
+				if !reflect.DeepEqual(want, got) {
+					err := fmt.Errorf("want: %#v\ngot : %#v", want, got)
+					logError(testName, function, args, startTime, "", call+" failed", err)
+				}
+				return true
+			}
+			got, err := core.ListMultipartUploads(ctx, bucketName, objName, "", "", "/", 1000)
+			if err != nil {
+				logError(testName, function, args, startTime, "", "ListMultipartUploads failed", err)
+				return
+			}
+			if !cmpGot("ListMultipartUploads-prefix", got) {
+				return
+			}
+			got, err = core.ListMultipartUploads(ctx, bucketName, objName, objName, "", "/", 1000)
+			got.KeyMarker = ""
+			if err != nil {
+				logError(testName, function, args, startTime, "", "ListMultipartUploads failed", err)
+				return
+			}
+			if !cmpGot("ListMultipartUploads-marker", got) {
+				return
+			}
+		}
+		if i > 2 {
+			err = core.AbortMultipartUpload(ctx, bucketName, objName, uid)
+			if err != nil {
+				logError(testName, function, args, startTime, "", "AbortMultipartUpload failed", err)
+				return
+			}
+			want.Uploads = want.Uploads[:len(want.Uploads)-1]
+		}
+	}
+	for _, up := range want.Uploads {
+		err = core.AbortMultipartUpload(ctx, bucketName, objName, up.UploadID)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "AbortMultipartUpload failed", err)
+			return
+		}
+	}
+	logSuccess(testName, function, args, startTime)
+}
+
 func testCopyObjectWithVersioning() {
 	// initialize logging params
 	startTime := time.Now()
@@ -13536,6 +13660,7 @@ func main() {
 
 	// execute tests
 	if isFullMode() {
+		testListMultipartUpload()
 		testGetObjectAttributes()
 		testGetObjectAttributesErrorCases()
 		testMakeBucketErrorV2()

@@ -83,6 +83,10 @@ func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, r *ht
 		return false
 	}
 
+	if !isWithinTimeRangeAttribute(attribute.TimeRangeLimit, maxTime-minTime) {
+		return false
+	}
+
 	if !isWithinQueryStepLimit(attribute.QueryStepLimit, r, expr) {
 		return false
 	}
@@ -119,6 +123,10 @@ func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, r *http
 		return false
 	}
 
+	if startTime != 0 && endTime != 0 && !isWithinTimeRangeAttribute(attribute.TimeRangeLimit, endTime-startTime) {
+		return false
+	}
+
 	if attribute.UserAgent != "" && attribute.UserAgent != r.Header.Get("User-Agent") {
 		return false
 	}
@@ -141,16 +149,31 @@ func isWithinTimeAttributes(timeWindow validation.TimeWindow, now time.Time, sta
 
 	if timeWindow.Start != 0 {
 		startTimeThreshold := now.Add(-1 * time.Duration(timeWindow.Start).Abs()).Add(-1 * time.Minute).Truncate(time.Minute).UnixMilli()
-		if startTime < startTimeThreshold {
+		if startTime == 0 || startTime < startTimeThreshold {
 			return false
 		}
 	}
 
 	if timeWindow.End != 0 {
 		endTimeThreshold := now.Add(-1 * time.Duration(timeWindow.End).Abs()).Add(1 * time.Minute).Truncate(time.Minute).UnixMilli()
-		if endTime > endTimeThreshold {
+		if endTime == 0 || endTime > endTimeThreshold {
 			return false
 		}
+	}
+
+	return true
+}
+
+func isWithinTimeRangeAttribute(limit validation.TimeRangeLimit, timeRangeInMillis int64) bool {
+	if limit.Min == 0 && limit.Max == 0 {
+		return true
+	}
+
+	if limit.Min != 0 && time.Duration(limit.Min).Milliseconds() > timeRangeInMillis {
+		return false
+	}
+	if limit.Max != 0 && time.Duration(limit.Max).Milliseconds() < timeRangeInMillis {
+		return false
 	}
 
 	return true

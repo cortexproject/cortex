@@ -19,6 +19,12 @@ jobs:
       - uses: actions/checkout@v4
         name: Checkout
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Save image
         run: make save-multiarch-build-image
 

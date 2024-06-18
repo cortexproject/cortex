@@ -39,6 +39,7 @@ jobs:
 
   push:
     needs: build
+    if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

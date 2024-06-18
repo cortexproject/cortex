@@ -5,12 +5,10 @@ weight: 5
 slug: how-to-update-the-build-image
 ---
 
-The build image currently can only be updated by a Cortex maintainer. If you're not a maintainer you can still open a PR with the changes, asking a maintainer to assist you publishing the updated image. The procedure is:
+The procedure is:
 
 1. Update `build-image/Dockerfile`
-1. Run `go env` and make sure `GOPROXY=https://proxy.golang.org,direct` (Go's default). Some environment may required `GOPROXY=direct`, and if you push a build image with this, build workflow on GitHub will take a lot longer to download modules.
-1. `docker login quay.io`. Note that pushing to `quay.io/cortexproject/build-image` repository can only be done by a maintainer.
-1. Build the and publish the image by using `make push-multiarch-build-image`. This will build and push multi-platform docker image (for linux/amd64 and linux/arm64).  Running this step successfully requires [Docker Buildx](https://docs.docker.com/buildx/working-with-buildx/), but does not require a specific platform.
-1. Replace the image tag in `.github/workflows/*` (_there may be multiple references_) and Makefile (variable `LATEST_BUILD_IMAGE_TAG`).
+1. Create a PR to master with that changed, after the PR is merged to master, the new build image is available in the quay.io repository. Check github action logs [here](https://github.com/cortexproject/cortex/actions/workflows/build-image.yml) for to find the image tag.
+1. Create another PR to replace the image tag in `.github/workflows/*` (_there may be multiple references_) and Makefile (variable `LATEST_BUILD_IMAGE_TAG`).
 1. If you are updating Go's runtime version be sure to change `actions/setup-go`'s `go-version` in ``.github/workflows/*`.
 1. Open a PR and make sure the CI with new build-image passes

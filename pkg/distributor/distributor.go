@@ -33,7 +33,6 @@ import (
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -139,7 +138,6 @@ type Config struct {
 	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay"`
 
 	ShardingStrategy         string `yaml:"sharding_strategy"`
-	ShardByAllLabels         bool   `yaml:"shard_by_all_labels"`
 	ExtendWrites             bool   `yaml:"extend_writes"`
 	SignWriteRequestsEnabled bool   `yaml:"sign_write_requests"`
 
@@ -175,7 +173,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.PoolConfig.RegisterFlags(f)
 	cfg.HATrackerConfig.RegisterFlags(f)
 	cfg.DistributorRing.RegisterFlags(f)
-	cfg.ShardByAllLabels = true
 
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
@@ -458,23 +455,11 @@ func (d *Distributor) stopping(_ error) error {
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []cortexpb.LabelAdapter) (uint32, error) {
-	if d.cfg.ShardByAllLabels {
-		return shardByAllLabels(userID, labels), nil
-	}
-
-	unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(labels)
-	if err != nil {
-		return 0, err
-	}
-	return shardByMetricName(userID, unsafeMetricName), nil
+	return shardByAllLabels(userID, labels), nil
 }
 
 func (d *Distributor) tokenForMetadata(userID string, metricName string) uint32 {
-	if d.cfg.ShardByAllLabels {
-		return shardByMetricName(userID, metricName)
-	}
-
-	return shardByUser(userID)
+	return shardByMetricName(userID, metricName)
 }
 
 // shardByMetricName returns the token for the given metric. The provided metricName

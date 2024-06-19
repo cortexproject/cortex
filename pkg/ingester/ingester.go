@@ -119,7 +119,6 @@ type Config struct {
 	// Injected at runtime and read from the distributor config, required
 	// to accurately apply global limits.
 	DistributorShardingStrategy string `yaml:"-"`
-	DistributorShardByAllLabels bool   `yaml:"-"`
 
 	// Injected at runtime and read from querier config.
 	QueryIngestersWithin time.Duration `yaml:"-"`
@@ -693,7 +692,6 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		limits,
 		i.lifecycler,
 		cfg.DistributorShardingStrategy,
-		cfg.DistributorShardByAllLabels,
 		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
 		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled,
 		cfg.AdminLimitMessage,
@@ -732,7 +730,6 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		limits,
 		i.lifecycler,
 		cfg.DistributorShardingStrategy,
-		cfg.DistributorShardByAllLabels,
 		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
 		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled,
 		cfg.AdminLimitMessage,

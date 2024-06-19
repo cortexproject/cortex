@@ -17,7 +17,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -93,15 +92,6 @@ func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*lab
 
 		if shardSize > 0 && lookbackPeriod > 0 {
 			return d.ingestersRing.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, time.Now()).GetReplicationSetForOperation(ring.Read)
-		}
-	}
-
-	// If "shard by all labels" is disabled, we can get ingesters by metricName if exists.
-	if !d.cfg.ShardByAllLabels && len(matchers) > 0 {
-		metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
-
-		if ok && metricNameMatcher.Type == labels.MatchEqual {
-			return d.ingestersRing.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil, nil, nil)
 		}
 	}
 

@@ -2047,7 +2047,6 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			limits.IngestionRate = 10000000 // Unlimited.
 			testData.prepareConfig(&limits)
 
-			distributorCfg.ShardByAllLabels = true
 			distributorCfg.IngesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
 				return &noopIngester{}, nil
 			}
@@ -2649,7 +2648,6 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		flagext.DefaultValues(&distributorCfg, &clientConfig)
 
 		distributorCfg.IngesterClientFactory = factory
-		distributorCfg.ShardByAllLabels = cfg.shardByAllLabels
 		distributorCfg.ExtraQueryDelay = 50 * time.Millisecond
 		distributorCfg.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond
 		distributorCfg.DistributorRing.InstanceID = strconv.Itoa(i)

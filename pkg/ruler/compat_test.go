@@ -47,6 +47,10 @@ func TestPusherAppendable(t *testing.T) {
 
 	testHistogram := histogram_util.GenerateTestHistogram(1)
 	testFloatHistogram := histogram_util.GenerateTestFloatHistogram(2)
+	testHistogramWithNaN := histogram_util.GenerateTestHistogram(1)
+	testFloatHistogramWithNaN := histogram_util.GenerateTestFloatHistogram(1)
+	testHistogramWithNaN.Sum = math.Float64frombits(value.StaleNaN)
+	testFloatHistogramWithNaN.Sum = math.Float64frombits(value.StaleNaN)
 
 	for _, tc := range []struct {
 		name           string
@@ -296,7 +300,7 @@ func TestPusherAppendable(t *testing.T) {
 			},
 		},
 		{
-			name:      "tenant with delay and nan, normal histogram",
+			name:      "tenant with delay and NaN sample, normal histogram",
 			series:    "foo_bar",
 			value:     math.Float64frombits(value.StaleNaN),
 			evalDelay: time.Minute,
@@ -324,7 +328,7 @@ func TestPusherAppendable(t *testing.T) {
 			},
 		},
 		{
-			name:           "tenant without delay, float histogram",
+			name:           "tenant with delay and NaN sample, float histogram",
 			series:         "foo_bar",
 			value:          math.Float64frombits(value.StaleNaN),
 			evalDelay:      time.Minute,
@@ -344,6 +348,44 @@ func TestPusherAppendable(t *testing.T) {
 							Labels: lbls1,
 							Histograms: []cortexpb.Histogram{
 								cortexpb.FloatHistogramToHistogramProto(120_000, testFloatHistogram),
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
+		},
+		{
+			name:      "tenant with delay, NaN histogram",
+			series:    "foo_bar",
+			histogram: testHistogramWithNaN,
+			evalDelay: time.Minute,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Histograms: []cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(60_000, testHistogramWithNaN),
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
+		},
+		{
+			name:           "tenant with delay, NaN float histogram",
+			series:         "foo_bar",
+			floatHistogram: testFloatHistogramWithNaN,
+			evalDelay:      time.Minute,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Histograms: []cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(60_000, testFloatHistogramWithNaN),
 							},
 						},
 					},

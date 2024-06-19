@@ -55,8 +55,18 @@ func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, l labels.Labels, t
 	}
 
 	if h != nil {
+		// A histogram sample is considered stale if its sum is set to NaN.
+		// https://github.com/prometheus/prometheus/blob/b6ef745016fa9472fdd0ae20f75a9682e01d1e5c/tsdb/head_append.go#L339-L346
+		if a.evaluationDelay > 0 && (value.IsStaleNaN(h.Sum)) {
+			t -= a.evaluationDelay.Milliseconds()
+		}
 		a.histograms = append(a.histograms, cortexpb.HistogramToHistogramProto(t, h))
 	} else {
+		// A histogram sample is considered stale if its sum is set to NaN.
+		// https://github.com/prometheus/prometheus/blob/b6ef745016fa9472fdd0ae20f75a9682e01d1e5c/tsdb/head_append.go#L339-L346
+		if a.evaluationDelay > 0 && (value.IsStaleNaN(fh.Sum)) {
+			t -= a.evaluationDelay.Milliseconds()
+		}
 		a.histograms = append(a.histograms, cortexpb.FloatHistogramToHistogramProto(t, fh))
 	}
 	a.histogramLabels = append(a.histogramLabels, l)

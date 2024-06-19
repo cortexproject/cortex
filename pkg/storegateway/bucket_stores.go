@@ -753,7 +753,7 @@ func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
 		return &limiter{
-			limiter: store.NewLimiter(uint64(limits.MaxChunksPerQueryFromStore(userID)), failedCounter),
+			limiter: store.NewLimiter(uint64(limits.MaxChunksPerRequest(userID)), failedCounter),
 		}
 	}
 }
@@ -763,7 +763,7 @@ func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
 		return &limiter{
-			limiter: store.NewLimiter(uint64(limits.MaxFetchedSeriesPerQuery(userID)), failedCounter),
+			limiter: store.NewLimiter(uint64(limits.MaxSeriesPerRequest(userID)), failedCounter),
 		}
 	}
 }

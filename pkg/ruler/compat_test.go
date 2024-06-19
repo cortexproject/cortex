@@ -13,6 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -20,6 +22,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -38,63 +41,357 @@ func TestPusherAppendable(t *testing.T) {
 	pusher := &fakePusher{}
 	pa := NewPusherAppendable(pusher, "user-1", nil, prometheus.NewCounter(prometheus.CounterOpts{}), prometheus.NewCounter(prometheus.CounterOpts{}))
 
+	lbls1 := cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{labels.MetricName: "foo_bar"}))
+	lbls2 := cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{labels.MetricName: "ALERTS", labels.AlertName: "boop"}))
+	lbls3 := cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{labels.MetricName: "ALERTS_FOR_STATE", labels.AlertName: "boop"}))
+
+	testHistogram := histogram_util.GenerateTestHistogram(1)
+	testFloatHistogram := histogram_util.GenerateTestFloatHistogram(2)
+	testHistogramWithNaN := histogram_util.GenerateTestHistogram(1)
+	testFloatHistogramWithNaN := histogram_util.GenerateTestFloatHistogram(1)
+	testHistogramWithNaN.Sum = math.Float64frombits(value.StaleNaN)
+	testFloatHistogramWithNaN.Sum = math.Float64frombits(value.StaleNaN)
+
 	for _, tc := range []struct {
-		name       string
-		series     string
-		evalDelay  time.Duration
-		value      float64
-		expectedTS int64
+		name           string
+		series         string
+		evalDelay      time.Duration
+		value          float64
+		histogram      *histogram.Histogram
+		floatHistogram *histogram.FloatHistogram
+		expectedReq    *cortexpb.WriteRequest
 	}{
 		{
-			name:       "tenant without delay, normal value",
-			series:     "foo_bar",
-			value:      1.234,
-			expectedTS: 120_000,
+			name:   "tenant without delay, normal value",
+			series: "foo_bar",
+			value:  1.234,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Samples: []cortexpb.Sample{
+								{Value: 1.234, TimestampMs: 120_000},
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
 		},
 		{
-			name:       "tenant without delay, stale nan value",
-			series:     "foo_bar",
-			value:      math.Float64frombits(value.StaleNaN),
-			expectedTS: 120_000,
+			name:   "tenant without delay, stale nan value",
+			series: "foo_bar",
+			value:  math.Float64frombits(value.StaleNaN),
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Samples: []cortexpb.Sample{
+								{Value: math.Float64frombits(value.StaleNaN), TimestampMs: 120_000},
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
 		},
 		{
-			name:       "tenant with delay, normal value",
-			series:     "foo_bar",
-			value:      1.234,
-			expectedTS: 120_000,
-			evalDelay:  time.Minute,
+			name:      "tenant with delay, normal value",
+			series:    "foo_bar",
+			value:     1.234,
+			evalDelay: time.Minute,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Samples: []cortexpb.Sample{
+								{Value: 1.234, TimestampMs: 120_000},
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
 		},
 		{
-			name:       "tenant with delay, stale nan value",
-			value:      math.Float64frombits(value.StaleNaN),
-			expectedTS: 60_000,
-			evalDelay:  time.Minute,
+			name:      "tenant with delay, stale nan value",
+			series:    "foo_bar",
+			value:     math.Float64frombits(value.StaleNaN),
+			evalDelay: time.Minute,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Samples: []cortexpb.Sample{
+								{Value: math.Float64frombits(value.StaleNaN), TimestampMs: 60_000},
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
 		},
 		{
-			name:       "ALERTS without delay, normal value",
-			series:     `ALERTS{alertname="boop"}`,
-			value:      1.234,
-			expectedTS: 120_000,
+			name:   "ALERTS without delay, normal value",
+			series: `ALERTS{alertname="boop"}`,
+			value:  1.234,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls2,
+							Samples: []cortexpb.Sample{
+								{Value: 1.234, TimestampMs: 120_000},
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
 		},
 		{
-			name:       "ALERTS without delay, stale nan value",
-			series:     `ALERTS{alertname="boop"}`,
-			value:      math.Float64frombits(value.StaleNaN),
-			expectedTS: 120_000,
+			name:   "ALERTS without delay, stale nan value",
+			series: `ALERTS{alertname="boop"}`,
+			value:  math.Float64frombits(value.StaleNaN),
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls2,
+							Samples: []cortexpb.Sample{
+								{Value: math.Float64frombits(value.StaleNaN), TimestampMs: 120_000},
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
 		},
 		{
-			name:       "ALERTS with delay, normal value",
-			series:     `ALERTS{alertname="boop"}`,
-			value:      1.234,
-			expectedTS: 60_000,
-			evalDelay:  time.Minute,
+			name:      "ALERTS with delay, normal value",
+			series:    `ALERTS{alertname="boop"}`,
+			value:     1.234,
+			evalDelay: time.Minute,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls2,
+							Samples: []cortexpb.Sample{
+								{Value: 1.234, TimestampMs: 60_000},
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
 		},
 		{
-			name:       "ALERTS with delay, stale nan value",
-			series:     `ALERTS_FOR_STATE{alertname="boop"}`,
-			value:      math.Float64frombits(value.StaleNaN),
-			expectedTS: 60_000,
-			evalDelay:  time.Minute,
+			name:      "ALERTS with delay, stale nan value",
+			series:    `ALERTS_FOR_STATE{alertname="boop"}`,
+			value:     math.Float64frombits(value.StaleNaN),
+			evalDelay: time.Minute,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls3,
+							Samples: []cortexpb.Sample{
+								{Value: math.Float64frombits(value.StaleNaN), TimestampMs: 60_000},
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
+		},
+		{
+			name:      "tenant without delay, normal histogram",
+			series:    "foo_bar",
+			histogram: testHistogram,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Histograms: []cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(120_000, testHistogram),
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
+		},
+		{
+			name:           "tenant without delay, float histogram",
+			series:         "foo_bar",
+			floatHistogram: testFloatHistogram,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Histograms: []cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(120_000, testFloatHistogram),
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
+		},
+		{
+			name:      "tenant without delay, both sample and histogram",
+			series:    "foo_bar",
+			value:     1.234,
+			histogram: testHistogram,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Samples: []cortexpb.Sample{
+								{Value: 1.234, TimestampMs: 120_000},
+							},
+						},
+					},
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Histograms: []cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(120_000, testHistogram),
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
+		},
+		{
+			name:           "tenant without delay, both sample and float histogram",
+			series:         "foo_bar",
+			value:          1.234,
+			floatHistogram: testFloatHistogram,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Samples: []cortexpb.Sample{
+								{Value: 1.234, TimestampMs: 120_000},
+							},
+						},
+					},
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Histograms: []cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(120_000, testFloatHistogram),
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
+		},
+		{
+			name:      "tenant with delay and NaN sample, normal histogram",
+			series:    "foo_bar",
+			value:     math.Float64frombits(value.StaleNaN),
+			evalDelay: time.Minute,
+			histogram: testHistogram,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Samples: []cortexpb.Sample{
+								{Value: math.Float64frombits(value.StaleNaN), TimestampMs: 60_000},
+							},
+						},
+					},
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Histograms: []cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(120_000, testHistogram),
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
+		},
+		{
+			name:           "tenant with delay and NaN sample, float histogram",
+			series:         "foo_bar",
+			value:          math.Float64frombits(value.StaleNaN),
+			evalDelay:      time.Minute,
+			floatHistogram: testFloatHistogram,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Samples: []cortexpb.Sample{
+								{Value: math.Float64frombits(value.StaleNaN), TimestampMs: 60_000},
+							},
+						},
+					},
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Histograms: []cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(120_000, testFloatHistogram),
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
+		},
+		{
+			name:      "tenant with delay, NaN histogram",
+			series:    "foo_bar",
+			histogram: testHistogramWithNaN,
+			evalDelay: time.Minute,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Histograms: []cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(60_000, testHistogramWithNaN),
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
+		},
+		{
+			name:           "tenant with delay, NaN float histogram",
+			series:         "foo_bar",
+			floatHistogram: testFloatHistogramWithNaN,
+			evalDelay:      time.Minute,
+			expectedReq: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: lbls1,
+							Histograms: []cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(60_000, testFloatHistogramWithNaN),
+							},
+						},
+					},
+				},
+				Source: cortexpb.RULE,
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -108,13 +405,21 @@ func TestPusherAppendable(t *testing.T) {
 
 			pusher.response = &cortexpb.WriteResponse{}
 			a := pa.Appender(ctx)
-			_, err = a.Append(0, lbls, 120_000, tc.value)
+			// We don't ingest sample if value is set to 0 for testing purpose.
+			if tc.value != 0 {
+				_, err = a.Append(0, lbls, 120_000, tc.value)
+				require.NoError(t, err)
+			}
+
+			if tc.histogram != nil {
+				_, err = a.AppendHistogram(0, lbls, 120_000, tc.histogram, nil)
+			} else if tc.floatHistogram != nil {
+				_, err = a.AppendHistogram(0, lbls, 120_000, nil, tc.floatHistogram)
+			}
 			require.NoError(t, err)
 
 			require.NoError(t, a.Commit())
-
-			require.Equal(t, tc.expectedTS, pusher.request.Timeseries[0].Samples[0].TimestampMs)
-
+			require.Equal(t, tc.expectedReq.String(), pusher.request.String())
 		})
 	}
 }
@@ -163,6 +468,11 @@ func TestPusherErrors(t *testing.T) {
 
 			a := pa.Appender(ctx)
 			_, err = a.Append(0, lbls, int64(model.Now()), 123456)
+			require.NoError(t, err)
+
+			_, err = a.AppendHistogram(0, lbls, int64(model.Now()), histogram_util.GenerateTestHistogram(1), nil)
+			require.NoError(t, err)
+			_, err = a.AppendHistogram(0, lbls, int64(model.Now()), nil, histogram_util.GenerateTestFloatHistogram(2))
 			require.NoError(t, err)
 
 			require.Equal(t, tc.returnedError, a.Commit())

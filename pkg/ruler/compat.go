@@ -43,12 +43,34 @@ type PusherAppender struct {
 	pusher          Pusher
 	labels          []labels.Labels
 	samples         []cortexpb.Sample
+	histogramLabels []labels.Labels
+	histograms      []cortexpb.Histogram
 	userID          string
 	evaluationDelay time.Duration
 }
 
-func (a *PusherAppender) AppendHistogram(storage.SeriesRef, labels.Labels, int64, *histogram.Histogram, *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	return 0, errors.New("querying native histograms is not supported")
+func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, l labels.Labels, t int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	if h == nil && fh == nil {
+		return 0, errors.New("no histogram")
+	}
+
+	if h != nil {
+		// A histogram sample is considered stale if its sum is set to NaN.
+		// https://github.com/prometheus/prometheus/blob/b6ef745016fa9472fdd0ae20f75a9682e01d1e5c/tsdb/head_append.go#L339-L346
+		if a.evaluationDelay > 0 && (value.IsStaleNaN(h.Sum)) {
+			t -= a.evaluationDelay.Milliseconds()
+		}
+		a.histograms = append(a.histograms, cortexpb.HistogramToHistogramProto(t, h))
+	} else {
+		// A histogram sample is considered stale if its sum is set to NaN.
+		// https://github.com/prometheus/prometheus/blob/b6ef745016fa9472fdd0ae20f75a9682e01d1e5c/tsdb/head_append.go#L339-L346
+		if a.evaluationDelay > 0 && (value.IsStaleNaN(fh.Sum)) {
+			t -= a.evaluationDelay.Milliseconds()
+		}
+		a.histograms = append(a.histograms, cortexpb.FloatHistogramToHistogramProto(t, fh))
+	}
+	a.histogramLabels = append(a.histogramLabels, l)
+	return 0, nil
 }
 
 func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
@@ -85,10 +107,11 @@ func (a *PusherAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ 
 func (a *PusherAppender) Commit() error {
 	a.totalWrites.Inc()
 
+	req := cortexpb.ToWriteRequest(a.labels, a.samples, nil, nil, cortexpb.RULE)
+	req.AddHistogramTimeSeries(a.histogramLabels, a.histograms)
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
-	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), cortexpb.ToWriteRequest(a.labels, a.samples, nil, nil, cortexpb.RULE))
-
+	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), req)
 	if err != nil {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
 		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 != 4 {
@@ -98,6 +121,8 @@ func (a *PusherAppender) Commit() error {
 
 	a.labels = nil
 	a.samples = nil
+	a.histogramLabels = nil
+	a.histograms = nil
 	return err
 }
 
@@ -108,6 +133,8 @@ func (a *PusherAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ 
 func (a *PusherAppender) Rollback() error {
 	a.labels = nil
 	a.samples = nil
+	a.histogramLabels = nil
+	a.histograms = nil
 	return nil
 }
 

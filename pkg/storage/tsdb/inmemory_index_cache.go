@@ -103,7 +103,7 @@ func (c *InMemoryIndexCache) set(typ string, key storecache.CacheKey, val []byte
 
 	size := uint64(len(k) + len(val))
 	if size > c.maxItemSizeBytes {
-		level.Debug(c.logger).Log(
+		level.Info(c.logger).Log(
 			"msg", "item bigger than maxItemSizeBytes. Ignoring..",
 			"maxItemSizeBytes", c.maxItemSizeBytes,
 			"cacheType", typ,

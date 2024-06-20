@@ -300,7 +300,7 @@ type BucketStoreConfig struct {
 type TokenBucketLimiterConfig struct {
 	Enabled                    bool    `yaml:"enabled"`
 	DryRun                     bool    `yaml:"dry_run"`
-	PodTokenBucketSize         int64   `yaml:"pod_token_bucket_size"`
+	InstanceTokenBucketSize    int64   `yaml:"instance_token_bucket_size"`
 	UserTokenBucketSize        int64   `yaml:"user_token_bucket_size"`
 	RequestTokenBucketSize     int64   `yaml:"request_token_bucket_size"`
 	FetchedPostingsTokenFactor float64 `yaml:"fetched_postings_token_factor"`
@@ -344,7 +344,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.BlockDiscoveryStrategy, "blocks-storage.bucket-store.block-discovery-strategy", string(ConcurrentDiscovery), "One of "+strings.Join(supportedBlockDiscoveryStrategies, ", ")+". When set to concurrent, stores will concurrently issue one call per directory to discover active blocks in the bucket. The recursive strategy iterates through all objects in the bucket, recursively traversing into each directory. This avoids N+1 calls at the expense of having slower bucket iterations. bucket_index strategy can be used in Compactor only and utilizes the existing bucket index to fetch block IDs to sync. This avoids iterating the bucket but can be impacted by delays of cleaner creating bucket index.")
 	f.BoolVar(&cfg.TokenBucketLimiter.Enabled, "blocks-storage.bucket-store.token-bucket-limiter.enabled", false, "Whether token bucket limiter is enabled")
 	f.BoolVar(&cfg.TokenBucketLimiter.DryRun, "blocks-storage.bucket-store.token-bucket-limiter.dry-run", false, "Whether the token bucket limiter is in dry run mode")
-	f.Int64Var(&cfg.TokenBucketLimiter.PodTokenBucketSize, "blocks-storage.bucket-store.token-bucket-limiter.pod-token-bucket-size", int64(820*units.Mebibyte), "Pod token bucket size")
+	f.Int64Var(&cfg.TokenBucketLimiter.InstanceTokenBucketSize, "blocks-storage.bucket-store.token-bucket-limiter.instance-token-bucket-size", int64(820*units.Mebibyte), "Instance token bucket size")
 	f.Int64Var(&cfg.TokenBucketLimiter.UserTokenBucketSize, "blocks-storage.bucket-store.token-bucket-limiter.user-token-bucket-size", int64(615*units.Mebibyte), "User token bucket size")
 	f.Int64Var(&cfg.TokenBucketLimiter.RequestTokenBucketSize, "blocks-storage.bucket-store.token-bucket-limiter.request-token-bucket-size", int64(4*units.Mebibyte), "Request token bucket size")
 	f.Float64Var(&cfg.TokenBucketLimiter.FetchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.fetched-postings-token-factor", 2, "Multiplication factor used for fetched postings token")

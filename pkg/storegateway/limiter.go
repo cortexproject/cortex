@@ -46,7 +46,7 @@ func (c *compositeLimiter) ReserveWithType(num uint64, dataType store.StoreDataT
 }
 
 type tokenBucketLimiter struct {
-	podTokenBucket      *util.TokenBucket
+	instanceTokenBucket *util.TokenBucket
 	userTokenBucket     *util.TokenBucket
 	requestTokenBucket  *util.TokenBucket
 	getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64
@@ -64,7 +64,7 @@ func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDat
 	retrieved := t.requestTokenBucket.Retrieve(tokensToRetrieve)
 	if retrieved {
 		t.userTokenBucket.ForceRetrieve(tokensToRetrieve)
-		t.podTokenBucket.ForceRetrieve(tokensToRetrieve)
+		t.instanceTokenBucket.ForceRetrieve(tokensToRetrieve)
 		return nil
 	}
 
@@ -75,14 +75,14 @@ func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDat
 		if t.dryRun {
 			t.requestTokenBucket.ForceRetrieve(tokensToRetrieve)
 			t.userTokenBucket.ForceRetrieve(tokensToRetrieve)
-			t.podTokenBucket.ForceRetrieve(tokensToRetrieve)
+			t.instanceTokenBucket.ForceRetrieve(tokensToRetrieve)
 			level.Warn(util_log.Logger).Log("msg", "not enough tokens in user token bucket", "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve)
 			return nil
 		}
 		return fmt.Errorf("not enough tokens in user token bucket")
 	}
 
-	retrieved = t.podTokenBucket.Retrieve(tokensToRetrieve)
+	retrieved = t.instanceTokenBucket.Retrieve(tokensToRetrieve)
 	if !retrieved {
 		t.userTokenBucket.Refund(tokensToRetrieve)
 
@@ -90,7 +90,7 @@ func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDat
 		if t.dryRun {
 			// user bucket is already retrieved
 			t.requestTokenBucket.ForceRetrieve(tokensToRetrieve)
-			t.podTokenBucket.ForceRetrieve(tokensToRetrieve)
+			t.instanceTokenBucket.ForceRetrieve(tokensToRetrieve)
 			level.Warn(util_log.Logger).Log("msg", "not enough tokens in pod token bucket", "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve)
 			return nil
 		}
@@ -101,9 +101,9 @@ func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDat
 	return nil
 }
 
-func newTokenBucketLimiter(podTokenBucket, userTokenBucket, requestTokenBucket *util.TokenBucket, dryRun bool, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketLimiter {
+func newTokenBucketLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket *util.TokenBucket, dryRun bool, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketLimiter {
 	return &tokenBucketLimiter{
-		podTokenBucket:      podTokenBucket,
+		instanceTokenBucket: instanceTokenBucket,
 		userTokenBucket:     userTokenBucket,
 		requestTokenBucket:  requestTokenBucket,
 		getTokensToRetrieve: getTokensToRetrieve,
@@ -131,7 +131,7 @@ func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.
 	}
 }
 
-func newBytesLimiterFactory(limits *validation.Overrides, userID string, podTokenBucket, userTokenBucket *util.TokenBucket, tokenBucketLimiterCfg tsdb.TokenBucketLimiterConfig, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) store.BytesLimiterFactory {
+func newBytesLimiterFactory(limits *validation.Overrides, userID string, instanceTokenBucket, userTokenBucket *util.TokenBucket, tokenBucketLimiterCfg tsdb.TokenBucketLimiterConfig, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) store.BytesLimiterFactory {
 	return func(failedCounter prometheus.Counter) store.BytesLimiter {
 		limiters := []store.BytesLimiter{}
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
@@ -140,7 +140,7 @@ func newBytesLimiterFactory(limits *validation.Overrides, userID string, podToke
 
 		if tokenBucketLimiterCfg.Enabled {
 			requestTokenBucket := util.NewTokenBucket(tokenBucketLimiterCfg.RequestTokenBucketSize, tokenBucketLimiterCfg.RequestTokenBucketSize, nil)
-			limiters = append(limiters, newTokenBucketLimiter(podTokenBucket, userTokenBucket, requestTokenBucket, tokenBucketLimiterCfg.DryRun, getTokensToRetrieve))
+			limiters = append(limiters, newTokenBucketLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, tokenBucketLimiterCfg.DryRun, getTokensToRetrieve))
 		}
 
 		return &compositeLimiter{

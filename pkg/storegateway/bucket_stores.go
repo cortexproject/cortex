@@ -73,7 +73,7 @@ type BucketStores struct {
 	storesErrorsMu sync.RWMutex
 	storesErrors   map[string]error
 
-	podTokenBucket *util.TokenBucket
+	instanceTokenBucket *util.TokenBucket
 
 	userTokenBucketsMu sync.RWMutex
 	userTokenBuckets   map[string]*util.TokenBucket
@@ -151,9 +151,9 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 	}
 
 	if u.cfg.BucketStore.TokenBucketLimiter.Enabled {
-		u.podTokenBucket = util.NewTokenBucket(cfg.BucketStore.TokenBucketLimiter.InstanceTokenBucketSize, cfg.BucketStore.TokenBucketLimiter.InstanceTokenBucketSize, promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_bucket_stores_pod_token_bucket_remaining",
-			Help: "Number of tokens left in pod token bucket.",
+		u.instanceTokenBucket = util.NewTokenBucket(cfg.BucketStore.TokenBucketLimiter.InstanceTokenBucketSize, cfg.BucketStore.TokenBucketLimiter.InstanceTokenBucketSize, promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_bucket_stores_instance_token_bucket_remaining",
+			Help: "Number of tokens left in instance token bucket.",
 		}))
 	}
 
@@ -643,7 +643,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.syncDirForUser(userID),
 		newChunksLimiterFactory(u.limits, userID),
 		newSeriesLimiterFactory(u.limits, userID),
-		newBytesLimiterFactory(u.limits, userID, u.podTokenBucket, u.getUserTokenBucket(userID), u.cfg.BucketStore.TokenBucketLimiter, u.getTokensToRetrieve),
+		newBytesLimiterFactory(u.limits, userID, u.instanceTokenBucket, u.getUserTokenBucket(userID), u.cfg.BucketStore.TokenBucketLimiter, u.getTokensToRetrieve),
 		u.partitioner,
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers

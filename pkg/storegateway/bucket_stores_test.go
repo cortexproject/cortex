@@ -791,7 +791,7 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	assert.NoError(t, err)
-	assert.NotNil(t, stores.podTokenBucket)
+	assert.NotNil(t, stores.instanceTokenBucket)
 
 	assert.NoError(t, stores.InitialSync(ctx))
 	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
@@ -814,7 +814,7 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.NoError(t, stores.InitialSync(ctx))
-	assert.Nil(t, stores.podTokenBucket)
+	assert.Nil(t, stores.instanceTokenBucket)
 	assert.Nil(t, stores.getUserTokenBucket("user-1"))
 	assert.Nil(t, stores.getUserTokenBucket("user-2"))
 }

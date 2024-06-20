@@ -1908,9 +1908,9 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.dry-run
     [dry_run: <boolean> | default = false]
 
-    # Pod token bucket size
-    # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.pod-token-bucket-size
-    [pod_token_bucket_size: <int> | default = 859832320]
+    # Instance token bucket size
+    # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.instance-token-bucket-size
+    [instance_token_bucket_size: <int> | default = 859832320]
 
     # User token bucket size
     # CLI flag: -blocks-storage.bucket-store.token-bucket-limiter.user-token-bucket-size

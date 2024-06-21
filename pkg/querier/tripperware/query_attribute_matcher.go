@@ -21,11 +21,9 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 	if limits == nil || !(limits.QueryPriority(userStr).Enabled || limits.QueryRejection(userStr).Enabled) {
 		return nil
 	}
+	op := getOperation(r)
 
-	isExpressionQuery := strings.HasSuffix(r.URL.Path, "/query") || strings.HasSuffix(r.URL.Path, "/query_range")
-	isMetadataQuery := strings.HasSuffix(r.URL.Path, "/series") || strings.HasSuffix(r.URL.Path, "/labels") || strings.HasSuffix(r.URL.Path, "/values")
-
-	if isExpressionQuery {
+	if op == "query" || op == "query_range" {
 		query := r.FormValue("query")
 		expr, err := parser.ParseExpr(query)
 		if err != nil {
@@ -36,7 +34,7 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 		if queryReject := limits.QueryRejection(userStr); queryReject.Enabled && query != "" {
 			for _, attribute := range queryReject.QueryAttributes {
 				if matchAttributeForExpressionQuery(attribute, r, query, expr, now, minTime, maxTime) {
-					rejectedQueriesPerTenant.WithLabelValues(userStr).Inc()
+					rejectedQueriesPerTenant.WithLabelValues(op, userStr).Inc()
 					return httpgrpc.Errorf(http.StatusUnprocessableEntity, queryRejectErrorMessage)
 				}
 			}
@@ -59,17 +57,33 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 		}
 	}
 
-	if queryReject := limits.QueryRejection(userStr); queryReject.Enabled && isMetadataQuery {
+	if queryReject := limits.QueryRejection(userStr); queryReject.Enabled && (op == "series" || op == "labels" || op == "label_values") {
 		for _, attribute := range queryReject.QueryAttributes {
-
 			if matchAttributeForMetadataQuery(attribute, r, now) {
-				rejectedQueriesPerTenant.WithLabelValues(userStr).Inc()
+				rejectedQueriesPerTenant.WithLabelValues(op, userStr).Inc()
 				return httpgrpc.Errorf(http.StatusUnprocessableEntity, queryRejectErrorMessage)
 			}
 		}
 	}
 
 	return nil
+}
+
+func getOperation(r *http.Request) string {
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/query"):
+		return "query"
+	case strings.HasSuffix(r.URL.Path, "/query_range"):
+		return "query_range"
+	case strings.HasSuffix(r.URL.Path, "/series"):
+		return "series"
+	case strings.HasSuffix(r.URL.Path, "/labels"):
+		return "labels"
+	case strings.HasSuffix(r.URL.Path, "/values"):
+		return "label_values"
+	default:
+		return "other"
+	}
 }
 
 func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, r *http.Request, query string, expr parser.Expr, now time.Time, minTime, maxTime int64) bool {
@@ -83,7 +97,7 @@ func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, r *ht
 		return false
 	}
 
-	if !isWithinTimeRangeAttribute(attribute.TimeRangeLimit, maxTime-minTime) {
+	if !isWithinTimeRangeAttribute(attribute.TimeRangeLimit, minTime, maxTime) {
 		return false
 	}
 
@@ -91,8 +105,10 @@ func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, r *ht
 		return false
 	}
 
-	if attribute.UserAgent != "" && attribute.UserAgent != r.Header.Get("User-Agent") {
-		return false
+	if attribute.UserAgentRegex != "" && attribute.UserAgentRegex != ".*" && attribute.CompiledUserAgentRegex != nil {
+		if !attribute.CompiledUserAgentRegex.MatchString(r.Header.Get("User-Agent")) {
+			return false
+		}
 	}
 
 	if attribute.DashboardUID != "" && attribute.DashboardUID != r.Header.Get("X-Dashboard-Uid") {
@@ -107,13 +123,13 @@ func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, r *ht
 }
 
 func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, r *http.Request, now time.Time) bool {
-	if attribute.Regex != "" && attribute.Regex != ".*" && attribute.Regex != ".+" && attribute.CompiledRegex != nil {
+	if attribute.Regex != "" && attribute.Regex != ".*" && attribute.CompiledRegex != nil {
 		for _, matcher := range r.Form["match[]"] {
 			if attribute.CompiledRegex.MatchString(matcher) {
-				continue
+				break
 			}
-			return false
 		}
+		return false
 	}
 
 	startTime, _ := util.ParseTime(r.FormValue("start"))
@@ -123,20 +139,14 @@ func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, r *http
 		return false
 	}
 
-	if startTime != 0 && endTime != 0 && !isWithinTimeRangeAttribute(attribute.TimeRangeLimit, endTime-startTime) {
+	if !isWithinTimeRangeAttribute(attribute.TimeRangeLimit, startTime, endTime) {
 		return false
 	}
 
-	if attribute.UserAgent != "" && attribute.UserAgent != r.Header.Get("User-Agent") {
-		return false
-	}
-
-	if attribute.DashboardUID != "" && attribute.DashboardUID != r.Header.Get("X-Dashboard-Uid") {
-		return false
-	}
-
-	if attribute.PanelID != "" && attribute.PanelID != r.Header.Get("X-Panel-Id") {
-		return false
+	if attribute.UserAgentRegex != "" && attribute.UserAgentRegex != ".*" && attribute.CompiledUserAgentRegex != nil {
+		if !attribute.CompiledUserAgentRegex.MatchString(r.Header.Get("User-Agent")) {
+			return false
+		}
 	}
 
 	return true
@@ -164,10 +174,16 @@ func isWithinTimeAttributes(timeWindow validation.TimeWindow, now time.Time, sta
 	return true
 }
 
-func isWithinTimeRangeAttribute(limit validation.TimeRangeLimit, timeRangeInMillis int64) bool {
+func isWithinTimeRangeAttribute(limit validation.TimeRangeLimit, startTime, endTime int64) bool {
 	if limit.Min == 0 && limit.Max == 0 {
 		return true
 	}
+
+	if startTime == 0 || endTime == 0 {
+		return false
+	}
+
+	timeRangeInMillis := endTime - startTime
 
 	if limit.Min != 0 && time.Duration(limit.Min).Milliseconds() > timeRangeInMillis {
 		return false

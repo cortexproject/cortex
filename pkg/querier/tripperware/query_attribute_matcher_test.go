@@ -239,6 +239,8 @@ func Test_isWithinTimeAttributes(t *testing.T) {
 }
 
 func Test_isWithinTimeRangeAttribute(t *testing.T) {
+	now := time.Now().UnixMilli()
+
 	timeRangeLimit := validation.TimeRangeLimit{
 		Min: model.Duration(12 * time.Hour),
 		Max: model.Duration(15 * 24 * time.Hour),
@@ -246,50 +248,64 @@ func Test_isWithinTimeRangeAttribute(t *testing.T) {
 
 	type testCase struct {
 		timeRangeLimit validation.TimeRangeLimit
-		queryTimeRange int64
+		startTime      int64
+		endTime        int64
 		expectedResult bool
 	}
 
 	tests := map[string]testCase{
 		"valid if within timeRange": {
 			timeRangeLimit: timeRangeLimit,
-			queryTimeRange: (20 * time.Hour).Milliseconds(),
+			startTime:      now - 20*time.Hour.Milliseconds(),
+			endTime:        now,
 			expectedResult: true,
 		},
 		"valid if queryTimeRange is equal to the limit": {
 			timeRangeLimit: timeRangeLimit,
-			queryTimeRange: (12 * time.Hour).Milliseconds(),
+			startTime:      now - 12*time.Hour.Milliseconds(),
+			endTime:        now,
 			expectedResult: true,
 		},
 		"not valid if queryTimeRange is smaller than the limit min": {
 			timeRangeLimit: timeRangeLimit,
-			queryTimeRange: (11 * time.Hour).Milliseconds(),
+			startTime:      now - 11*time.Hour.Milliseconds(),
+			endTime:        now,
 			expectedResult: false,
 		},
 		"not valid if queryTimeRange is bigger than the limit max": {
 			timeRangeLimit: timeRangeLimit,
-			queryTimeRange: (35 * 24 * time.Hour).Milliseconds(),
+			startTime:      now - 35*24*time.Hour.Milliseconds(),
+			endTime:        now,
 			expectedResult: false,
 		},
 		"valid if max is not provided and queryRange is bigger than min": {
 			timeRangeLimit: validation.TimeRangeLimit{
 				Min: model.Duration(12 * time.Hour),
 			},
-			queryTimeRange: (35 * 24 * time.Hour).Milliseconds(),
+			startTime:      now - 35*24*time.Hour.Milliseconds(),
+			endTime:        now,
 			expectedResult: true,
 		},
 		"valid if min is not provided and queryRange is smaller than max": {
 			timeRangeLimit: validation.TimeRangeLimit{
 				Max: model.Duration(15 * 24 * time.Hour),
 			},
-			queryTimeRange: (14 * 24 * time.Hour).Milliseconds(),
+			startTime:      now - 14*24*time.Hour.Milliseconds(),
+			endTime:        now,
 			expectedResult: true,
+		},
+		"not valid if limit provided but query doesn't have range (missing startTime or endTime)": {
+			timeRangeLimit: validation.TimeRangeLimit{
+				Max: model.Duration(15 * 24 * time.Hour),
+			},
+			startTime:      now,
+			expectedResult: false,
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			priority := isWithinTimeRangeAttribute(testData.timeRangeLimit, testData.queryTimeRange)
+			priority := isWithinTimeRangeAttribute(testData.timeRangeLimit, testData.startTime, testData.endTime)
 			assert.Equal(t, testData.expectedResult, priority)
 		})
 	}
@@ -368,7 +384,7 @@ func Test_isWithinQueryStepLimit(t *testing.T) {
 	}
 }
 
-func Test_matchAttributeForMetadataQueryHeadersShouldBeCheckedIfSet(t *testing.T) {
+func Test_matchAttributeForExpressionQueryHeadersShouldBeCheckedIfSet(t *testing.T) {
 
 	type testCase struct {
 		headers        http.Header
@@ -382,7 +398,6 @@ func Test_matchAttributeForMetadataQueryHeadersShouldBeCheckedIfSet(t *testing.T
 		},
 		"should not check if attributes are empty even corresponding headers exist (match)": {
 			headers: http.Header{
-				"User-Agent":      {"grafana"},
 				"X-Dashboard-Uid": {"dashboard-uid"},
 				"X-Panel-Id":      {"panel-id"},
 			},
@@ -390,12 +405,10 @@ func Test_matchAttributeForMetadataQueryHeadersShouldBeCheckedIfSet(t *testing.T
 		},
 		"should match all attributes if all set and all headers provided": {
 			headers: http.Header{
-				"User-Agent":      {"grafana"},
 				"X-Dashboard-Uid": {"dashboard-uid"},
 				"X-Panel-Id":      {"panel-id"},
 			},
 			queryAttribute: validation.QueryAttribute{
-				UserAgent:    "grafana",
 				DashboardUID: "dashboard-uid",
 				PanelID:      "panel-id",
 			},
@@ -406,17 +419,16 @@ func Test_matchAttributeForMetadataQueryHeadersShouldBeCheckedIfSet(t *testing.T
 				"X-Dashboard-Uid": {"dashboard-uid"},
 			},
 			queryAttribute: validation.QueryAttribute{
-				UserAgent:    "grafana",
 				DashboardUID: "dashboard-uid",
 				PanelID:      "panel-id",
 			},
 		},
 		"should not match if both attribute and header is set but does not match ": {
 			headers: http.Header{
-				"User-Agent": {"python"},
+				"X-Panel-Id": {"panel123"},
 			},
 			queryAttribute: validation.QueryAttribute{
-				UserAgent: "grafana",
+				PanelID: "panel-id",
 			},
 		},
 		"should not compare if values are empty (match)": {
@@ -430,8 +442,8 @@ func Test_matchAttributeForMetadataQueryHeadersShouldBeCheckedIfSet(t *testing.T
 		},
 		"should match if headers match provided attributes ": {
 			headers: http.Header{
-				"User-Agent": {"python"},
-				"X-Panel-Id": {"pane"},
+				"X-Dashboard-Uid": {"dashboard-uid"},
+				"X-Panel-Id":      {"pane"},
 			},
 			queryAttribute: validation.QueryAttribute{
 				PanelID: "pane",
@@ -446,8 +458,57 @@ func Test_matchAttributeForMetadataQueryHeadersShouldBeCheckedIfSet(t *testing.T
 			require.NoError(t, err)
 			req.Header = testData.headers
 
-			result := matchAttributeForMetadataQuery(testData.queryAttribute, req, time.Now())
+			result := matchAttributeForExpressionQuery(testData.queryAttribute, req, "", nil, time.Time{}, 0, 0)
 			assert.Equal(t, testData.expectedResult, result)
 		})
 	}
+}
+
+func Test_matchAttributeForExpressionQueryShouldMatchUserAgentRegex(t *testing.T) {
+
+	type testCase struct {
+		userAgentRegex  string
+		userAgentHeader string
+		result          bool
+	}
+
+	tests := map[string]testCase{
+		"should hit if regex matches": {
+			userAgentRegex:  "(^grafana-agent|prometheus-(.*)client(.+))",
+			userAgentHeader: "prometheus-client-go/v0.9.3",
+			result:          true,
+		},
+		"should miss if regex doesn't match": {
+			userAgentRegex:  "(^grafana-agent|prometheus-(.*)client(.+))",
+			userAgentHeader: "loki",
+		},
+		"should hit if regex matches - .*": {
+			userAgentRegex:  ".*",
+			userAgentHeader: "grafana-agent/v0.19.0",
+			result:          true,
+		},
+		"should hit if regex is an empty string": {
+			userAgentRegex:  "",
+			userAgentHeader: "grafana-agent/v0.19.0",
+			result:          true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			req, err := http.NewRequest("GET", "/", http.NoBody)
+			require.NoError(t, err)
+			req.Header = http.Header{
+				"User-Agent": {testData.userAgentHeader},
+			}
+			queryAttribute := validation.QueryAttribute{
+				UserAgentRegex:         testData.userAgentRegex,
+				CompiledUserAgentRegex: regexp.MustCompile(testData.userAgentRegex),
+			}
+
+			result := matchAttributeForExpressionQuery(queryAttribute, req, "", nil, time.Time{}, 0, 0)
+			assert.Equal(t, testData.result, result)
+		})
+	}
+
 }

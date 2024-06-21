@@ -63,23 +63,24 @@ type QueryPriority struct {
 type PriorityDef struct {
 	Priority         int64            `yaml:"priority" json:"priority" doc:"nocli|description=Priority level. Must be a unique value.|default=0"`
 	ReservedQueriers float64          `yaml:"reserved_queriers" json:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle priorities higher or equal to the priority level. Value between 0 and 1 will be used as a percentage.|default=0"`
-	QueryAttributes  []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query attributes to assign the priority."`
+	QueryAttributes  []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query attributes that queries will be matched against. Query will be matched against each of those query attributes separately and if query matches any of them then it will be assigned to this priority."`
 }
 
 type QueryRejection struct {
 	Enabled         bool             `yaml:"enabled" json:"enabled"`
-	QueryAttributes []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query attributes for rejection."`
+	QueryAttributes []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query attributes that queries will be matched against. Query will be matched against each of those query attributes separately and if query matches any of them then it will be rejected."`
 }
 
 type QueryAttribute struct {
-	Regex          string         `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string should match. If not set, it won't be checked."`
-	TimeWindow     TimeWindow     `yaml:"time_window" json:"time_window" doc:"nocli|description=Overall data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If not set, it won't be checked."`
-	TimeRangeLimit TimeRangeLimit `yaml:"time_range_limit" json:"time_range_limit" doc:"nocli|description=Limit that query time range should be within. If not set, it won't be checked."`
-	QueryStepLimit QueryStepLimit `yaml:"query_step_limit" json:"query_step_limit" doc:"nocli|description=Limit that query step should be within. It will check subquery steps as well. If not set, it won't be checked."`
-	UserAgent      string         `yaml:"user_agent" json:"user_agent" doc:"nocli|description=User agent for the query. If not set, it won't be checked."`
-	DashboardUID   string         `yaml:"dashboard_uid" json:"dashboard_uid" doc:"nocli|description=Dashboard UID for the query. If not set, it won't be checked."`
-	PanelID        string         `yaml:"panel_id" json:"panel_id" doc:"nocli|description=Panel Id for the query. If not set, it won't be checked."`
-	CompiledRegex  *regexp.Regexp
+	Regex                  string         `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string (or at least one of the matchers in metadata query) should match. If not set, it won't be checked."`
+	TimeWindow             TimeWindow     `yaml:"time_window" json:"time_window" doc:"nocli|description=Overall data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If not set, it won't be checked."`
+	TimeRangeLimit         TimeRangeLimit `yaml:"time_range_limit" json:"time_range_limit" doc:"nocli|description=Queries with time range that is within this limits will match. If not set, it won't be checked."`
+	QueryStepLimit         QueryStepLimit `yaml:"query_step_limit" json:"query_step_limit" doc:"nocli|description=Limit that query step should be within. It will check subquery steps as well. If not set, it won't be checked."`
+	UserAgentRegex         string         `yaml:"user_agent" json:"user_agent" doc:"nocli|description=Regex that User-Agent header of the request should match. If not set, it won't be checked."`
+	DashboardUID           string         `yaml:"dashboard_uid" json:"dashboard_uid" doc:"nocli|description=Grafana includes X-Dashboard-Uid header in query requests. If this field is provided then X-Dashboard-Uid header of request should match this value. If not set, it won't be checked."`
+	PanelID                string         `yaml:"panel_id" json:"panel_id" doc:"nocli|description=Grafana includes X-Panel-Id header in query requests. If this field is provided then X-Panel-Id header of request should match this value. If not set, it won't be checked."`
+	CompiledRegex          *regexp.Regexp
+	CompiledUserAgentRegex *regexp.Regexp
 }
 
 type TimeWindow struct {
@@ -384,22 +385,20 @@ func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimi
 
 func (l *Limits) hasQueryAttributeRegexChanged() bool {
 	var newHash uint64
-
-	var seps = []byte{'\xff'}
 	h := xxhash.New()
 
 	if l.QueryPriority.Enabled {
 		for _, priority := range l.QueryPriority.Priorities {
 			for _, attribute := range priority.QueryAttributes {
-				_, _ = h.WriteString(attribute.Regex)
-				_, _ = h.Write(seps)
+				addToHash(h, attribute.Regex)
+				addToHash(h, attribute.UserAgentRegex)
 			}
 		}
 	}
 	if l.QueryRejection.Enabled {
 		for _, attribute := range l.QueryRejection.QueryAttributes {
-			_, _ = h.WriteString(attribute.Regex)
-			_, _ = h.Write(seps)
+			addToHash(h, attribute.Regex)
+			addToHash(h, attribute.UserAgentRegex)
 		}
 	}
 
@@ -412,15 +411,22 @@ func (l *Limits) hasQueryAttributeRegexChanged() bool {
 	return false
 }
 
+func addToHash(h *xxhash.Digest, regex string) {
+	if regex == "" {
+		return
+	}
+	_, _ = h.WriteString(regex)
+	_, _ = h.Write([]byte{'\xff'})
+}
+
 func (l *Limits) compileQueryAttributeRegex() error {
 	if !l.QueryPriority.Enabled && !l.QueryRejection.Enabled {
 		return nil
 	}
-	hasQueryAttributeRegexChanged := l.hasQueryAttributeRegexChanged()
-	newQueryAttributeCompiledRegex := map[string]*regexp.Regexp{}
+	regexChanged := l.hasQueryAttributeRegexChanged()
+	newCompiledRegex := map[string]*regexp.Regexp{}
 
 	if l.QueryPriority.Enabled {
-
 		prioritySet := map[int64]struct{}{}
 
 		for i, priority := range l.QueryPriority.Priorities {
@@ -430,40 +436,48 @@ func (l *Limits) compileQueryAttributeRegex() error {
 			}
 			prioritySet[priority.Priority] = struct{}{}
 
-			for j, attribute := range priority.QueryAttributes {
-				if hasQueryAttributeRegexChanged {
-					compiledRegex, err := regexp.Compile(attribute.Regex)
-					if err != nil {
-						return errors.Join(errCompilingQueryPriorityRegex, err)
-					}
-					newQueryAttributeCompiledRegex[attribute.Regex] = compiledRegex
-					l.QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = compiledRegex
-				} else {
-					l.QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = l.queryAttributeCompiledRegex[attribute.Regex]
-				}
+			err := l.compileQueryAttributeRegexes(l.QueryPriority.Priorities[i].QueryAttributes, regexChanged, newCompiledRegex)
+			if err != nil {
+				return err
 			}
 		}
 	}
 
 	if l.QueryRejection.Enabled {
-		for i, attribute := range l.QueryRejection.QueryAttributes {
-			if hasQueryAttributeRegexChanged {
-				compiledRegex, err := regexp.Compile(attribute.Regex)
-				if err != nil {
-					return errors.Join(errCompilingQueryPriorityRegex, err)
-				}
-				newQueryAttributeCompiledRegex[attribute.Regex] = compiledRegex
-				l.QueryRejection.QueryAttributes[i].CompiledRegex = compiledRegex
-			} else {
-				l.QueryRejection.QueryAttributes[i].CompiledRegex = l.queryAttributeCompiledRegex[attribute.Regex]
-			}
+		err := l.compileQueryAttributeRegexes(l.QueryRejection.QueryAttributes, regexChanged, newCompiledRegex)
+		if err != nil {
+			return err
 		}
 	}
 
-	if hasQueryAttributeRegexChanged {
-		l.queryAttributeCompiledRegex = newQueryAttributeCompiledRegex
+	if regexChanged {
+		l.queryAttributeCompiledRegex = newCompiledRegex
 	}
 
+	return nil
+}
+
+func (l *Limits) compileQueryAttributeRegexes(queryAttributes []QueryAttribute, regexChanged bool, newCompiledRegex map[string]*regexp.Regexp) error {
+	for j, attribute := range queryAttributes {
+		if regexChanged {
+			compiledRegex, err := regexp.Compile(attribute.Regex)
+			if err != nil {
+				return errors.Join(errCompilingQueryPriorityRegex, err)
+			}
+			newCompiledRegex[attribute.Regex] = compiledRegex
+			queryAttributes[j].CompiledRegex = compiledRegex
+
+			compiledUserAgentRegex, err := regexp.Compile(attribute.UserAgentRegex)
+			if err != nil {
+				return errors.Join(errCompilingQueryPriorityRegex, err)
+			}
+			newCompiledRegex[attribute.UserAgentRegex] = compiledUserAgentRegex
+			queryAttributes[j].CompiledUserAgentRegex = compiledUserAgentRegex
+		} else {
+			queryAttributes[j].CompiledRegex = l.queryAttributeCompiledRegex[attribute.Regex]
+			queryAttributes[j].CompiledUserAgentRegex = l.queryAttributeCompiledRegex[attribute.UserAgentRegex]
+		}
+	}
 	return nil
 }
 

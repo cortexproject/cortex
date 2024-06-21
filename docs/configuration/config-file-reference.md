@@ -3291,7 +3291,9 @@ query_rejection:
   # CLI flag: -frontend.query-rejection.enabled
   [enabled: <boolean> | default = false]
 
-  # List of query attributes for rejection.
+  # List of query attributes that queries will be matched against. Query will be
+  # matched against each of those query attributes separately and if query
+  # matches any of them then it will be rejected.
   [query_attributes: <list of QueryAttribute> | default = []]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
@@ -5354,14 +5356,17 @@ limits:
 # priority level. Value between 0 and 1 will be used as a percentage.
 [reserved_queriers: <float> | default = 0]
 
-# List of query attributes to assign the priority.
+# List of query attributes that queries will be matched against. Query will be
+# matched against each of those query attributes separately and if query matches
+# any of them then it will be assigned to this priority.
 [query_attributes: <list of QueryAttribute> | default = []]
 ```
 
 ### `QueryAttribute`
 
 ```yaml
-# Regex that the query string should match. If not set, it won't be checked.
+# Regex that the query string (or at least one of the matchers in metadata
+# query) should match. If not set, it won't be checked.
 [regex: <string> | default = ""]
 
 # Overall data select time window (including range selectors, modifiers and
@@ -5378,7 +5383,8 @@ time_window:
   # checked.
   [end: <int> | default = 0]
 
-# Limit that query time range should be within. If not set, it won't be checked.
+# Queries with time range that is within this limits will match. If not set, it
+# won't be checked.
 time_range_limit:
   # Query time range should be above or equal to this value to match. If set to
   # 0, it won't be checked.
@@ -5399,13 +5405,18 @@ query_step_limit:
   # won't be checked.
   [max: <int> | default = 0]
 
-# User agent for the query. If not set, it won't be checked.
+# Regex that User-Agent header of the request should match. If not set, it won't
+# be checked.
 [user_agent: <string> | default = ""]
 
-# Dashboard UID for the query. If not set, it won't be checked.
+# Grafana includes X-Dashboard-Uid header in query requests. If this field is
+# provided then X-Dashboard-Uid header of request should match this value. If
+# not set, it won't be checked.
 [dashboard_uid: <string> | default = ""]
 
-# Panel Id for the query. If not set, it won't be checked.
+# Grafana includes X-Panel-Id header in query requests. If this field is
+# provided then X-Panel-Id header of request should match this value. If not
+# set, it won't be checked.
 [panel_id: <string> | default = ""]
 ```
 

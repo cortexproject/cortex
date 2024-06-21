@@ -114,7 +114,7 @@ func NewQueryTripperware(
 	rejectedQueriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_query_frontend_rejected_queries_total",
 		Help: "Total rejected queries per tenant.",
-	}, []string{"user"})
+	}, []string{"op", "user"})
 
 	activeUsers := util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 		err := util.DeleteMatchingLabels(queriesPerTenant, map[string]string{"user": user})

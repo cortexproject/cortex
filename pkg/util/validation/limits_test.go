@@ -680,7 +680,11 @@ func TestHasQueryAttributeRegexChanged(t *testing.T) {
 
 	require.True(t, l.hasQueryAttributeRegexChanged())
 
-	l.QueryRejection.QueryAttributes[1].UserAgent = "New User agent"
+	l.QueryRejection.QueryAttributes[1].UserAgentRegex = "New User agent regex"
+
+	require.True(t, l.hasQueryAttributeRegexChanged())
+
+	l.QueryRejection.QueryAttributes[1].DashboardUID = "New Dashboard Uid"
 
 	require.False(t, l.hasQueryAttributeRegexChanged())
 
@@ -746,4 +750,17 @@ func TestCompileQueryPriorityRegex(t *testing.T) {
 	err = l.compileQueryAttributeRegex()
 	require.NoError(t, err)
 	require.Equal(t, regexp.MustCompile("testRejection"), l.QueryRejection.QueryAttributes[0].CompiledRegex)
+	require.Equal(t, regexp.MustCompile(""), l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledUserAgentRegex)
+
+	l.QueryRejection.QueryAttributes[0].UserAgentRegex = "User agent added"
+
+	err = l.compileQueryAttributeRegex()
+	require.NoError(t, err)
+	require.Equal(t, regexp.MustCompile("User agent added"), l.QueryRejection.QueryAttributes[0].CompiledUserAgentRegex)
+
+	l.QueryRejection.QueryAttributes[0].Regex = ""
+
+	err = l.compileQueryAttributeRegex()
+	require.NoError(t, err)
+	require.Nil(t, l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 }

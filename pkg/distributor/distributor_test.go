@@ -290,10 +290,10 @@ func TestDistributor_Push(t *testing.T) {
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
 				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.004
-        		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
-        		# TYPE cortex_distributor_received_samples_total counter
-        		cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
-        		cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 5
+				# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+				# TYPE cortex_distributor_received_samples_total counter
+				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
+				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 5
 			`,
 		},
 		"A push to 2 happy ingesters should succeed, histograms": {
@@ -308,10 +308,10 @@ func TestDistributor_Push(t *testing.T) {
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
 				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.004
-        		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
-        		# TYPE cortex_distributor_received_samples_total counter
-        		cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
-        		cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 5
+				# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+				# TYPE cortex_distributor_received_samples_total counter
+				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
+				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 5
 			`,
 		},
 		"A push to 1 happy ingesters should fail, histograms": {
@@ -325,10 +325,10 @@ func TestDistributor_Push(t *testing.T) {
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
 				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.009
-        		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
-        		# TYPE cortex_distributor_received_samples_total counter
-        		cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
-        		cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 10
+				# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+				# TYPE cortex_distributor_received_samples_total counter
+				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
+				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 10
 			`,
 		},
 		"A push exceeding burst size should fail, histograms": {
@@ -343,10 +343,10 @@ func TestDistributor_Push(t *testing.T) {
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
 				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.024
-        		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
-        		# TYPE cortex_distributor_received_samples_total counter
-        		cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
-        		cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 25
+				# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+				# TYPE cortex_distributor_received_samples_total counter
+				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
+				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 25
 			`,
 		},
 	} {
@@ -3642,36 +3642,39 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 
 	for _, tc := range cases {
 		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			var err error
-			var limits validation.Limits
-			flagext.DefaultValues(&limits)
-			limits.MetricRelabelConfigs = tc.metricRelabelConfigs
+		for _, enableHistogram := range []bool{false, true} {
+			enableHistogram := enableHistogram
+			t.Run(fmt.Sprintf("%s, histogram=%s", tc.name, strconv.FormatBool(enableHistogram)), func(t *testing.T) {
+				t.Parallel()
+				var err error
+				var limits validation.Limits
+				flagext.DefaultValues(&limits)
+				limits.MetricRelabelConfigs = tc.metricRelabelConfigs
 
-			ds, ingesters, _, _ := prepare(t, prepConfig{
-				numIngesters:     2,
-				happyIngesters:   2,
-				numDistributors:  1,
-				shardByAllLabels: true,
-				limits:           &limits,
-			})
+				ds, ingesters, _, _ := prepare(t, prepConfig{
+					numIngesters:     2,
+					happyIngesters:   2,
+					numDistributors:  1,
+					shardByAllLabels: true,
+					limits:           &limits,
+				})
 
-			// Push the series to the distributor
-			req := mockWriteRequest(tc.inputSeries, 1, 1, false)
-			_, err = ds[0].Push(ctx, req)
-			require.NoError(t, err)
+				// Push the series to the distributor
+				req := mockWriteRequest(tc.inputSeries, 1, 1, enableHistogram)
+				_, err = ds[0].Push(ctx, req)
+				require.NoError(t, err)
 
-			// Since each test pushes only 1 series, we do expect the ingester
-			// to have received exactly 1 series
-			for i := range ingesters {
-				timeseries := ingesters[i].series()
-				assert.Equal(t, 1, len(timeseries))
-				for _, v := range timeseries {
-					assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
+				// Since each test pushes only 1 series, we do expect the ingester
+				// to have received exactly 1 series
+				for i := range ingesters {
+					timeseries := ingesters[i].series()
+					assert.Equal(t, 1, len(timeseries))
+					for _, v := range timeseries {
+						assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 }
 

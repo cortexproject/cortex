@@ -968,107 +968,89 @@ func TestDistributor_PushQuery(t *testing.T) {
 	// coverage along quite a few different axis.
 	testcases := []testcase{}
 
-	// Run every test in both sharding modes.
-	for _, shardByAllLabels := range []bool{true, false} {
+	// Test with between 2 and 10 ingesters.
+	for numIngesters := 2; numIngesters < 10; numIngesters++ {
 
-		// Test with between 2 and 10 ingesters.
-		for numIngesters := 2; numIngesters < 10; numIngesters++ {
+		// Test with between 0 and numIngesters "happy" ingesters.
+		for happyIngesters := 0; happyIngesters <= numIngesters; happyIngesters++ {
 
-			// Test with between 0 and numIngesters "happy" ingesters.
-			for happyIngesters := 0; happyIngesters <= numIngesters; happyIngesters++ {
+			// Test either with shuffle-sharding enabled or disabled.
+			for _, shuffleShardEnabled := range []bool{false, true} {
+				scenario := fmt.Sprintf("numIngester=%d, happyIngester=%d, shuffleSharding=%v)", numIngesters, happyIngesters, shuffleShardEnabled)
 
-				// Test either with shuffle-sharding enabled or disabled.
-				for _, shuffleShardEnabled := range []bool{false, true} {
-					scenario := fmt.Sprintf("shardByAllLabels=%v, numIngester=%d, happyIngester=%d, shuffleSharding=%v)", shardByAllLabels, numIngesters, happyIngesters, shuffleShardEnabled)
+				// The number of ingesters we expect to query depends whether shuffle sharding and/or
+				// shard by all labels are enabled.
+				var expectedIngesters int
+				if shuffleShardEnabled {
+					expectedIngesters = min(shuffleShardSize, numIngesters)
+				} else {
+					expectedIngesters = numIngesters
+				}
 
-					// The number of ingesters we expect to query depends whether shuffle sharding and/or
-					// shard by all labels are enabled.
-					var expectedIngesters int
-					if shuffleShardEnabled {
-						expectedIngesters = min(shuffleShardSize, numIngesters)
-					} else if shardByAllLabels {
-						expectedIngesters = numIngesters
-					} else {
-						expectedIngesters = 3 // Replication factor
-					}
-
-					// When we're not sharding by metric name, queriers with more than one
-					// failed ingester should fail.
-					if shardByAllLabels && numIngesters-happyIngesters > 1 {
-						testcases = append(testcases, testcase{
-							name:                fmt.Sprintf("ExpectFail(%s)", scenario),
-							numIngesters:        numIngesters,
-							happyIngesters:      happyIngesters,
-							matchers:            []*labels.Matcher{nameMatcher, barMatcher},
-							expectedError:       errFail,
-							shardByAllLabels:    shardByAllLabels,
-							shuffleShardEnabled: shuffleShardEnabled,
-						})
-						continue
-					}
-
-					// When we have less ingesters than replication factor, any failed ingester
-					// will cause a failure.
-					if numIngesters < 3 && happyIngesters < 2 {
-						testcases = append(testcases, testcase{
-							name:                fmt.Sprintf("ExpectFail(%s)", scenario),
-							numIngesters:        numIngesters,
-							happyIngesters:      happyIngesters,
-							matchers:            []*labels.Matcher{nameMatcher, barMatcher},
-							expectedError:       errFail,
-							shardByAllLabels:    shardByAllLabels,
-							shuffleShardEnabled: shuffleShardEnabled,
-						})
-						continue
-					}
-
-					// If we're sharding by metric name and we have failed ingesters, we can't
-					// tell ahead of time if the query will succeed, as we don't know which
-					// ingesters will hold the results for the query.
-					if !shardByAllLabels && numIngesters-happyIngesters > 1 {
-						continue
-					}
-
-					// Reading all the samples back should succeed.
+				// When we're not sharding by metric name, queriers with more than one
+				// failed ingester should fail.
+				if numIngesters-happyIngesters > 1 {
 					testcases = append(testcases, testcase{
-						name:                fmt.Sprintf("ReadAll(%s)", scenario),
+						name:                fmt.Sprintf("ExpectFail(%s)", scenario),
 						numIngesters:        numIngesters,
 						happyIngesters:      happyIngesters,
-						samples:             10,
 						matchers:            []*labels.Matcher{nameMatcher, barMatcher},
-						expectedResponse:    expectedResponse(0, 10),
-						expectedIngesters:   expectedIngesters,
-						shardByAllLabels:    shardByAllLabels,
+						expectedError:       errFail,
 						shuffleShardEnabled: shuffleShardEnabled,
 					})
+					continue
+				}
 
-					// As should reading none of the samples back.
+				// When we have less ingesters than replication factor, any failed ingester
+				// will cause a failure.
+				if numIngesters < 3 && happyIngesters < 2 {
 					testcases = append(testcases, testcase{
-						name:                fmt.Sprintf("ReadNone(%s)", scenario),
+						name:                fmt.Sprintf("ExpectFail(%s)", scenario),
+						numIngesters:        numIngesters,
+						happyIngesters:      happyIngesters,
+						matchers:            []*labels.Matcher{nameMatcher, barMatcher},
+						expectedError:       errFail,
+						shuffleShardEnabled: shuffleShardEnabled,
+					})
+					continue
+				}
+
+				// Reading all the samples back should succeed.
+				testcases = append(testcases, testcase{
+					name:                fmt.Sprintf("ReadAll(%s)", scenario),
+					numIngesters:        numIngesters,
+					happyIngesters:      happyIngesters,
+					samples:             10,
+					matchers:            []*labels.Matcher{nameMatcher, barMatcher},
+					expectedResponse:    expectedResponse(0, 10),
+					expectedIngesters:   expectedIngesters,
+					shuffleShardEnabled: shuffleShardEnabled,
+				})
+
+				// As should reading none of the samples back.
+				testcases = append(testcases, testcase{
+					name:                fmt.Sprintf("ReadNone(%s)", scenario),
+					numIngesters:        numIngesters,
+					happyIngesters:      happyIngesters,
+					samples:             10,
+					matchers:            []*labels.Matcher{nameMatcher, mustEqualMatcher("not", "found")},
+					expectedResponse:    expectedResponse(0, 0),
+					expectedIngesters:   expectedIngesters,
+					shuffleShardEnabled: shuffleShardEnabled,
+				})
+
+				// And reading each sample individually.
+				for i := 0; i < 10; i++ {
+					testcases = append(testcases, testcase{
+						name:                fmt.Sprintf("ReadOne(%s, sample=%d)", scenario, i),
 						numIngesters:        numIngesters,
 						happyIngesters:      happyIngesters,
 						samples:             10,
-						matchers:            []*labels.Matcher{nameMatcher, mustEqualMatcher("not", "found")},
-						expectedResponse:    expectedResponse(0, 0),
+						matchers:            []*labels.Matcher{nameMatcher, mustEqualMatcher("sample", strconv.Itoa(i))},
+						expectedResponse:    expectedResponse(i, i+1),
 						expectedIngesters:   expectedIngesters,
-						shardByAllLabels:    shardByAllLabels,
 						shuffleShardEnabled: shuffleShardEnabled,
 					})
-
-					// And reading each sample individually.
-					for i := 0; i < 10; i++ {
-						testcases = append(testcases, testcase{
-							name:                fmt.Sprintf("ReadOne(%s, sample=%d)", scenario, i),
-							numIngesters:        numIngesters,
-							happyIngesters:      happyIngesters,
-							samples:             10,
-							matchers:            []*labels.Matcher{nameMatcher, mustEqualMatcher("sample", strconv.Itoa(i))},
-							expectedResponse:    expectedResponse(i, i+1),
-							expectedIngesters:   expectedIngesters,
-							shardByAllLabels:    shardByAllLabels,
-							shuffleShardEnabled: shuffleShardEnabled,
-						})
-					}
 				}
 			}
 		}

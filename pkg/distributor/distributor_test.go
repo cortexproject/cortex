@@ -706,7 +706,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[2].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 
 	for i := 0; i < numberOfWrites; i++ {
-		request := makeWriteRequest(0, 30, 20, 0)
+		request := makeWriteRequest(0, 30, 20, 10)
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
 		require.True(t, ok)
@@ -719,7 +719,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[2].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
 
 	for i := 0; i < numberOfWrites; i++ {
-		request := makeWriteRequest(0, 300, 200, 0)
+		request := makeWriteRequest(0, 300, 200, 10)
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
 		require.True(t, ok)
@@ -732,7 +732,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[2].happy.Store(true)
 
 	for i := 0; i < numberOfWrites; i++ {
-		request := makeWriteRequest(0, 30, 20, 0)
+		request := makeWriteRequest(0, 30, 20, 10)
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
 		require.True(t, ok)
@@ -745,7 +745,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[2].happy.Store(true)
 
 	for i := 0; i < 1; i++ {
-		request := makeWriteRequest(0, 30, 20, 0)
+		request := makeWriteRequest(0, 30, 20, 10)
 		_, err := d.Push(ctx, request)
 		require.NoError(t, err)
 	}
@@ -776,7 +776,7 @@ func TestPush_QuorumError(t *testing.T) {
 	}
 
 	for i := 0; i < numberOfWrites; i++ {
-		request := makeWriteRequest(0, 30, 20, 0)
+		request := makeWriteRequest(0, 30, 20, 10)
 		_, err := d.Push(ctx, request)
 		require.Error(t, err)
 		status, ok := status.FromError(err)

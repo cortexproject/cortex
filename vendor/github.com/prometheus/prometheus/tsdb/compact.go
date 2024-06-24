@@ -58,23 +58,19 @@ type Compactor interface {
 	// Results returned when compactions are in progress are undefined.
 	Plan(dir string) ([]string, error)
 
-	// Write persists one or more Blocks into a directory.
-	// No Block is written when resulting Block has 0 samples and returns an empty slice.
-	// Prometheus always return one or no block. The interface allows returning more than one
-	// block for downstream users to experiment with compactor.
-	Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+	// Write persists a Block into a directory.
+	// No Block is written when resulting Block has 0 samples, and returns empty ulid.ULID{}.
+	Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) (ulid.ULID, error)
 
 	// Compact runs compaction against the provided directories. Must
 	// only be called concurrently with results of Plan().
 	// Can optionally pass a list of already open blocks,
 	// to avoid having to reopen them.
-	// Prometheus always return one or no block. The interface allows returning more than one
-	// block for downstream users to experiment with compactor.
-	// When one resulting Block has 0 samples
+	// When resulting Block has 0 samples
 	//  * No block is written.
 	//  * The source dirs are marked Deletable.
-	//  * Block is not included in the result.
-	Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+	//  * Returns empty ulid.ULID{}.
+	Compact(dest string, dirs []string, open []*Block) (ulid.ULID, error)
 }
 
 // LeveledCompactor implements the Compactor interface.
@@ -445,11 +441,11 @@ func CompactBlockMetas(uid ulid.ULID, blocks ...*BlockMeta) *BlockMeta {
 
 // Compact creates a new block in the compactor's directory from the blocks in the
 // provided directories.
-func (c *LeveledCompactor) Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error) {
+func (c *LeveledCompactor) Compact(dest string, dirs []string, open []*Block) (uid ulid.ULID, err error) {
 	return c.CompactWithBlockPopulator(dest, dirs, open, DefaultBlockPopulator{})
 }
 
-func (c *LeveledCompactor) CompactWithBlockPopulator(dest string, dirs []string, open []*Block, blockPopulator BlockPopulator) ([]ulid.ULID, error) {
+func (c *LeveledCompactor) CompactWithBlockPopulator(dest string, dirs []string, open []*Block, blockPopulator BlockPopulator) (uid ulid.ULID, err error) {
 	var (
 		blocks []BlockReader
 		bs     []*Block
@@ -461,7 +457,7 @@ func (c *LeveledCompactor) CompactWithBlockPopulator(dest string, dirs []string,
 	for _, d := range dirs {
 		meta, _, err := readMetaFile(d)
 		if err != nil {
-			return nil, err
+			return uid, err
 		}
 
 		var b *Block
@@ -479,7 +475,7 @@ func (c *LeveledCompactor) CompactWithBlockPopulator(dest string, dirs []string,
 			var err error
 			b, err = OpenBlock(c.logger, d, c.chunkPool)
 			if err != nil {
-				return nil, err
+				return uid, err
 			}
 			defer b.Close()
 		}
@@ -490,10 +486,10 @@ func (c *LeveledCompactor) CompactWithBlockPopulator(dest string, dirs []string,
 		uids = append(uids, meta.ULID.String())
 	}
 
-	uid := ulid.MustNew(ulid.Now(), rand.Reader)
+	uid = ulid.MustNew(ulid.Now(), rand.Reader)
 
 	meta := CompactBlockMetas(uid, metas...)
-	err := c.write(dest, meta, blockPopulator, blocks...)
+	err = c.write(dest, meta, blockPopulator, blocks...)
 	if err == nil {
 		if meta.Stats.NumSamples == 0 {
 			for _, b := range bs {
@@ -507,25 +503,25 @@ func (c *LeveledCompactor) CompactWithBlockPopulator(dest string, dirs []string,
 				}
 				b.numBytesMeta = n
 			}
+			uid = ulid.ULID{}
 			level.Info(c.logger).Log(
 				"msg", "compact blocks resulted in empty block",
 				"count", len(blocks),
 				"sources", fmt.Sprintf("%v", uids),
 				"duration", time.Since(start),
 			)
-			return nil, nil
+		} else {
+			level.Info(c.logger).Log(
+				"msg", "compact blocks",
+				"count", len(blocks),
+				"mint", meta.MinTime,
+				"maxt", meta.MaxTime,
+				"ulid", meta.ULID,
+				"sources", fmt.Sprintf("%v", uids),
+				"duration", time.Since(start),
+			)
 		}
-
-		level.Info(c.logger).Log(
-			"msg", "compact blocks",
-			"count", len(blocks),
-			"mint", meta.MinTime,
-			"maxt", meta.MaxTime,
-			"ulid", meta.ULID,
-			"sources", fmt.Sprintf("%v", uids),
-			"duration", time.Since(start),
-		)
-		return []ulid.ULID{uid}, nil
+		return uid, nil
 	}
 
 	errs := tsdb_errors.NewMulti(err)
@@ -537,10 +533,10 @@ func (c *LeveledCompactor) CompactWithBlockPopulator(dest string, dirs []string,
 		}
 	}
 
-	return nil, errs.Err()
+	return uid, errs.Err()
 }
 
-func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error) {
+func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) (ulid.ULID, error) {
 	start := time.Now()
 
 	uid := ulid.MustNew(ulid.Now(), rand.Reader)
@@ -564,7 +560,7 @@ func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, b
 
 	err := c.write(dest, meta, DefaultBlockPopulator{}, b)
 	if err != nil {
-		return nil, err
+		return uid, err
 	}
 
 	if meta.Stats.NumSamples == 0 {
@@ -574,7 +570,7 @@ func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, b
 			"maxt", meta.MaxTime,
 			"duration", time.Since(start),
 		)
-		return nil, nil
+		return ulid.ULID{}, nil
 	}
 
 	level.Info(c.logger).Log(
@@ -585,7 +581,7 @@ func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, b
 		"duration", time.Since(start),
 		"ooo", meta.Compaction.FromOutOfOrder(),
 	)
-	return []ulid.ULID{uid}, nil
+	return uid, nil
 }
 
 // instrumentedChunkWriter is used for level 1 compactions to record statistics

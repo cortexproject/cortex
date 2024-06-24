@@ -447,7 +447,16 @@ func labelNamesWithMatchers(ctx context.Context, r IndexReader, matchers ...*lab
 	if err != nil {
 		return nil, err
 	}
-	return r.LabelNamesFor(ctx, p)
+
+	var postings []storage.SeriesRef
+	for p.Next() {
+		postings = append(postings, p.At())
+	}
+	if err := p.Err(); err != nil {
+		return nil, fmt.Errorf("postings for label names with matchers: %w", err)
+	}
+
+	return r.LabelNamesFor(ctx, postings...)
 }
 
 // seriesData, used inside other iterators, are updated when we move from one series to another.

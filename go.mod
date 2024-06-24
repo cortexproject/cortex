@@ -46,7 +46,7 @@ require (
 	github.com/prometheus/client_model v0.6.1
 	github.com/prometheus/common v0.54.1-0.20240615204547-04635d2962f9
 	// Prometheus maps version 2.x.y to tags v0.x.y.
-	github.com/prometheus/prometheus v0.52.2-0.20240614130246-4c1e71fa0b3d
+	github.com/prometheus/prometheus v0.53.0
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/afero v1.11.0

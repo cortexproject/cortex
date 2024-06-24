@@ -510,19 +510,9 @@ func isAmzHeader(headerKey string) bool {
 	return strings.HasPrefix(key, "x-amz-meta-") || strings.HasPrefix(key, "x-amz-grant-") || key == "x-amz-acl" || isSSEHeader(headerKey) || strings.HasPrefix(key, "x-amz-checksum-")
 }
 
-var supportedReplicationEncryptionHeaders = map[string]bool{
-	"x-minio-replication-server-side-encryption-sealed-key":     true,
-	"x-minio-replication-server-side-encryption-seal-algorithm": true,
-	"x-minio-replication-server-side-encryption-iv":             true,
-	"x-minio-replication-encrypted-multipart":                   true,
-	"x-minio-replication-actual-object-size":                    true,
-	// Add more supported headers here.
-	// Must be lower case.
-}
-
-// isValidReplicationEncryptionHeader returns true if header is one of valid replication encryption headers
-func isValidReplicationEncryptionHeader(headerKey string) bool {
-	return supportedReplicationEncryptionHeaders[strings.ToLower(headerKey)]
+// isMinioHeader returns true if header is x-minio- header.
+func isMinioHeader(headerKey string) bool {
+	return strings.HasPrefix(strings.ToLower(headerKey), "x-minio-")
 }
 
 // supportedQueryValues is a list of query strings that can be passed in when using GetObject.

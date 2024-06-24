@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -146,56 +145,55 @@ func TestDistributorQueryableFilter(t *testing.T) {
 func TestIngesterStreaming(t *testing.T) {
 	t.Parallel()
 
-	// We need to make sure that there is at least one chunk present,
-	// else no series will be selected.
-	promChunk := chunkenc.NewXORChunk()
-	appender, err := promChunk.Appender()
-	require.NoError(t, err)
-	appender.Append(int64(model.ZeroSamplePair.Timestamp), float64(model.ZeroSamplePair.Value))
+	now := time.Now()
+	for _, enc := range encodings {
+		promChunk := util.GenerateChunk(t, time.Second, model.TimeFromUnix(now.Unix()), 10, enc)
+		clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{promChunk})
+		require.NoError(t, err)
 
-	clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{
-		chunk.NewChunk(nil, promChunk, model.Earliest, model.Earliest),
-	})
-	require.NoError(t, err)
-
-	d := &MockDistributor{}
-	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		&client.QueryStreamResponse{
-			Chunkseries: []client.TimeSeriesChunk{
-				{
-					Labels: []cortexpb.LabelAdapter{
-						{Name: "bar", Value: "baz"},
+		d := &MockDistributor{}
+		d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+			&client.QueryStreamResponse{
+				Chunkseries: []client.TimeSeriesChunk{
+					{
+						Labels: []cortexpb.LabelAdapter{
+							{Name: "bar", Value: "baz"},
+						},
+						Chunks: clientChunks,
 					},
-					Chunks: clientChunks,
-				},
-				{
-					Labels: []cortexpb.LabelAdapter{
-						{Name: "foo", Value: "bar"},
+					{
+						Labels: []cortexpb.LabelAdapter{
+							{Name: "foo", Value: "bar"},
+						},
+						Chunks: clientChunks,
 					},
-					Chunks: clientChunks,
 				},
 			},
-		},
-		nil)
+			nil)
 
-	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, 0)
-	querier, err := queryable.Querier(mint, maxt)
-	require.NoError(t, err)
+		ctx := user.InjectOrgID(context.Background(), "0")
+		queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, 0)
+		querier, err := queryable.Querier(mint, maxt)
+		require.NoError(t, err)
 
-	seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
-	require.NoError(t, seriesSet.Err())
+		seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
+		require.NoError(t, seriesSet.Err())
 
-	require.True(t, seriesSet.Next())
-	series := seriesSet.At()
-	require.Equal(t, labels.Labels{{Name: "bar", Value: "baz"}}, series.Labels())
+		require.True(t, seriesSet.Next())
+		series := seriesSet.At()
+		require.Equal(t, labels.Labels{{Name: "bar", Value: "baz"}}, series.Labels())
+		chkIter := series.Iterator(nil)
+		require.Equal(t, enc.ChunkValueType(), chkIter.Next())
 
-	require.True(t, seriesSet.Next())
-	series = seriesSet.At()
-	require.Equal(t, labels.Labels{{Name: "foo", Value: "bar"}}, series.Labels())
+		require.True(t, seriesSet.Next())
+		series = seriesSet.At()
+		require.Equal(t, labels.Labels{{Name: "foo", Value: "bar"}}, series.Labels())
+		chkIter = series.Iterator(chkIter)
+		require.Equal(t, enc.ChunkValueType(), chkIter.Next())
 
-	require.False(t, seriesSet.Next())
-	require.NoError(t, seriesSet.Err())
+		require.False(t, seriesSet.Next())
+		require.NoError(t, seriesSet.Err())
+	}
 }
 
 func TestDistributorQuerier_LabelNames(t *testing.T) {

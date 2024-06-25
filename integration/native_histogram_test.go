@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
-	"github.com/prometheus/prometheus/prompb"
 )
 
 func TestNativeHistogramIngestionAndQuery(t *testing.T) {

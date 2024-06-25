@@ -552,7 +552,7 @@ github.com/hashicorp/errwrap
 # github.com/hashicorp/go-cleanhttp v0.5.2
 ## explicit; go 1.13
 github.com/hashicorp/go-cleanhttp
-# github.com/hashicorp/go-hclog v1.5.0
+# github.com/hashicorp/go-hclog v1.6.3
 ## explicit; go 1.13
 github.com/hashicorp/go-hclog
 # github.com/hashicorp/go-immutable-radix v1.3.1
@@ -821,7 +821,7 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.52.2-0.20240614130246-4c1e71fa0b3d
+# github.com/prometheus/prometheus v0.53.1-0.20240625160125-1abeebacb870
 ## explicit; go 1.21
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery

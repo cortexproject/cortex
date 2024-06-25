@@ -15,14 +15,17 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 )
 
 func RunCommandAndGetOutput(name string, args ...string) ([]byte, error) {
@@ -142,6 +145,46 @@ func GenerateSeries(name string, ts time.Time, additionalLabels ...prompb.Label)
 		Metric:    metric,
 		Value:     model.SampleValue(value),
 		Timestamp: model.Time(tsMillis),
+	})
+
+	return
+}
+
+func GenerateHistogramSeries(name string, ts time.Time, floatHistogram bool, additionalLabels ...prompb.Label) (series []prompb.TimeSeries) {
+	tsMillis := TimeToMilliseconds(ts)
+	i := rand.Uint32()
+
+	lbls := append(
+		[]prompb.Label{
+			{Name: labels.MetricName, Value: name},
+		},
+		additionalLabels...,
+	)
+
+	// Generate the expected vector when querying it
+	metric := model.Metric{}
+	metric[labels.MetricName] = model.LabelValue(name)
+	for _, lbl := range additionalLabels {
+		metric[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
+
+	var (
+		h  *histogram.Histogram
+		fh *histogram.FloatHistogram
+		ph prompb.Histogram
+	)
+	if floatHistogram {
+		fh = histogram_util.GenerateTestFloatHistogram(int(i))
+		ph = remote.FloatHistogramToHistogramProto(tsMillis, fh)
+	} else {
+		h = histogram_util.GenerateTestHistogram(int(i))
+		ph = remote.HistogramToHistogramProto(tsMillis, h)
+	}
+
+	// Generate the series
+	series = append(series, prompb.TimeSeries{
+		Labels:     lbls,
+		Histograms: []prompb.Histogram{ph},
 	})
 
 	return

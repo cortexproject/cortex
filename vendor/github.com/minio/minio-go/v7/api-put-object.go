@@ -106,7 +106,11 @@ func (opts *PutObjectOptions) SetMatchETag(etag string) {
 	if opts.customHeaders == nil {
 		opts.customHeaders = http.Header{}
 	}
-	opts.customHeaders.Set("If-Match", "\""+etag+"\"")
+	if etag == "*" {
+		opts.customHeaders.Set("If-Match", "*")
+	} else {
+		opts.customHeaders.Set("If-Match", "\""+etag+"\"")
+	}
 }
 
 // SetMatchETagExcept if etag does not match while PUT MinIO returns an
@@ -116,7 +120,11 @@ func (opts *PutObjectOptions) SetMatchETagExcept(etag string) {
 	if opts.customHeaders == nil {
 		opts.customHeaders = http.Header{}
 	}
-	opts.customHeaders.Set("If-None-Match", "\""+etag+"\"")
+	if etag == "*" {
+		opts.customHeaders.Set("If-None-Match", "*")
+	} else {
+		opts.customHeaders.Set("If-None-Match", "\""+etag+"\"")
+	}
 }
 
 // getNumThreads - gets the number of threads to be used in the multipart
@@ -212,7 +220,7 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 	}
 
 	for k, v := range opts.UserMetadata {
-		if isAmzHeader(k) || isStandardHeader(k) || isStorageClassHeader(k) || isValidReplicationEncryptionHeader(k) {
+		if isAmzHeader(k) || isStandardHeader(k) || isStorageClassHeader(k) || isMinioHeader(k) {
 			header.Set(k, v)
 		} else {
 			header.Set("x-amz-meta-"+k, v)
@@ -230,7 +238,7 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 // validate() checks if the UserMetadata map has standard headers or and raises an error if so.
 func (opts PutObjectOptions) validate() (err error) {
 	for k, v := range opts.UserMetadata {
-		if !httpguts.ValidHeaderFieldName(k) || isStandardHeader(k) || isSSEHeader(k) || isStorageClassHeader(k) || isValidReplicationEncryptionHeader(k) {
+		if !httpguts.ValidHeaderFieldName(k) || isStandardHeader(k) || isSSEHeader(k) || isStorageClassHeader(k) || isMinioHeader(k) {
 			return errInvalidArgument(k + " unsupported user defined metadata name")
 		}
 		if !httpguts.ValidHeaderFieldValue(v) {

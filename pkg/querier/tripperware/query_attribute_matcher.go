@@ -15,7 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-const queryRejectErrorMessage = "This query has been rejected by the service operator. Please contact customer support for more information."
+const QueryRejectErrorMessage = "This query has been rejected by the service operator. Please contact customer support for more information."
 
 func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time.Duration, limits Limits, userStr string, rejectedQueriesPerTenant *prometheus.CounterVec) error {
 	if limits == nil || !(limits.QueryPriority(userStr).Enabled || limits.QueryRejection(userStr).Enabled) {
@@ -35,7 +35,7 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 			for _, attribute := range queryReject.QueryAttributes {
 				if matchAttributeForExpressionQuery(attribute, r, query, expr, now, minTime, maxTime) {
 					rejectedQueriesPerTenant.WithLabelValues(op, userStr).Inc()
-					return httpgrpc.Errorf(http.StatusUnprocessableEntity, queryRejectErrorMessage)
+					return httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage)
 				}
 			}
 		}
@@ -61,7 +61,7 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 		for _, attribute := range queryReject.QueryAttributes {
 			if matchAttributeForMetadataQuery(attribute, r, now) {
 				rejectedQueriesPerTenant.WithLabelValues(op, userStr).Inc()
-				return httpgrpc.Errorf(http.StatusUnprocessableEntity, queryRejectErrorMessage)
+				return httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage)
 			}
 		}
 	}
@@ -123,13 +123,20 @@ func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, r *ht
 }
 
 func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, r *http.Request, now time.Time) bool {
+	if err := r.ParseForm(); err != nil {
+		return false
+	}
 	if attribute.Regex != "" && attribute.Regex != ".*" && attribute.CompiledRegex != nil {
+		atLeastOneMatched := false
 		for _, matcher := range r.Form["match[]"] {
 			if attribute.CompiledRegex.MatchString(matcher) {
+				atLeastOneMatched = true
 				break
 			}
 		}
-		return false
+		if !atLeastOneMatched {
+			return false
+		}
 	}
 
 	startTime, _ := util.ParseTime(r.FormValue("start"))
@@ -199,36 +206,33 @@ func isWithinQueryStepLimit(queryStepLimit validation.QueryStepLimit, r *http.Re
 	if queryStepLimit.Min == 0 && queryStepLimit.Max == 0 {
 		return true
 	}
+	var stepLimitChecked bool
 
-	step, err := util.ParseDurationMs(r.FormValue("step"))
-	if err != nil {
-		return false
-	}
-	if queryStepLimit.Min != 0 && time.Duration(queryStepLimit.Min).Milliseconds() > step {
-		return false
-	}
-	if queryStepLimit.Max != 0 && time.Duration(queryStepLimit.Max).Milliseconds() < step {
-		return false
+	if step, err := util.ParseDurationMs(r.FormValue("step")); err == nil {
+		if queryStepLimit.Min != 0 && time.Duration(queryStepLimit.Min).Milliseconds() > step {
+			return false
+		}
+		if queryStepLimit.Max != 0 && time.Duration(queryStepLimit.Max).Milliseconds() < step {
+			return false
+		}
+		stepLimitChecked = true
 	}
 
-	var subQueryStep time.Duration
+	subQueryStepWithinLimit := true
 	parser.Inspect(expr, func(node parser.Node, nodes []parser.Node) error {
 		e, ok := node.(*parser.SubqueryExpr)
-		if ok {
-			subQueryStep = e.Step
-			return err
+		if ok && e.Step != 0 {
+			if queryStepLimit.Min != 0 && time.Duration(queryStepLimit.Min) > e.Step {
+				subQueryStepWithinLimit = false
+			}
+			if queryStepLimit.Max != 0 && time.Duration(queryStepLimit.Max) < e.Step {
+				subQueryStepWithinLimit = false
+			}
+			stepLimitChecked = true
+			return nil
 		}
 		return nil
 	})
 
-	if subQueryStep != 0 {
-		if queryStepLimit.Min != 0 && time.Duration(queryStepLimit.Min) > subQueryStep {
-			return false
-		}
-		if queryStepLimit.Max != 0 && time.Duration(queryStepLimit.Max) < subQueryStep {
-			return false
-		}
-	}
-
-	return true
+	return stepLimitChecked && subQueryStepWithinLimit
 }

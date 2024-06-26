@@ -2,6 +2,7 @@ package tripperware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -21,7 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-var rejectedQueriesPerTenant = prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"})
+var rejectedQueriesPerTenant = prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"op", "user"})
 
 func Test_rejectQueryOrSetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInvalidQueryString(t *testing.T) {
 
@@ -81,6 +82,135 @@ func Test_rejectQueryOrSetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInval
 			reqStats, ctx := stats.ContextWithEmptyStats(context.Background())
 			req = req.WithContext(ctx)
 			limits.queryPriority.Enabled = testData.queryPriorityEnabled
+			limits.queryRejection.Enabled = testData.queryRejectionEnabled
+			resultErr := rejectQueryOrSetPriority(req, time.Now(), time.Duration(1), limits, "", rejectedQueriesPerTenant)
+			assert.Equal(t, testData.expectedError, resultErr)
+			assert.Equal(t, testData.expectedPriority, reqStats.Priority)
+		})
+	}
+}
+
+func Test_rejectQueryOrSetPriorityShouldRejectIfMatches(t *testing.T) {
+	now := time.Now()
+	limits := mockLimits{
+		queryRejection: validation.QueryRejection{
+			Enabled:         false,
+			QueryAttributes: []validation.QueryAttribute{},
+		},
+	}
+
+	type testCase struct {
+		queryRejectionEnabled bool
+		path                  string
+		expectedError         error
+		expectedPriority      int64
+		rejectQueryAttribute  validation.QueryAttribute
+	}
+
+	tests := map[string]testCase{
+
+		"should not reject if query rejection not enabled": {
+			queryRejectionEnabled: false,
+			path:                  "/api/v1/query_range?start=1536716898&end=1536729898&step=7s&query=avg_over_time%28rate%28node_cpu_seconds_total%5B1m%5D%29%5B10m%3A5s%5D%29",
+			expectedError:         nil,
+			rejectQueryAttribute: validation.QueryAttribute{
+				Regex:         ".*",
+				CompiledRegex: regexp.MustCompile(".*"),
+			},
+		},
+
+		"should reject if query rejection enabled with all query match regex": {
+			queryRejectionEnabled: true,
+			path:                  "/api/v1/query_range?start=1536716898&end=1536729898&step=7s&query=avg_over_time%28rate%28node_cpu_seconds_total%5B1m%5D%29%5B10m%3A5s%5D%29",
+			expectedError:         httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage),
+			rejectQueryAttribute: validation.QueryAttribute{
+				Regex:         ".*",
+				CompiledRegex: regexp.MustCompile(".*"),
+			},
+		},
+
+		"should reject if query rejection enabled with step limit and query match": {
+			queryRejectionEnabled: true,
+			path:                  "/api/v1/query_range?start=1536716898&end=1536729898&step=7s&query=count%28sum%28up%29%29", //count(sum(up))
+			expectedError:         httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage),
+			rejectQueryAttribute: validation.QueryAttribute{
+				QueryStepLimit: validation.QueryStepLimit{
+					Min: model.Duration(time.Second * 5),
+					Max: model.Duration(time.Minute * 2),
+				},
+			},
+		},
+
+		"should reject if query rejection enabled with min step limit and query match": {
+			queryRejectionEnabled: true,
+			path:                  "/api/v1/query_range?start=1536716898&end=1536729898&step=7m&query=count%28sum%28up%29%29", //count(sum(up))
+			expectedError:         httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage),
+			rejectQueryAttribute: validation.QueryAttribute{
+				QueryStepLimit: validation.QueryStepLimit{
+					Min: model.Duration(time.Minute * 5),
+				},
+			},
+		},
+
+		"should reject if query rejection enabled with step limit and subQuery step match": {
+			queryRejectionEnabled: true,
+			path:                  "/api/v1/query?time=1536716898&query=avg_over_time%28rate%28node_cpu_seconds_total%5B1m%5D%29%5B10m%3A5s%5D%29", //avg_over_time(rate(node_cpu_seconds_total[1m])[10m:5s])
+			expectedError:         httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage),
+			rejectQueryAttribute: validation.QueryAttribute{
+				QueryStepLimit: validation.QueryStepLimit{
+					Min: model.Duration(time.Second * 5),
+					Max: model.Duration(time.Minute * 2),
+				},
+			},
+		},
+
+		"should not reject if query rejection enabled with step limit and subQuery step does not match": {
+			queryRejectionEnabled: true,
+			path:                  "/api/v1/query?time=1536716898&query=avg_over_time%28rate%28node_cpu_seconds_total%5B1m%5D%29%5B10m%3A5s%5D%29", //avg_over_time(rate(node_cpu_seconds_total[1m])[10m:5s])
+			expectedError:         nil,
+			rejectQueryAttribute: validation.QueryAttribute{
+				QueryStepLimit: validation.QueryStepLimit{
+					Min: model.Duration(time.Second * 6),
+					Max: model.Duration(time.Minute * 2),
+				},
+			},
+		},
+
+		"should reject if query rejection enabled with time window matching": {
+			queryRejectionEnabled: true,
+			path:                  fmt.Sprintf("/api/v1/query_range?start=%d&end=%d&step=7s&query=%s", now.Add(-30*time.Minute).UnixMilli()/1000, now.Add(-20*time.Minute).UnixMilli()/1000, url.QueryEscape("count(sum(up))")),
+			expectedError:         httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage),
+			rejectQueryAttribute: validation.QueryAttribute{
+				TimeWindow: validation.TimeWindow{
+					Start: model.Duration(45 * time.Minute),
+					End:   model.Duration(15 * time.Minute),
+				},
+			},
+		},
+
+		"should reject if query rejection regex matches match[] of series request and time window": {
+			queryRejectionEnabled: true,
+			path:                  fmt.Sprintf("/api/v1/series?start=%d&end=%d&step=7s&match[]=%s", now.Add(-30*time.Minute).UnixMilli()/1000, now.Add(-20*time.Minute).UnixMilli()/1000, url.QueryEscape("count(sum(up))")),
+			expectedError:         httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage),
+			rejectQueryAttribute: validation.QueryAttribute{
+				Regex:         ".*sum.*",
+				CompiledRegex: regexp.MustCompile(".*sum.*"),
+				TimeWindow: validation.TimeWindow{
+					Start: model.Duration(45 * time.Minute),
+					End:   model.Duration(15 * time.Minute),
+				},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			req, err := http.NewRequest("GET", testData.path, http.NoBody)
+			require.NoError(t, err)
+			reqStats, ctx := stats.ContextWithEmptyStats(context.Background())
+			req = req.WithContext(ctx)
+			limits.queryRejection.Enabled = testData.queryRejectionEnabled
+			limits.queryRejection.QueryAttributes = []validation.QueryAttribute{testData.rejectQueryAttribute}
 			resultErr := rejectQueryOrSetPriority(req, time.Now(), time.Duration(1), limits, "", rejectedQueriesPerTenant)
 			assert.Equal(t, testData.expectedError, resultErr)
 			assert.Equal(t, testData.expectedPriority, reqStats.Priority)
@@ -355,12 +485,11 @@ func Test_isWithinQueryStepLimit(t *testing.T) {
 			expectedResult: false,
 		},
 		"should not match if step limit set and subquery step is not within the range": {
-			step:           "15s",
 			queryString:    "up[60m:2s]",
 			queryStepLimit: queryStepLimit,
 			expectedResult: false,
 		},
-		"should match if step limit set and both query step and subquery step is within the range": {
+		"should match if step limit set and subquery step is within the range": {
 			step:           "15s",
 			queryString:    "up[60m:1m]",
 			queryStepLimit: queryStepLimit,
@@ -371,7 +500,9 @@ func Test_isWithinQueryStepLimit(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			params := url.Values{}
-			params.Add("step", testData.step)
+			if testData.step != "" {
+				params.Add("step", testData.step)
+			}
 			req, err := http.NewRequest("POST", "/query?"+params.Encode(), http.NoBody)
 			require.NoError(t, err)
 

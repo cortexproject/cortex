@@ -4,6 +4,8 @@
 package integration
 
 import (
+	"bytes"
+	"context"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
@@ -14,6 +16,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/thanos-io/objstore/providers/s3"
+
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
@@ -584,4 +590,222 @@ func TestQueryFrontendMaxQueryLengthLimits(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.Contains(t, string(body), "the query time range exceeds the limit")
+}
+
+func TestQueryFrontendQueryRejection(t *testing.T) {
+	configFileName := "runtime-config.yaml"
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-runtime-config.backend":              "s3",
+		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-runtime-config.s3.bucket-name":       bucketName,
+		"-runtime-config.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-runtime-config.s3.insecure":          "true",
+		"-runtime-config.file":                 configFileName,
+		"-runtime-config.reload-period":        "1s",
+	})
+
+	client, err := s3.NewBucketWithConfig(nil, s3.Config{
+		Endpoint:  minio.HTTPEndpoint(),
+		Insecure:  true,
+		Bucket:    bucketName,
+		AccessKey: e2edb.MinioAccessKey,
+		SecretKey: e2edb.MinioSecretKey,
+	}, "runtime-config-test")
+
+	require.NoError(t, err)
+
+	// update runtime config
+	newRuntimeConfig := []byte(`overrides:
+  user-1:
+    query_rejection:
+      enabled: true
+      query_attributes:
+        - regex: .*rate.*
+          query_step_limit:
+           min: 6s
+           max: 20m
+          dashboard_uid: "dash123"
+`)
+	require.NoError(t, client.Upload(context.Background(), configFileName, bytes.NewReader(newRuntimeConfig)))
+	time.Sleep(2 * time.Second)
+
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	flags["-querier.frontend-address"] = queryFrontend.NetworkGRPCEndpoint()
+
+	// Start all other services.
+	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", flags, "")
+	querier := e2ecortex.NewQuerierWithConfigFile("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", flags, "")
+
+	require.NoError(t, s.StartAndWaitReady(querier, ingester))
+	require.NoError(t, s.WaitReady(queryFrontend))
+
+	// Wait until querier have updated the ring.
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1", "X-Dashboard-Uid", "dash123", "User-Agent", "grafana-agent/v0.19.0")
+	require.NoError(t, err)
+
+	now := time.Now()
+	// We expect request to be rejected as it matches query_attribute of query_rejection (contains rate, step limit within 6s and 20h and contains dashboard header dash123).
+	// Query shouldn't be checked against attributes that is not provided in query_attribute config(time_window, time_range_limit, user_agent_regex, panel_id)
+	resp, body, err := c.QueryRaw(`min_over_time( rate(http_requests_total[5m])[30m:1m] )`, now)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request to succeed as it doesn't match query rejection(no step limit).
+	resp, body, err = c.QueryRaw(`rate(test[30d])`, now)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// update runtime config
+	newRuntimeConfig = []byte(`overrides:
+  user-1:
+    query_rejection:
+      enabled: true
+      query_attributes:
+        - regex: .*rate.*
+          time_window:
+           start: 12h
+           end: 0h
+          time_range_limit:
+           min: 2h
+           max: 6h
+          query_step_limit:
+           min: 22m
+          dashboard_uid: "dash123"
+          user_agent_regex: "grafana.*"
+`)
+	require.NoError(t, client.Upload(context.Background(), configFileName, bytes.NewReader(newRuntimeConfig)))
+	time.Sleep(2 * time.Second)
+
+	// We expect request to be rejected, as it matches query_attribute (contains 'rate', within time_window(11h-8h), within time range(3h), within step limit(25m>22m), contains dashboard header(dash123) and user-agent matches regex).
+	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request not to be rejected, as it doesn't match query step limit (min is 22m, and actual step is 20m)
+	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 20*time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request not to be rejected, as it goes beyond time_window(-15h is outside of 12h-0h window)
+	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-15*time.Hour), now.Add(-8*time.Hour), 25*time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request not to be rejected as it goes beyond time-range(9h is bigger than max time range of 6h)
+	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-2*time.Hour), 25*time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request not to be rejected, as it doesn't match regex (doesn't contain 'rate')
+	resp, body, err = c.QueryRangeRaw(`increase(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	goClient, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1", "X-Dashboard-Uid", "dash123", "User-Agent", "go-client/v0.19.0")
+	require.NoError(t, err)
+
+	// We expect request not to be rejected, as it doesn't match user-agent regex (doesn't contain 'grafana')
+	resp, body, err = goClient.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	newDashboardClient, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1", "X-Dashboard-Uid", "new-dashboard", "User-Agent", "grafana-agent/v0.19.0")
+	require.NoError(t, err)
+
+	// We expect request not to be rejected, as it doesn't match grafana dashboard uid ('dash123' != 'new-dashboard')
+	resp, body, err = newDashboardClient.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	metadataClient, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1", "User-Agent", "grafana-agent/v0.19.0")
+	require.NoError(t, err)
+
+	// We expect request to be rejected for series request, as it has at least one matcher matching regex(contains 'rate'), within time_window(11h-8h, within time_range(3h).
+	// query_step_limit, dashboard_uid, panel_id fields are ignored for metadata queries.
+	resp, body, err = metadataClient.SeriesRaw([]string{`http_requests_rate_total{job="prometheus"}`}, now.Add(-11*time.Hour), now.Add(-8*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request not to be rejected for series request as it does not have at least one matcher matching regex
+	resp, body, err = metadataClient.SeriesRaw([]string{`http_requests_total{job="prometheus"}`}, now.Add(-11*time.Hour), now.Add(-8*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request to be rejected for labels request, as it has at least one matcher matching regex(contains 'rate'), within time_window(11h-8h, within time_range(3h).
+	// query_step_limit, dashboard_uid, panel_id properties are ignored for metadata queries.
+	resp, body, err = metadataClient.LabelNamesRaw([]string{`http_requests_rate_total{job="prometheus"}`}, now.Add(-11*time.Hour), now.Add(-8*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request not to be rejected if label/label_values request has no matcher, but rejection query_attribute has regex property specified.
+	// All the provided query_attributes fields that can be applied to metadata queries should match
+	resp, body, err = metadataClient.LabelNamesRaw([]string{}, now.Add(-11*time.Hour), now.Add(-8*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request not to be rejected if label/label_values request doesn't provide time but rejection query_attribute has time_window property
+	resp, body, err = metadataClient.LabelNamesRaw([]string{`http_requests_rate_total{job="prometheus"}`}, time.Time{}, time.Time{})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request not to be rejected if label/label_values request doesn't provide one of the time(startTime or endTime) but rejection query_attribute has both time_window limits
+	resp, body, err = metadataClient.LabelNamesRaw([]string{`http_requests_rate_total{job="prometheus"}`}, now.Add(-11*time.Hour), time.Time{})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// update runtime config
+	newRuntimeConfig = []byte(`overrides:
+  user-1:
+    query_rejection:
+      enabled: true
+      query_attributes:
+        - regex: .*rate.*
+          time_window:
+           start: 12h
+           end: 0h
+        - user_agent_regex: "grafana.*"
+`)
+	require.NoError(t, client.Upload(context.Background(), configFileName, bytes.NewReader(newRuntimeConfig)))
+	time.Sleep(2 * time.Second)
+
+	// We expect request to be rejected if any of the listed query_attributes configuration matches. Two query_attributes provided here, and doesn't match regex from first one, but matches second one.
+	// query rejection should consider only provided attributes.
+	// There is no regex, time_window, time_range_limit on second query_attribute. Only user_agent_regex provided so any query with this agent should be rejected
+	resp, body, err = metadataClient.LabelValuesRaw("cluster", []string{}, time.Time{}, time.Time{})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
+
 }

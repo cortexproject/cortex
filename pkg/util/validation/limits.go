@@ -63,22 +63,22 @@ type QueryPriority struct {
 type PriorityDef struct {
 	Priority         int64            `yaml:"priority" json:"priority" doc:"nocli|description=Priority level. Must be a unique value.|default=0"`
 	ReservedQueriers float64          `yaml:"reserved_queriers" json:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle priorities higher or equal to the priority level. Value between 0 and 1 will be used as a percentage.|default=0"`
-	QueryAttributes  []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query attributes that queries will be matched against. Query will be matched against each of those query attributes separately and if query matches any of them then it will be assigned to this priority."`
+	QueryAttributes  []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query_attributes to match and assign priority to queries. A query is assigned to this priority if it matches any query_attribute in this list. Each query_attribute has several properties (e.g., regex, time_window, user_agent), and all specified properties must match for a query_attribute to be considered a match. Only the specified keys are checked, and an AND operator is applied to them."`
 }
 
 type QueryRejection struct {
 	Enabled         bool             `yaml:"enabled" json:"enabled"`
-	QueryAttributes []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query attributes that queries will be matched against. Query will be matched against each of those query attributes separately and if query matches any of them then it will be rejected."`
+	QueryAttributes []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query_attributes to match and reject queries. A query is rejected if it matches any query_attribute in this list. Each query_attribute has several properties (e.g., regex, time_window, user_agent), and all specified properties must match for a query_attribute to be considered a match. Only the specified keys are checked, and an AND operator is applied to them."`
 }
 
 type QueryAttribute struct {
 	Regex                  string         `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string (or at least one of the matchers in metadata query) should match. If not set, it won't be checked."`
 	TimeWindow             TimeWindow     `yaml:"time_window" json:"time_window" doc:"nocli|description=Overall data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If not set, it won't be checked."`
-	TimeRangeLimit         TimeRangeLimit `yaml:"time_range_limit" json:"time_range_limit" doc:"nocli|description=Queries with time range that is within this limits will match. If not set, it won't be checked."`
-	QueryStepLimit         QueryStepLimit `yaml:"query_step_limit" json:"query_step_limit" doc:"nocli|description=Limit that query step should be within. It will check subquery steps as well. If not set, it won't be checked."`
-	UserAgentRegex         string         `yaml:"user_agent" json:"user_agent" doc:"nocli|description=Regex that User-Agent header of the request should match. If not set, it won't be checked."`
-	DashboardUID           string         `yaml:"dashboard_uid" json:"dashboard_uid" doc:"nocli|description=Grafana includes X-Dashboard-Uid header in query requests. If this field is provided then X-Dashboard-Uid header of request should match this value. If not set, it won't be checked."`
-	PanelID                string         `yaml:"panel_id" json:"panel_id" doc:"nocli|description=Grafana includes X-Panel-Id header in query requests. If this field is provided then X-Panel-Id header of request should match this value. If not set, it won't be checked."`
+	TimeRangeLimit         TimeRangeLimit `yaml:"time_range_limit" json:"time_range_limit" doc:"nocli|description=Query time range should be within this limit to match. If not set, it won't be checked."`
+	QueryStepLimit         QueryStepLimit `yaml:"query_step_limit" json:"query_step_limit" doc:"nocli|description=For range query, step should be within this limit to match. For instant query, subQuery step should be within this limit to match. If not set, it won't be checked. This attribute won't be applied to metadata queries."`
+	UserAgentRegex         string         `yaml:"user_agent_regex" json:"user_agent_regex" doc:"nocli|description=Regex that User-Agent header of the request should match. If not set, it won't be checked."`
+	DashboardUID           string         `yaml:"dashboard_uid" json:"dashboard_uid" doc:"nocli|description=Grafana includes X-Dashboard-Uid header in query requests. If this field is provided then X-Dashboard-Uid header of request should match this value. If not set, it won't be checked. This attribute won't be applied to metadata queries."`
+	PanelID                string         `yaml:"panel_id" json:"panel_id" doc:"nocli|description=Grafana includes X-Panel-Id header in query requests. If this field is provided then X-Panel-Id header of request should match this value. If not set, it won't be checked. This attribute won't be applied to metadata queries."`
 	CompiledRegex          *regexp.Regexp
 	CompiledUserAgentRegex *regexp.Regexp
 }

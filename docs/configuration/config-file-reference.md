@@ -5400,9 +5400,9 @@ time_range_limit:
   # 0, it won't be checked.
   [max: <int> | default = 0]
 
-# If query step provided should be within this limit to match. If query contains
-# subquery and it has steps provided, then it will be checked as well. If not
-# set, it won't be checked. This property won't be applied to metadata queries.
+# If query step provided should be within this limit to match. If not set, it
+# won't be checked. This property only applied to range queries and ignored for
+# other types of queries.
 query_step_limit:
   # Query step should be above or equal to this value to match. If set to 0, it
   # won't be checked.

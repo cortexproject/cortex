@@ -32,7 +32,7 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 
 		if queryReject := limits.QueryRejection(userStr); queryReject.Enabled && query != "" {
 			for _, attribute := range queryReject.QueryAttributes {
-				if matchAttributeForExpressionQuery(attribute, r, query, expr, now, minTime, maxTime) {
+				if matchAttributeForExpressionQuery(attribute, op, r, query, now, minTime, maxTime) {
 					rejectedQueriesPerTenant.WithLabelValues(op, userStr).Inc()
 					return httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage)
 				}
@@ -46,7 +46,7 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 		if queryPriority := limits.QueryPriority(userStr); queryPriority.Enabled && len(queryPriority.Priorities) != 0 && query != "" {
 			for _, priority := range queryPriority.Priorities {
 				for _, attribute := range priority.QueryAttributes {
-					if matchAttributeForExpressionQuery(attribute, r, query, expr, now, minTime, maxTime) {
+					if matchAttributeForExpressionQuery(attribute, op, r, query, now, minTime, maxTime) {
 						reqStats.SetPriority(priority.Priority)
 						return nil
 					}
@@ -85,7 +85,7 @@ func getOperation(r *http.Request) string {
 	}
 }
 
-func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, r *http.Request, query string, expr parser.Expr, now time.Time, minTime, maxTime int64) bool {
+func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, op string, r *http.Request, query string, now time.Time, minTime, maxTime int64) bool {
 	if attribute.Regex != "" && attribute.Regex != ".*" && attribute.Regex != ".+" {
 		if attribute.CompiledRegex != nil && !attribute.CompiledRegex.MatchString(query) {
 			return false
@@ -100,7 +100,7 @@ func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, r *ht
 		return false
 	}
 
-	if !isWithinQueryStepLimit(attribute.QueryStepLimit, r, expr) {
+	if op == "query_range" && !isWithinQueryStepLimit(attribute.QueryStepLimit, r) {
 		return false
 	}
 
@@ -201,37 +201,22 @@ func isWithinTimeRangeAttribute(limit validation.TimeRangeLimit, startTime, endT
 	return true
 }
 
-func isWithinQueryStepLimit(queryStepLimit validation.QueryStepLimit, r *http.Request, expr parser.Expr) bool {
+func isWithinQueryStepLimit(queryStepLimit validation.QueryStepLimit, r *http.Request) bool {
 	if queryStepLimit.Min == 0 && queryStepLimit.Max == 0 {
 		return true
 	}
-	var stepLimitChecked bool
 
-	if step, err := util.ParseDurationMs(r.FormValue("step")); err == nil {
-		if queryStepLimit.Min != 0 && time.Duration(queryStepLimit.Min).Milliseconds() > step {
-			return false
-		}
-		if queryStepLimit.Max != 0 && time.Duration(queryStepLimit.Max).Milliseconds() < step {
-			return false
-		}
-		stepLimitChecked = true
+	step, err := util.ParseDurationMs(r.FormValue("step"))
+	if err != nil {
+		return false
 	}
 
-	subQueryStepWithinLimit := true
-	parser.Inspect(expr, func(node parser.Node, nodes []parser.Node) error {
-		e, ok := node.(*parser.SubqueryExpr)
-		if ok && e.Step != 0 {
-			if queryStepLimit.Min != 0 && time.Duration(queryStepLimit.Min) > e.Step {
-				subQueryStepWithinLimit = false
-			}
-			if queryStepLimit.Max != 0 && time.Duration(queryStepLimit.Max) < e.Step {
-				subQueryStepWithinLimit = false
-			}
-			stepLimitChecked = true
-			return nil
-		}
-		return nil
-	})
+	if queryStepLimit.Min != 0 && time.Duration(queryStepLimit.Min).Milliseconds() > step {
+		return false
+	}
+	if queryStepLimit.Max != 0 && time.Duration(queryStepLimit.Max).Milliseconds() < step {
+		return false
+	}
 
-	return stepLimitChecked && subQueryStepWithinLimit
+	return true
 }

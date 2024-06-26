@@ -17,16 +17,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thanos-io/objstore/providers/s3"
-
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore/providers/s3"
 	"github.com/thanos-io/thanos/pkg/pool"
 
 	"github.com/cortexproject/cortex/integration/ca"
@@ -34,6 +31,7 @@ import (
 	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 type queryFrontendTestConfig struct {

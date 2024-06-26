@@ -347,12 +347,12 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.TokenBucketLimiter.InstanceTokenBucketSize, "blocks-storage.bucket-store.token-bucket-limiter.instance-token-bucket-size", int64(820*units.Mebibyte), "Instance token bucket size")
 	f.Int64Var(&cfg.TokenBucketLimiter.UserTokenBucketSize, "blocks-storage.bucket-store.token-bucket-limiter.user-token-bucket-size", int64(615*units.Mebibyte), "User token bucket size")
 	f.Int64Var(&cfg.TokenBucketLimiter.RequestTokenBucketSize, "blocks-storage.bucket-store.token-bucket-limiter.request-token-bucket-size", int64(4*units.Mebibyte), "Request token bucket size")
-	f.Float64Var(&cfg.TokenBucketLimiter.FetchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.fetched-postings-token-factor", 2, "Multiplication factor used for fetched postings token")
-	f.Float64Var(&cfg.TokenBucketLimiter.TouchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.touched-postings-token-factor", 2, "Multiplication factor used for touched postings token")
-	f.Float64Var(&cfg.TokenBucketLimiter.FetchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.fetched-series-token-factor", 2.5, "Multiplication factor used for fetched series token")
-	f.Float64Var(&cfg.TokenBucketLimiter.TouchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.touched-series-token-factor", 10, "Multiplication factor used for touched series token")
-	f.Float64Var(&cfg.TokenBucketLimiter.FetchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.fetched-chunks-token-factor", 0.5, "Multiplication factor used for fetched chunks token")
-	f.Float64Var(&cfg.TokenBucketLimiter.TouchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.touched-chunks-token-factor", 0.5, "Multiplication factor used for touched chunks token")
+	f.Float64Var(&cfg.TokenBucketLimiter.FetchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.fetched-postings-token-factor", 0, "Multiplication factor used for fetched postings token")
+	f.Float64Var(&cfg.TokenBucketLimiter.TouchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.touched-postings-token-factor", 5, "Multiplication factor used for touched postings token")
+	f.Float64Var(&cfg.TokenBucketLimiter.FetchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.fetched-series-token-factor", 0, "Multiplication factor used for fetched series token")
+	f.Float64Var(&cfg.TokenBucketLimiter.TouchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.touched-series-token-factor", 25, "Multiplication factor used for touched series token")
+	f.Float64Var(&cfg.TokenBucketLimiter.FetchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.fetched-chunks-token-factor", 0, "Multiplication factor used for fetched chunks token")
+	f.Float64Var(&cfg.TokenBucketLimiter.TouchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.touched-chunks-token-factor", 1, "Multiplication factor used for touched chunks token")
 }
 
 // Validate the config.

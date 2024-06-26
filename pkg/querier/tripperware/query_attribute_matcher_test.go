@@ -11,7 +11,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -162,11 +161,12 @@ func Test_rejectQueryOrSetPriorityShouldRejectIfMatches(t *testing.T) {
 			},
 		},
 
-		"should not reject if query rejection enabled with step limit and subQuery step does not match": {
+		"should ignore step limit for instant query, and reject if other properties of query_attribute matches": {
 			queryRejectionEnabled: true,
 			path:                  "/api/v1/query?time=1536716898&query=avg_over_time%28rate%28node_cpu_seconds_total%5B1m%5D%29%5B10m%3A5s%5D%29", //avg_over_time(rate(node_cpu_seconds_total[1m])[10m:5s])
-			expectedError:         nil,
+			expectedError:         httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage),
 			rejectQueryAttribute: validation.QueryAttribute{
+				Regex: ".*over_time.*",
 				QueryStepLimit: validation.QueryStepLimit{
 					Min: model.Duration(time.Second * 6),
 					Max: model.Duration(time.Minute * 2),
@@ -256,9 +256,7 @@ func Test_matchAttributeForExpressionQueryShouldMatchRegex(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			queryAttribute.Regex = testData.regex
 			queryAttribute.CompiledRegex = regexp.MustCompile(testData.regex)
-			expr, err := parser.ParseExpr(testData.query)
-			require.NoError(t, err)
-			priority := matchAttributeForExpressionQuery(queryAttribute, &http.Request{}, testData.query, expr, time.Time{}, 0, 0)
+			priority := matchAttributeForExpressionQuery(queryAttribute, "query_range", &http.Request{}, testData.query, time.Time{}, 0, 0)
 			assert.Equal(t, testData.result, priority)
 		})
 	}
@@ -482,14 +480,9 @@ func Test_isWithinQueryStepLimit(t *testing.T) {
 			queryStepLimit: queryStepLimit,
 			expectedResult: false,
 		},
-		"should not match if step limit set and subquery step is not within the range": {
-			queryString:    "up[60m:2s]",
-			queryStepLimit: queryStepLimit,
-			expectedResult: false,
-		},
-		"should match if step limit set and subquery step is within the range": {
+		"should match if step limit set is within the range and should ignore subquery step even it's outside the range": {
 			step:           "15s",
-			queryString:    "up[60m:1m]",
+			queryString:    "up[60m:5m]",
 			queryStepLimit: queryStepLimit,
 			expectedResult: true,
 		},
@@ -504,10 +497,9 @@ func Test_isWithinQueryStepLimit(t *testing.T) {
 			req, err := http.NewRequest("POST", "/query?"+params.Encode(), http.NoBody)
 			require.NoError(t, err)
 
-			expr, err := parser.ParseExpr(testData.queryString)
 			require.NoError(t, err)
 
-			result := isWithinQueryStepLimit(testData.queryStepLimit, req, expr)
+			result := isWithinQueryStepLimit(testData.queryStepLimit, req)
 			assert.Equal(t, testData.expectedResult, result)
 		})
 	}
@@ -587,7 +579,7 @@ func Test_matchAttributeForExpressionQueryHeadersShouldBeCheckedIfSet(t *testing
 			require.NoError(t, err)
 			req.Header = testData.headers
 
-			result := matchAttributeForExpressionQuery(testData.queryAttribute, req, "", nil, time.Time{}, 0, 0)
+			result := matchAttributeForExpressionQuery(testData.queryAttribute, "query_range", req, "", time.Time{}, 0, 0)
 			assert.Equal(t, testData.expectedResult, result)
 		})
 	}
@@ -635,7 +627,7 @@ func Test_matchAttributeForExpressionQueryShouldMatchUserAgentRegex(t *testing.T
 				CompiledUserAgentRegex: regexp.MustCompile(testData.userAgentRegex),
 			}
 
-			result := matchAttributeForExpressionQuery(queryAttribute, req, "", nil, time.Time{}, 0, 0)
+			result := matchAttributeForExpressionQuery(queryAttribute, "query_range", req, "", time.Time{}, 0, 0)
 			assert.Equal(t, testData.result, result)
 		})
 	}

@@ -901,22 +901,22 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	// We expect all queries hitting 422 exceeded series limit on store gateway.
-	resp, body, err := c.QueryRangeRaw(`{job="test"}`, seriesTimestamp.Add(-time.Second), seriesTimestamp, time.Second)
+	resp, body, err := c.QueryRangeRaw(`{job="test"}`, seriesTimestamp.Add(-time.Second), seriesTimestamp, time.Second, map[string]string{})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), "exceeded series limit")
 
-	resp, body, err = c.SeriesRaw([]string{`{job="test"}`}, seriesTimestamp.Add(-time.Second), seriesTimestamp)
+	resp, body, err = c.SeriesRaw([]string{`{job="test"}`}, seriesTimestamp.Add(-time.Second), seriesTimestamp, map[string]string{})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), "exceeded series limit")
 
-	resp, body, err = c.LabelNamesRaw([]string{`{job="test"}`}, seriesTimestamp.Add(-time.Second), seriesTimestamp)
+	resp, body, err = c.LabelNamesRaw([]string{`{job="test"}`}, seriesTimestamp.Add(-time.Second), seriesTimestamp, map[string]string{})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), "exceeded series limit")
 
-	resp, body, err = c.LabelValuesRaw("job", []string{`{job="test"}`}, seriesTimestamp.Add(-time.Second), seriesTimestamp)
+	resp, body, err = c.LabelValuesRaw("job", []string{`{job="test"}`}, seriesTimestamp.Add(-time.Second), seriesTimestamp, map[string]string{})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), "exceeded series limit")
@@ -994,7 +994,7 @@ func TestQuerierWithStoreGatewayDataBytesLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	// We expect all queries hitting 422 exceeded series limit
-	resp, body, err := c.QueryRaw(`{job="test"}`, series2Timestamp)
+	resp, body, err := c.QueryRaw(`{job="test"}`, series2Timestamp, map[string]string{})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), "exceeded bytes limit")
@@ -1245,7 +1245,7 @@ func TestQuerierMaxSamplesLimit(t *testing.T) {
 	var body []byte
 	for retries.Ongoing() {
 		// We expect request to hit max samples limit.
-		res, body, err = c.QueryRaw(`sum({job="test"})`, series1Timestamp)
+		res, body, err = c.QueryRaw(`sum({job="test"})`, series1Timestamp, map[string]string{})
 		if err == nil {
 			break
 		}

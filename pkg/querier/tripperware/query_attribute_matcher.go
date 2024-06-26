@@ -14,7 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-const QueryRejectErrorMessage = "This query has been rejected by the service operator. Please contact customer support for more information."
+const QueryRejectErrorMessage = "This query has been rejected by the service operator."
 
 func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time.Duration, limits Limits, userStr string, rejectedQueriesPerTenant *prometheus.CounterVec) error {
 	if limits == nil || !(limits.QueryPriority(userStr).Enabled || limits.QueryRejection(userStr).Enabled) {

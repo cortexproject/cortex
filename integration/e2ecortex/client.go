@@ -50,6 +50,7 @@ type Client struct {
 	httpClient          *http.Client
 	querierClient       promv1.API
 	orgID               string
+	headers             []string
 }
 
 // NewClient makes a new Cortex client
@@ -59,6 +60,7 @@ func NewClient(
 	alertmanagerAddress string,
 	rulerAddress string,
 	orgID string,
+	headers ...string,
 ) (*Client, error) {
 	// Create querier API client
 	querierAPIClient, err := promapi.NewClient(promapi.Config{
@@ -78,6 +80,7 @@ func NewClient(
 		httpClient:          &http.Client{},
 		querierClient:       promv1.NewAPI(querierAPIClient),
 		orgID:               orgID,
+		headers:             headers,
 	}
 
 	if alertmanagerAddress != "" {
@@ -408,6 +411,10 @@ func (c *Client) query(addr string) (*http.Response, []byte, error) {
 	}
 
 	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	for i := 0; i < len(c.headers); i += 2 {
+		req.Header.Set(c.headers[i], c.headers[i+1])
+	}
 
 	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,

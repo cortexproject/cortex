@@ -3291,9 +3291,11 @@ query_rejection:
   # CLI flag: -frontend.query-rejection.enabled
   [enabled: <boolean> | default = false]
 
-  # List of query attributes that queries will be matched against. Query will be
-  # matched against each of those query attributes separately and if query
-  # matches any of them then it will be rejected.
+  # List of query_attributes to match and reject queries. A query is rejected if
+  # it matches any query_attribute in this list. Each query_attribute has
+  # several properties (e.g., regex, time_window, user_agent), and all specified
+  # properties must match for a query_attribute to be considered a match. Only
+  # the specified keys are checked, and an AND operator is applied to them.
   [query_attributes: <list of QueryAttribute> | default = []]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
@@ -5356,9 +5358,12 @@ limits:
 # priority level. Value between 0 and 1 will be used as a percentage.
 [reserved_queriers: <float> | default = 0]
 
-# List of query attributes that queries will be matched against. Query will be
-# matched against each of those query attributes separately and if query matches
-# any of them then it will be assigned to this priority.
+# List of query_attributes to match and assign priority to queries. A query is
+# assigned to this priority if it matches any query_attribute in this list. Each
+# query_attribute has several properties (e.g., regex, time_window, user_agent),
+# and all specified properties must match for a query_attribute to be considered
+# a match. Only the specified keys are checked, and an AND operator is applied
+# to them.
 [query_attributes: <list of QueryAttribute> | default = []]
 ```
 
@@ -5383,8 +5388,8 @@ time_window:
   # checked.
   [end: <int> | default = 0]
 
-# Queries with time range that is within this limits will match. If not set, it
-# won't be checked.
+# Query time range should be within this limit to match. If not set, it won't be
+# checked.
 time_range_limit:
   # Query time range should be above or equal to this value to match. If set to
   # 0, it won't be checked.
@@ -5394,8 +5399,9 @@ time_range_limit:
   # 0, it won't be checked.
   [max: <int> | default = 0]
 
-# Limit that query step should be within. It will check subquery steps as well.
-# If not set, it won't be checked.
+# For range query, step should be within this limit to match. For instant query,
+# subQuery step should be within this limit to match. If not set, it won't be
+# checked. This attribute won't be applied to metadata queries.
 query_step_limit:
   # Query step should be above or equal to this value to match. If set to 0, it
   # won't be checked.
@@ -5407,16 +5413,17 @@ query_step_limit:
 
 # Regex that User-Agent header of the request should match. If not set, it won't
 # be checked.
-[user_agent: <string> | default = ""]
+[user_agent_regex: <string> | default = ""]
 
 # Grafana includes X-Dashboard-Uid header in query requests. If this field is
 # provided then X-Dashboard-Uid header of request should match this value. If
-# not set, it won't be checked.
+# not set, it won't be checked. This attribute won't be applied to metadata
+# queries.
 [dashboard_uid: <string> | default = ""]
 
 # Grafana includes X-Panel-Id header in query requests. If this field is
 # provided then X-Panel-Id header of request should match this value. If not
-# set, it won't be checked.
+# set, it won't be checked. This attribute won't be applied to metadata queries.
 [panel_id: <string> | default = ""]
 ```
 

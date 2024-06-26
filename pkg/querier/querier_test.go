@@ -912,7 +912,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Series(t *testing.T) {
 	chunkStore := &emptyChunkStore{}
 	distributor := &emptyDistributor{}
 
-	queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
+	queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
 	queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 
 	ctx := user.InjectOrgID(context.Background(), "test")

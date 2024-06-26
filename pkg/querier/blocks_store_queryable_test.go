@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"fmt"
-
 	"io"
 	"sort"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
@@ -41,6 +41,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
+	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -56,19 +57,27 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 	)
 
 	var (
-		block1           = ulid.MustNew(1, nil)
-		block2           = ulid.MustNew(2, nil)
-		block3           = ulid.MustNew(3, nil)
-		block4           = ulid.MustNew(4, nil)
-		metricNameLabel  = labels.Label{Name: labels.MetricName, Value: metricName}
-		series1Label     = labels.Label{Name: "series", Value: "1"}
-		series2Label     = labels.Label{Name: "series", Value: "2"}
-		noOpQueryLimiter = limiter.NewQueryLimiter(0, 0, 0, 0)
+		block1              = ulid.MustNew(1, nil)
+		block2              = ulid.MustNew(2, nil)
+		block3              = ulid.MustNew(3, nil)
+		block4              = ulid.MustNew(4, nil)
+		metricNameLabel     = labels.Label{Name: labels.MetricName, Value: metricName}
+		series1Label        = labels.Label{Name: "series", Value: "1"}
+		series2Label        = labels.Label{Name: "series", Value: "2"}
+		noOpQueryLimiter    = limiter.NewQueryLimiter(0, 0, 0, 0)
+		testHistogram1      = histogram_util.GenerateTestHistogram(1)
+		testHistogram2      = histogram_util.GenerateTestHistogram(2)
+		testHistogram3      = histogram_util.GenerateTestHistogram(3)
+		testFloatHistogram1 = histogram_util.GenerateTestFloatHistogram(1)
+		testFloatHistogram2 = histogram_util.GenerateTestFloatHistogram(2)
+		testFloatHistogram3 = histogram_util.GenerateTestFloatHistogram(3)
 	)
 
 	type valueResult struct {
-		t int64
-		v float64
+		t  int64
+		v  float64
+		h  *histogram.Histogram
+		fh *histogram.FloatHistogram
 	}
 
 	type seriesResult struct {
@@ -118,7 +127,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}...),
+						mockSeriesResponse(labels.Labels{metricNameLabel}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block1, block2),
 					}}: {block1, block2},
 				},
@@ -135,6 +144,70 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
+		"a single store-gateway instance holds the required blocks (single returned histogram series)": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+								cortexpb.HistogramToHistogramProto(minT+1, testHistogram2),
+							}, nil,
+						),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel),
+					values: []valueResult{
+						{t: minT, h: testHistogram1},
+						{t: minT + 1, h: testHistogram2},
+					},
+				},
+			},
+		},
+		"a single store-gateway instance holds the required blocks (single returned float histogram series)": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+								cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram2),
+							},
+						),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel),
+					values: []valueResult{
+						{t: minT, fh: testFloatHistogram1},
+						{t: minT + 1, fh: testFloatHistogram2},
+					},
+				},
+			},
+		},
 		"a single store-gateway instance holds the required blocks (multiple returned series)": {
 			finderResult: bucketindex.Blocks{
 				&bucketindex.Block{ID: block1},
@@ -143,8 +216,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}...),
-						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, cortexpb.Sample{Value: 3, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 3, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1, block2),
 					}}: {block1, block2},
 				},
@@ -166,6 +239,94 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
+		"a single store-gateway instance holds the required blocks (multiple returned histogram series)": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series1Label},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+								cortexpb.HistogramToHistogramProto(minT+1, testHistogram2),
+							}, nil,
+						),
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series2Label},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT, testHistogram3),
+							}, nil,
+						),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, h: testHistogram1},
+						{t: minT + 1, h: testHistogram2},
+					},
+				}, {
+					lbls: labels.New(metricNameLabel, series2Label),
+					values: []valueResult{
+						{t: minT, h: testHistogram3},
+					},
+				},
+			},
+		},
+		"a single store-gateway instance holds the required blocks (multiple returned float histogram series)": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series1Label},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+								cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram2),
+							},
+						),
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series2Label},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram3),
+							},
+						),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, fh: testFloatHistogram1},
+						{t: minT + 1, fh: testFloatHistogram2},
+					},
+				}, {
+					lbls: labels.New(metricNameLabel, series2Label),
+					values: []valueResult{
+						{t: minT, fh: testFloatHistogram3},
+					},
+				},
+			},
+		},
 		"multiple store-gateway instances holds the required blocks without overlapping series (single returned series)": {
 			finderResult: bucketindex.Blocks{
 				&bucketindex.Block{ID: block1},
@@ -174,11 +335,11 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel}, cortexpb.Sample{Value: 1, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel}, cortexpb.Sample{Value: 2, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel}, []cortexpb.Sample{{Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block2),
 					}}: {block2},
 				},
@@ -191,6 +352,88 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					values: []valueResult{
 						{t: minT, v: 1},
 						{t: minT + 1, v: 2},
+					},
+				},
+			},
+		},
+		"multiple store-gateway instances holds the required blocks without overlapping series (single returned histogram series)": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+							}, nil,
+						),
+						mockHintsResponse(block1),
+					}}: {block1},
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT+1, testHistogram2),
+							}, nil,
+						),
+						mockHintsResponse(block2),
+					}}: {block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel),
+					values: []valueResult{
+						{t: minT, h: testHistogram1},
+						{t: minT + 1, h: testHistogram2},
+					},
+				},
+			},
+		},
+		"multiple store-gateway instances holds the required blocks without overlapping series (single returned float histogram series)": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+							},
+						),
+						mockHintsResponse(block1),
+					}}: {block1},
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram2),
+							},
+						),
+						mockHintsResponse(block2),
+					}}: {block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel),
+					values: []valueResult{
+						{t: minT, fh: testFloatHistogram1},
+						{t: minT + 1, fh: testFloatHistogram2},
 					},
 				},
 			},
@@ -203,11 +446,11 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel}, cortexpb.Sample{Value: 2, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel}, []cortexpb.Sample{{Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}...),
+						mockSeriesResponse(labels.Labels{metricNameLabel}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block2),
 					}}: {block2},
 				},
@@ -224,6 +467,90 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
+		"multiple store-gateway instances holds the required blocks with overlapping series (single returned histogram series)": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT+1, testHistogram2),
+							}, nil,
+						),
+						mockHintsResponse(block1),
+					}}: {block1},
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+								cortexpb.HistogramToHistogramProto(minT+1, testHistogram2),
+							}, nil,
+						),
+						mockHintsResponse(block2),
+					}}: {block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel),
+					values: []valueResult{
+						{t: minT, h: testHistogram1},
+						{t: minT + 1, h: testHistogram2},
+					},
+				},
+			},
+		},
+		"multiple store-gateway instances holds the required blocks with overlapping series (single returned float histogram series)": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram2),
+							},
+						),
+						mockHintsResponse(block1),
+					}}: {block1},
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+								cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram2),
+							},
+						),
+						mockHintsResponse(block2),
+					}}: {block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel),
+					values: []valueResult{
+						{t: minT, fh: testFloatHistogram1},
+						{t: minT + 1, fh: testFloatHistogram2},
+					},
+				},
+			},
+		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series)": {
 			finderResult: bucketindex.Blocks{
 				&bucketindex.Block{ID: block1},
@@ -232,16 +559,16 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT + 1}),
-						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, cortexpb.Sample{Value: 1, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}...),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block2),
 					}}: {block2},
 					&storeGatewayClientMock{remoteAddr: "3.3.3.3", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 3, TimestampMs: minT + 1}}...),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 3, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block3),
 					}}: {block3},
 				},
@@ -291,6 +618,138 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				cortex_querier_storegateway_refetches_per_query_count 1
 			`,
 		},
+		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned histogram series)": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series1Label},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT+1, testHistogram2),
+							}, nil,
+						),
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series2Label},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+							}, nil,
+						),
+						mockHintsResponse(block1),
+					}}: {block1},
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series1Label},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+								cortexpb.HistogramToHistogramProto(minT+1, testHistogram2),
+							}, nil,
+						),
+						mockHintsResponse(block2),
+					}}: {block2},
+					&storeGatewayClientMock{remoteAddr: "3.3.3.3", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series2Label},
+							nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+								cortexpb.HistogramToHistogramProto(minT+1, testHistogram3),
+							}, nil,
+						),
+						mockHintsResponse(block3),
+					}}: {block3},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, h: testHistogram1},
+						{t: minT + 1, h: testHistogram2},
+					},
+				}, {
+					lbls: labels.New(metricNameLabel, series2Label),
+					values: []valueResult{
+						{t: minT, h: testHistogram1},
+						{t: minT + 1, h: testHistogram3},
+					},
+				},
+			},
+		},
+		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned float histogram series)": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series1Label},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram2),
+							},
+						),
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series2Label},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+							},
+						),
+						mockHintsResponse(block1),
+					}}: {block1},
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series1Label},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+								cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram2),
+							},
+						),
+						mockHintsResponse(block2),
+					}}: {block2},
+					&storeGatewayClientMock{remoteAddr: "3.3.3.3", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(
+							labels.Labels{metricNameLabel, series2Label},
+							nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+								cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram3),
+							},
+						),
+						mockHintsResponse(block3),
+					}}: {block3},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, fh: testFloatHistogram1},
+						{t: minT + 1, fh: testFloatHistogram2},
+					},
+				}, {
+					lbls: labels.New(metricNameLabel, series2Label),
+					values: []valueResult{
+						{t: minT, fh: testFloatHistogram1},
+						{t: minT + 1, fh: testFloatHistogram3},
+					},
+				},
+			},
+		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
 				&bucketindex.Block{ID: block1},
@@ -300,7 +759,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				// First attempt returns a client whose response does not include all expected blocks.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}...),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 				},
@@ -322,11 +781,11 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				// First attempt returns a client whose response does not include all expected blocks.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel}, cortexpb.Sample{Value: 2, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel}, []cortexpb.Sample{{Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel}, cortexpb.Sample{Value: 2, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel}, []cortexpb.Sample{{Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block2),
 					}}: {block2},
 				},
@@ -348,25 +807,25 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				// First attempt returns a client whose response does not include all expected blocks.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 1, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1, block3},
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block2),
 					}}: {block2, block4},
 				},
 				// Second attempt returns 1 missing block.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "3.3.3.3", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block3),
 					}}: {block3, block4},
 				},
 				// Third attempt returns the last missing block.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "4.4.4.4", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, cortexpb.Sample{Value: 3, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 3, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block4),
 					}}: {block4},
 				},
@@ -424,7 +883,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}...),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block1, block2),
 					}}: {block1, block2},
 				},
@@ -449,7 +908,47 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}...),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 1},
+			queryLimiter: noOpQueryLimiter,
+			expectedErr:  validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 1)),
+		},
+		"max chunks per query limit hit while fetching histogram chunks at first attempt": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, nil, []cortexpb.Histogram{
+							cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+							cortexpb.HistogramToHistogramProto(minT+1, testHistogram2),
+						}, nil),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 1},
+			queryLimiter: noOpQueryLimiter,
+			expectedErr:  validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 1)),
+		},
+		"max chunks per query limit hit while fetching float histogram chunks at first attempt": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, nil, nil, []cortexpb.Histogram{
+							cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+							cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram2),
+						}),
 						mockHintsResponse(block1, block2),
 					}}: {block1, block2},
 				},
@@ -466,7 +965,47 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}...),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: limiter.NewQueryLimiter(0, 0, 1, 0),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunksPerQueryLimit, 1)),
+		},
+		"max chunks per query limit hit while fetching histogram chunks at first attempt - global limit": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, nil, []cortexpb.Histogram{
+							cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+							cortexpb.HistogramToHistogramProto(minT+1, testHistogram2),
+						}, nil),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: limiter.NewQueryLimiter(0, 0, 1, 0),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunksPerQueryLimit, 1)),
+		},
+		"max chunks per query limit hit while fetching float histogram chunks at first attempt - global limit": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, nil, nil, []cortexpb.Histogram{
+							cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+							cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram2),
+						}),
 						mockHintsResponse(block1, block2),
 					}}: {block1, block2},
 				},
@@ -486,25 +1025,25 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				// First attempt returns a client whose response does not include all expected blocks.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 1, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1, block3},
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block2),
 					}}: {block2, block4},
 				},
 				// Second attempt returns 1 missing block.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "3.3.3.3", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block3),
 					}}: {block3, block4},
 				},
 				// Third attempt returns the last missing block.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "4.4.4.4", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, cortexpb.Sample{Value: 3, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 3, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block4),
 					}}: {block4},
 				},
@@ -524,25 +1063,25 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				// First attempt returns a client whose response does not include all expected blocks.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 1, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1, block3},
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block2),
 					}}: {block2, block4},
 				},
 				// Second attempt returns 1 missing block.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "3.3.3.3", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block3),
 					}}: {block3, block4},
 				},
 				// Third attempt returns the last missing block.
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "4.4.4.4", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, cortexpb.Sample{Value: 3, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 3, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block4),
 					}}: {block4},
 				},
@@ -559,8 +1098,60 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 1, TimestampMs: minT}),
-						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, cortexpb.Sample{Value: 2, TimestampMs: minT + 1}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}}, nil, nil),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: limiter.NewQueryLimiter(1, 0, 0, 0),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxSeriesHit, 1)),
+		},
+		"max series per query limit hit while fetching histogram chunks": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+							}, nil,
+						),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, nil,
+							[]cortexpb.Histogram{
+								cortexpb.HistogramToHistogramProto(minT+1, testHistogram2),
+							}, nil,
+						),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: limiter.NewQueryLimiter(1, 0, 0, 0),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxSeriesHit, 1)),
+		},
+		"max series per query limit hit while fetching float histogram chunks": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+							},
+						),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, nil, nil,
+							[]cortexpb.Histogram{
+								cortexpb.FloatHistogramToHistogramProto(minT+1, testFloatHistogram2),
+							},
+						),
 						mockHintsResponse(block1, block2),
 					}}: {block1, block2},
 				},
@@ -577,7 +1168,45 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}...),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 0},
+			queryLimiter: limiter.NewQueryLimiter(0, 8, 0, 0),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunkBytesHit, 8)),
+		},
+		"max chunk bytes per query limit hit while fetching histogram chunks": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, nil, []cortexpb.Histogram{
+							cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+						}, nil),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 0},
+			queryLimiter: limiter.NewQueryLimiter(0, 8, 0, 0),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunkBytesHit, 8)),
+		},
+		"max chunk bytes per query limit hit while fetching float histogram chunks": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, nil, nil, []cortexpb.Histogram{
+							cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+						}),
 						mockHintsResponse(block1, block2),
 					}}: {block1, block2},
 				},
@@ -594,7 +1223,45 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}...),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 0},
+			queryLimiter: limiter.NewQueryLimiter(0, 0, 0, 1),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxDataBytesHit, 1)),
+		},
+		"max data bytes per query limit hit while fetching histogram chunks": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, nil, []cortexpb.Histogram{
+							cortexpb.HistogramToHistogramProto(minT, testHistogram1),
+						}, nil),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 0},
+			queryLimiter: limiter.NewQueryLimiter(0, 0, 0, 1),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxDataBytesHit, 1)),
+		},
+		"max data bytes per query limit hit while fetching float histogram chunks": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, nil, nil, []cortexpb.Histogram{
+							cortexpb.FloatHistogramToHistogramProto(minT, testFloatHistogram1),
+						}),
 						mockHintsResponse(block1, block2),
 					}}: {block1, block2},
 				},
@@ -616,7 +1283,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 				},
@@ -645,7 +1312,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 				},
@@ -674,7 +1341,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 				},
@@ -700,7 +1367,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					&storeGatewayClientMock{
 						remoteAddr: "1.1.1.1",
 						mockedSeriesResponses: []*storepb.SeriesResponse{
-							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 							mockHintsResponse(block1),
 						},
 						mockedSeriesStreamErr: status.Error(codes.PermissionDenied, "PermissionDenied"),
@@ -710,7 +1377,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					&storeGatewayClientMock{
 						remoteAddr: "2.2.2.2",
 						mockedSeriesResponses: []*storepb.SeriesResponse{
-							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 							mockHintsResponse(block1),
 						},
 						mockedSeriesStreamErr: status.Error(codes.PermissionDenied, "PermissionDenied"),
@@ -738,13 +1405,13 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 						remoteAddr:            "1.1.1.1",
 						mockedSeriesStreamErr: status.Error(codes.Unavailable, "unavailable"),
 						mockedSeriesResponses: []*storepb.SeriesResponse{
-							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 							mockHintsResponse(block1),
 						}}: {block1},
 				},
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 				},
@@ -773,7 +1440,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 				},
@@ -802,7 +1469,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, cortexpb.Sample{Value: 2, TimestampMs: minT}),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
 						mockHintsResponse(block1),
 					}}: {block1},
 				},
@@ -858,12 +1525,28 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				var actualValues []valueResult
 
 				it = set.At().Iterator(it)
-				for it.Next() != chunkenc.ValNone {
-					t, v := it.At()
-					actualValues = append(actualValues, valueResult{
-						t: t,
-						v: v,
-					})
+				for valType := it.Next(); valType != chunkenc.ValNone; valType = it.Next() {
+					switch valType {
+					case chunkenc.ValFloat:
+						t, v := it.At()
+						actualValues = append(actualValues, valueResult{
+							t: t,
+							v: v,
+						})
+					case chunkenc.ValHistogram:
+						t, v := it.AtHistogram(nil)
+						actualValues = append(actualValues, valueResult{
+							t: t,
+							h: v,
+						})
+					case chunkenc.ValFloatHistogram:
+						t, v := it.AtFloatHistogram(nil)
+						actualValues = append(actualValues, valueResult{
+							t:  t,
+							fh: v,
+						})
+					default:
+					}
 				}
 
 				require.NoError(t, it.Err())
@@ -1485,124 +2168,130 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	series1 := []labelpb.ZLabel{{Name: "__name__", Value: "metric_1"}}
 	series2 := []labelpb.ZLabel{{Name: "__name__", Value: "metric_2"}}
 
-	series1Samples := []promql.FPoint{
-		{T: 1589759955000, F: 1},
-		{T: 1589759970000, F: 1},
-		{T: 1589759985000, F: 1},
-		{T: 1589760000000, F: 1},
-		{T: 1589760015000, F: 1},
-		{T: 1589760030000, F: 1},
-	}
+	from := model.Time(1589759955000)
 
-	series2Samples := []promql.FPoint{
-		{T: 1589759955000, F: 2},
-		{T: 1589759970000, F: 2},
-		{T: 1589759985000, F: 2},
-		{T: 1589760000000, F: 2},
-		{T: 1589760015000, F: 2},
-		{T: 1589760030000, F: 2},
-	}
 	for _, thanosEngine := range []bool{false, true} {
-		t.Run(fmt.Sprintf("thanos engine enabled=%t", thanosEngine), func(t *testing.T) {
-			var queryEngine promql.QueryEngine
-			if thanosEngine {
-				queryEngine = engine.New(engine.Opts{
-					EngineOpts:        opts,
-					LogicalOptimizers: logicalplan.AllOptimizers,
-				})
-			} else {
+		for _, enc := range encodings {
+			t.Run(fmt.Sprintf("thanos engine enabled=%t, enc=%s", thanosEngine, enc.String()), func(t *testing.T) {
+				var queryEngine promql.QueryEngine
+				if thanosEngine {
+					queryEngine = engine.New(engine.Opts{
+						EngineOpts:        opts,
+						LogicalOptimizers: logicalplan.AllOptimizers,
+					})
+				}
 				queryEngine = promql.NewEngine(opts)
-			}
-			// Mock the finder to simulate we need to query two blocks.
-			finder := &blocksFinderMock{
-				Service: services.NewIdleService(nil, nil),
-			}
-			finder.On("GetBlocks", mock.Anything, "user-1", mock.Anything, mock.Anything).Return(bucketindex.Blocks{
-				&bucketindex.Block{ID: block1},
-				&bucketindex.Block{ID: block2},
-			}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
+				// Mock the finder to simulate we need to query two blocks.
+				finder := &blocksFinderMock{
+					Service: services.NewIdleService(nil, nil),
+				}
+				finder.On("GetBlocks", mock.Anything, "user-1", mock.Anything, mock.Anything).Return(bucketindex.Blocks{
+					&bucketindex.Block{ID: block1},
+					&bucketindex.Block{ID: block2},
+				}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
 
-			// Mock the store to simulate each block is queried from a different store-gateway.
-			gateway1 := &storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
-				{
-					Result: &storepb.SeriesResponse_Series{
-						Series: &storepb.Series{
-							Labels: series1,
-							Chunks: []storepb.AggrChunk{
-								createAggrChunkWithSamples(series1Samples[:3]...), // First half.
+				// Mock the store to simulate each block is queried from a different store-gateway.
+				gateway1 := &storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+					{
+						Result: &storepb.SeriesResponse_Series{
+							Series: &storepb.Series{
+								Labels: series1,
+								Chunks: []storepb.AggrChunk{
+									createAggrChunk(t, 15*time.Second, from, 3, enc),
+								},
 							},
 						},
 					},
-				}, {
-					Result: &storepb.SeriesResponse_Series{
-						Series: &storepb.Series{
-							Labels: series2,
-							Chunks: []storepb.AggrChunk{
-								createAggrChunkWithSamples(series2Samples[:3]...),
+					{
+						Result: &storepb.SeriesResponse_Series{
+							Series: &storepb.Series{
+								Labels: series2,
+								Chunks: []storepb.AggrChunk{
+									createAggrChunk(t, 15*time.Second, from, 3, enc),
+								},
 							},
 						},
 					},
-				},
-				mockHintsResponse(block1),
-			}}
+					mockHintsResponse(block1),
+				}}
 
-			gateway2 := &storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
-				{
-					Result: &storepb.SeriesResponse_Series{
-						Series: &storepb.Series{
-							Labels: series1,
-							Chunks: []storepb.AggrChunk{
-								createAggrChunkWithSamples(series1Samples[3:]...), // Second half.
+				gateway2 := &storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+					{
+						Result: &storepb.SeriesResponse_Series{
+							Series: &storepb.Series{
+								Labels: series1,
+								Chunks: []storepb.AggrChunk{
+									createAggrChunk(t, 15*time.Second, from+45000, 3, enc),
+								},
+							},
+						},
+					}, {
+						Result: &storepb.SeriesResponse_Series{
+							Series: &storepb.Series{
+								Labels: series2,
+								Chunks: []storepb.AggrChunk{
+									createAggrChunk(t, 15*time.Second, from+45000, 3, enc),
+								},
 							},
 						},
 					},
-				}, {
-					Result: &storepb.SeriesResponse_Series{
-						Series: &storepb.Series{
-							Labels: series2,
-							Chunks: []storepb.AggrChunk{
-								createAggrChunkWithSamples(series2Samples[3:]...),
-							},
+					mockHintsResponse(block2),
+				}}
+
+				stores := &blocksStoreSetMock{
+					Service: services.NewIdleService(nil, nil),
+					mockedResponses: []interface{}{
+						map[BlocksStoreClient][]ulid.ULID{
+							gateway1: {block1},
+							gateway2: {block2},
 						},
 					},
-				},
-				mockHintsResponse(block2),
-			}}
+				}
 
-			stores := &blocksStoreSetMock{
-				Service: services.NewIdleService(nil, nil),
-				mockedResponses: []interface{}{
-					map[BlocksStoreClient][]ulid.ULID{
-						gateway1: {block1},
-						gateway2: {block2},
-					},
-				},
-			}
+				// Instance the querier that will be executed to run the query.
+				queryable, err := NewBlocksStoreQueryable(stores, finder, NewBlocksConsistencyChecker(0, 0, logger, nil), &blocksStoreLimitsMock{}, 0, false, logger, nil)
+				require.NoError(t, err)
+				require.NoError(t, services.StartAndAwaitRunning(context.Background(), queryable))
+				defer services.StopAndAwaitTerminated(context.Background(), queryable) // nolint:errcheck
 
-			// Instance the querier that will be executed to run the query.
-			queryable, err := NewBlocksStoreQueryable(stores, finder, NewBlocksConsistencyChecker(0, 0, logger, nil), &blocksStoreLimitsMock{}, 0, false, logger, nil)
-			require.NoError(t, err)
-			require.NoError(t, services.StartAndAwaitRunning(context.Background(), queryable))
-			defer services.StopAndAwaitTerminated(context.Background(), queryable) // nolint:errcheck
+				// Run a query.
+				ctx := user.InjectOrgID(context.Background(), "user-1")
+				q, err := queryEngine.NewRangeQuery(ctx, queryable, nil, `{__name__=~"metric.*"}`, time.Unix(1589759955, 0), time.Unix(1589760030, 0), 15*time.Second)
+				require.NoError(t, err)
 
-			// Run a query.
-			ctx := user.InjectOrgID(context.Background(), "user-1")
-			q, err := queryEngine.NewRangeQuery(ctx, queryable, nil, `{__name__=~"metric.*"}`, time.Unix(1589759955, 0), time.Unix(1589760030, 0), 15*time.Second)
-			require.NoError(t, err)
+				res := q.Exec(ctx)
+				require.NoError(t, err)
+				require.NoError(t, res.Err)
 
-			res := q.Exec(ctx)
-			require.NoError(t, err)
-			require.NoError(t, res.Err)
+				matrix, err := res.Matrix()
+				require.NoError(t, err)
+				require.Len(t, matrix, 2)
 
-			matrix, err := res.Matrix()
-			require.NoError(t, err)
-			require.Len(t, matrix, 2)
-
-			assert.Equal(t, labelpb.ZLabelsToPromLabels(series1), matrix[0].Metric)
-			assert.Equal(t, labelpb.ZLabelsToPromLabels(series2), matrix[1].Metric)
-			assert.Equal(t, series1Samples, matrix[0].Floats)
-			assert.Equal(t, series2Samples, matrix[1].Floats)
-		})
+				require.Equal(t, labelpb.ZLabelsToPromLabels(series1), matrix[0].Metric)
+				require.Equal(t, labelpb.ZLabelsToPromLabels(series2), matrix[1].Metric)
+				for _, m := range matrix {
+					for i, f := range m.Floats {
+						// Check sample timestamp is expected.
+						require.Equal(t, f.T, int64(from)+int64(i)*15000)
+						require.Equal(t, f.T, int64(f.F))
+					}
+					for i, h := range m.Histograms {
+						h := h
+						// Check sample timestamp is expected.
+						require.Equal(t, h.T, int64(from)+int64(i)*15000)
+						if enc == encoding.PrometheusHistogramChunk {
+							// GenerateTestHistogram will add 10 for the input value i so subtract 10 here.
+							expectedH := histogram_util.GenerateTestHistogram(int(h.T - 10))
+							require.Equal(t, expectedH.ToFloat(nil), h.H)
+						} else if enc == encoding.PrometheusFloatHistogramChunk {
+							// GenerateTestHistogram will add 10 for the input value i so subtract 10 here.
+							expectedH := histogram_util.GenerateTestFloatHistogram(int(h.T - 10))
+							require.Equal(t, expectedH, h.H)
+						}
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -1717,7 +2406,7 @@ func (m *blocksStoreLimitsMock) S3SSEKMSEncryptionContext(_ string) string {
 	return ""
 }
 
-func mockSeriesResponse(lbls labels.Labels, samples ...cortexpb.Sample) *storepb.SeriesResponse {
+func mockSeriesResponse(lbls labels.Labels, samples []cortexpb.Sample, histograms []cortexpb.Histogram, floatHistograms []cortexpb.Histogram) *storepb.SeriesResponse {
 	res := &storepb.SeriesResponse_Series{
 		Series: &storepb.Series{
 			Labels: labelpb.ZLabelsFromPromLabels(lbls),
@@ -1738,6 +2427,42 @@ func mockSeriesResponse(lbls labels.Labels, samples ...cortexpb.Sample) *storepb
 			MinTime: sample.TimestampMs,
 			MaxTime: sample.TimestampMs,
 			Raw:     &storepb.Chunk{Type: storepb.Chunk_XOR, Data: chunkData},
+		})
+	}
+
+	for _, h := range histograms {
+		chunk := chunkenc.NewHistogramChunk()
+		appender, err := chunk.Appender()
+		if err != nil {
+			panic(err)
+		}
+		_, _, _, err = appender.AppendHistogram(nil, h.TimestampMs, cortexpb.HistogramProtoToHistogram(h), true)
+		if err != nil {
+			panic(err)
+		}
+		chunkData := chunk.Bytes()
+		res.Series.Chunks = append(res.Series.Chunks, storepb.AggrChunk{
+			MinTime: h.TimestampMs,
+			MaxTime: h.TimestampMs,
+			Raw:     &storepb.Chunk{Type: storepb.Chunk_HISTOGRAM, Data: chunkData},
+		})
+	}
+
+	for _, fh := range floatHistograms {
+		chunk := chunkenc.NewFloatHistogramChunk()
+		appender, err := chunk.Appender()
+		if err != nil {
+			panic(err)
+		}
+		_, _, _, err = appender.AppendFloatHistogram(nil, fh.TimestampMs, cortexpb.FloatHistogramProtoToFloatHistogram(fh), true)
+		if err != nil {
+			panic(err)
+		}
+		chunkData := chunk.Bytes()
+		res.Series.Chunks = append(res.Series.Chunks, storepb.AggrChunk{
+			MinTime: fh.TimestampMs,
+			MaxTime: fh.TimestampMs,
+			Raw:     &storepb.Chunk{Type: storepb.Chunk_FLOAT_HISTOGRAM, Data: chunkData},
 		})
 	}
 
@@ -1908,5 +2633,25 @@ func TestCountSamplesAndChunks(t *testing.T) {
 			require.Equal(t, tc.expectedSamples, samples)
 			require.Equal(t, tc.expectedChunks, chunks)
 		})
+	}
+}
+
+func createAggrChunk(t *testing.T, step time.Duration, from model.Time, points int, enc encoding.Encoding) storepb.AggrChunk {
+	c := util.GenerateChunk(t, step, from, points, enc)
+	chunkType := storepb.Chunk_XOR
+	switch enc {
+	case encoding.PrometheusHistogramChunk:
+		chunkType = storepb.Chunk_HISTOGRAM
+	case encoding.PrometheusFloatHistogramChunk:
+		chunkType = storepb.Chunk_FLOAT_HISTOGRAM
+	default:
+	}
+	return storepb.AggrChunk{
+		MinTime: int64(c.From),
+		MaxTime: int64(c.Through),
+		Raw: &storepb.Chunk{
+			Type: chunkType,
+			Data: c.Data.Bytes(),
+		},
 	}
 }

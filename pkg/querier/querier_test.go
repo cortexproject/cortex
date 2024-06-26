@@ -11,12 +11,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	promutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -33,10 +34,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-
-	"github.com/prometheus/client_golang/prometheus"
-	promutil "github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 const (
@@ -69,11 +68,12 @@ func (q *wrappedSampleAndChunkQueryable) Querier(mint, maxt int64) (storage.Quer
 }
 
 type query struct {
-	query    string
-	labels   labels.Labels
-	samples  func(from, through time.Time, step time.Duration) int
-	expected func(t int64) (int64, float64)
-	step     time.Duration
+	query        string
+	labels       labels.Labels
+	samples      func(from, through time.Time, step time.Duration) int
+	expectedFunc func(t testing.TB, q query, end model.Time, enc promchunk.Encoding, series promql.Series)
+	step         time.Duration
+	encodings    []promchunk.Encoding
 }
 
 var (
@@ -93,9 +93,24 @@ var (
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from) / step)
 			},
-			expected: func(t int64) (int64, float64) {
-				return t + int64((sampleRate*4)/time.Millisecond), 1000.0
+			expectedFunc: func(t testing.TB, q query, end model.Time, enc promchunk.Encoding, series promql.Series) {
+				var ts int64
+				expected := func(t int64) (int64, float64) {
+					return t + int64((sampleRate*4)/time.Millisecond), 1000.0
+				}
+				from, through := time.Unix(0, 0), end.Time()
+				require.Equal(t, q.samples(from, through, q.step), len(series.Floats))
+				for i, point := range series.Floats {
+					expectedTime, expectedValue := expected(ts)
+					require.Equal(t, expectedTime, point.T, strconv.Itoa(i))
+					require.Equal(t, expectedValue, point.F, strconv.Itoa(i))
+					ts += int64(q.step / time.Millisecond)
+				}
 			},
+			// Skip running the query for non XOR chunk encoding to avoid putting
+			// histogram rate calculation logic here.
+			// We can test histogram queries using different promql functions.
+			encodings: []promchunk.Encoding{promchunk.PrometheusXorChunk},
 		},
 
 		// Very simple single-point gets, with low step.  Performance should be
@@ -109,8 +124,27 @@ var (
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from)/step) + 1
 			},
-			expected: func(t int64) (int64, float64) {
-				return t, float64(t)
+			expectedFunc: func(t testing.TB, q query, end model.Time, enc promchunk.Encoding, series promql.Series) {
+				var ts int64
+				from, through := time.Unix(0, 0), end.Time()
+				switch enc {
+				case promchunk.PrometheusXorChunk:
+					require.Equal(t, q.samples(from, through, q.step), len(series.Floats))
+					for i, point := range series.Floats {
+						require.Equal(t, ts, point.T, strconv.Itoa(i))
+						require.Equal(t, float64(ts), point.F, strconv.Itoa(i))
+						ts += int64(q.step / time.Millisecond)
+					}
+				case promchunk.PrometheusHistogramChunk, promchunk.PrometheusFloatHistogramChunk:
+					require.Equal(t, q.samples(from, through, q.step), len(series.Histograms))
+					for i, point := range series.Histograms {
+						require.Equal(t, ts, point.T, strconv.Itoa(i))
+						// Convert expected value to float histogram.
+						expectedH := histogram_util.GenerateTestFloatHistogram(int(ts - 10))
+						require.Equal(t, expectedH, point.H, strconv.Itoa(i))
+						ts += int64(q.step / time.Millisecond)
+					}
+				}
 			},
 		},
 
@@ -122,9 +156,24 @@ var (
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from) / step)
 			},
-			expected: func(t int64) (int64, float64) {
-				return t + int64((sampleRate*4)/time.Millisecond)*10, 1000.0
+			expectedFunc: func(t testing.TB, q query, end model.Time, enc promchunk.Encoding, series promql.Series) {
+				var ts int64
+				expected := func(t int64) (int64, float64) {
+					return t + int64((sampleRate*4)/time.Millisecond)*10, 1000.0
+				}
+				from, through := time.Unix(0, 0), end.Time()
+				require.Equal(t, q.samples(from, through, q.step), len(series.Floats))
+				for i, point := range series.Floats {
+					expectedTime, expectedValue := expected(ts)
+					require.Equal(t, expectedTime, point.T, strconv.Itoa(i))
+					require.Equal(t, expectedValue, point.F, strconv.Itoa(i))
+					ts += int64(q.step / time.Millisecond)
+				}
 			},
+			// Skip running the query for non XOR chunk encoding to avoid putting
+			// histogram rate calculation logic here.
+			// We can test histogram queries using different promql functions.
+			encodings: []promchunk.Encoding{promchunk.PrometheusXorChunk},
 		},
 
 		// Single points gets with large step; excersise Seek performance.
@@ -137,9 +186,70 @@ var (
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from)/step) + 1
 			},
-			expected: func(t int64) (int64, float64) {
-				return t, float64(t)
+			expectedFunc: func(t testing.TB, q query, end model.Time, enc promchunk.Encoding, series promql.Series) {
+				var ts int64
+				from, through := time.Unix(0, 0), end.Time()
+				switch enc {
+				case promchunk.PrometheusXorChunk:
+					require.Equal(t, q.samples(from, through, q.step), len(series.Floats))
+					for i, point := range series.Floats {
+						require.Equal(t, ts, point.T, strconv.Itoa(i))
+						require.Equal(t, float64(ts), point.F, strconv.Itoa(i))
+						ts += int64(q.step / time.Millisecond)
+					}
+				case promchunk.PrometheusHistogramChunk, promchunk.PrometheusFloatHistogramChunk:
+					require.Equal(t, q.samples(from, through, q.step), len(series.Histograms))
+					for i, point := range series.Histograms {
+						require.Equal(t, ts, point.T, strconv.Itoa(i))
+						// Convert expected value to float histogram.
+						expectedH := histogram_util.GenerateTestFloatHistogram(int(ts - 10))
+						require.Equal(t, expectedH, point.H, strconv.Itoa(i))
+						ts += int64(q.step / time.Millisecond)
+					}
+				}
 			},
+		},
+
+		{
+			query:  "histogram_sum(foo)",
+			step:   sampleRate * 4 * 10,
+			labels: labels.Labels{},
+			samples: func(from, through time.Time, step time.Duration) int {
+				return int(through.Sub(from)/step) + 1
+			},
+			expectedFunc: func(t testing.TB, q query, end model.Time, enc promchunk.Encoding, series promql.Series) {
+				var ts int64
+				from, through := time.Unix(0, 0), end.Time()
+				require.Equal(t, q.samples(from, through, q.step), len(series.Floats))
+				for i, point := range series.Floats {
+					expectedFH := histogram_util.GenerateTestFloatHistogram(int(ts - 10))
+					require.Equal(t, ts, point.T, strconv.Itoa(i))
+					require.Equal(t, expectedFH.Sum, point.F, strconv.Itoa(i))
+					ts += int64(q.step / time.Millisecond)
+				}
+			},
+			encodings: []promchunk.Encoding{promchunk.PrometheusHistogramChunk, promchunk.PrometheusFloatHistogramChunk},
+		},
+
+		{
+			query:  "histogram_count(foo)",
+			step:   sampleRate * 4 * 10,
+			labels: labels.Labels{},
+			samples: func(from, through time.Time, step time.Duration) int {
+				return int(through.Sub(from)/step) + 1
+			},
+			expectedFunc: func(t testing.TB, q query, end model.Time, enc promchunk.Encoding, series promql.Series) {
+				var ts int64
+				from, through := time.Unix(0, 0), end.Time()
+				require.Equal(t, q.samples(from, through, q.step), len(series.Floats))
+				for i, point := range series.Floats {
+					expectedFH := histogram_util.GenerateTestFloatHistogram(int(ts - 10))
+					require.Equal(t, ts, point.T, strconv.Itoa(i))
+					require.Equal(t, expectedFH.Count, point.F, strconv.Itoa(i))
+					ts += int64(q.step / time.Millisecond)
+				}
+			},
+			encodings: []promchunk.Encoding{promchunk.PrometheusHistogramChunk, promchunk.PrometheusFloatHistogramChunk},
 		},
 	}
 )
@@ -154,113 +264,105 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 	overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 	const chunks = 1
 	require.NoError(t, err)
-
-	labelsSets := []labels.Labels{
-		{
-			{Name: model.MetricNameLabel, Value: "foo"},
-			{Name: "order", Value: "1"},
-		},
-		{
-			{Name: model.MetricNameLabel, Value: "foo"},
-			{Name: "order", Value: "2"},
-		},
-	}
-
-	db, samples := mockTSDB(t, labelsSets, model.Time(start.Unix()*1000), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
 	distributor := &MockDistributor{}
 
-	unorderedResponse := client.QueryStreamResponse{
-		Chunkseries: []client.TimeSeriesChunk{
-			{
-				Labels: []cortexpb.LabelAdapter{
-					{Name: model.MetricNameLabel, Value: "foo"},
-					{Name: "order", Value: "2"},
+	for _, enc := range encodings {
+		chks1, _ := makeMockChunks(t, chunks, enc, model.TimeFromUnix(start.Unix()), labels.Label{Name: "order", Value: "1"})
+		chks2, _ := makeMockChunks(t, chunks, enc, model.TimeFromUnix(start.Unix()), labels.Label{Name: "order", Value: "2"})
+
+		db := NewMockStoreQueryable(&mockChunkStore{chunks: append(chks1, chks2...)})
+
+		clientChks1, err := chunkcompat.ToChunks(chks1)
+		require.NoError(t, err)
+		clientChks2, err := chunkcompat.ToChunks(chks2)
+		require.NoError(t, err)
+		unorderedResponse := client.QueryStreamResponse{
+			Chunkseries: []client.TimeSeriesChunk{
+				{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: model.MetricNameLabel, Value: "foo"},
+						{Name: "order", Value: "2"},
+					},
+					Chunks: clientChks2,
 				},
-				Chunks: ConvertToChunks(t, samples, nil),
+				{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: model.MetricNameLabel, Value: "foo"},
+						{Name: "order", Value: "1"},
+					},
+					Chunks: clientChks1,
+				},
+			},
+		}
+
+		distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
+		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+
+		tCases := []struct {
+			name                 string
+			distributorQueryable QueryableWithFilter
+			storeQueriables      []QueryableWithFilter
+			sorted               bool
+		}{
+			{
+				name:                 "should sort if querying 2 queryables",
+				distributorQueryable: distributorQueryable,
+				storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
+				sorted:               true,
 			},
 			{
-				Labels: []cortexpb.LabelAdapter{
-					{Name: model.MetricNameLabel, Value: "foo"},
-					{Name: "order", Value: "1"},
-				},
-				Chunks: ConvertToChunks(t, samples, nil),
+				name:                 "should not sort if querying only ingesters",
+				distributorQueryable: distributorQueryable,
+				storeQueriables:      []QueryableWithFilter{UseBeforeTimestampQueryable(db, start.Add(-1*time.Hour))},
+				sorted:               false,
 			},
-		},
-	}
+			{
+				name:                 "should not sort if querying only stores",
+				distributorQueryable: UseBeforeTimestampQueryable(distributorQueryable, start.Add(-1*time.Hour)),
+				storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
+				sorted:               false,
+			},
+		}
 
-	distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
-
-	tCases := []struct {
-		name                 string
-		distributorQueryable QueryableWithFilter
-		storeQueriables      []QueryableWithFilter
-		sorted               bool
-	}{
-		{
-			name:                 "should sort if querying 2 queryables",
-			distributorQueryable: distributorQueryable,
-			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
-			sorted:               true,
-		},
-		{
-			name:                 "should not sort if querying only ingesters",
-			distributorQueryable: distributorQueryable,
-			storeQueriables:      []QueryableWithFilter{UseBeforeTimestampQueryable(db, start.Add(-1*time.Hour))},
-			sorted:               false,
-		},
-		{
-			name:                 "should not sort if querying only stores",
-			distributorQueryable: UseBeforeTimestampQueryable(distributorQueryable, start.Add(-1*time.Hour)),
-			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
-			sorted:               false,
-		},
-		{
-			name:                 "should sort if querying 2 queryables with streaming off",
-			distributorQueryable: distributorQueryable,
-			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
-			sorted:               true,
-		},
-	}
-
-	for _, tc := range tCases {
-		for _, thanosEngine := range []bool{false, true} {
-			thanosEngine := thanosEngine
-			t.Run(tc.name+fmt.Sprintf("thanos engine: %s", strconv.FormatBool(thanosEngine)), func(t *testing.T) {
-				wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
-				var wQueriables []QueryableWithFilter
-				for _, queryable := range tc.storeQueriables {
-					wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
-				}
-				queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
-				opts := promql.EngineOpts{
-					Logger:     log.NewNopLogger(),
-					MaxSamples: 1e6,
-					Timeout:    1 * time.Minute,
-				}
-				var queryEngine promql.QueryEngine
-				if thanosEngine {
-					queryEngine = engine.New(engine.Opts{
-						EngineOpts:        opts,
-						LogicalOptimizers: logicalplan.AllOptimizers,
-					})
-				} else {
-					queryEngine = promql.NewEngine(opts)
-				}
-
-				query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "foo", start, end, 1*time.Minute)
-				r := query.Exec(ctx)
-
-				require.NoError(t, err)
-				require.Equal(t, 2, r.Value.(promql.Matrix).Len())
-
-				for _, queryable := range append(wQueriables, wDistributorQueriable) {
-					var wQueryable = queryable.(*wrappedSampleAndChunkQueryable)
-					if wQueryable.UseQueryable(time.Now(), start.Unix()*1000, end.Unix()*1000) {
-						require.Equal(t, tc.sorted, wQueryable.queriers[0].selectCallsArgs[0][0])
+		for _, tc := range tCases {
+			for _, thanosEngine := range []bool{false, true} {
+				thanosEngine := thanosEngine
+				t.Run(tc.name+fmt.Sprintf("thanos engine: %t, encoding=%s", thanosEngine, enc.String()), func(t *testing.T) {
+					wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
+					var wQueriables []QueryableWithFilter
+					for _, queryable := range tc.storeQueriables {
+						wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
 					}
-				}
-			})
+					queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
+					opts := promql.EngineOpts{
+						Logger:     log.NewNopLogger(),
+						MaxSamples: 1e6,
+						Timeout:    1 * time.Minute,
+					}
+					var queryEngine promql.QueryEngine
+					if thanosEngine {
+						queryEngine = engine.New(engine.Opts{
+							EngineOpts:        opts,
+							LogicalOptimizers: logicalplan.AllOptimizers,
+						})
+					} else {
+						queryEngine = promql.NewEngine(opts)
+					}
+
+					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "foo", start, end, 1*time.Minute)
+					r := query.Exec(ctx)
+
+					require.NoError(t, err)
+					require.Equal(t, 2, r.Value.(promql.Matrix).Len())
+
+					for _, queryable := range append(wQueriables, wDistributorQueriable) {
+						var wQueryable = queryable.(*wrappedSampleAndChunkQueryable)
+						if wQueryable.UseQueryable(time.Now(), start.Unix()*1000, end.Unix()*1000) {
+							require.Equal(t, tc.sorted, wQueryable.queriers[0].selectCallsArgs[0][0])
+						}
+					}
+				})
+			}
 		}
 	}
 }
@@ -290,173 +392,152 @@ func TestLimits(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "0")
 	var cfg Config
 	flagext.DefaultValues(&cfg)
-
 	const chunks = 1
 
-	labelsSets := []labels.Labels{
-		{
-			{Name: model.MetricNameLabel, Value: "foo"},
-			{Name: "order", Value: "1"},
-		},
-		{
-			{Name: model.MetricNameLabel, Value: "foo"},
-			{Name: "order", Value: "2"},
-		},
-		{
-			{Name: model.MetricNameLabel, Value: "foo"},
-			{Name: "orders", Value: "3"},
-		},
-		{
-			{Name: model.MetricNameLabel, Value: "bar"},
-			{Name: "orders", Value: "4"},
-		},
-		{
-			{Name: model.MetricNameLabel, Value: "bar"},
-			{Name: "orders", Value: "5"},
-		},
-	}
-
-	_, samples := mockTSDB(t, labelsSets, model.Time(start.Unix()*1000), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
-
-	streamResponse := client.QueryStreamResponse{
-		Chunkseries: []client.TimeSeriesChunk{
-			{
-				Labels: []cortexpb.LabelAdapter{
-					{Name: model.MetricNameLabel, Value: "foo"},
-					{Name: "order", Value: "2"},
+	for _, enc := range encodings {
+		chks, _ := makeMockChunks(t, chunks, enc, model.TimeFromUnix(start.Unix()))
+		clientChks, err := chunkcompat.ToChunks(chks)
+		require.NoError(t, err)
+		streamResponse := client.QueryStreamResponse{
+			Chunkseries: []client.TimeSeriesChunk{
+				{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: model.MetricNameLabel, Value: "foo"},
+						{Name: "order", Value: "2"},
+					},
+					Chunks: clientChks,
 				},
-				Chunks: ConvertToChunks(t, samples, nil),
+				{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: model.MetricNameLabel, Value: "foo"},
+						{Name: "order", Value: "1"},
+					},
+					Chunks: clientChks,
+				},
+				{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: model.MetricNameLabel, Value: "foo"},
+						{Name: "orders", Value: "3"},
+					},
+					Chunks: clientChks,
+				},
+				{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: model.MetricNameLabel, Value: "bar"},
+						{Name: "orders", Value: "2"},
+					},
+					Chunks: clientChks,
+				},
+				{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: model.MetricNameLabel, Value: "bar"},
+						{Name: "orders", Value: "1"},
+					},
+					Chunks: clientChks,
+				},
+			},
+		}
+
+		distributor := &MockLimitingDistributor{
+			response: &streamResponse,
+		}
+
+		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+
+		tCases := []struct {
+			name                 string
+			description          string
+			distributorQueryable QueryableWithFilter
+			storeQueriables      []QueryableWithFilter
+			tenantLimit          validation.TenantLimits
+			query                string
+			assert               func(t *testing.T, r *promql.Result)
+		}{
+			{
+
+				name:                 "should result in limit failure for multi-select and an individual select hits the series limit",
+				description:          "query results in multi-select but duplicate finger prints get deduped but still results in # of series greater than limit",
+				query:                "foo + foo",
+				distributorQueryable: distributorQueryableStreaming,
+				storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
+				tenantLimit: &tenantLimit{
+					MaxFetchedSeriesPerQuery: 2,
+				},
+				assert: func(t *testing.T, r *promql.Result) {
+					require.Error(t, r.Err)
+				},
 			},
 			{
-				Labels: []cortexpb.LabelAdapter{
-					{Name: model.MetricNameLabel, Value: "foo"},
-					{Name: "order", Value: "1"},
+
+				name:                 "should not result in limit failure for multi-select and the query does not hit the series limit",
+				description:          "query results in multi-select but duplicate series finger prints get deduped resulting in # of series within the limit",
+				query:                "foo + foo",
+				distributorQueryable: distributorQueryableStreaming,
+				storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
+				tenantLimit: &tenantLimit{
+					MaxFetchedSeriesPerQuery: 3,
 				},
-				Chunks: ConvertToChunks(t, samples, nil),
+				assert: func(t *testing.T, r *promql.Result) {
+					require.NoError(t, r.Err)
+				},
 			},
 			{
-				Labels: []cortexpb.LabelAdapter{
-					{Name: model.MetricNameLabel, Value: "foo"},
-					{Name: "orders", Value: "3"},
+
+				name:                 "should result in limit failure for multi-select and query hits the series limit",
+				description:          "query results in multi-select but each individual select does not hit the limit but cumulatively the query hits the limit",
+				query:                "foo + bar",
+				distributorQueryable: distributorQueryableStreaming,
+				storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
+				tenantLimit: &tenantLimit{
+					MaxFetchedSeriesPerQuery: 3,
 				},
-				Chunks: ConvertToChunks(t, samples, nil),
+				assert: func(t *testing.T, r *promql.Result) {
+					require.Error(t, r.Err)
+				},
 			},
 			{
-				Labels: []cortexpb.LabelAdapter{
-					{Name: model.MetricNameLabel, Value: "bar"},
-					{Name: "orders", Value: "2"},
+
+				name:                 "should not result in limit failure for multi-select and query does not hit the series limit",
+				description:          "query results in multi-select and the cumulative limit is >= series",
+				query:                "foo + bar",
+				distributorQueryable: distributorQueryableStreaming,
+				storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
+				tenantLimit: &tenantLimit{
+					MaxFetchedSeriesPerQuery: 5,
 				},
-				Chunks: ConvertToChunks(t, samples, nil),
-			},
-			{
-				Labels: []cortexpb.LabelAdapter{
-					{Name: model.MetricNameLabel, Value: "bar"},
-					{Name: "orders", Value: "1"},
+				assert: func(t *testing.T, r *promql.Result) {
+					require.NoError(t, r.Err)
 				},
-				Chunks: ConvertToChunks(t, samples, nil),
 			},
-		},
-	}
+		}
 
-	distributor := &MockLimitingDistributor{
-		response: &streamResponse,
-	}
+		for i, tc := range tCases {
+			t.Run(tc.name+fmt.Sprintf(", encoding=%s, Test: %d", enc.String(), i), func(t *testing.T) {
+				wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
+				var wQueriables []QueryableWithFilter
+				for _, queryable := range tc.storeQueriables {
+					wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
+				}
+				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
+				require.NoError(t, err)
 
-	distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+				queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
+				opts := promql.EngineOpts{
+					Logger:     log.NewNopLogger(),
+					MaxSamples: 1e6,
+					Timeout:    1 * time.Minute,
+				}
 
-	tCases := []struct {
-		name                 string
-		description          string
-		distributorQueryable QueryableWithFilter
-		storeQueriables      []QueryableWithFilter
-		tenantLimit          validation.TenantLimits
-		query                string
-		assert               func(t *testing.T, r *promql.Result)
-	}{
-		{
+				queryEngine := promql.NewEngine(opts)
 
-			name:                 "should result in limit failure for multi-select and an individual select hits the series limit",
-			description:          "query results in multi-select but duplicate finger prints get deduped but still results in # of series greater than limit",
-			query:                "foo + foo",
-			distributorQueryable: distributorQueryableStreaming,
-			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
-			tenantLimit: &tenantLimit{
-				MaxFetchedSeriesPerQuery: 2,
-			},
-			assert: func(t *testing.T, r *promql.Result) {
-				require.Error(t, r.Err)
-			},
-		},
-		{
+				query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, tc.query, start, end, 1*time.Minute)
+				require.NoError(t, err)
 
-			name:                 "should not result in limit failure for multi-select and the query does not hit the series limit",
-			description:          "query results in multi-select but duplicate series finger prints get deduped resulting in # of series within the limit",
-			query:                "foo + foo",
-			distributorQueryable: distributorQueryableStreaming,
-			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
-			tenantLimit: &tenantLimit{
-				MaxFetchedSeriesPerQuery: 3,
-			},
-			assert: func(t *testing.T, r *promql.Result) {
-				require.NoError(t, r.Err)
-			},
-		},
-		{
+				r := query.Exec(ctx)
 
-			name:                 "should result in limit failure for multi-select and query hits the series limit",
-			description:          "query results in multi-select but each individual select does not hit the limit but cumulatively the query hits the limit",
-			query:                "foo + bar",
-			distributorQueryable: distributorQueryableStreaming,
-			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
-			tenantLimit: &tenantLimit{
-				MaxFetchedSeriesPerQuery: 3,
-			},
-			assert: func(t *testing.T, r *promql.Result) {
-				require.Error(t, r.Err)
-			},
-		},
-		{
-
-			name:                 "should not result in limit failure for multi-select and query does not hit the series limit",
-			description:          "query results in multi-select and the cumulative limit is >= series",
-			query:                "foo + bar",
-			distributorQueryable: distributorQueryableStreaming,
-			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
-			tenantLimit: &tenantLimit{
-				MaxFetchedSeriesPerQuery: 5,
-			},
-			assert: func(t *testing.T, r *promql.Result) {
-				require.NoError(t, r.Err)
-			},
-		},
-	}
-
-	for i, tc := range tCases {
-		t.Run(tc.name+fmt.Sprintf(", Test: %d", i), func(t *testing.T) {
-			wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
-			var wQueriables []QueryableWithFilter
-			for _, queryable := range tc.storeQueriables {
-				wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
-			}
-			overrides, err := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
-			require.NoError(t, err)
-
-			queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
-			opts := promql.EngineOpts{
-				Logger:     log.NewNopLogger(),
-				MaxSamples: 1e6,
-				Timeout:    1 * time.Minute,
-			}
-
-			queryEngine := promql.NewEngine(opts)
-
-			query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, tc.query, start, end, 1*time.Minute)
-			require.NoError(t, err)
-
-			r := query.Exec(ctx)
-
-			tc.assert(t, r)
-		})
+				tc.assert(t, r)
+			})
+		}
 	}
 }
 
@@ -464,14 +545,7 @@ func TestQuerier(t *testing.T) {
 	t.Parallel()
 	var cfg Config
 	flagext.DefaultValues(&cfg)
-
 	const chunks = 24
-
-	// Generate TSDB head with the same samples as makeMockChunkStore.
-	lset := labels.Labels{
-		{Name: model.MetricNameLabel, Value: "foo"},
-	}
-	db, _ := mockTSDB(t, []labels.Labels{lset}, model.Time(0), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
 
 	opts := promql.EngineOpts{
 		Logger:     log.NewNopLogger(),
@@ -480,29 +554,35 @@ func TestQuerier(t *testing.T) {
 	}
 	for _, thanosEngine := range []bool{false, true} {
 		for _, query := range queries {
-			t.Run(fmt.Sprintf("thanosEngine=%s,query=%s", strconv.FormatBool(thanosEngine), query.query), func(t *testing.T) {
-				var queryEngine promql.QueryEngine
-				if thanosEngine {
-					queryEngine = engine.New(engine.Opts{
-						EngineOpts:        opts,
-						LogicalOptimizers: logicalplan.AllOptimizers,
-					})
-				} else {
-					queryEngine = promql.NewEngine(opts)
-				}
-				// Disable active query tracker to avoid mmap error.
-				cfg.ActiveQueryTrackerDir = ""
+			encs := encodings
+			if len(query.encodings) > 0 {
+				encs = query.encodings
+			}
+			for _, enc := range encs {
+				t.Run(fmt.Sprintf("thanosEngine=%t,encoding=%s,query=%s", thanosEngine, enc.String(), query.query), func(t *testing.T) {
+					var queryEngine promql.QueryEngine
+					if thanosEngine {
+						queryEngine = engine.New(engine.Opts{
+							EngineOpts:        opts,
+							LogicalOptimizers: logicalplan.AllOptimizers,
+						})
+					} else {
+						queryEngine = promql.NewEngine(opts)
+					}
+					// Disable active query tracker to avoid mmap error.
+					cfg.ActiveQueryTrackerDir = ""
 
-				chunkStore, through := makeMockChunkStore(t, chunks, promchunk.PrometheusXorChunk)
-				distributor := mockDistibutorFor(t, chunkStore.chunks)
+					chunkStore, through := makeMockChunkStore(t, chunks, enc)
+					distributor := mockDistibutorFor(t, chunkStore.chunks)
 
-				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-				require.NoError(t, err)
+					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+					require.NoError(t, err)
 
-				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
-				queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
-				testRangeQuery(t, queryable, queryEngine, through, query)
-			})
+					queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+					testRangeQuery(t, queryable, queryEngine, through, query, enc)
+				})
+			}
 		}
 	}
 }
@@ -527,47 +607,6 @@ func TestQuerierMetric(t *testing.T) {
 		# TYPE cortex_max_concurrent_queries gauge
 		cortex_max_concurrent_queries{engine="querier"} 120
 	`), "cortex_max_concurrent_queries"))
-}
-
-func mockTSDB(t *testing.T, labels []labels.Labels, mint model.Time, samples int, step, chunkOffset time.Duration, samplesPerChunk int) (storage.Queryable, []cortexpb.Sample) {
-	//parallel testing causes data race
-	opts := tsdb.DefaultHeadOptions()
-	opts.ChunkDirRoot = t.TempDir()
-	// We use TSDB head only. By using full TSDB DB, and appending samples to it, closing it would cause unnecessary HEAD compaction, which slows down the test.
-	head, err := tsdb.NewHead(nil, nil, nil, nil, opts, nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = head.Close()
-	})
-
-	app := head.Appender(context.Background())
-	rSamples := []cortexpb.Sample{}
-
-	for _, lset := range labels {
-		cnt := 0
-		chunkStartTs := mint
-		ts := chunkStartTs
-		for i := 0; i < samples; i++ {
-			_, err := app.Append(0, lset, int64(ts), float64(ts))
-			rSamples = append(rSamples, cortexpb.Sample{TimestampMs: int64(ts), Value: float64(ts)})
-			require.NoError(t, err)
-			cnt++
-
-			ts = ts.Add(step)
-
-			if cnt%samplesPerChunk == 0 {
-				// Simulate next chunk, restart timestamp.
-				chunkStartTs = chunkStartTs.Add(chunkOffset)
-				ts = chunkStartTs
-			}
-		}
-	}
-
-	require.NoError(t, app.Commit())
-
-	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
-		return tsdb.NewBlockQuerier(head, mint, maxt)
-	}), rSamples
 }
 
 func TestNoHistoricalQueryToIngester(t *testing.T) {
@@ -645,7 +684,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 					require.NoError(t, err)
 
 					ctx := user.InjectOrgID(context.Background(), "0")
-					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger())
 					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 					require.NoError(t, err)
 
@@ -739,7 +778,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "0")
-			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
+			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
 			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 			query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
 			require.NoError(t, err)
@@ -833,7 +872,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			chunkStore := &emptyChunkStore{}
 			distributor := &emptyDistributor{}
 
-			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
+			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
 			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 
 			queryEngine := promql.NewEngine(opts)
@@ -968,7 +1007,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				require.NoError(t, err)
 
 				chunkStore := &emptyChunkStore{}
-				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
+				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
 
 				t.Run("query range", func(t *testing.T) {
 					if testData.query == "" {
@@ -1201,7 +1240,7 @@ func mockDistibutorFor(t *testing.T, cks []chunk.Chunk) *MockDistributor {
 	return result
 }
 
-func testRangeQuery(t testing.TB, queryable storage.Queryable, queryEngine promql.QueryEngine, end model.Time, q query) *promql.Result {
+func testRangeQuery(t testing.TB, queryable storage.Queryable, queryEngine promql.QueryEngine, end model.Time, q query, enc promchunk.Encoding) *promql.Result {
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
 	ctx := user.InjectOrgID(context.Background(), "0")
 	query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, q.query, from, through, step)
@@ -1214,14 +1253,7 @@ func testRangeQuery(t testing.TB, queryable storage.Queryable, queryEngine promq
 	require.Len(t, m, 1)
 	series := m[0]
 	require.Equal(t, q.labels, series.Metric)
-	require.Equal(t, q.samples(from, through, step), len(series.Floats))
-	var ts int64
-	for i, point := range series.Floats {
-		expectedTime, expectedValue := q.expected(ts)
-		require.Equal(t, expectedTime, point.T, strconv.Itoa(i))
-		require.Equal(t, expectedValue, point.F, strconv.Itoa(i))
-		ts += int64(step / time.Millisecond)
-	}
+	q.expectedFunc(t, q, end, enc, series)
 	return r
 }
 
@@ -1319,8 +1351,8 @@ type mockStore interface {
 }
 
 // NewMockStoreQueryable returns the storage.Queryable implementation against the chunks store.
-func NewMockStoreQueryable(cfg Config, store mockStore) storage.Queryable {
-	return newMockStoreQueryable(store, getChunksIteratorFunction(cfg))
+func NewMockStoreQueryable(store mockStore) storage.Queryable {
+	return newMockStoreQueryable(store, getChunksIteratorFunction(Config{}))
 }
 
 func newMockStoreQueryable(store mockStore, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
@@ -1431,7 +1463,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 			overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 			require.NoError(t, err)
 
-			queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, nil, log.NewNopLogger())
+			queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger())
 			ctx := user.InjectOrgID(context.Background(), "0")
 			query, err := engine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 			require.NoError(t, err)

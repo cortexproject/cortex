@@ -5,13 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/promql"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -52,10 +51,9 @@ func (l limitsMiddleware) Do(ctx context.Context, r tripperware.Request) (trippe
 		}
 
 		// Enforce query length across all selectors in the query.
-		min, max := promql.FindMinMaxTime(&parser.EvalStmt{Expr: expr, Start: util.TimeFromMillis(0), End: util.TimeFromMillis(0), LookbackDelta: l.lookbackDelta})
-		diff := util.TimeFromMillis(max).Sub(util.TimeFromMillis(min))
-		if diff > maxQueryLength {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, diff, maxQueryLength)
+		length := promql.FindNonOverlapQueryLength(expr, 0, 0, l.lookbackDelta)
+		if length > maxQueryLength {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, length, maxQueryLength)
 		}
 	}
 

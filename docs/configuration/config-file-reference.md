@@ -3295,7 +3295,8 @@ query_rejection:
   # it matches any query_attribute in this list. Each query_attribute has
   # several properties (e.g., regex, time_window, user_agent), and all specified
   # properties must match for a query_attribute to be considered a match. Only
-  # the specified keys are checked, and an AND operator is applied to them.
+  # the specified properties are checked, and an AND operator is applied to
+  # them.
   [query_attributes: <list of QueryAttribute> | default = []]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
@@ -5362,8 +5363,8 @@ limits:
 # assigned to this priority if it matches any query_attribute in this list. Each
 # query_attribute has several properties (e.g., regex, time_window, user_agent),
 # and all specified properties must match for a query_attribute to be considered
-# a match. Only the specified keys are checked, and an AND operator is applied
-# to them.
+# a match. Only the specified properties are checked, and an AND operator is
+# applied to them.
 [query_attributes: <list of QueryAttribute> | default = []]
 ```
 
@@ -5401,7 +5402,7 @@ time_range_limit:
 
 # For range query, step should be within this limit to match. For instant query,
 # subQuery step should be within this limit to match. If not set, it won't be
-# checked. This attribute won't be applied to metadata queries.
+# checked. This property won't be applied to metadata queries.
 query_step_limit:
   # Query step should be above or equal to this value to match. If set to 0, it
   # won't be checked.
@@ -5417,13 +5418,13 @@ query_step_limit:
 
 # Grafana includes X-Dashboard-Uid header in query requests. If this field is
 # provided then X-Dashboard-Uid header of request should match this value. If
-# not set, it won't be checked. This attribute won't be applied to metadata
+# not set, it won't be checked. This property won't be applied to metadata
 # queries.
 [dashboard_uid: <string> | default = ""]
 
 # Grafana includes X-Panel-Id header in query requests. If this field is
 # provided then X-Panel-Id header of request should match this value. If not
-# set, it won't be checked. This attribute won't be applied to metadata queries.
+# set, it won't be checked. This property won't be applied to metadata queries.
 [panel_id: <string> | default = ""]
 ```
 

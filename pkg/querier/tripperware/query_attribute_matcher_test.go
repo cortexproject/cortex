@@ -10,15 +10,13 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/stats"
-
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 

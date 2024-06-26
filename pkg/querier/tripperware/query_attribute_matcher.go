@@ -11,7 +11,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
-
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 

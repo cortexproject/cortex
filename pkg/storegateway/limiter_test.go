@@ -30,7 +30,7 @@ func TestCompositeLimiter(t *testing.T) {
 	}
 
 	assert.NoError(t, l.ReserveWithType(1, store.PostingsFetched))
-	assert.Error(t, l.ReserveWithType(1, store.PostingsFetched))
+	assert.ErrorContains(t, l.ReserveWithType(1, store.PostingsFetched), "(422)")
 }
 
 func TestNewTokenBucketBytesLimiter(t *testing.T) {

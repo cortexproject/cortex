@@ -39,7 +39,7 @@ type compositeLimiter struct {
 func (c *compositeLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
 	for _, l := range c.limiters {
 		if err := l.ReserveWithType(num, dataType); err != nil {
-			return err
+			return httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
 		}
 	}
 	return nil

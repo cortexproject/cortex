@@ -294,10 +294,10 @@ type BucketStoreConfig struct {
 	SeriesBatchSize int `yaml:"series_batch_size"`
 
 	// Token bucket configs
-	TokenBucketLimiter TokenBucketLimiterConfig `yaml:"token_bucket_limiter"`
+	TokenBucketBytesLimiter TokenBucketBytesLimiterConfig `yaml:"token_bucket_bytes_limiter"`
 }
 
-type TokenBucketLimiterConfig struct {
+type TokenBucketBytesLimiterConfig struct {
 	Enabled                    bool    `yaml:"enabled"`
 	DryRun                     bool    `yaml:"dry_run"`
 	InstanceTokenBucketSize    int64   `yaml:"instance_token_bucket_size"`
@@ -342,17 +342,17 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LazyExpandedPostingsEnabled, "blocks-storage.bucket-store.lazy-expanded-postings-enabled", false, "If true, Store Gateway will estimate postings size and try to lazily expand postings if it downloads less data than expanding all postings.")
 	f.IntVar(&cfg.SeriesBatchSize, "blocks-storage.bucket-store.series-batch-size", store.SeriesBatchSize, "Controls how many series to fetch per batch in Store Gateway. Default value is 10000.")
 	f.StringVar(&cfg.BlockDiscoveryStrategy, "blocks-storage.bucket-store.block-discovery-strategy", string(ConcurrentDiscovery), "One of "+strings.Join(supportedBlockDiscoveryStrategies, ", ")+". When set to concurrent, stores will concurrently issue one call per directory to discover active blocks in the bucket. The recursive strategy iterates through all objects in the bucket, recursively traversing into each directory. This avoids N+1 calls at the expense of having slower bucket iterations. bucket_index strategy can be used in Compactor only and utilizes the existing bucket index to fetch block IDs to sync. This avoids iterating the bucket but can be impacted by delays of cleaner creating bucket index.")
-	f.BoolVar(&cfg.TokenBucketLimiter.Enabled, "blocks-storage.bucket-store.token-bucket-limiter.enabled", false, "Whether token bucket limiter is enabled")
-	f.BoolVar(&cfg.TokenBucketLimiter.DryRun, "blocks-storage.bucket-store.token-bucket-limiter.dry-run", false, "Whether the token bucket limiter is in dry run mode")
-	f.Int64Var(&cfg.TokenBucketLimiter.InstanceTokenBucketSize, "blocks-storage.bucket-store.token-bucket-limiter.instance-token-bucket-size", int64(820*units.Mebibyte), "Instance token bucket size")
-	f.Int64Var(&cfg.TokenBucketLimiter.UserTokenBucketSize, "blocks-storage.bucket-store.token-bucket-limiter.user-token-bucket-size", int64(615*units.Mebibyte), "User token bucket size")
-	f.Int64Var(&cfg.TokenBucketLimiter.RequestTokenBucketSize, "blocks-storage.bucket-store.token-bucket-limiter.request-token-bucket-size", int64(4*units.Mebibyte), "Request token bucket size")
-	f.Float64Var(&cfg.TokenBucketLimiter.FetchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.fetched-postings-token-factor", 0, "Multiplication factor used for fetched postings token")
-	f.Float64Var(&cfg.TokenBucketLimiter.TouchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.touched-postings-token-factor", 5, "Multiplication factor used for touched postings token")
-	f.Float64Var(&cfg.TokenBucketLimiter.FetchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.fetched-series-token-factor", 0, "Multiplication factor used for fetched series token")
-	f.Float64Var(&cfg.TokenBucketLimiter.TouchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.touched-series-token-factor", 25, "Multiplication factor used for touched series token")
-	f.Float64Var(&cfg.TokenBucketLimiter.FetchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.fetched-chunks-token-factor", 0, "Multiplication factor used for fetched chunks token")
-	f.Float64Var(&cfg.TokenBucketLimiter.TouchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-limiter.touched-chunks-token-factor", 1, "Multiplication factor used for touched chunks token")
+	f.BoolVar(&cfg.TokenBucketBytesLimiter.Enabled, "blocks-storage.bucket-store.token-bucket-bytes-limiter.enabled", false, "Whether token bucket limiter is enabled")
+	f.BoolVar(&cfg.TokenBucketBytesLimiter.DryRun, "blocks-storage.bucket-store.token-bucket-bytes-limiter.dry-run", false, "Whether the token bucket limiter is in dry run mode")
+	f.Int64Var(&cfg.TokenBucketBytesLimiter.InstanceTokenBucketSize, "blocks-storage.bucket-store.token-bucket-bytes-limiter.instance-token-bucket-size", int64(820*units.Mebibyte), "Instance token bucket size")
+	f.Int64Var(&cfg.TokenBucketBytesLimiter.UserTokenBucketSize, "blocks-storage.bucket-store.token-bucket-bytes-limiter.user-token-bucket-size", int64(615*units.Mebibyte), "User token bucket size")
+	f.Int64Var(&cfg.TokenBucketBytesLimiter.RequestTokenBucketSize, "blocks-storage.bucket-store.token-bucket-bytes-limiter.request-token-bucket-size", int64(4*units.Mebibyte), "Request token bucket size")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.FetchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.fetched-postings-token-factor", 0, "Multiplication factor used for fetched postings token")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.TouchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.touched-postings-token-factor", 5, "Multiplication factor used for touched postings token")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.FetchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.fetched-series-token-factor", 0, "Multiplication factor used for fetched series token")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.TouchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.touched-series-token-factor", 25, "Multiplication factor used for touched series token")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.FetchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.fetched-chunks-token-factor", 0, "Multiplication factor used for fetched chunks token")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.TouchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.touched-chunks-token-factor", 1, "Multiplication factor used for touched chunks token")
 }
 
 // Validate the config.

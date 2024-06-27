@@ -33,11 +33,11 @@ func TestCompositeLimiter(t *testing.T) {
 	assert.Error(t, l.ReserveWithType(1, store.PostingsFetched))
 }
 
-func TestNewTokenBucketLimiter(t *testing.T) {
+func TestNewTokenBucketBytesLimiter(t *testing.T) {
 	instanceTokenBucket := util.NewTokenBucket(3, 3, nil)
 	userTokenBucket := util.NewTokenBucket(2, 2, nil)
 	requestTokenBucket := util.NewTokenBucket(1, 1, nil)
-	l := newTokenBucketLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, false, func(tokens uint64, dataType store.StoreDataType) int64 {
+	l := newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, false, func(tokens uint64, dataType store.StoreDataType) int64 {
 		if dataType == store.SeriesFetched {
 			return int64(tokens) * 5
 		}
@@ -86,7 +86,7 @@ func TestNewTokenBucketLimter_DryRun(t *testing.T) {
 	instanceTokenBucket := util.NewTokenBucket(3, 3, nil)
 	userTokenBucket := util.NewTokenBucket(2, 2, nil)
 	requestTokenBucket := util.NewTokenBucket(1, 1, nil)
-	l := newTokenBucketLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, true, func(tokens uint64, dataType store.StoreDataType) int64 {
+	l := newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, true, func(tokens uint64, dataType store.StoreDataType) int64 {
 		if dataType == store.SeriesFetched {
 			return int64(tokens) * 5
 		}

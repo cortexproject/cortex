@@ -771,7 +771,7 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 
 	ctx := context.Background()
 	cfg := prepareStorageConfig(t)
-	cfg.BucketStore.TokenBucketLimiter.Enabled = true
+	cfg.BucketStore.TokenBucketBytesLimiter.Enabled = true
 
 	storageDir := t.TempDir()
 	userToMetric := map[string]string{
@@ -807,7 +807,7 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 	assert.Nil(t, stores.getUserTokenBucket("user-1"))
 	assert.Nil(t, stores.getUserTokenBucket("user-2"))
 
-	cfg.BucketStore.TokenBucketLimiter.Enabled = false
+	cfg.BucketStore.TokenBucketBytesLimiter.Enabled = false
 	sharding.users = []string{user1, user2}
 	reg = prometheus.NewPedanticRegistry()
 	stores, err = NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
@@ -821,12 +821,12 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 
 func TestBucketStores_getTokensToRetrieve(t *testing.T) {
 	cfg := prepareStorageConfig(t)
-	cfg.BucketStore.TokenBucketLimiter.FetchedPostingsTokenFactor = 1
-	cfg.BucketStore.TokenBucketLimiter.TouchedPostingsTokenFactor = 2
-	cfg.BucketStore.TokenBucketLimiter.FetchedSeriesTokenFactor = 3
-	cfg.BucketStore.TokenBucketLimiter.TouchedSeriesTokenFactor = 4
-	cfg.BucketStore.TokenBucketLimiter.FetchedChunksTokenFactor = 0
-	cfg.BucketStore.TokenBucketLimiter.TouchedChunksTokenFactor = 0.5
+	cfg.BucketStore.TokenBucketBytesLimiter.FetchedPostingsTokenFactor = 1
+	cfg.BucketStore.TokenBucketBytesLimiter.TouchedPostingsTokenFactor = 2
+	cfg.BucketStore.TokenBucketBytesLimiter.FetchedSeriesTokenFactor = 3
+	cfg.BucketStore.TokenBucketBytesLimiter.TouchedSeriesTokenFactor = 4
+	cfg.BucketStore.TokenBucketBytesLimiter.FetchedChunksTokenFactor = 0
+	cfg.BucketStore.TokenBucketBytesLimiter.TouchedChunksTokenFactor = 0.5
 
 	storageDir := t.TempDir()
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})

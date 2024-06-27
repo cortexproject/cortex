@@ -45,7 +45,7 @@ func (c *compositeLimiter) ReserveWithType(num uint64, dataType store.StoreDataT
 	return nil
 }
 
-type tokenBucketLimiter struct {
+type tokenBucketBytesLimiter struct {
 	instanceTokenBucket *util.TokenBucket
 	userTokenBucket     *util.TokenBucket
 	requestTokenBucket  *util.TokenBucket
@@ -53,11 +53,11 @@ type tokenBucketLimiter struct {
 	dryRun              bool
 }
 
-func (t *tokenBucketLimiter) Reserve(_ uint64) error {
+func (t *tokenBucketBytesLimiter) Reserve(_ uint64) error {
 	return nil
 }
 
-func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
+func (t *tokenBucketBytesLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
 	tokensToRetrieve := t.getTokensToRetrieve(num, dataType)
 
 	// check request bucket
@@ -101,8 +101,8 @@ func (t *tokenBucketLimiter) ReserveWithType(num uint64, dataType store.StoreDat
 	return nil
 }
 
-func newTokenBucketLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket *util.TokenBucket, dryRun bool, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketLimiter {
-	return &tokenBucketLimiter{
+func newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket *util.TokenBucket, dryRun bool, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketBytesLimiter {
+	return &tokenBucketBytesLimiter{
 		instanceTokenBucket: instanceTokenBucket,
 		userTokenBucket:     userTokenBucket,
 		requestTokenBucket:  requestTokenBucket,
@@ -131,16 +131,16 @@ func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.
 	}
 }
 
-func newBytesLimiterFactory(limits *validation.Overrides, userID string, instanceTokenBucket, userTokenBucket *util.TokenBucket, tokenBucketLimiterCfg tsdb.TokenBucketLimiterConfig, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) store.BytesLimiterFactory {
+func newBytesLimiterFactory(limits *validation.Overrides, userID string, instanceTokenBucket, userTokenBucket *util.TokenBucket, tokenBucketBytesLimiterCfg tsdb.TokenBucketBytesLimiterConfig, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) store.BytesLimiterFactory {
 	return func(failedCounter prometheus.Counter) store.BytesLimiter {
 		limiters := []store.BytesLimiter{}
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
 		limiters = append(limiters, store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter))
 
-		if tokenBucketLimiterCfg.Enabled {
-			requestTokenBucket := util.NewTokenBucket(tokenBucketLimiterCfg.RequestTokenBucketSize, tokenBucketLimiterCfg.RequestTokenBucketSize, nil)
-			limiters = append(limiters, newTokenBucketLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, tokenBucketLimiterCfg.DryRun, getTokensToRetrieve))
+		if tokenBucketBytesLimiterCfg.Enabled {
+			requestTokenBucket := util.NewTokenBucket(tokenBucketBytesLimiterCfg.RequestTokenBucketSize, tokenBucketBytesLimiterCfg.RequestTokenBucketSize, nil)
+			limiters = append(limiters, newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, tokenBucketBytesLimiterCfg.DryRun, getTokensToRetrieve))
 		}
 
 		return &compositeLimiter{

@@ -99,10 +99,18 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	result, err := c.Query(`series_1`, series2Timestamp)
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
-	require.Equal(t, 2, result.(model.Vector).Len())
+	v := result.(model.Vector)
+	require.Equal(t, 2, v.Len())
+	for _, s := range v {
+		require.NotNil(t, s.Histogram)
+	}
 
 	result, err = c.Query(`series_2`, series2Timestamp)
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
-	require.Equal(t, 2, result.(model.Vector).Len())
+	v = result.(model.Vector)
+	require.Equal(t, 2, v.Len())
+	for _, s := range v {
+		require.NotNil(t, s.Histogram)
+	}
 }

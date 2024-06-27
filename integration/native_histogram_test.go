@@ -104,6 +104,9 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	for _, ss := range m {
 		require.Empty(t, ss.Values)
 		require.NotEmpty(t, ss.Histograms)
+		for _, h := range ss.Histograms {
+			require.NotEmpty(t, h)
+		}
 	}
 
 	result, err = c.QueryRange(`series_2`, series2Timestamp.Add(-time.Minute*10), series2Timestamp, time.Second)
@@ -114,6 +117,9 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	for _, ss := range m {
 		require.Empty(t, ss.Values)
 		require.NotEmpty(t, ss.Histograms)
+		for _, h := range ss.Histograms {
+			require.NotEmpty(t, h)
+		}
 	}
 
 	result, err = c.Query(`series_1`, series2Timestamp)

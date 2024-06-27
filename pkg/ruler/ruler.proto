@@ -24,6 +24,8 @@ message RulesRequest {
   repeated string ruleGroupNames = 2;
   repeated string files = 3;
   string type = 4;
+  string state = 5;
+  string health = 6;
 }
 
 message RulesResponse {

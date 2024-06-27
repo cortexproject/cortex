@@ -81,10 +81,10 @@ config:
   blocks_storage:
     s3: &s3
       endpoint: seaweedfs.cortex.svc.cluster.local:8333
-      region: baz
+      region: local
       bucket_name: cortex-bucket
-      access_key_id: foo
-      secret_access_key: bar
+      access_key_id: any
+      secret_access_key: any
       insecure: true
     tsdb:
       dir: /data/tsdb

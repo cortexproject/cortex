@@ -1,3 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: seaweedfs-config
+data:
+  seaweedfs-config.json: |-
+    {
+      "identities": [
+        {
+          "name": "cortex",
+          "credentials": [
+            {
+              "accessKey": "any",
+              "secretKey": "any"
+            }
+          ],
+          "actions": [
+            "Admin"
+          ]
+        }
+      ]
+    }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,8 +46,16 @@ spec:
           args:
             - "server"
             - "-s3"
+            - "-s3.config=/workspace/seaweedfs-config.json"
           ports:
             - containerPort: 8333
+          volumeMounts:
+            - name: seaweedfs-config
+              mountPath: /workspace
+      volumes:
+        - name: seaweedfs-config
+          configMap:
+            name: seaweedfs-config
       restartPolicy: Always
 ---
 apiVersion: v1

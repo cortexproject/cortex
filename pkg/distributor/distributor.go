@@ -627,7 +627,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 	// Count the total samples, exemplars in, prior to validation or deduplication, for comparison with other metrics.
 	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeFloat).Add(float64(numFloatSamples))
-	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeHistogram).Add(float64(numFloatSamples))
+	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeHistogram).Add(float64(numHistogramSamples))
 	d.incomingExemplars.WithLabelValues(userID).Add(float64(numExemplars))
 	// Count the total number of metadata in.
 	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))

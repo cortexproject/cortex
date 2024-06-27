@@ -96,7 +96,27 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	c, err = e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
-	result, err := c.Query(`series_1`, series2Timestamp)
+	result, err := c.QueryRange(`series_1`, series2Timestamp.Add(-time.Minute*10), series2Timestamp, time.Second)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, result.Type())
+	m := result.(model.Matrix)
+	require.Equal(t, 2, m.Len())
+	for _, ss := range m {
+		require.Empty(t, ss.Values)
+		require.NotEmpty(t, ss.Histograms)
+	}
+
+	result, err = c.QueryRange(`series_2`, series2Timestamp.Add(-time.Minute*10), series2Timestamp, time.Second)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, result.Type())
+	m = result.(model.Matrix)
+	require.Equal(t, 2, m.Len())
+	for _, ss := range m {
+		require.Empty(t, ss.Values)
+		require.NotEmpty(t, ss.Histograms)
+	}
+
+	result, err = c.Query(`series_1`, series2Timestamp)
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	v := result.(model.Vector)

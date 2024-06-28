@@ -10,8 +10,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-version: "3.8"
-
 services:
   cortex:
     image: quay.io/cortexproject/cortex:${CORTEX_VERSION}
@@ -20,16 +18,25 @@ services:
     volumes:
       - ./cortex-config.yaml:/config/cortex-config.yaml:ro
     ports:
-      - 9009:9009
+      - "9009:9009"
     healthcheck:
         test: wget -qO- http://localhost:9009/ready
         interval: 10s
         timeout: 10s
         retries: 3
+    restart: on-failure
   grafana:
     image: grafana/grafana:${GRAFANA_VERSION}
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_USERS_DEFAULT_THEME=light
+      - GF_LOG_MODE=console
+      - GF_LOG_LEVEL=critical
+    volumes:
+      - ./grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml:ro
     ports:
-      - 3000:3000
+      - "3000:3000"
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION}
     command:
@@ -37,14 +44,17 @@ services:
     volumes:
       - ./prometheus-config.yaml:/config/prometheus-config.yaml:ro
     ports:
-      - 9090:9090
+      - "9090:9090"
   seaweedfs:
     image: chrislusf/seaweedfs:${SEAWEEDFS_VERSION}
     command:
       - server
       - -s3
+      - -s3.config=/workspace/seaweedfs-config.json
     ports:
-      - 8333:8333
+      - "8333:8333"
+    volumes:
+      - ./seaweedfs-config.json:/workspace/seaweedfs-config.json:ro
     healthcheck:
       test: wget -qO- http://localhost:8333/status
       interval: 10s

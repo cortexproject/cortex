@@ -57,25 +57,27 @@ how this is configured.
 
 ```sh
 # Create a bucket in SeaweedFS
-curl -X PUT http://localhost:8333/cortex-bucket
+curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-bucket
 ```
 
-#### Configure Grafana
+#### Explore
 
-1. Log into the Grafana instance at [http://localhost:3000](http://localhost:3000)
-    * login credentials are `username: admin` and `password: admin`
-    * There may be an additional screen on setting a new password. This can be skipped and is optional
-1. Navigate to the `Data Sources` page
-    * Look for a gear icon on the left sidebar and select `Data Sources`
-1. Add a new Prometheus Data Source
-    * Use `http://cortex:9009/api/prom` as the URL
-    * Click `Save & Test`
-1. Go to `Metrics Explore` to query metrics
-    * Look for a compass icon on the left sidebar
-    * Click `Metrics` for a dropdown list of all the available metrics
+Grafana is configured to use Cortex as a data source. You can explore the data source in Grafana and query metrics. For example, this [explore](http://localhost:3000/explore?schemaVersion=1&panes=%7B%22au0%22:%7B%22datasource%22:%22P6693426190CB2316%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22rate%28prometheus_remote_storage_samples_total%5B$__rate_interval%5D%29%22,%22range%22:true,%22instant%22:true,%22datasource%22:%7B%22type%22:%22prometheus%22,%22uid%22:%22P6693426190CB2316%22%7D,%22editorMode%22:%22builder%22,%22legendFormat%22:%22__auto%22,%22useBackend%22:false,%22disableTextWrap%22:false,%22fullMetaSearch%22:false,%22includeNullMetadata%22:false%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1) page is showing the rate of samples being sent to Cortex.
 
 If everything is working correctly, then the metrics seen in Grafana were successfully sent from Prometheus to Cortex
-via remote_write!
+via `remote_write`!
+
+Other things to explore:
+
+- [Cortex](http://localhost:9009) - Administrative interface for Cortex
+   - Try shutting down the [ingester](http://localhost:9009/ingester/shutdown) and see how it affects metric ingestion.
+   - Restart Cortex to bring the ingester back online, and see how Prometheus catches up.
+   - Does it affect the querying of metrics in Grafana?
+- [Prometheus](http://localhost:9090) - Prometheus instance that is sending metrics to Cortex
+   - Try querying the metrics in Prometheus.
+   - Are they the same as what you see in Cortex?
+- [Grafana](http://localhost:3000) - Grafana instance that is visualizing the metrics.
+   - Try creating a new dashboard and adding a new panel with a query to Cortex.
 
 ### Clean up
 
@@ -140,7 +142,7 @@ $ kubectl -n cortex port-forward svc/seaweedfs 8333
 
 ```shell
 # Create a bucket
-$ curl -X PUT http://localhost:8333/cortex-bucket
+$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-bucket
 ```
 
 #### Setup Cortex
@@ -148,46 +150,65 @@ $ curl -X PUT http://localhost:8333/cortex-bucket
 ```sh
 # Deploy Cortex using the provided values file which configures
 # - blocks storage to use the seaweedfs service
-$ helm install --version=2.3.0  --namespace cortex cortex cortex-helm/cortex -f cortex-values.yaml
+$ helm upgrade --install --version=2.3.0  --namespace cortex cortex cortex-helm/cortex -f cortex-values.yaml
 ```
 
 #### Setup Prometheus
 
 ```sh
 # Deploy Prometheus to scrape metrics in the cluster and send them, via remote_write, to Cortex.
-$ helm install --version=25.20.1 --namespace cortex prometheus prometheus-community/prometheus -f prometheus-values.yaml
+$ helm upgrade --install --version=25.20.1 --namespace cortex prometheus prometheus-community/prometheus -f prometheus-values.yaml
 ```
 
 #### Setup Grafana
 
 ```sh
 # Deploy Grafana to visualize the metrics that were sent to Cortex.
-$ helm install --version=7.3.9 --namespace cortex grafana grafana/grafana
+$ helm upgrade --install --version=7.3.9 --namespace cortex grafana grafana/grafana -f grafana-values.yaml
 ```
 
-#### Configure Grafana
-
-```sh
-# Get your 'admin' user password
-kubectl get secret --namespace cortex grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
-```
+#### Explore
 
 ```sh
 # Port-forward to Grafana to visualize
-kubectl --namespace cortex port-forward deploy/cortex 3000
+kubectl --namespace cortex port-forward deploy/grafana 3000
 ```
 
-1. Log into the Grafana instance at [http://localhost:3000](http://localhost:3000)
-1. Use the username `admin` and the password from the Kubernetes secret
-1. Navigate to the [Data Sources](http://localhost:3000/connections/datasources) page
-1. Add a new Prometheus Data Source
-1. Use `http://cortex-nginx/api/prom` as the URL
-1. Click `Save & Test`
-1. Go to [Explore](http://localhost:3000/explore) to query metrics
-1. Click `Metrics` for a dropdown list of all the available metrics
+Grafana is configured to use Cortex as a data source. You can explore the data source in Grafana and query metrics. For example, this [explore](http://localhost:3000/explore?schemaVersion=1&panes=%7B%22au0%22:%7B%22datasource%22:%22P6693426190CB2316%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22rate%28prometheus_remote_storage_samples_total%5B$__rate_interval%5D%29%22,%22range%22:true,%22instant%22:true,%22datasource%22:%7B%22type%22:%22prometheus%22,%22uid%22:%22P6693426190CB2316%22%7D,%22editorMode%22:%22builder%22,%22legendFormat%22:%22__auto%22,%22useBackend%22:false,%22disableTextWrap%22:false,%22fullMetaSearch%22:false,%22includeNullMetadata%22:false%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1) page is showing the rate of samples being sent to Cortex.
+
 
 If everything is working correctly, then the metrics seen in Grafana were successfully sent from Prometheus to Cortex
 via remote_write!
+
+Other things to explore:
+
+```sh
+# Port forward to the ingester to see the administrative interface for Cortex:
+$ kubectl --namespace cortex port-forward deploy/cortex-ingester 8080
+```
+
+- [Cortex Ingester](http://localhost:8080)
+  - Try shutting down the [ingester](http://localhost:8080/ingester/shutdown) and see how it affects metric ingestion.
+  - Restart ingester pod to bring the ingester back online, and see if Prometheus affected.
+  - Does it affect the querying of metrics in Grafana? How many ingesters must be offline before it affects querying?
+
+
+```sh
+# Port forward to Prometheus to see the metrics that are being scraped:
+$ kubectl --namespace cortex port-forward deploy/prometheus-server 9090
+```
+
+- [Prometheus](http://localhost:9090) - Prometheus instance that is sending metrics to Cortex
+  - Try querying the metrics in Prometheus.
+  - Are they the same as what you see in Cortex?
+
+```sh
+# Port forward to Prometheus to see the metrics that are being scraped:
+$ kubectl --namespace cortex port-forward deploy/grafana 3000
+```
+
+- [Grafana](http://localhost:3000) - Grafana instance that is visualizing the metrics.
+  - Try creating a new dashboard and adding a new panel with a query to Cortex.
 
 ### Clean up
 

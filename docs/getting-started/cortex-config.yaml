@@ -5,7 +5,7 @@
 
 target: all,compactor
 
-# Disable the requirement that every request to Cortex has a
+# Disable the requirement that every request to Cortex has an
 # X-Scope-OrgID header. `fake` will be substituted in instead.
 auth_enabled: false
 
@@ -49,10 +49,10 @@ ingester:
 blocks_storage:
   s3: &s3
     endpoint: seaweedfs:8333
-    region: baz
+    region: local
     bucket_name: cortex-bucket
-    access_key_id: foo
-    secret_access_key: bar
+    access_key_id: any
+    secret_access_key: any
     insecure: true
   tsdb:
     dir: /data/tsdb

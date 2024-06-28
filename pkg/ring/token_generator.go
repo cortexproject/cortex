@@ -100,9 +100,10 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 			tokensPerInstanceWithDistance[i] = &totalTokenPerInstance{id: i, zone: instance.Zone}
 
 			if len(instance.Tokens) == 0 {
-				// If there is more than one instance with no tokens, lets only use
-				// MinimizeSpread token algorithm on the last one
-				if instance.RegisteredTimestamp < ring.Ingesters[id].RegisteredTimestamp {
+				// If there is more than one ingester with no tokens, use MinimizeSpread only for the first registered ingester.
+				// In case of a tie, use the ingester ID as a tiebreaker.
+				if instance.RegisteredTimestamp < ring.Ingesters[id].RegisteredTimestamp ||
+					(instance.RegisteredTimestamp == ring.Ingesters[id].RegisteredTimestamp && i < id) {
 					if force {
 						return g.innerGenerator.GenerateTokens(ring, id, zone, numTokens, true)
 					} else {

@@ -5371,6 +5371,10 @@ limits:
 ### `QueryAttribute`
 
 ```yaml
+# API type for the query. Should be one of the query, query_range, series,
+# labels, label_values. If not set, it won't be checked.
+[api_type: <string> | default = ""]
+
 # Regex that the query string (or at least one of the matchers in metadata
 # query) should match. If not set, it won't be checked.
 [regex: <string> | default = ""]

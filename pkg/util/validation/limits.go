@@ -72,6 +72,7 @@ type QueryRejection struct {
 }
 
 type QueryAttribute struct {
+	ApiType                string         `yaml:"api_type" json:"api_type" doc:"nocli|description=API type for the query. Should be one of the query, query_range, series, labels, label_values. If not set, it won't be checked."`
 	Regex                  string         `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string (or at least one of the matchers in metadata query) should match. If not set, it won't be checked."`
 	TimeWindow             TimeWindow     `yaml:"time_window" json:"time_window" doc:"nocli|description=Overall data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If not set, it won't be checked."`
 	TimeRangeLimit         TimeRangeLimit `yaml:"time_range_limit" json:"time_range_limit" doc:"nocli|description=Query time range should be within this limit to match. If not set, it won't be checked."`

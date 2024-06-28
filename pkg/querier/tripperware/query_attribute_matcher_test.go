@@ -186,17 +186,29 @@ func Test_rejectQueryOrSetPriorityShouldRejectIfMatches(t *testing.T) {
 			},
 		},
 
-		"should reject if query rejection regex matches match[] of series request and time window": {
+		"should reject if query rejection api matches and regex matches match[] of series request and time window": {
 			queryRejectionEnabled: true,
 			path:                  fmt.Sprintf("/api/v1/series?start=%d&end=%d&step=7s&match[]=%s", now.Add(-30*time.Minute).UnixMilli()/1000, now.Add(-20*time.Minute).UnixMilli()/1000, url.QueryEscape("count(sum(up))")),
 			expectedError:         httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage),
 			rejectQueryAttribute: validation.QueryAttribute{
+				ApiType:       "series",
 				Regex:         ".*sum.*",
 				CompiledRegex: regexp.MustCompile(".*sum.*"),
 				TimeWindow: validation.TimeWindow{
 					Start: model.Duration(45 * time.Minute),
 					End:   model.Duration(15 * time.Minute),
 				},
+			},
+		},
+
+		"should not reject if query api_type doesn't match matches": {
+			queryRejectionEnabled: true,
+			path:                  fmt.Sprintf("/api/v1/series?start=%d&end=%d&step=7s&match[]=%s", now.Add(-30*time.Minute).UnixMilli()/1000, now.Add(-20*time.Minute).UnixMilli()/1000, url.QueryEscape("count(sum(up))")),
+			expectedError:         nil,
+			rejectQueryAttribute: validation.QueryAttribute{
+				ApiType:       "query",
+				Regex:         ".*sum.*",
+				CompiledRegex: regexp.MustCompile(".*sum.*"),
 			},
 		},
 	}

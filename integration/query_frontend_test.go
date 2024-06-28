@@ -631,7 +631,8 @@ func TestQueryFrontendQueryRejection(t *testing.T) {
     query_rejection:
       enabled: true
       query_attributes:
-        - regex: .*rate.*
+        - api_type: "query"
+          regex: .*rate.*
           query_step_limit:
            min: 6s
            max: 20m
@@ -659,12 +660,18 @@ func TestQueryFrontendQueryRejection(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	// We expect request to be rejected as it matches query_attribute of query_rejection (contains rate, contains dashboard header dash123). step limit is ignored for instant queries
+	// We expect request to be rejected, as it matches query_attribute of query_rejection (contains rate, contains dashboard header dash123). step limit is ignored for instant queries
 	// Query shouldn't be checked against attributes that is not provided in query_attribute config(time_window, time_range_limit, user_agent_regex, panel_id)
 	resp, body, err := c.QueryRaw(`min_over_time( rate(http_requests_total[5m])[30m:5s] )`, now, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana-agent/v0.19.0"})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request not to be rejected, as it doesn't match api_type
+	resp, body, err = c.QueryRangeRaw(`min_over_time( rate(http_requests_total[5m])[30m:5s] )`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana-agent/v0.19.0"})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
 
 	// update runtime config
 	newRuntimeConfig = []byte(`overrides:

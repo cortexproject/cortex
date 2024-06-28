@@ -58,7 +58,7 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 
 	if queryReject := limits.QueryRejection(userStr); queryReject.Enabled && (op == "series" || op == "labels" || op == "label_values") {
 		for _, attribute := range queryReject.QueryAttributes {
-			if matchAttributeForMetadataQuery(attribute, r, now) {
+			if matchAttributeForMetadataQuery(attribute, op, r, now) {
 				rejectedQueriesPerTenant.WithLabelValues(op, userStr).Inc()
 				return httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage)
 			}
@@ -86,6 +86,9 @@ func getOperation(r *http.Request) string {
 }
 
 func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, op string, r *http.Request, query string, now time.Time, minTime, maxTime int64) bool {
+	if attribute.ApiType != "" && attribute.ApiType != op {
+		return false
+	}
 	if attribute.Regex != "" && attribute.Regex != ".*" && attribute.Regex != ".+" {
 		if attribute.CompiledRegex != nil && !attribute.CompiledRegex.MatchString(query) {
 			return false
@@ -121,7 +124,10 @@ func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, op st
 	return true
 }
 
-func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, r *http.Request, now time.Time) bool {
+func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, op string, r *http.Request, now time.Time) bool {
+	if attribute.ApiType != "" && attribute.ApiType != op {
+		return false
+	}
 	if err := r.ParseForm(); err != nil {
 		return false
 	}

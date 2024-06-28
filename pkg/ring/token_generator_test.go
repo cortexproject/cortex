@@ -122,6 +122,16 @@ func TestMinimizeSpreadTokenGenerator(t *testing.T) {
 	require.Len(t, tokens, 0)
 	tokens = minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-2", zones[0], 512, false)
 	require.Len(t, tokens, 512)
+
+	// Should generate tokens only for the ingesters with the smaller Id when multiples ingesters does not have tokens
+	// and have the same registered time
+	now := time.Now()
+	rindDesc.AddIngester("pendingIngester-1", "pendingIngester-1", zones[0], []uint32{}, PENDING, now)
+	rindDesc.AddIngester("pendingIngester-2", "pendingIngester-2", zones[0], []uint32{}, PENDING, now)
+	tokens = minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-1", zones[0], 512, false)
+	require.Len(t, tokens, 512)
+	tokens = minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-2", zones[0], 512, false)
+	require.Len(t, tokens, 0)
 }
 
 func generateTokensForIngesters(t *testing.T, rindDesc *Desc, prefix string, zones []string, minimizeTokenGenerator *MinimizeSpreadTokenGenerator, dups map[uint32]bool) {

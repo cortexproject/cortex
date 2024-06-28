@@ -565,7 +565,7 @@ func decodeSample(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 			metricString := iter.ReadAny().ToString()
 			lbls := labels.Labels{}
 			if err := json.UnmarshalFromString(metricString, &lbls); err != nil {
-				iter.ReportError("unmarshal SampleStream", err.Error())
+				iter.ReportError("unmarshal Sample", err.Error())
 				return
 			}
 			ss.Labels = cortexpb.FromLabelsToLabelAdapters(lbls)

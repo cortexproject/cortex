@@ -1,0 +1,287 @@
+{
+      "annotations": {
+         "list": [ ]
+      },
+      "editable": true,
+      "gnetId": null,
+      "graphTooltip": 0,
+      "hideControls": false,
+      "links": [
+         {
+            "asDropdown": true,
+            "icon": "external link",
+            "includeVars": true,
+            "keepTime": true,
+            "tags": [
+               "cortex"
+            ],
+            "targetBlank": false,
+            "title": "Cortex Dashboards",
+            "type": "dashboards"
+         }
+      ],
+      "refresh": "",
+      "rows": [
+         {
+            "collapse": false,
+            "height": "250px",
+            "panels": [
+               {
+                  "datasource": "${lokidatasource}",
+                  "fieldConfig": {
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "Time range"
+                           },
+                           "properties": [
+                              {
+                                 "id": "mappings",
+                                 "value": [
+                                    {
+                                       "from": "",
+                                       "id": 1,
+                                       "text": "Instant query",
+                                       "to": "",
+                                       "type": 1,
+                                       "value": "0"
+                                    }
+                                 ]
+                              },
+                              {
+                                 "id": "unit",
+                                 "value": "s"
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "Step"
+                           },
+                           "properties": [
+                              {
+                                 "id": "unit",
+                                 "value": "s"
+                              }
+                           ]
+                        }
+                     ]
+                  },
+                  "id": 1,
+                  "span": 12,
+                  "targets": [
+                     {
+                        "expr": "{cluster=~\"$cluster\",namespace=~\"$namespace\",name=~\"query-frontend.*\"} |= \"query stats\" != \"/api/v1/read\" | logfmt | org_id=~\"${tenant_id}\" | response_time > ${min_duration}",
+                        "instant": false,
+                        "legendFormat": "",
+                        "range": true,
+                        "refId": "A"
+                     }
+                  ],
+                  "title": "Slow queries",
+                  "transformations": [
+                     {
+                        "id": "labelsToFields",
+                        "options": { }
+                     },
+                     {
+                        "id": "calculateField",
+                        "options": {
+                           "alias": "Time range",
+                           "binary": {
+                              "left": "param_end",
+                              "operator": "-",
+                              "reducer": "sum",
+                              "right": "param_start"
+                           },
+                           "mode": "binary",
+                           "reduce": {
+                              "reducer": "sum"
+                           },
+                           "replaceFields": false
+                        }
+                     },
+                     {
+                        "id": "organize",
+                        "options": {
+                           "excludeByName": {
+                              "caller": true,
+                              "cluster": true,
+                              "container": true,
+                              "host": true,
+                              "id": true,
+                              "job": true,
+                              "level": true,
+                              "line": true,
+                              "method": true,
+                              "msg": true,
+                              "name": true,
+                              "namespace": true,
+                              "param_end": true,
+                              "param_start": true,
+                              "param_time": true,
+                              "path": true,
+                              "pod": true,
+                              "pod_template_hash": true,
+                              "query_wall_time_seconds": true,
+                              "stream": true,
+                              "traceID": true,
+                              "tsNs": true
+                           },
+                           "indexByName": {
+                              "Time range": 3,
+                              "org_id": 1,
+                              "param_query": 2,
+                              "param_step": 4,
+                              "response_time": 5,
+                              "ts": 0
+                           },
+                           "renameByName": {
+                              "org_id": "Tenant ID",
+                              "param_query": "Query",
+                              "param_step": "Step",
+                              "response_time": "Duration"
+                           }
+                        }
+                     }
+                  ],
+                  "type": "table"
+               }
+            ],
+            "repeat": null,
+            "repeatIteration": null,
+            "repeatRowId": null,
+            "showTitle": true,
+            "title": "",
+            "titleSize": "h6"
+         }
+      ],
+      "schemaVersion": 14,
+      "style": "dark",
+      "tags": [
+         "cortex"
+      ],
+      "templating": {
+         "list": [
+            {
+               "current": {
+                  "text": "Cortex",
+                  "value": "Cortex"
+               },
+               "hide": 0,
+               "label": null,
+               "name": "datasource",
+               "options": [ ],
+               "query": "prometheus",
+               "refresh": 1,
+               "regex": "",
+               "type": "datasource"
+            },
+            {
+               "allValue": null,
+               "current": {
+                  "text": "prod",
+                  "value": "prod"
+               },
+               "datasource": "$datasource",
+               "hide": 0,
+               "includeAll": false,
+               "label": "job",
+               "multi": false,
+               "name": "job",
+               "options": [ ],
+               "query": "label_values(cortex_build_info, job)",
+               "refresh": 1,
+               "regex": "",
+               "sort": 2,
+               "tagValuesQuery": "",
+               "tags": [ ],
+               "tagsQuery": "",
+               "type": "query",
+               "useTags": false
+            },
+            {
+               "hide": 0,
+               "includeAll": false,
+               "label": "Logs datasource",
+               "multi": false,
+               "name": "lokidatasource",
+               "query": "loki",
+               "type": "datasource"
+            },
+            {
+               "current": {
+                  "selected": true,
+                  "text": "5s",
+                  "value": "5s"
+               },
+               "hide": 0,
+               "label": "Min duration",
+               "name": "min_duration",
+               "options": [
+                  {
+                     "selected": true,
+                     "text": "5s",
+                     "value": "5s"
+                  }
+               ],
+               "query": "5s",
+               "type": "textbox"
+            },
+            {
+               "current": {
+                  "selected": true,
+                  "text": ".*",
+                  "value": ".*"
+               },
+               "hide": 0,
+               "label": "Tenant ID",
+               "name": "tenant_id",
+               "options": [
+                  {
+                     "selected": true,
+                     "text": ".*",
+                     "value": ".*"
+                  }
+               ],
+               "query": ".*",
+               "type": "textbox"
+            }
+         ]
+      },
+      "time": {
+         "from": "now-1h",
+         "to": "now"
+      },
+      "timepicker": {
+         "refresh_intervals": [
+            "5s",
+            "10s",
+            "30s",
+            "1m",
+            "5m",
+            "15m",
+            "30m",
+            "1h",
+            "2h",
+            "1d"
+         ],
+         "time_options": [
+            "5m",
+            "15m",
+            "1h",
+            "6h",
+            "12h",
+            "24h",
+            "2d",
+            "7d",
+            "30d"
+         ]
+      },
+      "timezone": "utc",
+      "title": "Cortex / Slow Queries",
+      "uid": "e6f3091e29d2636e3b8393447e925668",
+      "version": 0
+   }

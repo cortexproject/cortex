@@ -6,8 +6,6 @@ no_section_index_title: true
 slug: "getting-started"
 ---
 
-# Getting Started with Cortex
-
 Cortex is a powerful platform software that can be run in two modes: as a single binary or as multiple
 independent [microservices](../architecture.md).
 This guide will help you get started with Cortex in single-binary mode using

@@ -107,7 +107,7 @@ func decodeSampleStream(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		case "histograms":
 			for iter.ReadArray() {
 				h := SampleHistogramPair{}
-				unmarshalSampleHistogramPairJSON(unsafe.Pointer(&h), iter)
+				UnmarshalSampleHistogramPairJSON(unsafe.Pointer(&h), iter)
 				ss.Histograms = append(ss.Histograms, h)
 			}
 		default:
@@ -150,7 +150,7 @@ func encodeSampleStream(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 			if i > 0 {
 				stream.WriteMore()
 			}
-			marshalSampleHistogramPairJSON(unsafe.Pointer(&h), stream)
+			MarshalSampleHistogramPairJSON(unsafe.Pointer(&h), stream)
 		}
 		stream.WriteArrayEnd()
 	}
@@ -196,8 +196,8 @@ func init() {
 	jsoniter.RegisterTypeDecoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode)
 	jsoniter.RegisterTypeEncoderFunc("tripperware.SampleStream", encodeSampleStream, marshalJSONIsEmpty)
 	jsoniter.RegisterTypeDecoderFunc("tripperware.SampleStream", decodeSampleStream)
-	jsoniter.RegisterTypeEncoderFunc("tripperware.SampleHistogramPair", marshalSampleHistogramPairJSON, marshalJSONIsEmpty)
-	jsoniter.RegisterTypeDecoderFunc("tripperware.SampleHistogramPair", unmarshalSampleHistogramPairJSON)
+	jsoniter.RegisterTypeEncoderFunc("tripperware.SampleHistogramPair", MarshalSampleHistogramPairJSON, marshalJSONIsEmpty)
+	jsoniter.RegisterTypeDecoderFunc("tripperware.SampleHistogramPair", UnmarshalSampleHistogramPairJSON)
 }
 
 func marshalJSONIsEmpty(ptr unsafe.Pointer) bool {
@@ -284,7 +284,7 @@ func StatsMerge(stats map[int64]*PrometheusResponseQueryableSamplesStatsPerStep)
 }
 
 // Adapted from https://github.com/prometheus/client_golang/blob/4b158abea9470f75b6f07460cdc2189b91914562/api/prometheus/v1/api.go#L84.
-func unmarshalSampleHistogramPairJSON(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+func UnmarshalSampleHistogramPairJSON(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	p := (*SampleHistogramPair)(ptr)
 	if !iter.ReadArray() {
 		iter.ReportError("unmarshal SampleHistogramPair", "SampleHistogramPair must be [timestamp, {histogram}]")
@@ -374,7 +374,7 @@ func unmarshalHistogramBucket(iter *jsoniter.Iterator) (*HistogramBucket, error)
 }
 
 // Adapted from https://github.com/prometheus/client_golang/blob/4b158abea9470f75b6f07460cdc2189b91914562/api/prometheus/v1/api.go#L137.
-func marshalSampleHistogramPairJSON(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+func MarshalSampleHistogramPairJSON(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	p := *((*SampleHistogramPair)(ptr))
 	stream.WriteArrayStart()
 	stream.WriteFloat64(float64(p.TimestampMs) / float64(time.Second/time.Millisecond))

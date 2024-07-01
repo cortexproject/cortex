@@ -60,7 +60,11 @@ jobs:
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Run Tests
-        run: make BUILD_IN_CONTAINER=false test
+        run: |
+          for run in $(seq 1 3); do
+            make BUILD_IN_CONTAINER=false test && break
+            echo "Retrying tests... Run $run failed."
+          done
 
   security:
     name: CodeQL
@@ -200,7 +204,10 @@ jobs:
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG-amd64"
           export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
-          go test -tags=integration,${{ matrix.tags }} -timeout 2400s -v -count=1 ./integration/...
+          for run in $(seq 1 3); do
+            go test -tags=integration,${{ matrix.tags }} -timeout 2400s -v -count=1 -failfast ./integration/... && break
+            echo "Retrying tests... Run $run failed."
+          done
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
 

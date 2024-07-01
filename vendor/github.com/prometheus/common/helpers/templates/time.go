@@ -14,13 +14,18 @@
 package templates
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/prometheus/common/model"
 )
 
-func convertToFloat(i interface{}) (float64, error) {
+var errNaNOrInf = errors.New("value is NaN or Inf")
+
+func ConvertToFloat(i interface{}) (float64, error) {
 	switch v := i.(type) {
 	case float64:
 		return v, nil
@@ -41,8 +46,20 @@ func convertToFloat(i interface{}) (float64, error) {
 	}
 }
 
+func FloatToTime(v float64) (*time.Time, error) {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return nil, errNaNOrInf
+	}
+	timestamp := v * 1e9
+	if timestamp > math.MaxInt64 || timestamp < math.MinInt64 {
+		return nil, fmt.Errorf("%v cannot be represented as a nanoseconds timestamp since it overflows int64", v)
+	}
+	t := model.TimeFromUnixNano(int64(timestamp)).Time().UTC()
+	return &t, nil
+}
+
 func HumanizeDuration(i interface{}) (string, error) {
-	v, err := convertToFloat(i)
+	v, err := ConvertToFloat(i)
 	if err != nil {
 		return "", err
 	}
@@ -86,4 +103,21 @@ func HumanizeDuration(i interface{}) (string, error) {
 		v *= 1000
 	}
 	return fmt.Sprintf("%.4g%ss", v, prefix), nil
+}
+
+func HumanizeTimestamp(i interface{}) (string, error) {
+	v, err := ConvertToFloat(i)
+	if err != nil {
+		return "", err
+	}
+
+	tm, err := FloatToTime(v)
+	switch {
+	case errors.Is(err, errNaNOrInf):
+		return fmt.Sprintf("%.4g", v), nil
+	case err != nil:
+		return "", err
+	}
+
+	return fmt.Sprint(tm), nil
 }

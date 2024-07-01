@@ -419,8 +419,8 @@ github.com/go-redis/redis/v8/internal/pool
 github.com/go-redis/redis/v8/internal/proto
 github.com/go-redis/redis/v8/internal/rand
 github.com/go-redis/redis/v8/internal/util
-# github.com/goccy/go-json v0.10.2
-## explicit; go 1.12
+# github.com/goccy/go-json v0.10.3
+## explicit; go 1.19
 github.com/goccy/go-json
 github.com/goccy/go-json/internal/decoder
 github.com/goccy/go-json/internal/encoder
@@ -620,7 +620,7 @@ github.com/klauspost/compress/snappy
 github.com/klauspost/compress/zlib
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/klauspost/cpuid/v2 v2.2.7
+# github.com/klauspost/cpuid/v2 v2.2.8
 ## explicit; go 1.15
 github.com/klauspost/cpuid/v2
 # github.com/kylelemons/godebug v1.1.0
@@ -928,7 +928,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20240613135658-39f40b8d97f7
+# github.com/thanos-io/objstore v0.0.0-20240622095743-1afe5d4bc3cd
 ## explicit; go 1.21
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/exthttp
@@ -961,7 +961,7 @@ github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
-# github.com/thanos-io/thanos v0.35.2-0.20240617212227-065e3dd75aac
+# github.com/thanos-io/thanos v0.36.0-rc.0
 ## explicit; go 1.21
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block

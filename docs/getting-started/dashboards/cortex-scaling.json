@@ -1,0 +1,310 @@
+{
+      "annotations": {
+         "list": [ ]
+      },
+      "editable": true,
+      "gnetId": null,
+      "graphTooltip": 0,
+      "hideControls": false,
+      "links": [
+         {
+            "asDropdown": true,
+            "icon": "external link",
+            "includeVars": true,
+            "keepTime": true,
+            "tags": [
+               "cortex"
+            ],
+            "targetBlank": false,
+            "title": "Cortex Dashboards",
+            "type": "dashboards"
+         }
+      ],
+      "refresh": "10s",
+      "rows": [
+         {
+            "collapse": false,
+            "height": "200px",
+            "panels": [
+               {
+                  "id": 1,
+                  "options": {
+                     "content": "This dashboards shows any services which are not scaled correctly.\nThe table below gives the required number of replicas and the reason why.\nWe only show services without enough replicas.\n\nReasons:\n- **sample_rate**: There are not enough replicas to handle the\n  sample rate.  Applies to distributor and ingesters.\n- **active_series**: There are not enough replicas\n  to handle the number of active series.  Applies to ingesters.\n- **cpu_usage**: There are not enough replicas\n  based on the CPU usage of the jobs vs the resource requests.\n  Applies to all jobs.\n- **memory_usage**: There are not enough replicas based on the memory\n  usage vs the resource requests.  Applies to all jobs.\n- **active_series_limits**: There are not enough replicas to hold 60% of the\n  sum of all the per tenant series limits.\n- **sample_rate_limits**: There are not enough replicas to handle 60% of the\n  sum of all the per tenant rate limits.\n",
+                     "mode": "markdown"
+                  },
+                  "span": 12,
+                  "title": "",
+                  "type": "text"
+               }
+            ],
+            "repeat": null,
+            "repeatIteration": null,
+            "repeatRowId": null,
+            "showTitle": true,
+            "title": "Cortex Service Scaling",
+            "titleSize": "h6"
+         },
+         {
+            "collapse": false,
+            "height": "400px",
+            "panels": [
+               {
+                  "aliasColors": { },
+                  "bars": false,
+                  "dashLength": 10,
+                  "dashes": false,
+                  "datasource": "$datasource",
+                  "fieldConfig": {
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "__name__"
+                           },
+                           "properties": [
+                              {
+                                 "id": "custom.hidden",
+                                 "value": true
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "Time"
+                           },
+                           "properties": [
+                              {
+                                 "id": "custom.hidden",
+                                 "value": true
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "cluster"
+                           },
+                           "properties": [
+                              {
+                                 "id": "displayName",
+                                 "value": "Cluster"
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "namespace"
+                           },
+                           "properties": [
+                              {
+                                 "id": "displayName",
+                                 "value": "Namespace"
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "deployment"
+                           },
+                           "properties": [
+                              {
+                                 "id": "displayName",
+                                 "value": "Service"
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "reason"
+                           },
+                           "properties": [
+                              {
+                                 "id": "displayName",
+                                 "value": "Reason"
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "Value"
+                           },
+                           "properties": [
+                              {
+                                 "id": "displayName",
+                                 "value": "Required Replicas"
+                              }
+                           ]
+                        }
+                     ]
+                  },
+                  "fill": 1,
+                  "id": 2,
+                  "legend": {
+                     "avg": false,
+                     "current": false,
+                     "max": false,
+                     "min": false,
+                     "show": true,
+                     "total": false,
+                     "values": false
+                  },
+                  "lines": true,
+                  "linewidth": 1,
+                  "links": [ ],
+                  "nullPointMode": "null as zero",
+                  "percentage": false,
+                  "pointradius": 5,
+                  "points": false,
+                  "renderer": "flot",
+                  "seriesOverrides": [ ],
+                  "sort": {
+                     "col": 0,
+                     "desc": false
+                  },
+                  "spaceLength": 10,
+                  "span": 12,
+                  "stack": false,
+                  "steppedLine": false,
+                  "targets": [
+                     {
+                        "expr": "sort_desc(\n  cluster_namespace_deployment_reason:required_replicas:count{cluster=~\"$cluster\", namespace=~\"$namespace\"}\n    > ignoring(reason) group_left\n  cluster_namespace_deployment:actual_replicas:count{cluster=~\"$cluster\", namespace=~\"$namespace\"}\n)\n",
+                        "format": "table",
+                        "instant": true,
+                        "intervalFactor": 2,
+                        "legendFormat": "",
+                        "refId": "A",
+                        "step": 10
+                     }
+                  ],
+                  "thresholds": [ ],
+                  "timeFrom": null,
+                  "timeShift": null,
+                  "title": "Workload-based scaling",
+                  "tooltip": {
+                     "shared": false,
+                     "sort": 0,
+                     "value_type": "individual"
+                  },
+                  "transform": "table",
+                  "type": "table",
+                  "xaxis": {
+                     "buckets": null,
+                     "mode": "time",
+                     "name": null,
+                     "show": true,
+                     "values": [ ]
+                  },
+                  "yaxes": [
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": 0,
+                        "show": true
+                     },
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": null,
+                        "show": false
+                     }
+                  ]
+               }
+            ],
+            "repeat": null,
+            "repeatIteration": null,
+            "repeatRowId": null,
+            "showTitle": true,
+            "title": "Scaling",
+            "titleSize": "h6"
+         }
+      ],
+      "schemaVersion": 14,
+      "style": "dark",
+      "tags": [
+         "cortex"
+      ],
+      "templating": {
+         "list": [
+            {
+               "current": {
+                  "text": "Cortex",
+                  "value": "Cortex"
+               },
+               "hide": 0,
+               "label": null,
+               "name": "datasource",
+               "options": [ ],
+               "query": "prometheus",
+               "refresh": 1,
+               "regex": "",
+               "type": "datasource"
+            },
+            {
+               "allValue": ".+",
+               "current": {
+                  "selected": true,
+                  "text": "All",
+                  "value": "$__all"
+               },
+               "datasource": "$datasource",
+               "hide": 0,
+               "includeAll": true,
+               "label": "job",
+               "multi": true,
+               "name": "job",
+               "options": [ ],
+               "query": "label_values(cortex_build_info, job)",
+               "refresh": 1,
+               "regex": "",
+               "sort": 2,
+               "tagValuesQuery": "",
+               "tags": [ ],
+               "tagsQuery": "",
+               "type": "query",
+               "useTags": false
+            }
+         ]
+      },
+      "time": {
+         "from": "now-1h",
+         "to": "now"
+      },
+      "timepicker": {
+         "refresh_intervals": [
+            "5s",
+            "10s",
+            "30s",
+            "1m",
+            "5m",
+            "15m",
+            "30m",
+            "1h",
+            "2h",
+            "1d"
+         ],
+         "time_options": [
+            "5m",
+            "15m",
+            "1h",
+            "6h",
+            "12h",
+            "24h",
+            "2d",
+            "7d",
+            "30d"
+         ]
+      },
+      "timezone": "utc",
+      "title": "Cortex / Scaling",
+      "uid": "88c041017b96856c9176e07cf557bdcf",
+      "version": 0
+   }

@@ -1,0 +1,4 @@
+receivers:
+  - name: default-receiver
+route:
+  receiver: default-receiver

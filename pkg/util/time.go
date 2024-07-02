@@ -226,3 +226,17 @@ func (t *SlottedTicker) nextInterval() time.Duration {
 	slotSize := t.d / time.Duration(totalSlots)
 	return time.Until(lastStartTime) + PositiveJitter(slotSize, t.slotJitter)
 }
+
+func ParseDurationMs(s string) (int64, error) {
+	if d, err := strconv.ParseFloat(s, 64); err == nil {
+		ts := d * float64(time.Second/time.Millisecond)
+		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
+			return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid duration. It overflows int64", s)
+		}
+		return int64(ts), nil
+	}
+	if d, err := model.ParseDuration(s); err == nil {
+		return int64(d) / int64(time.Millisecond/time.Nanosecond), nil
+	}
+	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid duration", s)
+}

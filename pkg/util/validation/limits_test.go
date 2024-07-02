@@ -629,9 +629,10 @@ tenant2:
 	require.Equal(t, 5, ov.MaxDownloadedBytesPerRequest("tenant3"))
 }
 
-func TestHasQueryPriorityRegexChanged(t *testing.T) {
+func TestHasQueryAttributeRegexChanged(t *testing.T) {
 	l := Limits{
 		QueryPriority: QueryPriority{
+			Enabled: true,
 			Priorities: []PriorityDef{
 				{
 					Priority: 1,
@@ -643,25 +644,53 @@ func TestHasQueryPriorityRegexChanged(t *testing.T) {
 				},
 			},
 		},
+		QueryRejection: QueryRejection{
+			Enabled: true,
+			QueryAttributes: []QueryAttribute{
+				{
+					Regex: "testRejection",
+				},
+			},
+		},
 	}
 
-	require.True(t, l.hasQueryPriorityRegexChanged())
+	require.True(t, l.hasQueryAttributeRegexChanged())
 
 	l.QueryPriority.Priorities[0].QueryAttributes[0].Regex = "new"
 
-	require.True(t, l.hasQueryPriorityRegexChanged())
+	require.True(t, l.hasQueryAttributeRegexChanged())
 
 	l.QueryPriority.Priorities[0].QueryAttributes[0].TimeWindow.Start = model.Duration(2 * time.Hour)
 
-	require.False(t, l.hasQueryPriorityRegexChanged())
+	require.False(t, l.hasQueryAttributeRegexChanged())
 
 	l.QueryPriority.Priorities[0].QueryAttributes = append(l.QueryPriority.Priorities[0].QueryAttributes, QueryAttribute{Regex: "hi"})
 
-	require.True(t, l.hasQueryPriorityRegexChanged())
+	require.True(t, l.hasQueryAttributeRegexChanged())
 
 	l.QueryPriority.Priorities[0].QueryAttributes = l.QueryPriority.Priorities[0].QueryAttributes[:1]
 
-	require.True(t, l.hasQueryPriorityRegexChanged())
+	require.True(t, l.hasQueryAttributeRegexChanged())
+
+	l.QueryRejection.QueryAttributes[0].Regex = "newRejectionRegex"
+
+	require.True(t, l.hasQueryAttributeRegexChanged())
+
+	l.QueryRejection.QueryAttributes = append(l.QueryRejection.QueryAttributes, QueryAttribute{Regex: "new element"})
+
+	require.True(t, l.hasQueryAttributeRegexChanged())
+
+	l.QueryRejection.QueryAttributes[1].UserAgentRegex = "New User agent regex"
+
+	require.True(t, l.hasQueryAttributeRegexChanged())
+
+	l.QueryRejection.QueryAttributes[1].DashboardUID = "New Dashboard Uid"
+
+	require.False(t, l.hasQueryAttributeRegexChanged())
+
+	l.QueryPriority.Enabled = false
+
+	require.True(t, l.hasQueryAttributeRegexChanged())
 }
 
 func TestCompileQueryPriorityRegex(t *testing.T) {
@@ -679,30 +708,59 @@ func TestCompileQueryPriorityRegex(t *testing.T) {
 				},
 			},
 		},
+		QueryRejection: QueryRejection{
+			Enabled: false,
+			QueryAttributes: []QueryAttribute{
+				{
+					Regex: "testRejection",
+				},
+			},
+		},
 	}
 
 	require.Nil(t, l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 
-	err := l.compileQueryPriorityRegex()
+	err := l.compileQueryAttributeRegex()
 	require.NoError(t, err)
 	require.Equal(t, regexp.MustCompile("test"), l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 
 	l.QueryPriority.Priorities[0].QueryAttributes[0].Regex = "new"
 
-	err = l.compileQueryPriorityRegex()
+	err = l.compileQueryAttributeRegex()
 	require.NoError(t, err)
 	require.Equal(t, regexp.MustCompile("new"), l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 
 	l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex = nil
 
-	err = l.compileQueryPriorityRegex()
+	err = l.compileQueryAttributeRegex()
 	require.NoError(t, err)
 	require.Equal(t, regexp.MustCompile("new"), l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 
 	l.QueryPriority.Enabled = false
 	l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex = nil
 
-	err = l.compileQueryPriorityRegex()
+	err = l.compileQueryAttributeRegex()
+	require.NoError(t, err)
+	require.Nil(t, l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
+
+	require.Nil(t, l.QueryRejection.QueryAttributes[0].CompiledRegex)
+
+	l.QueryRejection.Enabled = true
+
+	err = l.compileQueryAttributeRegex()
+	require.NoError(t, err)
+	require.Equal(t, regexp.MustCompile("testRejection"), l.QueryRejection.QueryAttributes[0].CompiledRegex)
+	require.Equal(t, regexp.MustCompile(""), l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledUserAgentRegex)
+
+	l.QueryRejection.QueryAttributes[0].UserAgentRegex = "User agent added"
+
+	err = l.compileQueryAttributeRegex()
+	require.NoError(t, err)
+	require.Equal(t, regexp.MustCompile("User agent added"), l.QueryRejection.QueryAttributes[0].CompiledUserAgentRegex)
+
+	l.QueryRejection.QueryAttributes[0].Regex = ""
+
+	err = l.compileQueryAttributeRegex()
 	require.NoError(t, err)
 	require.Nil(t, l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 }

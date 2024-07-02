@@ -113,3 +113,4 @@ Currently experimental features are:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
 - Native Histograms
   - Ingestion can be enabled by setting `-blocks-storage.tsdb.enable-native-histograms=true` on Ingester.
+- Query-frontend: query rejection (`-frontend.query-rejection.enabled`)

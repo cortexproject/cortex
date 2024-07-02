@@ -73,7 +73,7 @@ func parseFlags(cfg flagext.Registerer) map[uintptr]*flag.Flag {
 	return flags
 }
 
-func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Flag) ([]*configBlock, error) {
+func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Flag, addedRootBlocks map[string]struct{}) ([]*configBlock, error) {
 	blocks := []*configBlock{}
 
 	// If the input block is nil it means we're generating the doc for the top-level block
@@ -175,7 +175,7 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 			}
 
 			// Recursively generate the doc for the sub-block
-			otherBlocks, err := parseConfig(subBlock, fieldValue.Addr().Interface(), flags)
+			otherBlocks, err := parseConfig(subBlock, fieldValue.Addr().Interface(), flags, addedRootBlocks)
 			if err != nil {
 				return nil, err
 			}
@@ -193,18 +193,20 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 		if field.Type.Kind() == reflect.Slice {
 			sliceElementType := field.Type.Elem()
 			if sliceElementType.Kind() == reflect.Struct {
-				if field.Type.String() != "labels.Labels" {
+				fieldTypeName := field.Type.Elem().Name()
+				if _, exists := addedRootBlocks[fieldTypeName]; !exists && field.Type.String() != "labels.Labels" {
 					rootBlocks = append(rootBlocks, rootBlock{
-						name:       field.Type.Elem().Name(),
+						name:       fieldTypeName,
 						structType: field.Type.Elem(),
 					})
+					addedRootBlocks[fieldTypeName] = struct{}{}
 				}
 				sliceElementBlock := &configBlock{
-					name: field.Type.Elem().Name(),
+					name: fieldTypeName,
 					desc: "",
 				}
 				sliceElementCfg := reflect.New(sliceElementType).Interface()
-				otherBlocks, err := parseConfig(sliceElementBlock, sliceElementCfg, flags)
+				otherBlocks, err := parseConfig(sliceElementBlock, sliceElementCfg, flags, addedRootBlocks)
 
 				if err != nil {
 					return nil, err

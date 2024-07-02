@@ -27,12 +27,10 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -113,6 +111,11 @@ func NewQueryTripperware(
 		Help: "Total queries sent per tenant.",
 	}, []string{"op", "user"})
 
+	rejectedQueriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_query_frontend_rejected_queries_total",
+		Help: "Total rejected queries per tenant.",
+	}, []string{"op", "user"})
+
 	activeUsers := util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 		err := util.DeleteMatchingLabels(queriesPerTenant, map[string]string{"user": user})
 		if err != nil {
@@ -149,30 +152,16 @@ func NewQueryTripperware(
 				activeUsers.UpdateUserTimestamp(userStr, now)
 				queriesPerTenant.WithLabelValues(op, userStr).Inc()
 
-				if isQuery || isQueryRange {
+				if maxSubQuerySteps > 0 && (isQuery || isQueryRange) {
 					query := r.FormValue("query")
-
-					if maxSubQuerySteps > 0 {
-						// Check subquery step size.
-						if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, maxSubQuerySteps); err != nil {
-							return nil, err
-						}
+					// Check subquery step size.
+					if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, maxSubQuerySteps); err != nil {
+						return nil, err
 					}
+				}
 
-					expr, err := parser.ParseExpr(query)
-					if err != nil {
-						return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-					}
-
-					reqStats := stats.FromContext(r.Context())
-					minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
-					reqStats.SetDataSelectMaxTime(maxTime)
-					reqStats.SetDataSelectMinTime(minTime)
-
-					if limits != nil && limits.QueryPriority(userStr).Enabled {
-						priority := GetPriority(query, minTime, maxTime, now, limits.QueryPriority(userStr))
-						reqStats.SetPriority(priority)
-					}
+				if err := rejectQueryOrSetPriority(r, now, lookbackDelta, limits, userStr, rejectedQueriesPerTenant); err != nil {
+					return nil, err
 				}
 
 				if isQueryRange {

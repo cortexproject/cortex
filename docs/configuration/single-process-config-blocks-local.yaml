@@ -16,7 +16,6 @@ server:
   grpc_server_max_concurrent_streams: 1000
 
 distributor:
-  shard_by_all_labels: true
   pool:
     health_check_ingesters: true
 

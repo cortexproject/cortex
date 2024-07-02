@@ -49,7 +49,6 @@ func TestIngesterGlobalLimits(t *testing.T) {
 
 			flags := BlocksStorageFlags()
 			flags["-distributor.replication-factor"] = "1"
-			flags["-distributor.shard-by-all-labels"] = "true"
 			flags["-distributor.sharding-strategy"] = testData.shardingStrategy
 			flags["-distributor.ingestion-tenant-shard-size"] = strconv.Itoa(testData.tenantShardSize)
 			flags["-ingester.max-series-per-user"] = "0"

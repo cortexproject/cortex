@@ -49,7 +49,6 @@ func NewLimiter(
 	limits *validation.Overrides,
 	ring RingCount,
 	shardingStrategy string,
-	shardByAllLabels bool,
 	replicationFactor int,
 	zoneAwarenessEnabled bool,
 	AdminLimitMessage string,
@@ -59,7 +58,6 @@ func NewLimiter(
 		ring:                   ring,
 		replicationFactor:      replicationFactor,
 		shuffleShardingEnabled: shardingStrategy == util.ShardingStrategyShuffle,
-		shardByAllLabels:       shardByAllLabels,
 		zoneAwarenessEnabled:   zoneAwarenessEnabled,
 		AdminLimitMessage:      AdminLimitMessage,
 	}

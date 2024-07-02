@@ -1,7 +1,6 @@
 auth_enabled: false
 
 distributor:
-  shard_by_all_labels: true
   pool:
     health_check_ingesters: true
 

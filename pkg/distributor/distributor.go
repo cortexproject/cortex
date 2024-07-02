@@ -33,7 +33,7 @@ import (
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
@@ -138,7 +138,6 @@ type Config struct {
 	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay"`
 
 	ShardingStrategy         string `yaml:"sharding_strategy"`
-	ShardByAllLabels         bool   `yaml:"shard_by_all_labels"`
 	ExtendWrites             bool   `yaml:"extend_writes"`
 	SignWriteRequestsEnabled bool   `yaml:"sign_write_requests"`
 
@@ -178,7 +177,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
-	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 	f.BoolVar(&cfg.SignWriteRequestsEnabled, "distributor.sign-write-requests", false, "EXPERIMENTAL: If enabled, sign the write request between distributors and ingesters.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
@@ -186,6 +184,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
+
+	flagext.DeprecatedFlag(f, "distributor.shard-by-all-labels", "Deprecated: Setting this flag will not take any effect, shard by all labels is always enabled now.", util_log.Logger)
 }
 
 // Validate config and returns error on failure
@@ -455,23 +455,11 @@ func (d *Distributor) stopping(_ error) error {
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []cortexpb.LabelAdapter) (uint32, error) {
-	if d.cfg.ShardByAllLabels {
-		return shardByAllLabels(userID, labels), nil
-	}
-
-	unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(labels)
-	if err != nil {
-		return 0, err
-	}
-	return shardByMetricName(userID, unsafeMetricName), nil
+	return shardByAllLabels(userID, labels), nil
 }
 
 func (d *Distributor) tokenForMetadata(userID string, metricName string) uint32 {
-	if d.cfg.ShardByAllLabels {
-		return shardByMetricName(userID, metricName)
-	}
-
-	return shardByUser(userID)
+	return shardByMetricName(userID, metricName)
 }
 
 // shardByMetricName returns the token for the given metric. The provided metricName

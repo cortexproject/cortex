@@ -3,6 +3,7 @@ package storegateway
 import (
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -51,6 +52,10 @@ type tokenBucketBytesLimiter struct {
 	requestTokenBucket  *util.TokenBucket
 	getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64
 	dryRun              bool
+
+	// Counter metric which we will increase if limit is exceeded.
+	failedCounter prometheus.Counter
+	failedOnce    sync.Once
 }
 
 func (t *tokenBucketBytesLimiter) Reserve(_ uint64) error {
@@ -79,6 +84,8 @@ func (t *tokenBucketBytesLimiter) ReserveWithType(num uint64, dataType store.Sto
 			level.Warn(util_log.Logger).Log("msg", "not enough tokens in user token bucket", "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve)
 			return nil
 		}
+		// We need to protect from the counter being incremented twice due to concurrency
+		t.failedOnce.Do(t.failedCounter.Inc)
 		return fmt.Errorf("not enough tokens in user token bucket")
 	}
 
@@ -94,6 +101,8 @@ func (t *tokenBucketBytesLimiter) ReserveWithType(num uint64, dataType store.Sto
 			level.Warn(util_log.Logger).Log("msg", "not enough tokens in pod token bucket", "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve)
 			return nil
 		}
+		// We need to protect from the counter being incremented twice due to concurrency
+		t.failedOnce.Do(t.failedCounter.Inc)
 		return fmt.Errorf("not enough tokens in pod token bucket")
 	}
 
@@ -101,13 +110,14 @@ func (t *tokenBucketBytesLimiter) ReserveWithType(num uint64, dataType store.Sto
 	return nil
 }
 
-func newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket *util.TokenBucket, dryRun bool, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketBytesLimiter {
+func newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket *util.TokenBucket, dryRun bool, failedCounter prometheus.Counter, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketBytesLimiter {
 	return &tokenBucketBytesLimiter{
 		instanceTokenBucket: instanceTokenBucket,
 		userTokenBucket:     userTokenBucket,
 		requestTokenBucket:  requestTokenBucket,
-		getTokensToRetrieve: getTokensToRetrieve,
 		dryRun:              dryRun,
+		failedCounter:       failedCounter,
+		getTokensToRetrieve: getTokensToRetrieve,
 	}
 }
 
@@ -140,7 +150,7 @@ func newBytesLimiterFactory(limits *validation.Overrides, userID string, instanc
 
 		if tokenBucketBytesLimiterCfg.Enabled {
 			requestTokenBucket := util.NewTokenBucket(tokenBucketBytesLimiterCfg.RequestTokenBucketSize, tokenBucketBytesLimiterCfg.RequestTokenBucketSize, nil)
-			limiters = append(limiters, newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, tokenBucketBytesLimiterCfg.DryRun, getTokensToRetrieve))
+			limiters = append(limiters, newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, tokenBucketBytesLimiterCfg.DryRun, failedCounter, getTokensToRetrieve))
 		}
 
 		return &compositeLimiter{

@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/bboreham/go-loser"
+	"go.uber.org/atomic"
 )
 
 // StringsContain returns true if the search value is within the list of input values.
@@ -138,4 +139,81 @@ func MergeSortedSlices(ctx context.Context, a ...[]string) ([]string, error) {
 		}
 	}
 	return r, nil
+}
+
+type Interner interface {
+	Intern(s string) string
+	Release(s string)
+}
+
+// NewInterner returns a new Interner to be used to intern strings.
+// Based on https://github.com/prometheus/prometheus/blob/726ed124e4468d0274ba89b0934a6cc8c975532d/storage/remote/intern.go#L51
+func NewInterner() Interner {
+	return &pool{
+		pool: map[string]*entry{},
+	}
+}
+
+type pool struct {
+	mtx  sync.RWMutex
+	pool map[string]*entry
+}
+
+type entry struct {
+	refs atomic.Int64
+
+	s string
+}
+
+func newEntry(s string) *entry {
+	return &entry{s: s}
+}
+
+// Intern returns the interned string. It returns the canonical representation of string.
+func (p *pool) Intern(s string) string {
+	if s == "" {
+		return ""
+	}
+
+	p.mtx.RLock()
+	interned, ok := p.pool[s]
+	p.mtx.RUnlock()
+	if ok {
+		interned.refs.Inc()
+		return interned.s
+	}
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if interned, ok := p.pool[s]; ok {
+		interned.refs.Inc()
+		return interned.s
+	}
+
+	p.pool[s] = newEntry(s)
+	p.pool[s].refs.Store(1)
+	return s
+}
+
+// Release releases a reference of the string `s`.
+// If the reference count become 0, the string `s` is removed from the memory
+func (p *pool) Release(s string) {
+	p.mtx.RLock()
+	interned, ok := p.pool[s]
+	p.mtx.RUnlock()
+
+	if !ok {
+		return
+	}
+
+	refs := interned.refs.Dec()
+	if refs > 0 {
+		return
+	}
+
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if interned.refs.Load() != 0 {
+		return
+	}
+	delete(p.pool, s)
 }

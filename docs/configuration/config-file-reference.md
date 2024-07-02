@@ -2971,6 +2971,10 @@ instance_limits:
 # Customize the message contained in limit errors
 # CLI flag: -ingester.admin-limit-message
 [admin_limit_message: <string> | default = "please contact administrator to raise it"]
+
+# Experimental: Enable string interning for metrics labels.
+# CLI flag: -ingester.labels-string-interning
+[labels_string_interning_enabled: <boolean> | default = false]
 ```
 
 ### `ingester_client_config`

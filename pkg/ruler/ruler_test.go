@@ -526,6 +526,54 @@ func TestGetRules(t *testing.T) {
 			},
 			expectedClientCallCount: len(expectedRules),
 		},
+		"No Sharding with Alert state filter for firing alerts": {
+			sharding: false,
+			rulesRequest: RulesRequest{
+				State: firingStateFilter,
+			},
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 0,
+				"user2": 0,
+				"user3": 0,
+			},
+		},
+		"No Sharding with Alert state filter for inactive alerts": {
+			sharding: false,
+			rulesRequest: RulesRequest{
+				State: inactiveStateFilter,
+			},
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 2,
+				"user2": 4,
+				"user3": 2,
+			},
+		},
+		"No Sharding with health filter for OK alerts": {
+			sharding: false,
+			rulesRequest: RulesRequest{
+				Health: okHealthFilter,
+			},
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 0,
+				"user2": 0,
+				"user3": 0,
+			},
+		},
+		"No Sharding with health filter for unknown alerts": {
+			sharding: false,
+			rulesRequest: RulesRequest{
+				Health: unknownHealthFilter,
+			},
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 5,
+				"user2": 9,
+				"user3": 3,
+			},
+		},
 		"Default Sharding with No Filter": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,

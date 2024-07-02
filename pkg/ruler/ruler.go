@@ -73,6 +73,14 @@ const (
 
 	alertingRuleFilter  string = "alert"
 	recordingRuleFilter string = "record"
+
+	firingStateFilter   string = "firing"
+	pendingStateFilter  string = "pending"
+	inactiveStateFilter string = "inactive"
+
+	unknownHealthFilter string = "unknown"
+	okHealthFilter      string = "ok"
+	errHealthFilter     string = "err"
 )
 
 type DisabledRuleGroupErr struct {
@@ -874,9 +882,11 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 	ruleGroupNameSet := sliceToSet(rulesRequest.RuleGroupNames)
 	fileSet := sliceToSet(rulesRequest.Files)
 	ruleType := rulesRequest.Type
+	alertState := rulesRequest.State
+	health := rulesRequest.Health
 
 	returnAlerts := ruleType == "" || ruleType == alertingRuleFilter
-	returnRecording := ruleType == "" || ruleType == recordingRuleFilter
+	returnRecording := (ruleType == "" || ruleType == recordingRuleFilter) && alertState == ""
 
 	for _, group := range groups {
 		// The mapped filename is url path escaped encoded to make handling `/` characters easier
@@ -915,6 +925,9 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 					continue
 				}
 			}
+			if !returnByHealth(health, string(r.Health())) {
+				continue
+			}
 			lastError := ""
 			if r.LastError() != nil {
 				lastError = r.LastError().Error()
@@ -924,6 +937,9 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 			switch rule := r.(type) {
 			case *promRules.AlertingRule:
 				if !returnAlerts {
+					continue
+				}
+				if !returnByState(alertState, rule.State().String()) {
 					continue
 				}
 				alerts := []*AlertStateDesc{}
@@ -1295,4 +1311,12 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	}
 	close(iter)
 	<-done
+}
+
+func returnByState(requestState string, alertState string) bool {
+	return requestState == "" || requestState == alertState
+}
+
+func returnByHealth(requestHealth string, ruleHealth string) bool {
+	return requestHealth == "" || requestHealth == ruleHealth
 }

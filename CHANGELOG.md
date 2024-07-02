@@ -16,6 +16,7 @@
 * [ENHANCEMENT] Store Gateway: Log gRPC requests together with headers configured in `http_request_headers_to_log`. #5958
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920
 * [BUGFIX] Ingester: Fix `user` and `type` labels for the `cortex_ingester_tsdb_head_samples_appended_total` TSDB metric. #5952
+* [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
 
 ## 1.17.1 2024-05-20
 

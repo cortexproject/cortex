@@ -126,6 +126,11 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, Status, e
 		// (eg. corrupted bucket index or not existing).
 		l.cacheIndex(userID, nil, ss, err)
 
+		if ctx.Err() != nil {
+			level.Warn(util_log.WithContext(ctx, l.logger)).Log("msg", "received context error when reading bucket index", "err", ctx.Err())
+			return nil, UnknownStatus, ctx.Err()
+		}
+
 		if errors.Is(err, ErrIndexNotFound) {
 			level.Warn(l.logger).Log("msg", "bucket index not found", "user", userID)
 		} else if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {

@@ -72,6 +72,10 @@ func (t *TokenBucket) Refund(amount int64) {
 	if t.remainingTokens > t.maxCapacity {
 		t.remainingTokens = t.maxCapacity
 	}
+
+	if t.remainingTokensMetric != nil {
+		t.remainingTokensMetric.Set(float64(t.remainingTokens))
+	}
 }
 
 func (t *TokenBucket) RemainingTokens() int64 {

@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -45,7 +46,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -2643,7 +2643,7 @@ func mockWriteRequest(lbls []labels.Labels, value int64, timestampMs int64, hist
 	if histogram {
 		histograms = make([]cortexpb.Histogram, len(lbls))
 		for i := range lbls {
-			histograms[i] = cortexpb.HistogramToHistogramProto(timestampMs, histogram_util.GenerateTestHistogram(int(value)))
+			histograms[i] = cortexpb.HistogramToHistogramProto(timestampMs, tsdbutil.GenerateTestHistogram(int(value)))
 		}
 	} else {
 		samples = make([]cortexpb.Sample, len(lbls))
@@ -2882,7 +2882,7 @@ func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts int64, value 
 		},
 	}
 	if histogram {
-		t.Histograms = append(t.Histograms, cortexpb.HistogramToHistogramProto(ts, histogram_util.GenerateTestHistogram(value)))
+		t.Histograms = append(t.Histograms, cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value)))
 	} else {
 		t.Samples = append(t.Samples, cortexpb.Sample{
 			TimestampMs: ts,
@@ -2908,7 +2908,7 @@ func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *c
 		}
 		if histogram {
 			ts.Histograms = []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(i), histogram_util.GenerateTestHistogram(i)),
+				cortexpb.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(i)),
 			}
 		} else {
 			ts.Samples = []cortexpb.Sample{
@@ -3354,8 +3354,8 @@ func TestDistributorValidation(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 	now := model.Now()
 	future, past := now.Add(5*time.Hour), now.Add(-25*time.Hour)
-	testHistogram := histogram_util.GenerateTestHistogram(1)
-	testFloatHistogram := histogram_util.GenerateTestFloatHistogram(1)
+	testHistogram := tsdbutil.GenerateTestHistogram(1)
+	testFloatHistogram := tsdbutil.GenerateTestFloatHistogram(1)
 
 	for i, tc := range []struct {
 		metadata   []*cortexpb.MetricMetadata

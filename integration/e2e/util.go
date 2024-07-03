@@ -21,11 +21,11 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 )
 
 func RunCommandAndGetOutput(name string, args ...string) ([]byte, error) {
@@ -174,10 +174,10 @@ func GenerateHistogramSeries(name string, ts time.Time, floatHistogram bool, add
 		ph prompb.Histogram
 	)
 	if floatHistogram {
-		fh = histogram_util.GenerateTestFloatHistogram(int(i))
+		fh = tsdbutil.GenerateTestFloatHistogram(int(i))
 		ph = remote.FloatHistogramToHistogramProto(tsMillis, fh)
 	} else {
-		h = histogram_util.GenerateTestHistogram(int(i))
+		h = tsdbutil.GenerateTestHistogram(int(i))
 		ph = remote.HistogramToHistogramProto(tsMillis, h)
 	}
 

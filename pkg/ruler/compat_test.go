@@ -18,11 +18,11 @@ import (
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -45,10 +45,10 @@ func TestPusherAppendable(t *testing.T) {
 	lbls2 := cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{labels.MetricName: "ALERTS", labels.AlertName: "boop"}))
 	lbls3 := cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{labels.MetricName: "ALERTS_FOR_STATE", labels.AlertName: "boop"}))
 
-	testHistogram := histogram_util.GenerateTestHistogram(1)
-	testFloatHistogram := histogram_util.GenerateTestFloatHistogram(2)
-	testHistogramWithNaN := histogram_util.GenerateTestHistogram(1)
-	testFloatHistogramWithNaN := histogram_util.GenerateTestFloatHistogram(1)
+	testHistogram := tsdbutil.GenerateTestHistogram(1)
+	testFloatHistogram := tsdbutil.GenerateTestFloatHistogram(2)
+	testHistogramWithNaN := tsdbutil.GenerateTestHistogram(1)
+	testFloatHistogramWithNaN := tsdbutil.GenerateTestFloatHistogram(1)
 	testHistogramWithNaN.Sum = math.Float64frombits(value.StaleNaN)
 	testFloatHistogramWithNaN.Sum = math.Float64frombits(value.StaleNaN)
 
@@ -470,9 +470,9 @@ func TestPusherErrors(t *testing.T) {
 			_, err = a.Append(0, lbls, int64(model.Now()), 123456)
 			require.NoError(t, err)
 
-			_, err = a.AppendHistogram(0, lbls, int64(model.Now()), histogram_util.GenerateTestHistogram(1), nil)
+			_, err = a.AppendHistogram(0, lbls, int64(model.Now()), tsdbutil.GenerateTestHistogram(1), nil)
 			require.NoError(t, err)
-			_, err = a.AppendHistogram(0, lbls, int64(model.Now()), nil, histogram_util.GenerateTestFloatHistogram(2))
+			_, err = a.AppendHistogram(0, lbls, int64(model.Now()), nil, tsdbutil.GenerateTestFloatHistogram(2))
 			require.NoError(t, err)
 
 			require.Equal(t, tc.returnedError, a.Commit())

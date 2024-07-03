@@ -115,6 +115,8 @@ func TestMinimizeSpreadTokenGenerator(t *testing.T) {
 	tokens = minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-1-az-2", zones[1], 512, false)
 	require.Len(t, tokens, 512)
 	require.Equal(t, mTokenGenerator.called, 1)
+	// Lets remove this pending ingester to no interfere with the next tests
+	rindDesc.RemoveIngester("pendingIngester-1-az-2")
 
 	// Should generate tokens only for the ingesters with the smaller registered time when multiples
 	// ingesters does not have tokens

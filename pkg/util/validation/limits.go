@@ -75,7 +75,7 @@ type QueryAttribute struct {
 	ApiType                string         `yaml:"api_type" json:"api_type" doc:"nocli|description=API type for the query. Should be one of the query, query_range, series, labels, label_values. If not set, it won't be checked."`
 	Regex                  string         `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string (or at least one of the matchers in metadata query) should match. If not set, it won't be checked."`
 	TimeWindow             TimeWindow     `yaml:"time_window" json:"time_window" doc:"nocli|description=Overall data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If not set, it won't be checked."`
-	TimeRangeLimit         TimeRangeLimit `yaml:"time_range_limit" json:"time_range_limit" doc:"nocli|description=Query time range should be within this limit to match. If not set, it won't be checked."`
+	TimeRangeLimit         TimeRangeLimit `yaml:"time_range_limit" json:"time_range_limit" doc:"nocli|description=Query time range should be within this limit to match. Depending on where it was used, in most of the use-cases, either min or max value will be used. If not set, it won't be checked."`
 	QueryStepLimit         QueryStepLimit `yaml:"query_step_limit" json:"query_step_limit" doc:"nocli|description=If query step provided should be within this limit to match. If not set, it won't be checked. This property only applied to range queries and ignored for other types of queries."`
 	UserAgentRegex         string         `yaml:"user_agent_regex" json:"user_agent_regex" doc:"nocli|description=Regex that User-Agent header of the request should match. If not set, it won't be checked."`
 	DashboardUID           string         `yaml:"dashboard_uid" json:"dashboard_uid" doc:"nocli|description=Grafana includes X-Dashboard-Uid header in query requests. If this field is provided then X-Dashboard-Uid header of request should match this value. If not set, it won't be checked. This property won't be applied to metadata queries."`
@@ -90,8 +90,8 @@ type TimeWindow struct {
 }
 
 type TimeRangeLimit struct {
-	Min model.Duration `yaml:"min" json:"min" doc:"nocli|description=Query time range should be above or equal to this value to match. If set to 0, it won't be checked.|default=0"`
-	Max model.Duration `yaml:"max" json:"max" doc:"nocli|description=Query time range should be below or equal to this value to match. If set to 0, it won't be checked.|default=0"`
+	Min model.Duration `yaml:"min" json:"min" doc:"nocli|description=This will be duration (12h, 1d, 15d etc.). Query time range should be above or equal to this value to match. Ex: if this value is 20d, then queries whose range is bigger than or equal to 20d will match. If set to 0, it won't be checked.|default=0"`
+	Max model.Duration `yaml:"max" json:"max" doc:"nocli|description=This will be duration (12h, 1d, 15d etc.). Query time range should be below or equal to this value to match. Ex: if this value is 24h, then queries whose range is smaller than or equal to 24h will match.If set to 0, it won't be checked.|default=0"`
 }
 
 type QueryStepLimit struct {

@@ -662,13 +662,13 @@ func TestQueryFrontendQueryRejection(t *testing.T) {
 	now := time.Now()
 	// We expect request to be rejected, as it matches query_attribute of query_rejection (contains rate, contains dashboard header dash123). step limit is ignored for instant queries
 	// Query shouldn't be checked against attributes that is not provided in query_attribute config(time_window, time_range_limit, user_agent_regex, panel_id)
-	resp, body, err := c.QueryRaw(`min_over_time( rate(http_requests_total[5m])[30m:5s] )`, now, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana-agent/v0.19.0"})
+	resp, body, err := c.QueryRaw(`min_over_time( rate(http_requests_total[5m])[30m:5s] )`, now, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana"})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
 
 	// We expect request not to be rejected, as it doesn't match api_type
-	resp, body, err = c.QueryRangeRaw(`min_over_time( rate(http_requests_total[5m])[30m:5s] )`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana-agent/v0.19.0"})
+	resp, body, err = c.QueryRangeRaw(`min_over_time( rate(http_requests_total[5m])[30m:5s] )`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana"})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
@@ -695,31 +695,31 @@ func TestQueryFrontendQueryRejection(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// We expect request to be rejected, as it matches query_attribute (contains 'rate', within time_window(11h-8h), within time range(3h), within step limit(25m>22m), contains dashboard header(dash123) and user-agent matches regex).
-	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana-agent/v0.19.0"})
+	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana"})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
 
 	// We expect request not to be rejected, as it doesn't match query step limit (min is 22m, and actual step is 20m)
-	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 20*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana-agent/v0.19.0"})
+	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 20*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana"})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
 
 	// We expect request not to be rejected, as it goes beyond time_window(-15h is outside of 12h-0h window)
-	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-15*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana-agent/v0.19.0"})
+	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-15*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana"})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
 
 	// We expect request not to be rejected as it goes beyond time-range(9h is bigger than max time range of 6h)
-	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-2*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana-agent/v0.19.0"})
+	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-2*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana"})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
 
 	// We expect request not to be rejected, as it doesn't match regex (doesn't contain 'rate')
-	resp, body, err = c.QueryRangeRaw(`increase(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana-agent/v0.19.0"})
+	resp, body, err = c.QueryRangeRaw(`increase(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana"})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
@@ -731,7 +731,7 @@ func TestQueryFrontendQueryRejection(t *testing.T) {
 	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
 
 	// We expect request not to be rejected, as it doesn't match grafana dashboard uid ('dash123' != 'new-dashboard')
-	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "new-dashboard", "User-Agent": "grafana-agent/v0.19.0"})
+	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 25*time.Minute, map[string]string{"X-Dashboard-Uid": "new-dashboard", "User-Agent": "grafana"})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)

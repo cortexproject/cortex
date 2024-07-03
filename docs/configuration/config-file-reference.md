@@ -5393,15 +5393,20 @@ time_window:
   # checked.
   [end: <int> | default = 0]
 
-# Query time range should be within this limit to match. If not set, it won't be
-# checked.
+# Query time range should be within this limit to match. Depending on where it
+# was used, in most of the use-cases, either min or max value will be used. If
+# not set, it won't be checked.
 time_range_limit:
-  # Query time range should be above or equal to this value to match. If set to
-  # 0, it won't be checked.
+  # This will be duration (12h, 1d, 15d etc.). Query time range should be above
+  # or equal to this value to match. Ex: if this value is 20d, then queries
+  # whose range is bigger than or equal to 20d will match. If set to 0, it won't
+  # be checked.
   [min: <int> | default = 0]
 
-  # Query time range should be below or equal to this value to match. If set to
-  # 0, it won't be checked.
+  # This will be duration (12h, 1d, 15d etc.). Query time range should be below
+  # or equal to this value to match. Ex: if this value is 24h, then queries
+  # whose range is smaller than or equal to 24h will match.If set to 0, it won't
+  # be checked.
   [max: <int> | default = 0]
 
 # If query step provided should be within this limit to match. If not set, it

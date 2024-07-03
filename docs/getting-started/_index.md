@@ -86,7 +86,12 @@ There's a list of recording rules and alerts that should be visible in Grafana [
 
 #### Explore
 
-Grafana is configured to use Cortex as a data source. Grafana is also configured with [Cortex Dashboards](http://localhost:3000/dashboards?tag=cortex) to understand the state of the Cortex instance.
+Grafana is configured to use Cortex as a data source. Grafana is also configured with [Cortex Dashboards](http://localhost:3000/dashboards?tag=cortex) to understand the state of the Cortex instance. The dashboards are generated from the cortex-jsonnet repository. There is a Makefile in the repository that can be used to update the dashboards.
+
+```sh
+# Update the dashboards (optional)
+$ make
+```
 
 If everything is working correctly, then the metrics seen in Grafana were successfully sent from Prometheus to Cortex
 via `remote_write`!

@@ -134,6 +134,8 @@ type Config struct {
 
 	// For admin contact details
 	AdminLimitMessage string `yaml:"admin_limit_message"`
+
+	LabelsStringInterningEnabled bool `yaml:"labels_string_interning_enabled"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -158,11 +160,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
 
+	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
 }
 
 func (cfg *Config) Validate() error {
 	if err := cfg.LifecyclerConfig.Validate(); err != nil {
 		return err
+	}
+
+	if cfg.LabelsStringInterningEnabled {
+		logutil.WarnExperimentalUse("String interning for metrics labels Enabled")
 	}
 
 	return nil
@@ -296,6 +303,10 @@ type userTSDB struct {
 	// Cached shipped blocks.
 	shippedBlocksMtx sync.Mutex
 	shippedBlocks    map[ulid.ULID]struct{}
+
+	// Used to dedup strings and keep a single reference in memory
+	labelsStringInterningEnabled bool
+	interner                     util.Interner
 }
 
 // Explicitly wrapping the tsdb.DB functions that we use.
@@ -425,6 +436,9 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	}
 	u.seriesInMetric.increaseSeriesForMetric(metricName)
 	u.labelSetCounter.increaseSeriesLabelSet(u, metric)
+	if u.labelsStringInterningEnabled {
+		metric.InternStrings(u.interner.Intern)
+	}
 }
 
 // PostDeletion implements SeriesLifecycleCallback interface.
@@ -439,6 +453,9 @@ func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) 
 		}
 		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 		u.labelSetCounter.decreaseSeriesLabelSet(u, metric)
+		if u.labelsStringInterningEnabled {
+			metric.ReleaseStrings(u.interner.Release)
+		}
 	}
 }
 
@@ -2047,8 +2064,10 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		ingestedAPISamples:  util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 
-		instanceLimitsFn:    i.getInstanceLimits,
-		instanceSeriesCount: &i.TSDBState.seriesCount,
+		instanceLimitsFn:             i.getInstanceLimits,
+		instanceSeriesCount:          &i.TSDBState.seriesCount,
+		interner:                     util.NewInterner(),
+		labelsStringInterningEnabled: i.cfg.LabelsStringInterningEnabled,
 	}
 
 	enableExemplars := false

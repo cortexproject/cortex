@@ -42,6 +42,7 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 	cfg.LifecyclerConfig.ID = "localhost"
 	cfg.LifecyclerConfig.FinalSleep = 0
 	cfg.ActiveSeriesMetricsEnabled = true
+	cfg.LabelsStringInterningEnabled = true
 	return cfg
 }
 

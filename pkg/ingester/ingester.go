@@ -160,7 +160,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
 
-	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning", false, "Experimental: Enable string interning for metrics labels.")
+	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
 }
 
 func (cfg *Config) Validate() error {

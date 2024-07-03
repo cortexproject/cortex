@@ -2973,7 +2973,7 @@ instance_limits:
 [admin_limit_message: <string> | default = "please contact administrator to raise it"]
 
 # Experimental: Enable string interning for metrics labels.
-# CLI flag: -ingester.labels-string-interning
+# CLI flag: -ingester.labels-string-interning-enabled
 [labels_string_interning_enabled: <boolean> | default = false]
 ```
 

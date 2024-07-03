@@ -1,7 +1,6 @@
 package util
 
 import (
-	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"math/rand"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 )
 
 func GenerateRandomStrings() []string {

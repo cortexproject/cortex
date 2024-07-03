@@ -16,13 +16,13 @@ remote_write:
       X-Scope-OrgID: "cortex"
   - url: http://cortex:9009/api/v1/push
     headers:
-      X-Scope-OrgID: "adobe-friedrich"
+      X-Scope-OrgID: "tenant-a"
   - url: http://cortex:9009/api/v1/push
     headers:
-      X-Scope-OrgID: "amazon-alan"
+      X-Scope-OrgID: "tenant-b"
   - url: http://cortex:9009/api/v1/push
     headers:
-      X-Scope-OrgID: "amazon-ben"
+      X-Scope-OrgID: "tenant-c"
   - url: http://cortex:9009/api/v1/push
     headers:
-      X-Scope-OrgID: "apple-charlie"
+      X-Scope-OrgID: "tenant-d"

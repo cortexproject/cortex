@@ -25,7 +25,7 @@ datasources:
     url: http://cortex:9009/api/prom
     jsonData: *jsonData
     secureJsonData:
-      httpHeaderValue1: amazon-alan
+      httpHeaderValue1: tenant-b
     version: 1
     editable: true
   - name: Ben
@@ -35,7 +35,7 @@ datasources:
     url: http://cortex:9009/api/prom
     jsonData: *jsonData
     secureJsonData:
-      httpHeaderValue1: amazon-ben
+      httpHeaderValue1: tenant-c
     version: 1
     editable: true
   - name: Charlie
@@ -45,7 +45,7 @@ datasources:
     url: http://cortex:9009/api/prom
     jsonData: *jsonData
     secureJsonData:
-      httpHeaderValue1: apple-charlie
+      httpHeaderValue1: tenant-d
     version: 1
     editable: true
   - name: Friedrich
@@ -55,7 +55,7 @@ datasources:
     url: http://cortex:9009/api/prom
     jsonData: *jsonData
     secureJsonData:
-      httpHeaderValue1: adobe-friedrich
+      httpHeaderValue1: tenant-a
     version: 1
     editable: true
   - orgId: 1

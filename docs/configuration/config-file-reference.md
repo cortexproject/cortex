@@ -3285,6 +3285,20 @@ query_priority:
   # List of priority definitions.
   [priorities: <list of PriorityDef> | default = []]
 
+# Configuration for query rejection.
+query_rejection:
+  # Whether query rejection is enabled.
+  # CLI flag: -frontend.query-rejection.enabled
+  [enabled: <boolean> | default = false]
+
+  # List of query_attributes to match and reject queries. A query is rejected if
+  # it matches any query_attribute in this list. Each query_attribute has
+  # several properties (e.g., regex, time_window, user_agent), and all specified
+  # properties must match for a query_attribute to be considered a match. Only
+  # the specified properties are checked, and an AND operator is applied to
+  # them.
+  [query_attributes: <list of QueryAttribute> | default = []]
+
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
@@ -5345,14 +5359,24 @@ limits:
 # priority level. Value between 0 and 1 will be used as a percentage.
 [reserved_queriers: <float> | default = 0]
 
-# List of query attributes to assign the priority.
+# List of query_attributes to match and assign priority to queries. A query is
+# assigned to this priority if it matches any query_attribute in this list. Each
+# query_attribute has several properties (e.g., regex, time_window, user_agent),
+# and all specified properties must match for a query_attribute to be considered
+# a match. Only the specified properties are checked, and an AND operator is
+# applied to them.
 [query_attributes: <list of QueryAttribute> | default = []]
 ```
 
 ### `QueryAttribute`
 
 ```yaml
-# Regex that the query string should match. If not set, it won't be checked.
+# API type for the query. Should be one of the query, query_range, series,
+# labels, label_values. If not set, it won't be checked.
+[api_type: <string> | default = ""]
+
+# Regex that the query string (or at least one of the matchers in metadata
+# query) should match. If not set, it won't be checked.
 [regex: <string> | default = ""]
 
 # Overall data select time window (including range selectors, modifiers and
@@ -5368,6 +5392,49 @@ time_window:
   # lookback delta) that the query should be within. If set to 0, it won't be
   # checked.
   [end: <int> | default = 0]
+
+# Query time range should be within this limit to match. Depending on where it
+# was used, in most of the use-cases, either min or max value will be used. If
+# not set, it won't be checked.
+time_range_limit:
+  # This will be duration (12h, 1d, 15d etc.). Query time range should be above
+  # or equal to this value to match. Ex: if this value is 20d, then queries
+  # whose range is bigger than or equal to 20d will match. If set to 0, it won't
+  # be checked.
+  [min: <int> | default = 0]
+
+  # This will be duration (12h, 1d, 15d etc.). Query time range should be below
+  # or equal to this value to match. Ex: if this value is 24h, then queries
+  # whose range is smaller than or equal to 24h will match.If set to 0, it won't
+  # be checked.
+  [max: <int> | default = 0]
+
+# If query step provided should be within this limit to match. If not set, it
+# won't be checked. This property only applied to range queries and ignored for
+# other types of queries.
+query_step_limit:
+  # Query step should be above or equal to this value to match. If set to 0, it
+  # won't be checked.
+  [min: <int> | default = 0]
+
+  # Query step should be below or equal to this value to match. If set to 0, it
+  # won't be checked.
+  [max: <int> | default = 0]
+
+# Regex that User-Agent header of the request should match. If not set, it won't
+# be checked.
+[user_agent_regex: <string> | default = ""]
+
+# Grafana includes X-Dashboard-Uid header in query requests. If this field is
+# provided then X-Dashboard-Uid header of request should match this value. If
+# not set, it won't be checked. This property won't be applied to metadata
+# queries.
+[dashboard_uid: <string> | default = ""]
+
+# Grafana includes X-Panel-Id header in query requests. If this field is
+# provided then X-Panel-Id header of request should match this value. If not
+# set, it won't be checked. This property won't be applied to metadata queries.
+[panel_id: <string> | default = ""]
 ```
 
 ### `DisabledRuleGroup`

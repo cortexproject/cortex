@@ -63,18 +63,40 @@ type QueryPriority struct {
 type PriorityDef struct {
 	Priority         int64            `yaml:"priority" json:"priority" doc:"nocli|description=Priority level. Must be a unique value.|default=0"`
 	ReservedQueriers float64          `yaml:"reserved_queriers" json:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle priorities higher or equal to the priority level. Value between 0 and 1 will be used as a percentage.|default=0"`
-	QueryAttributes  []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query attributes to assign the priority."`
+	QueryAttributes  []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query_attributes to match and assign priority to queries. A query is assigned to this priority if it matches any query_attribute in this list. Each query_attribute has several properties (e.g., regex, time_window, user_agent), and all specified properties must match for a query_attribute to be considered a match. Only the specified properties are checked, and an AND operator is applied to them."`
+}
+
+type QueryRejection struct {
+	Enabled         bool             `yaml:"enabled" json:"enabled"`
+	QueryAttributes []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query_attributes to match and reject queries. A query is rejected if it matches any query_attribute in this list. Each query_attribute has several properties (e.g., regex, time_window, user_agent), and all specified properties must match for a query_attribute to be considered a match. Only the specified properties are checked, and an AND operator is applied to them."`
 }
 
 type QueryAttribute struct {
-	Regex         string     `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string should match. If not set, it won't be checked."`
-	TimeWindow    TimeWindow `yaml:"time_window" json:"time_window" doc:"nocli|description=Overall data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If not set, it won't be checked."`
-	CompiledRegex *regexp.Regexp
+	ApiType                string         `yaml:"api_type" json:"api_type" doc:"nocli|description=API type for the query. Should be one of the query, query_range, series, labels, label_values. If not set, it won't be checked."`
+	Regex                  string         `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string (or at least one of the matchers in metadata query) should match. If not set, it won't be checked."`
+	TimeWindow             TimeWindow     `yaml:"time_window" json:"time_window" doc:"nocli|description=Overall data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If not set, it won't be checked."`
+	TimeRangeLimit         TimeRangeLimit `yaml:"time_range_limit" json:"time_range_limit" doc:"nocli|description=Query time range should be within this limit to match. Depending on where it was used, in most of the use-cases, either min or max value will be used. If not set, it won't be checked."`
+	QueryStepLimit         QueryStepLimit `yaml:"query_step_limit" json:"query_step_limit" doc:"nocli|description=If query step provided should be within this limit to match. If not set, it won't be checked. This property only applied to range queries and ignored for other types of queries."`
+	UserAgentRegex         string         `yaml:"user_agent_regex" json:"user_agent_regex" doc:"nocli|description=Regex that User-Agent header of the request should match. If not set, it won't be checked."`
+	DashboardUID           string         `yaml:"dashboard_uid" json:"dashboard_uid" doc:"nocli|description=Grafana includes X-Dashboard-Uid header in query requests. If this field is provided then X-Dashboard-Uid header of request should match this value. If not set, it won't be checked. This property won't be applied to metadata queries."`
+	PanelID                string         `yaml:"panel_id" json:"panel_id" doc:"nocli|description=Grafana includes X-Panel-Id header in query requests. If this field is provided then X-Panel-Id header of request should match this value. If not set, it won't be checked. This property won't be applied to metadata queries."`
+	CompiledRegex          *regexp.Regexp
+	CompiledUserAgentRegex *regexp.Regexp
 }
 
 type TimeWindow struct {
 	Start model.Duration `yaml:"start" json:"start" doc:"nocli|description=Start of the data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If set to 0, it won't be checked.|default=0"`
 	End   model.Duration `yaml:"end" json:"end" doc:"nocli|description=End of the data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If set to 0, it won't be checked.|default=0"`
+}
+
+type TimeRangeLimit struct {
+	Min model.Duration `yaml:"min" json:"min" doc:"nocli|description=This will be duration (12h, 1d, 15d etc.). Query time range should be above or equal to this value to match. Ex: if this value is 20d, then queries whose range is bigger than or equal to 20d will match. If set to 0, it won't be checked.|default=0"`
+	Max model.Duration `yaml:"max" json:"max" doc:"nocli|description=This will be duration (12h, 1d, 15d etc.). Query time range should be below or equal to this value to match. Ex: if this value is 24h, then queries whose range is smaller than or equal to 24h will match.If set to 0, it won't be checked.|default=0"`
+}
+
+type QueryStepLimit struct {
+	Min model.Duration `yaml:"min" json:"min" doc:"nocli|description=Query step should be above or equal to this value to match. If set to 0, it won't be checked.|default=0"`
+	Max model.Duration `yaml:"max" json:"max" doc:"nocli|description=Query step should be below or equal to this value to match. If set to 0, it won't be checked.|default=0"`
 }
 
 type LimitsPerLabelSetEntry struct {
@@ -143,10 +165,11 @@ type Limits struct {
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
 
 	// Query Frontend / Scheduler enforced limits.
-	MaxOutstandingPerTenant    int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
-	QueryPriority              QueryPriority `yaml:"query_priority" json:"query_priority" doc:"nocli|description=Configuration for query priority."`
-	queryPriorityRegexHash     uint64
-	queryPriorityCompiledRegex map[string]*regexp.Regexp
+	MaxOutstandingPerTenant     int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
+	QueryPriority               QueryPriority `yaml:"query_priority" json:"query_priority" doc:"nocli|description=Configuration for query priority."`
+	queryAttributeRegexHash     uint64
+	queryAttributeCompiledRegex map[string]*regexp.Regexp
+	QueryRejection              QueryRejection `yaml:"query_rejection" json:"query_rejection" doc:"nocli|description=Configuration for query rejection."`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -234,6 +257,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
 	f.BoolVar(&l.QueryPriority.Enabled, "frontend.query-priority.enabled", false, "Whether queries are assigned with priorities.")
 	f.Int64Var(&l.QueryPriority.DefaultPriority, "frontend.query-priority.default-priority", 0, "Priority assigned to all queries by default. Must be a unique value. Use this as a baseline to make certain queries higher/lower priority.")
+	f.BoolVar(&l.QueryRejection.Enabled, "frontend.query-rejection.enabled", false, "Whether query rejection is enabled.")
 
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
 
@@ -296,7 +320,7 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	if err := l.compileQueryPriorityRegex(); err != nil {
+	if err := l.compileQueryAttributeRegex(); err != nil {
 		return err
 	}
 
@@ -326,7 +350,7 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	if err := l.compileQueryPriorityRegex(); err != nil {
+	if err := l.compileQueryAttributeRegex(); err != nil {
 		return err
 	}
 
@@ -360,31 +384,51 @@ func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimi
 	}
 }
 
-func (l *Limits) hasQueryPriorityRegexChanged() bool {
+func (l *Limits) hasQueryAttributeRegexChanged() bool {
 	var newHash uint64
-
-	var seps = []byte{'\xff'}
 	h := xxhash.New()
-	for _, priority := range l.QueryPriority.Priorities {
-		for _, attribute := range priority.QueryAttributes {
-			_, _ = h.WriteString(attribute.Regex)
-			_, _ = h.Write(seps)
+
+	if l.QueryPriority.Enabled {
+		for _, priority := range l.QueryPriority.Priorities {
+			for _, attribute := range priority.QueryAttributes {
+				addToHash(h, attribute.Regex)
+				addToHash(h, attribute.UserAgentRegex)
+			}
 		}
 	}
+	if l.QueryRejection.Enabled {
+		for _, attribute := range l.QueryRejection.QueryAttributes {
+			addToHash(h, attribute.Regex)
+			addToHash(h, attribute.UserAgentRegex)
+		}
+	}
+
 	newHash = h.Sum64()
 
-	if newHash != l.queryPriorityRegexHash {
-		l.queryPriorityRegexHash = newHash
+	if newHash != l.queryAttributeRegexHash {
+		l.queryAttributeRegexHash = newHash
 		return true
 	}
 	return false
 }
 
-func (l *Limits) compileQueryPriorityRegex() error {
+func addToHash(h *xxhash.Digest, regex string) {
+	if regex == "" {
+		return
+	}
+	_, _ = h.WriteString(regex)
+	_, _ = h.Write([]byte{'\xff'})
+}
+
+func (l *Limits) compileQueryAttributeRegex() error {
+	if !l.QueryPriority.Enabled && !l.QueryRejection.Enabled {
+		return nil
+	}
+	regexChanged := l.hasQueryAttributeRegexChanged()
+	newCompiledRegex := map[string]*regexp.Regexp{}
+
 	if l.QueryPriority.Enabled {
-		hasQueryPriorityRegexChanged := l.hasQueryPriorityRegexChanged()
 		prioritySet := map[int64]struct{}{}
-		newQueryPriorityCompiledRegex := map[string]*regexp.Regexp{}
 
 		for i, priority := range l.QueryPriority.Priorities {
 			// Check for duplicate priority entry
@@ -393,25 +437,48 @@ func (l *Limits) compileQueryPriorityRegex() error {
 			}
 			prioritySet[priority.Priority] = struct{}{}
 
-			for j, attribute := range priority.QueryAttributes {
-				if hasQueryPriorityRegexChanged {
-					compiledRegex, err := regexp.Compile(attribute.Regex)
-					if err != nil {
-						return errors.Join(errCompilingQueryPriorityRegex, err)
-					}
-					newQueryPriorityCompiledRegex[attribute.Regex] = compiledRegex
-					l.QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = compiledRegex
-				} else {
-					l.QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = l.queryPriorityCompiledRegex[attribute.Regex]
-				}
+			err := l.compileQueryAttributeRegexes(l.QueryPriority.Priorities[i].QueryAttributes, regexChanged, newCompiledRegex)
+			if err != nil {
+				return err
 			}
-		}
-
-		if hasQueryPriorityRegexChanged {
-			l.queryPriorityCompiledRegex = newQueryPriorityCompiledRegex
 		}
 	}
 
+	if l.QueryRejection.Enabled {
+		err := l.compileQueryAttributeRegexes(l.QueryRejection.QueryAttributes, regexChanged, newCompiledRegex)
+		if err != nil {
+			return err
+		}
+	}
+
+	if regexChanged {
+		l.queryAttributeCompiledRegex = newCompiledRegex
+	}
+
+	return nil
+}
+
+func (l *Limits) compileQueryAttributeRegexes(queryAttributes []QueryAttribute, regexChanged bool, newCompiledRegex map[string]*regexp.Regexp) error {
+	for j, attribute := range queryAttributes {
+		if regexChanged {
+			compiledRegex, err := regexp.Compile(attribute.Regex)
+			if err != nil {
+				return errors.Join(errCompilingQueryPriorityRegex, err)
+			}
+			newCompiledRegex[attribute.Regex] = compiledRegex
+			queryAttributes[j].CompiledRegex = compiledRegex
+
+			compiledUserAgentRegex, err := regexp.Compile(attribute.UserAgentRegex)
+			if err != nil {
+				return errors.Join(errCompilingQueryPriorityRegex, err)
+			}
+			newCompiledRegex[attribute.UserAgentRegex] = compiledUserAgentRegex
+			queryAttributes[j].CompiledUserAgentRegex = compiledUserAgentRegex
+		} else {
+			queryAttributes[j].CompiledRegex = l.queryAttributeCompiledRegex[attribute.Regex]
+			queryAttributes[j].CompiledUserAgentRegex = l.queryAttributeCompiledRegex[attribute.UserAgentRegex]
+		}
+	}
 	return nil
 }
 
@@ -638,6 +705,11 @@ func (o *Overrides) MaxOutstandingPerTenant(userID string) int {
 // QueryPriority returns the query priority config for the tenant, including different priorities and their attributes
 func (o *Overrides) QueryPriority(userID string) QueryPriority {
 	return o.GetOverridesForUser(userID).QueryPriority
+}
+
+// QueryRejection returns the query reject config for the tenant
+func (o *Overrides) QueryRejection(userID string) QueryRejection {
+	return o.GetOverridesForUser(userID).QueryRejection
 }
 
 // EnforceMetricName whether to enforce the presence of a metric name.

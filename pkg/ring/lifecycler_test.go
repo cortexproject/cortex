@@ -3,7 +3,6 @@ package ring
 import (
 	"context"
 	"fmt"
-	"golang.org/x/exp/slices"
 	"sort"
 	"testing"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"

@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -73,6 +74,49 @@ func TestLifecycler_JoinShouldNotBlock(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timeout")
 	}
+}
+
+func TestLifecycler_RenewTokens(t *testing.T) {
+	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = ringStore
+
+	ctx := context.Background()
+	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
+	lifecyclerConfig.HeartbeatPeriod = 100 * time.Millisecond
+	lifecyclerConfig.NumTokens = 512
+
+	l1, err := NewLifecycler(lifecyclerConfig, &nopFlushTransferer{}, "ingester", ringKey, true, true, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, l1))
+	defer services.StopAndAwaitTerminated(ctx, l1) // nolint:errcheck
+
+	waitRingInstance(t, 3*time.Second, l1, func(instance InstanceDesc) error {
+		if instance.State != ACTIVE {
+			return errors.New("should be active")
+		}
+		return nil
+	})
+
+	originalTokens := l1.getTokens()
+	require.Len(t, originalTokens, 512)
+	require.IsIncreasing(t, originalTokens)
+	l1.RenewTokens(0.1, ctx)
+	newTokens := l1.getTokens()
+	require.Len(t, newTokens, 512)
+	require.IsIncreasing(t, newTokens)
+	diff := 0
+	for i := 0; i < len(originalTokens); i++ {
+		if !slices.Contains(originalTokens, newTokens[i]) {
+			diff++
+		}
+	}
+
+	require.Equal(t, 51, diff)
 }
 
 func TestLifecycler_DefferedJoin(t *testing.T) {

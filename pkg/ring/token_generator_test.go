@@ -97,6 +97,14 @@ func TestMinimizeSpreadTokenGenerator(t *testing.T) {
 	}
 	require.Equal(t, mTokenGenerator.called, len(zones))
 
+	// Test generating tokens for an ingester that already have tokens in the ring
+	rg := NewRandomTokenGenerator()
+	rTokens := rg.GenerateTokens(rindDesc, "partial", zones[0], 256, true)
+	rindDesc.AddIngester("partial", "partial", zones[0], rTokens, ACTIVE, time.Now())
+	nTokens := minimizeTokenGenerator.GenerateTokens(rindDesc, "partial", zones[0], 256, true)
+	rindDesc.AddIngester("partial", "partial", zones[0], append(rTokens, nTokens...), ACTIVE, time.Now())
+	assertDistancePerIngester(t, rindDesc, 0.01)
+
 	mTokenGenerator.called = 0
 	// Should fallback to random generator when more than 1 ingester does not have tokens and force flag is set
 	rindDesc.AddIngester("pendingIngester-1", "pendingIngester-1", zones[0], []uint32{}, PENDING, time.Now())

@@ -95,8 +95,15 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 		}
 
 		// Only take in consideration tokens from instances in the same AZ
-		if i != id && instance.Zone == zone {
-			instanceTokens = append(instanceTokens, instance.Tokens)
+		if instance.Zone != zone {
+			continue
+		}
+
+		instanceTokens = append(instanceTokens, instance.Tokens)
+
+		// Do not add the current instance on the tokensPerInstanceWithDistance map as it will be used to create the heap
+		// to calculate from what instance we should take ownership
+		if i != id {
 			tokensPerInstanceWithDistance[i] = &totalTokenPerInstance{id: i, zone: instance.Zone}
 
 			if len(instance.Tokens) == 0 {
@@ -117,6 +124,7 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 	}
 
 	zonalTokens := MergeTokens(instanceTokens)
+	currentInstance := &totalTokenPerInstance{id: id, zone: zone}
 
 	// If we don't have tokens to split, lets create the tokens randomly
 	if len(zonalTokens) == 0 {
@@ -127,14 +135,22 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 	// This map will be later on used to create the heap in order to take tokens from the ingesters with most distance
 	for i := 1; i <= len(zonalTokens); i++ {
 		index := i % len(zonalTokens)
-		if id, ok := usedTokens[zonalTokens[index]]; ok {
-			instanceDistance := tokensPerInstanceWithDistance[id]
+		if tokenInstanceId, ok := usedTokens[zonalTokens[index]]; ok && tokenInstanceId != id {
+			instanceDistance := tokensPerInstanceWithDistance[tokenInstanceId]
 			instanceDistance.tokens = append(instanceDistance.tokens, &tokenDistanceEntry{
 				token:    zonalTokens[index],
 				prev:     zonalTokens[i-1],
 				distance: tokenDistance(zonalTokens[i-1], zonalTokens[index]),
 			})
 			instanceDistance.totalDistance += tokenDistance(zonalTokens[i-1], zonalTokens[index])
+		} else if tokenInstanceId == id {
+			// If the token is owned by the current instance, lets calculate the current distance
+			currentInstance.tokens = append(currentInstance.tokens, &tokenDistanceEntry{
+				token:    zonalTokens[index],
+				prev:     zonalTokens[i-1],
+				distance: tokenDistance(zonalTokens[i-1], zonalTokens[index]),
+			})
+			currentInstance.totalDistance += tokenDistance(zonalTokens[i-1], zonalTokens[index])
 		}
 	}
 
@@ -149,7 +165,6 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 
 	heap.Init(distancesHeap)
 
-	currentInstance := &totalTokenPerInstance{id: id, zone: zone}
 	expectedOwnership := float64(1) / (float64(len(tokensPerInstanceWithDistance) + 1))
 	expectedOwnershipDistance := int64(expectedOwnership * maxTokenValue)
 

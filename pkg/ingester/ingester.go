@@ -971,6 +971,11 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 	}
 }
 
+func (i *Ingester) RenewTokenHandler(w http.ResponseWriter, r *http.Request) {
+	i.lifecycler.RenewTokens(0.1, r.Context())
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ShutdownHandler triggers the following set of operations in order:
 //   - Change the state of ring to stop accepting writes.
 //   - Flush all the chunks.

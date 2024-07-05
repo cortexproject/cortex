@@ -706,6 +706,52 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 	return err
 }
 
+func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
+	if ratio > 1 {
+		ratio = 1
+	}
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		if in == nil {
+			return in, false, nil
+		}
+
+		ringDesc := in.(*Desc)
+		_, ok := ringDesc.Ingesters[i.ID]
+
+		if !ok {
+			return in, false, nil
+		}
+
+		tokensToBeRenewed := int(float64(i.cfg.NumTokens) * ratio)
+		ringTokens, _ := ringDesc.TokensFor(i.ID)
+
+		// Removing random tokens
+		for i := 0; i < tokensToBeRenewed; i++ {
+			if len(ringTokens) == 0 {
+				break
+			}
+			index := mathrand.Int() % len(ringTokens)
+			ringTokens = append(ringTokens[:index], ringTokens[index+1:]...)
+		}
+
+		needTokens := i.cfg.NumTokens - len(ringTokens)
+		level.Info(i.logger).Log("msg", "renewing new tokens", "count", needTokens, "ring", i.RingName)
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, ringTokens, i.GetState(), i.getRegisteredAt())
+		newTokens := i.tg.GenerateTokens(ringDesc, i.ID, i.Zone, needTokens, true)
+
+		ringTokens = append(ringTokens, newTokens...)
+		sort.Sort(ringTokens)
+
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, ringTokens, i.GetState(), i.getRegisteredAt())
+		i.setTokens(ringTokens)
+		return ringDesc, true, nil
+	})
+
+	if err != nil {
+		level.Error(i.logger).Log("msg", "failed to regenerate tokens", "ring", i.RingName, "err", err)
+	}
+}
+
 // Verifies that tokens that this ingester has registered to the ring still belong to it.
 // Gossiping ring may change the ownership of tokens in case of conflicts.
 // If ingester doesn't own its tokens anymore, this method generates new tokens and puts them to the ring.

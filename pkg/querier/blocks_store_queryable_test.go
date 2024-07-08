@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -41,7 +42,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
-	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -65,12 +65,12 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		series1Label        = labels.Label{Name: "series", Value: "1"}
 		series2Label        = labels.Label{Name: "series", Value: "2"}
 		noOpQueryLimiter    = limiter.NewQueryLimiter(0, 0, 0, 0)
-		testHistogram1      = histogram_util.GenerateTestHistogram(1)
-		testHistogram2      = histogram_util.GenerateTestHistogram(2)
-		testHistogram3      = histogram_util.GenerateTestHistogram(3)
-		testFloatHistogram1 = histogram_util.GenerateTestFloatHistogram(1)
-		testFloatHistogram2 = histogram_util.GenerateTestFloatHistogram(2)
-		testFloatHistogram3 = histogram_util.GenerateTestFloatHistogram(3)
+		testHistogram1      = tsdbutil.GenerateTestHistogram(1)
+		testHistogram2      = tsdbutil.GenerateTestHistogram(2)
+		testHistogram3      = tsdbutil.GenerateTestHistogram(3)
+		testFloatHistogram1 = tsdbutil.GenerateTestFloatHistogram(1)
+		testFloatHistogram2 = tsdbutil.GenerateTestFloatHistogram(2)
+		testFloatHistogram3 = tsdbutil.GenerateTestFloatHistogram(3)
 	)
 
 	type valueResult struct {
@@ -2279,13 +2279,10 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 						h := h
 						// Check sample timestamp is expected.
 						require.Equal(t, h.T, int64(from)+int64(i)*15000)
+						expectedH := tsdbutil.GenerateTestGaugeFloatHistogram(int(h.T))
 						if enc == encoding.PrometheusHistogramChunk {
-							// GenerateTestHistogram will add 10 for the input value i so subtract 10 here.
-							expectedH := histogram_util.GenerateTestHistogram(int(h.T - 10))
-							require.Equal(t, expectedH.ToFloat(nil), h.H)
+							require.Equal(t, expectedH, h.H)
 						} else if enc == encoding.PrometheusFloatHistogramChunk {
-							// GenerateTestHistogram will add 10 for the input value i so subtract 10 here.
-							expectedH := histogram_util.GenerateTestFloatHistogram(int(h.T - 10))
 							require.Equal(t, expectedH, h.H)
 						}
 					}

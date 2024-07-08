@@ -121,7 +121,7 @@ func BenchmarkNewChunkMergeIterator_Seek(b *testing.B) {
 }
 
 func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
-	histograms := histogram_util.GenerateTestHistograms(1000, 1000, 1, 5, 20)
+	histograms := histogram_util.GenerateTestHistograms(1000, 1000, 1)
 	for _, enc := range []promchunk.Encoding{
 		promchunk.PrometheusXorChunk,
 		promchunk.PrometheusHistogramChunk,

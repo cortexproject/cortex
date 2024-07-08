@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -34,7 +35,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -140,7 +140,7 @@ var (
 					for i, point := range series.Histograms {
 						require.Equal(t, ts, point.T, strconv.Itoa(i))
 						// Convert expected value to float histogram.
-						expectedH := histogram_util.GenerateTestFloatHistogram(int(ts - 10))
+						expectedH := tsdbutil.GenerateTestGaugeFloatHistogram(int(ts))
 						require.Equal(t, expectedH, point.H, strconv.Itoa(i))
 						ts += int64(q.step / time.Millisecond)
 					}
@@ -202,7 +202,7 @@ var (
 					for i, point := range series.Histograms {
 						require.Equal(t, ts, point.T, strconv.Itoa(i))
 						// Convert expected value to float histogram.
-						expectedH := histogram_util.GenerateTestFloatHistogram(int(ts - 10))
+						expectedH := tsdbutil.GenerateTestGaugeFloatHistogram(int(ts))
 						require.Equal(t, expectedH, point.H, strconv.Itoa(i))
 						ts += int64(q.step / time.Millisecond)
 					}
@@ -222,7 +222,7 @@ var (
 				from, through := time.Unix(0, 0), end.Time()
 				require.Equal(t, q.samples(from, through, q.step), len(series.Floats))
 				for i, point := range series.Floats {
-					expectedFH := histogram_util.GenerateTestFloatHistogram(int(ts - 10))
+					expectedFH := tsdbutil.GenerateTestFloatHistogram(int(ts))
 					require.Equal(t, ts, point.T, strconv.Itoa(i))
 					require.Equal(t, expectedFH.Sum, point.F, strconv.Itoa(i))
 					ts += int64(q.step / time.Millisecond)
@@ -243,7 +243,7 @@ var (
 				from, through := time.Unix(0, 0), end.Time()
 				require.Equal(t, q.samples(from, through, q.step), len(series.Floats))
 				for i, point := range series.Floats {
-					expectedFH := histogram_util.GenerateTestFloatHistogram(int(ts - 10))
+					expectedFH := tsdbutil.GenerateTestFloatHistogram(int(ts))
 					require.Equal(t, ts, point.T, strconv.Itoa(i))
 					require.Equal(t, expectedFH.Count, point.F, strconv.Itoa(i))
 					ts += int64(q.step / time.Millisecond)

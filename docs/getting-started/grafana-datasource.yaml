@@ -18,7 +18,17 @@ datasources:
     version: 1
     editable: true
     isDefault: true
-  - name: Alan
+  - name: Tenant A
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://cortex:9009/api/prom
+    jsonData: *jsonData
+    secureJsonData:
+      httpHeaderValue1: tenant-a
+    version: 1
+    editable: true
+  - name: Tenant B
     type: prometheus
     access: proxy
     orgId: 1
@@ -28,7 +38,7 @@ datasources:
       httpHeaderValue1: tenant-b
     version: 1
     editable: true
-  - name: Ben
+  - name: Tenant C
     type: prometheus
     access: proxy
     orgId: 1
@@ -38,7 +48,7 @@ datasources:
       httpHeaderValue1: tenant-c
     version: 1
     editable: true
-  - name: Charlie
+  - name: Tenant D
     type: prometheus
     access: proxy
     orgId: 1
@@ -46,16 +56,6 @@ datasources:
     jsonData: *jsonData
     secureJsonData:
       httpHeaderValue1: tenant-d
-    version: 1
-    editable: true
-  - name: Friedrich
-    type: prometheus
-    access: proxy
-    orgId: 1
-    url: http://cortex:9009/api/prom
-    jsonData: *jsonData
-    secureJsonData:
-      httpHeaderValue1: tenant-a
     version: 1
     editable: true
   - orgId: 1

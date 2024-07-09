@@ -100,8 +100,8 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	c, err = e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
-	expectedHistogram1 := tsdbutil.GenerateTestHistogram(histogramIdx1)
-	expectedHistogram2 := tsdbutil.GenerateTestHistogram(histogramIdx2)
+	expectedHistogram1 := tsdbutil.GenerateTestHistogram(int(histogramIdx1))
+	expectedHistogram2 := tsdbutil.GenerateTestHistogram(int(histogramIdx2))
 	result, err := c.QueryRange(`series_1`, series2Timestamp.Add(-time.Minute*10), series2Timestamp, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, model.ValMatrix, result.Type())
@@ -139,8 +139,8 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	require.Equal(t, 2, v.Len())
 	for _, s := range v {
 		require.NotNil(t, s.Histogram)
-		require.Equal(t, float64(expectedHistogram1.Count), float64(h.Histogram.Count))
-		require.Equal(t, float64(expectedHistogram1.Sum), float64(h.Histogram.Sum))
+		require.Equal(t, float64(expectedHistogram1.Count), float64(s.Histogram.Count))
+		require.Equal(t, float64(expectedHistogram1.Sum), float64(s.Histogram.Sum))
 	}
 
 	result, err = c.Query(`series_2`, series2Timestamp)
@@ -150,7 +150,7 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	require.Equal(t, 2, v.Len())
 	for _, s := range v {
 		require.NotNil(t, s.Histogram)
-		require.Equal(t, float64(expectedHistogram2.Count), float64(h.Histogram.Count))
-		require.Equal(t, float64(expectedHistogram2.Sum), float64(h.Histogram.Sum))
+		require.Equal(t, float64(expectedHistogram2.Count), float64(s.Histogram.Count))
+		require.Equal(t, float64(expectedHistogram2.Sum), float64(s.Histogram.Sum))
 	}
 }

@@ -4,11 +4,13 @@
 package integration
 
 import (
+	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -51,14 +53,16 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 
 	seriesTimestamp := time.Now()
 	series2Timestamp := seriesTimestamp.Add(blockRangePeriod * 2)
-	series1 := e2e.GenerateHistogramSeries("series_1", seriesTimestamp, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
-	series1Float := e2e.GenerateHistogramSeries("series_1", seriesTimestamp, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	histogramIdx1 := rand.Uint32()
+	series1 := e2e.GenerateHistogramSeries("series_1", seriesTimestamp, histogramIdx1, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
+	series1Float := e2e.GenerateHistogramSeries("series_1", seriesTimestamp, histogramIdx1, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
 	res, err := c.Push(append(series1, series1Float...))
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	series2 := e2e.GenerateHistogramSeries("series_2", series2Timestamp, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
-	series2Float := e2e.GenerateHistogramSeries("series_2", series2Timestamp, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	histogramIdx2 := rand.Uint32()
+	series2 := e2e.GenerateHistogramSeries("series_2", series2Timestamp, histogramIdx2, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
+	series2Float := e2e.GenerateHistogramSeries("series_2", series2Timestamp, histogramIdx2, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
 	res, err = c.Push(append(series2, series2Float...))
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
@@ -96,6 +100,8 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	c, err = e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
+	expectedHistogram1 := tsdbutil.GenerateTestHistogram(int(histogramIdx1))
+	expectedHistogram2 := tsdbutil.GenerateTestHistogram(int(histogramIdx2))
 	result, err := c.QueryRange(`series_1`, series2Timestamp.Add(-time.Minute*10), series2Timestamp, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, model.ValMatrix, result.Type())
@@ -106,6 +112,8 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 		require.NotEmpty(t, ss.Histograms)
 		for _, h := range ss.Histograms {
 			require.NotEmpty(t, h)
+			require.Equal(t, float64(expectedHistogram1.Count), float64(h.Histogram.Count))
+			require.Equal(t, float64(expectedHistogram1.Sum), float64(h.Histogram.Sum))
 		}
 	}
 
@@ -119,6 +127,8 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 		require.NotEmpty(t, ss.Histograms)
 		for _, h := range ss.Histograms {
 			require.NotEmpty(t, h)
+			require.Equal(t, float64(expectedHistogram2.Count), float64(h.Histogram.Count))
+			require.Equal(t, float64(expectedHistogram2.Sum), float64(h.Histogram.Sum))
 		}
 	}
 
@@ -129,6 +139,8 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	require.Equal(t, 2, v.Len())
 	for _, s := range v {
 		require.NotNil(t, s.Histogram)
+		require.Equal(t, float64(expectedHistogram1.Count), float64(s.Histogram.Count))
+		require.Equal(t, float64(expectedHistogram1.Sum), float64(s.Histogram.Sum))
 	}
 
 	result, err = c.Query(`series_2`, series2Timestamp)
@@ -138,5 +150,7 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	require.Equal(t, 2, v.Len())
 	for _, s := range v {
 		require.NotNil(t, s.Histogram)
+		require.Equal(t, float64(expectedHistogram2.Count), float64(s.Histogram.Count))
+		require.Equal(t, float64(expectedHistogram2.Sum), float64(s.Histogram.Sum))
 	}
 }

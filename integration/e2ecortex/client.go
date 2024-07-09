@@ -159,7 +159,7 @@ func getNameAndAttributes(ts prompb.TimeSeries) (string, map[string]any) {
 	return metricName, attributes
 }
 
-func createDatapointsGauge(newMetric pmetric.Metric, attributes map[string]any, samples []prompb.Sample) {
+func createDataPointsGauge(newMetric pmetric.Metric, attributes map[string]any, samples []prompb.Sample) {
 	newMetric.SetEmptyGauge()
 	for _, sample := range samples {
 		datapoint := newMetric.Gauge().DataPoints().AppendEmpty()
@@ -172,6 +172,47 @@ func createDatapointsGauge(newMetric pmetric.Metric, attributes map[string]any, 
 	}
 }
 
+func createDataPointsExponentialHistogram(newMetric pmetric.Metric, attributes map[string]any, histograms []prompb.Histogram) {
+	newMetric.SetEmptyExponentialHistogram()
+	for _, h := range histograms {
+		datapoint := newMetric.ExponentialHistogram().DataPoints().AppendEmpty()
+		datapoint.SetTimestamp(pcommon.Timestamp(h.Timestamp * time.Millisecond.Nanoseconds()))
+		datapoint.SetCount(h.GetCountInt())
+		datapoint.SetSum(h.GetSum())
+		datapoint.SetScale(h.GetSchema())
+		datapoint.SetZeroCount(h.GetZeroCountInt())
+		datapoint.SetZeroThreshold(h.GetZeroThreshold())
+		convertBucketLayout(datapoint.Positive(), h.PositiveSpans, h.PositiveDeltas)
+		convertBucketLayout(datapoint.Negative(), h.NegativeSpans, h.NegativeDeltas)
+		err := datapoint.Attributes().FromRaw(attributes)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+// convertBucketLayout converts Prometheus remote write bucket layout to Exponential Histogram bucket layout.
+func convertBucketLayout(bucket pmetric.ExponentialHistogramDataPointBuckets, spans []prompb.BucketSpan, deltas []int64) {
+	vals := make([]uint64, 0)
+	iDelta := 0
+	count := int64(0)
+	for i, span := range spans {
+		if i == 0 {
+			bucket.SetOffset(span.GetOffset() - 1)
+		} else {
+			for j := 0; j < int(span.GetOffset()); j++ {
+				vals = append(vals, 0)
+			}
+		}
+		for j := 0; j < int(span.Length); j++ {
+			count += deltas[iDelta]
+			vals = append(vals, uint64(count))
+			iDelta++
+		}
+	}
+	bucket.BucketCounts().FromRaw(vals)
+}
+
 // Convert Timeseries to Metrics
 func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
@@ -181,8 +222,11 @@ func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics 
 		newMetric.SetName(metricName)
 		//TODO Set description for new metric
 		//TODO Set unit for new metric
-		createDatapointsGauge(newMetric, attributes, ts.Samples)
-		//TODO(friedrichg): Add support for histograms
+		if len(ts.Samples) > 0 {
+			createDataPointsGauge(newMetric, attributes, ts.Samples)
+		} else if len(ts.Histograms) > 0 {
+			createDataPointsExponentialHistogram(newMetric, attributes, ts.Histograms)
+		}
 	}
 	return metrics
 }

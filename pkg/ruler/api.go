@@ -135,11 +135,25 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	state := strings.ToLower(req.URL.Query().Get("state"))
+	if state != "" && state != firingStateFilter && state != pendingStateFilter && state != inactiveStateFilter {
+		util_api.RespondError(logger, w, v1.ErrBadData, fmt.Sprintf("unsupported state value %q", state), http.StatusBadRequest)
+		return
+	}
+
+	health := strings.ToLower(req.URL.Query().Get("health"))
+	if health != "" && health != unknownHealthFilter && health != okHealthFilter && health != errHealthFilter {
+		util_api.RespondError(logger, w, v1.ErrBadData, fmt.Sprintf("unsupported health value %q", health), http.StatusBadRequest)
+		return
+	}
+
 	rulesRequest := RulesRequest{
 		RuleNames:      req.Form["rule_name[]"],
 		RuleGroupNames: req.Form["rule_group[]"],
 		Files:          req.Form["file[]"],
 		Type:           typ,
+		State:          state,
+		Health:         health,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -5,11 +5,13 @@ package integration
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -72,5 +74,19 @@ func TestOTLP(t *testing.T) {
 	_, err = c.QueryRange("series_1", now.Add(-15*time.Minute), now, 15*time.Second)
 	require.NoError(t, err)
 
-	//TODO(friedrichg): test histograms
+	i := rand.Uint32()
+	histogramSeries := e2e.GenerateHistogramSeries("histogram_series", now, i, false, prompb.Label{Name: "job", Value: "test"})
+	res, err = c.Push(histogramSeries)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	result, err = c.Query(`histogram_series`, now)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+	v := result.(model.Vector)
+	require.Equal(t, 1, v.Len())
+	expectedHistogram := tsdbutil.GenerateTestHistogram(int(i))
+	require.NotNil(t, v[0].Histogram)
+	require.Equal(t, float64(expectedHistogram.Count), float64(v[0].Histogram.Count))
+	require.Equal(t, expectedHistogram.Sum, float64(v[0].Histogram.Sum))
 }

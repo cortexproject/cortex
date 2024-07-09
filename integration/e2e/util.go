@@ -150,9 +150,8 @@ func GenerateSeries(name string, ts time.Time, additionalLabels ...prompb.Label)
 	return
 }
 
-func GenerateHistogramSeries(name string, ts time.Time, floatHistogram bool, additionalLabels ...prompb.Label) (series []prompb.TimeSeries) {
+func GenerateHistogramSeries(name string, ts time.Time, i uint32, floatHistogram bool, additionalLabels ...prompb.Label) (series []prompb.TimeSeries) {
 	tsMillis := TimeToMilliseconds(ts)
-	i := rand.Uint32()
 
 	lbls := append(
 		[]prompb.Label{

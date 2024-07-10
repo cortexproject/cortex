@@ -747,6 +747,10 @@ type RingMock struct {
 	mock.Mock
 }
 
+func (r *RingMock) GetInstanceIdByAddr(addr string) (string, error) {
+	return "", nil
+}
+
 func (r *RingMock) Collect(ch chan<- prometheus.Metric) {}
 
 func (r *RingMock) Describe(ch chan<- *prometheus.Desc) {}

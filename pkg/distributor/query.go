@@ -2,11 +2,11 @@ package distributor
 
 import (
 	"context"
-	"github.com/go-kit/log/level"
 	"io"
 	"sort"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -166,11 +166,12 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 			return nil, err
 		}
 
-		resp, err := client.(ingester_client.IngesterClient).QueryExemplars(ctx, req)
 		ingesterId, err := d.ingestersRing.GetInstanceIdByAddr(ing.Addr)
 		if err != nil {
 			level.Warn(d.log).Log("msg", "instance not found in the ring", "addr", ing.Addr, "err", err)
 		}
+
+		resp, err := client.(ingester_client.IngesterClient).QueryExemplars(ctx, req)
 
 		d.ingesterQueries.WithLabelValues(ingesterId).Inc()
 		if err != nil {

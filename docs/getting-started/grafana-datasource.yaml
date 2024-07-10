@@ -6,6 +6,66 @@ datasources:
     access: proxy
     orgId: 1
     url: http://cortex:9009/api/prom
+    jsonData: &jsonData
+      cacheLevel: None
+      httpHeaderName1: X-Scope-OrgID
+      httpMethod: POST
+      prometheusType: Cortex
+      prometheusVersion: 1.14.0
+      timeInterval: 15s
+    secureJsonData:
+      httpHeaderValue1: cortex
     version: 1
     editable: true
     isDefault: true
+  - name: Tenant A
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://cortex:9009/api/prom
+    jsonData: *jsonData
+    secureJsonData:
+      httpHeaderValue1: tenant-a
+    version: 1
+    editable: true
+  - name: Tenant B
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://cortex:9009/api/prom
+    jsonData: *jsonData
+    secureJsonData:
+      httpHeaderValue1: tenant-b
+    version: 1
+    editable: true
+  - name: Tenant C
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://cortex:9009/api/prom
+    jsonData: *jsonData
+    secureJsonData:
+      httpHeaderValue1: tenant-c
+    version: 1
+    editable: true
+  - name: Tenant D
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://cortex:9009/api/prom
+    jsonData: *jsonData
+    secureJsonData:
+      httpHeaderValue1: tenant-d
+    version: 1
+    editable: true
+  - orgId: 1
+    name: Cortex Alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://cortex:9009/
+    jsonData:
+      httpHeaderName1: X-Scope-OrgID
+      implementation: cortex
+    secureJsonData:
+      httpHeaderValue1: cortex
+    version: 1

@@ -35,6 +35,8 @@ services:
       - GF_LOG_LEVEL=critical
     volumes:
       - ./grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml:ro
+      - ./grafana-dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./dashboards/:/var/lib/grafana/dashboards/:ro
     ports:
       - "3000:3000"
   prometheus:

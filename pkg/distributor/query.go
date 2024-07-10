@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"github.com/go-kit/log/level"
 	"io"
 	"sort"
 	"time"
@@ -166,9 +167,14 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 		}
 
 		resp, err := client.(ingester_client.IngesterClient).QueryExemplars(ctx, req)
-		d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
+		ingesterId, err := d.ingestersRing.GetInstanceIdByAddr(ing.Addr)
 		if err != nil {
-			d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+			level.Warn(d.log).Log("msg", "instance not found in the ring", "addr", ing.Addr, "err", err)
+		}
+
+		d.ingesterQueries.WithLabelValues(ingesterId).Inc()
+		if err != nil {
+			d.ingesterQueryFailures.WithLabelValues(ingesterId).Inc()
 			return nil, err
 		}
 
@@ -225,11 +231,17 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		if err != nil {
 			return nil, err
 		}
-		d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
+
+		ingesterId, err := d.ingestersRing.GetInstanceIdByAddr(ing.Addr)
+		if err != nil {
+			level.Warn(d.log).Log("msg", "instance not found in the ring", "addr", ing.Addr, "err", err)
+		}
+
+		d.ingesterQueries.WithLabelValues(ingesterId).Inc()
 
 		stream, err := client.(ingester_client.IngesterClient).QueryStream(ctx, req)
 		if err != nil {
-			d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+			d.ingesterQueryFailures.WithLabelValues(ingesterId).Inc()
 			return nil, err
 		}
 		defer stream.CloseSend() //nolint:errcheck
@@ -242,7 +254,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			} else if err != nil {
 				// Do not track a failure if the context was canceled.
 				if !grpcutil.IsGRPCContextCanceled(err) {
-					d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+					d.ingesterQueryFailures.WithLabelValues(ingesterId).Inc()
 				}
 
 				return nil, err

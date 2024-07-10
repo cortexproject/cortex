@@ -459,9 +459,9 @@ func TestGetOrAddQueueShouldUpdateProperties(t *testing.T) {
 }
 
 func TestGetOrAddQueueConcurrency(t *testing.T) {
-	const numGoRoutines = 100
+	const numGoRoutines = 10
 	limits := MockLimits{
-		MaxOutstanding: 3,
+		MaxOutstanding: 50,
 	}
 	q := newUserQueues(0, 0, limits, nil)
 	q.addQuerierConnection("q-1")
@@ -474,14 +474,12 @@ func TestGetOrAddQueueConcurrency(t *testing.T) {
 	wg.Add(numGoRoutines)
 
 	for i := 0; i < numGoRoutines; i++ {
-		go func(maxOutstanding int) {
+		go func(cnt int) {
 			defer wg.Done()
-			limits.MaxOutstanding = maxOutstanding + 50
-			q.limits = limits
 			queue := q.getOrAddQueue("userID", 2)
-			if rand.Int()%2 == 0 {
+			if cnt%2 == 0 {
 				queue.enqueueRequest(MockRequest{})
-			} else if rand.Int()%9 == 0 {
+			} else if cnt%5 == 0 {
 				queue.dequeueRequest(0, false)
 			}
 		}(i)

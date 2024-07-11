@@ -1443,14 +1443,6 @@ func createNoCompactionMark(t *testing.T, bkt objstore.Bucket, userID string, bl
 	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
 }
 
-func createBlockVisitMarker(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID) {
-	content := mockBlockVisitMarker()
-	blockPath := path.Join(userID, blockID.String())
-	markPath := path.Join(blockPath, BlockVisitMarkerFile)
-
-	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
-}
-
 func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuffer, userID string) (*Compactor, *concurrency.SyncBuffer, error) {
 	var compactor *Compactor
 	var log *concurrency.SyncBuffer

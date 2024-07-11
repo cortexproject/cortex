@@ -886,7 +886,6 @@ type blocksGroupWithPartition struct {
 	rangeStart           int64 // Included.
 	rangeEnd             int64 // Excluded.
 	blocks               []*metadata.Meta
-	key                  string
 	groupHash            uint32
 	partitionedGroupInfo *PartitionedGroupInfo
 	partition            Partition

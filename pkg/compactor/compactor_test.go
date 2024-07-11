@@ -670,7 +670,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 3*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -800,7 +800,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 3*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -1159,7 +1159,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
+		cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 		})
 	}

@@ -1,0 +1,263 @@
+package compactor
+
+import (
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/compact"
+	"github.com/thanos-io/thanos/pkg/extprom"
+)
+
+type compactorMetrics struct {
+	reg              prometheus.Registerer
+	commonLabels     []string
+	compactionLabels []string
+
+	// block.BaseFetcherMetrics
+	baseFetcherSyncs *prometheus.CounterVec
+
+	// block.FetcherMetrics
+	metaFetcherSyncs        *prometheus.CounterVec
+	metaFetcherSyncFailures *prometheus.CounterVec
+	metaFetcherSyncDuration *prometheus.HistogramVec
+	metaFetcherSynced       *extprom.TxGaugeVec
+	metaFetcherModified     *extprom.TxGaugeVec
+
+	// compact.SyncerMetrics
+	syncerGarbageCollectedBlocks    *prometheus.CounterVec
+	syncerGarbageCollections        *prometheus.CounterVec
+	syncerGarbageCollectionFailures *prometheus.CounterVec
+	syncerGarbageCollectionDuration *prometheus.HistogramVec
+	syncerBlocksMarkedForDeletion   *prometheus.CounterVec
+
+	compactions                 *prometheus.CounterVec
+	compactionPlanned           *prometheus.CounterVec
+	compactionRunsStarted       *prometheus.CounterVec
+	compactionRunsCompleted     *prometheus.CounterVec
+	compactionFailures          *prometheus.CounterVec
+	verticalCompactions         *prometheus.CounterVec
+	partitionCount              *prometheus.GaugeVec
+	compactionsNotPlanned       *prometheus.CounterVec
+	compactionDuration          *prometheus.GaugeVec
+	partitionGroupDuration      *prometheus.GaugeVec
+	blockGroupDuration          *prometheus.GaugeVec
+	compactionRetryErrors       *prometheus.CounterVec
+	compactionHaltErrors        *prometheus.CounterVec
+	remainingPlannedCompactions *prometheus.GaugeVec
+}
+
+const (
+	UserLabelName      = "user"
+	TimeRangeLabelName = "time_range_milliseconds"
+	ReasonLabelName    = "reason"
+)
+
+var (
+	CommonLabels     = []string{UserLabelName}
+	CompactionLabels = []string{TimeRangeLabelName}
+)
+
+func newDefaultCompactorMetrics(reg prometheus.Registerer) *compactorMetrics {
+	return newCompactorMetricsWithLabels(reg, CommonLabels, []string{"resolution"})
+}
+
+func newCompactorMetrics(reg prometheus.Registerer) *compactorMetrics {
+	return newCompactorMetricsWithLabels(reg, CommonLabels, append(CommonLabels, CompactionLabels...))
+}
+
+func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []string, compactionLabels []string) *compactorMetrics {
+	var m compactorMetrics
+	m.reg = reg
+	m.commonLabels = commonLabels
+	m.compactionLabels = compactionLabels
+
+	// Copied from Thanos, pkg/block/fetcher.go
+	m.baseFetcherSyncs = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Subsystem: block.FetcherSubSys,
+		Name:      "cortex_compactor_meta_base_syncs_total",
+		Help:      "Total blocks metadata synchronization attempts by base Fetcher.",
+	}, nil)
+
+	// Copied from Thanos, pkg/block/fetcher.go
+	m.metaFetcherSyncs = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Subsystem: block.FetcherSubSys,
+		Name:      "cortex_compactor_meta_syncs_total",
+		Help:      "Total blocks metadata synchronization attempts.",
+	}, nil)
+	m.metaFetcherSyncFailures = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Subsystem: block.FetcherSubSys,
+		Name:      "cortex_compactor_meta_sync_failures_total",
+		Help:      "Total blocks metadata synchronization failures.",
+	}, nil)
+	m.metaFetcherSyncDuration = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Subsystem: block.FetcherSubSys,
+		Name:      "cortex_compactor_meta_sync_duration_seconds",
+		Help:      "Duration of the blocks metadata synchronization in seconds.",
+		Buckets:   []float64{0.01, 1, 10, 100, 300, 600, 1000},
+	}, nil)
+	m.metaFetcherSynced = extprom.NewTxGaugeVec(
+		reg,
+		prometheus.GaugeOpts{
+			Subsystem: block.FetcherSubSys,
+			Name:      "cortex_compactor_meta_synced",
+			Help:      "Number of block metadata synced",
+		},
+		[]string{"state"},
+		block.DefaultSyncedStateLabelValues()...,
+	)
+	m.metaFetcherModified = extprom.NewTxGaugeVec(
+		reg,
+		prometheus.GaugeOpts{
+			Subsystem: block.FetcherSubSys,
+			Name:      "cortex_compactor_meta_modified",
+			Help:      "Number of blocks whose metadata changed",
+		},
+		[]string{"modified"},
+		block.DefaultModifiedLabelValues()...,
+	)
+
+	// Copied from Thanos, pkg/compact/compact.go.
+	m.syncerGarbageCollectedBlocks = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_garbage_collected_blocks_total",
+		Help: "Total number of blocks marked for deletion by compactor.",
+	}, nil)
+	m.syncerGarbageCollections = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_garbage_collection_total",
+		Help: "Total number of garbage collection operations.",
+	}, nil)
+	m.syncerGarbageCollectionFailures = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_garbage_collection_failures_total",
+		Help: "Total number of failed garbage collection operations.",
+	}, nil)
+	m.syncerGarbageCollectionDuration = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Name: "cortex_compactor_garbage_collection_duration_seconds",
+		Help: "Time it took to perform garbage collection iteration.",
+	}, nil)
+	m.syncerBlocksMarkedForDeletion = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(commonLabels, ReasonLabelName))
+
+	m.compactions = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_compactions_total",
+		Help: "Total number of group compaction attempts that resulted in a new block.",
+	}, compactionLabels)
+	m.compactionPlanned = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compact_group_compaction_planned_total",
+		Help: "Total number of compaction planned.",
+	}, compactionLabels)
+	m.compactionRunsStarted = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_compaction_runs_started_total",
+		Help: "Total number of group compaction attempts.",
+	}, compactionLabels)
+	m.compactionRunsCompleted = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_compaction_runs_completed_total",
+		Help: "Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.",
+	}, compactionLabels)
+	m.compactionFailures = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_compactions_failures_total",
+		Help: "Total number of failed group compactions.",
+	}, compactionLabels)
+	m.verticalCompactions = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_vertical_compactions_total",
+		Help: "Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
+	}, compactionLabels)
+	m.partitionCount = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_compact_group_partition_count",
+		Help: "Number of partitions.",
+	}, compactionLabels)
+	m.compactionsNotPlanned = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compact_group_compactions_not_planned",
+		Help: "Total number of group compaction not planned due to non-critical error (ie. group is currently visited by other compactor).",
+	}, compactionLabels)
+	m.compactionDuration = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_compact_group_compaction_duration_seconds",
+		Help: "Duration of completed compactions in seconds",
+	}, compactionLabels)
+	m.partitionGroupDuration = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_compact_partition_group_duration_seconds",
+		Help: "Duration of sharding partition grouper in seconds",
+	}, commonLabels)
+	m.blockGroupDuration = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_compact_block_group_duration_seconds",
+		Help: "Duration of sharding grouper in seconds",
+	}, commonLabels)
+	m.compactionRetryErrors = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_compaction_retry_error_total",
+		Help: "Total number of retry errors from compactions.",
+	}, CommonLabels)
+	m.compactionHaltErrors = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_compaction_halt_error_total",
+		Help: "Total number of halt errors from compactions.",
+	}, CommonLabels)
+	m.remainingPlannedCompactions = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_compactor_remaining_planned_compactions",
+		Help: "Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy",
+	}, CommonLabels)
+
+	return &m
+}
+
+func (m *compactorMetrics) getBaseFetcherMetrics(userID string) *block.BaseFetcherMetrics {
+	var baseFetcherMetrics block.BaseFetcherMetrics
+	baseFetcherMetrics.Syncs = m.baseFetcherSyncs.WithLabelValues()
+	return &baseFetcherMetrics
+}
+
+func (m *compactorMetrics) getMetaFetcherMetrics(userID string) *block.FetcherMetrics {
+	var fetcherMetrics block.FetcherMetrics
+	fetcherMetrics.Syncs = m.metaFetcherSyncs.WithLabelValues()
+	fetcherMetrics.SyncFailures = m.metaFetcherSyncFailures.WithLabelValues()
+	fetcherMetrics.SyncDuration = m.metaFetcherSyncDuration.WithLabelValues()
+	fetcherMetrics.Synced = m.metaFetcherSynced
+	fetcherMetrics.Modified = m.metaFetcherModified
+	return &fetcherMetrics
+}
+
+func (m *compactorMetrics) getSyncerMetrics(userID string) *compact.SyncerMetrics {
+	var syncerMetrics compact.SyncerMetrics
+	labelValues := m.getCommonLabelValues(userID)
+	syncerMetrics.GarbageCollectedBlocks = m.syncerGarbageCollectedBlocks.WithLabelValues()
+	syncerMetrics.GarbageCollections = m.syncerGarbageCollections.WithLabelValues()
+	syncerMetrics.GarbageCollectionFailures = m.syncerGarbageCollectionFailures.WithLabelValues()
+	syncerMetrics.GarbageCollectionDuration = m.syncerGarbageCollectionDuration.WithLabelValues()
+	syncerMetrics.BlocksMarkedForDeletion = m.syncerBlocksMarkedForDeletion.WithLabelValues(append(labelValues, "compaction")...)
+	return &syncerMetrics
+}
+
+func (m *compactorMetrics) getCommonLabelValues(userID string) []string {
+	var labelValues []string
+	if len(m.commonLabels) > 0 {
+		labelValues = append(labelValues, userID)
+	}
+	return labelValues
+}
+
+func (m *compactorMetrics) initMetricWithCompactionLabelValues(labelValue ...string) {
+	if len(m.compactionLabels) != len(CommonLabels)+len(CompactionLabels) {
+		return
+	}
+
+	m.compactions.WithLabelValues(labelValue...)
+	m.compactionPlanned.WithLabelValues(labelValue...)
+	m.compactionRunsStarted.WithLabelValues(labelValue...)
+	m.compactionRunsCompleted.WithLabelValues(labelValue...)
+	m.compactionFailures.WithLabelValues(labelValue...)
+	m.verticalCompactions.WithLabelValues(labelValue...)
+	m.partitionCount.WithLabelValues(labelValue...)
+	m.compactionsNotPlanned.WithLabelValues(labelValue...)
+	m.compactionDuration.WithLabelValues(labelValue...)
+}
+
+func (m *compactorMetrics) deleteMetricsForDeletedTenant(userID string) {
+	m.syncerBlocksMarkedForDeletion.DeleteLabelValues(userID)
+	m.compactions.DeleteLabelValues(userID)
+	m.compactionPlanned.DeleteLabelValues(userID)
+	m.compactionRunsStarted.DeleteLabelValues(userID)
+	m.compactionRunsCompleted.DeleteLabelValues(userID)
+	m.compactionFailures.DeleteLabelValues(userID)
+	m.verticalCompactions.DeleteLabelValues(userID)
+	m.partitionCount.DeleteLabelValues(userID)
+	m.compactionsNotPlanned.DeleteLabelValues(userID)
+	m.compactionDuration.DeleteLabelValues(userID)
+}

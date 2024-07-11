@@ -64,6 +64,20 @@ func (idx *Index) RemoveBlock(id ulid.ULID) {
 	}
 }
 
+func (idx *Index) FindActiveBlocksByTimeRange(rangeStart int64, rangeEnd int64) Blocks {
+	var result []*Block
+	deletedBlocks := idx.BlockDeletionMarks.GetULIDSet()
+	for _, b := range idx.Blocks {
+		if _, ok := deletedBlocks[b.ID]; ok {
+			continue
+		}
+		if b.MinTime >= rangeStart && b.MaxTime <= rangeEnd {
+			result = append(result, b)
+		}
+	}
+	return result
+}
+
 // Block holds the information about a block in the index.
 type Block struct {
 	// Block ID.
@@ -234,6 +248,14 @@ func (s BlockDeletionMarks) GetULIDs() []ulid.ULID {
 		ids[i] = m.ID
 	}
 	return ids
+}
+
+func (s BlockDeletionMarks) GetULIDSet() map[ulid.ULID]struct{} {
+	res := make(map[ulid.ULID]struct{})
+	for _, m := range s {
+		res[m.ID] = struct{}{}
+	}
+	return res
 }
 
 func (s BlockDeletionMarks) Clone() BlockDeletionMarks {

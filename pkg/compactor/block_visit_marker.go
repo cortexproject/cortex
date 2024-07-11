@@ -49,8 +49,12 @@ func (b *BlockVisitMarker) isVisitedByCompactor(blockVisitMarkerTimeout time.Dur
 	return b.CompactorID == compactorID && time.Now().Before(time.Unix(b.VisitTime, 0).Add(blockVisitMarkerTimeout))
 }
 
+func GetBlockVisitMarkerFile(blockID string) string {
+	return path.Join(blockID, BlockVisitMarkerFile)
+}
+
 func ReadBlockVisitMarker(ctx context.Context, bkt objstore.InstrumentedBucketReader, logger log.Logger, blockID string, blockVisitMarkerReadFailed prometheus.Counter) (*BlockVisitMarker, error) {
-	visitMarkerFile := path.Join(blockID, BlockVisitMarkerFile)
+	visitMarkerFile := GetBlockVisitMarkerFile(blockID)
 	visitMarkerFileReader, err := bkt.ReaderWithExpectedErrs(bkt.IsObjNotFoundErr).Get(ctx, visitMarkerFile)
 	if err != nil {
 		if bkt.IsObjNotFoundErr(err) {

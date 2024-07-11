@@ -140,9 +140,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
 				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 3
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 3
 `,
 		},
 		"test no compaction": {
@@ -150,9 +150,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
 			blocks:      map[ulid.ULID]*metadata.Meta{block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid], block0to1hExt3Ulid: blocks[block0to1hExt3Ulid]},
 			expected:    [][]ulid.ULID{},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 0
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 0
 `,
 		},
 		"test smallest range first": {
@@ -164,9 +164,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 				{block4hto6hExt2Ulid, block6hto8hExt2Ulid},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 3
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 3
 `,
 		},
 		"test oldest min time first": {
@@ -177,9 +177,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid, block1hto2hExt1UlidCopy},
 				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 2
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 2
 `,
 		},
 		"test overlapping blocks": {
@@ -189,9 +189,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			expected: [][]ulid.ULID{
 				{block21hto40hExt1Ulid, block21hto40hExt1UlidCopy},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 1
 `,
 		},
 		"test imperfect maxTime blocks": {
@@ -201,9 +201,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			expected: [][]ulid.ULID{
 				{block0hto45mExt1Ulid, block0hto1h30mExt1Ulid},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 1
 `,
 		},
 		"test prematurely created blocks": {
@@ -211,9 +211,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			ranges:      []time.Duration{2 * time.Hour},
 			blocks:      map[ulid.ULID]*metadata.Meta{blocklast1hExt1UlidCopy: blocks[blocklast1hExt1UlidCopy], blocklast1hExt1Ulid: blocks[blocklast1hExt1Ulid]},
 			expected:    [][]ulid.ULID{},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 0
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 0
 `,
 		},
 		"test group with all blocks visited": {
@@ -231,9 +231,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{id: block1hto2hExt2Ulid, compactorID: otherCompactorID, isExpired: false},
 				{id: block0hto1hExt2Ulid, compactorID: otherCompactorID, isExpired: false},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 1
 `,
 		},
 		"test group with one block visited": {
@@ -250,9 +250,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			}{
 				{id: block1hto2hExt2Ulid, compactorID: otherCompactorID, isExpired: false},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 1
 `,
 		},
 		"test group block visit marker file expired": {
@@ -270,9 +270,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{id: block1hto2hExt2Ulid, compactorID: otherCompactorID, isExpired: true},
 				{id: block0hto1hExt2Ulid, compactorID: otherCompactorID, isExpired: true},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 1
 `,
 		},
 		"test group with one block visited by current compactor": {
@@ -289,9 +289,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			}{
 				{id: block1hto2hExt2Ulid, compactorID: testCompactorID, isExpired: false},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 1
 `,
 		},
 		"test basic grouping with concurrency 2": {
@@ -302,9 +302,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 2
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 2
 `,
 		},
 		"test should skip block with no compact marker": {
@@ -315,9 +315,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
 			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 2
+        	          cortex_compactor_remaining_planned_compactions{user="test-user"} 2
 `,
 			noCompactBlocks: map[ulid.ULID]*metadata.NoCompactMark{block2hto3hExt1Ulid: {}},
 		},
@@ -347,10 +347,6 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			ring.On("ShuffleShard", mock.Anything, mock.Anything).Return(subring, nil)
 
 			registerer := prometheus.NewPedanticRegistry()
-			remainingPlannedCompactions := promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-				Name: "cortex_compactor_remaining_planned_compactions",
-				Help: "Total number of plans that remain to be compacted.",
-			})
 			blockVisitMarkerReadFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 				Name: "cortex_compactor_block_visit_marker_read_failed",
 				Help: "Number of block visit marker file failed to be read.",
@@ -379,6 +375,8 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			bkt.MockUpload(mock.Anything, nil)
 			bkt.MockGet(mock.Anything, "", nil)
 
+			metrics := newCompactorMetrics(registerer)
+
 			noCompactFilter := func() map[ulid.ULID]*metadata.NoCompactMark {
 				return testData.noCompactBlocks
 			}
@@ -391,18 +389,16 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				objstore.WithNoopInstr(bkt),
 				false, // Do not accept malformed indexes
 				true,  // Enable vertical compaction
-				registerer,
 				nil,
-				nil,
-				nil,
-				remainingPlannedCompactions,
 				metadata.NoneFunc,
+				metrics.getSyncerMetrics("test-user"),
+				metrics,
 				*compactorCfg,
 				ring,
 				"test-addr",
 				testCompactorID,
 				overrides,
-				"",
+				"test-user",
 				10,
 				3,
 				testData.concurrency,

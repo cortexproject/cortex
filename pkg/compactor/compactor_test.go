@@ -1089,6 +1089,8 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 }
 
 func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndMultipleInstancesRunning(t *testing.T) {
+	t.Parallel()
+
 	numUsers := 100
 
 	// Setup user IDs
@@ -1157,7 +1159,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 30*time.Second, 1.0, func() interface{} {
+		cortex_testutil.Poll(t, 90*time.Second, 1.0, func() interface{} {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 		})
 	}

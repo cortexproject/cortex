@@ -121,6 +121,8 @@ type Config struct {
 	// Client configs for interacting with the Alertmanager
 	Notifier NotifierConfig `yaml:"alertmanager_client"`
 
+	//Default offset for all rule evaluation queries.
+	RuleQueryOffset time.Duration `yaml:"rule_query_offset"`
 	// Max time to tolerate outage for restoring "for" state of alert.
 	OutageTolerance time.Duration `yaml:"for_outage_tolerance"`
 	// Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.
@@ -194,6 +196,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes")
+	f.DurationVar(&cfg.RuleQueryOffset, "ruler.rule-query-offset", 0*time.Minute, "Default offset for all rule evaluation queries")
 
 	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of URL(s) of the Alertmanager(s) to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via -ruler.alertmanager-discovery.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover Alertmanager hosts.")
@@ -913,11 +916,12 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 
 		groupDesc := &GroupStateDesc{
 			Group: &rulespb.RuleGroupDesc{
-				Name:      group.Name(),
-				Namespace: string(decodedNamespace),
-				Interval:  interval,
-				User:      userID,
-				Limit:     int64(group.Limit()),
+				Name:        group.Name(),
+				Namespace:   string(decodedNamespace),
+				Interval:    interval,
+				User:        userID,
+				Limit:       int64(group.Limit()),
+				QueryOffset: group.QueryOffset(),
 			},
 
 			EvaluationTimestamp: group.GetLastEvaluation(),

@@ -358,6 +358,9 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			ResendDelay:            cfg.ResendDelay,
 			ConcurrentEvalsEnabled: cfg.ConcurrentEvalsEnabled,
 			MaxConcurrentEvals:     cfg.MaxConcurrentEvals,
+			DefaultRuleQueryOffset: func() time.Duration {
+				return cfg.RuleQueryOffset
+			},
 		})
 	}
 }

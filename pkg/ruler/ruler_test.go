@@ -2533,3 +2533,34 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 		})
 	}
 }
+
+func TestRuler_QueryOffset(t *testing.T) {
+	store := newMockRuleStore(mockRulesQueryOffset, nil)
+	cfg := defaultRulerConfig(t)
+
+	r := newTestRuler(t, cfg, store, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	ctx := user.InjectOrgID(context.Background(), "user1")
+	rls, err := r.Rules(ctx, &RulesRequest{})
+	require.NoError(t, err)
+	require.Len(t, rls.Groups, 1)
+	rg := rls.Groups[0]
+	expectedRg := mockRulesQueryOffset["user1"][0]
+	compareRuleGroupDescToStateDesc(t, expectedRg, rg)
+
+	// test default query offset=0
+	require.Equal(t, time.Duration(0), rg.GetGroup().QueryOffset)
+
+	ctx = user.InjectOrgID(context.Background(), "user2")
+	rls, err = r.Rules(ctx, &RulesRequest{})
+	require.NoError(t, err)
+	require.Len(t, rls.Groups, 1)
+	rg = rls.Groups[0]
+	expectedRg = mockRules["user2"][0]
+	compareRuleGroupDescToStateDesc(t, expectedRg, rg)
+
+	// test group query offset is set
+	require.Equal(t, time.Minute*2, rg.GetGroup().QueryOffset)
+	rulespb.FromProto(rg.GetGroup())
+}

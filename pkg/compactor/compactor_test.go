@@ -1089,8 +1089,6 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 }
 
 func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndMultipleInstancesRunning(t *testing.T) {
-	t.Parallel()
-
 	numUsers := 100
 
 	// Setup user IDs

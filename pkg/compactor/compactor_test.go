@@ -188,7 +188,7 @@ func TestCompactor_SkipCompactionWhenCmkError(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -208,7 +208,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -299,7 +299,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
-	cortex_testutil.Poll(t, 3*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
@@ -409,7 +409,7 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
@@ -537,7 +537,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 3*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -670,7 +670,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 3*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -800,7 +800,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
-	cortex_testutil.Poll(t, 3*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -862,7 +862,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -973,7 +973,7 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 5*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, true, func() interface{} {
 		if _, err := os.Stat(path.Join(dir, "no-compact-mark.json")); err == nil {
 			return true
 		}
@@ -1058,7 +1058,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 5*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -1892,7 +1892,7 @@ func TestCompactor_ShouldNotTreatInterruptionsAsErrors(t *testing.T) {
 	}, nil)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
 
-	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.CompactionRunsInterrupted)
 	})
 

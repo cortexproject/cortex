@@ -2279,6 +2279,33 @@ func Test_Ingester_LabelValues(t *testing.T) {
 	}
 }
 
+func Test_Ingester_LabelValue_MaxInflighQueryRequest(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.DefaultLimits.MaxInflightQueryRequests = 1
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	i.inflightQueryRequests.Add(1)
+
+	// Mock request
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000)
+	_, err = i.Push(ctx, wreq)
+	require.NoError(t, err)
+
+	rreq := &client.LabelValuesRequest{}
+	_, err = i.LabelValues(ctx, rreq)
+	require.Error(t, err)
+}
+
 func Test_Ingester_Query(t *testing.T) {
 	series := []struct {
 		lbls      labels.Labels
@@ -2409,6 +2436,35 @@ func Test_Ingester_Query(t *testing.T) {
 		})
 	}
 }
+
+func Test_Ingester_Query_MaxInflighQueryRequest(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.DefaultLimits.MaxInflightQueryRequests = 1
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	i.inflightQueryRequests.Add(1)
+
+	// Mock request
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000)
+	_, err = i.Push(ctx, wreq)
+	require.NoError(t, err)
+
+	rreq := &client.QueryRequest{}
+	s := &mockQueryStreamServer{ctx: ctx}
+	err = i.QueryStream(rreq, s)
+	require.Error(t, err)
+}
+
 func TestIngester_Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
 	require.NoError(t, err)
@@ -4947,6 +5003,33 @@ func TestIngester_MaxExemplarsFallBack(t *testing.T) {
 	// validate this value is picked up now
 	maxExemplars = i.getMaxExemplars("someTenant")
 	require.Equal(t, maxExemplars, int64(5))
+}
+
+func Test_Ingester_QueryExemplar_MaxInflighQueryRequest(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.DefaultLimits.MaxInflightQueryRequests = 1
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	i.inflightQueryRequests.Add(1)
+
+	// Mock request
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000)
+	_, err = i.Push(ctx, wreq)
+	require.NoError(t, err)
+
+	rreq := &client.ExemplarQueryRequest{}
+	_, err = i.QueryExemplars(ctx, rreq)
+	require.Error(t, err)
 }
 
 func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest {

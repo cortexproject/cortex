@@ -19,6 +19,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortextsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 )
 
@@ -329,8 +330,8 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 				partitionedGroupInfoReadFailed,
 				metrics,
 			)
-			actual, err := p.Plan(context.Background(), testData.blocks, nil, &CortexMetaExtensions{
-				PartitionInfo: &PartitionInfo{
+			actual, err := p.Plan(context.Background(), testData.blocks, nil, &cortextsdb.CortexMetaExtensions{
+				PartitionInfo: &cortextsdb.PartitionInfo{
 					PartitionCount:     1,
 					PartitionID:        partitionID,
 					PartitionedGroupID: partitionedGroupID,

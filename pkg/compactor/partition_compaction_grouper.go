@@ -21,6 +21,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/compact"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 var (
@@ -393,7 +394,7 @@ func (g *PartitionCompactionGrouper) shouldSkipGroup(logger log.Logger, group bl
 
 	// Check if all blocks in group having same partitioned group id as destination partitionedGroupID
 	for _, b := range group.blocks {
-		partitionInfo, err := GetPartitionInfo(*b)
+		partitionInfo, err := tsdb.GetPartitionInfo(*b)
 		if err != nil || partitionInfo == nil || partitionInfo.PartitionedGroupID != partitionedGroupID {
 			return false
 		}
@@ -527,14 +528,14 @@ func (g *PartitionCompactionGrouper) partitionBlocksGroup(partitionCount int, bl
 
 	for _, blocksInSameTimeInterval := range blocksByMinTime {
 		for _, block := range blocksInSameTimeInterval {
-			partitionInfo, err := GetPartitionInfo(*block)
+			partitionInfo, err := tsdb.GetPartitionInfo(*block)
 			if err != nil {
 				return nil, err
 			}
 			if partitionInfo == nil || partitionInfo.PartitionCount < 1 {
 				// For legacy blocks with level > 1, treat PartitionID is always 0.
 				// So it can be included in every partition.
-				defaultPartitionInfo := DefaultPartitionInfo
+				defaultPartitionInfo := tsdb.DefaultPartitionInfo
 				partitionInfo = &defaultPartitionInfo
 			}
 			if partitionInfo.PartitionCount < partitionCount {
@@ -699,8 +700,8 @@ func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompact
 				level.Error(partitionedGroupLogger).Log("msg", "failed to add block to partitioned group", "block", m.ULID, "err", err)
 			}
 		}
-		thanosGroup.SetExtensions(&CortexMetaExtensions{
-			PartitionInfo: &PartitionInfo{
+		thanosGroup.SetExtensions(&tsdb.CortexMetaExtensions{
+			PartitionInfo: &tsdb.PartitionInfo{
 				PartitionedGroupID:           partitionedGroupID,
 				PartitionCount:               partitionCount,
 				PartitionID:                  partitionID,
@@ -719,7 +720,7 @@ func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompact
 	level.Info(g.logger).Log("msg", fmt.Sprintf("total groups for compaction: %d", len(outGroups)))
 
 	for _, p := range outGroups {
-		partitionInfo, err := ConvertToPartitionInfo(p.Extensions())
+		partitionInfo, err := tsdb.ConvertToPartitionInfo(p.Extensions())
 		if err == nil && partitionInfo != nil {
 			level.Info(g.logger).Log("msg", "picked compaction job", "partitioned_group_id", partitionInfo.PartitionedGroupID, "partition_count", partitionInfo.PartitionCount)
 		}
@@ -759,7 +760,7 @@ func NewCompletenessChecker(blocks map[ulid.ULID]*metadata.Meta, groups []blocks
 	for _, b := range blocks {
 		timeRange := int64(0)
 		if b.Compaction.Level > 1 {
-			ext, err := GetCortexMetaExtensionsFromMeta(*b)
+			ext, err := tsdb.GetCortexMetaExtensionsFromMeta(*b)
 			if err == nil && ext != nil && ext.TimeRange > 0 {
 				timeRange = ext.TimeRange
 			} else {

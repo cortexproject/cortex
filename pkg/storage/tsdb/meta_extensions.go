@@ -1,4 +1,4 @@
-package compactor
+package tsdb
 
 import (
 	"fmt"

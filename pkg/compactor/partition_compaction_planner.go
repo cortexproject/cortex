@@ -12,6 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 var (
@@ -71,7 +73,7 @@ func NewPartitionCompactionPlanner(
 }
 
 func (p *PartitionCompactionPlanner) Plan(ctx context.Context, metasByMinTime []*metadata.Meta, errChan chan error, extensions any) ([]*metadata.Meta, error) {
-	cortexMetaExtensions, err := ConvertToCortexMetaExtensions(extensions)
+	cortexMetaExtensions, err := tsdb.ConvertToCortexMetaExtensions(extensions)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +83,7 @@ func (p *PartitionCompactionPlanner) Plan(ctx context.Context, metasByMinTime []
 	return p.PlanWithPartition(ctx, metasByMinTime, cortexMetaExtensions, errChan)
 }
 
-func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasByMinTime []*metadata.Meta, cortexMetaExtensions *CortexMetaExtensions, errChan chan error) ([]*metadata.Meta, error) {
+func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasByMinTime []*metadata.Meta, cortexMetaExtensions *tsdb.CortexMetaExtensions, errChan chan error) ([]*metadata.Meta, error) {
 	partitionInfo := cortexMetaExtensions.PartitionInfo
 	if partitionInfo == nil {
 		return nil, fmt.Errorf("partitionInfo cannot be nil")

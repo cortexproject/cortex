@@ -14,6 +14,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/runutil"
+
+	cortextsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 type ShardedCompactionLifecycleCallback struct {
@@ -54,7 +56,7 @@ func NewShardedCompactionLifecycleCallback(
 func (c *ShardedCompactionLifecycleCallback) PreCompactionCallback(_ context.Context, logger log.Logger, g *compact.Group, meta []*metadata.Meta) error {
 	c.startTime = time.Now()
 
-	metaExt, err := ConvertToCortexMetaExtensions(g.Extensions())
+	metaExt, err := cortextsdb.ConvertToCortexMetaExtensions(g.Extensions())
 	if err != nil {
 		level.Warn(logger).Log("msg", "unable to get cortex meta extensions", "err", err)
 	} else if metaExt != nil {
@@ -73,7 +75,7 @@ func (c *ShardedCompactionLifecycleCallback) PreCompactionCallback(_ context.Con
 }
 
 func (c *ShardedCompactionLifecycleCallback) PostCompactionCallback(_ context.Context, logger log.Logger, cg *compact.Group, _ ulid.ULID) error {
-	metaExt, err := ConvertToCortexMetaExtensions(cg.Extensions())
+	metaExt, err := cortextsdb.ConvertToCortexMetaExtensions(cg.Extensions())
 	if err != nil {
 		level.Warn(logger).Log("msg", "unable to get cortex meta extensions", "err", err)
 	} else if metaExt != nil {
@@ -83,7 +85,7 @@ func (c *ShardedCompactionLifecycleCallback) PostCompactionCallback(_ context.Co
 }
 
 func (c *ShardedCompactionLifecycleCallback) GetBlockPopulator(_ context.Context, logger log.Logger, cg *compact.Group) (tsdb.BlockPopulator, error) {
-	partitionInfo, err := ConvertToPartitionInfo(cg.Extensions())
+	partitionInfo, err := cortextsdb.ConvertToPartitionInfo(cg.Extensions())
 	if err != nil {
 		return nil, err
 	}
@@ -91,13 +93,13 @@ func (c *ShardedCompactionLifecycleCallback) GetBlockPopulator(_ context.Context
 		return tsdb.DefaultBlockPopulator{}, nil
 	}
 	if partitionInfo.PartitionCount <= 0 {
-		partitionInfo = &PartitionInfo{
+		partitionInfo = &cortextsdb.PartitionInfo{
 			PartitionCount:               1,
 			PartitionID:                  partitionInfo.PartitionID,
 			PartitionedGroupID:           partitionInfo.PartitionedGroupID,
 			PartitionedGroupCreationTime: partitionInfo.PartitionedGroupCreationTime,
 		}
-		cg.SetExtensions(&CortexMetaExtensions{
+		cg.SetExtensions(&cortextsdb.CortexMetaExtensions{
 			PartitionInfo: partitionInfo,
 		})
 	}

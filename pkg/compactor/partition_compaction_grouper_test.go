@@ -19,6 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortextsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -176,7 +177,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -184,7 +185,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -192,7 +193,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -200,7 +201,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 10 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -208,7 +209,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block5: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block5, MinTime: 12 * H, MaxTime: 14 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -225,7 +226,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -233,7 +234,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -241,7 +242,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -249,7 +250,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 10 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -257,7 +258,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block5: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block5, MinTime: 12 * H, MaxTime: 14 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -278,7 +279,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -286,7 +287,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -303,7 +304,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -311,7 +312,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -319,7 +320,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -350,7 +351,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -358,7 +359,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -366,7 +367,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -401,7 +402,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -409,7 +410,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -417,7 +418,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -449,7 +450,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -457,7 +458,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -465,7 +466,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -504,7 +505,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -512,7 +513,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -520,7 +521,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -528,7 +529,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 4, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 4, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -536,7 +537,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block5: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block5, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 4, PartitionID: 2}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 4, PartitionID: 2}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -584,7 +585,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -592,7 +593,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -600,7 +601,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 4 * H, MaxTime: 6 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -608,7 +609,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 6 * H, MaxTime: 8 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -616,7 +617,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block5: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block5, MinTime: 10 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -648,7 +649,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -656,7 +657,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -664,7 +665,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 4 * H, MaxTime: 6 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -672,7 +673,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 10 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -680,7 +681,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block5: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block5, MinTime: 10 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -688,7 +689,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block6: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block6, MinTime: 12 * H, MaxTime: 14 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -696,7 +697,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block7: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block7, MinTime: 14 * H, MaxTime: 16 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -714,7 +715,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -722,7 +723,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -730,7 +731,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 4 * H, MaxTime: 6 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -738,7 +739,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 10 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -746,7 +747,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block5: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block5, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -754,7 +755,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block6: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block6, MinTime: 12 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -762,7 +763,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block7: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block7, MinTime: 12 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -787,7 +788,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -795,7 +796,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -803,7 +804,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 4 * H, MaxTime: 6 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -811,7 +812,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 10 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -819,7 +820,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block5: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block5, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -827,7 +828,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block6: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block6, MinTime: 12 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -835,7 +836,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block7: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block7, MinTime: 12 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -866,7 +867,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -874,7 +875,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -897,7 +898,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -905,7 +906,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -913,7 +914,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -936,7 +937,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -944,7 +945,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -952,7 +953,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 4 * H, MaxTime: 6 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -975,7 +976,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -983,7 +984,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -991,7 +992,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -999,7 +1000,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block5: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block5, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1029,7 +1030,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1037,7 +1038,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1060,7 +1061,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1083,7 +1084,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1091,7 +1092,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1121,7 +1122,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1129,7 +1130,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1159,7 +1160,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1167,7 +1168,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1190,7 +1191,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1213,7 +1214,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1221,7 +1222,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1251,7 +1252,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1259,7 +1260,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1275,7 +1276,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1283,7 +1284,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1291,7 +1292,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1307,7 +1308,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1315,7 +1316,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1323,7 +1324,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1331,7 +1332,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1347,7 +1348,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1355,7 +1356,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1363,7 +1364,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1371,7 +1372,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1387,7 +1388,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 10 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1395,7 +1396,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1403,7 +1404,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1419,7 +1420,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1427,7 +1428,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1435,7 +1436,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1443,7 +1444,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1459,7 +1460,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1467,7 +1468,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1475,7 +1476,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1483,7 +1484,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1499,7 +1500,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1507,7 +1508,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1515,7 +1516,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1531,7 +1532,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1539,7 +1540,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 12 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1547,7 +1548,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1555,7 +1556,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1571,7 +1572,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1579,7 +1580,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        12 * time.Hour,
 					hasNoCompactMark: false,
@@ -1587,7 +1588,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1595,7 +1596,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 24 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1611,7 +1612,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}, Stats: tsdb.BlockStats{NumSeries: 1}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 4, PartitionID: 0}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 4, PartitionID: 0}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1619,7 +1620,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}, Stats: tsdb.BlockStats{NumSeries: 1}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 4, PartitionID: 1}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 4, PartitionID: 1}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1627,7 +1628,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}, Stats: tsdb.BlockStats{NumSeries: 1}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 4, PartitionID: 2}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 4, PartitionID: 2}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1635,7 +1636,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block4: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}, Stats: tsdb.BlockStats{NumSeries: 1}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 4, PartitionID: 3}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 4, PartitionID: 3}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1643,7 +1644,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block5: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block5, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}, Stats: tsdb.BlockStats{NumSeries: 1}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1651,7 +1652,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block6: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block6, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}, Stats: tsdb.BlockStats{NumSeries: 1}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 1}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 1}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1659,7 +1660,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block7: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block7, MinTime: 4 * H, MaxTime: 6 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}, Stats: tsdb.BlockStats{NumSeries: 1}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1676,7 +1677,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}, Stats: tsdb.BlockStats{NumSeries: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1684,7 +1685,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}, Stats: tsdb.BlockStats{NumSeries: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}, Files: []metadata.File{{RelPath: thanosblock.IndexFilename, SizeBytes: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1709,7 +1710,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1717,7 +1718,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1740,7 +1741,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1777,7 +1778,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionedGroupID: partitionedGroupID_0_12, PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionedGroupID: partitionedGroupID_0_12, PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1785,7 +1786,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionedGroupID: partitionedGroupID_0_12, PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionedGroupID: partitionedGroupID_0_12, PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1800,7 +1801,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionedGroupID: partitionedGroupID_0_24, PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionedGroupID: partitionedGroupID_0_24, PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1808,7 +1809,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 12 * H, Compaction: tsdb.BlockMetaCompaction{Level: 3}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionedGroupID: partitionedGroupID_0_24, PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionedGroupID: partitionedGroupID_0_24, PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1823,7 +1824,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block1: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionedGroupID: partitionedGroupID_0_12, PartitionCount: 2, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionedGroupID: partitionedGroupID_0_12, PartitionCount: 2, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1831,7 +1832,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionedGroupID: partitionedGroupID_0_12, PartitionCount: 2, PartitionID: 1}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionedGroupID: partitionedGroupID_0_12, PartitionCount: 2, PartitionID: 1}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1839,7 +1840,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block3: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 2}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionedGroupID: partitionedGroupID_0_2, PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionedGroupID: partitionedGroupID_0_2, PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        2 * time.Hour,
 					hasNoCompactMark: false,
@@ -1863,7 +1864,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 10*H + 49*M, MaxTime: 16 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1886,7 +1887,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 1 * H, MaxTime: 10 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{TimeRange: 24 * H, PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{TimeRange: 24 * H, PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -1909,7 +1910,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				block2: {
 					meta: &metadata.Meta{
 						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 1 * H, MaxTime: 10 * H, Compaction: tsdb.BlockMetaCompaction{Level: 4}},
-						Thanos:    metadata.Thanos{Extensions: CortexMetaExtensions{PartitionInfo: &PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
+						Thanos:    metadata.Thanos{Extensions: cortextsdb.CortexMetaExtensions{PartitionInfo: &cortextsdb.PartitionInfo{PartitionCount: 1, PartitionID: 0}}},
 					},
 					timeRange:        24 * time.Hour,
 					hasNoCompactMark: false,
@@ -2118,7 +2119,7 @@ type mockBlock struct {
 }
 
 func (b *mockBlock) fixPartitionInfo(t *testing.T, userID string) {
-	extensions, err := GetCortexMetaExtensionsFromMeta(*b.meta)
+	extensions, err := cortextsdb.GetCortexMetaExtensionsFromMeta(*b.meta)
 	require.NoError(t, err)
 	if extensions != nil {
 		rangeStart := getRangeStart(b.meta, b.timeRange.Milliseconds())

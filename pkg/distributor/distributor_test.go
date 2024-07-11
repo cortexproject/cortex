@@ -759,23 +759,20 @@ func TestPush_QuorumError(t *testing.T) {
 
 	err := r.KVClient.CAS(context.Background(), ingester.RingKey, func(in interface{}) (interface{}, bool, error) {
 		r := in.(*ring.Desc)
-		ingester2 := r.Ingesters["2"]
+		ingester2 := r.Ingesters["ingester-2"]
 		ingester2.State = ring.LEFT
 		ingester2.Timestamp = time.Now().Unix()
-		r.Ingesters["2"] = ingester2
+		r.Ingesters["ingester-2"] = ingester2
 		return in, true, nil
 	})
 
 	require.NoError(t, err)
 
 	// Give time to the ring get updated with the KV value
-	for {
+	test.Poll(t, 15*time.Second, true, func() interface{} {
 		replicationSet, _ := r.GetAllHealthy(ring.Read)
-		if len(replicationSet.Instances) == 2 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+		return len(replicationSet.Instances) == 2
+	})
 
 	for i := 0; i < numberOfWrites; i++ {
 		request := makeWriteRequest(0, 30, 20, 10)

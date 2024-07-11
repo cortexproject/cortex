@@ -734,10 +734,12 @@ func (d *Distributor) cleanStaleIngesterMetrics() {
 		return
 	}
 
-	ipsMap := map[string]struct{}{}
+	idsMap := map[string]struct{}{}
 
 	for _, ing := range append(healthy, unhealthy...) {
-		ipsMap[ing.Addr] = struct{}{}
+		if id, err := d.ingestersRing.GetInstanceIdByAddr(ing.Addr); err == nil {
+			idsMap[id] = struct{}{}
+		}
 	}
 
 	ingesterMetrics := []*prometheus.CounterVec{d.ingesterAppends, d.ingesterAppendFailures, d.ingesterQueries, d.ingesterQueryFailures}
@@ -751,7 +753,7 @@ func (d *Distributor) cleanStaleIngesterMetrics() {
 		}
 
 		for _, lbls := range metrics {
-			if _, ok := ipsMap[lbls.Get("ingester")]; !ok {
+			if _, ok := idsMap[lbls.Get("ingester")]; !ok {
 				err := util.DeleteMatchingLabels(m, map[string]string{"ingester": lbls.Get("ingester")})
 				if err != nil {
 					level.Warn(d.log).Log("msg", "error cleaning metrics: DeleteMatchingLabels", "err", err)
@@ -956,6 +958,12 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	if err != nil {
 		return err
 	}
+
+	id, err := d.ingestersRing.GetInstanceIdByAddr(ingester.Addr)
+	if err != nil {
+		level.Warn(d.log).Log("msg", "instance not found in the ring", "addr", ingester.Addr, "err", err)
+	}
+
 	c := h.(ingester_client.HealthAndIngesterClient)
 
 	req := cortexpb.PreallocWriteRequestFromPool()
@@ -972,15 +980,15 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	}
 
 	if len(metadata) > 0 {
-		d.ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
+		d.ingesterAppends.WithLabelValues(id, typeMetadata).Inc()
 		if err != nil {
-			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata, getErrorStatus(err)).Inc()
+			d.ingesterAppendFailures.WithLabelValues(id, typeMetadata, getErrorStatus(err)).Inc()
 		}
 	}
 	if len(timeseries) > 0 {
-		d.ingesterAppends.WithLabelValues(ingester.Addr, typeSamples).Inc()
+		d.ingesterAppends.WithLabelValues(id, typeSamples).Inc()
 		if err != nil {
-			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples, getErrorStatus(err)).Inc()
+			d.ingesterAppendFailures.WithLabelValues(id, typeSamples, getErrorStatus(err)).Inc()
 		}
 	}
 

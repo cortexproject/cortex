@@ -15,3 +15,9 @@ func TestTokenBucket_Retrieve(t *testing.T) {
 	time.Sleep(time.Second)
 	assert.Positive(t, bucket.Retrieve(5))
 }
+
+func TestTokenBucket_MaxCapacity(t *testing.T) {
+	bucket := NewTokenBucket(10, nil)
+
+	assert.Equal(t, int64(10), bucket.MaxCapacity())
+}

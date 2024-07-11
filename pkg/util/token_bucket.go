@@ -46,6 +46,10 @@ func (t *TokenBucket) Retrieve(amount int64) int64 {
 	return t.remainingTokens
 }
 
+func (t *TokenBucket) MaxCapacity() int64 {
+	return t.maxCapacity
+}
+
 func (t *TokenBucket) updateTokens() {
 	now := time.Now()
 	refilledTokens := int64(now.Sub(t.lastRefill).Seconds() * float64(t.refillRate))

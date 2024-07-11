@@ -16,6 +16,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+const tokenBucketBytesLimiterErrStr = "store gateway resource exhausted"
+
 type limiter struct {
 	limiter *store.Limiter
 }
@@ -40,7 +42,7 @@ type compositeLimiter struct {
 func (c *compositeLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
 	for _, l := range c.limiters {
 		if err := l.ReserveWithType(num, dataType); err != nil {
-			return httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
+			return err // nested limiters are expected to return httpgrpc error
 		}
 	}
 	return nil
@@ -74,23 +76,24 @@ func (t *tokenBucketBytesLimiter) ReserveWithType(num uint64, dataType store.Sto
 		return nil
 	}
 
-	errMsg := ""
+	errCode := 0
 
-	if userTokenRemaining < 0 {
-		errMsg = "not enough tokens in user token bucket"
-	} else if instanceTokenRemaining < 0 {
-		errMsg = "not enough tokens in instance token bucket"
+	fmt.Printf("tokensToRetrieve: %d, maxCapacity: %d", tokensToRetrieve, t.userTokenBucket.MaxCapacity())
+	if tokensToRetrieve > t.userTokenBucket.MaxCapacity() || tokensToRetrieve > t.instanceTokenBucket.MaxCapacity() {
+		errCode = http.StatusUnprocessableEntity
+	} else if userTokenRemaining < 0 || instanceTokenRemaining < 0 {
+		errCode = http.StatusTooManyRequests
 	}
 
-	if errMsg != "" {
+	if errCode > 0 {
 		if t.dryRun {
-			level.Warn(util_log.Logger).Log("msg", errMsg, "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve)
+			level.Warn(util_log.Logger).Log("msg", tokenBucketBytesLimiterErrStr, "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve, "errorCode", errCode)
 			return nil
 		}
 
 		// We need to protect from the counter being incremented twice due to concurrency
 		t.failedOnce.Do(t.failedCounter.Inc)
-		return fmt.Errorf(errMsg)
+		return httpgrpc.Errorf(errCode, tokenBucketBytesLimiterErrStr)
 	}
 
 	return nil

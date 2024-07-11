@@ -1,6 +1,7 @@
 package storegateway
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -35,51 +36,69 @@ func TestCompositeLimiter(t *testing.T) {
 
 func TestNewTokenBucketBytesLimiter(t *testing.T) {
 	tests := map[string]struct {
-		tokenToRetrieve                uint64
+		tokensToRetrieve               []uint64
 		requestTokenBucketSize         int64
 		userTokenBucketSize            int64
 		instanceTokenBucketSize        int64
 		expectedRequestTokenRemaining  int64
 		expectedUserTokenRemaining     int64
 		expectedInstanceTokenRemaining int64
-		expectedErrStr                 string
 		getTokensToRetrieve            func(tokens uint64, dataType store.StoreDataType) int64
+		errCode                        int
 		dryRun                         bool
 	}{
 		"should retrieve buckets from all buckets": {
-			tokenToRetrieve:         1,
+			tokensToRetrieve:        []uint64{1},
 			requestTokenBucketSize:  1,
 			userTokenBucketSize:     1,
 			instanceTokenBucketSize: 1,
 		},
 		"should succeed if there is enough request token, regardless of user or instance bucket": {
-			tokenToRetrieve:                1,
+			tokensToRetrieve:               []uint64{1},
 			requestTokenBucketSize:         1,
 			userTokenBucketSize:            0,
 			instanceTokenBucketSize:        0,
 			expectedUserTokenRemaining:     -1,
 			expectedInstanceTokenRemaining: -1,
 		},
-		"should fail if not enough user tokens remaining": {
-			tokenToRetrieve:               2,
+		"should throw 429 if not enough user tokens remaining": {
+			tokensToRetrieve:              []uint64{1, 1},
 			requestTokenBucketSize:        1,
 			userTokenBucketSize:           1,
 			instanceTokenBucketSize:       2,
-			expectedErrStr:                "not enough tokens in user token bucket",
+			errCode:                       429,
 			expectedRequestTokenRemaining: -1,
 			expectedUserTokenRemaining:    -1,
 		},
-		"should fail if not enough instance tokens remaining": {
-			tokenToRetrieve:                2,
+		"should throw 422 if request is greater than user token bucket size": {
+			tokensToRetrieve:              []uint64{2},
+			requestTokenBucketSize:        1,
+			userTokenBucketSize:           1,
+			instanceTokenBucketSize:       2,
+			errCode:                       422,
+			expectedRequestTokenRemaining: -1,
+			expectedUserTokenRemaining:    -1,
+		},
+		"should throw 429 if not enough instance tokesn remaining": {
+			tokensToRetrieve:               []uint64{1, 1},
 			requestTokenBucketSize:         1,
 			userTokenBucketSize:            2,
 			instanceTokenBucketSize:        1,
-			expectedErrStr:                 "not enough tokens in instance token bucket",
+			errCode:                        429,
+			expectedRequestTokenRemaining:  -1,
+			expectedInstanceTokenRemaining: -1,
+		},
+		"should throw 422 if request is greater than instance token bucket size": {
+			tokensToRetrieve:               []uint64{2},
+			requestTokenBucketSize:         1,
+			userTokenBucketSize:            2,
+			instanceTokenBucketSize:        1,
+			errCode:                        422,
 			expectedRequestTokenRemaining:  -1,
 			expectedInstanceTokenRemaining: -1,
 		},
 		"should use getTokensToRetrieve to calculate tokens": {
-			tokenToRetrieve: 1,
+			tokensToRetrieve: []uint64{1},
 			getTokensToRetrieve: func(tokens uint64, dataType store.StoreDataType) int64 {
 				if dataType == store.PostingsFetched {
 					return 0
@@ -88,7 +107,7 @@ func TestNewTokenBucketBytesLimiter(t *testing.T) {
 			},
 		},
 		"should not fail if dryRun": {
-			tokenToRetrieve:                1,
+			tokensToRetrieve:               []uint64{1},
 			expectedRequestTokenRemaining:  -1,
 			expectedUserTokenRemaining:     -1,
 			expectedInstanceTokenRemaining: -1,
@@ -110,14 +129,17 @@ func TestNewTokenBucketBytesLimiter(t *testing.T) {
 			}
 			l := newTokenBucketBytesLimiter(requestTokenBucket, userTokenBucket, instanceTokenBucket, testData.dryRun, prometheus.NewCounter(prometheus.CounterOpts{}), getTokensToRetrieve)
 
-			err := l.ReserveWithType(testData.tokenToRetrieve, store.PostingsFetched)
+			var err error
+			for _, token := range testData.tokensToRetrieve {
+				err = l.ReserveWithType(token, store.PostingsFetched)
+			}
 
 			assert.Equal(t, testData.expectedRequestTokenRemaining, requestTokenBucket.Retrieve(0))
 			assert.Equal(t, testData.expectedUserTokenRemaining, userTokenBucket.Retrieve(0))
 			assert.Equal(t, testData.expectedInstanceTokenRemaining, instanceTokenBucket.Retrieve(0))
 
-			if testData.expectedErrStr != "" {
-				assert.ErrorContains(t, err, testData.expectedErrStr)
+			if testData.errCode > 0 {
+				assert.ErrorContains(t, err, strconv.Itoa(testData.errCode))
 			} else {
 				assert.NoError(t, err)
 			}

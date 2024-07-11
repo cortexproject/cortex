@@ -17,7 +17,7 @@ type TokenBucket struct {
 	remainingTokensMetric prometheus.Gauge
 }
 
-func NewTokenBucket(maxCapacity, refillRate int64, remainingTokensMetric prometheus.Gauge) *TokenBucket {
+func NewTokenBucket(maxCapacity int64, remainingTokensMetric prometheus.Gauge) *TokenBucket {
 	if remainingTokensMetric != nil {
 		remainingTokensMetric.Set(float64(maxCapacity))
 	}
@@ -25,64 +25,23 @@ func NewTokenBucket(maxCapacity, refillRate int64, remainingTokensMetric prometh
 	return &TokenBucket{
 		remainingTokens:       maxCapacity,
 		maxCapacity:           maxCapacity,
-		refillRate:            refillRate,
+		refillRate:            maxCapacity,
 		lastRefill:            time.Now(),
 		remainingTokensMetric: remainingTokensMetric,
 	}
 }
 
-func (t *TokenBucket) Retrieve(amount int64) bool {
+// Retrieve always deducts token, even if there is not enough remaining tokens.
+func (t *TokenBucket) Retrieve(amount int64) int64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	t.updateTokens()
-
-	if t.remainingTokens < amount {
-		return false
-	}
-
 	t.remainingTokens -= amount
-	if t.remainingTokensMetric != nil {
-		t.remainingTokensMetric.Set(float64(t.remainingTokens))
-	}
-
-	return true
-}
-
-func (t *TokenBucket) ForceRetrieve(amount int64) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	t.updateTokens()
-
-	t.remainingTokens -= amount
-	if t.remainingTokensMetric != nil {
-		t.remainingTokensMetric.Set(float64(t.remainingTokens))
-	}
-}
-
-func (t *TokenBucket) Refund(amount int64) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	t.updateTokens()
-
-	t.remainingTokens += amount
-
-	if t.remainingTokens > t.maxCapacity {
-		t.remainingTokens = t.maxCapacity
-	}
 
 	if t.remainingTokensMetric != nil {
 		t.remainingTokensMetric.Set(float64(t.remainingTokens))
 	}
-}
-
-func (t *TokenBucket) RemainingTokens() int64 {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	t.updateTokens()
 
 	return t.remainingTokens
 }

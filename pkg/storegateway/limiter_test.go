@@ -34,78 +34,93 @@ func TestCompositeLimiter(t *testing.T) {
 }
 
 func TestNewTokenBucketBytesLimiter(t *testing.T) {
-	instanceTokenBucket := util.NewTokenBucket(3, 3, nil)
-	userTokenBucket := util.NewTokenBucket(2, 2, nil)
-	requestTokenBucket := util.NewTokenBucket(1, 1, nil)
-	l := newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, false, prometheus.NewCounter(prometheus.CounterOpts{}), func(tokens uint64, dataType store.StoreDataType) int64 {
-		if dataType == store.SeriesFetched {
-			return int64(tokens) * 5
-		}
-		return int64(tokens)
-	})
+	tests := map[string]struct {
+		tokenToRetrieve                uint64
+		requestTokenBucketSize         int64
+		userTokenBucketSize            int64
+		instanceTokenBucketSize        int64
+		expectedRequestTokenRemaining  int64
+		expectedUserTokenRemaining     int64
+		expectedInstanceTokenRemaining int64
+		expectedErrStr                 string
+		getTokensToRetrieve            func(tokens uint64, dataType store.StoreDataType) int64
+		dryRun                         bool
+	}{
+		"should retrieve buckets from all buckets": {
+			tokenToRetrieve:         1,
+			requestTokenBucketSize:  1,
+			userTokenBucketSize:     1,
+			instanceTokenBucketSize: 1,
+		},
+		"should succeed if there is enough request token, regardless of user or instance bucket": {
+			tokenToRetrieve:                1,
+			requestTokenBucketSize:         1,
+			userTokenBucketSize:            0,
+			instanceTokenBucketSize:        0,
+			expectedUserTokenRemaining:     -1,
+			expectedInstanceTokenRemaining: -1,
+		},
+		"should fail if not enough user tokens remaining": {
+			tokenToRetrieve:               2,
+			requestTokenBucketSize:        1,
+			userTokenBucketSize:           1,
+			instanceTokenBucketSize:       2,
+			expectedErrStr:                "not enough tokens in user token bucket",
+			expectedRequestTokenRemaining: -1,
+			expectedUserTokenRemaining:    -1,
+		},
+		"should fail if not enough instance tokens remaining": {
+			tokenToRetrieve:                2,
+			requestTokenBucketSize:         1,
+			userTokenBucketSize:            2,
+			instanceTokenBucketSize:        1,
+			expectedErrStr:                 "not enough tokens in instance token bucket",
+			expectedRequestTokenRemaining:  -1,
+			expectedInstanceTokenRemaining: -1,
+		},
+		"should use getTokensToRetrieve to calculate tokens": {
+			tokenToRetrieve: 1,
+			getTokensToRetrieve: func(tokens uint64, dataType store.StoreDataType) int64 {
+				if dataType == store.PostingsFetched {
+					return 0
+				}
+				return 1
+			},
+		},
+		"should not fail if dryRun": {
+			tokenToRetrieve:                1,
+			expectedRequestTokenRemaining:  -1,
+			expectedUserTokenRemaining:     -1,
+			expectedInstanceTokenRemaining: -1,
+			dryRun:                         true,
+		},
+	}
 
-	// should force retrieve tokens from all buckets upon succeeding
-	assert.NoError(t, l.ReserveWithType(2, store.PostingsFetched))
-	assert.Equal(t, int64(1), instanceTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(0), userTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(-1), requestTokenBucket.RemainingTokens())
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			requestTokenBucket := util.NewTokenBucket(testData.requestTokenBucketSize, nil)
+			userTokenBucket := util.NewTokenBucket(testData.userTokenBucketSize, nil)
+			instanceTokenBucket := util.NewTokenBucket(testData.instanceTokenBucketSize, nil)
 
-	// should fail if user token bucket is running low
-	instanceTokenBucket.Refund(2)
-	userTokenBucket.Refund(2)
-	requestTokenBucket.Refund(2)
-	assert.ErrorContains(t, l.ReserveWithType(3, store.PostingsFetched), "not enough tokens in user token bucket")
-	assert.Equal(t, int64(3), instanceTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(2), userTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(1), requestTokenBucket.RemainingTokens())
+			getTokensToRetrieve := func(tokens uint64, dataType store.StoreDataType) int64 {
+				return int64(tokens)
+			}
+			if testData.getTokensToRetrieve != nil {
+				getTokensToRetrieve = testData.getTokensToRetrieve
+			}
+			l := newTokenBucketBytesLimiter(requestTokenBucket, userTokenBucket, instanceTokenBucket, testData.dryRun, prometheus.NewCounter(prometheus.CounterOpts{}), getTokensToRetrieve)
 
-	// should fail if pod token bucket is running low
-	instanceTokenBucket.ForceRetrieve(2)
-	assert.ErrorContains(t, l.ReserveWithType(2, store.PostingsFetched), "not enough tokens in pod token bucket")
-	assert.Equal(t, int64(1), instanceTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(2), userTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(1), requestTokenBucket.RemainingTokens())
+			err := l.ReserveWithType(testData.tokenToRetrieve, store.PostingsFetched)
 
-	// should retrieve different amount of tokens based on data type
-	instanceTokenBucket.Refund(2)
-	assert.ErrorContains(t, l.ReserveWithType(1, store.SeriesFetched), "not enough tokens in user token bucket")
-	assert.Equal(t, int64(3), instanceTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(2), userTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(1), requestTokenBucket.RemainingTokens())
+			assert.Equal(t, testData.expectedRequestTokenRemaining, requestTokenBucket.Retrieve(0))
+			assert.Equal(t, testData.expectedUserTokenRemaining, userTokenBucket.Retrieve(0))
+			assert.Equal(t, testData.expectedInstanceTokenRemaining, instanceTokenBucket.Retrieve(0))
 
-	// should always succeed if retrieve token bucket has enough tokens, although shared buckets are empty
-	instanceTokenBucket.ForceRetrieve(3)
-	userTokenBucket.ForceRetrieve(2)
-	assert.NoError(t, l.ReserveWithType(1, store.PostingsFetched))
-	assert.Equal(t, int64(-1), instanceTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(-1), userTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(0), requestTokenBucket.RemainingTokens())
-}
-
-func TestNewTokenBucketLimter_DryRun(t *testing.T) {
-	instanceTokenBucket := util.NewTokenBucket(3, 3, nil)
-	userTokenBucket := util.NewTokenBucket(2, 2, nil)
-	requestTokenBucket := util.NewTokenBucket(1, 1, nil)
-	l := newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, true, prometheus.NewCounter(prometheus.CounterOpts{}), func(tokens uint64, dataType store.StoreDataType) int64 {
-		if dataType == store.SeriesFetched {
-			return int64(tokens) * 5
-		}
-		return int64(tokens)
-	})
-
-	// should force retrieve tokens from all buckets upon succeeding
-	assert.NoError(t, l.ReserveWithType(2, store.PostingsFetched))
-	assert.False(t, instanceTokenBucket.Retrieve(2))
-	assert.Equal(t, int64(1), instanceTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(0), userTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(-1), requestTokenBucket.RemainingTokens())
-
-	// should not fail even if tokens are not enough
-	instanceTokenBucket.Refund(2)
-	userTokenBucket.Refund(2)
-	requestTokenBucket.Refund(2)
-	assert.NoError(t, l.ReserveWithType(5, store.PostingsFetched))
-	assert.Equal(t, int64(-2), instanceTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(-3), userTokenBucket.RemainingTokens())
-	assert.Equal(t, int64(-4), requestTokenBucket.RemainingTokens())
+			if testData.expectedErrStr != "" {
+				assert.ErrorContains(t, err, testData.expectedErrStr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }

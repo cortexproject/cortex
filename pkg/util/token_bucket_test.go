@@ -8,31 +8,10 @@ import (
 )
 
 func TestTokenBucket_Retrieve(t *testing.T) {
-	bucket := NewTokenBucket(10, 600, nil)
+	bucket := NewTokenBucket(10, nil)
 
-	assert.True(t, bucket.Retrieve(10))
-	assert.False(t, bucket.Retrieve(10))
+	assert.Equal(t, int64(0), bucket.Retrieve(10))
+	assert.Negative(t, bucket.Retrieve(1))
 	time.Sleep(time.Second)
-	assert.True(t, bucket.Retrieve(10))
-	assert.Equal(t, int64(0), bucket.RemainingTokens())
-}
-
-func TestTokenBucket_ForceRetrieve(t *testing.T) {
-	bucket := NewTokenBucket(10, 600, nil)
-
-	bucket.ForceRetrieve(20)
-	assert.Equal(t, int64(-10), bucket.RemainingTokens())
-	assert.False(t, bucket.Retrieve(10))
-	time.Sleep(time.Second)
-	assert.True(t, bucket.Retrieve(10))
-	assert.Equal(t, int64(0), bucket.RemainingTokens())
-}
-
-func TestTokenBucket_Refund(t *testing.T) {
-	bucket := NewTokenBucket(10, 600, nil)
-
-	bucket.ForceRetrieve(10)
-	bucket.Refund(20)
-	assert.True(t, bucket.Retrieve(10))
-	assert.Equal(t, int64(0), bucket.RemainingTokens())
+	assert.Positive(t, bucket.Retrieve(5))
 }

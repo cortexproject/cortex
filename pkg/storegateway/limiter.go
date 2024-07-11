@@ -65,56 +65,42 @@ func (t *tokenBucketBytesLimiter) Reserve(_ uint64) error {
 func (t *tokenBucketBytesLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
 	tokensToRetrieve := t.getTokensToRetrieve(num, dataType)
 
-	// check request bucket
-	retrieved := t.requestTokenBucket.Retrieve(tokensToRetrieve)
-	if retrieved {
-		t.userTokenBucket.ForceRetrieve(tokensToRetrieve)
-		t.instanceTokenBucket.ForceRetrieve(tokensToRetrieve)
+	requestTokenRemaining := t.requestTokenBucket.Retrieve(tokensToRetrieve)
+	userTokenRemaining := t.userTokenBucket.Retrieve(tokensToRetrieve)
+	instanceTokenRemaining := t.instanceTokenBucket.Retrieve(tokensToRetrieve)
+
+	// if we can retrieve from request bucket, let the request go through
+	if requestTokenRemaining >= 0 {
 		return nil
 	}
 
-	// if we can't retrieve from request bucket, check shared buckets
-	retrieved = t.userTokenBucket.Retrieve(tokensToRetrieve)
-	if !retrieved {
-		// if dry run, force retrieve all tokens and return nil
-		if t.dryRun {
-			t.requestTokenBucket.ForceRetrieve(tokensToRetrieve)
-			t.userTokenBucket.ForceRetrieve(tokensToRetrieve)
-			t.instanceTokenBucket.ForceRetrieve(tokensToRetrieve)
-			level.Warn(util_log.Logger).Log("msg", "not enough tokens in user token bucket", "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve)
-			return nil
-		}
-		// We need to protect from the counter being incremented twice due to concurrency
-		t.failedOnce.Do(t.failedCounter.Inc)
-		return fmt.Errorf("not enough tokens in user token bucket")
+	errMsg := ""
+
+	if userTokenRemaining < 0 {
+		errMsg = "not enough tokens in user token bucket"
+	} else if instanceTokenRemaining < 0 {
+		errMsg = "not enough tokens in instance token bucket"
 	}
 
-	retrieved = t.instanceTokenBucket.Retrieve(tokensToRetrieve)
-	if !retrieved {
-		t.userTokenBucket.Refund(tokensToRetrieve)
-
-		// if dry run, force retrieve all tokens and return nil
+	if errMsg != "" {
 		if t.dryRun {
-			// user bucket is already retrieved
-			t.requestTokenBucket.ForceRetrieve(tokensToRetrieve)
-			t.instanceTokenBucket.ForceRetrieve(tokensToRetrieve)
-			level.Warn(util_log.Logger).Log("msg", "not enough tokens in pod token bucket", "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve)
+			level.Warn(util_log.Logger).Log("msg", errMsg, "dataType", dataType, "dataSize", num, "tokens", tokensToRetrieve)
 			return nil
 		}
+
 		// We need to protect from the counter being incremented twice due to concurrency
 		t.failedOnce.Do(t.failedCounter.Inc)
-		return fmt.Errorf("not enough tokens in pod token bucket")
+		return fmt.Errorf(errMsg)
 	}
 
-	t.requestTokenBucket.ForceRetrieve(tokensToRetrieve)
 	return nil
 }
 
-func newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket *util.TokenBucket, dryRun bool, failedCounter prometheus.Counter, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketBytesLimiter {
+func newTokenBucketBytesLimiter(requestTokenBucket, userTokenBucket, instanceTokenBucket *util.TokenBucket, dryRun bool, failedCounter prometheus.Counter, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) *tokenBucketBytesLimiter {
 	return &tokenBucketBytesLimiter{
-		instanceTokenBucket: instanceTokenBucket,
-		userTokenBucket:     userTokenBucket,
 		requestTokenBucket:  requestTokenBucket,
+		userTokenBucket:     userTokenBucket,
+		instanceTokenBucket: instanceTokenBucket,
 		dryRun:              dryRun,
 		failedCounter:       failedCounter,
 		getTokensToRetrieve: getTokensToRetrieve,
@@ -141,7 +127,7 @@ func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.
 	}
 }
 
-func newBytesLimiterFactory(limits *validation.Overrides, userID string, instanceTokenBucket, userTokenBucket *util.TokenBucket, tokenBucketBytesLimiterCfg tsdb.TokenBucketBytesLimiterConfig, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) store.BytesLimiterFactory {
+func newBytesLimiterFactory(limits *validation.Overrides, userID string, userTokenBucket, instanceTokenBucket *util.TokenBucket, tokenBucketBytesLimiterCfg tsdb.TokenBucketBytesLimiterConfig, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64) store.BytesLimiterFactory {
 	return func(failedCounter prometheus.Counter) store.BytesLimiter {
 		limiters := []store.BytesLimiter{}
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
@@ -149,8 +135,8 @@ func newBytesLimiterFactory(limits *validation.Overrides, userID string, instanc
 		limiters = append(limiters, store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter))
 
 		if tokenBucketBytesLimiterCfg.Enabled {
-			requestTokenBucket := util.NewTokenBucket(tokenBucketBytesLimiterCfg.RequestTokenBucketSize, tokenBucketBytesLimiterCfg.RequestTokenBucketSize, nil)
-			limiters = append(limiters, newTokenBucketBytesLimiter(instanceTokenBucket, userTokenBucket, requestTokenBucket, tokenBucketBytesLimiterCfg.DryRun, failedCounter, getTokensToRetrieve))
+			requestTokenBucket := util.NewTokenBucket(tokenBucketBytesLimiterCfg.RequestTokenBucketSize, nil)
+			limiters = append(limiters, newTokenBucketBytesLimiter(requestTokenBucket, userTokenBucket, instanceTokenBucket, tokenBucketBytesLimiterCfg.DryRun, failedCounter, getTokensToRetrieve))
 		}
 
 		return &compositeLimiter{

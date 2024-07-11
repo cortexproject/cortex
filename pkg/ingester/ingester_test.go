@@ -2279,7 +2279,7 @@ func Test_Ingester_LabelValues(t *testing.T) {
 	}
 }
 
-func Test_Ingester_LabelValue_MaxInflighQueryRequest(t *testing.T) {
+func Test_Ingester_LabelValue_MaxInflightQueryRequest(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.DefaultLimits.MaxInflightQueryRequests = 1
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
@@ -2437,7 +2437,7 @@ func Test_Ingester_Query(t *testing.T) {
 	}
 }
 
-func Test_Ingester_Query_MaxInflighQueryRequest(t *testing.T) {
+func Test_Ingester_Query_MaxInflightQueryRequest(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.DefaultLimits.MaxInflightQueryRequests = 1
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
@@ -5005,7 +5005,7 @@ func TestIngester_MaxExemplarsFallBack(t *testing.T) {
 	require.Equal(t, maxExemplars, int64(5))
 }
 
-func Test_Ingester_QueryExemplar_MaxInflighQueryRequest(t *testing.T) {
+func Test_Ingester_QueryExemplar_MaxInflightQueryRequest(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.DefaultLimits.MaxInflightQueryRequests = 1
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())

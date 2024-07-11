@@ -1263,6 +1263,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 
 	for i := 1; i <= 4; i++ {
 		cfg := prepareConfig()
+		cfg.CompactionInterval = 30 * time.Second
 		cfg.ShardingEnabled = true
 		cfg.ShardingStrategy = util.ShardingStrategyShuffle
 		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)

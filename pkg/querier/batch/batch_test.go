@@ -121,7 +121,7 @@ func BenchmarkNewChunkMergeIterator_Seek(b *testing.B) {
 }
 
 func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
-	histograms := histogram_util.GenerateTestHistograms(1000, 1000, 1, 5, 20)
+	histograms := histogram_util.GenerateTestHistograms(1000, 1000, 1)
 	for _, enc := range []promchunk.Encoding{
 		promchunk.PrometheusXorChunk,
 		promchunk.PrometheusHistogramChunk,
@@ -147,6 +147,11 @@ func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
 			actual, val := sut.AtHistogram(nil)
 			require.Equal(t, histograms[0], val)
 			require.Equal(t, int64(1*time.Second/time.Millisecond), actual)
+
+			// Histogram chunk should support querying float histograms since it is what Query Engine does.
+			actualT, fh := sut.AtFloatHistogram(nil)
+			require.Equal(t, histograms[0].ToFloat(nil), fh)
+			require.Equal(t, int64(1*time.Second/time.Millisecond), actualT)
 		case promchunk.PrometheusFloatHistogramChunk:
 			actual, val := sut.AtFloatHistogram(nil)
 			require.Equal(t, histograms[0].ToFloat(nil), val)

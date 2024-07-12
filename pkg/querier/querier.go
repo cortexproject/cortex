@@ -375,20 +375,21 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	// so we make sure changes are reflected back to hints.
 	sp.Start = startMs
 	sp.End = endMs
+	getSeries := sp.Func == "series"
 
 	// For series queries without specifying the start time, we prefer to
 	// only query ingesters and not to query maxQueryLength to avoid OOM kill.
-	if sp.Func == "series" && startMs == 0 {
+	if getSeries && startMs == 0 {
 		return metadataQuerier.Select(ctx, true, sp, matchers...)
 	}
 
 	startTime := model.Time(startMs)
 	endTime := model.Time(endMs)
 
-	// Validate query time range. This validation should be done only for instant / range queries and
-	// NOT for metadata queries (series, labels) because the query-frontend doesn't support splitting
-	// of such queries.
-	if !q.ignoreMaxQueryLength {
+	// Validate query time range. This validation for instant / range queries can be done either at Query Frontend
+	// or here at Querier. When the check is done at Query Frontend, we still want to enforce the max query length
+	// check for /api/v1/series request since there is no specific tripperware for series.
+	if !q.ignoreMaxQueryLength || getSeries {
 		if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
 			limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
 			return storage.ErrSeriesSet(limitErr)

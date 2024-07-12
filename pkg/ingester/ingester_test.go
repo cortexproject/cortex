@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -53,7 +54,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
-	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -658,8 +658,8 @@ func TestIngester_Push(t *testing.T) {
 	}
 	userID := "test"
 
-	testHistogram := cortexpb.HistogramToHistogramProto(10, histogram_util.GenerateTestHistogram(1))
-	testFloatHistogram := cortexpb.FloatHistogramToHistogramProto(11, histogram_util.GenerateTestFloatHistogram(1))
+	testHistogram := cortexpb.HistogramToHistogramProto(10, tsdbutil.GenerateTestHistogram(1))
+	testFloatHistogram := cortexpb.FloatHistogramToHistogramProto(11, tsdbutil.GenerateTestFloatHistogram(1))
 	tests := map[string]struct {
 		reqs                      []*cortexpb.WriteRequest
 		expectedErr               error
@@ -953,7 +953,7 @@ func TestIngester_Push(t *testing.T) {
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
 					[]cortexpb.Histogram{
-						cortexpb.HistogramToHistogramProto(9, histogram_util.GenerateTestHistogram(1)),
+						cortexpb.HistogramToHistogramProto(9, tsdbutil.GenerateTestHistogram(1)),
 					},
 					cortexpb.API),
 			},
@@ -1012,7 +1012,7 @@ func TestIngester_Push(t *testing.T) {
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
 					nil,
 					[]cortexpb.Histogram{
-						cortexpb.HistogramToHistogramProto(1575043969-(86400*1000), histogram_util.GenerateTestHistogram(1)),
+						cortexpb.HistogramToHistogramProto(1575043969-(86400*1000), tsdbutil.GenerateTestHistogram(1)),
 					},
 					cortexpb.API),
 			},
@@ -3153,13 +3153,13 @@ func mockHistogramWriteRequest(t *testing.T, lbls labels.Labels, value int, time
 		c          chunkenc.Chunk
 	)
 	if float {
-		fh = histogram_util.GenerateTestFloatHistogram(value)
+		fh = tsdbutil.GenerateTestFloatHistogram(value)
 		histograms = []cortexpb.Histogram{
 			cortexpb.FloatHistogramToHistogramProto(timestampMs, fh),
 		}
 		c = chunkenc.NewFloatHistogramChunk()
 	} else {
-		h = histogram_util.GenerateTestHistogram(value)
+		h = tsdbutil.GenerateTestHistogram(value)
 		histograms = []cortexpb.Histogram{
 			cortexpb.HistogramToHistogramProto(timestampMs, h),
 		}

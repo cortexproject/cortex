@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -344,7 +345,7 @@ func vectorMerge(ctx context.Context, req tripperware.Request, resps []*Promethe
 			if existingSample, ok := output[metric]; !ok {
 				output[metric] = s
 				metrics = append(metrics, metric) // Preserve the order of metric.
-			} else if existingSample.GetSample().TimestampMs < s.GetSample().TimestampMs {
+			} else if existingSample.GetTimestampMs() < s.GetTimestampMs() {
 				// Choose the latest sample if we see overlap.
 				output[metric] = s
 			}
@@ -366,11 +367,6 @@ func vectorMerge(ctx context.Context, req tripperware.Request, resps []*Promethe
 		return result, nil
 	}
 
-	type pair struct {
-		metric string
-		s      *Sample
-	}
-
 	samples := make([]*pair, 0, len(output))
 	for k, v := range output {
 		samples = append(samples, &pair{
@@ -379,13 +375,15 @@ func vectorMerge(ctx context.Context, req tripperware.Request, resps []*Promethe
 		})
 	}
 
+	// TODO: What if we have mixed float and histogram samples in the response?
+	// Then the sorting behavior is undefined. Prometheus doesn't handle it.
 	sort.Slice(samples, func(i, j int) bool {
-		// Order is determined by vector
+		// Order is determined by vector.
 		switch sortPlan {
 		case sortByValuesAsc:
-			return samples[i].s.Sample.Value < samples[j].s.Sample.Value
+			return getSortValueFromPair(samples, i) < getSortValueFromPair(samples, j)
 		case sortByValuesDesc:
-			return samples[i].s.Sample.Value > samples[j].s.Sample.Value
+			return getSortValueFromPair(samples, i) > getSortValueFromPair(samples, j)
 		}
 		return samples[i].metric < samples[j].metric
 	})
@@ -404,6 +402,22 @@ const (
 	sortByValuesDesc sortPlan = 2
 	sortByLabels     sortPlan = 3
 )
+
+type pair struct {
+	metric string
+	s      *Sample
+}
+
+// getSortValueFromPair gets the float value used for sorting from samples.
+// If float sample, use sample value. If histogram sample, use histogram sum.
+// This is the same behavior as Prometheus https://github.com/prometheus/prometheus/blob/v2.53.0/promql/functions.go#L1595.
+func getSortValueFromPair(samples []*pair, i int) float64 {
+	if samples[i].s.Histogram != nil {
+		return samples[i].s.Histogram.Histogram.Sum
+	}
+	// Impossible to have both histogram and sample nil.
+	return samples[i].s.Sample.Value
+}
 
 func sortPlanForQuery(q string) (sortPlan, error) {
 	expr, err := promqlparser.ParseExpr(q)
@@ -534,30 +548,65 @@ func decorateWithParamName(err error, field string) error {
 	return fmt.Errorf(errTmpl, field, err)
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
-func (s *Sample) UnmarshalJSON(data []byte) error {
-	var sample struct {
-		Metric labels.Labels   `json:"metric"`
-		Value  cortexpb.Sample `json:"value"`
-	}
-	if err := json.Unmarshal(data, &sample); err != nil {
-		return err
-	}
-	s.Labels = cortexpb.FromLabelsToLabelAdapters(sample.Metric)
-	s.Sample = sample.Value
-	return nil
+func init() {
+	jsoniter.RegisterTypeEncoderFunc("instantquery.Sample", encodeSample, marshalJSONIsEmpty)
+	jsoniter.RegisterTypeDecoderFunc("instantquery.Sample", decodeSample)
 }
 
-// MarshalJSON implements json.Marshaler.
-func (s *Sample) MarshalJSON() ([]byte, error) {
-	sample := struct {
-		Metric model.Metric    `json:"metric"`
-		Value  cortexpb.Sample `json:"value"`
-	}{
-		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
-		Value:  s.Sample,
+func marshalJSONIsEmpty(ptr unsafe.Pointer) bool {
+	return false
+}
+
+func decodeSample(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+	ss := (*Sample)(ptr)
+	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
+		switch field {
+		case "metric":
+			metricString := iter.ReadAny().ToString()
+			lbls := labels.Labels{}
+			if err := json.UnmarshalFromString(metricString, &lbls); err != nil {
+				iter.ReportError("unmarshal Sample", err.Error())
+				return
+			}
+			ss.Labels = cortexpb.FromLabelsToLabelAdapters(lbls)
+		case "value":
+			ss.Sample = &cortexpb.Sample{}
+			cortexpb.SampleJsoniterDecode(unsafe.Pointer(ss.Sample), iter)
+		case "histogram":
+			ss.Histogram = &tripperware.SampleHistogramPair{}
+			tripperware.UnmarshalSampleHistogramPairJSON(unsafe.Pointer(ss.Histogram), iter)
+		default:
+			iter.ReportError("unmarshal Sample", fmt.Sprint("unexpected key:", field))
+			return
+		}
 	}
-	return json.Marshal(sample)
+}
+
+func encodeSample(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	ss := (*Sample)(ptr)
+	stream.WriteObjectStart()
+
+	stream.WriteObjectField(`metric`)
+	lbls, err := cortexpb.FromLabelAdaptersToLabels(ss.Labels).MarshalJSON()
+	if err != nil {
+		stream.Error = err
+		return
+	}
+	stream.SetBuffer(append(stream.Buffer(), lbls...))
+
+	if ss.Sample != nil {
+		stream.WriteMore()
+		stream.WriteObjectField(`value`)
+		cortexpb.SampleJsoniterEncode(unsafe.Pointer(ss.Sample), stream)
+	}
+
+	if ss.Histogram != nil {
+		stream.WriteMore()
+		stream.WriteObjectField(`histogram`)
+		tripperware.MarshalSampleHistogramPairJSON(unsafe.Pointer(ss.Histogram), stream)
+	}
+
+	stream.WriteObjectEnd()
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

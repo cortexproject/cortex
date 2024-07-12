@@ -159,7 +159,7 @@ func getNameAndAttributes(ts prompb.TimeSeries) (string, map[string]any) {
 	return metricName, attributes
 }
 
-func createDatapointsGauge(newMetric pmetric.Metric, attributes map[string]any, samples []prompb.Sample) {
+func createDataPointsGauge(newMetric pmetric.Metric, attributes map[string]any, samples []prompb.Sample) {
 	newMetric.SetEmptyGauge()
 	for _, sample := range samples {
 		datapoint := newMetric.Gauge().DataPoints().AppendEmpty()
@@ -172,6 +172,47 @@ func createDatapointsGauge(newMetric pmetric.Metric, attributes map[string]any, 
 	}
 }
 
+func createDataPointsExponentialHistogram(newMetric pmetric.Metric, attributes map[string]any, histograms []prompb.Histogram) {
+	newMetric.SetEmptyExponentialHistogram()
+	for _, h := range histograms {
+		datapoint := newMetric.ExponentialHistogram().DataPoints().AppendEmpty()
+		datapoint.SetTimestamp(pcommon.Timestamp(h.Timestamp * time.Millisecond.Nanoseconds()))
+		datapoint.SetCount(h.GetCountInt())
+		datapoint.SetSum(h.GetSum())
+		datapoint.SetScale(h.GetSchema())
+		datapoint.SetZeroCount(h.GetZeroCountInt())
+		datapoint.SetZeroThreshold(h.GetZeroThreshold())
+		convertBucketLayout(datapoint.Positive(), h.PositiveSpans, h.PositiveDeltas)
+		convertBucketLayout(datapoint.Negative(), h.NegativeSpans, h.NegativeDeltas)
+		err := datapoint.Attributes().FromRaw(attributes)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+// convertBucketLayout converts Prometheus remote write bucket layout to Exponential Histogram bucket layout.
+func convertBucketLayout(bucket pmetric.ExponentialHistogramDataPointBuckets, spans []prompb.BucketSpan, deltas []int64) {
+	vals := make([]uint64, 0)
+	iDelta := 0
+	count := int64(0)
+	for i, span := range spans {
+		if i == 0 {
+			bucket.SetOffset(span.GetOffset() - 1)
+		} else {
+			for j := 0; j < int(span.GetOffset()); j++ {
+				vals = append(vals, 0)
+			}
+		}
+		for j := 0; j < int(span.Length); j++ {
+			count += deltas[iDelta]
+			vals = append(vals, uint64(count))
+			iDelta++
+		}
+	}
+	bucket.BucketCounts().FromRaw(vals)
+}
+
 // Convert Timeseries to Metrics
 func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
@@ -181,8 +222,11 @@ func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics 
 		newMetric.SetName(metricName)
 		//TODO Set description for new metric
 		//TODO Set unit for new metric
-		createDatapointsGauge(newMetric, attributes, ts.Samples)
-		//TODO(friedrichg): Add support for histograms
+		if len(ts.Samples) > 0 {
+			createDataPointsGauge(newMetric, attributes, ts.Samples)
+		} else if len(ts.Histograms) > 0 {
+			createDataPointsExponentialHistogram(newMetric, attributes, ts.Histograms)
+		}
 	}
 	return metrics
 }
@@ -234,7 +278,7 @@ func (c *Client) QueryRange(query string, start, end time.Time, step time.Durati
 }
 
 // QueryRangeRaw runs a ranged query directly against the querier API.
-func (c *Client) QueryRangeRaw(query string, start, end time.Time, step time.Duration) (*http.Response, []byte, error) {
+func (c *Client) QueryRangeRaw(query string, start, end time.Time, step time.Duration, headers map[string]string) (*http.Response, []byte, error) {
 	addr := fmt.Sprintf(
 		"http://%s/api/prom/api/v1/query_range?query=%s&start=%s&end=%s&step=%s",
 		c.querierAddress,
@@ -244,11 +288,11 @@ func (c *Client) QueryRangeRaw(query string, start, end time.Time, step time.Dur
 		strconv.FormatFloat(step.Seconds(), 'f', -1, 64),
 	)
 
-	return c.query(addr)
+	return c.query(addr, headers)
 }
 
 // QueryRaw runs a query directly against the querier API.
-func (c *Client) QueryRaw(query string, ts time.Time) (*http.Response, []byte, error) {
+func (c *Client) QueryRaw(query string, ts time.Time, headers map[string]string) (*http.Response, []byte, error) {
 	u := &url.URL{
 		Scheme: "http",
 		Path:   fmt.Sprintf("%s/api/prom/api/v1/query", c.querierAddress),
@@ -260,11 +304,11 @@ func (c *Client) QueryRaw(query string, ts time.Time) (*http.Response, []byte, e
 		q.Set("time", FormatTime(ts))
 	}
 	u.RawQuery = q.Encode()
-	return c.query(u.String())
+	return c.query(u.String(), headers)
 }
 
 // SeriesRaw runs a series request directly against the querier API.
-func (c *Client) SeriesRaw(matches []string, startTime, endTime time.Time) (*http.Response, []byte, error) {
+func (c *Client) SeriesRaw(matches []string, startTime, endTime time.Time, headers map[string]string) (*http.Response, []byte, error) {
 	u := &url.URL{
 		Scheme: "http",
 		Path:   fmt.Sprintf("%s/api/prom/api/v1/series", c.querierAddress),
@@ -283,11 +327,11 @@ func (c *Client) SeriesRaw(matches []string, startTime, endTime time.Time) (*htt
 	}
 
 	u.RawQuery = q.Encode()
-	return c.query(u.String())
+	return c.query(u.String(), headers)
 }
 
 // LabelNamesRaw runs a label names request directly against the querier API.
-func (c *Client) LabelNamesRaw(matches []string, startTime, endTime time.Time) (*http.Response, []byte, error) {
+func (c *Client) LabelNamesRaw(matches []string, startTime, endTime time.Time, headers map[string]string) (*http.Response, []byte, error) {
 	u := &url.URL{
 		Scheme: "http",
 		Path:   fmt.Sprintf("%s/api/prom/api/v1/labels", c.querierAddress),
@@ -306,11 +350,11 @@ func (c *Client) LabelNamesRaw(matches []string, startTime, endTime time.Time) (
 	}
 
 	u.RawQuery = q.Encode()
-	return c.query(u.String())
+	return c.query(u.String(), headers)
 }
 
 // LabelValuesRaw runs a label values request directly against the querier API.
-func (c *Client) LabelValuesRaw(label string, matches []string, startTime, endTime time.Time) (*http.Response, []byte, error) {
+func (c *Client) LabelValuesRaw(label string, matches []string, startTime, endTime time.Time, headers map[string]string) (*http.Response, []byte, error) {
 	u := &url.URL{
 		Scheme: "http",
 		Path:   fmt.Sprintf("%s/api/prom/api/v1/label/%s/values", c.querierAddress, label),
@@ -329,7 +373,7 @@ func (c *Client) LabelValuesRaw(label string, matches []string, startTime, endTi
 	}
 
 	u.RawQuery = q.Encode()
-	return c.query(u.String())
+	return c.query(u.String(), headers)
 }
 
 // RemoteRead runs a remote read query.
@@ -398,7 +442,7 @@ func (c *Client) RemoteRead(matchers []*labels.Matcher, start, end time.Time, st
 	return &resp, nil
 }
 
-func (c *Client) query(addr string) (*http.Response, []byte, error) {
+func (c *Client) query(addr string, headers map[string]string) (*http.Response, []byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -408,6 +452,10 @@ func (c *Client) query(addr string) (*http.Response, []byte, error) {
 	}
 
 	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 
 	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,

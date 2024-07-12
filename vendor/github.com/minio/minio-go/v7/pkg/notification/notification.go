@@ -50,6 +50,7 @@ const (
 	ObjectRemovedAll                                   EventType = "s3:ObjectRemoved:*"
 	ObjectRemovedDelete                                EventType = "s3:ObjectRemoved:Delete"
 	ObjectRemovedDeleteMarkerCreated                   EventType = "s3:ObjectRemoved:DeleteMarkerCreated"
+	ILMDelMarkerExpirationDelete                       EventType = "s3:LifecycleDelMarkerExpiration:Delete"
 	ObjectReducedRedundancyLostObject                  EventType = "s3:ReducedRedundancyLostObject"
 	ObjectTransitionAll                                EventType = "s3:ObjectTransition:*"
 	ObjectTransitionFailed                             EventType = "s3:ObjectTransition:Failed"

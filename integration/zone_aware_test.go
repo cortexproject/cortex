@@ -135,7 +135,7 @@ func TestZoneAwareReplication(t *testing.T) {
 	require.NoError(t, ingester3.Kill())
 
 	// Query back any series => fail (either because of a timeout or 500)
-	result, _, err := client.QueryRaw("series_1", time.Now())
+	result, _, err := client.QueryRaw("series_1", time.Now(), map[string]string{})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		require.NoError(t, err)
 		require.Equal(t, 500, result.StatusCode)

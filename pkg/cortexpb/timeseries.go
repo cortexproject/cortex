@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	expectedTimeseries         = 100
-	expectedLabels             = 20
-	expectedSamplesPerSeries   = 10
-	expectedExemplarsPerSeries = 1
+	expectedTimeseries          = 100
+	expectedLabels              = 20
+	expectedSamplesPerSeries    = 10
+	expectedExemplarsPerSeries  = 1
+	expectedHistogramsPerSeries = 1
 
 	/*
 		We cannot pool these as pointer-to-slice because the place we use them is in WriteRequest which is generated from Protobuf
@@ -31,9 +32,10 @@ var (
 	timeSeriesPool = sync.Pool{
 		New: func() interface{} {
 			return &TimeSeries{
-				Labels:    make([]LabelAdapter, 0, expectedLabels),
-				Samples:   make([]Sample, 0, expectedSamplesPerSeries),
-				Exemplars: make([]Exemplar, 0, expectedExemplarsPerSeries),
+				Labels:     make([]LabelAdapter, 0, expectedLabels),
+				Samples:    make([]Sample, 0, expectedSamplesPerSeries),
+				Exemplars:  make([]Exemplar, 0, expectedExemplarsPerSeries),
+				Histograms: make([]Histogram, 0, expectedHistogramsPerSeries),
 			}
 		},
 	}

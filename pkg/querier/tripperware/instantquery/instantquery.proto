@@ -41,7 +41,8 @@ message Vector {
 
 message Sample {
   repeated cortexpb.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
-  cortexpb.Sample sample = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "value"];
+  cortexpb.Sample sample = 2 [(gogoproto.nullable) = true, (gogoproto.jsontag) = "value"];
+  tripperware.SampleHistogramPair histogram = 3 [(gogoproto.nullable) = true, (gogoproto.jsontag) = "histogram"];
 }
 
 message Matrix {

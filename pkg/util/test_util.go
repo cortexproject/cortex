@@ -30,9 +30,16 @@ func GenerateRandomStrings() []string {
 	return randomStrings
 }
 
-func GenerateChunk(t require.TestingT, step time.Duration, from model.Time, points int, enc promchunk.Encoding) chunk.Chunk {
-	metric := labels.Labels{
-		{Name: model.MetricNameLabel, Value: "foo"},
+func GenerateChunk(t require.TestingT, step time.Duration, from model.Time, points int, enc promchunk.Encoding, additionalLabels ...labels.Label) chunk.Chunk {
+	var hasMetricName bool
+	for _, lbl := range additionalLabels {
+		if lbl.Name == model.MetricNameLabel {
+			hasMetricName = true
+		}
+	}
+	metric := labels.NewBuilder(labels.New(additionalLabels...))
+	if !hasMetricName {
+		metric = metric.Set(model.MetricNameLabel, "foo")
 	}
 	pe := enc.PromChunkEncoding()
 	pc, err := chunkenc.NewEmptyChunk(pe)
@@ -48,14 +55,14 @@ func GenerateChunk(t require.TestingT, step time.Duration, from model.Time, poin
 			ts = ts.Add(step)
 		}
 	case chunkenc.EncHistogram:
-		histograms := histogram_util.GenerateTestHistograms(int(from), int(step/time.Millisecond), points, 5, 20)
+		histograms := histogram_util.GenerateTestHistograms(int(from), int(step/time.Millisecond), points)
 		for i := 0; i < points; i++ {
 			_, _, appender, err = appender.AppendHistogram(nil, int64(ts), histograms[i], true)
 			require.NoError(t, err)
 			ts = ts.Add(step)
 		}
 	case chunkenc.EncFloatHistogram:
-		histograms := histogram_util.GenerateTestHistograms(int(from), int(step/time.Millisecond), points, 5, 20)
+		histograms := histogram_util.GenerateTestHistograms(int(from), int(step/time.Millisecond), points)
 		for i := 0; i < points; i++ {
 			_, _, appender, err = appender.AppendFloatHistogram(nil, int64(ts), histograms[i].ToFloat(nil), true)
 			require.NoError(t, err)
@@ -64,5 +71,5 @@ func GenerateChunk(t require.TestingT, step time.Duration, from model.Time, poin
 	}
 
 	ts = ts.Add(-step) // undo the add that we did just before exiting the loop
-	return chunk.NewChunk(metric, pc, from, ts)
+	return chunk.NewChunk(metric.Labels(), pc, from, ts)
 }

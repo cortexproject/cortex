@@ -53,7 +53,7 @@ func mkGenericChunk(t require.TestingT, from model.Time, points int, enc promchu
 }
 
 func testIter(t require.TestingT, points int, iter chunkenc.Iterator, enc promchunk.Encoding) {
-	histograms := histogram_util.GenerateTestHistograms(0, 1000, points, 5, 20)
+	histograms := histogram_util.GenerateTestHistograms(0, 1000, points)
 	ets := model.TimeFromUnix(0)
 	for i := 0; i < points; i++ {
 		require.Equal(t, iter.Next(), enc.ChunkValueType(), strconv.Itoa(i))
@@ -77,7 +77,7 @@ func testIter(t require.TestingT, points int, iter chunkenc.Iterator, enc promch
 }
 
 func testSeek(t require.TestingT, points int, iter chunkenc.Iterator, enc promchunk.Encoding) {
-	histograms := histogram_util.GenerateTestHistograms(0, 1000, points, 5, 20)
+	histograms := histogram_util.GenerateTestHistograms(0, 1000, points)
 	for i := 0; i < points; i += points / 10 {
 		ets := int64(i * int(step/time.Millisecond))
 

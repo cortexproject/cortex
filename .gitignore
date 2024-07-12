@@ -27,3 +27,6 @@ Makefile.local
 .vscode
 compose
 compose-simple
+
+/build-image-arm64.tar
+/build-image-amd64.tar

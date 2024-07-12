@@ -1,4 +1,4 @@
-FROM       alpine:3.18
+FROM       alpine:3.19
 ARG TARGETARCH
 RUN        apk add --no-cache ca-certificates
 COPY       test-exporter-$TARGETARCH /test-exporter

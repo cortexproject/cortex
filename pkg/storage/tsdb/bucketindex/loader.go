@@ -93,11 +93,6 @@ func NewLoader(cfg LoaderConfig, bucketClient objstore.Bucket, cfgProvider bucke
 // GetIndex returns the bucket index for the given user. It returns the in-memory cached
 // index if available, or load it from the bucket otherwise.
 func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, Status, error) {
-	if ctx.Err() != nil {
-		level.Warn(util_log.WithContext(ctx, l.logger)).Log("msg", "received context error when attempting to load bucket index", "err", ctx.Err())
-		return nil, UnknownStatus, ctx.Err()
-	}
-
 	l.indexesMx.RLock()
 	if entry := l.indexes[userID]; entry != nil {
 		idx := entry.index
@@ -125,6 +120,11 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, Status, e
 		// Cache the error, to avoid hammering the object store in case of persistent issues
 		// (eg. corrupted bucket index or not existing).
 		l.cacheIndex(userID, nil, ss, err)
+
+		if ctx.Err() != nil {
+			level.Warn(util_log.WithContext(ctx, l.logger)).Log("msg", "received context error when reading bucket index", "err", ctx.Err())
+			return nil, UnknownStatus, ctx.Err()
+		}
 
 		if errors.Is(err, ErrIndexNotFound) {
 			level.Warn(l.logger).Log("msg", "bucket index not found", "user", userID)

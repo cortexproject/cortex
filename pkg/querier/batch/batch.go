@@ -162,6 +162,11 @@ func (a *iteratorAdapter) AtHistogram(h *histogram.Histogram) (int64, *histogram
 
 // AtFloatHistogram implements chunkenc.Iterator.
 func (a *iteratorAdapter) AtFloatHistogram(h *histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
+	// PromQL engine always selects float histogram in its implementation so might call AtFloatHistogram
+	// even if it is a histogram. https://github.com/prometheus/prometheus/blob/v2.53.0/promql/engine.go#L2276
+	if a.curr.ValType == chunkenc.ValHistogram {
+		return a.curr.Timestamps[a.curr.Index], a.curr.Histograms[a.curr.Index].ToFloat(h)
+	}
 	return a.curr.Timestamps[a.curr.Index], a.curr.FloatHistograms[a.curr.Index]
 }
 

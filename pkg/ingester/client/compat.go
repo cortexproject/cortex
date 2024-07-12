@@ -113,25 +113,6 @@ func ToQueryResponse(matrix model.Matrix) *QueryResponse {
 	return resp
 }
 
-// FromQueryResponse unpacks a QueryResponse proto.
-func FromQueryResponse(resp *QueryResponse) model.Matrix {
-	m := make(model.Matrix, 0, len(resp.Timeseries))
-	for _, ts := range resp.Timeseries {
-		var ss model.SampleStream
-		ss.Metric = cortexpb.FromLabelAdaptersToMetric(ts.Labels)
-		ss.Values = make([]model.SamplePair, 0, len(ts.Samples))
-		for _, s := range ts.Samples {
-			ss.Values = append(ss.Values, model.SamplePair{
-				Value:     model.SampleValue(s.Value),
-				Timestamp: model.Time(s.TimestampMs),
-			})
-		}
-		m = append(m, &ss)
-	}
-
-	return m
-}
-
 // ToMetricsForLabelMatchersRequest builds a MetricsForLabelMatchersRequest proto
 func ToMetricsForLabelMatchersRequest(from, to model.Time, matchers []*labels.Matcher) (*MetricsForLabelMatchersRequest, error) {
 	ms, err := toLabelMatchers(matchers)

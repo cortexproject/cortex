@@ -6,6 +6,23 @@ scrape_configs:
   - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]
+  - job_name: "cortex"
+    static_configs:
+      - targets: ["cortex:9009"]
 
 remote_write:
   - url: http://cortex:9009/api/v1/push
+    headers:
+      X-Scope-OrgID: "cortex"
+  - url: http://cortex:9009/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-a"
+  - url: http://cortex:9009/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-b"
+  - url: http://cortex:9009/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-c"
+  - url: http://cortex:9009/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-d"

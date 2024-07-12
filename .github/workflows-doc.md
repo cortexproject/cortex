@@ -69,7 +69,7 @@ As of October 2020, GitHub Actions do not persist between different jobs in the 
 - name: Compressing Images
         run: tar -zcvf images.tar.gz /tmp/images
       - name: Cache Images
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: Docker Images
           path: ./images.tar.gz

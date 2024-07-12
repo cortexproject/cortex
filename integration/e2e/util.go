@@ -15,10 +15,13 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
@@ -147,6 +150,45 @@ func GenerateSeries(name string, ts time.Time, additionalLabels ...prompb.Label)
 	return
 }
 
+func GenerateHistogramSeries(name string, ts time.Time, i uint32, floatHistogram bool, additionalLabels ...prompb.Label) (series []prompb.TimeSeries) {
+	tsMillis := TimeToMilliseconds(ts)
+
+	lbls := append(
+		[]prompb.Label{
+			{Name: labels.MetricName, Value: name},
+		},
+		additionalLabels...,
+	)
+
+	// Generate the expected vector when querying it
+	metric := model.Metric{}
+	metric[labels.MetricName] = model.LabelValue(name)
+	for _, lbl := range additionalLabels {
+		metric[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
+
+	var (
+		h  *histogram.Histogram
+		fh *histogram.FloatHistogram
+		ph prompb.Histogram
+	)
+	if floatHistogram {
+		fh = tsdbutil.GenerateTestFloatHistogram(int(i))
+		ph = remote.FloatHistogramToHistogramProto(tsMillis, fh)
+	} else {
+		h = tsdbutil.GenerateTestHistogram(int(i))
+		ph = remote.HistogramToHistogramProto(tsMillis, h)
+	}
+
+	// Generate the series
+	series = append(series, prompb.TimeSeries{
+		Labels:     lbls,
+		Histograms: []prompb.Histogram{ph},
+	})
+
+	return
+}
+
 func GenerateSeriesWithSamples(
 	name string,
 	startTime time.Time,
@@ -268,14 +310,14 @@ func CreateBlock(
 		return id, errors.Wrap(err, "create compactor")
 	}
 
-	id, err = c.Write(dir, h, mint, maxt, nil)
+	ids, err := c.Write(dir, h, mint, maxt, nil)
 	if err != nil {
 		return id, errors.Wrap(err, "write block")
 	}
-
-	if id.Compare(ulid.ULID{}) == 0 {
+	if len(ids) == 0 {
 		return id, errors.Errorf("nothing to write, asked for %d samples", numSamples)
 	}
+	id = ids[0]
 
 	blockDir := filepath.Join(dir, id.String())
 	logger := log.NewNopLogger()

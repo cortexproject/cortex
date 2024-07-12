@@ -40,7 +40,7 @@ func TestProto(t *testing.T) {
 	desc := ToProto("test", "namespace", rg)
 
 	assert.Equal(t, len(rules), len(desc.Rules))
-	assert.Equal(t, 30*time.Second, desc.QueryOffset)
+	assert.Equal(t, 30*time.Second, *desc.QueryOffset)
 
 	ruleDesc := desc.Rules[0]
 

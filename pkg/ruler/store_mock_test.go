@@ -132,6 +132,7 @@ var (
 			},
 		},
 	}
+	queryOffset          = 2 * time.Minute
 	mockRulesQueryOffset = map[string]rulespb.RuleGroupList{
 		"user1": {
 			&rulespb.RuleGroupDesc{
@@ -164,7 +165,7 @@ var (
 					},
 				},
 				Interval:    interval,
-				QueryOffset: 2 * time.Minute,
+				QueryOffset: &queryOffset,
 			},
 		},
 	}

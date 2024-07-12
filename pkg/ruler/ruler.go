@@ -105,8 +105,6 @@ type Config struct {
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
-	// Default offset for all rule evaluation queries.
-	RuleQueryOffset time.Duration `yaml:"rule_query_offset"`
 
 	// URL of the Alertmanager to send notifications to.
 	// If you are configuring the ruler to send to a Cortex Alertmanager,
@@ -196,7 +194,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes")
-	f.DurationVar(&cfg.RuleQueryOffset, "ruler.rule-query-offset", 0*time.Minute, "Default offset for all rule evaluation queries")
 
 	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of URL(s) of the Alertmanager(s) to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via -ruler.alertmanager-discovery.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover Alertmanager hosts.")
@@ -914,6 +911,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		}
 		interval := group.Interval()
 
+		queryOffset := group.QueryOffset()
 		groupDesc := &GroupStateDesc{
 			Group: &rulespb.RuleGroupDesc{
 				Name:        group.Name(),
@@ -921,7 +919,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 				Interval:    interval,
 				User:        userID,
 				Limit:       int64(group.Limit()),
-				QueryOffset: group.QueryOffset(),
+				QueryOffset: &queryOffset,
 			},
 
 			EvaluationTimestamp: group.GetLastEvaluation(),

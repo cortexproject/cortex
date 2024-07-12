@@ -13,9 +13,10 @@ import (
 
 // ToProto transforms a formatted prometheus rulegroup to a rule group protobuf
 func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc {
-	queryOffset := time.Duration(0)
+	var queryOffset *time.Duration
 	if rl.QueryOffset != nil {
-		queryOffset = time.Duration(*rl.QueryOffset)
+		offset := time.Duration(*rl.QueryOffset)
+		queryOffset = &offset
 	}
 	rg := RuleGroupDesc{
 		Name:        rl.Name,
@@ -48,7 +49,10 @@ func formattedRuleToProto(rls []rulefmt.RuleNode) []*RuleDesc {
 
 // FromProto generates a rulefmt RuleGroup
 func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
-	queryOffset := model.Duration(rg.QueryOffset)
+	var queryOffset model.Duration
+	if rg.QueryOffset != nil {
+		queryOffset = model.Duration(*rg.QueryOffset)
+	}
 	formattedRuleGroup := rulefmt.RuleGroup{
 		Name:        rg.GetName(),
 		Interval:    model.Duration(rg.Interval),

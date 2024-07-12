@@ -11,6 +11,7 @@
 * [FEATURE] Ingester: Add `ingester.instance-limits.max-inflight-query-requests` to allow limiting ingester concurrent queries. #6081
 * [FEATURE] Distributor: Add `validation.max-native-histogram-buckets` to limit max number of bucket count. Distributor will try to automatically reduce histogram resolution until it is within the bucket limit or resolution cannot be reduced anymore. #6104
 * [FEATURE] Store Gateway: Token bucket limiter. #6016
+* [FEATURE] Ruler: Add support for `query_offset` field on RuleGroup and new `ruler_query_offset` per-tenant limit. #6085
 * [ENHANCEMENT] rulers: Add support to persist tokens in rulers. #5987
 * [ENHANCEMENT] Query Frontend/Querier: Added store gateway postings touched count and touched size in Querier stats and log in Query Frontend. #5892
 * [ENHANCEMENT] Query Frontend/Querier: Returns `warnings` on prometheus query responses. #5916

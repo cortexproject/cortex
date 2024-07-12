@@ -27,6 +27,7 @@
 * [BUGFIX] Querier: Enforce max query length check for `/api/v1/series` API even though `ignoreMaxQueryLength` is set to true. #6018
 * [BUGFIX] Ingester: Fix issue with the minimize token generator where it was not taking in consideration the current ownerhip of an instance when generating extra tokens. #6062
 * [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
+* [ENHANCEMENT] Ruler: Add support for filtering by `match` field on Rules API. #6083
 
 ## 1.17.1 2024-05-20
 

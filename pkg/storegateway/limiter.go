@@ -34,11 +34,11 @@ func (c *limiter) ReserveWithType(num uint64, _ store.StoreDataType) error {
 	return nil
 }
 
-type compositeLimiter struct {
+type compositeBytesLimiter struct {
 	limiters []store.BytesLimiter
 }
 
-func (c *compositeLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
+func (c *compositeBytesLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
 	for _, l := range c.limiters {
 		if err := l.ReserveWithType(num, dataType); err != nil {
 			return err // nested limiters are expected to return httpgrpc error
@@ -133,7 +133,7 @@ func newBytesLimiterFactory(limits *validation.Overrides, userID string, userTok
 		limiters := []store.BytesLimiter{}
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
-		limiters = append(limiters, store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter))
+		limiters = append(limiters, &limiter{limiter: store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter)})
 
 		if tokenBucketBytesLimiterCfg.Mode == string(tsdb.TokenBucketBytesLimiterEnabled) {
 			requestTokenBucket := util.NewTokenBucket(tokenBucketBytesLimiterCfg.RequestTokenBucketSize, nil)
@@ -141,7 +141,7 @@ func newBytesLimiterFactory(limits *validation.Overrides, userID string, userTok
 			limiters = append(limiters, newTokenBucketBytesLimiter(requestTokenBucket, userTokenBucket, instanceTokenBucket, dryRun, failedCounter, getTokensToRetrieve))
 		}
 
-		return &compositeLimiter{
+		return &compositeBytesLimiter{
 			limiters: limiters,
 		}
 	}

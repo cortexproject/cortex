@@ -1,7 +1,7 @@
 package storegateway
 
 import (
-	"strconv"
+	"fmt"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,10 +23,10 @@ func TestLimiter(t *testing.T) {
 }
 
 func TestCompositeLimiter(t *testing.T) {
-	l := &compositeLimiter{
+	l := &compositeBytesLimiter{
 		limiters: []store.BytesLimiter{
-			store.NewLimiter(2, prometheus.NewCounter(prometheus.CounterOpts{})),
-			store.NewLimiter(1, prometheus.NewCounter(prometheus.CounterOpts{})),
+			&limiter{limiter: store.NewLimiter(2, prometheus.NewCounter(prometheus.CounterOpts{}))},
+			&limiter{limiter: store.NewLimiter(1, prometheus.NewCounter(prometheus.CounterOpts{}))},
 		},
 	}
 
@@ -139,7 +139,7 @@ func TestNewTokenBucketBytesLimiter(t *testing.T) {
 			assert.Equal(t, testData.expectedInstanceTokenRemaining, instanceTokenBucket.Retrieve(0))
 
 			if testData.errCode > 0 {
-				assert.ErrorContains(t, err, strconv.Itoa(testData.errCode))
+				assert.ErrorContains(t, err, fmt.Sprintf("(%d)", testData.errCode))
 			} else {
 				assert.NoError(t, err)
 			}

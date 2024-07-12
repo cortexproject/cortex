@@ -150,7 +150,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		return nil, errors.Wrap(err, "create chunks bytes pool")
 	}
 
-	if u.cfg.BucketStore.TokenBucketBytesLimiter.Mode == string(tsdb.TokenBucketBytesLimiterDryRun) {
+	if u.cfg.BucketStore.TokenBucketBytesLimiter.Mode != string(tsdb.TokenBucketBytesLimiterDisabled) {
 		u.instanceTokenBucket = util.NewTokenBucket(cfg.BucketStore.TokenBucketBytesLimiter.InstanceTokenBucketSize, promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_bucket_stores_instance_token_bucket_remaining",
 			Help: "Number of tokens left in instance token bucket.",

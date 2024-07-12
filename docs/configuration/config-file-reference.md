@@ -4147,6 +4147,10 @@ ruler_client:
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
 
+# Default offset for all rule evaluation queries
+# CLI flag: -ruler.rule-query-offset
+[rule_query_offset: <duration> | default = 0s]
+
 # Comma-separated list of URL(s) of the Alertmanager(s) to send notifications
 # to. Each Alertmanager URL is treated as a separate group in the configuration.
 # Multiple Alertmanagers in HA per group can be supported by using DNS

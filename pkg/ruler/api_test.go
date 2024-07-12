@@ -263,7 +263,7 @@ interval: 15s
 			err:    errors.New("invalid rules config: rule group 'rg_name' has no rules"),
 		},
 		{
-			name:   "with a a valid rules file",
+			name:   "with a valid rules file",
 			status: 202,
 			input: `
 name: test
@@ -279,7 +279,20 @@ rules:
   labels:
     test: test
 `,
-			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: up{}\n    - alert: up_alert\n      expr: sum(up{}) > 1\n      for: 30s\n      labels:\n        test: test\n      annotations:\n        test: test\n",
+			output: "name: test\ninterval: 15s\nquery_offset: 0s\nrules:\n    - record: up_rule\n      expr: up{}\n    - alert: up_alert\n      expr: sum(up{}) > 1\n      for: 30s\n      labels:\n        test: test\n      annotations:\n        test: test\n",
+		},
+		{
+			name:   "with a valid rule query offset",
+			status: 202,
+			input: `
+name: test
+interval: 15s
+query_offset: 2m
+rules:
+- record: up_rule
+  expr: up{}
+`,
+			output: "name: test\ninterval: 15s\nquery_offset: 2m\nrules:\n    - record: up_rule\n      expr: up{}\n",
 		},
 	}
 
@@ -329,7 +342,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, "name: group1\ninterval: 1m\nrules:\n    - record: UP_RULE\n      expr: up\n    - alert: UP_ALERT\n      expr: up < 1\n", w.Body.String())
+	require.Equal(t, "name: group1\ninterval: 1m\nquery_offset: 0s\nrules:\n    - record: UP_RULE\n      expr: up\n    - alert: UP_ALERT\n      expr: up < 1\n", w.Body.String())
 
 	// Delete namespace1
 	req = requestFor(t, http.MethodDelete, "https://localhost:8080/api/v1/rules/namespace1", nil, "user1")

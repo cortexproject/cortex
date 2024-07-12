@@ -105,6 +105,8 @@ type Config struct {
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
+	// Default offset for all rule evaluation queries.
+	RuleQueryOffset time.Duration `yaml:"rule_query_offset"`
 
 	// URL of the Alertmanager to send notifications to.
 	// If you are configuring the ruler to send to a Cortex Alertmanager,
@@ -121,8 +123,6 @@ type Config struct {
 	// Client configs for interacting with the Alertmanager
 	Notifier NotifierConfig `yaml:"alertmanager_client"`
 
-	//Default offset for all rule evaluation queries.
-	RuleQueryOffset time.Duration `yaml:"rule_query_offset"`
 	// Max time to tolerate outage for restoring "for" state of alert.
 	OutageTolerance time.Duration `yaml:"for_outage_tolerance"`
 	// Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.

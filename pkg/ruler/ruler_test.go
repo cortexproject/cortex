@@ -2549,7 +2549,7 @@ func TestRuler_QueryOffset(t *testing.T) {
 	expectedRg := mockRulesQueryOffset["user1"][0]
 	compareRuleGroupDescToStateDesc(t, expectedRg, rg)
 
-	// test default query offset=0
+	// test default query offset=0 when not defined at group level
 	require.Equal(t, time.Duration(0), rg.GetGroup().QueryOffset)
 
 	ctx = user.InjectOrgID(context.Background(), "user2")
@@ -2562,5 +2562,4 @@ func TestRuler_QueryOffset(t *testing.T) {
 
 	// test group query offset is set
 	require.Equal(t, time.Minute*2, rg.GetGroup().QueryOffset)
-	rulespb.FromProto(rg.GetGroup())
 }

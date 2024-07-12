@@ -137,9 +137,10 @@ func newBytesLimiterFactory(limits *validation.Overrides, userID string, userTok
 		// each time a new limiter is instantiated.
 		limiters = append(limiters, store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter))
 
-		if tokenBucketBytesLimiterCfg.Enabled {
+		if tokenBucketBytesLimiterCfg.Mode == string(tsdb.TokenBucketBytesLimiterEnabled) {
 			requestTokenBucket := util.NewTokenBucket(tokenBucketBytesLimiterCfg.RequestTokenBucketSize, nil)
-			limiters = append(limiters, newTokenBucketBytesLimiter(requestTokenBucket, userTokenBucket, instanceTokenBucket, tokenBucketBytesLimiterCfg.DryRun, failedCounter, getTokensToRetrieve))
+			dryRun := tokenBucketBytesLimiterCfg.Mode == string(tsdb.TokenBucketBytesLimiterDryRun)
+			limiters = append(limiters, newTokenBucketBytesLimiter(requestTokenBucket, userTokenBucket, instanceTokenBucket, dryRun, failedCounter, getTokensToRetrieve))
 		}
 
 		return &compositeLimiter{

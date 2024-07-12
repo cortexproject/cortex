@@ -1900,13 +1900,10 @@ bucket_store:
   [series_batch_size: <int> | default = 10000]
 
   token_bucket_bytes_limiter:
-    # Whether token bucket limiter is enabled
-    # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.enabled
-    [enabled: <boolean> | default = false]
-
-    # Whether the token bucket limiter is in dry run mode
-    # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.dry-run
-    [dry_run: <boolean> | default = false]
+    # Token bucket bytes limiter mode. Supported values are: disabled, dryrun,
+    # enabled
+    # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.mode
+    [mode: <string> | default = "disabled"]
 
     # Instance token bucket size
     # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.instance-token-bucket-size

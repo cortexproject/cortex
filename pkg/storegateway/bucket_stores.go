@@ -150,7 +150,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		return nil, errors.Wrap(err, "create chunks bytes pool")
 	}
 
-	if u.cfg.BucketStore.TokenBucketBytesLimiter.Enabled {
+	if u.cfg.BucketStore.TokenBucketBytesLimiter.Mode == string(tsdb.TokenBucketBytesLimiterDryRun) {
 		u.instanceTokenBucket = util.NewTokenBucket(cfg.BucketStore.TokenBucketBytesLimiter.InstanceTokenBucketSize, promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_bucket_stores_instance_token_bucket_remaining",
 			Help: "Number of tokens left in instance token bucket.",
@@ -488,7 +488,7 @@ func (u *BucketStores) closeEmptyBucketStore(userID string) error {
 	unlockInDefer = false
 	u.storesMu.Unlock()
 
-	if u.cfg.BucketStore.TokenBucketBytesLimiter.Enabled {
+	if u.cfg.BucketStore.TokenBucketBytesLimiter.Mode == string(tsdb.TokenBucketBytesLimiterEnabled) {
 		u.userTokenBucketsMu.Lock()
 		delete(u.userTokenBuckets, userID)
 		u.userTokenBucketsMu.Unlock()
@@ -631,7 +631,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())
 	}
 
-	if u.cfg.BucketStore.TokenBucketBytesLimiter.Enabled {
+	if u.cfg.BucketStore.TokenBucketBytesLimiter.Mode == string(tsdb.TokenBucketBytesLimiterEnabled) {
 		u.userTokenBucketsMu.Lock()
 		u.userTokenBuckets[userID] = util.NewTokenBucket(u.cfg.BucketStore.TokenBucketBytesLimiter.UserTokenBucketSize, nil)
 		u.userTokenBucketsMu.Unlock()

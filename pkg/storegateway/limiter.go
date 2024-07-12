@@ -1,7 +1,6 @@
 package storegateway
 
 import (
-	"fmt"
 	"net/http"
 	"sync"
 
@@ -78,7 +77,6 @@ func (t *tokenBucketBytesLimiter) ReserveWithType(num uint64, dataType store.Sto
 
 	errCode := 0
 
-	fmt.Printf("tokensToRetrieve: %d, maxCapacity: %d", tokensToRetrieve, t.userTokenBucket.MaxCapacity())
 	if tokensToRetrieve > t.userTokenBucket.MaxCapacity() || tokensToRetrieve > t.instanceTokenBucket.MaxCapacity() {
 		errCode = http.StatusUnprocessableEntity
 	} else if userTokenRemaining < 0 || instanceTokenRemaining < 0 {

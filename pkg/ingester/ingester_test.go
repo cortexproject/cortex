@@ -2304,6 +2304,7 @@ func Test_Ingester_LabelValue_MaxInflightQueryRequest(t *testing.T) {
 	rreq := &client.LabelValuesRequest{}
 	_, err = i.LabelValues(ctx, rreq)
 	require.Error(t, err)
+	require.Equal(t, err, errTooManyInflightQueryRequests)
 }
 
 func Test_Ingester_Query(t *testing.T) {
@@ -2463,6 +2464,7 @@ func Test_Ingester_Query_MaxInflightQueryRequest(t *testing.T) {
 	s := &mockQueryStreamServer{ctx: ctx}
 	err = i.QueryStream(rreq, s)
 	require.Error(t, err)
+	require.Equal(t, err, errTooManyInflightQueryRequests)
 }
 
 func TestIngester_Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
@@ -5030,6 +5032,7 @@ func Test_Ingester_QueryExemplar_MaxInflightQueryRequest(t *testing.T) {
 	rreq := &client.ExemplarQueryRequest{}
 	_, err = i.QueryExemplars(ctx, rreq)
 	require.Error(t, err)
+	require.Equal(t, err, errTooManyInflightQueryRequests)
 }
 
 func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest {

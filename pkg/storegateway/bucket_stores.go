@@ -488,7 +488,7 @@ func (u *BucketStores) closeEmptyBucketStore(userID string) error {
 	unlockInDefer = false
 	u.storesMu.Unlock()
 
-	if u.cfg.BucketStore.TokenBucketBytesLimiter.Mode == string(tsdb.TokenBucketBytesLimiterEnabled) {
+	if u.cfg.BucketStore.TokenBucketBytesLimiter.Mode != string(tsdb.TokenBucketBytesLimiterDisabled) {
 		u.userTokenBucketsMu.Lock()
 		delete(u.userTokenBuckets, userID)
 		u.userTokenBucketsMu.Unlock()
@@ -631,7 +631,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())
 	}
 
-	if u.cfg.BucketStore.TokenBucketBytesLimiter.Mode == string(tsdb.TokenBucketBytesLimiterEnabled) {
+	if u.cfg.BucketStore.TokenBucketBytesLimiter.Mode != string(tsdb.TokenBucketBytesLimiterDisabled) {
 		u.userTokenBucketsMu.Lock()
 		u.userTokenBuckets[userID] = util.NewTokenBucket(u.cfg.BucketStore.TokenBucketBytesLimiter.UserTokenBucketSize, nil)
 		u.userTokenBucketsMu.Unlock()

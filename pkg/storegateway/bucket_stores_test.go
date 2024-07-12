@@ -807,6 +807,17 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 	assert.Nil(t, stores.getUserTokenBucket("user-1"))
 	assert.Nil(t, stores.getUserTokenBucket("user-2"))
 
+	cfg.BucketStore.TokenBucketBytesLimiter.Mode = string(cortex_tsdb.TokenBucketBytesLimiterDryRun)
+	sharding.users = []string{user1, user2}
+	reg = prometheus.NewPedanticRegistry()
+	stores, err = NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	assert.NoError(t, err)
+	assert.NotNil(t, stores.instanceTokenBucket)
+
+	assert.NoError(t, stores.InitialSync(ctx))
+	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
+	assert.NotNil(t, stores.getUserTokenBucket("user-2"))
+
 	cfg.BucketStore.TokenBucketBytesLimiter.Mode = string(cortex_tsdb.TokenBucketBytesLimiterDisabled)
 	sharding.users = []string{user1, user2}
 	reg = prometheus.NewPedanticRegistry()

@@ -303,12 +303,12 @@ type TokenBucketBytesLimiterConfig struct {
 	InstanceTokenBucketSize    int64   `yaml:"instance_token_bucket_size"`
 	UserTokenBucketSize        int64   `yaml:"user_token_bucket_size"`
 	RequestTokenBucketSize     int64   `yaml:"request_token_bucket_size"`
-	FetchedPostingsTokenFactor float64 `yaml:"fetched_postings_token_factor"`
-	TouchedPostingsTokenFactor float64 `yaml:"touched_postings_token_factor"`
-	FetchedSeriesTokenFactor   float64 `yaml:"fetched_series_token_factor"`
-	TouchedSeriesTokenFactor   float64 `yaml:"touched_series_token_factor"`
-	FetchedChunksTokenFactor   float64 `yaml:"fetched_chunks_token_factor"`
-	TouchedChunksTokenFactor   float64 `yaml:"touched_chunks_token_factor"`
+	FetchedPostingsTokenFactor float64 `yaml:"fetched_postings_token_factor" doc:"hidden"`
+	TouchedPostingsTokenFactor float64 `yaml:"touched_postings_token_factor" doc:"hidden"`
+	FetchedSeriesTokenFactor   float64 `yaml:"fetched_series_token_factor" doc:"hidden"`
+	TouchedSeriesTokenFactor   float64 `yaml:"touched_series_token_factor" doc:"hidden"`
+	FetchedChunksTokenFactor   float64 `yaml:"fetched_chunks_token_factor" doc:"hidden"`
+	TouchedChunksTokenFactor   float64 `yaml:"touched_chunks_token_factor" doc:"hidden"`
 }
 
 // RegisterFlags registers the BucketStore flags

@@ -458,8 +458,8 @@ func TestGetOrAddQueueShouldUpdateProperties(t *testing.T) {
 	}
 }
 
-func TestGetOrAddQueueConcurrency(t *testing.T) {
-	const numGoRoutines = 10
+func TestQueueConcurrency(t *testing.T) {
+	const numGoRoutines = 30
 	limits := MockLimits{
 		MaxOutstanding: 50,
 	}
@@ -479,8 +479,11 @@ func TestGetOrAddQueueConcurrency(t *testing.T) {
 			queue := q.getOrAddQueue("userID", 2)
 			if cnt%2 == 0 {
 				queue.enqueueRequest(MockRequest{})
+				q.getNextQueueForQuerier(0, "q-1")
 			} else if cnt%5 == 0 {
 				queue.dequeueRequest(0, false)
+			} else if cnt%7 == 0 {
+				q.deleteQueue("userID")
 			}
 		}(i)
 	}

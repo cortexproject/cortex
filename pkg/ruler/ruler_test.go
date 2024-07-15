@@ -39,7 +39,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	github_com_cortexproject_cortex_pkg_cortexpb "github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -359,14 +358,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "rulename", Value: "rtest_user1_group1_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "alertname", Value: "atest_user1_group1_rule_1"},
 				},
 			},
@@ -375,7 +374,7 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "rulename", Value: "rtest_user1_group2_rule_1"},
 				},
 			},
@@ -384,7 +383,7 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "rulename", Value: "rtest_user2_group1_rule_1"},
 				},
 			},
@@ -393,14 +392,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "rulename", Value: "rtest_user1_group3_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "alertname", Value: "atest_user1_group3_rule_1"},
 				},
 			},
@@ -409,14 +408,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "rulename", Value: "rtest_user2_group1_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "alertname", Value: "atest_user2_group1_rule_1"},
 				},
 			},
@@ -425,14 +424,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user2_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "rulename", Value: "rtest_user2_group2_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user2_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "alertname", Value: "atest_user2_group2_rule_1"},
 				},
 			},
@@ -441,7 +440,7 @@ func TestGetRules(t *testing.T) {
 			{
 				Alert: "atest_user3_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "alertname", Value: "atest_user3_group1_rule_1"},
 				},
 			},
@@ -450,14 +449,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "rulename", Value: "rtest_user2_group1_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "alertname", Value: "atest_user2_group1_rule_1"},
 				},
 			},
@@ -466,14 +465,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "rulename", Value: "rtest_user2_group2_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "alertname", Value: "atest_user2_group2_rule_1"},
 				},
 			},
@@ -482,14 +481,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
 				Record: "rtest_user1_1",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "templatedlabel", Value: "{{ $externalURL }}"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelAdapter{
 					{Name: "alertname", Value: "atest_user3_group1_rule_1"},
 				},
 			},
@@ -629,7 +628,7 @@ func TestGetRules(t *testing.T) {
 		"No Sharding with Rule label matcher filter - match 1 rule": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				Matches: []string{`{alertname="atest_user1_group1_rule_1"}`},
+				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`},
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -641,7 +640,7 @@ func TestGetRules(t *testing.T) {
 		"No Sharding with Rule label matcher filter - label match all alerting rule": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				Matches: []string{`{alertname=~"atest_.*"}`},
+				Matchers: []string{`{alertname=~"atest_.*"}`},
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -766,7 +765,7 @@ func TestGetRules(t *testing.T) {
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulesRequest: RulesRequest{
-				Matches: []string{`{alertname="atest_user1_group1_rule_1"}`},
+				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`},
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -781,7 +780,7 @@ func TestGetRules(t *testing.T) {
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulesRequest: RulesRequest{
-				Matches: []string{`{alertname="atest_user1_group1_rule_1"}`, `{alertname="atest_user2_group1_rule_1"}`},
+				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`, `{alertname="atest_user2_group1_rule_1"}`},
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -796,7 +795,7 @@ func TestGetRules(t *testing.T) {
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulesRequest: RulesRequest{
-				Matches: []string{`{templatedlabel="{{ $externalURL }}"}`},
+				Matchers: []string{`{templatedlabel="{{ $externalURL }}"}`},
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -813,7 +812,7 @@ func TestGetRules(t *testing.T) {
 			rulerStateMap:     rulerStateMapAllActive,
 			replicationFactor: 3,
 			rulesRequest: RulesRequest{
-				Matches: []string{`{alertname="atest_user1_group1_rule_1"}`, `{alertname="atest_user2_group1_rule_1"}`},
+				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`, `{alertname="atest_user2_group1_rule_1"}`},
 			},
 			expectedCount: map[string]int{
 				"user1": 1,

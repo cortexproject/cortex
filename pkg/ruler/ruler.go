@@ -884,7 +884,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 	ruleType := rulesRequest.Type
 	alertState := rulesRequest.State
 	health := rulesRequest.Health
-	matcherSets, err := parseMatchersParam(rulesRequest.Matches)
+	matcherSets, err := parseMatchersParam(rulesRequest.Matchers)
 	if err != nil {
 		return nil, errors.Wrap(err, "error parsing matcher values")
 	}
@@ -932,7 +932,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 			if !returnByHealth(health, string(r.Health())) {
 				continue
 			}
-			if !matches(matcherSets, r.Labels()) {
+			if !matchesMatcherSets(matcherSets, r.Labels()) {
 				continue
 			}
 			lastError := ""
@@ -1077,7 +1077,7 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 					continue
 				}
 			}
-			if !matches(filters.matcherSets, cortexpb.FromLabelAdaptersToLabels(r.Labels)) {
+			if !matchesMatcherSets(filters.matcherSets, cortexpb.FromLabelAdaptersToLabels(r.Labels)) {
 				continue
 			}
 
@@ -1174,7 +1174,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 			RuleGroupNames: rulesRequest.GetRuleGroupNames(),
 			Files:          rulesRequest.GetFiles(),
 			Type:           rulesRequest.GetType(),
-			Matches:        rulesRequest.GetMatches(),
+			Matchers:       rulesRequest.GetMatchers(),
 		})
 
 		if err != nil {
@@ -1356,17 +1356,26 @@ OUTER:
 	return matcherSets, nil
 }
 
-func matches(matcherSets [][]*labels.Matcher, l labels.Labels) bool {
+func matches(l labels.Labels, matchers ...*labels.Matcher) bool {
+	for _, m := range matchers {
+		if v := l.Get(m.Name); !m.Matches(v) {
+			return false
+		}
+	}
+	return true
+}
+
+// matchesMatcherSets ensures all matches in each matcher set are ANDed and the set of those is ORed.
+func matchesMatcherSets(matcherSets [][]*labels.Matcher, l labels.Labels) bool {
 	if len(matcherSets) == 0 {
 		return true
 	}
 
+	var ok bool
 	for _, matchers := range matcherSets {
-		for _, m := range matchers {
-			if v := l.Get(m.Name); m.Matches(v) {
-				return true
-			}
+		if matches(l, matchers...) {
+			ok = true
 		}
 	}
-	return false
+	return ok
 }

@@ -161,7 +161,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		Type:           typ,
 		State:          state,
 		Health:         health,
-		Matches:        req.Form["match[]"],
+		Matchers:       req.Form["match[]"],
 	}
 
 	w.Header().Set("Content-Type", "application/json")

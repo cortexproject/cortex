@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
 )
@@ -423,6 +424,10 @@ func Equal(a, b Labels) bool {
 // EmptyLabels returns an empty Labels value, for convenience.
 func EmptyLabels() Labels {
 	return Labels{}
+}
+
+func yoloString(b []byte) string {
+	return *((*string)(unsafe.Pointer(&b)))
 }
 
 // New returns a sorted Labels from the given labels.

@@ -299,6 +299,11 @@ func Equal(ls, o Labels) bool {
 func EmptyLabels() Labels {
 	return Labels{}
 }
+
+func yoloString(b []byte) string {
+	return *((*string)(unsafe.Pointer(&b)))
+}
+
 func yoloBytes(s string) (b []byte) {
 	*(*string)(unsafe.Pointer(&b)) = s
 	(*reflect.SliceHeader)(unsafe.Pointer(&b)).Cap = len(s)

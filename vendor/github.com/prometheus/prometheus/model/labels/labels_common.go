@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"slices"
 	"strconv"
-	"unsafe"
 
 	"github.com/prometheus/common/model"
 )
@@ -215,8 +214,4 @@ func contains(s []Label, n string) bool {
 		}
 	}
 	return false
-}
-
-func yoloString(b []byte) string {
-	return *((*string)(unsafe.Pointer(&b)))
 }

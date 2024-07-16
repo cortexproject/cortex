@@ -1371,11 +1371,10 @@ func matchesMatcherSets(matcherSets [][]*labels.Matcher, l labels.Labels) bool {
 		return true
 	}
 
-	var ok bool
 	for _, matchers := range matcherSets {
 		if matches(l, matchers...) {
-			ok = true
+			return true
 		}
 	}
-	return ok
+	return false
 }

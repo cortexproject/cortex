@@ -22,11 +22,12 @@
 * [ENHANCEMENT] Upgrade go to 1.22.5 #6014 #6072
 * [ENHANCEMENT] Ingester: Add a new experimental `-ingester.labels-string-interning-enabled` flag to enable string interning for metrics labels. #6057
 * [ENHANCEMENT] Ingester: Add link to renew 10% of the ingesters tokens in the admin page. #6063
+* [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
+* [ENHANCEMENT] Ruler: Add support for filtering by `match` field on Rules API. #6083
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920
 * [BUGFIX] Ingester: Fix `user` and `type` labels for the `cortex_ingester_tsdb_head_samples_appended_total` TSDB metric. #5952
 * [BUGFIX] Querier: Enforce max query length check for `/api/v1/series` API even though `ignoreMaxQueryLength` is set to true. #6018
 * [BUGFIX] Ingester: Fix issue with the minimize token generator where it was not taking in consideration the current ownerhip of an instance when generating extra tokens. #6062
-* [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
 
 ## 1.17.1 2024-05-20
 

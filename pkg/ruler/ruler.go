@@ -884,6 +884,10 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 	ruleType := rulesRequest.Type
 	alertState := rulesRequest.State
 	health := rulesRequest.Health
+	matcherSets, err := parseMatchersParam(rulesRequest.Matchers)
+	if err != nil {
+		return nil, errors.Wrap(err, "error parsing matcher values")
+	}
 
 	returnAlerts := ruleType == "" || ruleType == alertingRuleFilter
 	returnRecording := (ruleType == "" || ruleType == recordingRuleFilter) && alertState == ""
@@ -926,6 +930,9 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 				}
 			}
 			if !returnByHealth(health, string(r.Health())) {
+				continue
+			}
+			if !matchesMatcherSets(matcherSets, r.Labels()) {
 				continue
 			}
 			lastError := ""
@@ -1009,6 +1016,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		fileSet,
 		returnAlerts,
 		returnRecording,
+		matcherSets,
 	})
 	if err != nil {
 		return nil, err
@@ -1023,6 +1031,7 @@ type groupListFilter struct {
 	fileSet          map[string]struct{}
 	returnAlerts     bool
 	returnRecording  bool
+	matcherSets      [][]*labels.Matcher
 }
 
 // ruleGroupListToGroupStateDesc converts rulespb.RuleGroupList to []*GroupStateDesc while accepting filters to control what goes to the
@@ -1067,6 +1076,9 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 				if _, OK := filters.ruleNameSet[name]; !OK {
 					continue
 				}
+			}
+			if !matchesMatcherSets(filters.matcherSets, cortexpb.FromLabelAdaptersToLabels(r.Labels)) {
+				continue
 			}
 
 			var ruleDesc *RuleStateDesc
@@ -1162,6 +1174,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 			RuleGroupNames: rulesRequest.GetRuleGroupNames(),
 			Files:          rulesRequest.GetFiles(),
 			Type:           rulesRequest.GetType(),
+			Matchers:       rulesRequest.GetMatchers(),
 		})
 
 		if err != nil {
@@ -1319,4 +1332,49 @@ func returnByState(requestState string, alertState string) bool {
 
 func returnByHealth(requestHealth string, ruleHealth string) bool {
 	return requestHealth == "" || requestHealth == ruleHealth
+}
+
+func parseMatchersParam(matchers []string) ([][]*labels.Matcher, error) {
+	var matcherSets [][]*labels.Matcher
+	for _, s := range matchers {
+		matchers, err := parser.ParseMetricSelector(s)
+		if err != nil {
+			return nil, err
+		}
+		matcherSets = append(matcherSets, matchers)
+	}
+
+OUTER:
+	for _, ms := range matcherSets {
+		for _, lm := range ms {
+			if lm != nil && !lm.Matches("") {
+				continue OUTER
+			}
+		}
+		return nil, errors.New("match[] must contain at least one non-empty matcher")
+	}
+	return matcherSets, nil
+}
+
+func matches(l labels.Labels, matchers ...*labels.Matcher) bool {
+	for _, m := range matchers {
+		if v := l.Get(m.Name); !m.Matches(v) {
+			return false
+		}
+	}
+	return true
+}
+
+// matchesMatcherSets ensures all matches in each matcher set are ANDed and the set of those is ORed.
+func matchesMatcherSets(matcherSets [][]*labels.Matcher, l labels.Labels) bool {
+	if len(matcherSets) == 0 {
+		return true
+	}
+
+	for _, matchers := range matcherSets {
+		if matches(l, matchers...) {
+			return true
+		}
+	}
+	return false
 }

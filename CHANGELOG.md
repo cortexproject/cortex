@@ -25,6 +25,7 @@
 * [ENHANCEMENT] Ingester: Add link to renew 10% of the ingesters tokens in the admin page. #6063
 * [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
 * [ENHANCEMENT] Ruler: Add support for filtering by `match` field on Rules API. #6083
+* [ENHANCEMENT] Distributor: Reduce memory usage when error volume is high. #6095
 * [ENHANCEMENT] Compactor: Add unique execution ID for each compaction cycle in log for easy debugging. #6097
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920
 * [BUGFIX] Ingester: Fix `user` and `type` labels for the `cortex_ingester_tsdb_head_samples_appended_total` TSDB metric. #5952

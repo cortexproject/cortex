@@ -155,6 +155,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryTenants, "ingester.instance-limits.max-tenants", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.instance-limits.max-series", 0, "Max series that this ingester can hold (across all tenants). Requests to create additional series will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInflightQueryRequests, "ingester.instance-limits.max-inflight-query-requests", 0, "Max inflight query requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
 
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
 
@@ -1401,9 +1402,6 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
-	c := i.trackInflightQueryRequest()
-	defer c()
-
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1426,8 +1424,15 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
+	// We will report *this* request in the error too.
+	c, err := i.trackInflightQueryRequest()
+	if err != nil {
+		return nil, err
+	}
+
 	// It's not required to sort series from a single ingester because series are sorted by the Exemplar Storage before returning from Select.
 	res, err := q.Select(from, through, matchers...)
+	c()
 	if err != nil {
 		return nil, err
 	}
@@ -1452,8 +1457,6 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
-	c := i.trackInflightQueryRequest()
-	defer c()
 	resp, cleanup, err := i.labelsValuesCommon(ctx, req)
 	defer cleanup()
 	return resp, err
@@ -1461,8 +1464,6 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 
 // LabelValuesStream returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
-	c := i.trackInflightQueryRequest()
-	defer c()
 	resp, cleanup, err := i.labelsValuesCommon(stream.Context(), req)
 	defer cleanup()
 
@@ -1525,6 +1526,11 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		q.Close()
 	}
 
+	c, err := i.trackInflightQueryRequest()
+	if err != nil {
+		return nil, cleanup, err
+	}
+	defer c()
 	vals, _, err := q.LabelValues(ctx, labelName, matchers...)
 	if err != nil {
 		return nil, cleanup, err
@@ -1537,8 +1543,6 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
-	c := i.trackInflightQueryRequest()
-	defer c()
 	resp, cleanup, err := i.labelNamesCommon(ctx, req)
 	defer cleanup()
 	return resp, err
@@ -1546,8 +1550,6 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 
 // LabelNamesStream return all the label names.
 func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
-	c := i.trackInflightQueryRequest()
-	defer c()
 	resp, cleanup, err := i.labelNamesCommon(stream.Context(), req)
 	defer cleanup()
 
@@ -1605,6 +1607,11 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		q.Close()
 	}
 
+	c, err := i.trackInflightQueryRequest()
+	if err != nil {
+		return nil, cleanup, err
+	}
+	defer c()
 	names, _, err := q.LabelNames(ctx)
 	if err != nil {
 		return nil, cleanup, err
@@ -1831,9 +1838,6 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
-	c := i.trackInflightQueryRequest()
-	defer c()
-
 	spanlog, ctx := spanlogger.New(stream.Context(), "QueryStream")
 	defer spanlog.Finish()
 
@@ -1879,11 +1883,18 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	return nil
 }
 
-func (i *Ingester) trackInflightQueryRequest() func() {
+func (i *Ingester) trackInflightQueryRequest() (func(), error) {
+	gl := i.getInstanceLimits()
+	if gl != nil && gl.MaxInflightQueryRequests > 0 {
+		if i.inflightQueryRequests.Load() >= gl.MaxInflightQueryRequests {
+			return nil, errTooManyInflightQueryRequests
+		}
+	}
+
 	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
 	return func() {
 		i.inflightQueryRequests.Dec()
-	}
+	}, nil
 }
 
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
@@ -1894,8 +1905,13 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	}
 	defer q.Close()
 
+	c, err := i.trackInflightQueryRequest()
+	if err != nil {
+		return 0, 0, 0, err
+	}
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss := q.Select(ctx, false, nil, matchers...)
+	c()
 	if ss.Err() != nil {
 		return 0, 0, 0, ss.Err()
 	}

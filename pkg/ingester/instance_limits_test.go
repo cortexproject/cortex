@@ -9,10 +9,11 @@ import (
 
 func TestInstanceLimitsUnmarshal(t *testing.T) {
 	defaultInstanceLimits = &InstanceLimits{
-		MaxIngestionRate:        10,
-		MaxInMemoryTenants:      20,
-		MaxInMemorySeries:       30,
-		MaxInflightPushRequests: 40,
+		MaxIngestionRate:         10,
+		MaxInMemoryTenants:       20,
+		MaxInMemorySeries:        30,
+		MaxInflightPushRequests:  40,
+		MaxInflightQueryRequests: 50,
 	}
 
 	l := InstanceLimits{}
@@ -24,6 +25,7 @@ max_tenants: 50000
 	require.NoError(t, yaml.UnmarshalStrict([]byte(input), &l))
 	require.Equal(t, float64(125.678), l.MaxIngestionRate)
 	require.Equal(t, int64(50000), l.MaxInMemoryTenants)
-	require.Equal(t, int64(30), l.MaxInMemorySeries)       // default value
-	require.Equal(t, int64(40), l.MaxInflightPushRequests) // default value
+	require.Equal(t, int64(30), l.MaxInMemorySeries)        // default value
+	require.Equal(t, int64(40), l.MaxInflightPushRequests)  // default value
+	require.Equal(t, int64(50), l.MaxInflightQueryRequests) // default value
 }

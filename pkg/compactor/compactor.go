@@ -539,6 +539,8 @@ func (c *Compactor) starting(ctx context.Context) error {
 			return errors.Wrap(err, "unable to initialize compactor ring lifecycler")
 		}
 
+		c.blocksCleaner.SetRingLifecyclerID(c.ringLifecycler.ID)
+
 		c.ring, err = ring.New(lifecyclerCfg.RingConfig, "compactor", ringKey, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.registerer))
 		if err != nil {
 			return errors.Wrap(err, "unable to initialize compactor ring")

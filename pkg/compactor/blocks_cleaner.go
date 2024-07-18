@@ -15,6 +15,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -28,6 +29,8 @@ import (
 const (
 	defaultDeleteBlocksConcurrency = 16
 	reasonValueRetention           = "retention"
+	activeStatus                   = "active"
+	deletedStatus                  = "deleted"
 )
 
 type BlocksCleanerConfig struct {
@@ -47,14 +50,16 @@ type BlocksCleaner struct {
 	bucketClient objstore.InstrumentedBucket
 	usersScanner *cortex_tsdb.UsersScanner
 
+	ringLifecyclerID string
+
 	// Keep track of the last owned users.
 	lastOwnedUsers []string
 
 	// Metrics.
-	runsStarted                       prometheus.Counter
-	runsCompleted                     prometheus.Counter
-	runsFailed                        prometheus.Counter
-	runsLastSuccess                   prometheus.Gauge
+	runsStarted                       *prometheus.CounterVec
+	runsCompleted                     *prometheus.CounterVec
+	runsFailed                        *prometheus.CounterVec
+	runsLastSuccess                   *prometheus.GaugeVec
 	blocksCleanedTotal                prometheus.Counter
 	blocksFailedTotal                 prometheus.Counter
 	blocksMarkedForDeletion           *prometheus.CounterVec
@@ -63,6 +68,8 @@ type BlocksCleaner struct {
 	tenantBlocksMarkedForNoCompaction *prometheus.GaugeVec
 	tenantPartialBlocks               *prometheus.GaugeVec
 	tenantBucketIndexLastUpdate       *prometheus.GaugeVec
+	tenantBlocksCleanedTotal          *prometheus.CounterVec
+	tenantCleanDuration               *prometheus.GaugeVec
 }
 
 func NewBlocksCleaner(
@@ -75,27 +82,28 @@ func NewBlocksCleaner(
 	blocksMarkedForDeletion *prometheus.CounterVec,
 ) *BlocksCleaner {
 	c := &BlocksCleaner{
-		cfg:          cfg,
-		bucketClient: bucketClient,
-		usersScanner: usersScanner,
-		cfgProvider:  cfgProvider,
-		logger:       log.With(logger, "component", "cleaner"),
-		runsStarted: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		cfg:              cfg,
+		bucketClient:     bucketClient,
+		usersScanner:     usersScanner,
+		cfgProvider:      cfgProvider,
+		logger:           log.With(logger, "component", "cleaner"),
+		ringLifecyclerID: "default-cleaner",
+		runsStarted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_started_total",
 			Help: "Total number of blocks cleanup runs started.",
-		}),
-		runsCompleted: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		}, []string{"tenant_status"}),
+		runsCompleted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_completed_total",
 			Help: "Total number of blocks cleanup runs successfully completed.",
-		}),
-		runsFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		}, []string{"tenant_status"}),
+		runsFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_failed_total",
 			Help: "Total number of blocks cleanup runs failed.",
-		}),
-		runsLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		}, []string{"tenant_status"}),
+		runsLastSuccess: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_compactor_block_cleanup_last_successful_run_timestamp_seconds",
 			Help: "Unix timestamp of the last successful blocks cleanup run.",
-		}),
+		}, []string{"tenant_status"}),
 		blocksCleanedTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_blocks_cleaned_total",
 			Help: "Total number of blocks deleted.",
@@ -129,54 +137,175 @@ func NewBlocksCleaner(
 			Name: "cortex_bucket_index_last_successful_update_timestamp_seconds",
 			Help: "Timestamp of the last successful update of a tenant's bucket index.",
 		}, []string{"user"}),
+		tenantBlocksCleanedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_bucket_blocks_cleaned_total",
+			Help: "Total number of blocks deleted for a tenant.",
+		}, commonLabels),
+		tenantCleanDuration: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_bucket_clean_duration_seconds",
+			Help: "Duration of cleaner runtime for a tenant in seconds",
+		}, commonLabels),
 	}
 
-	c.Service = services.NewTimerService(cfg.CleanupInterval, c.starting, c.ticker, nil)
+	c.Service = services.NewBasicService(c.starting, c.loop, nil)
 
 	return c
+}
+
+type cleanerJob struct {
+	users     []string
+	timestamp int64
+}
+
+func (c *BlocksCleaner) SetRingLifecyclerID(ringLifecyclerID string) {
+	c.ringLifecyclerID = ringLifecyclerID
 }
 
 func (c *BlocksCleaner) starting(ctx context.Context) error {
 	// Run a cleanup so that any other service depending on this service
 	// is guaranteed to start once the initial cleanup has been done.
-	c.runCleanup(ctx, true)
+	activeUsers, deletedUsers, err := c.scanUsers(ctx)
 
+	if err != nil {
+		level.Error(c.logger).Log("msg", "failed to scan users on startup", "err", err.Error())
+		c.runsFailed.WithLabelValues(deletedStatus).Inc()
+		c.runsFailed.WithLabelValues(activeStatus).Inc()
+		return nil
+	}
+	if err = c.cleanUpActiveUsers(ctx, activeUsers, true); err != nil {
+		c.runsFailed.WithLabelValues(activeStatus).Inc()
+	}
+	if err = c.cleanDeletedUsers(ctx, deletedUsers); err != nil {
+		c.runsFailed.WithLabelValues(deletedStatus).Inc()
+	}
 	return nil
 }
 
-func (c *BlocksCleaner) ticker(ctx context.Context) error {
-	c.runCleanup(ctx, false)
+func (c *BlocksCleaner) loop(ctx context.Context) error {
+	t := time.NewTicker(c.cfg.CleanupInterval)
+	defer t.Stop()
 
-	return nil
-}
+	usersChan := make(chan *cleanerJob)
+	deleteChan := make(chan *cleanerJob)
+	defer close(usersChan)
+	defer close(deleteChan)
 
-func (c *BlocksCleaner) runCleanup(ctx context.Context, firstRun bool) {
-	level.Info(c.logger).Log("msg", "started blocks cleanup and maintenance")
-	c.runsStarted.Inc()
+	go func() {
+		c.runActiveUserCleanup(ctx, usersChan)
+	}()
+	go func() {
+		c.runDeleteUserCleanup(ctx, deleteChan)
+	}()
 
-	if err := c.cleanUsers(ctx, firstRun); err == nil {
-		level.Info(c.logger).Log("msg", "successfully completed blocks cleanup and maintenance")
-		c.runsCompleted.Inc()
-		c.runsLastSuccess.SetToCurrentTime()
-	} else if errors.Is(err, context.Canceled) {
-		level.Info(c.logger).Log("msg", "canceled blocks cleanup and maintenance", "err", err)
-		return
-	} else {
-		level.Error(c.logger).Log("msg", "failed to run blocks cleanup and maintenance", "err", err.Error())
-		c.runsFailed.Inc()
+	for {
+		select {
+		case <-t.C:
+			activeUsers, deletedUsers, err := c.scanUsers(ctx)
+			if err != nil {
+				level.Error(c.logger).Log("msg", "failed to scan users blocks cleanup and maintenance", "err", err.Error())
+				c.runsFailed.WithLabelValues(deletedStatus).Inc()
+				c.runsFailed.WithLabelValues(activeStatus).Inc()
+				continue
+			}
+			cleanJobTimestamp := time.Now().Unix()
+			usersChan <- &cleanerJob{
+				users:     activeUsers,
+				timestamp: cleanJobTimestamp,
+			}
+			deleteChan <- &cleanerJob{
+				users:     deletedUsers,
+				timestamp: cleanJobTimestamp,
+			}
+
+		case <-ctx.Done():
+			return nil
+		}
 	}
 }
 
-func (c *BlocksCleaner) cleanUsers(ctx context.Context, firstRun bool) error {
+func (c *BlocksCleaner) runActiveUserCleanup(ctx context.Context, jobChan chan *cleanerJob) {
+	for job := range jobChan {
+		if job.timestamp < time.Now().Add(-c.cfg.CleanupInterval).Unix() {
+			level.Warn(c.logger).Log("Active user cleaner job too old. Ignoring to get recent data")
+			continue
+		}
+		c.cleanUpActiveUsers(ctx, job.users, false) //nolint:errcheck
+	}
+}
+
+func (c *BlocksCleaner) cleanUpActiveUsers(ctx context.Context, users []string, firstRun bool) error {
+	level.Info(c.logger).Log("msg", "started blocks cleanup and maintenance for active users")
+	c.runsStarted.WithLabelValues(activeStatus).Inc()
+
+	err := concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
+		userLogger := util_log.WithUserID(userID, c.logger)
+		userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
+		errChan := make(chan error, 1)
+		defer func() {
+			errChan <- nil
+		}()
+		return errors.Wrapf(c.cleanUser(ctx, userLogger, userBucket, userID, firstRun), "failed to delete blocks for user: %s", userID)
+	})
+
+	if err == nil {
+		level.Info(c.logger).Log("msg", "successfully completed blocks cleanup and maintenance for active users")
+		c.runsCompleted.WithLabelValues(activeStatus).Inc()
+		c.runsLastSuccess.WithLabelValues(activeStatus).SetToCurrentTime()
+	} else if errors.Is(err, context.Canceled) {
+		level.Info(c.logger).Log("msg", "canceled blocks cleanup and maintenance for active users", "err", err)
+	} else {
+		level.Error(c.logger).Log("msg", "failed to run blocks cleanup and maintenance for active users", "err", err.Error())
+		c.runsFailed.WithLabelValues(activeStatus).Inc()
+	}
+	return err
+}
+
+func (c *BlocksCleaner) runDeleteUserCleanup(ctx context.Context, jobChan chan *cleanerJob) {
+	for job := range jobChan {
+		if job.timestamp < time.Now().Add(-c.cfg.CleanupInterval).Unix() {
+			level.Warn(c.logger).Log("Delete users cleaner job too old. Ignoring to get recent data")
+			continue
+		}
+		c.cleanDeletedUsers(ctx, job.users) //nolint:errcheck
+	}
+}
+
+func (c *BlocksCleaner) cleanDeletedUsers(ctx context.Context, users []string) error {
+	level.Info(c.logger).Log("msg", "started blocks cleanup and maintenance for deleted users")
+	c.runsStarted.WithLabelValues(deletedStatus).Inc()
+
+	err := concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
+		userLogger := util_log.WithUserID(userID, c.logger)
+		userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
+		errChan := make(chan error, 1)
+		defer func() {
+			errChan <- nil
+		}()
+		return errors.Wrapf(c.deleteUserMarkedForDeletion(ctx, userLogger, userBucket, userID), "failed to delete user marked for deletion: %s", userID)
+	})
+
+	if err == nil {
+		level.Info(c.logger).Log("msg", "successfully completed blocks cleanup and maintenance for deleted users")
+		c.runsCompleted.WithLabelValues(deletedStatus).Inc()
+		c.runsLastSuccess.WithLabelValues(deletedStatus).SetToCurrentTime()
+	} else if errors.Is(err, context.Canceled) {
+		level.Info(c.logger).Log("msg", "canceled blocks cleanup and maintenance for deleted users", "err", err)
+	} else {
+		level.Error(c.logger).Log("msg", "failed to run blocks cleanup and maintenance for deleted users", "err", err.Error())
+		c.runsFailed.WithLabelValues(deletedStatus).Inc()
+	}
+	return err
+}
+
+func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, error) {
 	users, deleted, err := c.usersScanner.ScanUsers(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to discover users from bucket")
+		return nil, nil, errors.Wrap(err, "failed to discover users from bucket")
 	}
 
 	isActive := util.StringsMap(users)
 	isDeleted := util.StringsMap(deleted)
 	allUsers := append(users, deleted...)
-
 	// Delete per-tenant metrics for all tenants not belonging anymore to this shard.
 	// Such tenants have been moved to a different shard, so their updated metrics will
 	// be exported by the new shard.
@@ -191,18 +320,11 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context, firstRun bool) error {
 	}
 	c.lastOwnedUsers = allUsers
 
-	return concurrency.ForEachUser(ctx, allUsers, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
-		if isDeleted[userID] {
-			return errors.Wrapf(c.deleteUserMarkedForDeletion(ctx, userID), "failed to delete user marked for deletion: %s", userID)
-		}
-		return errors.Wrapf(c.cleanUser(ctx, userID, firstRun), "failed to delete blocks for user: %s", userID)
-	})
+	return users, deleted, nil
 }
 
 // Remove blocks and remaining data for tenant marked for deletion.
-func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID string) error {
-	userLogger := util_log.WithUserID(userID, c.logger)
-	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
+func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) error {
 
 	level.Info(userLogger).Log("msg", "deleting blocks for tenant marked for deletion")
 
@@ -211,51 +333,58 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 	if err := bucketindex.DeleteIndex(ctx, c.bucketClient, userID, c.cfgProvider); err != nil {
 		return err
 	}
-
 	// Delete the bucket sync status
 	if err := bucketindex.DeleteIndexSyncStatus(ctx, c.bucketClient, userID); err != nil {
 		return err
 	}
 	c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
 
-	var deletedBlocks, failed int
+	var blocksToDelete []interface{}
 	err := userBucket.Iter(ctx, "", func(name string) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-
 		id, ok := block.IsBlockDir(name)
 		if !ok {
 			return nil
 		}
-
-		err := block.Delete(ctx, userLogger, userBucket, id)
-		if err != nil {
-			failed++
-			c.blocksFailedTotal.Inc()
-			level.Warn(userLogger).Log("msg", "failed to delete block", "block", id, "err", err)
-			return nil // Continue with other blocks.
-		}
-
-		deletedBlocks++
-		c.blocksCleanedTotal.Inc()
-		level.Info(userLogger).Log("msg", "deleted block", "block", id)
+		blocksToDelete = append(blocksToDelete, id)
 		return nil
 	})
-
 	if err != nil {
 		return err
 	}
 
-	if failed > 0 {
+	var deletedBlocks, failed atomic.Int64
+	err = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job interface{}) error {
+		blockID := job.(ulid.ULID)
+		err := block.Delete(ctx, userLogger, userBucket, blockID)
+		if err != nil {
+			failed.Add(1)
+			c.blocksFailedTotal.Inc()
+			level.Warn(userLogger).Log("msg", "failed to delete block", "block", blockID, "err", err)
+			return nil // Continue with other blocks.
+		}
+
+		deletedBlocks.Add(1)
+		c.blocksCleanedTotal.Inc()
+		c.tenantBlocksCleanedTotal.WithLabelValues(userID).Inc()
+		level.Info(userLogger).Log("msg", "deleted block", "block", blockID)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if failed.Load() > 0 {
 		// The number of blocks left in the storage is equal to the number of blocks we failed
 		// to delete. We also consider them all marked for deletion given the next run will try
 		// to delete them again.
-		c.tenantBlocks.WithLabelValues(userID).Set(float64(failed))
-		c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(failed))
+		c.tenantBlocks.WithLabelValues(userID).Set(float64(failed.Load()))
+		c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(failed.Load()))
 		c.tenantPartialBlocks.WithLabelValues(userID).Set(0)
 
-		return errors.Errorf("failed to delete %d blocks", failed)
+		return errors.Errorf("failed to delete %d blocks", failed.Load())
 	}
 
 	// Given all blocks have been deleted, we can also remove the metrics.
@@ -264,8 +393,8 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 	c.tenantBlocksMarkedForNoCompaction.DeleteLabelValues(userID)
 	c.tenantPartialBlocks.DeleteLabelValues(userID)
 
-	if deletedBlocks > 0 {
-		level.Info(userLogger).Log("msg", "deleted blocks for tenant marked for deletion", "deletedBlocks", deletedBlocks)
+	if deletedBlocks.Load() > 0 {
+		level.Info(userLogger).Log("msg", "deleted blocks for tenant marked for deletion", "deletedBlocks", deletedBlocks.Load())
 	}
 
 	mark, err := cortex_tsdb.ReadTenantDeletionMark(ctx, c.bucketClient, userID)
@@ -275,22 +404,18 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 	if mark == nil {
 		return errors.Wrap(err, "cannot find tenant deletion mark anymore")
 	}
-
 	// If we have just deleted some blocks, update "finished" time. Also update "finished" time if it wasn't set yet, but there are no blocks.
 	// Note: this UPDATES the tenant deletion mark. Components that use caching bucket will NOT SEE this update,
 	// but that is fine -- they only check whether tenant deletion marker exists or not.
-	if deletedBlocks > 0 || mark.FinishedTime == 0 {
+	if deletedBlocks.Load() > 0 || mark.FinishedTime == 0 {
 		level.Info(userLogger).Log("msg", "updating finished time in tenant deletion mark")
 		mark.FinishedTime = time.Now().Unix()
 		return errors.Wrap(cortex_tsdb.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
 	}
-
 	if time.Since(time.Unix(mark.FinishedTime, 0)) < c.cfg.TenantCleanupDelay {
 		return nil
 	}
-
 	level.Info(userLogger).Log("msg", "cleaning up remaining blocks data for tenant marked for deletion")
-
 	// Let's do final cleanup of tenant.
 	if deleted, err := bucket.DeletePrefix(ctx, userBucket, block.DebugMetas, userLogger); err != nil {
 		return errors.Wrap(err, "failed to delete "+block.DebugMetas)
@@ -303,17 +428,14 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 	} else if deleted > 0 {
 		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted)
 	}
-
 	if err := cortex_tsdb.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
 		return errors.Wrap(err, "failed to delete tenant deletion mark")
 	}
-
 	return nil
 }
 
-func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun bool) (returnErr error) {
-	userLogger := util_log.WithUserID(userID, c.logger)
-	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
+func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string, firstRun bool) (returnErr error) {
+	c.blocksMarkedForDeletion.WithLabelValues(userID, reasonValueRetention)
 	startTime := time.Now()
 
 	level.Info(userLogger).Log("msg", "started blocks cleanup and maintenance")
@@ -323,6 +445,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		} else {
 			level.Info(userLogger).Log("msg", "completed blocks cleanup and maintenance", "duration", time.Since(startTime))
 		}
+		c.tenantCleanDuration.WithLabelValues(userID).Set(time.Since(startTime).Seconds())
 	}()
 
 	// Migrate block deletion marks to the global markers location. This operation is a best-effort.
@@ -346,6 +469,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	idxs.SyncTime = time.Now().Unix()
 
 	// Read the bucket index.
+	begin := time.Now()
 	idx, err := bucketindex.ReadIndex(ctx, c.bucketClient, userID, c.cfgProvider, c.logger)
 
 	defer func() {
@@ -370,6 +494,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		idxs.Status = bucketindex.GenericError
 		return err
 	}
+	level.Info(userLogger).Log("msg", "finish reading index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Mark blocks for future deletion based on the retention period for the user.
 	// Note doing this before UpdateIndex, so it reads in the deletion marks.
@@ -383,15 +508,18 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	}
 
 	// Generate an updated in-memory version of the bucket index.
+	begin = time.Now()
 	w := bucketindex.NewUpdater(c.bucketClient, userID, c.cfgProvider, c.logger)
 	idx, partials, totalBlocksBlocksMarkedForNoCompaction, err := w.UpdateIndex(ctx, idx)
 	if err != nil {
 		idxs.Status = bucketindex.GenericError
 		return err
 	}
+	level.Info(userLogger).Log("msg", "finish updating index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Delete blocks marked for deletion. We iterate over a copy of deletion marks because
 	// we'll need to manipulate the index (removing blocks which get deleted).
+	begin = time.Now()
 	blocksToDelete := make([]interface{}, 0, len(idx.BlockDeletionMarks))
 	var mux sync.Mutex
 	for _, mark := range idx.BlockDeletionMarks.Clone() {
@@ -400,8 +528,10 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		}
 		blocksToDelete = append(blocksToDelete, mark.ID)
 	}
+	level.Info(userLogger).Log("msg", "finish getting blocks to be deleted", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Concurrently deletes blocks marked for deletion, and removes blocks from index.
+	begin = time.Now()
 	_ = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job interface{}) error {
 		blockID := job.(ulid.ULID)
 
@@ -417,20 +547,26 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		mux.Unlock()
 
 		c.blocksCleanedTotal.Inc()
+		c.tenantBlocksCleanedTotal.WithLabelValues(userID).Inc()
 		level.Info(userLogger).Log("msg", "deleted block marked for deletion", "block", blockID)
 		return nil
 	})
+	level.Info(userLogger).Log("msg", "finish deleting blocks", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Partial blocks with a deletion mark can be cleaned up. This is a best effort, so we don't return
 	// error if the cleanup of partial blocks fail.
 	if len(partials) > 0 {
-		c.cleanUserPartialBlocks(ctx, partials, idx, userBucket, userLogger)
+		begin = time.Now()
+		c.cleanUserPartialBlocks(ctx, userID, partials, idx, userBucket, userLogger)
+		level.Info(userLogger).Log("msg", "finish cleaning partial blocks", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
 
 	// Upload the updated index to the storage.
+	begin = time.Now()
 	if err := bucketindex.WriteIndex(ctx, c.bucketClient, userID, c.cfgProvider, idx); err != nil {
 		return err
 	}
+	level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
 	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
@@ -442,7 +578,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 
 // cleanUserPartialBlocks delete partial blocks which are safe to be deleted. The provided partials map
 // and index are updated accordingly.
-func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map[ulid.ULID]error, idx *bucketindex.Index, userBucket objstore.InstrumentedBucket, userLogger log.Logger) {
+func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, userID string, partials map[ulid.ULID]error, idx *bucketindex.Index, userBucket objstore.InstrumentedBucket, userLogger log.Logger) {
 	// Collect all blocks with missing meta.json into buffered channel.
 	blocks := make([]interface{}, 0, len(partials))
 
@@ -497,6 +633,7 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 		mux.Unlock()
 
 		c.blocksCleanedTotal.Inc()
+		c.tenantBlocksCleanedTotal.WithLabelValues(userID).Inc()
 		level.Info(userLogger).Log("msg", "deleted partial block marked for deletion", "block", blockID)
 		return nil
 	})

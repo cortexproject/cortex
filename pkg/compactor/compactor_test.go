@@ -214,8 +214,6 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	assert.Equal(t, prom_testutil.ToFloat64(c.CompactionRunInterval), cfg.CompactionInterval.Seconds())
 
 	assert.ElementsMatch(t, []string{
-		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="compactor started"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=0`,
@@ -252,15 +250,13 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
-		cortex_compactor_block_cleanup_started_total 1
+		cortex_compactor_block_cleanup_started_total{tenant_status="active"} 1
+		cortex_compactor_block_cleanup_started_total{tenant_status="deleted"} 1
 
 		# TYPE cortex_compactor_block_cleanup_completed_total counter
 		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
-		cortex_compactor_block_cleanup_completed_total 1
-
-		# TYPE cortex_compactor_block_cleanup_failed_total counter
-		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
-		cortex_compactor_block_cleanup_failed_total 0
+		cortex_compactor_block_cleanup_completed_total{tenant_status="active"} 1
+		cortex_compactor_block_cleanup_completed_total{tenant_status="deleted"} 1
 	`),
 		"cortex_compactor_runs_started_total",
 		"cortex_compactor_runs_completed_total",
@@ -310,8 +306,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	bucketClient.AssertNumberOfCalls(t, "Iter", 1+3)
 
 	assert.ElementsMatch(t, []string{
-		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
-		`level=error component=cleaner msg="failed to run blocks cleanup and maintenance" err="failed to discover users from bucket: failed to iterate the bucket"`,
+		`level=error component=cleaner msg="failed to scan users on startup" err="failed to discover users from bucket: failed to iterate the bucket"`,
 		`level=info component=compactor msg="compactor started"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=error component=compactor msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
@@ -338,10 +333,6 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 		# TYPE cortex_compactor_blocks_cleaned_total counter
 		cortex_compactor_blocks_cleaned_total 0
 
-		# TYPE cortex_compactor_block_cleanup_started_total counter
-		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
-		cortex_compactor_block_cleanup_started_total 1
-
 		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
 		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
 		cortex_compactor_blocks_marked_for_no_compaction_total 0
@@ -350,13 +341,10 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 		# TYPE cortex_compactor_meta_sync_consistency_delay_seconds gauge
 		cortex_compactor_meta_sync_consistency_delay_seconds 0
 
-		# TYPE cortex_compactor_block_cleanup_completed_total counter
-		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
-		cortex_compactor_block_cleanup_completed_total 0
-
 		# TYPE cortex_compactor_block_cleanup_failed_total counter
 		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
-		cortex_compactor_block_cleanup_failed_total 1
+		cortex_compactor_block_cleanup_failed_total{tenant_status="active"} 1
+		cortex_compactor_block_cleanup_failed_total{tenant_status="deleted"} 1
 	`),
 		"cortex_compactor_runs_started_total",
 		"cortex_compactor_runs_completed_total",
@@ -549,12 +537,6 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	assert.Len(t, tsdbPlanner.getNoCompactBlocks(), 0)
 
 	assert.ElementsMatch(t, []string{
-		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-2 msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-2 msg="completed blocks cleanup and maintenance"`,
-		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="compactor started"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
@@ -605,18 +587,18 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
 		cortex_compactor_blocks_marked_for_deletion_total{reason="compaction",user="user-1"} 0
 		cortex_compactor_blocks_marked_for_deletion_total{reason="compaction",user="user-2"} 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-1"} 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-2"} 0
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
-		cortex_compactor_block_cleanup_started_total 1
+		cortex_compactor_block_cleanup_started_total{tenant_status="active"} 1
+		cortex_compactor_block_cleanup_started_total{tenant_status="deleted"} 1
 
 		# TYPE cortex_compactor_block_cleanup_completed_total counter
 		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
-		cortex_compactor_block_cleanup_completed_total 1
-
-		# TYPE cortex_compactor_block_cleanup_failed_total counter
-		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
-		cortex_compactor_block_cleanup_failed_total 0
+		cortex_compactor_block_cleanup_completed_total{tenant_status="active"} 1
+		cortex_compactor_block_cleanup_completed_total{tenant_status="deleted"} 1
 
 		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
 		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
@@ -683,13 +665,6 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 0)
 
 	assert.ElementsMatch(t, []string{
-		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
-		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
-		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json bucket=mock`,
-		`level=info component=cleaner org_id=user-1 msg="deleted block marked for deletion" block=01DTW0ZCPDDNV4BV83Q2SV4QAZ`,
-		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
-		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="compactor started"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=1`,
@@ -733,18 +708,17 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
 		cortex_compactor_blocks_marked_for_deletion_total{reason="compaction",user="user-1"} 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-1"} 0
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
-		cortex_compactor_block_cleanup_started_total 1
+		cortex_compactor_block_cleanup_started_total{tenant_status="active"} 1
+		cortex_compactor_block_cleanup_started_total{tenant_status="deleted"} 1
 
 		# TYPE cortex_compactor_block_cleanup_completed_total counter
 		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
-		cortex_compactor_block_cleanup_completed_total 1
-
-		# TYPE cortex_compactor_block_cleanup_failed_total counter
-		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
-		cortex_compactor_block_cleanup_failed_total 0
+		cortex_compactor_block_cleanup_completed_total{tenant_status="active"} 1
+		cortex_compactor_block_cleanup_completed_total{tenant_status="deleted"} 1
 
 		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
 		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
@@ -876,14 +850,6 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 0)
 
 	assert.ElementsMatch(t, []string{
-		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="deleting blocks for tenant marked for deletion"`,
-		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/meta.json bucket=mock`,
-		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/index bucket=mock`,
-		`level=info component=cleaner org_id=user-1 msg="deleted block" block=01DTVP434PA9VFXSW2JKB3392D`,
-		`level=info component=cleaner org_id=user-1 msg="deleted blocks for tenant marked for deletion" deletedBlocks=1`,
-		`level=info component=cleaner org_id=user-1 msg="updating finished time in tenant deletion mark"`,
-		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="compactor started"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=1`,
@@ -922,15 +888,13 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
-		cortex_compactor_block_cleanup_started_total 1
+		cortex_compactor_block_cleanup_started_total{tenant_status="active"} 1
+		cortex_compactor_block_cleanup_started_total{tenant_status="deleted"} 1
 
 		# TYPE cortex_compactor_block_cleanup_completed_total counter
 		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
-		cortex_compactor_block_cleanup_completed_total 1
-
-		# TYPE cortex_compactor_block_cleanup_failed_total counter
-		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
-		cortex_compactor_block_cleanup_failed_total 0
+		cortex_compactor_block_cleanup_completed_total{tenant_status="active"} 1
+		cortex_compactor_block_cleanup_completed_total{tenant_status="deleted"} 1
 
 		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
 		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
@@ -1078,12 +1042,6 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	assert.ElementsMatch(t, []string{
 		`level=info component=compactor msg="waiting until compactor is ACTIVE in the ring"`,
 		`level=info component=compactor msg="compactor is ACTIVE in the ring"`,
-		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-2 msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-2 msg="completed blocks cleanup and maintenance"`,
-		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="compactor started"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
@@ -1507,10 +1465,15 @@ func removeIgnoredLogs(input []string) []string {
 		`level=info component=compactor msg="compactor stopped"`:                                                                                                  {},
 	}
 
+	ignoredLogStringsRegexList := []*regexp.Regexp{
+		regexp.MustCompile(`^level=(info|debug|warn) component=cleaner .+$`),
+	}
+
 	out := make([]string, 0, len(input))
 	durationRe := regexp.MustCompile(`\s?duration(_ms)?=\S+`)
 	executionIDRe := regexp.MustCompile(`\s?execution_id=\S+`)
 
+main:
 	for i := 0; i < len(input); i++ {
 		log := input[i]
 
@@ -1526,6 +1489,12 @@ func removeIgnoredLogs(input []string) []string {
 
 		if _, exists := ignoredLogStringsMap[log]; exists {
 			continue
+		}
+
+		for _, ignoreRegex := range ignoredLogStringsRegexList {
+			if ignoreRegex.MatchString(log) {
+				continue main
+			}
 		}
 
 		out = append(out, log)

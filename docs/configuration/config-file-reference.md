@@ -2961,6 +2961,11 @@ instance_limits:
   # CLI flag: -ingester.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
 
+  # Max inflight query requests that this ingester can handle (across all
+  # tenants). Additional requests will be rejected. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.max-inflight-query-requests
+  [max_inflight_query_requests: <int> | default = 0]
+
 # Comma-separated list of metric names, for which
 # -ingester.max-series-per-metric and -ingester.max-global-series-per-metric
 # limits will be ignored. Does not affect max-series-per-user or

@@ -25,6 +25,12 @@ func WithTraceID(traceID string, l log.Logger) log.Logger {
 	return log.With(l, "traceID", traceID)
 }
 
+// WithExecutionID returns a Logger that has information about the execution id in
+// its details.
+func WithExecutionID(executionID string, l log.Logger) log.Logger {
+	return log.With(l, "execution_id", executionID)
+}
+
 // WithContext returns a Logger that has information about the current user in
 // its details.
 //

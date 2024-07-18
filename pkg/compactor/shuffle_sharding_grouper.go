@@ -13,7 +13,6 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -23,28 +22,21 @@ import (
 )
 
 type ShuffleShardingGrouper struct {
-	ctx                         context.Context
-	logger                      log.Logger
-	bkt                         objstore.InstrumentedBucket
-	acceptMalformedIndex        bool
-	enableVerticalCompaction    bool
-	reg                         prometheus.Registerer
-	blocksMarkedForDeletion     prometheus.Counter
-	blocksMarkedForNoCompact    prometheus.Counter
-	garbageCollectedBlocks      prometheus.Counter
-	remainingPlannedCompactions prometheus.Gauge
-	hashFunc                    metadata.HashFunc
-	compactions                 *prometheus.CounterVec
-	compactionRunsStarted       *prometheus.CounterVec
-	compactionRunsCompleted     *prometheus.CounterVec
-	compactionFailures          *prometheus.CounterVec
-	verticalCompactions         *prometheus.CounterVec
-	compactorCfg                Config
-	limits                      Limits
-	userID                      string
-	blockFilesConcurrency       int
-	blocksFetchConcurrency      int
-	compactionConcurrency       int
+	ctx                      context.Context
+	logger                   log.Logger
+	bkt                      objstore.InstrumentedBucket
+	acceptMalformedIndex     bool
+	enableVerticalCompaction bool
+	blocksMarkedForNoCompact prometheus.Counter
+	syncerMetrics            *compact.SyncerMetrics
+	compactorMetrics         *compactorMetrics
+	hashFunc                 metadata.HashFunc
+	compactorCfg             Config
+	limits                   Limits
+	userID                   string
+	blockFilesConcurrency    int
+	blocksFetchConcurrency   int
+	compactionConcurrency    int
 
 	ring               ring.ReadRing
 	ringLifecyclerAddr string
@@ -63,12 +55,10 @@ func NewShuffleShardingGrouper(
 	bkt objstore.InstrumentedBucket,
 	acceptMalformedIndex bool,
 	enableVerticalCompaction bool,
-	reg prometheus.Registerer,
-	blocksMarkedForDeletion prometheus.Counter,
 	blocksMarkedForNoCompact prometheus.Counter,
-	garbageCollectedBlocks prometheus.Counter,
-	remainingPlannedCompactions prometheus.Gauge,
 	hashFunc metadata.HashFunc,
+	syncerMetrics *compact.SyncerMetrics,
+	compactorMetrics *compactorMetrics,
 	compactorCfg Config,
 	ring ring.ReadRing,
 	ringLifecyclerAddr string,
@@ -93,33 +83,10 @@ func NewShuffleShardingGrouper(
 		bkt:                         bkt,
 		acceptMalformedIndex:        acceptMalformedIndex,
 		enableVerticalCompaction:    enableVerticalCompaction,
-		reg:                         reg,
-		blocksMarkedForDeletion:     blocksMarkedForDeletion,
 		blocksMarkedForNoCompact:    blocksMarkedForNoCompact,
-		garbageCollectedBlocks:      garbageCollectedBlocks,
-		remainingPlannedCompactions: remainingPlannedCompactions,
 		hashFunc:                    hashFunc,
-		// Metrics are copied from Thanos DefaultGrouper constructor
-		compactions: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "thanos_compact_group_compactions_total",
-			Help: "Total number of group compaction attempts that resulted in a new block.",
-		}, []string{"group"}),
-		compactionRunsStarted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "thanos_compact_group_compaction_runs_started_total",
-			Help: "Total number of group compaction attempts.",
-		}, []string{"group"}),
-		compactionRunsCompleted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "thanos_compact_group_compaction_runs_completed_total",
-			Help: "Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.",
-		}, []string{"group"}),
-		compactionFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "thanos_compact_group_compactions_failures_total",
-			Help: "Total number of failed group compactions.",
-		}, []string{"group"}),
-		verticalCompactions: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "thanos_compact_group_vertical_compactions_total",
-			Help: "Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
-		}, []string{"group"}),
+		syncerMetrics:               syncerMetrics,
+		compactorMetrics:            compactorMetrics,
 		compactorCfg:                compactorCfg,
 		ring:                        ring,
 		ringLifecyclerAddr:          ringLifecyclerAddr,
@@ -167,7 +134,9 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	}
 	// Metrics for the remaining planned compactions
 	var remainingCompactions = 0.
-	defer func() { g.remainingPlannedCompactions.Set(remainingCompactions) }()
+	defer func() {
+		g.compactorMetrics.remainingPlannedCompactions.WithLabelValues(g.userID).Set(remainingCompactions)
+	}()
 
 	var groups []blocksGroup
 	for _, mainBlocks := range mainGroups {
@@ -242,7 +211,11 @@ mainLoop:
 		// resolution and external labels.
 		resolution := group.blocks[0].Thanos.Downsample.Resolution
 		externalLabels := labels.FromMap(group.blocks[0].Thanos.Labels)
-
+		timeRange := group.rangeEnd - group.rangeStart
+		metricLabelValues := []string{
+			g.userID,
+			fmt.Sprintf("%d", timeRange),
+		}
 		thanosGroup, err := compact.NewGroup(
 			log.With(g.logger, "groupKey", groupKey, "rangeStart", group.rangeStartTime().String(), "rangeEnd", group.rangeEndTime().String(), "externalLabels", externalLabels, "downsampleResolution", resolution),
 			g.bkt,
@@ -251,13 +224,13 @@ mainLoop:
 			resolution,
 			g.acceptMalformedIndex,
 			true, // Enable vertical compaction.
-			g.compactions.WithLabelValues(groupKey),
-			g.compactionRunsStarted.WithLabelValues(groupKey),
-			g.compactionRunsCompleted.WithLabelValues(groupKey),
-			g.compactionFailures.WithLabelValues(groupKey),
-			g.verticalCompactions.WithLabelValues(groupKey),
-			g.garbageCollectedBlocks,
-			g.blocksMarkedForDeletion,
+			g.compactorMetrics.compactions.WithLabelValues(metricLabelValues...),
+			g.compactorMetrics.compactionRunsStarted.WithLabelValues(metricLabelValues...),
+			g.compactorMetrics.compactionRunsCompleted.WithLabelValues(metricLabelValues...),
+			g.compactorMetrics.compactionFailures.WithLabelValues(metricLabelValues...),
+			g.compactorMetrics.verticalCompactions.WithLabelValues(metricLabelValues...),
+			g.syncerMetrics.GarbageCollectedBlocks,
+			g.syncerMetrics.BlocksMarkedForDeletion,
 			g.blocksMarkedForNoCompact,
 			g.hashFunc,
 			g.blockFilesConcurrency,

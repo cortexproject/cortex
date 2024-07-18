@@ -119,6 +119,16 @@ func TestSyncerMetrics(t *testing.T) {
 			cortex_compactor_remaining_planned_compactions{user="aaa"} 377740
 			cortex_compactor_remaining_planned_compactions{user="bbb"} 388850
 			cortex_compactor_remaining_planned_compactions{user="ccc"} 399960
+			# HELP cortex_compactor_compaction_halt_error_total Total number of halt errors from compactions.
+			# TYPE cortex_compactor_compaction_halt_error_total counter
+			cortex_compactor_compaction_halt_error_total{user="aaa"} 444400
+			cortex_compactor_compaction_halt_error_total{user="bbb"} 455510
+			cortex_compactor_compaction_halt_error_total{user="ccc"} 466620
+			# HELP cortex_compactor_compaction_retry_error_total Total number of retry errors from compactions.
+			# TYPE cortex_compactor_compaction_retry_error_total counter
+			cortex_compactor_compaction_retry_error_total{user="aaa"} 411070
+			cortex_compactor_compaction_retry_error_total{user="bbb"} 422180
+			cortex_compactor_compaction_retry_error_total{user="ccc"} 433290
 	`))
 	require.NoError(t, err)
 
@@ -163,4 +173,10 @@ func generateTestData(cm *compactorMetrics, base float64) {
 	cm.remainingPlannedCompactions.WithLabelValues("aaa").Add(34 * base)
 	cm.remainingPlannedCompactions.WithLabelValues("bbb").Add(35 * base)
 	cm.remainingPlannedCompactions.WithLabelValues("ccc").Add(36 * base)
+	cm.compactionRetryErrors.WithLabelValues("aaa").Add(37 * base)
+	cm.compactionRetryErrors.WithLabelValues("bbb").Add(38 * base)
+	cm.compactionRetryErrors.WithLabelValues("ccc").Add(39 * base)
+	cm.compactionHaltErrors.WithLabelValues("aaa").Add(40 * base)
+	cm.compactionHaltErrors.WithLabelValues("bbb").Add(41 * base)
+	cm.compactionHaltErrors.WithLabelValues("ccc").Add(42 * base)
 }

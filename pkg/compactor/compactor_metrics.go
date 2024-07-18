@@ -37,6 +37,8 @@ type compactorMetrics struct {
 	compactionFailures          *prometheus.CounterVec
 	verticalCompactions         *prometheus.CounterVec
 	remainingPlannedCompactions *prometheus.GaugeVec
+	compactionRetryErrors       *prometheus.CounterVec
+	compactionHaltErrors        *prometheus.CounterVec
 }
 
 const (
@@ -158,6 +160,14 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 	m.remainingPlannedCompactions = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cortex_compactor_remaining_planned_compactions",
 		Help: "Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy",
+	}, commonLabels)
+	m.compactionRetryErrors = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_compaction_retry_error_total",
+		Help: "Total number of retry errors from compactions.",
+	}, commonLabels)
+	m.compactionHaltErrors = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_compaction_halt_error_total",
+		Help: "Total number of halt errors from compactions.",
 	}, commonLabels)
 
 	return &m

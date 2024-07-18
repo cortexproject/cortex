@@ -1646,8 +1646,8 @@ func (m *tsdbPlannerMock) getNoCompactBlocks() []string {
 	return result
 }
 
-func mockBlockMetaJSON(id string) string {
-	meta := tsdb.BlockMeta{
+func mockBlockMeta(id string) tsdb.BlockMeta {
+	return tsdb.BlockMeta{
 		Version: 1,
 		ULID:    ulid.MustParse(id),
 		MinTime: 1574776800000,
@@ -1657,6 +1657,10 @@ func mockBlockMetaJSON(id string) string {
 			Sources: []ulid.ULID{ulid.MustParse(id)},
 		},
 	}
+}
+
+func mockBlockMetaJSON(id string) string {
+	meta := mockBlockMeta(id)
 
 	content, err := json.Marshal(meta)
 	if err != nil {
@@ -2018,4 +2022,110 @@ func TestCompactor_ShouldNotFailCompactionIfAccessDeniedErrReturnedFromBucket(t 
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+}
+
+func TestCompactor_FailedWithRetriableError(t *testing.T) {
+	t.Parallel()
+
+	ss := bucketindex.Status{Status: bucketindex.Ok, Version: bucketindex.SyncStatusFileVersion}
+	content, err := json.Marshal(ss)
+	require.NoError(t, err)
+
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("__markers__", []string{}, nil)
+	bucketClient.MockIter("", []string{"user-1"}, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json"}, nil)
+	bucketClient.MockIter("user-1/markers/", nil, nil)
+	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockIter("user-1/01DTVP434PA9VFXSW2JKB3392D", nil, errors.New("test retriable error"))
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
+	bucketClient.MockIter("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", nil, errors.New("test retriable error"))
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
+	bucketClient.MockGet("user-1/bucket-index-sync-status.json", string(content), nil)
+	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
+	bucketClient.MockUpload("user-1/bucket-index-sync-status.json", nil)
+
+	cfg := prepareConfig()
+	cfg.CompactionRetries = 2
+
+	c, _, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil)
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{{BlockMeta: mockBlockMeta("01DTVP434PA9VFXSW2JKB3392D")}, {BlockMeta: mockBlockMeta("01DTW0ZCPDDNV4BV83Q2SV4QAZ")}}, nil)
+
+	ctx, _ := context.WithCancel(context.Background())
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+
+	cortex_testutil.Poll(t, 1*time.Second, 2.0, func() interface{} {
+		return prom_testutil.ToFloat64(c.compactorMetrics.compactionRetryErrors.WithLabelValues("user-1"))
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# HELP cortex_compactor_compaction_retry_error_total Total number of retry errors from compactions.
+		# TYPE cortex_compactor_compaction_retry_error_total counter
+		cortex_compactor_compaction_retry_error_total{user="user-1"} 2
+	`),
+		"cortex_compactor_compaction_retry_error_total",
+		"cortex_compactor_compaction_halt_error_total",
+	))
+}
+
+func TestCompactor_FailedWithHaltError(t *testing.T) {
+	t.Parallel()
+
+	ss := bucketindex.Status{Status: bucketindex.Ok, Version: bucketindex.SyncStatusFileVersion}
+	content, err := json.Marshal(ss)
+	require.NoError(t, err)
+
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("__markers__", []string{}, nil)
+	bucketClient.MockIter("", []string{"user-1"}, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json"}, nil)
+	bucketClient.MockIter("user-1/markers/", nil, nil)
+	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockIter("user-1/01DTVP434PA9VFXSW2JKB3392D", nil, compact.HaltError{})
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
+	bucketClient.MockIter("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", nil, compact.HaltError{})
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
+	bucketClient.MockGet("user-1/bucket-index-sync-status.json", string(content), nil)
+	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
+	bucketClient.MockUpload("user-1/bucket-index-sync-status.json", nil)
+
+	cfg := prepareConfig()
+	cfg.CompactionRetries = 2
+
+	c, _, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil)
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{{BlockMeta: mockBlockMeta("01DTVP434PA9VFXSW2JKB3392D")}, {BlockMeta: mockBlockMeta("01DTW0ZCPDDNV4BV83Q2SV4QAZ")}}, nil)
+
+	ctx, _ := context.WithCancel(context.Background())
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+
+	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c.compactorMetrics.compactionHaltErrors.WithLabelValues("user-1"))
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# HELP cortex_compactor_compaction_halt_error_total Total number of halt errors from compactions.
+		# TYPE cortex_compactor_compaction_halt_error_total counter
+		cortex_compactor_compaction_halt_error_total{user="user-1"} 1
+	`),
+		"cortex_compactor_compaction_retry_error_total",
+		"cortex_compactor_compaction_halt_error_total",
+	))
 }

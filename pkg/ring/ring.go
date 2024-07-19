@@ -80,6 +80,10 @@ type ReadRing interface {
 	// instance does not exist in the ring.
 	GetInstanceState(instanceID string) (InstanceState, error)
 
+	// GetInstanceIdByAddr returns the instance id from its address or an error if the
+	//	// instance does not exist in the ring.
+	GetInstanceIdByAddr(addr string) (string, error)
+
 	// ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes
 	// all instances that have been part of the identifier's shard since "now - lookbackPeriod".
 	ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing
@@ -185,6 +189,8 @@ type Ring struct {
 	// cannot be chanced in place because it's shared "as is" between subrings (the only way to
 	// change it is to create a new one and replace it).
 	ringInstanceByToken map[uint32]instanceInfo
+
+	ringInstanceIdByAddr map[string]string
 
 	// When did a set of instances change the last time (instance changing state or heartbeat is ignored for this timestamp).
 	lastTopologyChange time.Time
@@ -338,6 +344,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	ringTokens := ringDesc.GetTokens()
 	ringTokensByZone := ringDesc.getTokensByZone()
 	ringInstanceByToken := ringDesc.getTokensInfo()
+	ringInstanceByAddr := ringDesc.getInstancesByAddr()
 	ringZones := getZones(ringTokensByZone)
 
 	r.mtx.Lock()
@@ -346,6 +353,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	r.ringTokens = ringTokens
 	r.ringTokensByZone = ringTokensByZone
 	r.ringInstanceByToken = ringInstanceByToken
+	r.ringInstanceIdByAddr = ringInstanceByAddr
 	r.ringZones = ringZones
 	r.lastTopologyChange = now
 	if r.shuffledSubringCache != nil {
@@ -893,6 +901,15 @@ func (r *Ring) GetInstanceState(instanceID string) (InstanceState, error) {
 	}
 
 	return instance.GetState(), nil
+}
+
+// GetInstanceIdByAddr implements ReadRing.
+func (r *Ring) GetInstanceIdByAddr(addr string) (string, error) {
+	if i, ok := r.ringInstanceIdByAddr[addr]; ok {
+		return i, nil
+	}
+
+	return "notFound", ErrInstanceNotFound
 }
 
 // HasInstance returns whether the ring contains an instance matching the provided instanceID.

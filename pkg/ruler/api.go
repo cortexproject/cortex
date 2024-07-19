@@ -147,6 +147,13 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	_, err = parseMatchersParam(req.Form["match[]"])
+	if err != nil {
+		level.Error(logger).Log("msg", "error parsing match query params", "err", err)
+		util_api.RespondError(logger, w, v1.ErrBadData, fmt.Sprintf("error parsing match params %s", err), http.StatusBadRequest)
+		return
+	}
+
 	rulesRequest := RulesRequest{
 		RuleNames:      req.Form["rule_name[]"],
 		RuleGroupNames: req.Form["rule_group[]"],
@@ -154,6 +161,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		Type:           typ,
 		State:          state,
 		Health:         health,
+		Matchers:       req.Form["match[]"],
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -232,12 +232,12 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_append_failures_total counter
-				cortex_distributor_ingester_append_failures_total{ingester="2",status="5xx",type="samples"} 1
+				cortex_distributor_ingester_append_failures_total{ingester="ingester-2",status="5xx",type="samples"} 1
 				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_appends_total counter
-				cortex_distributor_ingester_appends_total{ingester="0",type="samples"} 1
-				cortex_distributor_ingester_appends_total{ingester="1",type="samples"} 1
-				cortex_distributor_ingester_appends_total{ingester="2",type="samples"} 1
+				cortex_distributor_ingester_appends_total{ingester="ingester-0",type="samples"} 1
+				cortex_distributor_ingester_appends_total{ingester="ingester-1",type="samples"} 1
+				cortex_distributor_ingester_appends_total{ingester="ingester-2",type="samples"} 1
 			`,
 		},
 		"A push to ingesters should report the correct metrics with no samples": {
@@ -251,12 +251,12 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_append_failures_total counter
-				cortex_distributor_ingester_append_failures_total{ingester="2",status="5xx",type="metadata"} 1
+				cortex_distributor_ingester_append_failures_total{ingester="ingester-2",status="5xx",type="metadata"} 1
 				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_appends_total counter
-				cortex_distributor_ingester_appends_total{ingester="0",type="metadata"} 1
-				cortex_distributor_ingester_appends_total{ingester="1",type="metadata"} 1
-				cortex_distributor_ingester_appends_total{ingester="2",type="metadata"} 1
+				cortex_distributor_ingester_appends_total{ingester="ingester-0",type="metadata"} 1
+				cortex_distributor_ingester_appends_total{ingester="ingester-1",type="metadata"} 1
+				cortex_distributor_ingester_appends_total{ingester="ingester-2",type="metadata"} 1
 			`,
 		},
 		"A push to overloaded ingesters should report the correct metrics": {
@@ -268,14 +268,14 @@ func TestDistributor_Push(t *testing.T) {
 			expectedResponse: emptyResponse,
 			ingesterError:    httpgrpc.Errorf(http.StatusTooManyRequests, "Fail"),
 			expectedMetrics: `
-				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
-				# TYPE cortex_distributor_ingester_append_failures_total counter
-				cortex_distributor_ingester_append_failures_total{ingester="2",status="4xx",type="metadata"} 1
 				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_appends_total counter
-				cortex_distributor_ingester_appends_total{ingester="0",type="metadata"} 1
-				cortex_distributor_ingester_appends_total{ingester="1",type="metadata"} 1
-				cortex_distributor_ingester_appends_total{ingester="2",type="metadata"} 1
+				cortex_distributor_ingester_appends_total{ingester="ingester-0",type="metadata"} 1
+				cortex_distributor_ingester_appends_total{ingester="ingester-1",type="metadata"} 1
+				cortex_distributor_ingester_appends_total{ingester="ingester-2",type="metadata"} 1
+				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
+				# TYPE cortex_distributor_ingester_append_failures_total counter
+				cortex_distributor_ingester_append_failures_total{ingester="ingester-2",status="4xx",type="metadata"} 1
 			`,
 		},
 		"A push to 3 happy ingesters should succeed, histograms": {
@@ -436,14 +436,16 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 	d.latestSeenSampleTimestampPerUser.WithLabelValues("userA").Set(1111)
 
 	h, _, _ := r.GetAllInstanceDescs(ring.WriteNoExtend)
-	d.ingesterAppends.WithLabelValues(h[0].Addr, typeMetadata).Inc()
-	d.ingesterAppendFailures.WithLabelValues(h[0].Addr, typeMetadata, "2xx").Inc()
-	d.ingesterAppends.WithLabelValues(h[1].Addr, typeMetadata).Inc()
-	d.ingesterAppendFailures.WithLabelValues(h[1].Addr, typeMetadata, "2xx").Inc()
-	d.ingesterQueries.WithLabelValues(h[0].Addr).Inc()
-	d.ingesterQueries.WithLabelValues(h[1].Addr).Inc()
-	d.ingesterQueryFailures.WithLabelValues(h[0].Addr).Inc()
-	d.ingesterQueryFailures.WithLabelValues(h[1].Addr).Inc()
+	ingId0, _ := r.GetInstanceIdByAddr(h[0].Addr)
+	ingId1, _ := r.GetInstanceIdByAddr(h[1].Addr)
+	d.ingesterAppends.WithLabelValues(ingId0, typeMetadata).Inc()
+	d.ingesterAppendFailures.WithLabelValues(ingId0, typeMetadata, "2xx").Inc()
+	d.ingesterAppends.WithLabelValues(ingId1, typeMetadata).Inc()
+	d.ingesterAppendFailures.WithLabelValues(ingId1, typeMetadata, "2xx").Inc()
+	d.ingesterQueries.WithLabelValues(ingId0).Inc()
+	d.ingesterQueries.WithLabelValues(ingId1).Inc()
+	d.ingesterQueryFailures.WithLabelValues(ingId0).Inc()
+	d.ingesterQueryFailures.WithLabelValues(ingId1).Inc()
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.
@@ -489,27 +491,27 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		
 		# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 		# TYPE cortex_distributor_ingester_append_failures_total counter
-		cortex_distributor_ingester_append_failures_total{ingester="0",status="2xx",type="metadata"} 1
-		cortex_distributor_ingester_append_failures_total{ingester="1",status="2xx",type="metadata"} 1
+		cortex_distributor_ingester_append_failures_total{ingester="ingester-0",status="2xx",type="metadata"} 1
+		cortex_distributor_ingester_append_failures_total{ingester="ingester-1",status="2xx",type="metadata"} 1
 		# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
 		# TYPE cortex_distributor_ingester_appends_total counter
-		cortex_distributor_ingester_appends_total{ingester="0",type="metadata"} 1
-		cortex_distributor_ingester_appends_total{ingester="1",type="metadata"} 1
+		cortex_distributor_ingester_appends_total{ingester="ingester-0",type="metadata"} 1
+		cortex_distributor_ingester_appends_total{ingester="ingester-1",type="metadata"} 1
 		# HELP cortex_distributor_ingester_queries_total The total number of queries sent to ingesters.
 		# TYPE cortex_distributor_ingester_queries_total counter
-		cortex_distributor_ingester_queries_total{ingester="0"} 1
-		cortex_distributor_ingester_queries_total{ingester="1"} 1
+		cortex_distributor_ingester_queries_total{ingester="ingester-0"} 1
+		cortex_distributor_ingester_queries_total{ingester="ingester-1"} 1
 		# HELP cortex_distributor_ingester_query_failures_total The total number of failed queries sent to ingesters.
 		# TYPE cortex_distributor_ingester_query_failures_total counter
-		cortex_distributor_ingester_query_failures_total{ingester="0"} 1
-		cortex_distributor_ingester_query_failures_total{ingester="1"} 1
+		cortex_distributor_ingester_query_failures_total{ingester="ingester-0"} 1
+		cortex_distributor_ingester_query_failures_total{ingester="ingester-1"} 1
 		`), metrics...))
 
 	d.cleanupInactiveUser("userA")
 
 	err := r.KVClient.CAS(context.Background(), ingester.RingKey, func(in interface{}) (interface{}, bool, error) {
 		r := in.(*ring.Desc)
-		delete(r.Ingesters, "0")
+		delete(r.Ingesters, "ingester-0")
 		return in, true, nil
 	})
 
@@ -556,16 +558,16 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 
 		# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 		# TYPE cortex_distributor_ingester_append_failures_total counter
-		cortex_distributor_ingester_append_failures_total{ingester="1",status="2xx",type="metadata"} 1
+		cortex_distributor_ingester_append_failures_total{ingester="ingester-1",status="2xx",type="metadata"} 1
 		# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
 		# TYPE cortex_distributor_ingester_appends_total counter
-		cortex_distributor_ingester_appends_total{ingester="1",type="metadata"} 1
+		cortex_distributor_ingester_appends_total{ingester="ingester-1",type="metadata"} 1
 		# HELP cortex_distributor_ingester_queries_total The total number of queries sent to ingesters.
 		# TYPE cortex_distributor_ingester_queries_total counter
-		cortex_distributor_ingester_queries_total{ingester="1"} 1
+		cortex_distributor_ingester_queries_total{ingester="ingester-1"} 1
 		# HELP cortex_distributor_ingester_query_failures_total The total number of failed queries sent to ingesters.
 		# TYPE cortex_distributor_ingester_query_failures_total counter
-		cortex_distributor_ingester_query_failures_total{ingester="1"} 1
+		cortex_distributor_ingester_query_failures_total{ingester="ingester-1"} 1
 		`), metrics...))
 }
 
@@ -757,23 +759,20 @@ func TestPush_QuorumError(t *testing.T) {
 
 	err := r.KVClient.CAS(context.Background(), ingester.RingKey, func(in interface{}) (interface{}, bool, error) {
 		r := in.(*ring.Desc)
-		ingester2 := r.Ingesters["2"]
+		ingester2 := r.Ingesters["ingester-2"]
 		ingester2.State = ring.LEFT
 		ingester2.Timestamp = time.Now().Unix()
-		r.Ingesters["2"] = ingester2
+		r.Ingesters["ingester-2"] = ingester2
 		return in, true, nil
 	})
 
 	require.NoError(t, err)
 
 	// Give time to the ring get updated with the KV value
-	for {
+	test.Poll(t, 15*time.Second, true, func() interface{} {
 		replicationSet, _ := r.GetAllHealthy(ring.Read)
-		if len(replicationSet.Instances) == 2 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+		return len(replicationSet.Instances) == 2
+	})
 
 	for i := 0; i < numberOfWrites; i++ {
 		request := makeWriteRequest(0, 30, 20, 10)
@@ -2717,8 +2716,9 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		} else {
 			tokens = []uint32{uint32((math.MaxUint32 / cfg.numIngesters) * i)}
 		}
-		addr := fmt.Sprintf("%d", i)
-		ingesterDescs[addr] = ring.InstanceDesc{
+		ingester := fmt.Sprintf("ingester-%d", i)
+		addr := fmt.Sprintf("ip-ingester-%d", i)
+		ingesterDescs[ingester] = ring.InstanceDesc{
 			Addr:                addr,
 			Zone:                "",
 			State:               ring.ACTIVE,

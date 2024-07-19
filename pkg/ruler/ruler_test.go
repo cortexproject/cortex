@@ -358,88 +358,139 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "rulename", Value: "rtest_user1_group1_rule_1"},
+				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "alertname", Value: "atest_user1_group1_rule_1"},
+				},
 			},
 		},
 		"ruler1-user1-rule-group2": []*rulespb.RuleDesc{
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "rulename", Value: "rtest_user1_group2_rule_1"},
+				},
 			},
 		},
 		"ruler1-user2-rule-group1": []*rulespb.RuleDesc{
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "rulename", Value: "rtest_user2_group1_rule_1"},
+				},
 			},
 		},
 		"ruler2-user1-rule-group3": []*rulespb.RuleDesc{
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "rulename", Value: "rtest_user1_group3_rule_1"},
+				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "alertname", Value: "atest_user1_group3_rule_1"},
+				},
 			},
 		},
 		"ruler2-user2-rule-group1": []*rulespb.RuleDesc{
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "rulename", Value: "rtest_user2_group1_rule_1"},
+				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "alertname", Value: "atest_user2_group1_rule_1"},
+				},
 			},
 		},
 		"ruler2-user2-rule-group2": []*rulespb.RuleDesc{
 			{
 				Record: "rtest_user2_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "rulename", Value: "rtest_user2_group2_rule_1"},
+				},
 			},
 			{
 				Alert: "atest_user2_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "alertname", Value: "atest_user2_group2_rule_1"},
+				},
 			},
 		},
 		"ruler2-user3-rule-group1": []*rulespb.RuleDesc{
 			{
 				Alert: "atest_user3_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "alertname", Value: "atest_user3_group1_rule_1"},
+				},
 			},
 		},
 		"ruler3-user2-rule-group1": []*rulespb.RuleDesc{
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "rulename", Value: "rtest_user2_group1_rule_1"},
+				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "alertname", Value: "atest_user2_group1_rule_1"},
+				},
 			},
 		},
 		"ruler3-user2-rule-group2": []*rulespb.RuleDesc{
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "rulename", Value: "rtest_user2_group2_rule_1"},
+				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "alertname", Value: "atest_user2_group2_rule_1"},
+				},
 			},
 		},
 		"ruler3-user3-rule-group1": []*rulespb.RuleDesc{
 			{
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
 				Record: "rtest_user1_1",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "templatedlabel", Value: "{{ $externalURL }}"},
+				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "alertname", Value: "atest_user3_group1_rule_1"},
+				},
 			},
 		},
 	}
@@ -574,6 +625,30 @@ func TestGetRules(t *testing.T) {
 				"user3": 3,
 			},
 		},
+		"No Sharding with Rule label matcher filter - match 1 rule": {
+			sharding: false,
+			rulesRequest: RulesRequest{
+				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`},
+			},
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 1,
+				"user2": 0,
+				"user3": 0,
+			},
+		},
+		"No Sharding with Rule label matcher filter - label match all alerting rule": {
+			sharding: false,
+			rulesRequest: RulesRequest{
+				Matchers: []string{`{alertname=~"atest_.*"}`},
+			},
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 2,
+				"user2": 4,
+				"user3": 2,
+			},
+		},
 		"Default Sharding with No Filter": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
@@ -684,6 +759,67 @@ func TestGetRules(t *testing.T) {
 			},
 			expectedError:           ring.ErrTooManyUnhealthyInstances,
 			expectedClientCallCount: 0,
+		},
+		"Shuffle Sharding and ShardSize = 2 with Rule label Filter": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulesRequest: RulesRequest{
+				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`},
+			},
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 1,
+				"user2": 0,
+				"user3": 0,
+			},
+			expectedClientCallCount: 2,
+		},
+		"Shuffle Sharding and ShardSize = 2 with Rule label Filter match 2 rules": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulesRequest: RulesRequest{
+				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`, `{alertname="atest_user2_group1_rule_1"}`},
+			},
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 1,
+				"user2": 2,
+				"user3": 0,
+			},
+			expectedClientCallCount: 2,
+		},
+		"Shuffle Sharding and ShardSize = 2 with Rule label Filter match templating label": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulesRequest: RulesRequest{
+				Matchers: []string{`{templatedlabel="{{ $externalURL }}"}`},
+			},
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 0,
+				"user2": 0,
+				"user3": 1,
+			},
+			expectedClientCallCount: 2,
+		},
+		"Shuffle Sharding and ShardSize = 3 with API Rules backup enabled with labels filter": {
+			sharding:          true,
+			shuffleShardSize:  3,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			rulerStateMap:     rulerStateMapAllActive,
+			replicationFactor: 3,
+			rulesRequest: RulesRequest{
+				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`, `{alertname="atest_user2_group1_rule_1"}`},
+			},
+			expectedCount: map[string]int{
+				"user1": 1,
+				"user2": 2,
+				"user3": 0,
+			},
+			expectedClientCallCount: 3,
 		},
 		"Shuffle Sharding and ShardSize = 3 with API Rules backup enabled": {
 			sharding:          true,

@@ -8,15 +8,17 @@ var (
 	errMaxUsersLimitReached           = errors.New("cannot create TSDB: ingesters's max tenants limit reached")
 	errMaxSeriesLimitReached          = errors.New("cannot add series: ingesters's max series limit reached")
 	errTooManyInflightPushRequests    = errors.New("cannot push: too many inflight push requests in ingester")
+	errTooManyInflightQueryRequests   = errors.New("cannot push: too many inflight query requests in ingester")
 )
 
 // InstanceLimits describes limits used by ingester. Reaching any of these will result in Push method to return
 // (internal) error.
 type InstanceLimits struct {
-	MaxIngestionRate        float64 `yaml:"max_ingestion_rate"`
-	MaxInMemoryTenants      int64   `yaml:"max_tenants"`
-	MaxInMemorySeries       int64   `yaml:"max_series"`
-	MaxInflightPushRequests int64   `yaml:"max_inflight_push_requests"`
+	MaxIngestionRate         float64 `yaml:"max_ingestion_rate"`
+	MaxInMemoryTenants       int64   `yaml:"max_tenants"`
+	MaxInMemorySeries        int64   `yaml:"max_series"`
+	MaxInflightPushRequests  int64   `yaml:"max_inflight_push_requests"`
+	MaxInflightQueryRequests int64   `yaml:"max_inflight_query_requests"`
 }
 
 // Sets default limit values for unmarshalling.

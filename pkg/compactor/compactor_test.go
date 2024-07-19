@@ -1083,7 +1083,7 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 	cfg.SkipBlocksWithOutOfOrderChunksEnabled = true
 	c, tsdbCompac, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil)
 
-	tsdbCompac.On("CompactWithBlockPopulator", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(b1, nil)
+	tsdbCompac.On("CompactWithBlockPopulator", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]ulid.ULID{b1}, nil)
 
 	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{
 		{
@@ -1629,12 +1629,16 @@ func removeIgnoredLogs(input []string) []string {
 
 	out := make([]string, 0, len(input))
 	durationRe := regexp.MustCompile(`\s?duration(_ms)?=\S+`)
+	executionIDRe := regexp.MustCompile(`\s?execution_id=\S+`)
 
 	for i := 0; i < len(input); i++ {
 		log := input[i]
 
 		// Remove any duration from logs.
 		log = durationRe.ReplaceAllString(log, "")
+
+		// Remove any execution_id from logs.
+		log = executionIDRe.ReplaceAllString(log, "")
 
 		if strings.Contains(log, "block.MetaFetcher") || strings.Contains(log, "block.BaseFetcher") {
 			continue
@@ -1986,7 +1990,7 @@ func TestCompactor_ShouldNotTreatInterruptionsAsErrors(t *testing.T) {
 	c, tsdbCompactor, tsdbPlanner, logs, registry := prepare(t, prepareConfig(), bucketClient, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	tsdbCompactor.On("CompactWithBlockPopulator", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ulid.ULID{}, context.Canceled).Run(func(args mock.Arguments) {
+	tsdbCompactor.On("CompactWithBlockPopulator", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]ulid.ULID{}, context.Canceled).Run(func(args mock.Arguments) {
 		cancel()
 	})
 	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{

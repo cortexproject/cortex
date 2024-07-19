@@ -527,6 +527,16 @@ func (d *Desc) getTokensByZone() map[string][]uint32 {
 	return MergeTokensByZone(zones)
 }
 
+// getInstancesByAddr returns instances id by its address
+func (d *Desc) getInstancesByAddr() map[string]string {
+	instancesByAddMap := make(map[string]string, len(d.Ingesters))
+	for id, instance := range d.Ingesters {
+		instancesByAddMap[instance.Addr] = id
+	}
+
+	return instancesByAddMap
+}
+
 type CompareResult int
 
 // CompareResult responses

@@ -1,14 +1,13 @@
-version: '3.4'
 services:
 
   consul:
-    image: consul
+    image: consul:1.15.4
     command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
     ports:
       - 8500:8500
 
   swift:
-    image: beaukode/docker-swift-onlyone-authv2-keystone
+    image: beaukode/docker-swift-onlyone-authv2-keystone:latest
     volumes:
       - .data-swift:/srv:delegated
     ports:

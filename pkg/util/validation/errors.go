@@ -225,6 +225,24 @@ func newExemplarLabelLengthError(seriesLabels []cortexpb.LabelAdapter, exemplarL
 	}
 }
 
+// histogramBucketLimitExceededError is a ValidationError implementation for samples with native histogram
+// exceeding max bucket limit and cannot reduce resolution further to be within the max bucket limit.
+type histogramBucketLimitExceededError struct {
+	series []cortexpb.LabelAdapter
+	limit  int
+}
+
+func newHistogramBucketLimitExceededError(series []cortexpb.LabelAdapter, limit int) ValidationError {
+	return &histogramBucketLimitExceededError{
+		series: series,
+		limit:  limit,
+	}
+}
+
+func (e *histogramBucketLimitExceededError) Error() string {
+	return fmt.Sprintf("native histogram bucket count exceeded for metric (limit: %d) metric: %.200q", e.limit, formatLabelSet(e.series))
+}
+
 // formatLabelSet formats label adapters as a metric name with labels, while preserving
 // label order, and keeping duplicates. If there are multiple "__name__" labels, only
 // first one is used as metric name, other ones will be included as regular labels.

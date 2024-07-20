@@ -36,7 +36,7 @@ externalConfigSecretName: 'secret-with-config.yaml'
 externalConfigVersion: '0'
 
 config:
-  auth_enabled: false
+  auth_enabled: true
   api:
     prometheus_http_prefix: '/prometheus'
     # -- Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs
@@ -82,7 +82,7 @@ config:
     s3: &s3
       endpoint: seaweedfs.cortex.svc.cluster.local:8333
       region: local
-      bucket_name: cortex-bucket
+      bucket_name: cortex-blocks
       access_key_id: any
       secret_access_key: any
       insecure: true
@@ -93,9 +93,13 @@ config:
       bucket_index:
         enabled: true
   alertmanager_storage:
-    s3: *s3
+    s3:
+      <<: *s3
+      bucket_name: cortex-alertmanager
   ruler_storage:
-    s3: *s3
+    s3:
+      <<: *s3
+      bucket_name: cortex-ruler
   # -- https://cortexmetrics.io/docs/configuration/configuration-file/#store_gateway_config
   store_gateway:
     sharding_enabled: false
@@ -144,7 +148,7 @@ config:
     cluster:
       listen_address: '0.0.0.0:9094'
     # -- Enable the experimental alertmanager config api.
-    enable_api: false
+    enable_api: true
     external_url: '/api/prom/alertmanager'
   frontend:
     log_queries_longer_than: 10s
@@ -275,10 +279,14 @@ alertmanager:
   extraContainers: []
 
   # -- Additional volumes to the cortex pod.
-  extraVolumes: []
+  extraVolumes:
+    - name: tmp
+      emptyDir: { }
 
   # -- Extra volume mounts that will be added to the cortex container
-  extraVolumeMounts: []
+  extraVolumeMounts:
+    - name: tmp
+      mountPath: /tmp
 
   # -- Additional ports to the cortex services. Useful to expose extra container ports.
   extraPorts: []
@@ -1423,11 +1431,7 @@ store_gateway:
       path: /ready
       port: http-metrics
       scheme: HTTP
-  livenessProbe:
-    httpGet:
-      path: /ready
-      port: http-metrics
-      scheme: HTTP
+  livenessProbe: {}
   readinessProbe:
     httpGet:
       path: /ready
@@ -1543,11 +1547,7 @@ compactor:
       path: /ready
       port: http-metrics
       scheme: HTTP
-  livenessProbe:
-    httpGet:
-      path: /ready
-      port: http-metrics
-      scheme: HTTP
+  livenessProbe: {}
   readinessProbe:
     httpGet:
       path: /ready
@@ -1671,3 +1671,4 @@ memberlist:
   service:
     annotations: {}
     labels: {}
+

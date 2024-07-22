@@ -1126,7 +1126,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
-					_, _, err = q.LabelNames(ctx)
+					_, _, err = q.LabelNames(ctx, nil)
 					require.NoError(t, err)
 
 					if !testData.expectedSkipped {
@@ -1154,7 +1154,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
-					_, _, err = q.LabelNames(ctx, matchers...)
+					_, _, err = q.LabelNames(ctx, nil, matchers...)
 					require.NoError(t, err)
 
 					if !testData.expectedSkipped {
@@ -1181,7 +1181,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
-					_, _, err = q.LabelValues(ctx, labels.MetricName)
+					_, _, err = q.LabelValues(ctx, labels.MetricName, nil)
 					require.NoError(t, err)
 
 					if !testData.expectedSkipped {
@@ -1426,11 +1426,11 @@ func (q *mockStoreQuerier) Select(ctx context.Context, _ bool, sp *storage.Selec
 	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc)
 }
 
-func (q *mockStoreQuerier) LabelValues(ctx context.Context, name string, labels ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *mockStoreQuerier) LabelValues(ctx context.Context, name string, _ *storage.LabelHints, labels ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
-func (q *mockStoreQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *mockStoreQuerier) LabelNames(ctx context.Context, _ *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 

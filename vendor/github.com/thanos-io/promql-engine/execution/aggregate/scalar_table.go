@@ -12,10 +12,9 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
@@ -29,7 +28,7 @@ type aggregateTable interface {
 	// If the table is empty, it returns math.MinInt64.
 	timestamp() int64
 	// aggregate aggregates the given vector into the table.
-	aggregate(vector model.StepVector)
+	aggregate(vector model.StepVector) error
 	// toVector writes out the accumulated result to the given vector and
 	// resets the table.
 	toVector(ctx context.Context, pool *model.VectorPool) model.StepVector
@@ -78,29 +77,34 @@ func newScalarTable(inputSampleIDs []uint64, outputs []*model.Series, aggregatio
 	}, nil
 }
 
-func (t *scalarTable) aggregate(vector model.StepVector) {
+func (t *scalarTable) aggregate(vector model.StepVector) error {
 	t.ts = vector.T
 
 	for i := range vector.Samples {
-		t.addSample(vector.SampleIDs[i], vector.Samples[i])
+		if err := t.addSample(vector.SampleIDs[i], vector.Samples[i]); err != nil {
+			return err
+		}
 	}
 	for i := range vector.Histograms {
-		t.addHistogram(vector.HistogramIDs[i], vector.Histograms[i])
+		if err := t.addHistogram(vector.HistogramIDs[i], vector.Histograms[i]); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func (t *scalarTable) addSample(sampleID uint64, sample float64) {
+func (t *scalarTable) addSample(sampleID uint64, sample float64) error {
 	outputSampleID := t.inputs[sampleID]
 	output := t.outputs[outputSampleID]
 
-	t.accumulators[output.ID].Add(sample, nil)
+	return t.accumulators[output.ID].Add(sample, nil)
 }
 
-func (t *scalarTable) addHistogram(sampleID uint64, h *histogram.FloatHistogram) {
+func (t *scalarTable) addHistogram(sampleID uint64, h *histogram.FloatHistogram) error {
 	outputSampleID := t.inputs[sampleID]
 	output := t.outputs[outputSampleID]
 
-	t.accumulators[output.ID].Add(0, h)
+	return t.accumulators[output.ID].Add(0, h)
 }
 
 func (t *scalarTable) reset(arg float64) {
@@ -124,8 +128,7 @@ func (t *scalarTable) toVector(ctx context.Context, pool *model.VectorPool) mode
 				result.AppendHistogram(pool, v.ID, h)
 			}
 		case MixedTypeValue:
-			warn := annotations.New().Add(annotations.NewMixedFloatsHistogramsAggWarning(posrange.PositionRange{}))
-			warnings.AddToContext(warn, ctx)
+			warnings.AddToContext(annotations.NewMixedFloatsHistogramsAggWarning(posrange.PositionRange{}), ctx)
 		}
 	}
 	return result

@@ -379,11 +379,6 @@ func Test_evaluateAtModifier(t *testing.T) {
 			[10m:])`,
 		},
 		{
-			// parse error: missing unit character in duration
-			in:                "http_requests_total[5] @ 10.001",
-			expectedErrorCode: http.StatusBadRequest,
-		},
-		{
 			// parse error: @ modifier must be preceded by an instant vector selector or range vector selector or a subquery
 			in:                "sum(http_requests_total[5m]) @ 10.001",
 			expectedErrorCode: http.StatusBadRequest,

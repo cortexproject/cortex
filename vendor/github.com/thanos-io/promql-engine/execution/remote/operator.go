@@ -116,7 +116,9 @@ func (s *storageAdapter) GetSeries(ctx context.Context, _, _ int) ([]promstorage
 
 func (s *storageAdapter) executeQuery(ctx context.Context) {
 	result := s.query.Exec(ctx)
-	warnings.AddToContext(result.Warnings, ctx)
+	for _, w := range result.Warnings {
+		warnings.AddToContext(w, ctx)
+	}
 	if result.Err != nil {
 		s.err = result.Err
 		return

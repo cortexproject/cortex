@@ -164,7 +164,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 	return series.NewConcreteSeriesSet(sortSeries, serieses)
 }
 
-func (q *distributorQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	var (
 		lvs []string
 		err error
@@ -179,7 +179,7 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, match
 	return lvs, nil, err
 }
 
-func (q *distributorQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	if len(matchers) > 0 {
 		return q.labelNamesWithMatchers(ctx, matchers...)
 	}

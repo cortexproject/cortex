@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/util/annotations"
 	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/query"
 )
 
@@ -125,21 +128,28 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		return nil, err
 	}
 
-	args, err := a.paramOp.Next(ctx)
-	if err != nil {
-		return nil, err
+	if a.paramOp != nil {
+		args, err := a.paramOp.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for i := range args {
+			a.params[i] = args[i].Samples[0]
+			if sample := a.params[i]; math.IsNaN(sample) || sample < 0 || sample > 1 {
+				warnings.AddToContext(annotations.NewInvalidQuantileWarning(sample, posrange.PositionRange{}), ctx)
+			}
+			a.paramOp.GetPool().PutStepVector(args[i])
+		}
+		a.paramOp.GetPool().PutVectors(args)
 	}
-	for i := range args {
-		a.params[i] = args[i].Samples[0]
-		a.paramOp.GetPool().PutStepVector(args[i])
-	}
-	a.paramOp.GetPool().PutVectors(args)
 
 	for i, p := range a.params {
 		a.tables[i].reset(p)
 	}
 	if a.lastBatch != nil {
-		a.aggregate(a.lastBatch)
+		if err := a.aggregate(a.lastBatch); err != nil {
+			return nil, err
+		}
 		a.lastBatch = nil
 	}
 	for {
@@ -153,7 +163,9 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		// Keep aggregating samples as long as timestamps of batches are equal.
 		currentTs := a.tables[0].timestamp()
 		if currentTs == math.MinInt64 || next[0].T == currentTs {
-			a.aggregate(next)
+			if err := a.aggregate(next); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		a.lastBatch = next
@@ -174,12 +186,15 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 	return result, nil
 }
 
-func (a *aggregate) aggregate(in []model.StepVector) {
+func (a *aggregate) aggregate(in []model.StepVector) error {
 	for i, vector := range in {
-		a.tables[i].aggregate(vector)
+		if err := a.tables[i].aggregate(vector); err != nil {
+			return err
+		}
 		a.next.GetPool().PutStepVector(vector)
 	}
 	a.next.GetPool().PutVectors(in)
+	return nil
 }
 
 func (a *aggregate) initializeTables(ctx context.Context) error {

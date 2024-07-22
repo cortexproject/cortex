@@ -1534,7 +1534,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 	defer c()
-	vals, _, err := q.LabelValues(ctx, labelName, matchers...)
+	vals, _, err := q.LabelValues(ctx, labelName, nil, matchers...)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1615,7 +1615,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 	defer c()
-	names, _, err := q.LabelNames(ctx)
+	names, _, err := q.LabelNames(ctx, nil)
 	if err != nil {
 		return nil, cleanup, err
 	}

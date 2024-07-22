@@ -3159,11 +3159,13 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # e.g. remote_write.write_relabel_configs.
 [metric_relabel_configs: <relabel_config...> | default = []]
 
-# Enables support for exemplars in TSDB and sets the maximum number that will be
-# stored. less than zero means disabled. If the value is set to zero, cortex
-# will fallback to blocks-storage.tsdb.max-exemplars value.
-# CLI flag: -ingester.max-exemplars
-[max_exemplars: <int> | default = 0]
+# Limit on total number of positive and negative buckets allowed in a single
+# native histogram. The resolution of a histogram with more buckets will be
+# reduced until the number of buckets is within the limit. If the limit cannot
+# be reached, the sample will be discarded. 0 means no limit. Enforced at
+# Distributor.
+# CLI flag: -validation.max-native-histogram-buckets
+[max_native_histogram_buckets: <int> | default = 0]
 
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user
@@ -3212,6 +3214,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # out-of-order samples. Disabled (0s) by default.
 # CLI flag: -ingester.out-of-order-time-window
 [out_of_order_time_window: <duration> | default = 0s]
+
+# Enables support for exemplars in TSDB and sets the maximum number that will be
+# stored. less than zero means disabled. If the value is set to zero, cortex
+# will fallback to blocks-storage.tsdb.max-exemplars value.
+# CLI flag: -ingester.max-exemplars
+[max_exemplars: <int> | default = 0]
 
 # Maximum number of chunks that can be fetched in a single query from ingesters
 # and long-term storage. This limit is enforced in the querier, ruler and

@@ -83,7 +83,7 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
 		Help: blocksMarkedForDeletionHelp,
-	}, append(CommonLabels, ReasonLabelName))
+	}, append(commonLabels, ReasonLabelName))
 
 	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, cfgProvider, logger, nil, blocksMarkedForDeletion)
 
@@ -184,7 +184,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
 		Help: blocksMarkedForDeletionHelp,
-	}, append(CommonLabels, ReasonLabelName))
+	}, append(commonLabels, ReasonLabelName))
 
 	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
@@ -345,7 +345,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
 		Help: blocksMarkedForDeletionHelp,
-	}, append(CommonLabels, ReasonLabelName))
+	}, append(commonLabels, ReasonLabelName))
 
 	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
@@ -409,7 +409,7 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
 		Help: blocksMarkedForDeletionHelp,
-	}, append(CommonLabels, ReasonLabelName))
+	}, append(commonLabels, ReasonLabelName))
 
 	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
@@ -467,7 +467,7 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
 		Help: blocksMarkedForDeletionHelp,
-	}, append(CommonLabels, ReasonLabelName))
+	}, append(commonLabels, ReasonLabelName))
 
 	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, blocksMarkedForDeletion)
 	require.NoError(t, cleaner.cleanUsers(ctx, true))
@@ -602,7 +602,7 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
 		Help: blocksMarkedForDeletionHelp,
-	}, append(CommonLabels, ReasonLabelName))
+	}, append(commonLabels, ReasonLabelName))
 
 	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, blocksMarkedForDeletion)
 

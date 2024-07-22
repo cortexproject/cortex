@@ -46,16 +46,16 @@ const (
 )
 
 var (
-	CommonLabels     = []string{UserLabelName}
-	CompactionLabels = []string{TimeRangeLabelName}
+	commonLabels     = []string{UserLabelName}
+	compactionLabels = []string{TimeRangeLabelName}
 )
 
 func newDefaultCompactorMetrics(reg prometheus.Registerer) *compactorMetrics {
-	return newCompactorMetricsWithLabels(reg, CommonLabels, []string{"resolution"})
+	return newCompactorMetricsWithLabels(reg, commonLabels, []string{"resolution"})
 }
 
 func newCompactorMetrics(reg prometheus.Registerer) *compactorMetrics {
-	return newCompactorMetricsWithLabels(reg, CommonLabels, append(CommonLabels, CompactionLabels...))
+	return newCompactorMetricsWithLabels(reg, commonLabels, append(commonLabels, compactionLabels...))
 }
 
 func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []string, compactionLabels []string) *compactorMetrics {
@@ -158,7 +158,7 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 	m.remainingPlannedCompactions = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cortex_compactor_remaining_planned_compactions",
 		Help: "Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy",
-	}, CommonLabels)
+	}, commonLabels)
 
 	return &m
 }

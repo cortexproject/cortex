@@ -11,7 +11,7 @@ import (
 
 func TestSyncerMetrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
-	cm := newCompactorMetricsWithLabels(reg, CommonLabels, CommonLabels)
+	cm := newCompactorMetricsWithLabels(reg, commonLabels, commonLabels)
 
 	generateTestData(cm, 1234)
 	generateTestData(cm, 7654)

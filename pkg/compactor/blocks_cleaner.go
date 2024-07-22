@@ -27,7 +27,7 @@ import (
 
 const (
 	defaultDeleteBlocksConcurrency = 16
-	reasonLabelValue               = "retention"
+	reasonValueRetention           = "retention"
 )
 
 type BlocksCleanerConfig struct {
@@ -516,7 +516,7 @@ func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucke
 	// the cleaner will retry applying the retention in its next cycle.
 	for _, b := range blocks {
 		level.Info(userLogger).Log("msg", "applied retention: marking block for deletion", "block", b.ID, "maxTime", b.MaxTime)
-		if err := block.MarkForDeletion(ctx, userLogger, userBucket, b.ID, fmt.Sprintf("block exceeding retention of %v", retention), c.blocksMarkedForDeletion.WithLabelValues(userID, reasonLabelValue)); err != nil {
+		if err := block.MarkForDeletion(ctx, userLogger, userBucket, b.ID, fmt.Sprintf("block exceeding retention of %v", retention), c.blocksMarkedForDeletion.WithLabelValues(userID, reasonValueRetention)); err != nil {
 			level.Warn(userLogger).Log("msg", "failed to mark block for deletion", "block", b.ID, "err", err)
 		}
 	}

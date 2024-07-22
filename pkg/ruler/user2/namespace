@@ -1,4 +1,0 @@
-groups:
-    - name: first
-      interval: 1m
-      rules: []

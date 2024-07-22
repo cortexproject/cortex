@@ -725,7 +725,8 @@ func (o *Overrides) EnforceMetadataMetricName(userID string) bool {
 	return o.GetOverridesForUser(userID).EnforceMetadataMetricName
 }
 
-// MaxNativeHistogramBuckets.
+// MaxNativeHistogramBuckets returns the maximum total number of positive and negative buckets of a single native histogram
+// a user is allowed to store.
 func (o *Overrides) MaxNativeHistogramBuckets(userID string) int {
 	return o.GetOverridesForUser(userID).MaxNativeHistogramBuckets
 }

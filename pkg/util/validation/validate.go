@@ -53,7 +53,7 @@ const (
 	exemplarTimestampInvalid = "exemplar_timestamp_invalid"
 
 	// Native Histogram specific validation reasons
-	nativeHistogramBucketsExceeded = "native_histogram_buckets_exceeded"
+	nativeHistogramBucketCountLimitExceeded = "native_histogram_buckets_exceeded"
 
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
@@ -281,13 +281,13 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 		}
 		// Exceed limit.
 		if histogram.Schema <= cortexpb.ExponentialSchemaMin {
-			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketsExceeded, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 		}
 		fh := cortexpb.FloatHistogramProtoToFloatHistogram(histogram)
 		for len(fh.PositiveBuckets)+len(fh.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
 			if fh.Schema <= cortexpb.ExponentialSchemaMin {
-				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketsExceeded, userID).Inc()
+				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 				return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 			}
 			fh = fh.ReduceResolution(fh.Schema - 1)
@@ -303,13 +303,13 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 	}
 	// Exceed limit.
 	if histogram.Schema <= cortexpb.ExponentialSchemaMin {
-		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketsExceeded, userID).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 		return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 	}
 	h := cortexpb.HistogramProtoToHistogram(histogram)
 	for len(h.PositiveBuckets)+len(h.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
 		if h.Schema <= cortexpb.ExponentialSchemaMin {
-			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketsExceeded, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 		}
 		h = h.ReduceResolution(h.Schema - 1)

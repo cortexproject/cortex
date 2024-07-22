@@ -392,7 +392,7 @@ func TestValidateNativeHistogram(t *testing.T) {
 			actualHistogram, actualErr := ValidateNativeHistogram(validateMetrics, limits, userID, lbls, tc.histogram)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, actualErr)
-				require.Equal(t, float64(1), testutil.ToFloat64(validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketsExceeded, userID)))
+				require.Equal(t, float64(1), testutil.ToFloat64(validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID)))
 			} else {
 				require.NoError(t, actualErr)
 				require.Equal(t, tc.expectedHistogram, actualHistogram)

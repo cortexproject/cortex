@@ -360,7 +360,7 @@ func (u *userTSDB) casState(from, to tsdbState) bool {
 }
 
 // compactHead compacts the Head block at specified block durations avoiding a single huge block.
-func (u *userTSDB) compactHead(blockDuration int64) error {
+func (u *userTSDB) compactHead(ctx context.Context, blockDuration int64) error {
 	if !u.casState(active, forceCompacting) {
 		return errors.New("TSDB head cannot be compacted because it is not in active state (possibly being closed or blocks shipping in progress)")
 	}
@@ -388,7 +388,10 @@ func (u *userTSDB) compactHead(blockDuration int64) error {
 		minTime, maxTime = h.MinTime(), h.MaxTime()
 	}
 
-	return u.db.CompactHead(tsdb.NewRangeHead(h, minTime, maxTime))
+	if err := u.db.CompactHead(tsdb.NewRangeHead(h, minTime, maxTime)); err != nil {
+		return err
+	}
+	return u.db.CompactOOOHead(ctx)
 }
 
 // PreCreation implements SeriesLifecycleCallback interface.
@@ -2536,12 +2539,12 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.
 		switch {
 		case force:
 			reason = "forced"
-			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
+			err = userDB.compactHead(ctx, i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
 
 		case i.TSDBState.compactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.TSDBState.compactionIdleTimeout):
 			reason = "idle"
 			level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
-			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
+			err = userDB.compactHead(ctx, i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
 
 		default:
 			reason = "regular"

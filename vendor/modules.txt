@@ -1075,7 +1075,7 @@ github.com/yuin/gopher-lua/pm
 # github.com/zhangyunhao116/umap v0.0.0-20221211160557-cb7705fafa39
 ## explicit; go 1.13
 github.com/zhangyunhao116/umap
-# go.etcd.io/etcd/api/v3 v3.5.14
+# go.etcd.io/etcd/api/v3 v3.5.15
 ## explicit; go 1.21
 go.etcd.io/etcd/api/v3/authpb
 go.etcd.io/etcd/api/v3/etcdserverpb
@@ -1083,7 +1083,7 @@ go.etcd.io/etcd/api/v3/membershippb
 go.etcd.io/etcd/api/v3/mvccpb
 go.etcd.io/etcd/api/v3/v3rpc/rpctypes
 go.etcd.io/etcd/api/v3/version
-# go.etcd.io/etcd/client/pkg/v3 v3.5.14
+# go.etcd.io/etcd/client/pkg/v3 v3.5.15
 ## explicit; go 1.21
 go.etcd.io/etcd/client/pkg/v3/fileutil
 go.etcd.io/etcd/client/pkg/v3/logutil
@@ -1091,7 +1091,7 @@ go.etcd.io/etcd/client/pkg/v3/systemd
 go.etcd.io/etcd/client/pkg/v3/tlsutil
 go.etcd.io/etcd/client/pkg/v3/transport
 go.etcd.io/etcd/client/pkg/v3/types
-# go.etcd.io/etcd/client/v3 v3.5.14
+# go.etcd.io/etcd/client/v3 v3.5.15
 ## explicit; go 1.21
 go.etcd.io/etcd/client/v3
 go.etcd.io/etcd/client/v3/credentials

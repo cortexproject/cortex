@@ -18,6 +18,12 @@ func WithUserID(userID string, l log.Logger) log.Logger {
 	return log.With(l, "org_id", userID)
 }
 
+// WithExecutionID returns a Logger that has information about the execution id in
+// its details.
+func WithExecutionID(executionID string, l log.Logger) log.Logger {
+	return log.With(l, "execution_id", executionID)
+}
+
 // WithTraceID returns a Logger that has information about the traceID in
 // its details.
 func WithTraceID(traceID string, l log.Logger) log.Logger {

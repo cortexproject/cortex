@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -12,16 +13,21 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -74,17 +80,26 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		ShardingStrategy:   util.ShardingStrategyShuffle,
 	}
 
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(mbucket, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(CommonLabels, ReasonLabelName))
+	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
+	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
 
-	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, cfgProvider, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, 10*time.Second, cfgProvider, logger, nil, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyCounter, dummyCounter, dummyCounter, dummyGaugeVec)
 
 	// Clean User with no error
 	cleaner.bucketClient = bkt
-	err := cleaner.cleanUser(ctx, userID, false)
+	userLogger := util_log.WithUserID(userID, cleaner.logger)
+	userBucket := bucket.NewUserBucketClient(userID, cleaner.bucketClient, cleaner.cfgProvider)
+	err := cleaner.cleanUser(ctx, userLogger, userBucket, userID, false)
 	require.NoError(t, err)
 	s, err := bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
 	require.NoError(t, err)
@@ -93,7 +108,9 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 
 	// Clean with cmk error
 	cleaner.bucketClient = mbucket
-	err = cleaner.cleanUser(ctx, userID, false)
+	userLogger = util_log.WithUserID(userID, cleaner.logger)
+	userBucket = bucket.NewUserBucketClient(userID, cleaner.bucketClient, cleaner.cfgProvider)
+	err = cleaner.cleanUser(ctx, userLogger, userBucket, userID, false)
 	require.NoError(t, err)
 	s, err = bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
 	require.NoError(t, err)
@@ -102,7 +119,9 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 
 	// Re grant access to the key
 	cleaner.bucketClient = bkt
-	err = cleaner.cleanUser(ctx, userID, false)
+	userLogger = util_log.WithUserID(userID, cleaner.logger)
+	userBucket = bucket.NewUserBucketClient(userID, cleaner.bucketClient, cleaner.cfgProvider)
+	err = cleaner.cleanUser(ctx, userLogger, userBucket, userID, false)
 	require.NoError(t, err)
 	s, err = bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
 	require.NoError(t, err)
@@ -138,7 +157,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	createDeletionMark(t, bucketClient, "user-1", block4, now.Add(-deletionDelay).Add(time.Hour))             // Partial block hasn't reached the deletion threshold yet.
 	createDeletionMark(t, bucketClient, "user-1", block5, now.Add(-deletionDelay).Add(-time.Hour))            // Partial block reached the deletion threshold.
 	require.NoError(t, bucketClient.Delete(ctx, path.Join("user-1", block6.String(), metadata.MetaFilename))) // Partial block without deletion mark.
-	createBlockVisitMarker(t, bucketClient, "user-1", block11)                                                // Partial block only has visit marker.
+	createLegacyBlockVisitMarker(t, bucketClient, "user-1", block11)                                          // Partial block only has visit marker.
 	createDeletionMark(t, bucketClient, "user-2", block7, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 
 	// Blocks for user-3, marked for deletion.
@@ -170,14 +189,21 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		CleanupConcurrency:                 options.concurrency,
 		BlockDeletionMarksMigrationEnabled: options.markersMigrationEnabled,
 		TenantCleanupDelay:                 options.tenantDeletionDelay,
+		ShardingStrategy:                   util.ShardingStrategyShuffle,
 	}
 
 	reg := prometheus.NewPedanticRegistry()
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(CommonLabels, ReasonLabelName))
+	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
+	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 60*time.Second, cfgProvider, logger, reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyCounter, dummyCounter, dummyCounter, dummyGaugeVec)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -203,7 +229,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		// Should not delete a partial block without deletion mark.
 		{path: path.Join("user-1", block6.String(), "index"), expectedExists: true},
 		// Should delete a partial block with only visit marker.
-		{path: path.Join("user-1", block11.String(), BlockVisitMarkerFile), expectedExists: false},
+		{path: path.Join("user-1", GetBlockVisitMarkerFile(block11.String())), expectedExists: false},
 		// Should completely delete blocks for user-3, marked for deletion
 		{path: path.Join("user-3", block9.String(), metadata.MetaFilename), expectedExists: false},
 		{path: path.Join("user-3", block9.String(), "index"), expectedExists: false},
@@ -229,9 +255,27 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		assert.Equal(t, tc.expectedExists, exists, tc.user)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
+	runsStartedActive, err := cleaner.runsStarted.GetMetricWithLabelValues(activeStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsStartedActive))
+	runsStartedDeleted, err := cleaner.runsStarted.GetMetricWithLabelValues(deletedStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsStartedDeleted))
+
+	runsCompletedActive, err := cleaner.runsCompleted.GetMetricWithLabelValues(activeStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsCompletedActive))
+	runsCompletedDeleted, err := cleaner.runsCompleted.GetMetricWithLabelValues(deletedStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsCompletedDeleted))
+
+	runsFailedActive, err := cleaner.runsFailed.GetMetricWithLabelValues(activeStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), testutil.ToFloat64(runsFailedActive))
+	runsFailedDeleted, err := cleaner.runsFailed.GetMetricWithLabelValues(deletedStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), testutil.ToFloat64(runsFailedDeleted))
+
 	assert.Equal(t, float64(7), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
 
@@ -319,22 +363,29 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	createDeletionMark(t, bucketClient, userID, block4, now.Add(-deletionDelay).Add(-time.Hour))
 
 	// To emulate a failure deleting a block, we wrap the bucket client in a mocked one.
-	bucketClient = &cortex_testutil.MockBucketFailure{
+	bucketClient = objstore.WithNoopInstr(&mockBucketFailure{
 		Bucket:         bucketClient,
 		DeleteFailures: []string{path.Join(userID, block3.String(), metadata.MetaFilename)},
-	}
+	})
 
 	cfg := BlocksCleanerConfig{
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		ShardingStrategy:   util.ShardingStrategyShuffle,
 	}
 
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(CommonLabels, ReasonLabelName))
+	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
+	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 60*time.Second, cfgProvider, logger, nil, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyCounter, dummyCounter, dummyCounter, dummyGaugeVec)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -352,9 +403,27 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
+	runsStartedActive, err := cleaner.runsStarted.GetMetricWithLabelValues(activeStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsStartedActive))
+	runsStartedDeleted, err := cleaner.runsStarted.GetMetricWithLabelValues(deletedStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsStartedDeleted))
+
+	runsCompletedActive, err := cleaner.runsCompleted.GetMetricWithLabelValues(activeStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsCompletedActive))
+	runsCompletedDeleted, err := cleaner.runsCompleted.GetMetricWithLabelValues(deletedStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsCompletedDeleted))
+
+	runsFailedActive, err := cleaner.runsFailed.GetMetricWithLabelValues(activeStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), testutil.ToFloat64(runsFailedActive))
+	runsFailedDeleted, err := cleaner.runsFailed.GetMetricWithLabelValues(deletedStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), testutil.ToFloat64(runsFailedDeleted))
+
 	assert.Equal(t, float64(2), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksFailedTotal))
 
@@ -388,13 +457,20 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		ShardingStrategy:   util.ShardingStrategyShuffle,
 	}
 
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(CommonLabels, ReasonLabelName))
+	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
+	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 60*time.Second, cfgProvider, logger, nil, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyCounter, dummyCounter, dummyCounter, dummyGaugeVec)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -411,9 +487,27 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
+	runsStartedActive, err := cleaner.runsStarted.GetMetricWithLabelValues(activeStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsStartedActive))
+	runsStartedDeleted, err := cleaner.runsStarted.GetMetricWithLabelValues(deletedStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsStartedDeleted))
+
+	runsCompletedActive, err := cleaner.runsCompleted.GetMetricWithLabelValues(activeStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsCompletedActive))
+	runsCompletedDeleted, err := cleaner.runsCompleted.GetMetricWithLabelValues(deletedStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), testutil.ToFloat64(runsCompletedDeleted))
+
+	runsFailedActive, err := cleaner.runsFailed.GetMetricWithLabelValues(activeStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), testutil.ToFloat64(runsFailedActive))
+	runsFailedDeleted, err := cleaner.runsFailed.GetMetricWithLabelValues(deletedStatus)
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), testutil.ToFloat64(runsFailedDeleted))
+
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
 
@@ -440,6 +534,7 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 		DeletionDelay:      time.Hour,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		ShardingStrategy:   util.ShardingStrategyShuffle,
 	}
 
 	ctx := context.Background()
@@ -447,9 +542,18 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	reg := prometheus.NewPedanticRegistry()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(CommonLabels, ReasonLabelName))
+	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
+	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg)
-	require.NoError(t, cleaner.cleanUsers(ctx, true))
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 60*time.Second, cfgProvider, logger, reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyCounter, dummyCounter, dummyCounter, dummyGaugeVec)
+	activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+	require.NoError(t, err)
+	require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, true))
+	require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
@@ -459,10 +563,10 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
-		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
-		# HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
-		# TYPE cortex_bucket_blocks_partials_count gauge
-		cortex_bucket_blocks_partials_count{user="user-1"} 0
+        cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+        # HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
+        # TYPE cortex_bucket_blocks_partials_count gauge
+        cortex_bucket_blocks_partials_count{user="user-1"} 0
 		cortex_bucket_blocks_partials_count{user="user-2"} 0
 	`),
 		"cortex_bucket_blocks_count",
@@ -477,7 +581,10 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	createTSDBBlock(t, bucketClient, "user-1", 40, 50, nil)
 	createTSDBBlock(t, bucketClient, "user-2", 50, 60, nil)
 
-	require.NoError(t, cleaner.cleanUsers(ctx, false))
+	activeUsers, deleteUsers, err = cleaner.scanUsers(ctx)
+	require.NoError(t, err)
+	require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+	require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
@@ -571,6 +678,7 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 		DeletionDelay:      time.Hour,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		ShardingStrategy:   util.ShardingStrategyShuffle,
 	}
 
 	ctx := context.Background()
@@ -578,8 +686,14 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(CommonLabels, ReasonLabelName))
+	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
+	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 60*time.Second, cfgProvider, logger, reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyCounter, dummyCounter, dummyCounter, dummyGaugeVec)
 
 	assertBlockExists := func(user string, block ulid.ULID, expectExists bool) {
 		exists, err := bucketClient.Exists(ctx, path.Join(user, block.String(), metadata.MetaFilename))
@@ -589,10 +703,17 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Existing behaviour - retention period disabled.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		cfgProvider.userRetentionPeriods["user-1"] = 0
 		cfgProvider.userRetentionPeriods["user-2"] = 0
 
-		require.NoError(t, cleaner.cleanUsers(ctx, true))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, true))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, true)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, true)
@@ -609,7 +730,8 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
 			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-1"} 0
+        	cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-2"} 0
 			`),
 			"cortex_bucket_blocks_count",
 			"cortex_bucket_blocks_marked_for_deletion_count",
@@ -619,9 +741,16 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Retention enabled only for a single user, but does nothing.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		cfgProvider.userRetentionPeriods["user-1"] = 9 * time.Hour
 
-		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, true)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, true)
@@ -631,9 +760,16 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	// Retention enabled only for a single user, marking a single block.
 	// Note the block won't be deleted yet due to deletion delay.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		cfgProvider.userRetentionPeriods["user-1"] = 7 * time.Hour
 
-		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, true)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, true)
@@ -650,7 +786,8 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
 			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 1
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-1"} 1
+        	cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-2"} 0
 			`),
 			"cortex_bucket_blocks_count",
 			"cortex_bucket_blocks_marked_for_deletion_count",
@@ -660,7 +797,14 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Marking the block again, before the deletion occurs, should not cause an error.
 	{
-		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, true)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, true)
@@ -669,9 +813,16 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Reduce the deletion delay. Now the block will be deleted.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		cleaner.cfg.DeletionDelay = 0
 
-		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, false)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, true)
@@ -688,7 +839,8 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
 			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 1
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-1"} 1
+        	cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-2"} 0
 			`),
 			"cortex_bucket_blocks_count",
 			"cortex_bucket_blocks_marked_for_deletion_count",
@@ -698,9 +850,16 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Retention enabled for other user; test deleting multiple blocks.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		cfgProvider.userRetentionPeriods["user-2"] = 5 * time.Hour
 
-		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, false)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, false)
@@ -717,13 +876,104 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
 			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 3
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-1"} 1
+        	cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-2"} 2
 			`),
 			"cortex_bucket_blocks_count",
 			"cortex_bucket_blocks_marked_for_deletion_count",
 			"cortex_compactor_blocks_marked_for_deletion_total",
 		))
 	}
+}
+
+func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	ts := func(hours int) int64 {
+		return time.Now().Add(time.Duration(hours)*time.Hour).Unix() * 1000
+	}
+
+	userID := "user-1"
+	partitionedGroupID := uint32(123)
+	partitionCount := 1
+	startTime := ts(-10)
+	endTime := ts(-8)
+	block1 := createTSDBBlock(t, bucketClient, userID, startTime, endTime, nil)
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      time.Hour,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+		ShardingStrategy:   util.ShardingStrategyShuffle,
+	}
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	reg := prometheus.NewPedanticRegistry()
+	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(CommonLabels, ReasonLabelName))
+	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
+	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 60*time.Second, cfgProvider, logger, reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyCounter, dummyCounter, dummyCounter, dummyGaugeVec)
+
+	userBucket := bucket.NewUserBucketClient(userID, bucketClient, cfgProvider)
+
+	partitionedGroupInfo := PartitionedGroupInfo{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionCount:     partitionCount,
+		Partitions: []Partition{
+			{
+				PartitionID: 0,
+				Blocks:      []ulid.ULID{block1},
+			},
+		},
+		RangeStart:   startTime,
+		RangeEnd:     endTime,
+		CreationTime: time.Now().Add(-5 * time.Minute).Unix(),
+		Version:      PartitionedGroupInfoVersion1,
+	}
+	_, err := UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo, dummyCounter, dummyCounter)
+	require.NoError(t, err)
+
+	partitionVisitMarker := &PartitionVisitMarker{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionID:        0,
+		Status:             Completed,
+		VisitTime:          time.Now().Add(-2 * time.Minute).Unix(),
+	}
+	visitMarkerManager := NewVisitMarkerManager(userBucket, logger, "dummy-cleaner", partitionVisitMarker, dummyCounter, dummyCounter)
+	err = visitMarkerManager.updateVisitMarker(ctx)
+	require.NoError(t, err)
+
+	cleaner.cleanPartitionedGroupInfo(ctx, userBucket, logger, userID)
+
+	partitionedGroupFileExists, err := userBucket.Exists(ctx, GetPartitionedGroupFile(partitionedGroupID))
+	require.NoError(t, err)
+	require.False(t, partitionedGroupFileExists)
+
+	block1DeletionMarkerExists, err := userBucket.Exists(ctx, path.Join(block1.String(), metadata.DeletionMarkFilename))
+	require.NoError(t, err)
+	require.True(t, block1DeletionMarkerExists)
+
+}
+
+type mockBucketFailure struct {
+	objstore.Bucket
+
+	DeleteFailures []string
+}
+
+func (m *mockBucketFailure) Delete(ctx context.Context, name string) error {
+	if util.StringsContain(m.DeleteFailures, name) {
+		return errors.New("mocked delete failure")
+	}
+	return m.Bucket.Delete(ctx, name)
 }
 
 type mockConfigProvider struct {
@@ -753,4 +1003,11 @@ func (m *mockConfigProvider) S3SSEKMSKeyID(userID string) string {
 
 func (m *mockConfigProvider) S3SSEKMSEncryptionContext(userID string) string {
 	return ""
+}
+
+func createLegacyBlockVisitMarker(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID) {
+	content := mockBlockVisitMarker()
+	markPath := path.Join(userID, GetBlockVisitMarkerFile(blockID.String()))
+
+	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
 }

@@ -2060,7 +2060,7 @@ func TestCompactor_FailedWithRetriableError(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	cortex_testutil.Poll(t, 1*time.Second, 2.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactorMetrics.compactionErrorsCount.WithLabelValues("user-1", RetriableError))
+		return prom_testutil.ToFloat64(c.compactorMetrics.compactionErrorsCount.WithLabelValues("user-1", retriableError))
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -2111,7 +2111,7 @@ func TestCompactor_FailedWithHaltError(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactorMetrics.compactionErrorsCount.WithLabelValues("user-1", HaltError))
+		return prom_testutil.ToFloat64(c.compactorMetrics.compactionErrorsCount.WithLabelValues("user-1", haltError))
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))

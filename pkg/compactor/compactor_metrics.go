@@ -41,19 +41,19 @@ type compactorMetrics struct {
 }
 
 const (
-	UserLabelName                 = "user"
-	TimeRangeLabelName            = "time_range_milliseconds"
-	ReasonLabelName               = "reason"
-	CompactionErrorTypesLabelName = "type"
+	userLabelName                 = "user"
+	timeRangeLabelName            = "time_range_milliseconds"
+	reasonLabelName               = "reason"
+	compactionErrorTypesLabelName = "type"
 
-	RetriableError    = "retriable"
-	HaltError         = "halt"
-	UnauthorizedError = "unauthorized"
+	retriableError    = "retriable"
+	haltError         = "halt"
+	unauthorizedError = "unauthorized"
 )
 
 var (
-	commonLabels     = []string{UserLabelName}
-	compactionLabels = []string{TimeRangeLabelName}
+	commonLabels     = []string{userLabelName}
+	compactionLabels = []string{timeRangeLabelName}
 )
 
 func newDefaultCompactorMetrics(reg prometheus.Registerer) *compactorMetrics {
@@ -135,7 +135,7 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 	m.syncerBlocksMarkedForDeletion = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
 		Help: blocksMarkedForDeletionHelp,
-	}, append(commonLabels, ReasonLabelName))
+	}, append(commonLabels, reasonLabelName))
 
 	m.compactions = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compactions_total",
@@ -168,7 +168,7 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 	m.compactionErrorsCount = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_compactor_compaction_error_total",
 		Help: "Total number of errors from compactions.",
-	}, append(commonLabels, CompactionErrorTypesLabelName))
+	}, append(commonLabels, compactionErrorTypesLabelName))
 
 	return &m
 }

@@ -27,6 +27,7 @@
 * [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
 * [ENHANCEMENT] Ruler: Add support for filtering by `match` field on Rules API. #6083
 * [ENHANCEMENT] Distributor: Reduce memory usage when error volume is high. #6095
+* [ENHANCEMENT] Compactor: Centralize metrics used by compactor and add user label to compactor metrics. #6096
 * [ENHANCEMENT] Compactor: Add unique execution ID for each compaction cycle in log for easy debugging. #6097
 * [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920

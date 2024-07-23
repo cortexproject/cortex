@@ -27,6 +27,7 @@ import (
 
 const (
 	defaultDeleteBlocksConcurrency = 16
+	reasonValueRetention           = "retention"
 )
 
 type BlocksCleanerConfig struct {
@@ -56,7 +57,7 @@ type BlocksCleaner struct {
 	runsLastSuccess                   prometheus.Gauge
 	blocksCleanedTotal                prometheus.Counter
 	blocksFailedTotal                 prometheus.Counter
-	blocksMarkedForDeletion           prometheus.Counter
+	blocksMarkedForDeletion           *prometheus.CounterVec
 	tenantBlocks                      *prometheus.GaugeVec
 	tenantBlocksMarkedForDelete       *prometheus.GaugeVec
 	tenantBlocksMarkedForNoCompaction *prometheus.GaugeVec
@@ -64,7 +65,15 @@ type BlocksCleaner struct {
 	tenantBucketIndexLastUpdate       *prometheus.GaugeVec
 }
 
-func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.InstrumentedBucket, usersScanner *cortex_tsdb.UsersScanner, cfgProvider ConfigProvider, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
+func NewBlocksCleaner(
+	cfg BlocksCleanerConfig,
+	bucketClient objstore.InstrumentedBucket,
+	usersScanner *cortex_tsdb.UsersScanner,
+	cfgProvider ConfigProvider,
+	logger log.Logger,
+	reg prometheus.Registerer,
+	blocksMarkedForDeletion *prometheus.CounterVec,
+) *BlocksCleaner {
 	c := &BlocksCleaner{
 		cfg:          cfg,
 		bucketClient: bucketClient,
@@ -95,11 +104,7 @@ func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Instrumente
 			Name: "cortex_compactor_block_cleanup_failures_total",
 			Help: "Total number of blocks failed to be deleted.",
 		}),
-		blocksMarkedForDeletion: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name:        blocksMarkedForDeletionName,
-			Help:        blocksMarkedForDeletionHelp,
-			ConstLabels: prometheus.Labels{"reason": "retention"},
-		}),
+		blocksMarkedForDeletion: blocksMarkedForDeletion,
 
 		// The following metrics don't have the "cortex_compactor" prefix because not strictly related to
 		// the compactor. They're just tracked by the compactor because it's the most logical place where these
@@ -374,7 +379,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		// We do not want to stop the remaining work in the cleaner if an
 		// error occurs here. Errors are logged in the function.
 		retention := c.cfgProvider.CompactorBlocksRetentionPeriod(userID)
-		c.applyUserRetentionPeriod(ctx, idx, retention, userBucket, userLogger)
+		c.applyUserRetentionPeriod(ctx, idx, retention, userBucket, userLogger, userID)
 	}
 
 	// Generate an updated in-memory version of the bucket index.
@@ -498,7 +503,7 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 }
 
 // applyUserRetentionPeriod marks blocks for deletion which have aged past the retention period.
-func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucketindex.Index, retention time.Duration, userBucket objstore.Bucket, userLogger log.Logger) {
+func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucketindex.Index, retention time.Duration, userBucket objstore.Bucket, userLogger log.Logger, userID string) {
 	// The retention period of zero is a special value indicating to never delete.
 	if retention <= 0 {
 		return
@@ -511,7 +516,7 @@ func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucke
 	// the cleaner will retry applying the retention in its next cycle.
 	for _, b := range blocks {
 		level.Info(userLogger).Log("msg", "applied retention: marking block for deletion", "block", b.ID, "maxTime", b.MaxTime)
-		if err := block.MarkForDeletion(ctx, userLogger, userBucket, b.ID, fmt.Sprintf("block exceeding retention of %v", retention), c.blocksMarkedForDeletion); err != nil {
+		if err := block.MarkForDeletion(ctx, userLogger, userBucket, b.ID, fmt.Sprintf("block exceeding retention of %v", retention), c.blocksMarkedForDeletion.WithLabelValues(userID, reasonValueRetention)); err != nil {
 			level.Warn(userLogger).Log("msg", "failed to mark block for deletion", "block", b.ID, "err", err)
 		}
 	}

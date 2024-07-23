@@ -793,7 +793,6 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 			return nil
 		}
 		if ctx.Err() != nil {
-			level.Warn(util_log.WithContext(ctx, c.logger)).Log("msg", "received context error during compaction", "org_id", "err", ctx.Err())
 			return ctx.Err()
 		}
 		if c.isCausedByPermissionDenied(lastErr) {

@@ -2057,9 +2057,7 @@ func TestCompactor_FailedWithRetriableError(t *testing.T) {
 	c, _, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil)
 	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{{BlockMeta: mockBlockMeta("01DTVP434PA9VFXSW2JKB3392D")}, {BlockMeta: mockBlockMeta("01DTW0ZCPDDNV4BV83Q2SV4QAZ")}}, nil)
 
-	ctx, _ := context.WithCancel(context.Background())
-
-	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	cortex_testutil.Poll(t, 1*time.Second, 2.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.compactorMetrics.compactionRetryErrors.WithLabelValues("user-1"))
@@ -2110,9 +2108,7 @@ func TestCompactor_FailedWithHaltError(t *testing.T) {
 	c, _, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil)
 	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{{BlockMeta: mockBlockMeta("01DTVP434PA9VFXSW2JKB3392D")}, {BlockMeta: mockBlockMeta("01DTW0ZCPDDNV4BV83Q2SV4QAZ")}}, nil)
 
-	ctx, _ := context.WithCancel(context.Background())
-
-	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.compactorMetrics.compactionHaltErrors.WithLabelValues("user-1"))

@@ -250,13 +250,13 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
-		cortex_compactor_block_cleanup_started_total{tenant_status="active"} 1
-		cortex_compactor_block_cleanup_started_total{tenant_status="deleted"} 1
+		cortex_compactor_block_cleanup_started_total{user_status="active"} 1
+		cortex_compactor_block_cleanup_started_total{user_status="deleted"} 1
 
 		# TYPE cortex_compactor_block_cleanup_completed_total counter
 		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
-		cortex_compactor_block_cleanup_completed_total{tenant_status="active"} 1
-		cortex_compactor_block_cleanup_completed_total{tenant_status="deleted"} 1
+		cortex_compactor_block_cleanup_completed_total{user_status="active"} 1
+		cortex_compactor_block_cleanup_completed_total{user_status="deleted"} 1
 	`),
 		"cortex_compactor_runs_started_total",
 		"cortex_compactor_runs_completed_total",
@@ -343,8 +343,8 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 
 		# TYPE cortex_compactor_block_cleanup_failed_total counter
 		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
-		cortex_compactor_block_cleanup_failed_total{tenant_status="active"} 1
-		cortex_compactor_block_cleanup_failed_total{tenant_status="deleted"} 1
+		cortex_compactor_block_cleanup_failed_total{user_status="active"} 1
+		cortex_compactor_block_cleanup_failed_total{user_status="deleted"} 1
 	`),
 		"cortex_compactor_runs_started_total",
 		"cortex_compactor_runs_completed_total",
@@ -592,13 +592,13 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
-		cortex_compactor_block_cleanup_started_total{tenant_status="active"} 1
-		cortex_compactor_block_cleanup_started_total{tenant_status="deleted"} 1
+		cortex_compactor_block_cleanup_started_total{user_status="active"} 1
+		cortex_compactor_block_cleanup_started_total{user_status="deleted"} 1
 
 		# TYPE cortex_compactor_block_cleanup_completed_total counter
 		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
-		cortex_compactor_block_cleanup_completed_total{tenant_status="active"} 1
-		cortex_compactor_block_cleanup_completed_total{tenant_status="deleted"} 1
+		cortex_compactor_block_cleanup_completed_total{user_status="active"} 1
+		cortex_compactor_block_cleanup_completed_total{user_status="deleted"} 1
 
 		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
 		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
@@ -712,13 +712,13 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
-		cortex_compactor_block_cleanup_started_total{tenant_status="active"} 1
-		cortex_compactor_block_cleanup_started_total{tenant_status="deleted"} 1
+		cortex_compactor_block_cleanup_started_total{user_status="active"} 1
+		cortex_compactor_block_cleanup_started_total{user_status="deleted"} 1
 
 		# TYPE cortex_compactor_block_cleanup_completed_total counter
 		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
-		cortex_compactor_block_cleanup_completed_total{tenant_status="active"} 1
-		cortex_compactor_block_cleanup_completed_total{tenant_status="deleted"} 1
+		cortex_compactor_block_cleanup_completed_total{user_status="active"} 1
+		cortex_compactor_block_cleanup_completed_total{user_status="deleted"} 1
 
 		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
 		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
@@ -888,13 +888,13 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
-		cortex_compactor_block_cleanup_started_total{tenant_status="active"} 1
-		cortex_compactor_block_cleanup_started_total{tenant_status="deleted"} 1
+		cortex_compactor_block_cleanup_started_total{user_status="active"} 1
+		cortex_compactor_block_cleanup_started_total{user_status="deleted"} 1
 
 		# TYPE cortex_compactor_block_cleanup_completed_total counter
 		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
-		cortex_compactor_block_cleanup_completed_total{tenant_status="active"} 1
-		cortex_compactor_block_cleanup_completed_total{tenant_status="deleted"} 1
+		cortex_compactor_block_cleanup_completed_total{user_status="active"} 1
+		cortex_compactor_block_cleanup_completed_total{user_status="deleted"} 1
 
 		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
 		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter

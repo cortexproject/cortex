@@ -88,19 +88,19 @@ func NewBlocksCleaner(
 		runsStarted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_started_total",
 			Help: "Total number of blocks cleanup runs started.",
-		}, []string{"tenant_status"}),
+		}, []string{"user_status"}),
 		runsCompleted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_completed_total",
 			Help: "Total number of blocks cleanup runs successfully completed.",
-		}, []string{"tenant_status"}),
+		}, []string{"user_status"}),
 		runsFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_failed_total",
 			Help: "Total number of blocks cleanup runs failed.",
-		}, []string{"tenant_status"}),
+		}, []string{"user_status"}),
 		runsLastSuccess: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_compactor_block_cleanup_last_successful_run_timestamp_seconds",
 			Help: "Unix timestamp of the last successful blocks cleanup run.",
-		}, []string{"tenant_status"}),
+		}, []string{"user_status"}),
 		blocksCleanedTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_blocks_cleaned_total",
 			Help: "Total number of blocks deleted.",

@@ -478,6 +478,16 @@ func newCompactor(
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
 
+	if c.registerer != nil {
+		// Copied from Thanos, pkg/block/fetcher.go
+		promauto.With(c.registerer).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_compactor_meta_sync_consistency_delay_seconds",
+			Help: "Configured consistency delay in seconds.",
+		}, func() float64 {
+			return c.compactorCfg.ConsistencyDelay.Seconds()
+		})
+	}
+
 	// The last successful compaction run metric is exposed as seconds since epoch, so we need to use seconds for this metric.
 	c.CompactionRunInterval.Set(c.compactorCfg.CompactionInterval.Seconds())
 

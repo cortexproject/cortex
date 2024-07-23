@@ -246,6 +246,10 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
 		cortex_compactor_blocks_marked_for_no_compaction_total 0
 
+		# HELP cortex_compactor_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
+		# TYPE cortex_compactor_meta_sync_consistency_delay_seconds gauge
+		cortex_compactor_meta_sync_consistency_delay_seconds 0
+
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
 		cortex_compactor_block_cleanup_started_total 1
@@ -341,6 +345,10 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
 		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
 		cortex_compactor_blocks_marked_for_no_compaction_total 0
+
+		# HELP cortex_compactor_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
+		# TYPE cortex_compactor_meta_sync_consistency_delay_seconds gauge
+		cortex_compactor_meta_sync_consistency_delay_seconds 0
 
 		# TYPE cortex_compactor_block_cleanup_completed_total counter
 		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.

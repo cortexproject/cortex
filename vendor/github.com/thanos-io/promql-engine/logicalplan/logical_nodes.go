@@ -73,6 +73,10 @@ type VectorSelector struct {
 	BatchSize       int64
 	SelectTimestamp bool
 	Projection      Projection
+	// When set, histogram iterators can return objects which only have their
+	// CounterResetHint, Count and Sum values populated. Histogram buckets and spans
+	// will not be used during query evaluation.
+	DecodeNativeHistogramStats bool
 }
 
 func (f *VectorSelector) Clone() Node {

@@ -13,8 +13,11 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
@@ -126,7 +129,11 @@ func (o *histogramOperator) Next(ctx context.Context) ([]model.StepVector, error
 	o.scalarPoints = o.scalarPoints[:0]
 	for _, scalar := range scalars {
 		if len(scalar.Samples) > 0 {
-			o.scalarPoints = append(o.scalarPoints, scalar.Samples[0])
+			sample := scalar.Samples[0]
+			if math.IsNaN(sample) || sample < 0 || sample > 1 {
+				warnings.AddToContext(annotations.NewInvalidQuantileWarning(sample, posrange.PositionRange{}), ctx)
+			}
+			o.scalarPoints = append(o.scalarPoints, sample)
 		}
 		o.scalarOp.GetPool().PutStepVector(scalar)
 	}
@@ -135,6 +142,7 @@ func (o *histogramOperator) Next(ctx context.Context) ([]model.StepVector, error
 	return o.processInputSeries(vectors)
 }
 
+// nolint: unparam
 func (o *histogramOperator) processInputSeries(vectors []model.StepVector) ([]model.StepVector, error) {
 	out := o.pool.GetVectorBatch()
 	for stepIndex, vector := range vectors {

@@ -78,7 +78,9 @@ func (o *seriesSelector) loadSeries(ctx context.Context) error {
 		i++
 	}
 
-	warnings.AddToContext(seriesSet.Warnings(), ctx)
+	for _, w := range seriesSet.Warnings() {
+		warnings.AddToContext(w, ctx)
+	}
 	return seriesSet.Err()
 }
 

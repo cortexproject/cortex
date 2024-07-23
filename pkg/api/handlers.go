@@ -227,6 +227,7 @@ func NewQuerierHandler(
 		reg,
 		nil,
 		false,
+		nil,
 		false,
 	)
 

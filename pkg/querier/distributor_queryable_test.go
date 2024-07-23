@@ -223,7 +223,7 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 			require.NoError(t, err)
 
 			ctx := context.Background()
-			names, warnings, err := querier.LabelNames(ctx, someMatchers...)
+			names, warnings, err := querier.LabelNames(ctx, nil, someMatchers...)
 			require.NoError(t, err)
 			assert.Empty(t, warnings)
 			assert.Equal(t, labelNames, names)

@@ -190,9 +190,17 @@ func (m *Manager) Stop() {
 
 // Update the rule manager's state as the config requires. If
 // loading the new rules failed the old rule set is restored.
+// This method will no-op in case the manager is already stopped.
 func (m *Manager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, groupEvalIterationFunc GroupEvalIterationFunc) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
+
+	// We cannot update a stopped manager
+	select {
+	case <-m.done:
+		return nil
+	default:
+	}
 
 	groups, errs := m.LoadGroups(interval, externalLabels, externalURL, groupEvalIterationFunc, files...)
 
@@ -372,13 +380,13 @@ func (m *Manager) RuleGroups() []*Group {
 }
 
 // Rules returns the list of the manager's rules.
-func (m *Manager) Rules() []Rule {
+func (m *Manager) Rules(matcherSets ...[]*labels.Matcher) []Rule {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
 	var rules []Rule
 	for _, g := range m.groups {
-		rules = append(rules, g.rules...)
+		rules = append(rules, g.Rules(matcherSets...)...)
 	}
 
 	return rules

@@ -34,13 +34,13 @@ func (l LazyQuerier) Select(ctx context.Context, selectSorted bool, params *stor
 }
 
 // LabelValues implements Storage.Querier
-func (l LazyQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	return l.next.LabelValues(ctx, name, matchers...)
+func (l LazyQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	return l.next.LabelValues(ctx, name, hints, matchers...)
 }
 
 // LabelNames implements Storage.Querier
-func (l LazyQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	return l.next.LabelNames(ctx, matchers...)
+func (l LazyQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	return l.next.LabelNames(ctx, hints, matchers...)
 }
 
 // Close implements Storage.Querier

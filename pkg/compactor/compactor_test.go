@@ -2060,18 +2060,18 @@ func TestCompactor_FailedWithRetriableError(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	cortex_testutil.Poll(t, 1*time.Second, 2.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactorMetrics.compactionRetryErrors.WithLabelValues("user-1"))
+		return prom_testutil.ToFloat64(c.compactorMetrics.compactionErrorsCount.WithLabelValues("user-1", RetriableError))
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
-		# HELP cortex_compactor_compaction_retry_error_total Total number of retry errors from compactions.
-		# TYPE cortex_compactor_compaction_retry_error_total counter
-		cortex_compactor_compaction_retry_error_total{user="user-1"} 2
+		# HELP cortex_compactor_compaction_error_total Total number of errors from compactions.
+		# TYPE cortex_compactor_compaction_error_total counter
+		cortex_compactor_compaction_error_total{type="retriable", user="user-1"} 2
 	`),
 		"cortex_compactor_compaction_retry_error_total",
-		"cortex_compactor_compaction_halt_error_total",
+		"cortex_compactor_compaction_error_total",
 	))
 }
 
@@ -2111,17 +2111,17 @@ func TestCompactor_FailedWithHaltError(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactorMetrics.compactionHaltErrors.WithLabelValues("user-1"))
+		return prom_testutil.ToFloat64(c.compactorMetrics.compactionErrorsCount.WithLabelValues("user-1", HaltError))
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
-		# HELP cortex_compactor_compaction_halt_error_total Total number of halt errors from compactions.
-		# TYPE cortex_compactor_compaction_halt_error_total counter
-		cortex_compactor_compaction_halt_error_total{user="user-1"} 1
+		# HELP cortex_compactor_compaction_error_total Total number of errors from compactions.
+		# TYPE cortex_compactor_compaction_error_total counter
+		cortex_compactor_compaction_error_total{type="halt", user="user-1"} 1
 	`),
 		"cortex_compactor_compaction_retry_error_total",
-		"cortex_compactor_compaction_halt_error_total",
+		"cortex_compactor_compaction_error_total",
 	))
 }

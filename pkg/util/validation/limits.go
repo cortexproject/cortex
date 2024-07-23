@@ -134,7 +134,7 @@ type Limits struct {
 	EnforceMetricName         bool                `yaml:"enforce_metric_name" json:"enforce_metric_name"`
 	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
 	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
-	MaxExemplars              int                 `yaml:"max_exemplars" json:"max_exemplars"`
+	MaxNativeHistogramBuckets int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
 
 	// Ingester enforced limits.
 	// Series
@@ -151,6 +151,8 @@ type Limits struct {
 	MaxGlobalMetadataPerMetric          int `yaml:"max_global_metadata_per_metric" json:"max_global_metadata_per_metric"`
 	// Out-of-order
 	OutOfOrderTimeWindow model.Duration `yaml:"out_of_order_time_window" json:"out_of_order_time_window"`
+	// Exemplars
+	MaxExemplars int `yaml:"max_exemplars" json:"max_exemplars"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery            int            `yaml:"max_fetched_chunks_per_query" json:"max_fetched_chunks_per_query"`
@@ -232,6 +234,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.CreationGracePeriod, "validation.create-grace-period", "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 	f.BoolVar(&l.EnforceMetadataMetricName, "validation.enforce-metadata-metric-name", true, "Enforce every metadata has a metric name.")
+	f.IntVar(&l.MaxNativeHistogramBuckets, "validation.max-native-histogram-buckets", 0, "Limit on total number of positive and negative buckets allowed in a single native histogram. The resolution of a histogram with more buckets will be reduced until the number of buckets is within the limit. If the limit cannot be reached, the sample will be discarded. 0 means no limit. Enforced at Distributor.")
 
 	f.IntVar(&l.MaxLocalSeriesPerUser, "ingester.max-series-per-user", 5000000, "The maximum number of active series per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
@@ -720,6 +723,12 @@ func (o *Overrides) EnforceMetricName(userID string) bool {
 // EnforceMetadataMetricName whether to enforce the presence of a metric name on metadata.
 func (o *Overrides) EnforceMetadataMetricName(userID string) bool {
 	return o.GetOverridesForUser(userID).EnforceMetadataMetricName
+}
+
+// MaxNativeHistogramBuckets returns the maximum total number of positive and negative buckets of a single native histogram
+// a user is allowed to store.
+func (o *Overrides) MaxNativeHistogramBuckets(userID string) int {
+	return o.GetOverridesForUser(userID).MaxNativeHistogramBuckets
 }
 
 // MaxLocalMetricsWithMetadataPerUser returns the maximum number of metrics with metadata a user is allowed to store in a single ingester.

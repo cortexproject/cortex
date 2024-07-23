@@ -50,8 +50,6 @@ type BlocksCleaner struct {
 	bucketClient objstore.InstrumentedBucket
 	usersScanner *cortex_tsdb.UsersScanner
 
-	ringLifecyclerID string
-
 	// Keep track of the last owned users.
 	lastOwnedUsers []string
 
@@ -82,12 +80,11 @@ func NewBlocksCleaner(
 	blocksMarkedForDeletion *prometheus.CounterVec,
 ) *BlocksCleaner {
 	c := &BlocksCleaner{
-		cfg:              cfg,
-		bucketClient:     bucketClient,
-		usersScanner:     usersScanner,
-		cfgProvider:      cfgProvider,
-		logger:           log.With(logger, "component", "cleaner"),
-		ringLifecyclerID: "default-cleaner",
+		cfg:          cfg,
+		bucketClient: bucketClient,
+		usersScanner: usersScanner,
+		cfgProvider:  cfgProvider,
+		logger:       log.With(logger, "component", "cleaner"),
 		runsStarted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_started_total",
 			Help: "Total number of blocks cleanup runs started.",
@@ -157,10 +154,6 @@ type cleanerJob struct {
 	timestamp int64
 }
 
-func (c *BlocksCleaner) SetRingLifecyclerID(ringLifecyclerID string) {
-	c.ringLifecyclerID = ringLifecyclerID
-}
-
 func (c *BlocksCleaner) starting(ctx context.Context) error {
 	// Run a cleanup so that any other service depending on this service
 	// is guaranteed to start once the initial cleanup has been done.
@@ -172,12 +165,10 @@ func (c *BlocksCleaner) starting(ctx context.Context) error {
 		c.runsFailed.WithLabelValues(activeStatus).Inc()
 		return nil
 	}
-	if err = c.cleanUpActiveUsers(ctx, activeUsers, true); err != nil {
-		c.runsFailed.WithLabelValues(activeStatus).Inc()
-	}
-	if err = c.cleanDeletedUsers(ctx, deletedUsers); err != nil {
-		c.runsFailed.WithLabelValues(deletedStatus).Inc()
-	}
+	err = c.cleanUpActiveUsers(ctx, activeUsers, true)
+	c.checkRunError(activeStatus, err)
+	err = c.cleanDeletedUsers(ctx, deletedUsers)
+	c.checkRunError(deletedStatus, err)
 	return nil
 }
 
@@ -223,13 +214,28 @@ func (c *BlocksCleaner) loop(ctx context.Context) error {
 	}
 }
 
+func (c *BlocksCleaner) checkRunError(runType string, err error) {
+	if err == nil {
+		level.Info(c.logger).Log("msg", fmt.Sprintf("successfully completed blocks cleanup and maintenance for %s users", runType))
+		c.runsCompleted.WithLabelValues(runType).Inc()
+		c.runsLastSuccess.WithLabelValues(runType).SetToCurrentTime()
+	} else if errors.Is(err, context.Canceled) {
+		level.Info(c.logger).Log("msg", fmt.Sprintf("canceled blocks cleanup and maintenance for %s users", runType), "err", err)
+	} else {
+		level.Error(c.logger).Log("msg", fmt.Sprintf("failed to run blocks cleanup and maintenance for %s users", runType), "err", err.Error())
+		c.runsFailed.WithLabelValues(runType).Inc()
+	}
+}
+
 func (c *BlocksCleaner) runActiveUserCleanup(ctx context.Context, jobChan chan *cleanerJob) {
 	for job := range jobChan {
 		if job.timestamp < time.Now().Add(-c.cfg.CleanupInterval).Unix() {
 			level.Warn(c.logger).Log("Active user cleaner job too old. Ignoring to get recent data")
 			continue
 		}
-		c.cleanUpActiveUsers(ctx, job.users, false) //nolint:errcheck
+		err := c.cleanUpActiveUsers(ctx, job.users, false)
+
+		c.checkRunError(activeStatus, err)
 	}
 }
 
@@ -237,7 +243,7 @@ func (c *BlocksCleaner) cleanUpActiveUsers(ctx context.Context, users []string, 
 	level.Info(c.logger).Log("msg", "started blocks cleanup and maintenance for active users")
 	c.runsStarted.WithLabelValues(activeStatus).Inc()
 
-	err := concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
+	return concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 		userLogger := util_log.WithUserID(userID, c.logger)
 		userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
 		errChan := make(chan error, 1)
@@ -246,18 +252,6 @@ func (c *BlocksCleaner) cleanUpActiveUsers(ctx context.Context, users []string, 
 		}()
 		return errors.Wrapf(c.cleanUser(ctx, userLogger, userBucket, userID, firstRun), "failed to delete blocks for user: %s", userID)
 	})
-
-	if err == nil {
-		level.Info(c.logger).Log("msg", "successfully completed blocks cleanup and maintenance for active users")
-		c.runsCompleted.WithLabelValues(activeStatus).Inc()
-		c.runsLastSuccess.WithLabelValues(activeStatus).SetToCurrentTime()
-	} else if errors.Is(err, context.Canceled) {
-		level.Info(c.logger).Log("msg", "canceled blocks cleanup and maintenance for active users", "err", err)
-	} else {
-		level.Error(c.logger).Log("msg", "failed to run blocks cleanup and maintenance for active users", "err", err.Error())
-		c.runsFailed.WithLabelValues(activeStatus).Inc()
-	}
-	return err
 }
 
 func (c *BlocksCleaner) runDeleteUserCleanup(ctx context.Context, jobChan chan *cleanerJob) {
@@ -266,7 +260,9 @@ func (c *BlocksCleaner) runDeleteUserCleanup(ctx context.Context, jobChan chan *
 			level.Warn(c.logger).Log("Delete users cleaner job too old. Ignoring to get recent data")
 			continue
 		}
-		c.cleanDeletedUsers(ctx, job.users) //nolint:errcheck
+		err := c.cleanDeletedUsers(ctx, job.users)
+
+		c.checkRunError(deletedStatus, err)
 	}
 }
 
@@ -274,7 +270,7 @@ func (c *BlocksCleaner) cleanDeletedUsers(ctx context.Context, users []string) e
 	level.Info(c.logger).Log("msg", "started blocks cleanup and maintenance for deleted users")
 	c.runsStarted.WithLabelValues(deletedStatus).Inc()
 
-	err := concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
+	return concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 		userLogger := util_log.WithUserID(userID, c.logger)
 		userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
 		errChan := make(chan error, 1)
@@ -283,18 +279,6 @@ func (c *BlocksCleaner) cleanDeletedUsers(ctx context.Context, users []string) e
 		}()
 		return errors.Wrapf(c.deleteUserMarkedForDeletion(ctx, userLogger, userBucket, userID), "failed to delete user marked for deletion: %s", userID)
 	})
-
-	if err == nil {
-		level.Info(c.logger).Log("msg", "successfully completed blocks cleanup and maintenance for deleted users")
-		c.runsCompleted.WithLabelValues(deletedStatus).Inc()
-		c.runsLastSuccess.WithLabelValues(deletedStatus).SetToCurrentTime()
-	} else if errors.Is(err, context.Canceled) {
-		level.Info(c.logger).Log("msg", "canceled blocks cleanup and maintenance for deleted users", "err", err)
-	} else {
-		level.Error(c.logger).Log("msg", "failed to run blocks cleanup and maintenance for deleted users", "err", err.Error())
-		c.runsFailed.WithLabelValues(deletedStatus).Inc()
-	}
-	return err
 }
 
 func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, error) {

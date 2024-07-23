@@ -796,12 +796,12 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 			return ctx.Err()
 		}
 		if c.isCausedByPermissionDenied(lastErr) {
-			level.Warn(c.logger).Log("msg", "skipping compactUser due to PermissionDenied", "org_id", userID, "err", lastErr)
+			level.Warn(c.logger).Log("msg", "skipping compactUser due to PermissionDenied", "user", userID, "err", lastErr)
 			c.compactorMetrics.compactionErrorsCount.WithLabelValues(userID, UnauthorizedError).Inc()
 			return nil
 		}
 		if compact.IsHaltError(lastErr) {
-			level.Error(c.logger).Log("msg", "compactor returned critical error", "org_id", userID, "err", lastErr)
+			level.Error(c.logger).Log("msg", "compactor returned critical error", "user", userID, "err", lastErr)
 			c.compactorMetrics.compactionErrorsCount.WithLabelValues(userID, HaltError).Inc()
 			return lastErr
 		}

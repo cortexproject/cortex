@@ -48,9 +48,9 @@ func (t *vectorTable) timestamp() int64 {
 	return t.ts
 }
 
-func (t *vectorTable) aggregate(vector model.StepVector) {
+func (t *vectorTable) aggregate(vector model.StepVector) error {
 	t.ts = vector.T
-	t.accumulator.AddVector(vector.Samples, vector.Histograms)
+	return t.accumulator.AddVector(vector.Samples, vector.Histograms)
 }
 
 func (t *vectorTable) toVector(ctx context.Context, pool *model.VectorPool) model.StepVector {
@@ -66,8 +66,7 @@ func (t *vectorTable) toVector(ctx context.Context, pool *model.VectorPool) mode
 			result.AppendHistogram(pool, 0, h)
 		}
 	case MixedTypeValue:
-		warn := annotations.New().Add(annotations.NewMixedFloatsHistogramsAggWarning(posrange.PositionRange{}))
-		warnings.AddToContext(warn, ctx)
+		warnings.AddToContext(annotations.NewMixedFloatsHistogramsAggWarning(posrange.PositionRange{}), ctx)
 	}
 	return result
 }
@@ -97,12 +96,12 @@ func newVectorAccumulator(expr parser.ItemType) (vectorAccumulator, error) {
 	return nil, errors.Wrap(parse.ErrNotSupportedExpr, msg)
 }
 
-func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.FloatHistogram) *histogram.FloatHistogram {
+func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
 	if len(histograms) == 0 {
-		return current
+		return current, nil
 	}
 	if current == nil && len(histograms) == 1 {
-		return histograms[0].Copy()
+		return histograms[0].Copy(), nil
 	}
 	var histSum *histogram.FloatHistogram
 	if current != nil {
@@ -112,14 +111,19 @@ func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.Flo
 		histograms = histograms[1:]
 	}
 
+	var err error
 	for i := 0; i < len(histograms); i++ {
 		if histograms[i].Schema >= histSum.Schema {
-			histSum = histSum.Add(histograms[i])
+			histSum, err = histSum.Add(histograms[i])
+			if err != nil {
+				return nil, err
+			}
 		} else {
 			t := histograms[i].Copy()
-			t.Add(histSum)
-			histSum = t
+			if histSum, err = t.Add(histSum); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return histSum
+	return histSum, nil
 }

@@ -3,6 +3,7 @@ package queue
 import (
 	"math/rand"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,7 +38,8 @@ type querier struct {
 // This struct holds user queues for pending requests. It also keeps track of connected queriers,
 // and mapping between users and queriers.
 type queues struct {
-	userQueues map[string]*userQueue
+	userQueues   map[string]*userQueue
+	userQueuesMx sync.RWMutex
 
 	// List of all users with queues, used for iteration when searching for next queue to handle.
 	// Users removed from the middle are replaced with "". To avoid skipping users during iteration, we only shrink
@@ -103,6 +105,9 @@ func (q *queues) len() int {
 }
 
 func (q *queues) deleteQueue(userID string) {
+	q.userQueuesMx.Lock()
+	defer q.userQueuesMx.Unlock()
+
 	uq := q.userQueues[userID]
 	if uq == nil {
 		return
@@ -131,6 +136,9 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue 
 	if maxQueriers < 0 {
 		maxQueriers = 0
 	}
+
+	q.userQueuesMx.Lock()
+	defer q.userQueuesMx.Unlock()
 
 	uq := q.userQueues[userID]
 	priorityEnabled := q.limits.QueryPriority(userID).Enabled
@@ -236,6 +244,9 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (us
 		if u == "" {
 			continue
 		}
+
+		q.userQueuesMx.RLock()
+		defer q.userQueuesMx.RUnlock()
 
 		uq := q.userQueues[u]
 

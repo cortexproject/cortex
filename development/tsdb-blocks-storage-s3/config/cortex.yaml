@@ -80,7 +80,6 @@ ruler:
         host: consul:8500
 
   alertmanager_url: http://alertmanager-1:8031/alertmanager,http://alertmanager-2:8032/alertmanager,http://alertmanager-3:8033/alertmanager
-  enable_alertmanager_v2: false
 
 ruler_storage:
   backend: s3

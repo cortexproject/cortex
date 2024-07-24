@@ -23,6 +23,7 @@ var (
 var DefaultOptimizers = []Optimizer{
 	SortMatchers{},
 	MergeSelectsOptimizer{},
+	DetectHistogramStatsOptimizer{},
 }
 
 type Plan interface {
@@ -63,6 +64,13 @@ func NewFromAST(ast parser.Expr, queryOpts *query.Options, planOpts PlanOptions)
 
 	// the engine handles sorting at the presentation layer
 	expr = trimSorts(expr)
+
+	// best effort evaluate constant expressions
+	expr = reduceConstantExpressions(expr)
+
+	// some parameters are implicitly step invariant, i.e. topk(scalar(SERIES), X)
+	// morally that should be done by PreprocessExpr but we can also fix it here
+	expr = preprocessAggregationParameters(expr)
 
 	return &plan{
 		expr:     expr,
@@ -219,6 +227,18 @@ func replacePrometheusNodes(plan parser.Expr) Node {
 	panic("Unrecognized AST node")
 }
 
+func preprocessAggregationParameters(expr Node) Node {
+	Traverse(&expr, func(node *Node) {
+		switch t := (*node).(type) {
+		case *Aggregation:
+			if t.Param != nil {
+				t.Param = &StepInvariantExpr{Expr: t.Param}
+			}
+		}
+	})
+	return expr
+}
+
 func trimSorts(expr Node) Node {
 	canTrimSorts := true
 	// We cannot trim inner sort if its an argument to a timestamp function.
@@ -251,6 +271,60 @@ func trimSorts(expr Node) Node {
 			switch e.Func.Name {
 			case "sort", "sort_desc":
 				*parent = *current
+			}
+		}
+		return false
+	})
+	return expr
+}
+
+func reduceConstantExpressions(expr Node) Node {
+	TraverseBottomUp(nil, &expr, func(parent, current *Node) bool {
+		if current == nil || parent == nil {
+			return true
+		}
+		switch tparent := (*parent).(type) {
+		case *Parens:
+			num, err := UnwrapFloat(tparent.Expr)
+			if err != nil {
+				return false
+			}
+			*parent = &NumberLiteral{Val: num}
+		case *Unary:
+			num, err := UnwrapFloat(tparent.Expr)
+			if err != nil {
+				return false
+			}
+			switch tparent.Op {
+			case parser.ADD:
+				*parent = &NumberLiteral{Val: num}
+			case parser.SUB:
+				*parent = &NumberLiteral{Val: -num}
+			}
+		case *Binary:
+			lnum, err := UnwrapFloat(tparent.LHS)
+			if err != nil {
+				return false
+			}
+			rnum, err := UnwrapFloat(tparent.RHS)
+			if err != nil {
+				return false
+			}
+			switch tparent.Op {
+			case parser.ADD:
+				*parent = &NumberLiteral{Val: lnum + rnum}
+			case parser.SUB:
+				*parent = &NumberLiteral{Val: lnum - rnum}
+			case parser.MUL:
+				*parent = &NumberLiteral{Val: lnum * rnum}
+			case parser.DIV:
+				*parent = &NumberLiteral{Val: lnum / rnum}
+			case parser.POW:
+				*parent = &NumberLiteral{Val: math.Pow(lnum, rnum)}
+			case parser.MOD:
+				*parent = &NumberLiteral{Val: math.Mod(lnum, rnum)}
+			default:
+				return false
 			}
 		}
 		return false

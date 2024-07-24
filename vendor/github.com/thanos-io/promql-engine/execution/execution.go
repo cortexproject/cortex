@@ -78,7 +78,7 @@ func newOperator(ctx context.Context, expr logicalplan.Node, storage storage.Sca
 	case *logicalplan.CheckDuplicateLabels:
 		return newDuplicateLabelCheck(ctx, e, storage, opts, hints)
 	case logicalplan.Noop:
-		return noop.NewOperator(), nil
+		return noop.NewOperator(opts), nil
 	case logicalplan.UserDefinedExpr:
 		return e.MakeExecutionOperator(ctx, model.NewVectorPool(opts.StepsBatch), opts, hints)
 	default:
@@ -226,8 +226,6 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 		if err != nil {
 			return nil, err
 		}
-	default:
-		scalarArg = noop.NewOperator()
 	}
 
 	return scan.NewSubqueryOperator(model.NewVectorPool(opts.StepsBatch), inner, scalarArg, &outerOpts, e, t)
@@ -259,21 +257,20 @@ func newAggregateExpression(ctx context.Context, e *logicalplan.Aggregation, sca
 	if err != nil {
 		return nil, err
 	}
+	if e.Op == parser.COUNT_VALUES {
+		param := logicalplan.UnsafeUnwrapString(e.Param)
+		return aggregate.NewCountValues(model.NewVectorPool(opts.StepsBatch), next, param, !e.Without, e.Grouping, opts), nil
+	}
 
 	// parameter is only required for count_values, quantile, topk and bottomk.
 	var paramOp model.VectorOperator
 	switch e.Op {
-	case parser.COUNT_VALUES:
-		return nil, parse.UnsupportedOperationErr(parser.COUNT_VALUES)
 	case parser.QUANTILE, parser.TOPK, parser.BOTTOMK:
 		paramOp, err = newOperator(ctx, e.Param, scanners, opts, hints)
 		if err != nil {
 			return nil, err
 		}
-	default:
-		paramOp = noop.NewOperator()
 	}
-
 	if e.Op == parser.TOPK || e.Op == parser.BOTTOMK {
 		next, err = aggregate.NewKHashAggregate(model.NewVectorPool(opts.StepsBatch), next, paramOp, e.Op, !e.Without, e.Grouping, opts)
 	} else {
@@ -284,7 +281,6 @@ func newAggregateExpression(ctx context.Context, e *logicalplan.Aggregation, sca
 	}
 
 	return exchange.NewConcurrent(next, 2, opts), nil
-
 }
 
 func newBinaryExpression(ctx context.Context, e *logicalplan.Binary, scanners storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {

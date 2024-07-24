@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
@@ -19,9 +20,11 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -79,12 +82,18 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(mbucket, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, cfgProvider, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, cfgProvider, logger, nil, blocksMarkedForDeletion)
 
 	// Clean User with no error
 	cleaner.bucketClient = bkt
-	err := cleaner.cleanUser(ctx, userID, false)
+	userLogger := util_log.WithUserID(userID, cleaner.logger)
+	userBucket := bucket.NewUserBucketClient(userID, cleaner.bucketClient, cleaner.cfgProvider)
+	err := cleaner.cleanUser(ctx, userLogger, userBucket, userID, false)
 	require.NoError(t, err)
 	s, err := bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
 	require.NoError(t, err)
@@ -93,7 +102,9 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 
 	// Clean with cmk error
 	cleaner.bucketClient = mbucket
-	err = cleaner.cleanUser(ctx, userID, false)
+	userLogger = util_log.WithUserID(userID, cleaner.logger)
+	userBucket = bucket.NewUserBucketClient(userID, cleaner.bucketClient, cleaner.cfgProvider)
+	err = cleaner.cleanUser(ctx, userLogger, userBucket, userID, false)
 	require.NoError(t, err)
 	s, err = bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
 	require.NoError(t, err)
@@ -102,7 +113,9 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 
 	// Re grant access to the key
 	cleaner.bucketClient = bkt
-	err = cleaner.cleanUser(ctx, userID, false)
+	userLogger = util_log.WithUserID(userID, cleaner.logger)
+	userBucket = bucket.NewUserBucketClient(userID, cleaner.bucketClient, cleaner.cfgProvider)
+	err = cleaner.cleanUser(ctx, userLogger, userBucket, userID, false)
 	require.NoError(t, err)
 	s, err = bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
 	require.NoError(t, err)
@@ -176,8 +189,12 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -229,9 +246,9 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		assert.Equal(t, tc.expectedExists, exists, tc.user)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
 	assert.Equal(t, float64(7), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
 
@@ -333,8 +350,12 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -352,9 +373,9 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
 	assert.Equal(t, float64(2), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksFailedTotal))
 
@@ -393,8 +414,12 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -411,9 +436,9 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
 
@@ -447,9 +472,16 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	reg := prometheus.NewPedanticRegistry()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg)
-	require.NoError(t, cleaner.cleanUsers(ctx, true))
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, blocksMarkedForDeletion)
+	activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+	require.NoError(t, err)
+	require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, true))
+	require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
@@ -477,7 +509,10 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	createTSDBBlock(t, bucketClient, "user-1", 40, 50, nil)
 	createTSDBBlock(t, bucketClient, "user-2", 50, 60, nil)
 
-	require.NoError(t, cleaner.cleanUsers(ctx, false))
+	activeUsers, deleteUsers, err = cleaner.scanUsers(ctx)
+	require.NoError(t, err)
+	require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+	require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
@@ -578,8 +613,12 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, blocksMarkedForDeletion)
 
 	assertBlockExists := func(user string, block ulid.ULID, expectExists bool) {
 		exists, err := bucketClient.Exists(ctx, path.Join(user, block.String(), metadata.MetaFilename))
@@ -592,7 +631,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 		cfgProvider.userRetentionPeriods["user-1"] = 0
 		cfgProvider.userRetentionPeriods["user-2"] = 0
 
-		require.NoError(t, cleaner.cleanUsers(ctx, true))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, true))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, true)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, true)
@@ -609,7 +651,8 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
 			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-1"} 0
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-2"} 0
 			`),
 			"cortex_bucket_blocks_count",
 			"cortex_bucket_blocks_marked_for_deletion_count",
@@ -621,7 +664,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	{
 		cfgProvider.userRetentionPeriods["user-1"] = 9 * time.Hour
 
-		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, true)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, true)
@@ -633,7 +679,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	{
 		cfgProvider.userRetentionPeriods["user-1"] = 7 * time.Hour
 
-		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, true)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, true)
@@ -650,7 +699,8 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
 			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 1
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-1"} 1
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-2"} 0
 			`),
 			"cortex_bucket_blocks_count",
 			"cortex_bucket_blocks_marked_for_deletion_count",
@@ -660,7 +710,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Marking the block again, before the deletion occurs, should not cause an error.
 	{
-		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, true)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, true)
@@ -671,7 +724,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	{
 		cleaner.cfg.DeletionDelay = 0
 
-		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, false)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, true)
@@ -688,7 +744,8 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
 			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 1
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-1"} 1
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-2"} 0
 			`),
 			"cortex_bucket_blocks_count",
 			"cortex_bucket_blocks_marked_for_deletion_count",
@@ -700,7 +757,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	{
 		cfgProvider.userRetentionPeriods["user-2"] = 5 * time.Hour
 
-		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+		require.NoError(t, err)
+		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+		require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
 		assertBlockExists("user-1", block1, false)
 		assertBlockExists("user-1", block2, true)
 		assertBlockExists("user-2", block3, false)
@@ -717,7 +777,8 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
 			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 3
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-1"} 1
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention",user="user-2"} 2
 			`),
 			"cortex_bucket_blocks_count",
 			"cortex_bucket_blocks_marked_for_deletion_count",

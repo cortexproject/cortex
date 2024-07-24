@@ -26,6 +26,7 @@ message RulesRequest {
   string type = 4;
   string state = 5;
   string health = 6;
+  repeated string matchers = 7;
 }
 
 message RulesResponse {

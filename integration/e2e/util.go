@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -174,10 +173,10 @@ func GenerateHistogramSeries(name string, ts time.Time, i uint32, floatHistogram
 	)
 	if floatHistogram {
 		fh = tsdbutil.GenerateTestFloatHistogram(int(i))
-		ph = remote.FloatHistogramToHistogramProto(tsMillis, fh)
+		ph = prompb.FromFloatHistogram(tsMillis, fh)
 	} else {
 		h = tsdbutil.GenerateTestHistogram(int(i))
-		ph = remote.HistogramToHistogramProto(tsMillis, h)
+		ph = prompb.FromIntHistogram(tsMillis, h)
 	}
 
 	// Generate the series

@@ -203,9 +203,3 @@ func (v *VisitMarkerManager) getLogger() log.Logger {
 	defer v.mutex.Unlock()
 	return v.logger
 }
-
-func (v *VisitMarkerManager) setLogger(logger log.Logger) {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-	v.logger = logger
-}

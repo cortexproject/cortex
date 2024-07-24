@@ -159,15 +159,6 @@ func (v *VisitMarkerManager) DeleteVisitMarker(ctx context.Context) {
 	level.Debug(v.getLogger()).Log("msg", "visit marker deleted")
 }
 
-func (v *VisitMarkerManager) ReloadVisitMarker(ctx context.Context) error {
-	if err := v.ReadVisitMarker(ctx, v.visitMarker); err != nil {
-		return err
-	}
-	v.setLogger(log.With(v.getLogger(), v.visitMarker.LogInfo()))
-	level.Debug(v.getLogger()).Log("msg", "visit marker reloaded")
-	return nil
-}
-
 func (v *VisitMarkerManager) ReadVisitMarker(ctx context.Context, visitMarker any) error {
 	visitMarkerFile := v.visitMarker.GetVisitMarkerFilePath()
 	visitMarkerFileReader, err := v.bkt.ReaderWithExpectedErrs(v.bkt.IsObjNotFoundErr).Get(ctx, visitMarkerFile)

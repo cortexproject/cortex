@@ -792,10 +792,20 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 		if lastErr == nil {
 			return nil
 		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if c.isCausedByPermissionDenied(lastErr) {
 			level.Warn(c.logger).Log("msg", "skipping compactUser due to PermissionDenied", "user", userID, "err", lastErr)
+			c.compactorMetrics.compactionErrorsCount.WithLabelValues(userID, unauthorizedError).Inc()
 			return nil
 		}
+		if compact.IsHaltError(lastErr) {
+			level.Error(c.logger).Log("msg", "compactor returned critical error", "user", userID, "err", lastErr)
+			c.compactorMetrics.compactionErrorsCount.WithLabelValues(userID, haltError).Inc()
+			return lastErr
+		}
+		c.compactorMetrics.compactionErrorsCount.WithLabelValues(userID, retriableError).Inc()
 
 		retries.Wait()
 	}

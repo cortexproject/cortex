@@ -15,11 +15,6 @@ package cortexpb
 
 import "github.com/prometheus/prometheus/model/histogram"
 
-const (
-	ExponentialSchemaMax int32 = 8
-	ExponentialSchemaMin int32 = -4
-)
-
 func (h Histogram) IsFloatHistogram() bool {
 	_, ok := h.GetCount().(*Histogram_CountFloat)
 	return ok

@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
@@ -303,9 +304,9 @@ func TestValidateNativeHistogram(t *testing.T) {
 	fh := tsdbutil.GenerateTestFloatHistogram(0)
 
 	histogramWithSchemaMin := tsdbutil.GenerateTestHistogram(0)
-	histogramWithSchemaMin.Schema = cortexpb.ExponentialSchemaMin
+	histogramWithSchemaMin.Schema = histogram.ExponentialSchemaMin
 	floatHistogramWithSchemaMin := tsdbutil.GenerateTestFloatHistogram(0)
-	floatHistogramWithSchemaMin.Schema = cortexpb.ExponentialSchemaMin
+	floatHistogramWithSchemaMin.Schema = histogram.ExponentialSchemaMin
 	for _, tc := range []struct {
 		name              string
 		bucketLimit       int

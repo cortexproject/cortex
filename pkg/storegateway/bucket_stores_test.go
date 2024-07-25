@@ -763,6 +763,98 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	`), metricNames...))
 }
 
+func TestBucketStores_tokenBuckets(t *testing.T) {
+	const (
+		user1 = "user-1"
+		user2 = "user-2"
+	)
+
+	ctx := context.Background()
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.TokenBucketBytesLimiter.Mode = string(cortex_tsdb.TokenBucketBytesLimiterEnabled)
+
+	storageDir := t.TempDir()
+	userToMetric := map[string]string{
+		user1: "series_1",
+		user2: "series_2",
+	}
+	for userID, metricName := range userToMetric {
+		generateStorageBlock(t, storageDir, userID, metricName, 10, 100, 15)
+	}
+
+	sharding := userShardingStrategy{}
+	sharding.users = []string{user1, user2}
+
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	assert.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	stores, err := NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	assert.NoError(t, err)
+	assert.NotNil(t, stores.instanceTokenBucket)
+
+	assert.NoError(t, stores.InitialSync(ctx))
+	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
+	assert.NotNil(t, stores.getUserTokenBucket("user-2"))
+
+	sharding.users = []string{user1}
+	assert.NoError(t, stores.SyncBlocks(ctx))
+	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
+	assert.Nil(t, stores.getUserTokenBucket("user-2"))
+
+	sharding.users = []string{}
+	assert.NoError(t, stores.SyncBlocks(ctx))
+	assert.Nil(t, stores.getUserTokenBucket("user-1"))
+	assert.Nil(t, stores.getUserTokenBucket("user-2"))
+
+	cfg.BucketStore.TokenBucketBytesLimiter.Mode = string(cortex_tsdb.TokenBucketBytesLimiterDryRun)
+	sharding.users = []string{user1, user2}
+	reg = prometheus.NewPedanticRegistry()
+	stores, err = NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	assert.NoError(t, err)
+	assert.NotNil(t, stores.instanceTokenBucket)
+
+	assert.NoError(t, stores.InitialSync(ctx))
+	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
+	assert.NotNil(t, stores.getUserTokenBucket("user-2"))
+
+	cfg.BucketStore.TokenBucketBytesLimiter.Mode = string(cortex_tsdb.TokenBucketBytesLimiterDisabled)
+	sharding.users = []string{user1, user2}
+	reg = prometheus.NewPedanticRegistry()
+	stores, err = NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	assert.NoError(t, err)
+
+	assert.NoError(t, stores.InitialSync(ctx))
+	assert.Nil(t, stores.instanceTokenBucket)
+	assert.Nil(t, stores.getUserTokenBucket("user-1"))
+	assert.Nil(t, stores.getUserTokenBucket("user-2"))
+}
+
+func TestBucketStores_getTokensToRetrieve(t *testing.T) {
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.TokenBucketBytesLimiter.FetchedPostingsTokenFactor = 1
+	cfg.BucketStore.TokenBucketBytesLimiter.TouchedPostingsTokenFactor = 2
+	cfg.BucketStore.TokenBucketBytesLimiter.FetchedSeriesTokenFactor = 3
+	cfg.BucketStore.TokenBucketBytesLimiter.TouchedSeriesTokenFactor = 4
+	cfg.BucketStore.TokenBucketBytesLimiter.FetchedChunksTokenFactor = 0
+	cfg.BucketStore.TokenBucketBytesLimiter.TouchedChunksTokenFactor = 0.5
+
+	storageDir := t.TempDir()
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	assert.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	assert.NoError(t, err)
+
+	assert.Equal(t, int64(2), stores.getTokensToRetrieve(2, store.PostingsFetched))
+	assert.Equal(t, int64(4), stores.getTokensToRetrieve(2, store.PostingsTouched))
+	assert.Equal(t, int64(6), stores.getTokensToRetrieve(2, store.SeriesFetched))
+	assert.Equal(t, int64(8), stores.getTokensToRetrieve(2, store.SeriesTouched))
+	assert.Equal(t, int64(0), stores.getTokensToRetrieve(2, store.ChunksFetched))
+	assert.Equal(t, int64(1), stores.getTokensToRetrieve(2, store.ChunksTouched))
+}
+
 func getUsersInDir(t *testing.T, dir string) []string {
 	fs, err := os.ReadDir(dir)
 	require.NoError(t, err)

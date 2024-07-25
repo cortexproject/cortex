@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"flag"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -52,6 +53,7 @@ var (
 
 	ErrInvalidBucketIndexBlockDiscoveryStrategy = errors.New("bucket index block discovery strategy can only be enabled when bucket index is enabled")
 	ErrBlockDiscoveryStrategy                   = errors.New("invalid block discovery strategy")
+	ErrInvalidTokenBucketBytesLimiterMode       = errors.New("invalid token bucket bytes limiter mode")
 )
 
 // BlocksStorageConfig holds the config information for the blocks storage.
@@ -292,6 +294,22 @@ type BucketStoreConfig struct {
 
 	// Controls how many series to fetch per batch in Store Gateway. Default value is 10000.
 	SeriesBatchSize int `yaml:"series_batch_size"`
+
+	// Token bucket configs
+	TokenBucketBytesLimiter TokenBucketBytesLimiterConfig `yaml:"token_bucket_bytes_limiter"`
+}
+
+type TokenBucketBytesLimiterConfig struct {
+	Mode                       string  `yaml:"mode"`
+	InstanceTokenBucketSize    int64   `yaml:"instance_token_bucket_size"`
+	UserTokenBucketSize        int64   `yaml:"user_token_bucket_size"`
+	RequestTokenBucketSize     int64   `yaml:"request_token_bucket_size"`
+	FetchedPostingsTokenFactor float64 `yaml:"fetched_postings_token_factor" doc:"hidden"`
+	TouchedPostingsTokenFactor float64 `yaml:"touched_postings_token_factor" doc:"hidden"`
+	FetchedSeriesTokenFactor   float64 `yaml:"fetched_series_token_factor" doc:"hidden"`
+	TouchedSeriesTokenFactor   float64 `yaml:"touched_series_token_factor" doc:"hidden"`
+	FetchedChunksTokenFactor   float64 `yaml:"fetched_chunks_token_factor" doc:"hidden"`
+	TouchedChunksTokenFactor   float64 `yaml:"touched_chunks_token_factor" doc:"hidden"`
 }
 
 // RegisterFlags registers the BucketStore flags
@@ -325,6 +343,16 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LazyExpandedPostingsEnabled, "blocks-storage.bucket-store.lazy-expanded-postings-enabled", false, "If true, Store Gateway will estimate postings size and try to lazily expand postings if it downloads less data than expanding all postings.")
 	f.IntVar(&cfg.SeriesBatchSize, "blocks-storage.bucket-store.series-batch-size", store.SeriesBatchSize, "Controls how many series to fetch per batch in Store Gateway. Default value is 10000.")
 	f.StringVar(&cfg.BlockDiscoveryStrategy, "blocks-storage.bucket-store.block-discovery-strategy", string(ConcurrentDiscovery), "One of "+strings.Join(supportedBlockDiscoveryStrategies, ", ")+". When set to concurrent, stores will concurrently issue one call per directory to discover active blocks in the bucket. The recursive strategy iterates through all objects in the bucket, recursively traversing into each directory. This avoids N+1 calls at the expense of having slower bucket iterations. bucket_index strategy can be used in Compactor only and utilizes the existing bucket index to fetch block IDs to sync. This avoids iterating the bucket but can be impacted by delays of cleaner creating bucket index.")
+	f.StringVar(&cfg.TokenBucketBytesLimiter.Mode, "blocks-storage.bucket-store.token-bucket-bytes-limiter.mode", string(TokenBucketBytesLimiterDisabled), fmt.Sprintf("Token bucket bytes limiter mode. Supported values are: %s", strings.Join(supportedTokenBucketBytesLimiterModes, ", ")))
+	f.Int64Var(&cfg.TokenBucketBytesLimiter.InstanceTokenBucketSize, "blocks-storage.bucket-store.token-bucket-bytes-limiter.instance-token-bucket-size", int64(820*units.Mebibyte), "Instance token bucket size")
+	f.Int64Var(&cfg.TokenBucketBytesLimiter.UserTokenBucketSize, "blocks-storage.bucket-store.token-bucket-bytes-limiter.user-token-bucket-size", int64(615*units.Mebibyte), "User token bucket size")
+	f.Int64Var(&cfg.TokenBucketBytesLimiter.RequestTokenBucketSize, "blocks-storage.bucket-store.token-bucket-bytes-limiter.request-token-bucket-size", int64(4*units.Mebibyte), "Request token bucket size")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.FetchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.fetched-postings-token-factor", 0, "Multiplication factor used for fetched postings token")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.TouchedPostingsTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.touched-postings-token-factor", 5, "Multiplication factor used for touched postings token")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.FetchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.fetched-series-token-factor", 0, "Multiplication factor used for fetched series token")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.TouchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.touched-series-token-factor", 25, "Multiplication factor used for touched series token")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.FetchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.fetched-chunks-token-factor", 0, "Multiplication factor used for fetched chunks token")
+	f.Float64Var(&cfg.TokenBucketBytesLimiter.TouchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.touched-chunks-token-factor", 1, "Multiplication factor used for touched chunks token")
 }
 
 // Validate the config.
@@ -343,6 +371,9 @@ func (cfg *BucketStoreConfig) Validate() error {
 	}
 	if !util.StringsContain(supportedBlockDiscoveryStrategies, cfg.BlockDiscoveryStrategy) {
 		return ErrInvalidBucketIndexBlockDiscoveryStrategy
+	}
+	if !util.StringsContain(supportedTokenBucketBytesLimiterModes, cfg.TokenBucketBytesLimiter.Mode) {
+		return ErrInvalidTokenBucketBytesLimiterMode
 	}
 	return nil
 }
@@ -374,4 +405,18 @@ var supportedBlockDiscoveryStrategies = []string{
 	string(ConcurrentDiscovery),
 	string(RecursiveDiscovery),
 	string(BucketIndexDiscovery),
+}
+
+type TokenBucketBytesLimiterMode string
+
+const (
+	TokenBucketBytesLimiterDisabled TokenBucketBytesLimiterMode = "disabled"
+	TokenBucketBytesLimiterDryRun   TokenBucketBytesLimiterMode = "dryrun"
+	TokenBucketBytesLimiterEnabled  TokenBucketBytesLimiterMode = "enabled"
+)
+
+var supportedTokenBucketBytesLimiterModes = []string{
+	string(TokenBucketBytesLimiterDisabled),
+	string(TokenBucketBytesLimiterDryRun),
+	string(TokenBucketBytesLimiterEnabled),
 }

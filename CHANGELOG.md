@@ -10,6 +10,7 @@
 * [FEATURE] OTLP: Support ingesting OTLP exponential metrics as native histograms. #6071
 * [FEATURE] Ingester: Add `ingester.instance-limits.max-inflight-query-requests` to allow limiting ingester concurrent queries. #6081
 * [FEATURE] Distributor: Add `validation.max-native-histogram-buckets` to limit max number of bucket count. Distributor will try to automatically reduce histogram resolution until it is within the bucket limit or resolution cannot be reduced anymore. #6104
+* [FEATURE] Store Gateway: Token bucket limiter. #6016
 * [ENHANCEMENT] rulers: Add support to persist tokens in rulers. #5987
 * [ENHANCEMENT] Query Frontend/Querier: Added store gateway postings touched count and touched size in Querier stats and log in Query Frontend. #5892
 * [ENHANCEMENT] Query Frontend/Querier: Returns `warnings` on prometheus query responses. #5916
@@ -29,6 +30,7 @@
 * [ENHANCEMENT] Distributor: Reduce memory usage when error volume is high. #6095
 * [ENHANCEMENT] Compactor: Centralize metrics used by compactor and add user label to compactor metrics. #6096
 * [ENHANCEMENT] Compactor: Add unique execution ID for each compaction cycle in log for easy debugging. #6097
+* [ENHANCEMENT] Compactor: Differentiate retry and halt error and retry failed compaction only on retriable error. #6111
 * [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
 * [ENHANCEMENT] Compactor: Split cleaner cycle for active and deleted tenants. #6112
 * [ENHANCEMENT] Compactor: Introduce cleaner visit marker. #6113
@@ -37,6 +39,7 @@
 * [BUGFIX] Querier: Enforce max query length check for `/api/v1/series` API even though `ignoreMaxQueryLength` is set to true. #6018
 * [BUGFIX] Ingester: Fix issue with the minimize token generator where it was not taking in consideration the current ownerhip of an instance when generating extra tokens. #6062
 * [BUGFIX] Scheduler: Fix user queue in scheduler that was not thread-safe. #6077
+* [BUGFIX] Ingester: Include out-of-order head compaction when compacting TSDB head. #6108
 
 ## 1.17.1 2024-05-20
 

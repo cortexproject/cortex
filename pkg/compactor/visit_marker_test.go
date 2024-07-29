@@ -204,20 +204,8 @@ func (t *TestVisitMarker) IsExpired(visitMarkerTimeout time.Duration) bool {
 	return true
 }
 
-func (t *TestVisitMarker) IsCompleted() bool {
-	return t.Status == Completed
-}
-
-func (t *TestVisitMarker) IsFailed() bool {
-	return t.Status == Failed
-}
-
-func (t *TestVisitMarker) IsPending() bool {
-	return t.Status == Pending
-}
-
-func (t *TestVisitMarker) IsInProgress() bool {
-	return t.Status == InProgress
+func (t *TestVisitMarker) GetStatus() VisitStatus {
+	return t.Status
 }
 
 func NewTestVisitMarker(ownerIdentifier string) *TestVisitMarker {
@@ -232,24 +220,9 @@ func (t *TestVisitMarker) GetVisitMarkerFilePath() string {
 	return fmt.Sprintf("test-visit-marker-%s.json", t.markerID.String())
 }
 
-func (t *TestVisitMarker) MarkInProgress(ownerIdentifier string) {
+func (t *TestVisitMarker) UpdateStatus(ownerIdentifier string, status VisitStatus) {
 	t.OwnerIdentifier = ownerIdentifier
-	t.Status = InProgress
-}
-
-func (t *TestVisitMarker) MarkPending(ownerIdentifier string) {
-	t.OwnerIdentifier = ownerIdentifier
-	t.Status = Pending
-}
-
-func (t *TestVisitMarker) MarkCompleted(ownerIdentifier string) {
-	t.OwnerIdentifier = ownerIdentifier
-	t.Status = Completed
-}
-
-func (t *TestVisitMarker) MarkFailed(ownerIdentifier string) {
-	t.OwnerIdentifier = ownerIdentifier
-	t.Status = Failed
+	t.Status = status
 }
 
 func (t *TestVisitMarker) LogInfo() []string {

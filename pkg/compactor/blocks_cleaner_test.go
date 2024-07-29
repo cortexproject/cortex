@@ -87,7 +87,7 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, cfgProvider, logger, nil, time.Minute, 30*time.Second, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, cfgProvider, logger, "test-cleaner", nil, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 
 	// Clean User with no error
 	cleaner.bucketClient = bkt
@@ -194,7 +194,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, time.Minute, 30*time.Second, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -355,7 +355,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil, time.Minute, 30*time.Second, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, "test-cleaner", nil, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -419,7 +419,7 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil, time.Minute, 30*time.Second, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, "test-cleaner", nil, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -477,7 +477,7 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, time.Minute, 30*time.Second, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 	activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
 	require.NoError(t, err)
 	require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, true))
@@ -618,7 +618,7 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, time.Minute, 30*time.Second, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 
 	assertBlockExists := func(user string, block ulid.ULID, expectExists bool) {
 		exists, err := bucketClient.Exists(ctx, path.Join(user, block.String(), metadata.MetaFilename))

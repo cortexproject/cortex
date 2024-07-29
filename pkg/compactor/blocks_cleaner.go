@@ -66,8 +66,8 @@ type BlocksCleaner struct {
 	blocksCleanedTotal                prometheus.Counter
 	blocksFailedTotal                 prometheus.Counter
 	blocksMarkedForDeletion           *prometheus.CounterVec
-	CleanerVisitMarkerReadFailed      prometheus.Counter
-	CleanerVisitMarkerWriteFailed     prometheus.Counter
+	cleanerVisitMarkerReadFailed      prometheus.Counter
+	cleanerVisitMarkerWriteFailed     prometheus.Counter
 	tenantBlocks                      *prometheus.GaugeVec
 	tenantBlocksMarkedForDelete       *prometheus.GaugeVec
 	tenantBlocksMarkedForNoCompaction *prometheus.GaugeVec
@@ -83,6 +83,7 @@ func NewBlocksCleaner(
 	usersScanner *cortex_tsdb.UsersScanner,
 	cfgProvider ConfigProvider,
 	logger log.Logger,
+	ringLifecyclerID string,
 	reg prometheus.Registerer,
 	cleanerVisitMarkerTimeout time.Duration,
 	cleanerVisitMarkerFileUpdateInterval time.Duration,
@@ -94,7 +95,7 @@ func NewBlocksCleaner(
 		usersScanner:                         usersScanner,
 		cfgProvider:                          cfgProvider,
 		logger:                               log.With(logger, "component", "cleaner"),
-		ringLifecyclerID:                     "default-cleaner",
+		ringLifecyclerID:                     ringLifecyclerID,
 		cleanerVisitMarkerTimeout:            cleanerVisitMarkerTimeout,
 		cleanerVisitMarkerFileUpdateInterval: cleanerVisitMarkerFileUpdateInterval,
 		runsStarted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -122,11 +123,11 @@ func NewBlocksCleaner(
 			Help: "Total number of blocks failed to be deleted.",
 		}),
 		blocksMarkedForDeletion: blocksMarkedForDeletion,
-		CleanerVisitMarkerReadFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		cleanerVisitMarkerReadFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_cleaner_visit_marker_read_failed",
 			Help: "Number of cleaner visit marker file failed to be read.",
 		}),
-		CleanerVisitMarkerWriteFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		cleanerVisitMarkerWriteFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_cleaner_visit_marker_write_failed",
 			Help: "Number of cleaner visit marker file failed to be written.",
 		}),
@@ -349,14 +350,14 @@ func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, erro
 
 func (c *BlocksCleaner) obtainVisitMarkerManager(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) (*VisitMarkerManager, error) {
 	cleanerVisitMarker := NewCleanerVisitMarker(c.ringLifecyclerID)
-	visitMarkerManager := NewVisitMarkerManager(userBucket, userLogger, c.ringLifecyclerID, cleanerVisitMarker, c.CleanerVisitMarkerReadFailed, c.CleanerVisitMarkerWriteFailed)
+	visitMarkerManager := NewVisitMarkerManager(userBucket, userLogger, c.ringLifecyclerID, cleanerVisitMarker, c.cleanerVisitMarkerReadFailed, c.cleanerVisitMarkerWriteFailed)
 
 	existingCleanerVisitMarker := &CleanerVisitMarker{}
 	err := visitMarkerManager.ReadVisitMarker(ctx, existingCleanerVisitMarker)
-	if err != nil && !errors.Is(err, ErrorVisitMarkerNotFound) {
+	if err != nil && !errors.Is(err, errorVisitMarkerNotFound) {
 		return nil, errors.Wrapf(err, "failed to read cleaner visit marker")
 	}
-	if errors.Is(err, ErrorVisitMarkerNotFound) || !existingCleanerVisitMarker.IsVisited(c.cleanerVisitMarkerTimeout) {
+	if errors.Is(err, errorVisitMarkerNotFound) || !existingCleanerVisitMarker.IsVisited(c.cleanerVisitMarkerTimeout) {
 		return visitMarkerManager, nil
 	}
 	return nil, nil

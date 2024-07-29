@@ -529,16 +529,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 	// Create the users scanner.
 	c.usersScanner = cortex_tsdb.NewUsersScanner(c.bucketClient, c.ownUserForCleanUp, c.parentLogger)
 
-	// Create the blocks cleaner (service).
-	c.blocksCleaner = NewBlocksCleaner(BlocksCleanerConfig{
-		DeletionDelay:                      c.compactorCfg.DeletionDelay,
-		CleanupInterval:                    util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1),
-		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
-		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
-		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
-	}, c.bucketClient, c.usersScanner, c.limits, c.parentLogger, c.registerer, c.compactorCfg.CleanerVisitMarkerTimeout, c.compactorCfg.CleanerVisitMarkerFileUpdateInterval,
-		c.compactorMetrics.syncerBlocksMarkedForDeletion)
-
+	var cleanerRingLifecyclerID = "default-cleaner"
 	// Initialize the compactors ring if sharding is enabled.
 	if c.compactorCfg.ShardingEnabled {
 		lifecyclerCfg := c.compactorCfg.ShardingRing.ToLifecyclerConfig()
@@ -547,7 +538,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 			return errors.Wrap(err, "unable to initialize compactor ring lifecycler")
 		}
 
-		c.blocksCleaner.SetRingLifecyclerID(c.ringLifecycler.ID)
+		cleanerRingLifecyclerID = c.ringLifecycler.ID
 
 		c.ring, err = ring.New(lifecyclerCfg.RingConfig, "compactor", ringKey, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.registerer))
 		if err != nil {
@@ -597,6 +588,16 @@ func (c *Compactor) starting(ctx context.Context) error {
 			}
 		}
 	}
+
+	// Create the blocks cleaner (service).
+	c.blocksCleaner = NewBlocksCleaner(BlocksCleanerConfig{
+		DeletionDelay:                      c.compactorCfg.DeletionDelay,
+		CleanupInterval:                    util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1),
+		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
+		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
+		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
+	}, c.bucketClient, c.usersScanner, c.limits, c.parentLogger, cleanerRingLifecyclerID, c.registerer, c.compactorCfg.CleanerVisitMarkerTimeout, c.compactorCfg.CleanerVisitMarkerFileUpdateInterval,
+		c.compactorMetrics.syncerBlocksMarkedForDeletion)
 
 	// Ensure an initial cleanup occurred before starting the compactor.
 	if err := services.StartAndAwaitRunning(ctx, c.blocksCleaner); err != nil {

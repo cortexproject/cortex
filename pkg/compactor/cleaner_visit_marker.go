@@ -35,50 +35,20 @@ func (b *CleanerVisitMarker) IsExpired(cleanerVisitMarkerTimeout time.Duration) 
 }
 
 func (b *CleanerVisitMarker) IsVisited(cleanerVisitMarkerTimeout time.Duration) bool {
-	return !b.IsCompleted() && !b.IsFailed() && !b.IsExpired(cleanerVisitMarkerTimeout)
+	return !(b.GetStatus() == Completed) && !(b.GetStatus() == Failed) && !b.IsExpired(cleanerVisitMarkerTimeout)
 }
 
-func (b *CleanerVisitMarker) IsCompleted() bool {
-	return b.Status == Completed
-}
-
-func (b *CleanerVisitMarker) IsFailed() bool {
-	return b.Status == Failed
-}
-
-func (b *CleanerVisitMarker) IsInProgress() bool {
-	return b.Status == InProgress
-}
-
-func (b *CleanerVisitMarker) IsPending() bool {
-	return b.Status == Pending
+func (b *CleanerVisitMarker) GetStatus() VisitStatus {
+	return b.Status
 }
 
 func (b *CleanerVisitMarker) GetVisitMarkerFilePath() string {
 	return GetCleanerVisitMarkerFilePath()
 }
 
-func (b *CleanerVisitMarker) MarkInProgress(ownerIdentifier string) {
+func (b *CleanerVisitMarker) UpdateStatus(ownerIdentifier string, status VisitStatus) {
 	b.CompactorID = ownerIdentifier
-	b.Status = InProgress
-	b.VisitTime = time.Now().Unix()
-}
-
-func (b *CleanerVisitMarker) MarkPending(ownerIdentifier string) {
-	b.CompactorID = ownerIdentifier
-	b.Status = Pending
-	b.VisitTime = time.Now().Unix()
-}
-
-func (b *CleanerVisitMarker) MarkCompleted(ownerIdentifier string) {
-	b.CompactorID = ownerIdentifier
-	b.Status = Completed
-	b.VisitTime = time.Now().Unix()
-}
-
-func (b *CleanerVisitMarker) MarkFailed(ownerIdentifier string) {
-	b.CompactorID = ownerIdentifier
-	b.Status = Failed
+	b.Status = status
 	b.VisitTime = time.Now().Unix()
 }
 

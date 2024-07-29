@@ -1,6 +1,7 @@
 package miniredis
 
 import (
+	"errors"
 	"math"
 	"strconv"
 	"time"
@@ -24,6 +25,16 @@ func optIntErr(c *server.Peer, src string, dest *int, errMsg string) bool {
 	}
 	*dest = n
 	return true
+}
+
+// optIntSimple sets dest or returns an error
+func optIntSimple(src string, dest *int) error {
+	n, err := strconv.Atoi(src)
+	if err != nil {
+		return errors.New(msgInvalidInt)
+	}
+	*dest = n
+	return nil
 }
 
 func optDuration(c *server.Peer, src string, dest *time.Duration) bool {

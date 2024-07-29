@@ -582,6 +582,10 @@ func (m *Miniredis) cmdSrandmember(c *server.Peer, cmd string, args []string) {
 		db := m.db(ctx.selectedDB)
 
 		if !db.exists(key) {
+			if withCount {
+				c.WriteLen(0)
+				return
+			}
 			c.WriteNull()
 			return
 		}

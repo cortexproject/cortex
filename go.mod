@@ -7,7 +7,7 @@ toolchain go1.22.5
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/alecthomas/units v0.0.0-20231202071711-9a357b53e9c9
-	github.com/alicebob/miniredis/v2 v2.32.1
+	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/armon/go-metrics v0.4.1
 	github.com/aws/aws-sdk-go v1.54.19
 	github.com/bradfitz/gomemcache v0.0.0-20230905024940-24af94b03874

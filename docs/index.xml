@@ -7655,7 +7655,7 @@ The ingester has failed to heartbeat to the ring&amp;rsquo;s KV Store. While in 
 &lt;p>For more information, see the &lt;a href="/docs/blocks-storage/compactor/">compactor documentation&lt;/a>.&lt;/p>
 &lt;p>The compactor is &lt;strong>stateless&lt;/strong>.&lt;/p>
 &lt;h3 id="store-gateway">Store gateway&lt;/h3>
-&lt;p>The &lt;strong>store gateway&lt;/strong> is the Cortex service responsible to query series from blocks, it needs to have an almost up-to-date view over the storage bucket. In order to discover blocks belonging to their shard. The store-gateway can keep the bucket view updated in to two different ways:&lt;/p>
+&lt;p>The &lt;strong>store gateway&lt;/strong> is the Cortex service responsible for querying series from blocks. It needs to have an almost up-to-date view of the storage bucket. To discover blocks belonging to their shard, the store gateway can keep the bucket view updated in two different ways:&lt;/p>
 &lt;ol>
 &lt;li>Periodically scanning the bucket (default)&lt;/li>
 &lt;li>Periodically downloading the &lt;a href="/docs/blocks-storage/bucket-index/">bucket index&lt;/a>&lt;/li>

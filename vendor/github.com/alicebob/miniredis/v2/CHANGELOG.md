@@ -1,6 +1,18 @@
 ## Changelog
 
 
+### v2.33.0
+
+- minimum Go version is now 1.17
+- fix integer overflow (thanks @wszaranski)
+- test against the last BSD redis (7.2.4)
+- ignore 'redis.set_repl()' call (thanks @TingluoHuang)
+- various build fixes (thanks @wszaranski)
+- add StartAddrTLS function (thanks @agriffaut)
+- support for the NOMKSTREAM option for XADD (thanks @Jahaja)
+- return empty array for SRANDMEMBER on nonexistent key (thanks @WKBae)
+
+
 ### v2.32.1
 
 - support for SINTERCARD (thanks @s-barr-fetch)

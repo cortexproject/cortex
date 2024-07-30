@@ -62,6 +62,7 @@ type RuleGroup struct {
 	// same array.
 	Rules          []rule    `json:"rules"`
 	Interval       float64   `json:"interval"`
+	QueryOffset    *float64  `json:"queryOffset,omitempty"`
 	LastEvaluation time.Time `json:"lastEvaluation"`
 	EvaluationTime float64   `json:"evaluationTime"`
 	Limit          int64     `json:"limit"`
@@ -182,11 +183,17 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	groups := make([]*RuleGroup, 0, len(rgs))
 
 	for _, g := range rgs {
+		var queryOffset *float64
+		if g.Group.QueryOffset != nil {
+			offset := g.Group.QueryOffset.Seconds()
+			queryOffset = &offset
+		}
 		grp := RuleGroup{
 			Name:           g.Group.Name,
 			File:           g.Group.Namespace,
 			Rules:          make([]rule, len(g.ActiveRules)),
 			Interval:       g.Group.Interval.Seconds(),
+			QueryOffset:    queryOffset,
 			LastEvaluation: g.GetEvaluationTimestamp(),
 			EvaluationTime: g.GetEvaluationDuration().Seconds(),
 			Limit:          g.Group.Limit,

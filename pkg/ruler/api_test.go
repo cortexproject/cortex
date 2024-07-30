@@ -44,6 +44,7 @@ func TestRuler_rules(t *testing.T) {
 	require.Equal(t, responseJSON.Status, "success")
 
 	// Testing the running rules for user1 in the mock store
+	queryOffset := float64(0)
 	expectedResponse, _ := json.Marshal(util_api.Response{
 		Status: "success",
 		Data: &RuleDiscovery{
@@ -67,7 +68,8 @@ func TestRuler_rules(t *testing.T) {
 							Alerts: []*Alert{},
 						},
 					},
-					Interval: 60,
+					Interval:    60,
+					QueryOffset: &queryOffset,
 				},
 			},
 		},
@@ -100,6 +102,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 	require.Equal(t, responseJSON.Status, "success")
 
 	// Testing the running rules for user1 in the mock store
+	queryOffset := float64(0)
 	expectedResponse, _ := json.Marshal(util_api.Response{
 		Status: "success",
 		Data: &RuleDiscovery{
@@ -123,7 +126,8 @@ func TestRuler_rules_special_characters(t *testing.T) {
 							Alerts: []*Alert{},
 						},
 					},
-					Interval: 60,
+					Interval:    60,
+					QueryOffset: &queryOffset,
 				},
 			},
 		},
@@ -154,6 +158,7 @@ func TestRuler_rules_limit(t *testing.T) {
 	require.Equal(t, responseJSON.Status, "success")
 
 	// Testing the running rules for user1 in the mock store
+	queryOffset := float64(0)
 	expectedResponse, _ := json.Marshal(util_api.Response{
 		Status: "success",
 		Data: &RuleDiscovery{
@@ -178,7 +183,8 @@ func TestRuler_rules_limit(t *testing.T) {
 							Alerts: []*Alert{},
 						},
 					},
-					Interval: 60,
+					Interval:    60,
+					QueryOffset: &queryOffset,
 				},
 			},
 		},
@@ -279,7 +285,7 @@ rules:
   labels:
     test: test
 `,
-			output: "name: test\ninterval: 15s\nquery_offset: 0s\nrules:\n    - record: up_rule\n      expr: up{}\n    - alert: up_alert\n      expr: sum(up{}) > 1\n      for: 30s\n      labels:\n        test: test\n      annotations:\n        test: test\n",
+			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: up{}\n    - alert: up_alert\n      expr: sum(up{}) > 1\n      for: 30s\n      labels:\n        test: test\n      annotations:\n        test: test\n",
 		},
 		{
 			name:   "with a valid rule query offset",
@@ -342,7 +348,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, "name: group1\ninterval: 1m\nquery_offset: 0s\nrules:\n    - record: UP_RULE\n      expr: up\n    - alert: UP_ALERT\n      expr: up < 1\n", w.Body.String())
+	require.Equal(t, "name: group1\ninterval: 1m\nrules:\n    - record: UP_RULE\n      expr: up\n    - alert: UP_ALERT\n      expr: up < 1\n", w.Body.String())
 
 	// Delete namespace1
 	req = requestFor(t, http.MethodDelete, "https://localhost:8080/api/v1/rules/namespace1", nil, "user1")

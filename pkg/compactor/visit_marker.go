@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -37,8 +36,8 @@ type VisitMarker interface {
 	GetVisitMarkerFilePath() string
 	UpdateStatus(ownerIdentifier string, status VisitStatus)
 	GetStatus() VisitStatus
-	LogInfo() []string
 	IsExpired(visitMarkerTimeout time.Duration) bool
+	String() string
 }
 
 type VisitMarkerManager struct {
@@ -48,8 +47,6 @@ type VisitMarkerManager struct {
 	visitMarker            VisitMarker
 	visitMarkerReadFailed  prometheus.Counter
 	visitMarkerWriteFailed prometheus.Counter
-
-	mutex sync.Mutex
 }
 
 func NewVisitMarkerManager(
@@ -62,7 +59,7 @@ func NewVisitMarkerManager(
 ) *VisitMarkerManager {
 	return &VisitMarkerManager{
 		bkt:                    bkt,
-		logger:                 log.With(logger, "type", fmt.Sprintf("%T", visitMarker), visitMarker.LogInfo()),
+		logger:                 log.With(logger, "type", fmt.Sprintf("%T", visitMarker)),
 		ownerIdentifier:        ownerIdentifier,
 		visitMarker:            visitMarker,
 		visitMarkerReadFailed:  visitMarkerReadFailed,
@@ -153,6 +150,14 @@ func (v *VisitMarkerManager) DeleteVisitMarker(ctx context.Context) {
 	level.Debug(v.getLogger()).Log("msg", "visit marker deleted")
 }
 
+func (v *VisitMarkerManager) ReloadVisitMarker(ctx context.Context) error {
+	if err := v.ReadVisitMarker(ctx, v.visitMarker); err != nil {
+		return err
+	}
+	level.Debug(v.getLogger()).Log("msg", "visit marker reloaded")
+	return nil
+}
+
 func (v *VisitMarkerManager) ReadVisitMarker(ctx context.Context, visitMarker any) error {
 	visitMarkerFile := v.visitMarker.GetVisitMarkerFilePath()
 	visitMarkerFileReader, err := v.bkt.ReaderWithExpectedErrs(v.bkt.IsObjNotFoundErr).Get(ctx, visitMarkerFile)
@@ -193,7 +198,5 @@ func (v *VisitMarkerManager) updateVisitMarker(ctx context.Context) error {
 }
 
 func (v *VisitMarkerManager) getLogger() log.Logger {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-	return v.logger
+	return log.With(v.logger, "visit_marker", v.visitMarker.String())
 }

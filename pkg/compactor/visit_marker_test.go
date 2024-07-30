@@ -1,8 +1,10 @@
 package compactor
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -75,6 +77,37 @@ func TestMarkCompleted(t *testing.T) {
 	err := visitMarkerManager.ReadVisitMarker(ctx, visitMarkerFromFile)
 	require.NoError(t, err)
 	require.Equal(t, Completed, visitMarkerFromFile.Status)
+}
+
+func TestReloadVisitMarker(t *testing.T) {
+	ctx := context.Background()
+	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	logger := log.NewNopLogger()
+
+	ownerIdentifier := "test-owner"
+	testVisitMarker := NewTestVisitMarker(ownerIdentifier)
+
+	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker, dummyCounter, dummyCounter)
+
+	newValue := "updated stored value"
+	updatedVisitMarker := TestVisitMarker{
+		OwnerIdentifier: ownerIdentifier,
+		Status:          Completed,
+		StoredValue:     newValue,
+	}
+	visitMarkerFileContent, err := json.Marshal(updatedVisitMarker)
+	require.NoError(t, err)
+
+	reader := bytes.NewReader(visitMarkerFileContent)
+	err = bkt.Upload(ctx, testVisitMarker.GetVisitMarkerFilePath(), reader)
+	require.NoError(t, err)
+
+	err = visitMarkerManager.ReloadVisitMarker(ctx)
+	require.NoError(t, err)
+	require.Equal(t, ownerIdentifier, testVisitMarker.OwnerIdentifier)
+	require.Equal(t, Completed, testVisitMarker.Status)
+	require.Equal(t, newValue, testVisitMarker.StoredValue)
 }
 
 func TestUpdateExistingVisitMarker(t *testing.T) {
@@ -187,6 +220,10 @@ func TestHeartBeat(t *testing.T) {
 				exists, err := bkt.Exists(context.Background(), testVisitMarker.GetVisitMarkerFilePath())
 				require.NoError(t, err)
 				require.False(t, exists)
+			} else {
+				err := visitMarkerManager.ReloadVisitMarker(context.Background())
+				require.NoError(t, err)
+				require.Equal(t, tcase.expectedStatus, testVisitMarker.Status)
 			}
 		})
 	}
@@ -225,6 +262,6 @@ func (t *TestVisitMarker) UpdateStatus(ownerIdentifier string, status VisitStatu
 	t.Status = status
 }
 
-func (t *TestVisitMarker) LogInfo() []string {
-	return []string{"id", t.markerID.String(), "ownerIdentifier", t.OwnerIdentifier, "status", string(t.Status), "storedValue", t.StoredValue}
+func (t *TestVisitMarker) String() string {
+	return fmt.Sprintf("id=%s ownerIdentifier=%s status=%s storedValue=%s", t.markerID.String(), t.OwnerIdentifier, t.Status, t.StoredValue)
 }

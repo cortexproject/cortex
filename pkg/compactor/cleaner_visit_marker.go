@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"fmt"
 	"path"
 	"time"
 
@@ -52,15 +53,12 @@ func (b *CleanerVisitMarker) UpdateStatus(ownerIdentifier string, status VisitSt
 	b.VisitTime = time.Now().Unix()
 }
 
-func (b *CleanerVisitMarker) LogInfo() []string {
-	return []string{
-		"compactor_id",
+func (b *CleanerVisitMarker) String() string {
+	return fmt.Sprintf("compactor_id=%s status=%s visit_time=%s",
 		b.CompactorID,
-		"status",
-		string(b.Status),
-		"visit_time",
+		b.Status,
 		time.Unix(b.VisitTime, 0).String(),
-	}
+	)
 }
 
 func GetCleanerVisitMarkerFilePath() string {

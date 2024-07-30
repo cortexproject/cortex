@@ -128,8 +128,8 @@ func NewBlocksCleaner(
 			Help: "Number of cleaner visit marker file failed to be read.",
 		}),
 		cleanerVisitMarkerWriteFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_compactor_cleaner_visit_marker_write_failed",
-			Help: "Number of cleaner visit marker file failed to be written.",
+			Name: "cortex_compactor_cleaner_visit_marker_write_failed_total",
+			Help: "Total number of cleaner visit marker file failed to be written.",
 		}),
 
 		// The following metrics don't have the "cortex_compactor" prefix because not strictly related to
@@ -271,11 +271,11 @@ func (c *BlocksCleaner) cleanUpActiveUsers(ctx context.Context, users []string, 
 	return concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 		userLogger := util_log.WithUserID(userID, c.logger)
 		userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
-		visitMarkerManager, err := c.obtainVisitMarkerManager(ctx, userLogger, userBucket)
+		visitMarkerManager, isVisited, err := c.obtainVisitMarkerManager(ctx, userLogger, userBucket)
 		if err != nil {
 			return err
 		}
-		if visitMarkerManager == nil {
+		if isVisited {
 			return nil
 		}
 		errChan := make(chan error, 1)
@@ -306,11 +306,11 @@ func (c *BlocksCleaner) cleanDeletedUsers(ctx context.Context, users []string) e
 	return concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 		userLogger := util_log.WithUserID(userID, c.logger)
 		userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
-		visitMarkerManager, err := c.obtainVisitMarkerManager(ctx, userLogger, userBucket)
+		visitMarkerManager, isVisited, err := c.obtainVisitMarkerManager(ctx, userLogger, userBucket)
 		if err != nil {
 			return err
 		}
-		if visitMarkerManager == nil {
+		if isVisited {
 			return nil
 		}
 		errChan := make(chan error, 1)
@@ -348,19 +348,17 @@ func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, erro
 	return users, deleted, nil
 }
 
-func (c *BlocksCleaner) obtainVisitMarkerManager(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) (*VisitMarkerManager, error) {
+func (c *BlocksCleaner) obtainVisitMarkerManager(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) (visitMarkerManager *VisitMarkerManager, isVisited bool, err error) {
 	cleanerVisitMarker := NewCleanerVisitMarker(c.ringLifecyclerID)
-	visitMarkerManager := NewVisitMarkerManager(userBucket, userLogger, c.ringLifecyclerID, cleanerVisitMarker, c.cleanerVisitMarkerReadFailed, c.cleanerVisitMarkerWriteFailed)
+	visitMarkerManager = NewVisitMarkerManager(userBucket, userLogger, c.ringLifecyclerID, cleanerVisitMarker, c.cleanerVisitMarkerReadFailed, c.cleanerVisitMarkerWriteFailed)
 
 	existingCleanerVisitMarker := &CleanerVisitMarker{}
-	err := visitMarkerManager.ReadVisitMarker(ctx, existingCleanerVisitMarker)
+	err = visitMarkerManager.ReadVisitMarker(ctx, existingCleanerVisitMarker)
 	if err != nil && !errors.Is(err, errorVisitMarkerNotFound) {
-		return nil, errors.Wrapf(err, "failed to read cleaner visit marker")
+		return nil, false, errors.Wrapf(err, "failed to read cleaner visit marker")
 	}
-	if errors.Is(err, errorVisitMarkerNotFound) || !existingCleanerVisitMarker.IsVisited(c.cleanerVisitMarkerTimeout) {
-		return visitMarkerManager, nil
-	}
-	return nil, nil
+	isVisited = !errors.Is(err, errorVisitMarkerNotFound) && existingCleanerVisitMarker.IsVisited(c.cleanerVisitMarkerTimeout)
+	return visitMarkerManager, isVisited, nil
 }
 
 // Remove blocks and remaining data for tenant marked for deletion.

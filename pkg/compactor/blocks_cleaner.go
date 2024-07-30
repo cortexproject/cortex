@@ -124,8 +124,8 @@ func NewBlocksCleaner(
 		}),
 		blocksMarkedForDeletion: blocksMarkedForDeletion,
 		cleanerVisitMarkerReadFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_compactor_cleaner_visit_marker_read_failed",
-			Help: "Number of cleaner visit marker file failed to be read.",
+			Name: "cortex_compactor_cleaner_visit_marker_read_failed_total",
+			Help: "Total number of cleaner visit marker file failed to be read.",
 		}),
 		cleanerVisitMarkerWriteFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_cleaner_visit_marker_write_failed_total",

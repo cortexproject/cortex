@@ -28,6 +28,8 @@ message RuleGroupDesc {
   // to the Prometheus Manager.
   repeated google.protobuf.Any options = 9;
   int64 limit =10;
+  google.protobuf.Duration queryOffset = 11
+      [(gogoproto.nullable) = true, (gogoproto.stdduration) = true];
 }
 
 // RuleDesc is a proto representation of a Prometheus Rule

@@ -911,13 +911,15 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		}
 		interval := group.Interval()
 
+		queryOffset := group.QueryOffset()
 		groupDesc := &GroupStateDesc{
 			Group: &rulespb.RuleGroupDesc{
-				Name:      group.Name(),
-				Namespace: string(decodedNamespace),
-				Interval:  interval,
-				User:      userID,
-				Limit:     int64(group.Limit()),
+				Name:        group.Name(),
+				Namespace:   string(decodedNamespace),
+				Interval:    interval,
+				User:        userID,
+				Limit:       int64(group.Limit()),
+				QueryOffset: &queryOffset,
 			},
 
 			EvaluationTimestamp: group.GetLastEvaluation(),

@@ -3349,6 +3349,10 @@ query_rejection:
 # CLI flag: -ruler.max-rule-groups-per-tenant
 [ruler_max_rule_groups_per_tenant: <int> | default = 0]
 
+# Duration to offset all rule evaluation queries per-tenant.
+# CLI flag: -ruler.query-offset
+[ruler_query_offset: <duration> | default = 0s]
+
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the
 # shuffle-sharding strategy. When this setting is specified in the per-tenant

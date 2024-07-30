@@ -88,6 +88,7 @@ type ruleLimits struct {
 	maxRuleGroups        int
 	disabledRuleGroups   validation.DisabledRuleGroups
 	maxQueryLength       time.Duration
+	queryOffset          time.Duration
 }
 
 func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
@@ -111,6 +112,10 @@ func (r ruleLimits) DisabledRuleGroups(userID string) validation.DisabledRuleGro
 }
 
 func (r ruleLimits) MaxQueryLength(_ string) time.Duration { return r.maxQueryLength }
+
+func (r ruleLimits) RulerQueryOffset(_ string) time.Duration {
+	return r.queryOffset
+}
 
 func newEmptyQueryable() storage.Queryable {
 	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
@@ -2532,4 +2537,36 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 			require.Equal(t, tc.expectedRuleGroupsForUser, actualRules)
 		})
 	}
+}
+
+func TestRuler_QueryOffset(t *testing.T) {
+	store := newMockRuleStore(mockRulesQueryOffset, nil)
+	cfg := defaultRulerConfig(t)
+
+	r := newTestRuler(t, cfg, store, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	ctx := user.InjectOrgID(context.Background(), "user1")
+	rls, err := r.Rules(ctx, &RulesRequest{})
+	require.NoError(t, err)
+	require.Len(t, rls.Groups, 1)
+	rg := rls.Groups[0]
+	expectedRg := mockRulesQueryOffset["user1"][0]
+	compareRuleGroupDescToStateDesc(t, expectedRg, rg)
+
+	// test default query offset=0 when not defined at group level
+	gotOffset := rg.GetGroup().QueryOffset
+	require.Equal(t, time.Duration(0), *gotOffset)
+
+	ctx = user.InjectOrgID(context.Background(), "user2")
+	rls, err = r.Rules(ctx, &RulesRequest{})
+	require.NoError(t, err)
+	require.Len(t, rls.Groups, 1)
+	rg = rls.Groups[0]
+	expectedRg = mockRules["user2"][0]
+	compareRuleGroupDescToStateDesc(t, expectedRg, rg)
+
+	// test group query offset is set
+	gotOffset = rg.GetGroup().QueryOffset
+	require.Equal(t, time.Minute*2, *gotOffset)
 }

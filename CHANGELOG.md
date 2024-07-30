@@ -22,6 +22,7 @@
 * [CHANGE] Querier: Remove `-querier.at-modifier-enabled` flag. #6157
 * [CHANGE] Tracing: Remove deprecated `oltp_endpoint` config entirely. #6158
 * [CHANGE] Store Gateway: Enable store gateway zone stable shuffle sharding by default. #6161
+* [FEATURE] Ruler: Minimize rule group missed evaluations via `-ruler.enable-ha` flag. #6129
 * [FEATURE] Ingester/Distributor: Experimental: Enable native histogram ingestion via `-blocks-storage.tsdb.enable-native-histograms` flag. #5986 #6010 #6020
 * [FEATURE] Querier: Enable querying native histogram chunks. #5944 #6031
 * [FEATURE] Query Frontend: Support native histogram in query frontend response. #5996 #6043

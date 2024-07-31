@@ -2204,7 +2204,7 @@ func Test_Ingester_LabelNames(t *testing.T) {
 		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
 	}
 
-	expected := []string{"__name__", "status", "route"}
+	expected := []string{"__name__", "route", "status"}
 
 	// Create ingester
 	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
@@ -2226,10 +2226,27 @@ func Test_Ingester_LabelNames(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Get label names
-	res, err := i.LabelNames(ctx, &client.LabelNamesRequest{})
-	require.NoError(t, err)
-	assert.ElementsMatch(t, expected, res.LabelNames)
+	tests := map[string]struct {
+		limit    int
+		expected []string
+	}{
+		"should return all label names if no limit is set": {
+			expected: expected,
+		},
+		"should return limited label names if a limit is set": {
+			limit:    2,
+			expected: expected[:2],
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Get label names
+			res, err := i.LabelNames(ctx, &client.LabelNamesRequest{Limit: int64(testData.limit)})
+			require.NoError(t, err)
+			assert.ElementsMatch(t, testData.expected, res.LabelNames)
+		})
+	}
 }
 
 func Test_Ingester_LabelValues(t *testing.T) {
@@ -2270,13 +2287,31 @@ func Test_Ingester_LabelValues(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Get label values
-	for labelName, expectedValues := range expected {
-		req := &client.LabelValuesRequest{LabelName: labelName}
-		res, err := i.LabelValues(ctx, req)
-		require.NoError(t, err)
-		assert.ElementsMatch(t, expectedValues, res.LabelValues)
+	tests := map[string]struct {
+		limit int64
+	}{
+		"should return all label values if no limit is set": {
+			limit: 0,
+		},
+		"should return limited label values if a limit is set": {
+			limit: 1,
+		},
 	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			for labelName, expectedValues := range expected {
+				req := &client.LabelValuesRequest{LabelName: labelName, Limit: testData.limit}
+				res, err := i.LabelValues(ctx, req)
+				require.NoError(t, err)
+				if testData.limit > 0 && len(expectedValues) > int(testData.limit) {
+					expectedValues = expectedValues[:testData.limit]
+				}
+				assert.ElementsMatch(t, expectedValues, res.LabelValues)
+			}
+		})
+	}
+
 }
 
 func Test_Ingester_LabelValue_MaxInflightQueryRequest(t *testing.T) {
@@ -2635,6 +2670,7 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 	tests := map[string]struct {
 		from                 int64
 		to                   int64
+		limit                int64
 		matchers             []*client.LabelMatchers
 		expected             []*cortexpb.Metric
 		queryIngestersWithin time.Duration
@@ -2742,6 +2778,26 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[4].lbls)},
 			},
 		},
+		"should return only limited results": {
+			from:  math.MinInt64,
+			to:    math.MaxInt64,
+			limit: 1,
+			matchers: []*client.LabelMatchers{
+				{
+					Matchers: []*client.LabelMatcher{
+						{Type: client.EQUAL, Name: "status", Value: "200"},
+					},
+				},
+				{
+					Matchers: []*client.LabelMatcher{
+						{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_2"},
+					},
+				},
+			},
+			expected: []*cortexpb.Metric{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[0].lbls)},
+			},
+		},
 	}
 
 	// Create ingester
@@ -2773,6 +2829,7 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 				StartTimestampMs: testData.from,
 				EndTimestampMs:   testData.to,
 				MatchersSet:      testData.matchers,
+				Limit:            testData.limit,
 			}
 			i.cfg.QueryIngestersWithin = testData.queryIngestersWithin
 			res, err := i.MetricsForLabelMatchers(ctx, req)

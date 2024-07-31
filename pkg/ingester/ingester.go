@@ -1746,7 +1746,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		result.Metric = append(result.Metric, &cortexpb.Metric{
 			Labels: cortexpb.FromLabelsToLabelAdapters(mergedSet.At().Labels()),
 		})
-		if len(result.Metric) >= limit {
+		if limit > 0 && len(result.Metric) >= limit {
 			break
 		}
 	}

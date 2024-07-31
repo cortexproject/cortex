@@ -1053,6 +1053,9 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 	if err != nil {
 		return nil, err
 	}
+	if limit > 0 && len(r) > limit {
+		r = r[:limit]
+	}
 	span.SetTag("result_length", len(r))
 	return r, nil
 }
@@ -1127,6 +1130,10 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 	if err != nil {
 		return nil, err
 	}
+	if limit > 0 && len(r) > limit {
+		r = r[:limit]
+	}
+
 	span.SetTag("result_length", len(r))
 
 	return r, nil

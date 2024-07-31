@@ -87,6 +87,7 @@ func TestReloadVisitMarker(t *testing.T) {
 
 	ownerIdentifier := "test-owner"
 	testVisitMarker := NewTestVisitMarker(ownerIdentifier)
+	resultTestVisitMarker := CopyTestVisitMarker(testVisitMarker)
 
 	newValue := "updated stored value"
 	updatedVisitMarker := TestVisitMarker{
@@ -101,7 +102,6 @@ func TestReloadVisitMarker(t *testing.T) {
 	err = bkt.Upload(ctx, testVisitMarker.GetVisitMarkerFilePath(), reader)
 	require.NoError(t, err)
 
-	resultTestVisitMarker := NewTestVisitMarker(ownerIdentifier)
 	resultVisitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, resultTestVisitMarker, dummyCounter, dummyCounter)
 	err = resultVisitMarkerManager.ReadVisitMarker(context.Background(), resultTestVisitMarker)
 	require.NoError(t, err)

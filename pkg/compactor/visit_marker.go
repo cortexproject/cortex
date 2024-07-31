@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -48,8 +47,6 @@ type VisitMarkerManager struct {
 	visitMarker            VisitMarker
 	visitMarkerReadFailed  prometheus.Counter
 	visitMarkerWriteFailed prometheus.Counter
-
-	mutex sync.Mutex
 }
 
 func NewVisitMarkerManager(

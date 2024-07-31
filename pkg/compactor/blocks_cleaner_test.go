@@ -87,7 +87,7 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, cfgProvider, logger, nil, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, cfgProvider, logger, "test-cleaner", nil, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 
 	// Clean User with no error
 	cleaner.bucketClient = bkt
@@ -194,7 +194,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -355,7 +355,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, "test-cleaner", nil, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -419,7 +419,7 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, "test-cleaner", nil, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -477,7 +477,7 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 	activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
 	require.NoError(t, err)
 	require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, true))
@@ -618,7 +618,7 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 		Help: blocksMarkedForDeletionHelp,
 	}, append(commonLabels, reasonLabelName))
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg, blocksMarkedForDeletion)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion)
 
 	assertBlockExists := func(user string, block ulid.ULID, expectExists bool) {
 		exists, err := bucketClient.Exists(ctx, path.Join(user, block.String(), metadata.MetaFilename))
@@ -628,6 +628,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Existing behaviour - retention period disabled.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		cfgProvider.userRetentionPeriods["user-1"] = 0
 		cfgProvider.userRetentionPeriods["user-2"] = 0
 
@@ -662,6 +666,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Retention enabled only for a single user, but does nothing.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		cfgProvider.userRetentionPeriods["user-1"] = 9 * time.Hour
 
 		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
@@ -677,6 +685,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	// Retention enabled only for a single user, marking a single block.
 	// Note the block won't be deleted yet due to deletion delay.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		cfgProvider.userRetentionPeriods["user-1"] = 7 * time.Hour
 
 		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
@@ -710,6 +722,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Marking the block again, before the deletion occurs, should not cause an error.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
 		require.NoError(t, err)
 		require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
@@ -722,6 +738,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Reduce the deletion delay. Now the block will be deleted.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		cleaner.cfg.DeletionDelay = 0
 
 		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
@@ -755,6 +775,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Retention enabled for other user; test deleting multiple blocks.
 	{
+		// clean up cleaner visit marker before running test
+		bucketClient.Delete(ctx, path.Join("user-1", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+		bucketClient.Delete(ctx, path.Join("user-2", GetCleanerVisitMarkerFilePath())) //nolint:errcheck
+
 		cfgProvider.userRetentionPeriods["user-2"] = 5 * time.Hour
 
 		activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)

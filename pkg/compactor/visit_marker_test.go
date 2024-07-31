@@ -88,8 +88,6 @@ func TestReloadVisitMarker(t *testing.T) {
 	ownerIdentifier := "test-owner"
 	testVisitMarker := NewTestVisitMarker(ownerIdentifier)
 
-	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker, dummyCounter, dummyCounter)
-
 	newValue := "updated stored value"
 	updatedVisitMarker := TestVisitMarker{
 		OwnerIdentifier: ownerIdentifier,
@@ -103,11 +101,13 @@ func TestReloadVisitMarker(t *testing.T) {
 	err = bkt.Upload(ctx, testVisitMarker.GetVisitMarkerFilePath(), reader)
 	require.NoError(t, err)
 
-	err = visitMarkerManager.ReloadVisitMarker(ctx)
+	resultTestVisitMarker := NewTestVisitMarker(ownerIdentifier)
+	resultVisitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, resultTestVisitMarker, dummyCounter, dummyCounter)
+	err = resultVisitMarkerManager.ReadVisitMarker(context.Background(), resultTestVisitMarker)
 	require.NoError(t, err)
-	require.Equal(t, ownerIdentifier, testVisitMarker.OwnerIdentifier)
-	require.Equal(t, Completed, testVisitMarker.Status)
-	require.Equal(t, newValue, testVisitMarker.StoredValue)
+	require.Equal(t, ownerIdentifier, resultTestVisitMarker.OwnerIdentifier)
+	require.Equal(t, Completed, resultTestVisitMarker.Status)
+	require.Equal(t, newValue, resultTestVisitMarker.StoredValue)
 }
 
 func TestUpdateExistingVisitMarker(t *testing.T) {
@@ -221,9 +221,11 @@ func TestHeartBeat(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, exists)
 			} else {
-				err := visitMarkerManager.ReloadVisitMarker(context.Background())
+				resultTestVisitMarker := CopyTestVisitMarker(testVisitMarker)
+				resultVisitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, resultTestVisitMarker, dummyCounter, dummyCounter)
+				err := resultVisitMarkerManager.ReadVisitMarker(context.Background(), resultTestVisitMarker)
 				require.NoError(t, err)
-				require.Equal(t, tcase.expectedStatus, testVisitMarker.Status)
+				require.Equal(t, tcase.expectedStatus, resultTestVisitMarker.Status)
 			}
 		})
 	}
@@ -250,6 +252,14 @@ func NewTestVisitMarker(ownerIdentifier string) *TestVisitMarker {
 		OwnerIdentifier: ownerIdentifier,
 		markerID:        ulid.MustNew(uint64(time.Now().UnixMilli()), rand.Reader),
 		StoredValue:     "initial value",
+	}
+}
+
+func CopyTestVisitMarker(sourceVisitMarker *TestVisitMarker) *TestVisitMarker {
+	return &TestVisitMarker{
+		OwnerIdentifier: sourceVisitMarker.OwnerIdentifier,
+		markerID:        sourceVisitMarker.markerID,
+		StoredValue:     sourceVisitMarker.StoredValue,
 	}
 }
 

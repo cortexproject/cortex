@@ -110,8 +110,6 @@ heartBeat:
 }
 
 func (v *VisitMarkerManager) MarkInProgress(ctx context.Context) {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
 	v.visitMarker.UpdateStatus(v.ownerIdentifier, InProgress)
 	if err := v.updateVisitMarker(ctx); err != nil {
 		level.Error(v.getLogger()).Log("msg", "unable to upsert visit marker file content", "err", err)
@@ -121,8 +119,6 @@ func (v *VisitMarkerManager) MarkInProgress(ctx context.Context) {
 }
 
 func (v *VisitMarkerManager) MarkPending(ctx context.Context) {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
 	v.visitMarker.UpdateStatus(v.ownerIdentifier, Pending)
 	if err := v.updateVisitMarker(ctx); err != nil {
 		level.Error(v.getLogger()).Log("msg", "unable to upsert visit marker file content", "err", err)
@@ -132,8 +128,6 @@ func (v *VisitMarkerManager) MarkPending(ctx context.Context) {
 }
 
 func (v *VisitMarkerManager) MarkCompleted(ctx context.Context) {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
 	v.visitMarker.UpdateStatus(v.ownerIdentifier, Completed)
 	if err := v.updateVisitMarker(ctx); err != nil {
 		level.Error(v.getLogger()).Log("msg", "unable to upsert visit marker file content", "err", err)
@@ -143,8 +137,6 @@ func (v *VisitMarkerManager) MarkCompleted(ctx context.Context) {
 }
 
 func (v *VisitMarkerManager) MarkFailed(ctx context.Context) {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
 	v.visitMarker.UpdateStatus(v.ownerIdentifier, Failed)
 	if err := v.updateVisitMarker(ctx); err != nil {
 		level.Error(v.getLogger()).Log("msg", "unable to upsert visit marker file content", "err", err)
@@ -159,16 +151,6 @@ func (v *VisitMarkerManager) DeleteVisitMarker(ctx context.Context) {
 		return
 	}
 	level.Debug(v.getLogger()).Log("msg", "visit marker deleted")
-}
-
-func (v *VisitMarkerManager) ReloadVisitMarker(ctx context.Context) error {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-	if err := v.ReadVisitMarker(ctx, v.visitMarker); err != nil {
-		return err
-	}
-	level.Debug(v.getLogger()).Log("msg", "visit marker reloaded")
-	return nil
 }
 
 func (v *VisitMarkerManager) ReadVisitMarker(ctx context.Context, visitMarker any) error {

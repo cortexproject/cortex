@@ -204,6 +204,7 @@ func TestHeartBeat(t *testing.T) {
 
 			ownerIdentifier := "test-owner"
 			testVisitMarker := NewTestVisitMarker(ownerIdentifier)
+			resultTestVisitMarker := CopyTestVisitMarker(testVisitMarker)
 			visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker, dummyCounter, dummyCounter)
 			go visitMarkerManager.HeartBeat(ctx, errChan, time.Second, tcase.deleteOnExit)
 
@@ -221,7 +222,6 @@ func TestHeartBeat(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, exists)
 			} else {
-				resultTestVisitMarker := CopyTestVisitMarker(testVisitMarker)
 				resultVisitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, resultTestVisitMarker, dummyCounter, dummyCounter)
 				err := resultVisitMarkerManager.ReadVisitMarker(context.Background(), resultTestVisitMarker)
 				require.NoError(t, err)

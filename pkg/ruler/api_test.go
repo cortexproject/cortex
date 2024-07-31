@@ -44,7 +44,6 @@ func TestRuler_rules(t *testing.T) {
 	require.Equal(t, responseJSON.Status, "success")
 
 	// Testing the running rules for user1 in the mock store
-	queryOffset := float64(0)
 	expectedResponse, _ := json.Marshal(util_api.Response{
 		Status: "success",
 		Data: &RuleDiscovery{
@@ -68,8 +67,7 @@ func TestRuler_rules(t *testing.T) {
 							Alerts: []*Alert{},
 						},
 					},
-					Interval:    60,
-					QueryOffset: &queryOffset,
+					Interval: 60,
 				},
 			},
 		},
@@ -102,7 +100,6 @@ func TestRuler_rules_special_characters(t *testing.T) {
 	require.Equal(t, responseJSON.Status, "success")
 
 	// Testing the running rules for user1 in the mock store
-	queryOffset := float64(0)
 	expectedResponse, _ := json.Marshal(util_api.Response{
 		Status: "success",
 		Data: &RuleDiscovery{
@@ -126,8 +123,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 							Alerts: []*Alert{},
 						},
 					},
-					Interval:    60,
-					QueryOffset: &queryOffset,
+					Interval: 60,
 				},
 			},
 		},
@@ -158,7 +154,6 @@ func TestRuler_rules_limit(t *testing.T) {
 	require.Equal(t, responseJSON.Status, "success")
 
 	// Testing the running rules for user1 in the mock store
-	queryOffset := float64(0)
 	expectedResponse, _ := json.Marshal(util_api.Response{
 		Status: "success",
 		Data: &RuleDiscovery{
@@ -183,8 +178,7 @@ func TestRuler_rules_limit(t *testing.T) {
 							Alerts: []*Alert{},
 						},
 					},
-					Interval:    60,
-					QueryOffset: &queryOffset,
+					Interval: 60,
 				},
 			},
 		},

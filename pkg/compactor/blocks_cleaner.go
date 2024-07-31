@@ -66,8 +66,6 @@ type BlocksCleaner struct {
 	blocksCleanedTotal                prometheus.Counter
 	blocksFailedTotal                 prometheus.Counter
 	blocksMarkedForDeletion           *prometheus.CounterVec
-	cleanerVisitMarkerReadFailed      prometheus.Counter
-	cleanerVisitMarkerWriteFailed     prometheus.Counter
 	tenantBlocks                      *prometheus.GaugeVec
 	tenantBlocksMarkedForDelete       *prometheus.GaugeVec
 	tenantBlocksMarkedForNoCompaction *prometheus.GaugeVec
@@ -123,14 +121,6 @@ func NewBlocksCleaner(
 			Help: "Total number of blocks failed to be deleted.",
 		}),
 		blocksMarkedForDeletion: blocksMarkedForDeletion,
-		cleanerVisitMarkerReadFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_compactor_cleaner_visit_marker_read_failed_total",
-			Help: "Total number of cleaner visit marker file failed to be read.",
-		}),
-		cleanerVisitMarkerWriteFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_compactor_cleaner_visit_marker_write_failed_total",
-			Help: "Total number of cleaner visit marker file failed to be written.",
-		}),
 
 		// The following metrics don't have the "cortex_compactor" prefix because not strictly related to
 		// the compactor. They're just tracked by the compactor because it's the most logical place where these
@@ -346,7 +336,7 @@ func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, erro
 
 func (c *BlocksCleaner) obtainVisitMarkerManager(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) (visitMarkerManager *VisitMarkerManager, isVisited bool, err error) {
 	cleanerVisitMarker := NewCleanerVisitMarker(c.ringLifecyclerID)
-	visitMarkerManager = NewVisitMarkerManager(userBucket, userLogger, c.ringLifecyclerID, cleanerVisitMarker, c.cleanerVisitMarkerReadFailed, c.cleanerVisitMarkerWriteFailed)
+	visitMarkerManager = NewVisitMarkerManager(userBucket, userLogger, c.ringLifecyclerID, cleanerVisitMarker)
 
 	existingCleanerVisitMarker := &CleanerVisitMarker{}
 	err = visitMarkerManager.ReadVisitMarker(ctx, existingCleanerVisitMarker)

@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/compact"
@@ -19,14 +18,13 @@ import (
 
 func TestMarkPending(t *testing.T) {
 	ctx := context.Background()
-	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	logger := log.NewNopLogger()
 
 	ownerIdentifier := "test-owner"
 	testVisitMarker := NewTestVisitMarker(ownerIdentifier)
 
-	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker, dummyCounter, dummyCounter)
+	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker)
 	visitMarkerManager.MarkWithStatus(ctx, Pending)
 
 	require.Equal(t, Pending, testVisitMarker.Status)
@@ -39,14 +37,13 @@ func TestMarkPending(t *testing.T) {
 
 func TestMarkInProgress(t *testing.T) {
 	ctx := context.Background()
-	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	logger := log.NewNopLogger()
 
 	ownerIdentifier := "test-owner"
 	testVisitMarker := NewTestVisitMarker(ownerIdentifier)
 
-	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker, dummyCounter, dummyCounter)
+	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker)
 	visitMarkerManager.MarkWithStatus(ctx, InProgress)
 
 	require.Equal(t, InProgress, testVisitMarker.Status)
@@ -59,14 +56,13 @@ func TestMarkInProgress(t *testing.T) {
 
 func TestMarkCompleted(t *testing.T) {
 	ctx := context.Background()
-	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	logger := log.NewNopLogger()
 
 	ownerIdentifier := "test-owner"
 	testVisitMarker := NewTestVisitMarker(ownerIdentifier)
 
-	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker, dummyCounter, dummyCounter)
+	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker)
 	visitMarkerManager.MarkWithStatus(ctx, Completed)
 
 	require.Equal(t, Completed, testVisitMarker.Status)
@@ -79,13 +75,12 @@ func TestMarkCompleted(t *testing.T) {
 
 func TestUpdateExistingVisitMarker(t *testing.T) {
 	ctx := context.Background()
-	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	logger := log.NewNopLogger()
 
 	ownerIdentifier1 := "test-owner-1"
 	testVisitMarker1 := NewTestVisitMarker(ownerIdentifier1)
-	visitMarkerManager1 := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier1, testVisitMarker1, dummyCounter, dummyCounter)
+	visitMarkerManager1 := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier1, testVisitMarker1)
 	visitMarkerManager1.MarkWithStatus(ctx, InProgress)
 
 	ownerIdentifier2 := "test-owner-2"
@@ -94,7 +89,7 @@ func TestUpdateExistingVisitMarker(t *testing.T) {
 		markerID:        testVisitMarker1.markerID,
 		StoredValue:     testVisitMarker1.StoredValue,
 	}
-	visitMarkerManager2 := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier2, testVisitMarker2, dummyCounter, dummyCounter)
+	visitMarkerManager2 := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier2, testVisitMarker2)
 	visitMarkerManager2.MarkWithStatus(ctx, Completed)
 
 	visitMarkerFromFile := &TestVisitMarker{}
@@ -164,7 +159,6 @@ func TestHeartBeat(t *testing.T) {
 	} {
 		t.Run(tcase.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
-			dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
 			bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 			logger := log.NewNopLogger()
 			errChan := make(chan error, 1)
@@ -172,7 +166,7 @@ func TestHeartBeat(t *testing.T) {
 			ownerIdentifier := "test-owner"
 			testVisitMarker := NewTestVisitMarker(ownerIdentifier)
 			resultTestVisitMarker := CopyTestVisitMarker(testVisitMarker)
-			visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker, dummyCounter, dummyCounter)
+			visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker)
 			go visitMarkerManager.HeartBeat(ctx, errChan, time.Second, tcase.deleteOnExit)
 
 			time.Sleep(2 * time.Second)
@@ -189,7 +183,7 @@ func TestHeartBeat(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, exists)
 			} else {
-				resultVisitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, resultTestVisitMarker, dummyCounter, dummyCounter)
+				resultVisitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, resultTestVisitMarker)
 				err := resultVisitMarkerManager.ReadVisitMarker(context.Background(), resultTestVisitMarker)
 				require.NoError(t, err)
 				require.Equal(t, tcase.expectedStatus, resultTestVisitMarker.Status)

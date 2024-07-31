@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/compact"
 
@@ -41,12 +40,10 @@ type VisitMarker interface {
 }
 
 type VisitMarkerManager struct {
-	bkt                    objstore.InstrumentedBucket
-	logger                 log.Logger
-	ownerIdentifier        string
-	visitMarker            VisitMarker
-	visitMarkerReadFailed  prometheus.Counter
-	visitMarkerWriteFailed prometheus.Counter
+	bkt             objstore.InstrumentedBucket
+	logger          log.Logger
+	ownerIdentifier string
+	visitMarker     VisitMarker
 }
 
 func NewVisitMarkerManager(
@@ -54,16 +51,12 @@ func NewVisitMarkerManager(
 	logger log.Logger,
 	ownerIdentifier string,
 	visitMarker VisitMarker,
-	visitMarkerReadFailed prometheus.Counter,
-	visitMarkerWriteFailed prometheus.Counter,
 ) *VisitMarkerManager {
 	return &VisitMarkerManager{
-		bkt:                    bkt,
-		logger:                 log.With(logger, "type", fmt.Sprintf("%T", visitMarker)),
-		ownerIdentifier:        ownerIdentifier,
-		visitMarker:            visitMarker,
-		visitMarkerReadFailed:  visitMarkerReadFailed,
-		visitMarkerWriteFailed: visitMarkerWriteFailed,
+		bkt:             bkt,
+		logger:          log.With(logger, "type", fmt.Sprintf("%T", visitMarker)),
+		ownerIdentifier: ownerIdentifier,
+		visitMarker:     visitMarker,
 	}
 }
 
@@ -130,17 +123,14 @@ func (v *VisitMarkerManager) ReadVisitMarker(ctx context.Context, visitMarker an
 		if v.bkt.IsObjNotFoundErr(err) {
 			return errors.Wrapf(errorVisitMarkerNotFound, "visit marker file: %s", visitMarkerFile)
 		}
-		v.visitMarkerReadFailed.Inc()
 		return errors.Wrapf(err, "get visit marker file: %s", visitMarkerFile)
 	}
 	defer runutil.CloseWithLogOnErr(v.getLogger(), visitMarkerFileReader, "close visit marker reader")
 	b, err := io.ReadAll(visitMarkerFileReader)
 	if err != nil {
-		v.visitMarkerReadFailed.Inc()
 		return errors.Wrapf(err, "read visit marker file: %s", visitMarkerFile)
 	}
 	if err = json.Unmarshal(b, visitMarker); err != nil {
-		v.visitMarkerReadFailed.Inc()
 		return errors.Wrapf(errorUnmarshalVisitMarker, "visit marker file: %s, content: %s, error: %v", visitMarkerFile, string(b), err.Error())
 	}
 	level.Debug(v.getLogger()).Log("msg", "visit marker read from file", "visit_marker_file", visitMarkerFile)
@@ -150,13 +140,11 @@ func (v *VisitMarkerManager) ReadVisitMarker(ctx context.Context, visitMarker an
 func (v *VisitMarkerManager) updateVisitMarker(ctx context.Context) error {
 	visitMarkerFileContent, err := json.Marshal(v.visitMarker)
 	if err != nil {
-		v.visitMarkerWriteFailed.Inc()
 		return err
 	}
 
 	reader := bytes.NewReader(visitMarkerFileContent)
 	if err := v.bkt.Upload(ctx, v.visitMarker.GetVisitMarkerFilePath(), reader); err != nil {
-		v.visitMarkerWriteFailed.Inc()
 		return err
 	}
 	return nil

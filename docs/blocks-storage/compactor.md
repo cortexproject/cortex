@@ -296,7 +296,8 @@ compactor:
   [block_visit_marker_file_update_interval: <duration> | default = 1m]
 
   # How long cleaner visit marker file should be considered as expired and able
-  # to be picked up by cleaner again.
+  # to be picked up by cleaner again. The value should be smaller than
+  # -compactor.cleanup-interval
   # CLI flag: -compactor.cleaner-visit-marker-timeout
   [cleaner_visit_marker_timeout: <duration> | default = 10m]
 

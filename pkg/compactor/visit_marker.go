@@ -73,27 +73,27 @@ func (v *VisitMarkerManager) HeartBeat(ctx context.Context, errChan <-chan error
 	defer ticker.Stop()
 heartBeat:
 	for {
-		v.MarkInProgress(ctx)
+		v.MarkWithStatus(ctx, InProgress)
 
 		select {
 		case <-ctx.Done():
 			level.Warn(v.getLogger()).Log("msg", "visit marker heart beat got cancelled")
-			v.MarkPending(context.Background())
+			v.MarkWithStatus(context.Background(), Pending)
 			break heartBeat
 		case <-ticker.C:
 			continue
 		case err := <-errChan:
 			if err == nil {
 				level.Info(v.getLogger()).Log("msg", "update visit marker to completed status")
-				v.MarkCompleted(ctx)
+				v.MarkWithStatus(ctx, Completed)
 			} else {
 				level.Warn(v.getLogger()).Log("msg", "stop visit marker heart beat due to error", "err", err)
 				if compact.IsHaltError(err) {
 					level.Info(v.getLogger()).Log("msg", "update visit marker to failed status", "err", err)
-					v.MarkFailed(ctx)
+					v.MarkWithStatus(ctx, Failed)
 				} else {
 					level.Info(v.getLogger()).Log("msg", "update visit marker to pending status", "err", err)
-					v.MarkPending(ctx)
+					v.MarkWithStatus(ctx, Pending)
 				}
 			}
 			break heartBeat
@@ -106,40 +106,13 @@ heartBeat:
 	}
 }
 
-func (v *VisitMarkerManager) MarkInProgress(ctx context.Context) {
-	v.visitMarker.UpdateStatus(v.ownerIdentifier, InProgress)
+func (v *VisitMarkerManager) MarkWithStatus(ctx context.Context, status VisitStatus) {
+	v.visitMarker.UpdateStatus(v.ownerIdentifier, status)
 	if err := v.updateVisitMarker(ctx); err != nil {
-		level.Error(v.getLogger()).Log("msg", "unable to upsert visit marker file content", "err", err)
+		level.Error(v.getLogger()).Log("msg", "unable to upsert visit marker file content", "new_status", status, "err", err)
 		return
 	}
-	level.Debug(v.getLogger()).Log("msg", "marked in progress")
-}
-
-func (v *VisitMarkerManager) MarkPending(ctx context.Context) {
-	v.visitMarker.UpdateStatus(v.ownerIdentifier, Pending)
-	if err := v.updateVisitMarker(ctx); err != nil {
-		level.Error(v.getLogger()).Log("msg", "unable to upsert visit marker file content", "err", err)
-		return
-	}
-	level.Debug(v.getLogger()).Log("msg", "marked pending")
-}
-
-func (v *VisitMarkerManager) MarkCompleted(ctx context.Context) {
-	v.visitMarker.UpdateStatus(v.ownerIdentifier, Completed)
-	if err := v.updateVisitMarker(ctx); err != nil {
-		level.Error(v.getLogger()).Log("msg", "unable to upsert visit marker file content", "err", err)
-		return
-	}
-	level.Debug(v.getLogger()).Log("msg", "marked completed")
-}
-
-func (v *VisitMarkerManager) MarkFailed(ctx context.Context) {
-	v.visitMarker.UpdateStatus(v.ownerIdentifier, Failed)
-	if err := v.updateVisitMarker(ctx); err != nil {
-		level.Error(v.getLogger()).Log("msg", "unable to upsert visit marker file content", "err", err)
-		return
-	}
-	level.Debug(v.getLogger()).Log("msg", "marked failed")
+	level.Debug(v.getLogger()).Log("msg", "marked with new status", "new_status", status)
 }
 
 func (v *VisitMarkerManager) DeleteVisitMarker(ctx context.Context) {

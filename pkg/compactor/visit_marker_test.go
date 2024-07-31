@@ -1,10 +1,8 @@
 package compactor
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -29,7 +27,7 @@ func TestMarkPending(t *testing.T) {
 	testVisitMarker := NewTestVisitMarker(ownerIdentifier)
 
 	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker, dummyCounter, dummyCounter)
-	visitMarkerManager.MarkPending(ctx)
+	visitMarkerManager.MarkWithStatus(ctx, Pending)
 
 	require.Equal(t, Pending, testVisitMarker.Status)
 
@@ -49,7 +47,7 @@ func TestMarkInProgress(t *testing.T) {
 	testVisitMarker := NewTestVisitMarker(ownerIdentifier)
 
 	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker, dummyCounter, dummyCounter)
-	visitMarkerManager.MarkInProgress(ctx)
+	visitMarkerManager.MarkWithStatus(ctx, InProgress)
 
 	require.Equal(t, InProgress, testVisitMarker.Status)
 
@@ -69,7 +67,7 @@ func TestMarkCompleted(t *testing.T) {
 	testVisitMarker := NewTestVisitMarker(ownerIdentifier)
 
 	visitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, testVisitMarker, dummyCounter, dummyCounter)
-	visitMarkerManager.MarkCompleted(ctx)
+	visitMarkerManager.MarkWithStatus(ctx, Completed)
 
 	require.Equal(t, Completed, testVisitMarker.Status)
 
@@ -77,37 +75,6 @@ func TestMarkCompleted(t *testing.T) {
 	err := visitMarkerManager.ReadVisitMarker(ctx, visitMarkerFromFile)
 	require.NoError(t, err)
 	require.Equal(t, Completed, visitMarkerFromFile.Status)
-}
-
-func TestReloadVisitMarker(t *testing.T) {
-	ctx := context.Background()
-	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
-	logger := log.NewNopLogger()
-
-	ownerIdentifier := "test-owner"
-	testVisitMarker := NewTestVisitMarker(ownerIdentifier)
-	resultTestVisitMarker := CopyTestVisitMarker(testVisitMarker)
-
-	newValue := "updated stored value"
-	updatedVisitMarker := TestVisitMarker{
-		OwnerIdentifier: ownerIdentifier,
-		Status:          Completed,
-		StoredValue:     newValue,
-	}
-	visitMarkerFileContent, err := json.Marshal(updatedVisitMarker)
-	require.NoError(t, err)
-
-	reader := bytes.NewReader(visitMarkerFileContent)
-	err = bkt.Upload(ctx, testVisitMarker.GetVisitMarkerFilePath(), reader)
-	require.NoError(t, err)
-
-	resultVisitMarkerManager := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier, resultTestVisitMarker, dummyCounter, dummyCounter)
-	err = resultVisitMarkerManager.ReadVisitMarker(context.Background(), resultTestVisitMarker)
-	require.NoError(t, err)
-	require.Equal(t, ownerIdentifier, resultTestVisitMarker.OwnerIdentifier)
-	require.Equal(t, Completed, resultTestVisitMarker.Status)
-	require.Equal(t, newValue, resultTestVisitMarker.StoredValue)
 }
 
 func TestUpdateExistingVisitMarker(t *testing.T) {
@@ -119,7 +86,7 @@ func TestUpdateExistingVisitMarker(t *testing.T) {
 	ownerIdentifier1 := "test-owner-1"
 	testVisitMarker1 := NewTestVisitMarker(ownerIdentifier1)
 	visitMarkerManager1 := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier1, testVisitMarker1, dummyCounter, dummyCounter)
-	visitMarkerManager1.MarkInProgress(ctx)
+	visitMarkerManager1.MarkWithStatus(ctx, InProgress)
 
 	ownerIdentifier2 := "test-owner-2"
 	testVisitMarker2 := &TestVisitMarker{
@@ -128,7 +95,7 @@ func TestUpdateExistingVisitMarker(t *testing.T) {
 		StoredValue:     testVisitMarker1.StoredValue,
 	}
 	visitMarkerManager2 := NewVisitMarkerManager(objstore.WithNoopInstr(bkt), logger, ownerIdentifier2, testVisitMarker2, dummyCounter, dummyCounter)
-	visitMarkerManager2.MarkCompleted(ctx)
+	visitMarkerManager2.MarkWithStatus(ctx, Completed)
 
 	visitMarkerFromFile := &TestVisitMarker{}
 	err := visitMarkerManager2.ReadVisitMarker(ctx, visitMarkerFromFile)

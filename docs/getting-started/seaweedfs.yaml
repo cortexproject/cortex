@@ -47,8 +47,13 @@ spec:
             - "server"
             - "-s3"
             - "-s3.config=/workspace/seaweedfs-config.json"
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: 8333
           ports:
             - containerPort: 8333
+              name: seaweedfs
           volumeMounts:
             - name: seaweedfs-config
               mountPath: /workspace

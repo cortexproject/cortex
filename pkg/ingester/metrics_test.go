@@ -324,8 +324,8 @@ func TestTSDBMetrics(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_mmap_chunk_corruptions_total counter
 			cortex_ingester_tsdb_mmap_chunk_corruptions_total 2577406
         	# HELP cortex_ingester_tsdb_mmap_chunks_total Total number of chunks that were memory-mapped.
-        	# TYPE cortex_ingester_tsdb_mmap_chunks_total gauge
-        	cortex_ingester_tsdb_mmap_chunks_total 0
+        	# TYPE cortex_ingester_tsdb_mmap_chunks_total counter
+        	cortex_ingester_tsdb_mmap_chunks_total 312
         	# HELP cortex_ingester_tsdb_out_of_order_samples_total Total number of out of order samples ingestion failed attempts due to out of order being disabled.
 			# TYPE cortex_ingester_tsdb_out_of_order_samples_total counter
         	cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="user1"} 102
@@ -576,8 +576,8 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_mmap_chunk_corruptions_total counter
 			cortex_ingester_tsdb_mmap_chunk_corruptions_total 2577406
         	# HELP cortex_ingester_tsdb_mmap_chunks_total Total number of chunks that were memory-mapped.
-        	# TYPE cortex_ingester_tsdb_mmap_chunks_total gauge
-        	cortex_ingester_tsdb_mmap_chunks_total 0
+        	# TYPE cortex_ingester_tsdb_mmap_chunks_total counter
+        	cortex_ingester_tsdb_mmap_chunks_total 312
         	# HELP cortex_ingester_tsdb_out_of_order_samples_total Total number of out of order samples ingestion failed attempts due to out of order being disabled.
 			# TYPE cortex_ingester_tsdb_out_of_order_samples_total counter
         	cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="user1"} 102

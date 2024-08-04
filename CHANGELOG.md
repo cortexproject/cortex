@@ -11,7 +11,7 @@
 * [FEATURE] Ruler: Support sending native histogram samples to Ingester. #6029
 * [FEATURE] Ruler: Add support for filtering out alerts in ListRules API. #6011
 * [FEATURE] Query Frontend: Added a query rejection mechanism to block resource-intensive queries. #6005
-* [FEATURE] OTLP: Support ingesting OTLP exponential metrics as native histograms. #6071
+* [FEATURE] OTLP: Support ingesting OTLP exponential metrics as native histograms. #6071 #6135
 * [FEATURE] Ingester: Add `ingester.instance-limits.max-inflight-query-requests` to allow limiting ingester concurrent queries. #6081
 * [FEATURE] Distributor: Add `validation.max-native-histogram-buckets` to limit max number of bucket count. Distributor will try to automatically reduce histogram resolution until it is within the bucket limit or resolution cannot be reduced anymore. #6104
 * [FEATURE] Store Gateway: Token bucket limiter. #6016

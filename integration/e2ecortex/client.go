@@ -173,7 +173,7 @@ func createDataPointsGauge(newMetric pmetric.Metric, attributes map[string]any, 
 }
 
 func createDataPointsExponentialHistogram(newMetric pmetric.Metric, attributes map[string]any, histograms []prompb.Histogram) {
-	newMetric.SetEmptyExponentialHistogram()
+	newMetric.SetEmptyExponentialHistogram().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 	for _, h := range histograms {
 		datapoint := newMetric.ExponentialHistogram().DataPoints().AppendEmpty()
 		datapoint.SetTimestamp(pcommon.Timestamp(h.Timestamp * time.Millisecond.Nanoseconds()))

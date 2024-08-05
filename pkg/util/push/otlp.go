@@ -38,7 +38,11 @@ func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handle
 		}
 
 		promConverter := prometheusremotewrite.NewPrometheusConverter()
-		err = promConverter.FromMetrics(convertToMetricsAttributes(req.Metrics()), prometheusremotewrite.Settings{DisableTargetInfo: true})
+		setting := prometheusremotewrite.Settings{
+			AddMetricSuffixes: true,
+			DisableTargetInfo: true,
+		}
+		err = promConverter.FromMetrics(convertToMetricsAttributes(req.Metrics()), setting)
 		if err != nil {
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)

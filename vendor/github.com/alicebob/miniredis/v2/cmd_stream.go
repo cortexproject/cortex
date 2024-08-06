@@ -50,6 +50,11 @@ func (m *Miniredis) cmdXadd(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		maxlen := -1
 		minID := ""
+		makeStream := true
+		if strings.ToLower(args[0]) == "nomkstream" {
+			args = args[1:]
+			makeStream = false
+		}
 		if strings.ToLower(args[0]) == "maxlen" {
 			args = args[1:]
 			// we don't treat "~" special
@@ -101,7 +106,10 @@ func (m *Miniredis) cmdXadd(c *server.Peer, cmd string, args []string) {
 			return
 		}
 		if s == nil {
-			// TODO: NOMKSTREAM
+			if !makeStream {
+				c.WriteNull()
+				return
+			}
 			s, _ = db.newStream(key)
 		}
 
@@ -1665,7 +1673,7 @@ func (m *Miniredis) cmdXclaim(c *server.Peer, cmd string, args []string) {
 				c.WriteError("ERR Invalid TIME option argument for XCLAIM")
 				return
 			}
-			opts.newLastDelivery = unixMilli(timeMs)
+			opts.newLastDelivery = time.UnixMilli(timeMs)
 			args = args[2:]
 		case "RETRYCOUNT":
 			retryCount, err := strconv.Atoi(args[1])
@@ -1805,9 +1813,4 @@ func parseBlock(cmd string, args []string, block *bool, timeout *time.Duration) 
 	}
 	(*timeout) = time.Millisecond * time.Duration(ms)
 	return nil
-}
-
-// taken from Go's time package. Can be dropped if miniredis supports >= 1.17
-func unixMilli(msec int64) time.Time {
-	return time.Unix(msec/1e3, (msec%1e3)*1e6)
 }

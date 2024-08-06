@@ -463,7 +463,7 @@ func isDistributive(expr *Node, skipBinaryPushdown bool, engineLabels map[string
 	case Deduplicate, RemoteExecution:
 		return false
 	case *Binary:
-		return isBinaryExpressionWithOneConstantSide(e) || (!skipBinaryPushdown && isBinaryExpressionWithDistributableMatching(e))
+		return isBinaryExpressionWithOneScalarSide(e) || (!skipBinaryPushdown && isBinaryExpressionWithDistributableMatching(e))
 	case *Aggregation:
 		// Certain aggregations are currently not supported.
 		if _, ok := distributiveAggregations[e.Op]; !ok {
@@ -482,9 +482,9 @@ func isDistributive(expr *Node, skipBinaryPushdown bool, engineLabels map[string
 	return true
 }
 
-func isBinaryExpressionWithOneConstantSide(expr *Binary) bool {
-	lhsConstant := IsConstantExpr(expr.LHS)
-	rhsConstant := IsConstantExpr(expr.RHS)
+func isBinaryExpressionWithOneScalarSide(expr *Binary) bool {
+	lhsConstant := IsConstantScalarExpr(expr.LHS)
+	rhsConstant := IsConstantScalarExpr(expr.RHS)
 	return lhsConstant || rhsConstant
 }
 

@@ -1899,6 +1899,24 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.series-batch-size
   [series_batch_size: <int> | default = 10000]
 
+  token_bucket_bytes_limiter:
+    # Token bucket bytes limiter mode. Supported values are: disabled, dryrun,
+    # enabled
+    # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.mode
+    [mode: <string> | default = "disabled"]
+
+    # Instance token bucket size
+    # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.instance-token-bucket-size
+    [instance_token_bucket_size: <int> | default = 859832320]
+
+    # User token bucket size
+    # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.user-token-bucket-size
+    [user_token_bucket_size: <int> | default = 644874240]
+
+    # Request token bucket size
+    # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.request-token-bucket-size
+    [request_token_bucket_size: <int> | default = 4194304]
+
 tsdb:
   # Local directory to store TSDBs in the ingesters.
   # CLI flag: -blocks-storage.tsdb.dir
@@ -2213,6 +2231,16 @@ sharding_ring:
 # How frequently block visit marker file should be updated duration compaction.
 # CLI flag: -compactor.block-visit-marker-file-update-interval
 [block_visit_marker_file_update_interval: <duration> | default = 1m]
+
+# How long cleaner visit marker file should be considered as expired and able to
+# be picked up by cleaner again. The value should be smaller than
+# -compactor.cleanup-interval
+# CLI flag: -compactor.cleaner-visit-marker-timeout
+[cleaner_visit_marker_timeout: <duration> | default = 10m]
+
+# How frequently cleaner visit marker file should be updated when cleaning user.
+# CLI flag: -compactor.cleaner-visit-marker-file-update-interval
+[cleaner_visit_marker_file_update_interval: <duration> | default = 5m]
 
 # When enabled, index verification will ignore out of order label names.
 # CLI flag: -compactor.accept-malformed-index
@@ -3159,11 +3187,13 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # e.g. remote_write.write_relabel_configs.
 [metric_relabel_configs: <relabel_config...> | default = []]
 
-# Enables support for exemplars in TSDB and sets the maximum number that will be
-# stored. less than zero means disabled. If the value is set to zero, cortex
-# will fallback to blocks-storage.tsdb.max-exemplars value.
-# CLI flag: -ingester.max-exemplars
-[max_exemplars: <int> | default = 0]
+# Limit on total number of positive and negative buckets allowed in a single
+# native histogram. The resolution of a histogram with more buckets will be
+# reduced until the number of buckets is within the limit. If the limit cannot
+# be reached, the sample will be discarded. 0 means no limit. Enforced at
+# Distributor.
+# CLI flag: -validation.max-native-histogram-buckets
+[max_native_histogram_buckets: <int> | default = 0]
 
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user
@@ -3212,6 +3242,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # out-of-order samples. Disabled (0s) by default.
 # CLI flag: -ingester.out-of-order-time-window
 [out_of_order_time_window: <duration> | default = 0s]
+
+# Enables support for exemplars in TSDB and sets the maximum number that will be
+# stored. less than zero means disabled. If the value is set to zero, cortex
+# will fallback to blocks-storage.tsdb.max-exemplars value.
+# CLI flag: -ingester.max-exemplars
+[max_exemplars: <int> | default = 0]
 
 # Maximum number of chunks that can be fetched in a single query from ingesters
 # and long-term storage. This limit is enforced in the querier, ruler and
@@ -3322,6 +3358,10 @@ query_rejection:
 # Maximum number of rule groups per-tenant. 0 to disable.
 # CLI flag: -ruler.max-rule-groups-per-tenant
 [ruler_max_rule_groups_per_tenant: <int> | default = 0]
+
+# Duration to offset all rule evaluation queries per-tenant.
+# CLI flag: -ruler.query-offset
+[ruler_query_offset: <duration> | default = 0s]
 
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the

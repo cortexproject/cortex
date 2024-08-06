@@ -173,7 +173,7 @@ func createDataPointsGauge(newMetric pmetric.Metric, attributes map[string]any, 
 }
 
 func createDataPointsExponentialHistogram(newMetric pmetric.Metric, attributes map[string]any, histograms []prompb.Histogram) {
-	newMetric.SetEmptyExponentialHistogram()
+	newMetric.SetEmptyExponentialHistogram().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 	for _, h := range histograms {
 		datapoint := newMetric.ExponentialHistogram().DataPoints().AppendEmpty()
 		datapoint.SetTimestamp(pcommon.Timestamp(h.Timestamp * time.Millisecond.Nanoseconds()))
@@ -526,6 +526,7 @@ type RuleFilter struct {
 	RuleGroupNames []string
 	RuleNames      []string
 	RuleType       string
+	ExcludeAlerts  string
 }
 
 func addQueryParams(urlValues url.Values, paramName string, params ...string) {
@@ -551,6 +552,7 @@ func (c *Client) GetPrometheusRules(filter RuleFilter) ([]*ruler.RuleGroup, erro
 	addQueryParams(urlValues, "rule_name[]", filter.RuleNames...)
 	addQueryParams(urlValues, "rule_group[]", filter.RuleGroupNames...)
 	addQueryParams(urlValues, "type", filter.RuleType)
+	addQueryParams(urlValues, "exclude_alerts", filter.ExcludeAlerts)
 	req.URL.RawQuery = urlValues.Encode()
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)

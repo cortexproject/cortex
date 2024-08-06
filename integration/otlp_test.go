@@ -77,7 +77,7 @@ func TestOTLP(t *testing.T) {
 
 	i := rand.Uint32()
 	histogramSeries := e2e.GenerateHistogramSeries("histogram_series", now, i, false, prompb.Label{Name: "job", Value: "test"})
-	res, err = c.Push(histogramSeries)
+	res, err = c.OTLP(histogramSeries)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 

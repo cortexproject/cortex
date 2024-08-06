@@ -21,6 +21,9 @@ var (
 	// ErrIntValueError can returned by INCRBY
 	ErrIntValueError = errors.New(msgInvalidInt)
 
+	// ErrIntValueOverflowError can be returned by INCR, DECR, INCRBY, DECRBY
+	ErrIntValueOverflowError = errors.New(msgIntOverflow)
+
 	// ErrFloatValueError can returned by INCRBYFLOAT
 	ErrFloatValueError = errors.New(msgInvalidFloat)
 )

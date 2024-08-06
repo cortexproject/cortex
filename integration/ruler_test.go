@@ -414,6 +414,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
 	expectedNames := make([]string, numRulesGroups)
 	alertCount := 0
+	evalInterval, _ := model.ParseDuration("1s")
 	for i := 0; i < numRulesGroups; i++ {
 		num := random.Intn(100)
 		var ruleNode yaml.Node
@@ -428,7 +429,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			alertCount++
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
-				Interval: 60,
+				Interval: evalInterval,
 				Rules: []rulefmt.RuleNode{{
 					Alert: ruleNode,
 					Expr:  exprNode,
@@ -437,7 +438,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 		} else {
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
-				Interval: 60,
+				Interval: evalInterval,
 				Rules: []rulefmt.RuleNode{{
 					Record: ruleNode,
 					Expr:   exprNode,
@@ -458,6 +459,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 		"-querier.store-gateway-addresses": "localhost:12345",
 		// Enable the bucket index so we can skip the initial bucket scan.
 		"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+		"-ruler.poll-interval":                              "5s",
 	}
 	if enableRulesBackup {
 		overrides["-ruler.ring.replication-factor"] = "3"
@@ -551,6 +553,42 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 
 				}
 				assert.Len(t, ruleNames, 3, "Expected %d rules but got %d", 3, len(ruleNames))
+			},
+		},
+		"Exclude Alerts": {
+			filter: e2ecortex.RuleFilter{
+				ExcludeAlerts: "true",
+			},
+			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
+				alertsCount := 0
+				for _, ruleGroup := range ruleGroups {
+					for _, rule := range ruleGroup.Rules {
+						r := rule.(map[string]interface{})
+						if v, OK := r["alerts"]; OK {
+							alerts := v.([]interface{})
+							alertsCount = alertsCount + len(alerts)
+						}
+					}
+				}
+				assert.Equal(t, 0, alertsCount, "Expected 0 alerts but got %d", alertsCount)
+			},
+		},
+		"Include Alerts": {
+			filter: e2ecortex.RuleFilter{
+				ExcludeAlerts: "false",
+			},
+			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
+				alertsCount := 0
+				for _, ruleGroup := range ruleGroups {
+					for _, rule := range ruleGroup.Rules {
+						r := rule.(map[string]interface{})
+						if v, OK := r["alerts"]; OK {
+							alerts := v.([]interface{})
+							alertsCount = alertsCount + len(alerts)
+						}
+					}
+				}
+				assert.Greater(t, alertsCount, 0, "Expected greater than 0 alerts but got %d", alertsCount)
 			},
 		},
 	}

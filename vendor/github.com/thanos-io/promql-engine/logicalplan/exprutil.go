@@ -75,3 +75,20 @@ func IsConstantExpr(expr Node) bool {
 		return false
 	}
 }
+
+// IsConstantScalarExpr reports if the expression evaluates to a scalar.
+func IsConstantScalarExpr(expr Node) bool {
+	// TODO: there are more possibilities for constant expressions
+	switch texpr := expr.(type) {
+	case *NumberLiteral, *StringLiteral:
+		return true
+	case *StepInvariantExpr:
+		return IsConstantScalarExpr(texpr.Expr)
+	case *Parens:
+		return IsConstantScalarExpr(texpr.Expr)
+	case *Binary:
+		return IsConstantScalarExpr(texpr.LHS) && IsConstantScalarExpr(texpr.RHS)
+	default:
+		return false
+	}
+}

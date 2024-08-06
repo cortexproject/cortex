@@ -5,13 +5,18 @@ package prometheus
 
 import (
 	"context"
+	"math"
 
 	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/execution/exchange"
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 )
@@ -31,6 +36,9 @@ func (p Scanners) NewVectorSelector(
 	logicalNode logicalplan.VectorSelector,
 ) (model.VectorOperator, error) {
 	selector := p.selectors.GetFilteredSelector(hints.Start, hints.End, opts.Step.Milliseconds(), logicalNode.VectorSelector.LabelMatchers, logicalNode.Filters, hints)
+	if logicalNode.DecodeNativeHistogramStats {
+		selector = newHistogramStatsSelector(selector)
+	}
 
 	operators := make([]model.VectorOperator, 0, opts.DecodingConcurrency)
 	for i := 0; i < opts.DecodingConcurrency; i++ {
@@ -52,7 +60,7 @@ func (p Scanners) NewVectorSelector(
 }
 
 func (p Scanners) NewMatrixSelector(
-	_ context.Context,
+	ctx context.Context,
 	opts *query.Options,
 	hints storage.SelectHints,
 	logicalNode logicalplan.MatrixSelector,
@@ -66,6 +74,9 @@ func (p Scanners) NewMatrixSelector(
 			return nil, errors.Wrapf(parse.ErrNotSupportedExpr, "quantile_over_time with expression as first argument is not supported")
 		}
 		arg = unwrap
+		if math.IsNaN(unwrap) || unwrap < 0 || unwrap > 1 {
+			warnings.AddToContext(annotations.NewInvalidQuantileWarning(unwrap, posrange.PositionRange{}), ctx)
+		}
 	case "predict_linear":
 		unwrap, err := logicalplan.UnwrapFloat(call.Args[1])
 		if err != nil {
@@ -75,13 +86,16 @@ func (p Scanners) NewMatrixSelector(
 	}
 
 	vs := logicalNode.VectorSelector
-	filter := p.selectors.GetFilteredSelector(hints.Start, hints.End, opts.Step.Milliseconds(), vs.LabelMatchers, vs.Filters, hints)
+	selector := p.selectors.GetFilteredSelector(hints.Start, hints.End, opts.Step.Milliseconds(), vs.LabelMatchers, vs.Filters, hints)
+	if logicalNode.VectorSelector.DecodeNativeHistogramStats {
+		selector = newHistogramStatsSelector(selector)
+	}
 
 	operators := make([]model.VectorOperator, 0, opts.DecodingConcurrency)
 	for i := 0; i < opts.DecodingConcurrency; i++ {
 		operator, err := NewMatrixSelector(
 			model.NewVectorPool(opts.StepsBatch),
-			filter,
+			selector,
 			call.Func.Name,
 			arg,
 			opts,
@@ -98,4 +112,35 @@ func (p Scanners) NewMatrixSelector(
 	}
 
 	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, vs.BatchSize*int64(opts.DecodingConcurrency), operators...), nil
+}
+
+type histogramStatsSelector struct {
+	SeriesSelector
+}
+
+func newHistogramStatsSelector(seriesSelector SeriesSelector) histogramStatsSelector {
+	return histogramStatsSelector{SeriesSelector: seriesSelector}
+}
+
+func (h histogramStatsSelector) GetSeries(ctx context.Context, shard, numShards int) ([]SignedSeries, error) {
+	series, err := h.SeriesSelector.GetSeries(ctx, shard, numShards)
+	if err != nil {
+		return nil, err
+	}
+	for i := range series {
+		series[i].Series = newHistogramStatsSeries(series[i].Series)
+	}
+	return series, nil
+}
+
+type histogramStatsSeries struct {
+	storage.Series
+}
+
+func newHistogramStatsSeries(series storage.Series) histogramStatsSeries {
+	return histogramStatsSeries{Series: series}
+}
+
+func (h histogramStatsSeries) Iterator(it chunkenc.Iterator) chunkenc.Iterator {
+	return NewHistogramStatsIterator(h.Series.Iterator(it))
 }

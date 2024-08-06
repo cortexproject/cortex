@@ -8,6 +8,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -290,4 +293,111 @@ func TestValidateLabelDuplication(t *testing.T) {
 		{Name: "a", Value: "a"},
 	}, "a")
 	assert.Equal(t, expected, actual)
+}
+
+func TestValidateNativeHistogram(t *testing.T) {
+	userID := "fake"
+	lbls := cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar"))
+
+	// Test histogram has 4 positive buckets and 4 negative buckets so 8 in total. Schema set to 1.
+	h := tsdbutil.GenerateTestHistogram(0)
+	fh := tsdbutil.GenerateTestFloatHistogram(0)
+
+	histogramWithSchemaMin := tsdbutil.GenerateTestHistogram(0)
+	histogramWithSchemaMin.Schema = histogram.ExponentialSchemaMin
+	floatHistogramWithSchemaMin := tsdbutil.GenerateTestFloatHistogram(0)
+	floatHistogramWithSchemaMin.Schema = histogram.ExponentialSchemaMin
+	for _, tc := range []struct {
+		name              string
+		bucketLimit       int
+		histogram         cortexpb.Histogram
+		expectedHistogram cortexpb.Histogram
+		expectedErr       error
+	}{
+		{
+			name:              "no limit, histogram",
+			histogram:         cortexpb.HistogramToHistogramProto(0, h.Copy()),
+			expectedHistogram: cortexpb.HistogramToHistogramProto(0, h.Copy()),
+		},
+		{
+			name:              "no limit, float histogram",
+			histogram:         cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
+			expectedHistogram: cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
+		},
+		{
+			name:              "within limit, histogram",
+			bucketLimit:       8,
+			histogram:         cortexpb.HistogramToHistogramProto(0, h.Copy()),
+			expectedHistogram: cortexpb.HistogramToHistogramProto(0, h.Copy()),
+		},
+		{
+			name:              "within limit, float histogram",
+			bucketLimit:       8,
+			histogram:         cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
+			expectedHistogram: cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
+		},
+		{
+			name:              "exceed limit and reduce resolution for 1 level, histogram",
+			bucketLimit:       6,
+			histogram:         cortexpb.HistogramToHistogramProto(0, h.Copy()),
+			expectedHistogram: cortexpb.HistogramToHistogramProto(0, h.Copy().ReduceResolution(0)),
+		},
+		{
+			name:              "exceed limit and reduce resolution for 1 level, float histogram",
+			bucketLimit:       6,
+			histogram:         cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
+			expectedHistogram: cortexpb.FloatHistogramToHistogramProto(0, fh.Copy().ReduceResolution(0)),
+		},
+		{
+			name:              "exceed limit and reduce resolution for 2 levels, histogram",
+			bucketLimit:       4,
+			histogram:         cortexpb.HistogramToHistogramProto(0, h.Copy()),
+			expectedHistogram: cortexpb.HistogramToHistogramProto(0, h.Copy().ReduceResolution(-1)),
+		},
+		{
+			name:              "exceed limit and reduce resolution for 2 levels, float histogram",
+			bucketLimit:       4,
+			histogram:         cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
+			expectedHistogram: cortexpb.FloatHistogramToHistogramProto(0, fh.Copy().ReduceResolution(-1)),
+		},
+		{
+			name:        "exceed limit but cannot reduce resolution further, histogram",
+			bucketLimit: 1,
+			histogram:   cortexpb.HistogramToHistogramProto(0, h.Copy()),
+			expectedErr: newHistogramBucketLimitExceededError(lbls, 1),
+		},
+		{
+			name:        "exceed limit but cannot reduce resolution further, float histogram",
+			bucketLimit: 1,
+			histogram:   cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
+			expectedErr: newHistogramBucketLimitExceededError(lbls, 1),
+		},
+		{
+			name:        "exceed limit but cannot reduce resolution further with min schema, histogram",
+			bucketLimit: 4,
+			histogram:   cortexpb.HistogramToHistogramProto(0, histogramWithSchemaMin.Copy()),
+			expectedErr: newHistogramBucketLimitExceededError(lbls, 4),
+		},
+		{
+			name:        "exceed limit but cannot reduce resolution further with min schema, float histogram",
+			bucketLimit: 4,
+			histogram:   cortexpb.FloatHistogramToHistogramProto(0, floatHistogramWithSchemaMin.Copy()),
+			expectedErr: newHistogramBucketLimitExceededError(lbls, 4),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := prometheus.NewRegistry()
+			validateMetrics := NewValidateMetrics(reg)
+			limits := new(Limits)
+			limits.MaxNativeHistogramBuckets = tc.bucketLimit
+			actualHistogram, actualErr := ValidateNativeHistogram(validateMetrics, limits, userID, lbls, tc.histogram)
+			if tc.expectedErr != nil {
+				require.Equal(t, tc.expectedErr, actualErr)
+				require.Equal(t, float64(1), testutil.ToFloat64(validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID)))
+			} else {
+				require.NoError(t, actualErr)
+				require.Equal(t, tc.expectedHistogram, actualHistogram)
+			}
+		})
+	}
 }

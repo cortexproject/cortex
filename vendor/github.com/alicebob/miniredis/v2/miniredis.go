@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alicebob/miniredis/v2/proto"
 	"github.com/alicebob/miniredis/v2/server"
 )
 
@@ -135,6 +136,7 @@ func RunTLS(cfg *tls.Config) (*Miniredis, error) {
 type Tester interface {
 	Fatalf(string, ...interface{})
 	Cleanup(func())
+	Logf(format string, args ...interface{})
 }
 
 // RunT start a new miniredis, pass it a testing.T. It also registers the cleanup after your test is done.
@@ -146,6 +148,22 @@ func RunT(t Tester) *Miniredis {
 	}
 	t.Cleanup(m.Close)
 	return m
+}
+
+func runWithClient(t Tester) (*Miniredis, *proto.Client) {
+	m := RunT(t)
+
+	c, err := proto.Dial(m.Addr())
+	if err != nil {
+		t.Fatalf("could not connect to miniredis: %s", err)
+	}
+	t.Cleanup(func() {
+		if err = c.Close(); err != nil {
+			t.Logf("error closing connection to miniredis: %s", err)
+		}
+	})
+
+	return m, c
 }
 
 // Start starts a server. It listens on a random port on localhost. See also
@@ -171,6 +189,15 @@ func (m *Miniredis) StartTLS(cfg *tls.Config) error {
 // ":6379", or "127.0.0.1:0"
 func (m *Miniredis) StartAddr(addr string) error {
 	s, err := server.NewServer(addr)
+	if err != nil {
+		return err
+	}
+	return m.start(s)
+}
+
+// StartAddrTLS runs miniredis with a given addr, TLS version.
+func (m *Miniredis) StartAddrTLS(addr string, cfg *tls.Config) error {
+	s, err := server.NewServerTLS(addr, cfg)
 	if err != nil {
 		return err
 	}

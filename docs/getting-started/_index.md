@@ -163,13 +163,20 @@ $ kubectl -n cortex apply -f seaweedfs.yaml
 ```
 
 ```sh
+# Wait for SeaweedFS to be ready
+$ kubectl -n cortex wait --for=condition=ready pod -l app=seaweedfs
+```
+
+```sh
 # Port-forward to SeaweedFS to create a bucket
 $ kubectl -n cortex port-forward svc/seaweedfs 8333
 ```
 
-```shell
-# Create a bucket
-$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-bucket
+```sh
+# Create buckets in SeaweedFS
+$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-blocks
+$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-ruler
+$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-alertmanager
 ```
 
 #### Setup Cortex
@@ -177,7 +184,7 @@ $ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://loca
 ```sh
 # Deploy Cortex using the provided values file which configures
 # - blocks storage to use the seaweedfs service
-$ helm upgrade --install --version=2.3.0  --namespace cortex cortex cortex-helm/cortex -f cortex-values.yaml
+$ helm upgrade --install --version=2.4.0  --namespace cortex cortex cortex-helm/cortex -f cortex-values.yaml
 ```
 
 #### Setup Prometheus
@@ -187,6 +194,10 @@ $ helm upgrade --install --version=2.3.0  --namespace cortex cortex cortex-helm/
 $ helm upgrade --install --version=25.20.1 --namespace cortex prometheus prometheus-community/prometheus -f prometheus-values.yaml
 ```
 
+If everything is working correctly, Prometheus should be sending metrics that it is scraping to Cortex. Prometheus is
+configured to send metrics to Cortex via `remote_write`. Check out the `prometheus-config.yaml` file to see
+how this is configured.
+
 #### Setup Grafana
 
 ```sh
@@ -194,48 +205,91 @@ $ helm upgrade --install --version=25.20.1 --namespace cortex prometheus prometh
 $ helm upgrade --install --version=7.3.9 --namespace cortex grafana grafana/grafana -f grafana-values.yaml
 ```
 
-#### Explore
+```sh
+# Create dashboards for Cortex
+$ for dashboard in $(ls dashboards); do
+  basename=$(basename -s .json $dashboard)
+  cmname=grafana-dashboard-$basename
+  kubectl create -n cortex cm $cmname --from-file=$dashboard=dashboards/$dashboard --save-config=true -o yaml --dry-run=client | kubectl apply -f -
+  kubectl patch -n cortex cm $cmname -p '{"metadata":{"labels":{"grafana_dashboard":""}}}'
+done
+
+```
 
 ```sh
 # Port-forward to Grafana to visualize
 kubectl --namespace cortex port-forward deploy/grafana 3000
 ```
 
-Grafana is configured to use Cortex as a data source. You can explore the data source in Grafana and query metrics. For example, this [explore](http://localhost:3000/explore?schemaVersion=1&panes=%7B%22au0%22:%7B%22datasource%22:%22P6693426190CB2316%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22rate%28prometheus_remote_storage_samples_total%5B$__rate_interval%5D%29%22,%22range%22:true,%22instant%22:true,%22datasource%22:%7B%22type%22:%22prometheus%22,%22uid%22:%22P6693426190CB2316%22%7D,%22editorMode%22:%22builder%22,%22legendFormat%22:%22__auto%22,%22useBackend%22:false,%22disableTextWrap%22:false,%22fullMetaSearch%22:false,%22includeNullMetadata%22:false%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1) page is showing the rate of samples being sent to Cortex.
+#### Configure Cortex Recording Rules and Alerting Rules (Optional)
 
+We can configure Cortex with [cortextool](https://github.com/cortexproject/cortex-tools/) to load [recording rules](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/) and [alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/). This is optional, but it is helpful to see how Cortex can be configured to manage rules and alerts.
+
+```sh
+# Port forward to the alertmanager to configure recording rules and alerts
+$ kubectl --namespace cortex port-forward svc/cortex-nginx 8080:80
+```
+
+```sh
+# Configure recording rules for the cortex tenant
+$ cortextool rules sync rules.yaml alerts.yaml --id cortex --address http://localhost:8080
+```
+
+#### Configure Cortex Alertmanager (Optional)
+
+Cortex also comes with a multi-tenant Alertmanager. Let's load configuration for it to be able to view them in Grafana.
+
+```sh
+# Configure alertmanager for the cortex tenant
+$ cortextool alertmanager load alertmanager-config.yaml --id cortex --address http://localhost:8080
+```
+
+You can configure Alertmanager in [Grafana as well](http://localhost:3000/alerting/notifications?search=&alertmanager=Cortex%20Alertmanager).
+
+There's a list of recording rules and alerts that should be visible in Grafana [here](http://localhost:3000/alerting/list?view=list&search=datasource:Cortex).
+
+#### Explore
+
+Grafana is configured to use Cortex as a data source. Grafana is also configured with [Cortex Dashboards](http://localhost:3000/dashboards?tag=cortex) to understand the state of the Cortex instance. The dashboards are generated from the cortex-jsonnet repository. There is a Makefile in the repository that can be used to update the dashboards.
+
+```sh
+# Update the dashboards (optional)
+$ make
+```
 
 If everything is working correctly, then the metrics seen in Grafana were successfully sent from Prometheus to Cortex
-via remote_write!
+via `remote_write`!
 
 Other things to explore:
 
+[Cortex](http://localhost:9009) - Administrative interface for Cortex
+
 ```sh
-# Port forward to the ingester to see the administrative interface for Cortex:
-$ kubectl --namespace cortex port-forward deploy/cortex-ingester 8080
+# Port forward to the ingester to see the administrative interface for Cortex
+$ kubectl --namespace cortex port-forward deploy/cortex-ingester 9009:8080
 ```
 
-- [Cortex Ingester](http://localhost:8080)
-  - Try shutting down the [ingester](http://localhost:8080/ingester/shutdown) and see how it affects metric ingestion.
-  - Restart ingester pod to bring the ingester back online, and see if Prometheus affected.
-  - Does it affect the querying of metrics in Grafana? How many ingesters must be offline before it affects querying?
+- Try shutting down the ingester, and see how it affects metric ingestion.
+- Restart Cortex to bring the ingester back online, and see how Prometheus catches up.
+- Does it affect the querying of metrics in Grafana?
 
+[Prometheus](http://localhost:9090) - Prometheus instance that is sending metrics to Cortex
 
 ```sh
-# Port forward to Prometheus to see the metrics that are being scraped:
+# Port forward to Prometheus to see the metrics that are being scraped
 $ kubectl --namespace cortex port-forward deploy/prometheus-server 9090
 ```
+- Try querying the metrics in Prometheus.
+- Are they the same as what you see in Cortex?
 
-- [Prometheus](http://localhost:9090) - Prometheus instance that is sending metrics to Cortex
-  - Try querying the metrics in Prometheus.
-  - Are they the same as what you see in Cortex?
+[Grafana](http://localhost:3000) - Grafana instance that is visualizing the metrics.
 
 ```sh
-# Port forward to Prometheus to see the metrics that are being scraped:
+# Port forward to Grafana to visualize
 $ kubectl --namespace cortex port-forward deploy/grafana 3000
 ```
 
-- [Grafana](http://localhost:3000) - Grafana instance that is visualizing the metrics.
-  - Try creating a new dashboard and adding a new panel with a query to Cortex.
+- Try creating a new dashboard and adding a new panel with a query to Cortex.
 
 ### Clean up
 

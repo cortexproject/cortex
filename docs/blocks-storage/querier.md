@@ -1341,6 +1341,24 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.series-batch-size
     [series_batch_size: <int> | default = 10000]
 
+    token_bucket_bytes_limiter:
+      # Token bucket bytes limiter mode. Supported values are: disabled, dryrun,
+      # enabled
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.mode
+      [mode: <string> | default = "disabled"]
+
+      # Instance token bucket size
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.instance-token-bucket-size
+      [instance_token_bucket_size: <int> | default = 859832320]
+
+      # User token bucket size
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.user-token-bucket-size
+      [user_token_bucket_size: <int> | default = 644874240]
+
+      # Request token bucket size
+      # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.request-token-bucket-size
+      [request_token_bucket_size: <int> | default = 4194304]
+
   tsdb:
     # Local directory to store TSDBs in the ingesters.
     # CLI flag: -blocks-storage.tsdb.dir

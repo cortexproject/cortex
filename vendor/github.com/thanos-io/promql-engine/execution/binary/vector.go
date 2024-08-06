@@ -268,14 +268,14 @@ func (o *vectorOperator) execBinaryUnless(lhs, rhs model.StepVector) (model.Step
 }
 
 // TODO: add support for histogram.
-func (o *vectorOperator) computeBinaryPairing(hval, lval float64) (float64, bool) {
+func (o *vectorOperator) computeBinaryPairing(hval, lval float64) (float64, bool, error) {
 	// operand is not commutative so we need to address potential swapping
 	if o.matching.Card == parser.CardOneToMany {
-		v, _, keep := vectorElemBinop(o.opType, lval, hval, nil, nil)
-		return v, keep
+		v, _, keep, err := vectorElemBinop(o.opType, lval, hval, nil, nil)
+		return v, keep, err
 	}
-	v, _, keep := vectorElemBinop(o.opType, hval, lval, nil, nil)
-	return v, keep
+	v, _, keep, err := vectorElemBinop(o.opType, hval, lval, nil, nil)
+	return v, keep, err
 }
 
 func (o *vectorOperator) execBinaryArithmetic(lhs, rhs model.StepVector) (model.StepVector, error) {
@@ -323,7 +323,10 @@ func (o *vectorOperator) execBinaryArithmetic(lhs, rhs model.StepVector) (model.
 		}
 		jp.bts = ts
 
-		val, keep := o.computeBinaryPairing(hcs.Samples[i], jp.val)
+		val, keep, err := o.computeBinaryPairing(hcs.Samples[i], jp.val)
+		if err != nil {
+			return model.StepVector{}, err
+		}
 		if o.returnBool {
 			val = 0
 			if keep {
@@ -507,59 +510,75 @@ func signatureFunc(on bool, names ...string) func(labels.Labels) uint64 {
 // Lifted from: https://github.com/prometheus/prometheus/blob/a38179c4e183d9b50b271167bf90050eda8ec3d1/promql/engine.go#L2430.
 // TODO: call with histogram values in followup PR.
 // nolint: unparam
-func vectorElemBinop(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool) {
+func vectorElemBinop(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool, error) {
 	switch op {
 	case parser.ADD:
 		if hlhs != nil && hrhs != nil {
 			// The histogram being added must have the larger schema
 			// code (i.e. the higher resolution).
 			if hrhs.Schema >= hlhs.Schema {
-				return 0, hlhs.Copy().Add(hrhs).Compact(0), true
+				sum, err := hlhs.Copy().Add(hrhs)
+				if err != nil {
+					return 0, nil, false, err
+				}
+				return 0, sum.Compact(0), true, nil
 			}
-			return 0, hrhs.Copy().Add(hlhs).Compact(0), true
+			sum, err := hrhs.Copy().Add(hlhs)
+			if err != nil {
+				return 0, nil, false, err
+			}
+			return 0, sum.Compact(0), true, nil
 		}
-		return lhs + rhs, nil, true
+		return lhs + rhs, nil, true, nil
 	case parser.SUB:
 		if hlhs != nil && hrhs != nil {
 			// The histogram being subtracted must have the larger schema
 			// code (i.e. the higher resolution).
 			if hrhs.Schema >= hlhs.Schema {
-				return 0, hlhs.Copy().Sub(hrhs).Compact(0), true
+				diff, err := hlhs.Copy().Sub(hrhs)
+				if err != nil {
+					return 0, nil, false, err
+				}
+				return 0, diff.Compact(0), true, nil
 			}
-			return 0, hrhs.Copy().Mul(-1).Add(hlhs).Compact(0), true
+			diff, err := hrhs.Copy().Mul(-1).Add(hlhs)
+			if err != nil {
+				return 0, nil, false, err
+			}
+			return 0, diff.Compact(0), true, nil
 		}
-		return lhs - rhs, nil, true
+		return lhs - rhs, nil, true, nil
 	case parser.MUL:
 		if hlhs != nil && hrhs == nil {
-			return 0, hlhs.Copy().Mul(rhs), true
+			return 0, hlhs.Copy().Mul(rhs), true, nil
 		}
 		if hlhs == nil && hrhs != nil {
-			return 0, hrhs.Copy().Mul(lhs), true
+			return 0, hrhs.Copy().Mul(lhs), true, nil
 		}
-		return lhs * rhs, nil, true
+		return lhs * rhs, nil, true, nil
 	case parser.DIV:
 		if hlhs != nil && hrhs == nil {
-			return 0, hlhs.Copy().Div(rhs), true
+			return 0, hlhs.Copy().Div(rhs), true, nil
 		}
-		return lhs / rhs, nil, true
+		return lhs / rhs, nil, true, nil
 	case parser.POW:
-		return math.Pow(lhs, rhs), nil, true
+		return math.Pow(lhs, rhs), nil, true, nil
 	case parser.MOD:
-		return math.Mod(lhs, rhs), nil, true
+		return math.Mod(lhs, rhs), nil, true, nil
 	case parser.EQLC:
-		return lhs, nil, lhs == rhs
+		return lhs, nil, lhs == rhs, nil
 	case parser.NEQ:
-		return lhs, nil, lhs != rhs
+		return lhs, nil, lhs != rhs, nil
 	case parser.GTR:
-		return lhs, nil, lhs > rhs
+		return lhs, nil, lhs > rhs, nil
 	case parser.LSS:
-		return lhs, nil, lhs < rhs
+		return lhs, nil, lhs < rhs, nil
 	case parser.GTE:
-		return lhs, nil, lhs >= rhs
+		return lhs, nil, lhs >= rhs, nil
 	case parser.LTE:
-		return lhs, nil, lhs <= rhs
+		return lhs, nil, lhs <= rhs, nil
 	case parser.ATAN2:
-		return math.Atan2(lhs, rhs), nil, true
+		return math.Atan2(lhs, rhs), nil, true, nil
 	}
 	panic(errors.Newf("operator %q not allowed for operations between Vectors", op))
 }

@@ -179,7 +179,7 @@ For more information, see the [compactor documentation](./blocks-storage/compact
 The compactor is **stateless**.
 
 ### Store gateway
-The **store gateway** is the Cortex service responsible to query series from blocks, it needs to have an almost up-to-date view over the storage bucket. In order to discover blocks belonging to their shard. The store-gateway can keep the bucket view updated in to two different ways:
+The **store gateway** is the Cortex service responsible for querying series from blocks. It needs to have an almost up-to-date view of the storage bucket. To discover blocks belonging to their shard, the store gateway can keep the bucket view updated in two different ways:
 
 1. Periodically scanning the bucket (default)
 2. Periodically downloading the [bucket index](./blocks-storage/bucket-index.md)

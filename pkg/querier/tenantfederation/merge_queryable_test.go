@@ -185,7 +185,7 @@ func (m mockTenantQuerier) Select(ctx context.Context, _ bool, sp *storage.Selec
 
 // LabelValues implements the storage.LabelQuerier interface.
 // The mockTenantQuerier returns all a sorted slice of all label values and does not support reducing the result set with matchers.
-func (m mockTenantQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (m mockTenantQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -233,7 +233,7 @@ func (m mockTenantQuerier) LabelValues(ctx context.Context, name string, matcher
 // It returns a sorted slice of all label names in the querier.
 // If only one matcher is provided with label Name=seriesWithLabelNames then the resulting set will have the values of that matchers pipe-split appended.
 // I.e. querying for {seriesWithLabelNames="foo|bar|baz"} will have as result [bar, baz, foo, <rest of label names from querier matrix> ]
-func (m mockTenantQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (m mockTenantQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -378,7 +378,7 @@ func TestMergeQueryable_Querier(t *testing.T) {
 		querier, err := q.Querier(mint, maxt)
 		require.NoError(t, err)
 
-		_, _, err = querier.LabelValues(context.Background(), "test")
+		_, _, err = querier.LabelValues(context.Background(), "test", nil)
 		require.EqualError(t, err, user.ErrNoOrgID.Error())
 	})
 }
@@ -770,7 +770,7 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 
 			t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
 				t.Parallel()
-				labelNames, warnings, err := querier.LabelNames(ctx, scenario.labelNamesTestCase.matchers...)
+				labelNames, warnings, err := querier.LabelNames(ctx, nil, scenario.labelNamesTestCase.matchers...)
 				if scenario.labelNamesTestCase.expectedQueryErr != nil {
 					require.EqualError(t, err, scenario.labelNamesTestCase.expectedQueryErr.Error())
 				} else {
@@ -957,7 +957,7 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 				tc := tc
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-					actLabelValues, warnings, err := querier.LabelValues(ctx, tc.labelName, tc.matchers...)
+					actLabelValues, warnings, err := querier.LabelValues(ctx, tc.labelName, nil, tc.matchers...)
 					if tc.expectedQueryErr != nil {
 						require.EqualError(t, err, tc.expectedQueryErr.Error())
 					} else {

@@ -9,21 +9,30 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/query"
+	"github.com/thanos-io/promql-engine/storage/prometheus"
 )
 
 type operator struct {
-	// this needs a pool so we dont panic if we want use "GetPool().PutVectors"
-	pool *model.VectorPool
+	model.VectorOperator
 }
 
-func NewOperator() model.VectorOperator { return &operator{pool: model.NewVectorPool(0)} }
+func NewOperator(opts *query.Options) model.VectorOperator {
+	scanner := prometheus.NewVectorSelector(
+		model.NewVectorPool(0),
+		noopSelector{},
+		opts,
+		0, 0, false, 0, 1,
+	)
+	return &operator{VectorOperator: scanner}
+}
 
-func (o operator) String() string { return "[noop]" }
-
-func (o operator) Next(ctx context.Context) ([]model.StepVector, error) { return nil, nil }
-
-func (o operator) Series(ctx context.Context) ([]labels.Labels, error) { return nil, nil }
-
-func (o operator) GetPool() *model.VectorPool { return o.pool }
-
+func (o operator) String() string                         { return "[noop]" }
 func (o operator) Explain() (next []model.VectorOperator) { return nil }
+
+type noopSelector struct{}
+
+func (n noopSelector) Matchers() []*labels.Matcher { return nil }
+func (n noopSelector) GetSeries(ctx context.Context, shard, numShards int) ([]prometheus.SignedSeries, error) {
+	return nil, nil
+}

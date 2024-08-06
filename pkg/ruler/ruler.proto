@@ -27,6 +27,7 @@ message RulesRequest {
   string state = 5;
   string health = 6;
   repeated string matchers = 7;
+  bool excludeAlerts = 8;
 }
 
 message RulesResponse {

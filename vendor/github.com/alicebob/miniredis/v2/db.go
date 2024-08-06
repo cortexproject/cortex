@@ -3,6 +3,7 @@ package miniredis
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -180,6 +181,17 @@ func (db *RedisDB) stringIncr(k string, delta int) (int, error) {
 			return 0, ErrIntValueError
 		}
 	}
+
+	if delta > 0 {
+		if math.MaxInt-delta < v {
+			return 0, ErrIntValueOverflowError
+		}
+	} else {
+		if math.MinInt-delta > v {
+			return 0, ErrIntValueOverflowError
+		}
+	}
+
 	v += delta
 	db.stringSet(k, strconv.Itoa(v))
 	return v, nil

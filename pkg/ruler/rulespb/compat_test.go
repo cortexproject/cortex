@@ -29,14 +29,18 @@ func TestProto(t *testing.T) {
 
 	rules = append(rules, testRule)
 
+	queryOffset := model.Duration(30 * time.Second)
 	rg := rulefmt.RuleGroup{
-		Name:     "group1",
-		Rules:    rules,
-		Interval: model.Duration(time.Minute),
+		Name:        "group1",
+		Rules:       rules,
+		Interval:    model.Duration(time.Minute),
+		QueryOffset: &queryOffset,
 	}
+
 	desc := ToProto("test", "namespace", rg)
 
 	assert.Equal(t, len(rules), len(desc.Rules))
+	assert.Equal(t, 30*time.Second, *desc.QueryOffset)
 
 	ruleDesc := desc.Rules[0]
 

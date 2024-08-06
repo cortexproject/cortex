@@ -426,7 +426,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 }
 
 // LabelValues implements storage.Querier.
-func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q querier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	ctx, stats, _, _, _, _, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
@@ -439,7 +439,7 @@ func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labe
 	}()
 
 	if len(queriers) == 1 {
-		return queriers[0].LabelValues(ctx, name, matchers...)
+		return queriers[0].LabelValues(ctx, name, hints, matchers...)
 	}
 
 	var (
@@ -455,7 +455,7 @@ func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labe
 		querier := querier
 		g.Go(func() error {
 			// NB: Values are sorted in Cortex already.
-			myValues, myWarnings, err := querier.LabelValues(ctx, name, matchers...)
+			myValues, myWarnings, err := querier.LabelValues(ctx, name, hints, matchers...)
 			if err != nil {
 				return err
 			}
@@ -476,7 +476,7 @@ func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labe
 	return strutil.MergeSlices(sets...), warnings, nil
 }
 
-func (q querier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	ctx, stats, _, _, _, _, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
@@ -489,7 +489,7 @@ func (q querier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([
 	}()
 
 	if len(queriers) == 1 {
-		return queriers[0].LabelNames(ctx, matchers...)
+		return queriers[0].LabelNames(ctx, hints, matchers...)
 	}
 
 	var (
@@ -505,7 +505,7 @@ func (q querier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([
 		querier := querier
 		g.Go(func() error {
 			// NB: Names are sorted in Cortex already.
-			myNames, myWarnings, err := querier.LabelNames(ctx, matchers...)
+			myNames, myWarnings, err := querier.LabelNames(ctx, hints, matchers...)
 			if err != nil {
 				return err
 			}

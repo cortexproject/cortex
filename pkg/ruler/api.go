@@ -154,6 +154,12 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	excludeAlerts, err := parseExcludeAlerts(req)
+	if err != nil {
+		util_api.RespondError(logger, w, v1.ErrBadData, fmt.Sprintf("invalid parameter %q: %s", "exclude_alerts", err.Error()), http.StatusBadRequest)
+		return
+	}
+
 	rulesRequest := RulesRequest{
 		RuleNames:      req.Form["rule_name[]"],
 		RuleGroupNames: req.Form["rule_group[]"],
@@ -162,6 +168,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		State:          state,
 		Health:         health,
 		Matchers:       req.Form["match[]"],
+		ExcludeAlerts:  excludeAlerts,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -254,6 +261,20 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	if n, err := w.Write(b); err != nil {
 		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
 	}
+}
+
+func parseExcludeAlerts(r *http.Request) (bool, error) {
+	excludeAlertsParam := strings.ToLower(r.URL.Query().Get("exclude_alerts"))
+
+	if excludeAlertsParam == "" {
+		return false, nil
+	}
+
+	excludeAlerts, err := strconv.ParseBool(excludeAlertsParam)
+	if err != nil {
+		return false, fmt.Errorf("error converting exclude_alerts: %w", err)
+	}
+	return excludeAlerts, nil
 }
 
 func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {

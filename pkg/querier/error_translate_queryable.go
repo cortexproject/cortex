@@ -123,13 +123,13 @@ type errorTranslateQuerier struct {
 	fn ErrTranslateFn
 }
 
-func (e errorTranslateQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	values, warnings, err := e.q.LabelValues(ctx, name, matchers...)
+func (e errorTranslateQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	values, warnings, err := e.q.LabelValues(ctx, name, hints, matchers...)
 	return values, warnings, e.fn(err)
 }
 
-func (e errorTranslateQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	values, warnings, err := e.q.LabelNames(ctx, matchers...)
+func (e errorTranslateQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	values, warnings, err := e.q.LabelNames(ctx, hints, matchers...)
 	return values, warnings, e.fn(err)
 }
 
@@ -147,13 +147,13 @@ type errorTranslateChunkQuerier struct {
 	fn ErrTranslateFn
 }
 
-func (e errorTranslateChunkQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	values, warnings, err := e.q.LabelValues(ctx, name, matchers...)
+func (e errorTranslateChunkQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	values, warnings, err := e.q.LabelValues(ctx, name, hints, matchers...)
 	return values, warnings, e.fn(err)
 }
 
-func (e errorTranslateChunkQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	values, warnings, err := e.q.LabelNames(ctx, matchers...)
+func (e errorTranslateChunkQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	values, warnings, err := e.q.LabelNames(ctx, hints, matchers...)
 	return values, warnings, e.fn(err)
 }
 

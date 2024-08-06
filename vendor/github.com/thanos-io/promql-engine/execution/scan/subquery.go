@@ -6,6 +6,7 @@ package scan
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -107,15 +108,20 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		return nil, err
 	}
 
-	args, err := o.paramOp.Next(ctx)
-	if err != nil {
-		return nil, err
+	if o.paramOp != nil {
+		args, err := o.paramOp.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for i := range args {
+			o.params[i] = math.NaN()
+			if len(args[i].Samples) == 1 {
+				o.params[i] = args[i].Samples[0]
+			}
+			o.paramOp.GetPool().PutStepVector(args[i])
+		}
+		o.paramOp.GetPool().PutVectors(args)
 	}
-	for i := range args {
-		o.params[i] = args[i].Samples[0]
-		o.paramOp.GetPool().PutStepVector(args[i])
-	}
-	o.paramOp.GetPool().PutVectors(args)
 
 	res := o.pool.GetVectorBatch()
 	for i := 0; o.currentStep <= o.maxt && i < o.stepsBatch; i++ {
@@ -161,13 +167,16 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 
 		sv := o.pool.GetStepVector(o.currentStep)
 		for sampleId, rangeSamples := range o.buffers {
-			f, h, ok := o.call(FunctionArgs{
+			f, h, ok, err := o.call(FunctionArgs{
 				ScalarPoint: o.params[i],
 				Samples:     rangeSamples.Samples(),
 				StepTime:    maxt + o.subQuery.Offset.Milliseconds(),
 				SelectRange: o.subQuery.Range.Milliseconds(),
 				Offset:      o.subQuery.Offset.Milliseconds(),
 			})
+			if err != nil {
+				return nil, err
+			}
 			if ok {
 				if h != nil {
 					sv.AppendHistogram(o.pool, uint64(sampleId), h)

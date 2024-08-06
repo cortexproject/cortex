@@ -124,6 +124,11 @@ func verifyOTLPWriteRequestHandler(t *testing.T, expectSource cortexpb.WriteRequ
 		// TODO: test more things
 		assert.Equal(t, expectSource, request.Source)
 		assert.False(t, request.SkipLabelNameValidation)
+		for _, ts := range request.Timeseries {
+			assert.NotEmpty(t, ts.Labels)
+			// Make sure at least one of sample, exemplar or histogram is set.
+			assert.True(t, len(ts.Samples) > 0 || len(ts.Exemplars) > 0 || len(ts.Histograms) > 0)
+		}
 		return &cortexpb.WriteResponse{}, nil
 	}
 }

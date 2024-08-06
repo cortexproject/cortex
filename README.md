@@ -177,6 +177,7 @@ There are several commercial services where you can use Cortex on-demand:
 * Goutham Veeramachaneni @gouthamve
 * Jacob Lisi @jtlisi
 * Tom Wilkie @tomwilkie
+* Alvin Lin @alvinlin123
 
 ## History of Cortex
 

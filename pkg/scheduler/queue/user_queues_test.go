@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -455,6 +456,39 @@ func TestGetOrAddQueueShouldUpdateProperties(t *testing.T) {
 		assert.Equal(t, queriers, q.userQueues["userID"].queriers)
 		assert.Equal(t, reservedQueriers, q.userQueues["userID"].reservedQueriers)
 	}
+}
+
+func TestQueueConcurrency(t *testing.T) {
+	const numGoRoutines = 30
+	limits := MockLimits{
+		MaxOutstanding: 50,
+	}
+	q := newUserQueues(0, 0, limits, nil)
+	q.addQuerierConnection("q-1")
+	q.addQuerierConnection("q-2")
+	q.addQuerierConnection("q-3")
+	q.addQuerierConnection("q-4")
+	q.addQuerierConnection("q-5")
+
+	var wg sync.WaitGroup
+	wg.Add(numGoRoutines)
+
+	for i := 0; i < numGoRoutines; i++ {
+		go func(cnt int) {
+			defer wg.Done()
+			queue := q.getOrAddQueue("userID", 2)
+			if cnt%2 == 0 {
+				queue.enqueueRequest(MockRequest{})
+				q.getNextQueueForQuerier(0, "q-1")
+			} else if cnt%5 == 0 {
+				queue.dequeueRequest(0, false)
+			} else if cnt%7 == 0 {
+				q.deleteQueue("userID")
+			}
+		}(i)
+	}
+
+	wg.Wait()
 }
 
 func generateTenant(r *rand.Rand) string {

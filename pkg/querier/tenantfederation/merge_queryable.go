@@ -124,7 +124,7 @@ type mergeQuerier struct {
 // For the label `idLabelName` it will return all the underlying ids available.
 // For the label "original_" + `idLabelName it will return all the values
 // of the underlying queriers for `idLabelName`.
-func (m *mergeQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (m *mergeQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	ids, queriers, err := m.callback(ctx, m.mint, m.maxt)
 	if err != nil {
 		return nil, nil, err
@@ -132,7 +132,7 @@ func (m *mergeQuerier) LabelValues(ctx context.Context, name string, matchers ..
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {
-		return queriers[0].LabelValues(ctx, name, matchers...)
+		return queriers[0].LabelValues(ctx, name, hints, matchers...)
 	}
 	log, _ := spanlogger.New(ctx, "mergeQuerier.LabelValues")
 	defer log.Span.Finish()
@@ -156,14 +156,14 @@ func (m *mergeQuerier) LabelValues(ctx context.Context, name string, matchers ..
 	}
 
 	return m.mergeDistinctStringSliceWithTenants(ctx, func(ctx context.Context, q storage.Querier) ([]string, annotations.Annotations, error) {
-		return q.LabelValues(ctx, name, filteredMatchers...)
+		return q.LabelValues(ctx, name, hints, filteredMatchers...)
 	}, matchedTenants, ids, queriers)
 }
 
 // LabelNames returns all the unique label names present in the underlying
 // queriers. It also adds the `idLabelName` and if present in the original
 // results the original `idLabelName`.
-func (m *mergeQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (m *mergeQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	ids, queriers, err := m.callback(ctx, m.mint, m.maxt)
 	if err != nil {
 		return nil, nil, err
@@ -171,7 +171,7 @@ func (m *mergeQuerier) LabelNames(ctx context.Context, matchers ...*labels.Match
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {
-		return queriers[0].LabelNames(ctx, matchers...)
+		return queriers[0].LabelNames(ctx, hints, matchers...)
 	}
 	log, _ := spanlogger.New(ctx, "mergeQuerier.LabelNames")
 	defer log.Span.Finish()
@@ -179,7 +179,7 @@ func (m *mergeQuerier) LabelNames(ctx context.Context, matchers ...*labels.Match
 	matchedTenants, filteredMatchers := filterValuesByMatchers(m.idLabelName, ids, matchers...)
 
 	labelNames, warnings, err := m.mergeDistinctStringSliceWithTenants(ctx, func(ctx context.Context, q storage.Querier) ([]string, annotations.Annotations, error) {
-		return q.LabelNames(ctx, filteredMatchers...)
+		return q.LabelNames(ctx, hints, filteredMatchers...)
 	}, matchedTenants, ids, queriers)
 	if err != nil {
 		return nil, nil, err

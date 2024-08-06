@@ -10,6 +10,10 @@ const (
 	// Sharding strategies.
 	ShardingStrategyDefault = "default"
 	ShardingStrategyShuffle = "shuffle-sharding"
+
+	// Compaction mode
+	CompactionModeDefault      = "default"
+	CompactionModePartitioning = "partitioning"
 )
 
 var (

@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	"github.com/gogo/protobuf/proto"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -32,11 +31,7 @@ func TestRoundTrip(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var err error
 				if r.RequestURI == query {
-					resp := parsedResponse
-					resp.Headers = respHeaders
-					protobuf, err := proto.Marshal(resp)
-					require.NoError(t, err)
-					_, err = w.Write(protobuf)
+					_, err = w.Write([]byte(responseBody))
 				} else if r.RequestURI == queryWithWarnings {
 					_, err = w.Write([]byte(responseBodyWithWarnings))
 				} else {

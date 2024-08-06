@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/gogo/protobuf/proto"
 	"io"
 	"net/http"
 	"net/url"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/gogo/protobuf/proto"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -185,8 +186,18 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	}
 
 	var resp PrometheusInstantQueryResponse
-	if err := proto.Unmarshal(buf, &resp); err != nil {
+	if r.Header != nil && r.Header.Get("Content-Type") == "application/x-protobuf" {
+		err = proto.Unmarshal(buf, &resp)
+	} else {
+		err = json.Unmarshal(buf, &resp)
+	}
+
+	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
+
+	for h, hv := range r.Header {
+		resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
 	}
 
 	return &resp, nil

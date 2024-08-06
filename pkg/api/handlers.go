@@ -3,11 +3,12 @@ package api
 import (
 	"context"
 	"encoding/json"
-	thanos_api "github.com/thanos-io/thanos/pkg/api"
 	"html/template"
 	"net/http"
 	"path"
 	"sync"
+
+	thanos_api "github.com/thanos-io/thanos/pkg/api"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -22,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	v1api "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
@@ -236,16 +238,6 @@ func NewQuerierHandler(
 	queryapi := qapi.NewAPI(
 		engine,
 		querier.NewErrorTranslateSampleAndChunkQueryable(queryable), // Translate errors to errors expected by API.
-		func(f http.HandlerFunc) http.HandlerFunc { return f },
-		logger,
-		false,
-		regexp.MustCompile(".*"),
-		nil,
-	)
-
-	queryapi := qapi.NewAPI(
-		engine,
-		querier.NewErrorTranslateSampleAndChunkQueryable(queryable), // Translate errors to errors expected by API.
 		logger,
 		nil,
 	)
@@ -273,9 +265,9 @@ func NewQuerierHandler(
 	legacyPromRouter := route.New().WithPrefix(path.Join(legacyPrefix, "/api/v1"))
 	v1api.Register(legacyPromRouter)
 
-	wrap := func(f thanos_api.ApiFunc) http.HandlerFunc {
+	wrap := func(f func(r *http.Request) (interface{}, *thanos_api.ApiError, annotations.Annotations, func())) http.HandlerFunc {
 		hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			data, warnings, err, finalizer := f(r)
+			data, err, warnings, finalizer := f(r)
 			if finalizer != nil {
 				defer finalizer()
 			}
@@ -285,7 +277,7 @@ func NewQuerierHandler(
 			}
 
 			if data != nil {
-				queryapi.Respond(w, data, warnings)
+				queryapi.Respond(w, r, data, warnings, r.FormValue("query"))
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)

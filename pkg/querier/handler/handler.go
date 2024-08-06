@@ -3,6 +3,12 @@ package handler
 import (
 	"context"
 	"fmt"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/instantquery"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -11,19 +17,15 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
-	"math"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	github_com_cortexproject_cortex_pkg_cortexpb "github.com/cortexproject/cortex/pkg/cortexpb"
+	cortex_pb "github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/httputil"
 	"github.com/prometheus/prometheus/util/stats"
 	thanos_api "github.com/thanos-io/thanos/pkg/api"
@@ -67,7 +69,7 @@ type response struct {
 
 type API struct {
 	Queryable     storage.SampleAndChunkQueryable
-	QueryEngine   v1.QueryEngine
+	QueryEngine   promql.QueryEngine
 	Now           func() time.Time
 	Logger        log.Logger
 	StatsRenderer v1.StatsRenderer
@@ -75,7 +77,7 @@ type API struct {
 
 // NewAPI returns an initialized API type.
 func NewAPI(
-	qe v1.QueryEngine,
+	qe promql.QueryEngine,
 	q storage.SampleAndChunkQueryable,
 	logger log.Logger,
 	statsRenderer v1.StatsRenderer,
@@ -101,13 +103,13 @@ type queryData struct {
 	Stats      stats.QueryStats `json:"stats,omitempty"`
 }
 
-func invalidParamError(err error, parameter string) (data interface{}, warnings []error, error *thanos_api.ApiError, finalizer func()) {
-	return nil, nil, &thanos_api.ApiError{
+func invalidParamError(err error, parameter string) (data interface{}, error *thanos_api.ApiError, warnings annotations.Annotations, finalizer func()) {
+	return nil, &thanos_api.ApiError{
 		thanos_api.ErrorBadData, errors.Wrapf(err, "invalid parameter %q", parameter),
-	}, nil
+	}, nil, nil
 }
 
-func (api *API) Query(r *http.Request) (data interface{}, warnings []error, error *thanos_api.ApiError, finalizer func()) {
+func (api *API) Query(r *http.Request) (data interface{}, error *thanos_api.ApiError, warnings annotations.Annotations, finalizer func()) {
 	ts, err := parseTimeParam(r, "time", api.Now())
 	if err != nil {
 		return invalidParamError(err, "time")
@@ -120,13 +122,13 @@ func (api *API) Query(r *http.Request) (data interface{}, warnings []error, erro
 			return invalidParamError(err, "timeout")
 		}
 
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = context.WithDeadline(ctx, api.Now().Add(timeout))
 		defer cancel()
 	}
 
 	opts, err := extractQueryOpts(r)
 	if err != nil {
-		return nil, nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, nil
+		return nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, nil, nil
 	}
 	qry, err := api.QueryEngine.NewInstantQuery(ctx, api.Queryable, opts, r.FormValue("query"), ts)
 	if err != nil {
@@ -146,7 +148,7 @@ func (api *API) Query(r *http.Request) (data interface{}, warnings []error, erro
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
-		return nil, res.Warnings, returnAPIError(res.Err), qry.Close
+		return nil, returnAPIError(res.Err), res.Warnings, qry.Close
 	}
 
 	// Optional stats field in response if parameter "stats" is not empty.
@@ -178,26 +180,26 @@ func (api *API) Query(r *http.Request) (data interface{}, warnings []error, erro
 		}
 	}
 	if err != nil {
-		return nil, res.Warnings, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, qry.Close
+		return nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, res.Warnings, qry.Close
 	}
-	return data, res.Warnings, nil, qry.Close
+	return data, nil, res.Warnings, qry.Close
 }
 
-func extractQueryOpts(r *http.Request) (*promql.QueryOpts, error) {
-	opts := &promql.QueryOpts{
-		EnablePerStepStats: r.FormValue("stats") == "all",
-	}
+func extractQueryOpts(r *http.Request) (promql.QueryOpts, error) {
+	var duration time.Duration
+
 	if strDuration := r.FormValue("lookback_delta"); strDuration != "" {
-		duration, err := parseDuration(strDuration)
+		parsedDuration, err := parseDuration(strDuration)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing lookback delta duration: %w", err)
 		}
-		opts.LookbackDelta = duration
+		duration = parsedDuration
 	}
-	return opts, nil
+
+	return promql.NewPrometheusQueryOpts(r.FormValue("stats") == "all", duration), nil
 }
 
-func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error, error *thanos_api.ApiError, finalizer func()) {
+func (api *API) QueryRange(r *http.Request) (data interface{}, error *thanos_api.ApiError, warnings annotations.Annotations, finalizer func()) {
 	start, err := parseTime(r.FormValue("start"))
 	if err != nil {
 		return invalidParamError(err, "start")
@@ -223,7 +225,7 @@ func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error,
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
 	if end.Sub(start)/step > 11000 {
 		err := errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
-		return nil, nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, nil
+		return nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, nil, nil
 	}
 
 	ctx := r.Context()
@@ -240,7 +242,7 @@ func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error,
 
 	opts, err := extractQueryOpts(r)
 	if err != nil {
-		return nil, nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, nil
+		return nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, nil, nil
 	}
 	qry, err := api.QueryEngine.NewRangeQuery(ctx, api.Queryable, opts, r.FormValue("query"), start, end, step)
 	if err != nil {
@@ -259,7 +261,7 @@ func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error,
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
-		return nil, res.Warnings, returnAPIError(res.Err), qry.Close
+		return nil, returnAPIError(res.Err), res.Warnings, qry.Close
 	}
 
 	// Optional stats field in response if parameter "stats" is not empty.
@@ -292,9 +294,9 @@ func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error,
 	}
 
 	if err != nil {
-		return nil, res.Warnings, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, qry.Close
+		return nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, res.Warnings, qry.Close
 	}
-	return data, res.Warnings, nil, qry.Close
+	return data, nil, res.Warnings, qry.Close
 }
 
 func parseTimeParam(r *http.Request, paramName string, defaultValue time.Time) (time.Time, error) {
@@ -325,9 +327,9 @@ func parseTime(s string) (time.Time, error) {
 	// Upstream issue: https://github.com/golang/go/issues/20555
 	switch s {
 	case minTimeFormatted:
-		return minTime, nil
+		return v1.MinTime, nil
 	case maxTimeFormatted:
-		return maxTime, nil
+		return v1.MaxTime, nil
 	}
 	return time.Time{}, errors.Errorf("cannot parse %q to a valid timestamp", s)
 }
@@ -373,18 +375,13 @@ func returnAPIError(err error) *thanos_api.ApiError {
 }
 
 var (
-	minTime = time.Unix(math.MinInt64/1000+62135596801, 0).UTC()
-	maxTime = time.Unix(math.MaxInt64/1000-62135596801, 999999999).UTC()
-
-	minTimeFormatted = minTime.Format(time.RFC3339Nano)
-	maxTimeFormatted = maxTime.Format(time.RFC3339Nano)
+	minTimeFormatted = v1.MinTime.Format(time.RFC3339Nano)
+	maxTimeFormatted = v1.MaxTime.Format(time.RFC3339Nano)
 )
 
-func (api *API) Respond(w http.ResponseWriter, data interface{}, warnings storage.Warnings) {
-	var warningStrings []string
-	for _, warning := range warnings {
-		warningStrings = append(warningStrings, warning.Error())
-	}
+func (api *API) Respond(w http.ResponseWriter, req *http.Request, data interface{}, warnings annotations.Annotations, query string) {
+	statusMessage := statusSuccess
+
 	var b []byte
 	var err error
 	switch resp := data.(type) {
@@ -393,26 +390,29 @@ func (api *API) Respond(w http.ResponseWriter, data interface{}, warnings storag
 		for h, hv := range w.Header() {
 			resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
 		}
+		resp.Warnings = warnings.AsStrings(query, 10)
 		b, err = proto.Marshal(resp)
 	case *instantquery.PrometheusInstantQueryResponse:
 		w.Header().Set(contentTypeHeader, applicationProtobuf)
 		for h, hv := range w.Header() {
 			resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
 		}
+		resp.Warnings = warnings.AsStrings(query, 10)
 		b, err = proto.Marshal(resp)
 	case *queryData:
 		w.Header().Set(contentTypeHeader, applicationJson)
 		json := jsoniter.ConfigCompatibleWithStandardLibrary
 		b, err = json.Marshal(&response{
-			Status:   statusSuccess,
+			Status:   statusMessage,
 			Data:     data,
-			Warnings: warningStrings,
+			Warnings: warnings.AsStrings(query, 10),
 		})
 	default:
 		level.Error(api.Logger).Log("msg", "error asserting response type")
 		http.Error(w, "error asserting response type", http.StatusInternalServerError)
 		return
 	}
+
 	if err != nil {
 		level.Error(api.Logger).Log("msg", "error marshaling response", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -558,11 +558,11 @@ func getSampleStreams(data *queryData) *[]tripperware.SampleStream {
 
 	for i := 0; i < sampleStreamsLen; i++ {
 		labelsLen := len(data.Result.(promql.Matrix)[i].Metric)
-		var labels []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter
+		var labels []cortex_pb.LabelAdapter
 		if labelsLen > 0 {
-			labels = make([]github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter, labelsLen)
+			labels = make([]cortex_pb.LabelAdapter, labelsLen)
 			for j := 0; j < labelsLen; j++ {
-				labels[j] = github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				labels[j] = cortex_pb.LabelAdapter{
 					Name:  data.Result.(promql.Matrix)[i].Metric[j].Name,
 					Value: data.Result.(promql.Matrix)[i].Metric[j].Value,
 				}
@@ -591,11 +591,11 @@ func getSamples(data *queryData) *[]*instantquery.Sample {
 
 	for i := 0; i < vectorSamplesLen; i++ {
 		labelsLen := len(data.Result.(promql.Vector)[i].Metric)
-		var labels []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter
+		var labels []cortex_pb.LabelAdapter
 		if labelsLen > 0 {
-			labels = make([]github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter, labelsLen)
+			labels = make([]cortex_pb.LabelAdapter, labelsLen)
 			for j := 0; j < labelsLen; j++ {
-				labels[j] = github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+				labels[j] = cortex_pb.LabelAdapter{
 					Name:  data.Result.(promql.Vector)[i].Metric[j].Name,
 					Value: data.Result.(promql.Vector)[i].Metric[j].Value,
 				}
@@ -603,7 +603,7 @@ func getSamples(data *queryData) *[]*instantquery.Sample {
 		}
 
 		vectorSamples[i] = &instantquery.Sample{Labels: labels,
-			Sample: cortexpb.Sample{
+			Sample: &cortexpb.Sample{
 				TimestampMs: data.Result.(promql.Vector)[i].T,
 				Value:       data.Result.(promql.Vector)[i].F,
 			},

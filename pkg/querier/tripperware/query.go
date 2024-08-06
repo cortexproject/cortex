@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
-	"github.com/golang/snappy"
 	"io"
 	"net/http"
 	"sort"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/golang/snappy"
 
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
@@ -453,4 +454,16 @@ func marshalHistogramBucket(b HistogramBucket, stream *jsoniter.Stream) {
 	stream.WriteMore()
 	jsonutil.MarshalFloat(b.Count, stream)
 	stream.WriteArrayEnd()
+}
+
+func (s *PrometheusResponseStats) MarshalJSON() ([]byte, error) {
+	stats := struct {
+		Samples *PrometheusResponseSamplesStats `json:"samples"`
+	}{
+		Samples: s.Samples,
+	}
+	if s.Samples.TotalQueryableSamplesPerStep == nil {
+		s.Samples.TotalQueryableSamplesPerStep = []*PrometheusResponseQueryableSamplesStatsPerStep{}
+	}
+	return json.Marshal(stats)
 }

@@ -33,6 +33,7 @@ func BenchmarkPrometheusCodec_DecodeResponse(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		_, err := PrometheusCodec.DecodeResponse(context.Background(), &http.Response{
 			StatusCode:    200,
+			Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
 			Body:          io.NopCloser(bytes.NewReader(encodedRes)),
 			ContentLength: int64(len(encodedRes)),
 		}, nil)

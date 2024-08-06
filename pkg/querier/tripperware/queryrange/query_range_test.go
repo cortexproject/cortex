@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"fmt"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"io"
@@ -92,37 +91,169 @@ func TestRequest(t *testing.T) {
 
 func TestResponse(t *testing.T) {
 	t.Parallel()
-	r := *parsedResponse
-	rWithWarnings := *parsedResponseWithWarnings
-	r.Headers = respHeaders
-	rWithWarnings.Headers = respHeaders
-	for i, tc := range []struct {
-		promBody         *PrometheusResponse
-		expectedResponse string
+	testCases := []struct {
+		promBody              *PrometheusResponse
+		jsonBody              string
 		expectedDecodeErr     error
 		cancelCtxBeforeDecode bool
+		isProtobuf            bool
 	}{
 		{
-			promBody:         &r,
-			expectedResponse: responseBody,
+			promBody: &PrometheusResponse{
+				Status: "success",
+				Data: PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result: []tripperware.SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{
+								{Name: "foo", Value: "bar"},
+							},
+							Samples: []cortexpb.Sample{
+								{Value: 137, TimestampMs: 1536673680000},
+								{Value: 137, TimestampMs: 1536673780000},
+							},
+						},
+					},
+				},
+			},
+			jsonBody:         responseBody,
+			isProtobuf:       true,
 		},
 		{
-			promBody:              &r,
+			promBody: &PrometheusResponse{
+				Status: "success",
+				Data: PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result: []tripperware.SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{
+								{Name: "foo", Value: "bar"},
+							},
+							Samples: []cortexpb.Sample{
+								{Value: 137, TimestampMs: 1536673680000},
+								{Value: 137, TimestampMs: 1536673780000},
+							},
+						},
+					},
+				},
+			},
 			cancelCtxBeforeDecode: true,
 			expectedDecodeErr:     context.Canceled,
+			isProtobuf:            true,
 		},
-	} {
+		{
+			promBody: &PrometheusResponse{
+				Status: "success",
+				Data: PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result: []tripperware.SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{
+								{Name: "foo", Value: "bar"},
+							},
+							Samples: []cortexpb.Sample{
+								{Value: 137, TimestampMs: 1536673680000},
+								{Value: 137, TimestampMs: 1536673780000},
+							},
+						},
+					},
+				},
+			},
+			jsonBody:         responseBody,
+			isProtobuf:       false,
+		},
+		{
+			promBody: &PrometheusResponse{
+				Status: "success",
+				Data: PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result: []tripperware.SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{
+								{Name: "foo", Value: "bar"},
+							},
+							Samples: []cortexpb.Sample{
+								{Value: 137, TimestampMs: 1536673680000},
+								{Value: 137, TimestampMs: 1536673780000},
+							},
+						},
+					},
+				},
+			},
+			cancelCtxBeforeDecode: true,
+			expectedDecodeErr:     context.Canceled,
+			isProtobuf:            false,
+		},
+		{
+			promBody: &PrometheusResponse{
+				Status:   "success",
+				Warnings: []string{"test-warn"},
+				Data: PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result: []tripperware.SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{
+								{Name: "foo", Value: "bar"},
+							},
+							Samples: []cortexpb.Sample{
+								{Value: 137, TimestampMs: 1536673680000},
+								{Value: 137, TimestampMs: 1536673780000},
+							},
+						},
+					},
+				},
+			},
+			jsonBody:         responseBodyWithWarnings,
+			isProtobuf:       true,
+		},
+		{
+			promBody: &PrometheusResponse{
+				Status:   "success",
+				Warnings: []string{"test-warn"},
+				Data: PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result: []tripperware.SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{
+								{Name: "foo", Value: "bar"},
+							},
+							Samples: []cortexpb.Sample{
+								{Value: 137, TimestampMs: 1536673680000},
+								{Value: 137, TimestampMs: 1536673780000},
+							},
+						},
+					},
+				},
+			},
+			jsonBody:         responseBodyWithWarnings,
+			isProtobuf:       false,
+		},
+	}	
+	for i, tc := range testCases {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			protobuf, err := proto.Marshal(tc.promBody)
 			require.NoError(t, err)
 			ctx, cancelCtx := context.WithCancel(context.Background())
-			response := &http.Response{
-				StatusCode: 200,
-				Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
-				Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
+			
+			var response *http.Response
+			if tc.isProtobuf {
+				response = &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{applicationProtobuf}},
+					Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
+				}
+				tc.promBody.Headers = respHeadersProtobuf
+			} else {
+				response = &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{applicationJson}},
+					Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
+				}
+				tc.promBody.Headers = respHeadersJson
 			}
+
 			if tc.cancelCtxBeforeDecode {
 				cancelCtx()
 			}
@@ -133,12 +264,14 @@ func TestResponse(t *testing.T) {
 				return
 			}
 
+			assert.Equal(t, tc.promBody, resp)
+
 			// Reset response, as the above call will have consumed the body reader.
 			response = &http.Response{
 				StatusCode:    200,
 				Header:        http.Header{"Content-Type": []string{"application/json"}},
-				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.expectedResponse))),
-				ContentLength: int64(len(tc.expectedResponse)),
+				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
+				ContentLength: int64(len(tc.jsonBody)),
 			}
 			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
@@ -152,10 +285,11 @@ func TestResponseWithStats(t *testing.T) {
 	t.Parallel()
 	for i, tc := range []struct {
 		promBody         *PrometheusResponse
-		expectedResponse string
+		jsonBody         string
+		isProtobuf       bool
 	}{
 		{
-			expectedResponse: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
+			jsonBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
 			promBody: &PrometheusResponse{
 				Status: "success",
 				Data: PrometheusData{
@@ -182,28 +316,72 @@ func TestResponseWithStats(t *testing.T) {
 					},
 				},
 			},
+			isProtobuf: true,
+		},
+		{
+			jsonBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
+			promBody: &PrometheusResponse{
+				Status: "success",
+				Data: PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result: []tripperware.SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{
+								{Name: "foo", Value: "bar"},
+							},
+							Samples: []cortexpb.Sample{
+								{Value: 137, TimestampMs: 1536673680000},
+								{Value: 137, TimestampMs: 1536673780000},
+							},
+						},
+					},
+					Stats: &tripperware.PrometheusResponseStats{
+						Samples: &tripperware.PrometheusResponseSamplesStats{
+							TotalQueryableSamples: 10,
+							TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+								{Value: 5, TimestampMs: 1536673680000},
+								{Value: 5, TimestampMs: 1536673780000},
+							},
+						},
+					},
+				},
+			},
+			isProtobuf: false,
 		},
 	} {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
-			tc.promBody.Headers = respHeaders
 			protobuf, err := proto.Marshal(tc.promBody)
 			require.NoError(t, err)
-			response := &http.Response{
-				StatusCode: 200,
-				Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
-				Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
+
+			var response *http.Response
+			if tc.isProtobuf {
+				response = &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{applicationProtobuf}},
+					Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
+				}
+				tc.promBody.Headers = respHeadersProtobuf
+			} else {
+				response = &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{applicationJson}},
+					Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
+				}
+				tc.promBody.Headers = respHeadersJson
 			}
+
 			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
 			require.NoError(t, err)
+			assert.Equal(t, tc.promBody, resp)
 
 			// Reset response, as the above call will have consumed the body reader.
 			response = &http.Response{
 				StatusCode:    200,
 				Header:        http.Header{"Content-Type": []string{"application/json"}},
-				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.expectedResponse))),
-				ContentLength: int64(len(tc.expectedResponse)),
+				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
+				ContentLength: int64(len(tc.jsonBody)),
 			}
 			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
@@ -757,8 +935,7 @@ func TestMergeAPIResponses(t *testing.T) {
 
 func TestCompressedResponse(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name        string
+	for i, tc := range []struct {
 		compression string
 		jsonBody    string
 		promBody    *PrometheusResponse
@@ -766,7 +943,6 @@ func TestCompressedResponse(t *testing.T) {
 		err         error
 	}{
 		{
-			name:        `successful response`,
 			compression: `gzip`,
 			promBody: &PrometheusResponse{
 				Status: StatusSuccess,
@@ -789,15 +965,12 @@ func TestCompressedResponse(t *testing.T) {
 						},
 					}},
 				},
-				Headers: []*tripperware.PrometheusResponseHeader{
-					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
-					{Name: "Content-Encoding", Values: []string{"gzip"}},
-				},
+				Headers: []*tripperware.PrometheusResponseHeader{},
 			},
+			jsonBody:`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]]}}}}`,
 			status: 200,
 		},
 		{
-			name:        `successful response`,
 			compression: `snappy`,
 			promBody: &PrometheusResponse{
 				Status: StatusSuccess,
@@ -820,88 +993,84 @@ func TestCompressedResponse(t *testing.T) {
 						},
 					}},
 				},
-				Headers: []*tripperware.PrometheusResponseHeader{
-					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
-					{Name: "Content-Encoding", Values: []string{"snappy"}},
-				},
+				Headers: []*tripperware.PrometheusResponseHeader{},
 			},
+			jsonBody:`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]]}}}}`,
 			status: 200,
 		},
 		{
-			name:        `400 error`,
 			compression: `gzip`,
 			jsonBody:    `error generic 400`,
 			status:      400,
 			err:         httpgrpc.Errorf(400, `error generic 400`),
 		},
 		{
-			name:        `400 error`,
 			compression: `snappy`,
 			jsonBody:    `error generic 400`,
 			status:      400,
 			err:         httpgrpc.Errorf(400, `error generic 400`),
 		},
 		{
-			name:        `400 error empty body`,
 			compression: `gzip`,
 			status:      400,
 			err:         httpgrpc.Errorf(400, ""),
 		},
 		{
-			name:        `400 error empty body`,
 			compression: `snappy`,
 			status:      400,
 			err:         httpgrpc.Errorf(400, ""),
 		},
 	} {
-		for _, c := range []bool{true, false} {
-			c := c
-			t.Run(fmt.Sprintf("%s compressed %t [%s]", tc.compression, c, tc.name), func(t *testing.T) {
-				t.Parallel()
-				h := http.Header{}
-				var b []byte
-				if tc.promBody != nil {
-					protobuf, err := proto.Marshal(tc.promBody)
-					b = protobuf
-					require.NoError(t, err)
-					h.Set("Content-Type", "application/x-protobuf")
-				} else {
-					b = []byte(tc.jsonBody)
-					h.Set("Content-Type", "application/json")
-				}
-				responseBody := bytes.NewBuffer(b)
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
+			h := http.Header{}
+			var b []byte
+			if tc.promBody != nil {
+				protobuf, err := proto.Marshal(tc.promBody)
+				b = protobuf
+				require.NoError(t, err)
+				h.Set("Content-Type", "application/x-protobuf")
+				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Type", Values: []string{"application/x-protobuf"}})
 
-				var buf bytes.Buffer
-				if c && tc.compression == "gzip" {
-					h.Set("Content-Encoding", "gzip")
-					w := gzip.NewWriter(&buf)
-					_, err := w.Write(b)
-					require.NoError(t, err)
-					w.Close()
-					responseBody = &buf
-				} else if c && tc.compression == "snappy" {
-					h.Set("Content-Encoding", "snappy")
-					w := snappy.NewBufferedWriter(&buf)
-					_, err := w.Write(b)
-					require.NoError(t, err)
-					w.Close()
-					responseBody = &buf
-				}
+			} else {
+				b = []byte(tc.jsonBody)
+				h.Set("Content-Type", "application/json")
+			}
 
-				response := &http.Response{
-					StatusCode: tc.status,
-					Header:     h,
-					Body:       io.NopCloser(responseBody),
-				}
-				resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
-				require.Equal(t, tc.err, err)
+			responseBody := bytes.NewBuffer(b)
 
-				if err == nil {
-					require.NoError(t, err)
-					require.Equal(t, tc.promBody, resp)
-				}
-			})
-		}
+			var buf bytes.Buffer
+			if tc.compression == "gzip" {
+				h.Set("Content-Encoding", "gzip")
+				if tc.promBody != nil {tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Encoding", Values: []string{"gzip"}})}
+				w := gzip.NewWriter(&buf)
+				_, err := w.Write(b)
+				require.NoError(t, err)
+				w.Close()
+				responseBody = &buf
+			} else if tc.compression == "snappy" {
+				h.Set("Content-Encoding", "snappy")
+				if tc.promBody != nil {tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Encoding", Values: []string{"snappy"}})}
+				w := snappy.NewBufferedWriter(&buf)
+				_, err := w.Write(b)
+				require.NoError(t, err)
+				w.Close()
+				responseBody = &buf
+			}
+
+			response := &http.Response{
+				StatusCode: tc.status,
+				Header:     h,
+				Body:       io.NopCloser(responseBody),
+			}
+			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
+			require.Equal(t, tc.err, err)
+
+			if err == nil {
+				require.NoError(t, err)
+				require.Equal(t, tc.promBody.Data, resp.(*PrometheusResponse).Data)
+			}
+		})
 	}
 }
 

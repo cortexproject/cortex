@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/gogo/protobuf/proto"
 	"io"
 	"net/http"
 	"net/url"
@@ -12,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gogo/protobuf/proto"
 
 	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
@@ -36,6 +37,8 @@ const (
 	DisableCompression Compression = ""
 	GzipCompression    Compression = "gzip"
 	SnappyCompression  Compression = "snappy"
+	applicationProtobuf string = "application/x-protobuf"
+	applicationJson     string = "application/json"
 )
 
 var (
@@ -268,9 +271,9 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		h.Set("Accept-Encoding", string(c.compression))
 	}
 	if c.enableProtobuf {
-		h.Set("Accept", "application/x-protobuf")
+		h.Set("Accept", applicationProtobuf)
 	} else {
-		h.Set("Accept", "application/json")
+		h.Set("Accept", applicationJson)
 	}
 
 	req := &http.Request{
@@ -303,15 +306,19 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	log.LogFields(otlog.Int("bytes", len(buf)))
 
 	var resp PrometheusResponse
-	if c.enableProtobuf {
+	if r.Header != nil && r.Header.Get("Content-Type") == applicationProtobuf {
 		err = proto.Unmarshal(buf, &resp)
 	} else {
 		err = json.Unmarshal(buf, &resp)
 	}
+
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 
+	for h, hv := range r.Header {
+		resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
+	}
 	return &resp, nil
 }
 
@@ -335,7 +342,7 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res tripperware.Respo
 
 	resp := http.Response{
 		Header: http.Header{
-			"Content-Type": []string{"application/json"},
+			"Content-Type": []string{applicationJson},
 		},
 		Body:          io.NopCloser(bytes.NewBuffer(b)),
 		StatusCode:    http.StatusOK,

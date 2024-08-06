@@ -2217,17 +2217,18 @@ sharding_ring:
   [wait_active_instance_timeout: <duration> | default = 10m]
 
 # The compaction strategy to use. Supported values are: default, partitioning.
-# CLI flag: -compactor.compaction-mode
-[compaction_mode: <string> | default = "default"]
+# CLI flag: -compactor.compaction-strategy
+[compaction_strategy: <string> | default = "default"]
 
-# How long block visit marker file should be considered as expired and able to
-# be picked up by compactor again.
-# CLI flag: -compactor.block-visit-marker-timeout
-[block_visit_marker_timeout: <duration> | default = 5m]
+# How long compaction visit marker file should be considered as expired and able
+# to be picked up by compactor again.
+# CLI flag: -compactor.compaction-visit-marker-timeout
+[compaction_visit_marker_timeout: <duration> | default = 1m30s]
 
-# How frequently block visit marker file should be updated duration compaction.
-# CLI flag: -compactor.block-visit-marker-file-update-interval
-[block_visit_marker_file_update_interval: <duration> | default = 1m]
+# How frequently compaction visit marker file should be updated duration
+# compaction.
+# CLI flag: -compactor.compaction-visit-marker-file-update-interval
+[compaction_visit_marker_file_update_interval: <duration> | default = 1m]
 
 # How long cleaner visit marker file should be considered as expired and able to
 # be picked up by cleaner again. The value should be smaller than
@@ -3384,6 +3385,24 @@ query_rejection:
 # value of 0 disables shuffle sharding for the tenant.
 # CLI flag: -compactor.tenant-shard-size
 [compactor_tenant_shard_size: <int> | default = 0]
+
+# Index size limit in bytes for each compaction partition. 0 means no limit
+# CLI flag: -compactor.partition-index-size-limit-in-bytes
+[compactor_partition_index_size_limit_in_bytes: <int> | default = 0]
+
+# Time series count limit for each compaction partition. 0 means no limit
+# CLI flag: -compactor.partition-series-count-limit
+[compactor_partition_series_count_limit: <int> | default = 0]
+
+# Index size limit in bytes for each level 1 compaction partition. 0 means no
+# limit
+# CLI flag: -compactor.partition-level1-index-size-limit-in-bytes
+[compactor_partition_level1_index_size_limit_in_bytes: <int> | default = 0]
+
+# Time series count limit for each level 1 compaction partition. 0 means no
+# limit
+# CLI flag: -compactor.partition-level1-series-count-limit
+[compactor_partition_level1_series_count_limit: <int> | default = 0]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

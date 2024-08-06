@@ -289,15 +289,20 @@ func (g *ShuffleShardingGrouper) checkSubringForCompactor() (bool, error) {
 	return rs.Includes(g.ringLifecyclerAddr), nil
 }
 
-// Get the hash of a group based on the UserID, and the starting and ending time of the group's range.
+// hashGroup Get the hash of a group based on the UserID, and the starting and ending time of the group's range.
 func hashGroup(userID string, rangeStart int64, rangeEnd int64) uint32 {
 	groupString := fmt.Sprintf("%v%v%v", userID, rangeStart, rangeEnd)
-	groupHasher := fnv.New32a()
-	// Hasher never returns err.
-	_, _ = groupHasher.Write([]byte(groupString))
-	groupHash := groupHasher.Sum32()
 
-	return groupHash
+	return hashString(groupString)
+}
+
+func hashString(s string) uint32 {
+	hasher := fnv.New32a()
+	// Hasher never returns err.
+	_, _ = hasher.Write([]byte(s))
+	result := hasher.Sum32()
+
+	return result
 }
 
 func createGroupKey(groupHash uint32, group blocksGroup) string {

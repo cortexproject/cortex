@@ -2326,6 +2326,10 @@ sharding_ring:
   # CLI flag: -compactor.ring.wait-active-instance-timeout
   [wait_active_instance_timeout: <duration> | default = 10m]
 
+# How long shuffle sharding planner would wait before running planning code.
+# CLI flag: -compactor.sharding-planner-delay
+[sharding_planner_delay: <duration> | default = 10s]
+
 # The compaction strategy to use. Supported values are: default, partitioning.
 # CLI flag: -compactor.compaction-strategy
 [compaction_strategy: <string> | default = "default"]

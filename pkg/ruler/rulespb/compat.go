@@ -49,16 +49,17 @@ func formattedRuleToProto(rls []rulefmt.RuleNode) []*RuleDesc {
 
 // FromProto generates a rulefmt RuleGroup
 func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
-	var queryOffset model.Duration
+	var queryOffset *model.Duration
 	if rg.QueryOffset != nil {
-		queryOffset = model.Duration(*rg.QueryOffset)
+		offset := model.Duration(*rg.QueryOffset)
+		queryOffset = &offset
 	}
 	formattedRuleGroup := rulefmt.RuleGroup{
 		Name:        rg.GetName(),
 		Interval:    model.Duration(rg.Interval),
 		Rules:       make([]rulefmt.RuleNode, len(rg.GetRules())),
 		Limit:       int(rg.Limit),
-		QueryOffset: &queryOffset,
+		QueryOffset: queryOffset,
 	}
 
 	for i, rl := range rg.GetRules() {

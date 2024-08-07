@@ -3,28 +3,33 @@ package swift
 import (
 	"flag"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Config holds the config options for Swift backend
 type Config struct {
-	AuthVersion       int           `yaml:"auth_version"`
-	AuthURL           string        `yaml:"auth_url"`
-	Username          string        `yaml:"username"`
-	UserDomainName    string        `yaml:"user_domain_name"`
-	UserDomainID      string        `yaml:"user_domain_id"`
-	UserID            string        `yaml:"user_id"`
-	Password          string        `yaml:"password"`
-	DomainID          string        `yaml:"domain_id"`
-	DomainName        string        `yaml:"domain_name"`
-	ProjectID         string        `yaml:"project_id"`
-	ProjectName       string        `yaml:"project_name"`
-	ProjectDomainID   string        `yaml:"project_domain_id"`
-	ProjectDomainName string        `yaml:"project_domain_name"`
-	RegionName        string        `yaml:"region_name"`
-	ContainerName     string        `yaml:"container_name"`
-	MaxRetries        int           `yaml:"max_retries"`
-	ConnectTimeout    time.Duration `yaml:"connect_timeout"`
-	RequestTimeout    time.Duration `yaml:"request_timeout"`
+	AuthVersion                 int            `yaml:"auth_version"`
+	AuthURL                     string         `yaml:"auth_url"`
+	Username                    string         `yaml:"username"`
+	UserDomainName              string         `yaml:"user_domain_name"`
+	UserDomainID                string         `yaml:"user_domain_id"`
+	UserID                      string         `yaml:"user_id"`
+	Password                    flagext.Secret `yaml:"password"`
+	DomainID                    string         `yaml:"domain_id"`
+	DomainName                  string         `yaml:"domain_name"`
+	ApplicationCredentialID     string         `yaml:"application_credential_id"`
+	ApplicationCredentialName   string         `yaml:"application_credential_name"`
+	ApplicationCredentialSecret flagext.Secret `yaml:"application_credential_secret"`
+	ProjectID                   string         `yaml:"project_id"`
+	ProjectName                 string         `yaml:"project_name"`
+	ProjectDomainID             string         `yaml:"project_domain_id"`
+	ProjectDomainName           string         `yaml:"project_domain_name"`
+	RegionName                  string         `yaml:"region_name"`
+	ContainerName               string         `yaml:"container_name"`
+	MaxRetries                  int            `yaml:"max_retries"`
+	ConnectTimeout              time.Duration  `yaml:"connect_timeout"`
+	RequestTimeout              time.Duration  `yaml:"request_timeout"`
 }
 
 // RegisterFlags registers the flags for Swift storage
@@ -40,9 +45,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.UserDomainName, prefix+"swift.user-domain-name", "", "OpenStack Swift user's domain name.")
 	f.StringVar(&cfg.UserDomainID, prefix+"swift.user-domain-id", "", "OpenStack Swift user's domain ID.")
 	f.StringVar(&cfg.UserID, prefix+"swift.user-id", "", "OpenStack Swift user ID.")
-	f.StringVar(&cfg.Password, prefix+"swift.password", "", "OpenStack Swift API key.")
+	f.Var(&cfg.Password, prefix+"swift.password", "OpenStack Swift API key.")
 	f.StringVar(&cfg.DomainID, prefix+"swift.domain-id", "", "OpenStack Swift user's domain ID.")
 	f.StringVar(&cfg.DomainName, prefix+"swift.domain-name", "", "OpenStack Swift user's domain name.")
+	f.StringVar(&cfg.ApplicationCredentialID, prefix+"swift.application-credential-id", "", "OpenStack Swift application credential ID.")
+	f.StringVar(&cfg.ApplicationCredentialName, prefix+"swift.application-credential-name", "", "OpenStack Swift application credential name.")
+	f.Var(&cfg.ApplicationCredentialSecret, prefix+"swift.application-credential-secret", "OpenStack Swift application credential secret.")
 	f.StringVar(&cfg.ProjectID, prefix+"swift.project-id", "", "OpenStack Swift project ID (v2,v3 auth only).")
 	f.StringVar(&cfg.ProjectName, prefix+"swift.project-name", "", "OpenStack Swift project name (v2,v3 auth only).")
 	f.StringVar(&cfg.ProjectDomainID, prefix+"swift.project-domain-id", "", "ID of the OpenStack Swift project's domain (v3 auth only), only needed if it differs the from user domain.")

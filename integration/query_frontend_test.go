@@ -798,4 +798,44 @@ func TestQueryFrontendQueryRejection(t *testing.T) {
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
 
+	newRuntimeConfig = []byte(`overrides:
+  user-1:
+    query_rejection:
+      enabled: true
+      query_attributes:
+        - query_step_limit:
+           min: 12s
+        - api_type: "labels"
+        - dashboard_uid: "dash123"
+          panel_id: "panel321"
+`)
+
+	require.NoError(t, client.Upload(context.Background(), configFileName, bytes.NewReader(newRuntimeConfig)))
+	time.Sleep(2 * time.Second)
+
+	// We expect any request for speific api to be rejected if api_type is configured for that api and no other properties provided
+	resp, body, err = c.LabelNamesRaw([]string{}, time.Time{}, time.Time{}, map[string]string{})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect request not to be rejected if all the provided parameters are not applicable for current API type
+	// There is no dashboardUID or panelId in metadata queries so if only those provided then metadata query shouldn't be rejected.
+	resp, body, err = c.LabelValuesRaw("cluster", []string{}, time.Time{}, time.Time{}, map[string]string{"User-Agent": "grafana-agent/v0.19.0"})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect instant request not to be rejected if only query_step_limit is provided (it's not applicable to instant queries)
+	resp, body, err = c.QueryRaw("{instance=~\"hello.*\"}", time.Time{}, map[string]string{})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, string(body), tripperware.QueryRejectErrorMessage)
+
+	// We expect range query request to be rejected even if only query_step_limit is provided
+	resp, body, err = c.QueryRangeRaw(`rate(test[1m])`, now.Add(-11*time.Hour), now.Add(-8*time.Hour), 20*time.Minute, map[string]string{"X-Dashboard-Uid": "dash123", "User-Agent": "grafana"})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
+
 }

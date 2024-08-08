@@ -53,12 +53,12 @@ var (
 	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
 	RingOp                = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
-	supportedShardingStrategies          = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
-	errInvalidShardingStrategy           = errors.New("invalid sharding strategy")
-	errInvalidTenantShardSize            = errors.New("invalid tenant shard size, the value must be greater than 0")
-	supportedCompactionModes             = []string{util.CompactionModeDefault, util.CompactionModePartitioning}
-	errInvalidCompactionMode             = errors.New("invalid compaction mode")
-	errInvalidCompactionModePartitioning = errors.New("compaction mode partitioning can only be enabled when shuffle sharding is enabled")
+	supportedShardingStrategies              = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
+	errInvalidShardingStrategy               = errors.New("invalid sharding strategy")
+	errInvalidTenantShardSize                = errors.New("invalid tenant shard size, the value must be greater than 0")
+	supportedCompactionStrategies            = []string{util.CompactionStrategyDefault, util.CompactionStrategyPartitioning}
+	errInvalidCompactionStrategy             = errors.New("invalid compaction strategy")
+	errInvalidCompactionStrategyPartitioning = errors.New("compaction strategy partitioning can only be enabled when shuffle sharding is enabled")
 
 	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, blocksMarkedForNoCompaction prometheus.Counter, _ prometheus.Counter, _ prometheus.Counter, syncerMetrics *compact.SyncerMetrics, compactorMetrics *compactorMetrics, _ *ring.Ring, _ *ring.Lifecycler, _ Limits, _ string, _ *compact.GatherNoCompactionMarkFilter) compact.Grouper {
 		return compact.NewDefaultGrouperWithMetrics(
@@ -80,7 +80,7 @@ var (
 	}
 
 	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, blocksMarkedForNoCompaction prometheus.Counter, blockVisitMarkerReadFailed prometheus.Counter, blockVisitMarkerWriteFailed prometheus.Counter, syncerMetrics *compact.SyncerMetrics, compactorMetrics *compactorMetrics, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits Limits, userID string, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter) compact.Grouper {
-		if cfg.CompactionMode == util.CompactionModePartitioning {
+		if cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 			return NewPartitionCompactionGrouper(ctx, logger, bkt)
 		} else {
 			return NewShuffleShardingGrouper(
@@ -130,7 +130,7 @@ var (
 
 		plannerFactory := func(ctx context.Context, bkt objstore.InstrumentedBucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, userID string, blockVisitMarkerReadFailed prometheus.Counter, blockVisitMarkerWriteFailed prometheus.Counter, compactorMetrics *compactorMetrics) compact.Planner {
 
-			if cfg.CompactionMode == util.CompactionModePartitioning {
+			if cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 				return NewPartitionCompactionPlanner(ctx, bkt, logger)
 			} else {
 				return NewShuffleShardingPlanner(ctx, bkt, logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter.NoCompactMarkedBlocks, ringLifecycle.ID, cfg.BlockVisitMarkerTimeout, cfg.BlockVisitMarkerFileUpdateInterval, blockVisitMarkerReadFailed, blockVisitMarkerWriteFailed)
@@ -214,7 +214,7 @@ type Config struct {
 	ShardingRing     RingConfig `yaml:"sharding_ring"`
 
 	// Compaction mode.
-	CompactionMode string `yaml:"compaction_mode"`
+	CompactionStrategy string `yaml:"compaction_mode"`
 
 	// No need to add options to customize the retry backoff,
 	// given the defaults should be fine, but allow to override
@@ -258,7 +258,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.CleanupConcurrency, "compactor.cleanup-concurrency", 20, "Max number of tenants for which blocks cleanup and maintenance should run concurrently.")
 	f.BoolVar(&cfg.ShardingEnabled, "compactor.sharding-enabled", false, "Shard tenants across multiple compactor instances. Sharding is required if you run multiple compactor instances, in order to coordinate compactions and avoid race conditions leading to the same tenant blocks simultaneously compacted by different instances.")
 	f.StringVar(&cfg.ShardingStrategy, "compactor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
-	f.StringVar(&cfg.CompactionMode, "compactor.compaction-mode", util.CompactionModeDefault, fmt.Sprintf("The compaction mode to use. Supported values are: %s.", strings.Join(supportedCompactionModes, ", ")))
+	f.StringVar(&cfg.CompactionStrategy, "compactor.compaction-mode", util.CompactionStrategyDefault, fmt.Sprintf("The compaction strategy to use. Supported values are: %s.", strings.Join(supportedCompactionStrategies, ", ")))
 	f.DurationVar(&cfg.DeletionDelay, "compactor.deletion-delay", 12*time.Hour, "Time before a block marked for deletion is deleted from bucket. "+
 		"If not 0, blocks will be marked for deletion and compactor component will permanently delete blocks marked for deletion from the bucket. "+
 		"If 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures.")
@@ -306,12 +306,12 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 	}
 
 	// Make sure a valid compaction mode is being used
-	if !util.StringsContain(supportedCompactionModes, cfg.CompactionMode) {
-		return errInvalidCompactionMode
+	if !util.StringsContain(supportedCompactionStrategies, cfg.CompactionStrategy) {
+		return errInvalidCompactionStrategy
 	}
 
-	if !cfg.ShardingEnabled && cfg.CompactionMode == util.CompactionModePartitioning {
-		return errInvalidCompactionModePartitioning
+	if !cfg.ShardingEnabled && cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
+		return errInvalidCompactionStrategyPartitioning
 	}
 
 	return nil

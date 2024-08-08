@@ -12,8 +12,8 @@ const (
 	ShardingStrategyShuffle = "shuffle-sharding"
 
 	// Compaction mode
-	CompactionModeDefault      = "default"
-	CompactionModePartitioning = "partitioning"
+	CompactionStrategyDefault      = "default"
+	CompactionStrategyPartitioning = "partitioning"
 )
 
 var (

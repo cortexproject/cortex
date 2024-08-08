@@ -285,7 +285,7 @@ compactor:
     # CLI flag: -compactor.ring.wait-active-instance-timeout
     [wait_active_instance_timeout: <duration> | default = 10m]
 
-  # The compaction mode to use. Supported values are: default, partitioning.
+  # The compaction strategy to use. Supported values are: default, partitioning.
   # CLI flag: -compactor.compaction-mode
   [compaction_mode: <string> | default = "default"]
 

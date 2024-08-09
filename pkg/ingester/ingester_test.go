@@ -5107,6 +5107,88 @@ func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest 
 	return cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
 }
 
+func Test_Ingester_ModeHandler(t *testing.T) {
+	tests := map[string]struct {
+		initialState       ring.InstanceState
+		mode               string
+		expectedState      ring.InstanceState
+		expectedResponse   int
+		expectedUnregister bool
+	}{
+		"should change to READONLY mode": {
+			initialState:       ring.ACTIVE,
+			mode:               "reAdOnLy",
+			expectedState:      ring.READONLY,
+			expectedResponse:   http.StatusOK,
+			expectedUnregister: true,
+		},
+		"should change to ACTIVE mode": {
+			initialState:       ring.READONLY,
+			mode:               "active",
+			expectedState:      ring.ACTIVE,
+			expectedResponse:   http.StatusOK,
+			expectedUnregister: false,
+		},
+		"should fail to unknown mode": {
+			initialState:       ring.ACTIVE,
+			mode:               "NotSupported",
+			expectedState:      ring.ACTIVE,
+			expectedResponse:   http.StatusBadRequest,
+			expectedUnregister: false,
+		},
+		"should maintain in readonly": {
+			initialState:       ring.READONLY,
+			mode:               READONLY,
+			expectedState:      ring.READONLY,
+			expectedResponse:   http.StatusOK,
+			expectedUnregister: true,
+		},
+		"should maintain in active": {
+			initialState:       ring.ACTIVE,
+			mode:               ACTIVE,
+			expectedState:      ring.ACTIVE,
+			expectedResponse:   http.StatusOK,
+			expectedUnregister: false,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.UnregisterOnShutdown = false
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			if testData.initialState == ring.READONLY {
+				err = i.lifecycler.ChangeState(context.Background(), testData.initialState)
+				require.NoError(t, err)
+
+				// Wait until initial state
+				test.Poll(t, 1*time.Second, testData.initialState, func() interface{} {
+					return i.lifecycler.GetState()
+				})
+
+				// This would be done on lifecycle starting
+				i.lifecycler.SetUnregisterOnShutdown(true)
+			}
+
+			response := httptest.NewRecorder()
+			i.ModeHandler(response, httptest.NewRequest("POST", "/mode?mode="+testData.mode, nil))
+
+			require.Equal(t, testData.expectedResponse, response.Code)
+			require.Equal(t, testData.expectedState, i.lifecycler.GetState())
+			require.Equal(t, testData.expectedUnregister, i.lifecycler.ShouldUnregisterOnShutdown())
+		})
+	}
+}
+
 // mockTenantLimits exposes per-tenant limits based on a provided map
 type mockTenantLimits struct {
 	limits map[string]*validation.Limits

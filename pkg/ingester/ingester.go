@@ -2881,6 +2881,64 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+const (
+	mode     = "mode"
+	READONLY = "READONLY"
+	ACTIVE   = "ACTIVE"
+)
+
+func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "failed to parse HTTP request in mode handler", "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	mode := strings.ToUpper(r.Form.Get(mode))
+
+	currentState := i.lifecycler.GetState()
+
+	switch mode {
+	case READONLY:
+		if currentState == ring.ACTIVE {
+			err = i.lifecycler.ChangeState(r.Context(), ring.READONLY)
+			if err == nil {
+				i.lifecycler.SetUnregisterOnShutdown(true)
+			}
+		} else if currentState != ring.READONLY {
+			level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid ingester state", "mode", mode, "state", currentState)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	case ACTIVE:
+		if currentState == ring.READONLY {
+			err = i.lifecycler.ChangeState(r.Context(), ring.ACTIVE)
+			if err == nil {
+				i.lifecycler.SetUnregisterOnShutdown(i.cfg.LifecyclerConfig.UnregisterOnShutdown)
+			}
+		} else if currentState != ring.ACTIVE {
+			level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid ingester state", "mode", mode, "state", currentState)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	default:
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid mode input", "mode", mode)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "failed to change mode", "mode", mode, "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	respMsg := fmt.Sprintf("mode changed to %s and unregisterOnShutdown to %t", mode, i.lifecycler.ShouldUnregisterOnShutdown())
+	level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+	w.WriteHeader(http.StatusOK)
+}
+
 // metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.
 func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB, queryIngestersWithin time.Duration) (mint, maxt int64, err error) {
 	if queryIngestersWithin > 0 {

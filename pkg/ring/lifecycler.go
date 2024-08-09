@@ -453,6 +453,11 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		return errors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
+	// We always want to unregister if ingester shutdown on READONLY
+	if i.GetState() == READONLY {
+		i.SetUnregisterOnShutdown(true)
+	}
+
 	// We do various period tasks
 	var autoJoinAfter <-chan time.Time
 	var observeChan <-chan time.Time
@@ -910,7 +915,10 @@ func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error
 		(currState == JOINING && state == PENDING) || // triggered by TransferChunks on failure
 		(currState == JOINING && state == ACTIVE) || // triggered by TransferChunks on success
 		(currState == PENDING && state == ACTIVE) || // triggered by autoJoin
-		(currState == ACTIVE && state == LEAVING)) { // triggered by shutdown
+		(currState == ACTIVE && state == LEAVING) || // triggered by shutdown
+		(currState == ACTIVE && state == READONLY) || // triggered by ingester mode
+		(currState == READONLY && state == ACTIVE) || // triggered by ingester mode
+		(currState == READONLY && state == LEAVING)) { // triggered by shutdown
 		return fmt.Errorf("Changing instance state from %v -> %v is disallowed", currState, state)
 	}
 

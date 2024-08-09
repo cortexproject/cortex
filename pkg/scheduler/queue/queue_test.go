@@ -24,7 +24,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	queues := make([]*RequestQueue, 0, b.N)
 
 	for n := 0; n < b.N; n++ {
-		queue := NewRequestQueue(maxOutstandingPerTenant, 0,
+		queue := NewRequestQueue(maxOutstandingPerTenant,
 			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user", "priority", "type"}),
 			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user", "priority"}),
 			MockLimits{MaxOutstanding: 100},
@@ -83,7 +83,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	requests := make([]MockRequest, 0, numTenants)
 
 	for n := 0; n < b.N; n++ {
-		q := NewRequestQueue(maxOutstandingPerTenant, 0,
+		q := NewRequestQueue(maxOutstandingPerTenant,
 			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user", "priority", "type"}),
 			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user", "priority"}),
 			MockLimits{MaxOutstanding: 100},
@@ -123,7 +123,7 @@ func BenchmarkGetNextRequestPriorityQueue(b *testing.B) {
 	queues := make([]*RequestQueue, 0, b.N)
 
 	for n := 0; n < b.N; n++ {
-		queue := NewRequestQueue(maxOutstandingPerTenant, 0,
+		queue := NewRequestQueue(maxOutstandingPerTenant,
 			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user", "priority", "type"}),
 			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user", "priority"}),
 			MockLimits{MaxOutstanding: 100, QueryPriorityVal: validation.QueryPriority{Enabled: true}},
@@ -182,7 +182,7 @@ func BenchmarkQueueRequestPriorityQueue(b *testing.B) {
 	requests := make([]MockRequest, 0, numTenants)
 
 	for n := 0; n < b.N; n++ {
-		q := NewRequestQueue(maxOutstandingPerTenant, 0,
+		q := NewRequestQueue(maxOutstandingPerTenant,
 			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user", "priority", "type"}),
 			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user", "priority"}),
 			MockLimits{MaxOutstanding: 100, QueryPriorityVal: validation.QueryPriority{Enabled: true}},
@@ -217,7 +217,7 @@ func BenchmarkQueueRequestPriorityQueue(b *testing.B) {
 func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBecauseQuerierHasBeenForgotten(t *testing.T) {
 	const forgetDelay = 3 * time.Second
 
-	queue := NewRequestQueue(1, forgetDelay,
+	queue := NewRequestQueue(forgetDelay,
 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user", "priority", "type"}),
 		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user", "priority"}),
 		MockLimits{MaxOutstanding: 100},
@@ -260,7 +260,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 }
 
 func TestQueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
-	queue := NewRequestQueue(0, 0,
+	queue := NewRequestQueue(0,
 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user", "priority", "type"}),
 		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user", "priority"}),
 		MockLimits{MaxOutstanding: 3, QueryPriorityVal: validation.QueryPriority{Enabled: true}},
@@ -290,7 +290,7 @@ func TestQueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
 }
 
 func TestReservedQueriersShouldOnlyGetHighPriorityQueries(t *testing.T) {
-	queue := NewRequestQueue(0, 0,
+	queue := NewRequestQueue(0,
 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user", "priority", "type"}),
 		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user", "priority"}),
 		MockLimits{
@@ -356,7 +356,7 @@ func TestExitingRequestsShouldPersistEvenIfTheConfigHasChanged(t *testing.T) {
 	limits := MockLimits{
 		MaxOutstanding: 3,
 	}
-	queue := NewRequestQueue(0, 0,
+	queue := NewRequestQueue(0,
 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user", "priority", "type"}),
 		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user", "priority"}),
 		limits,

@@ -32,28 +32,28 @@ func (m *MockDistributor) QueryStream(ctx context.Context, from, to model.Time, 
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(*client.QueryStreamResponse), args.Error(1)
 }
-func (m *MockDistributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, lbl model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
-	args := m.Called(ctx, from, to, lbl, matchers)
+func (m *MockDistributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, lbl model.LabelName, limit int, matchers ...*labels.Matcher) ([]string, error) {
+	args := m.Called(ctx, from, to, lbl, limit, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, lbl model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
-	args := m.Called(ctx, from, to, lbl, matchers)
+func (m *MockDistributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, lbl model.LabelName, limit int, matchers ...*labels.Matcher) ([]string, error) {
+	args := m.Called(ctx, from, to, lbl, limit, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {
-	args := m.Called(ctx, from, to)
+func (m *MockDistributor) LabelNames(ctx context.Context, from, to model.Time, limit int) ([]string, error) {
+	args := m.Called(ctx, from, to, limit)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) LabelNamesStream(ctx context.Context, from, to model.Time) ([]string, error) {
-	args := m.Called(ctx, from, to)
+func (m *MockDistributor) LabelNamesStream(ctx context.Context, from, to model.Time, limit int) ([]string, error) {
+	args := m.Called(ctx, from, to, limit)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]model.Metric, error) {
-	args := m.Called(ctx, from, to, matchers)
+func (m *MockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, limit int, matchers ...*labels.Matcher) ([]model.Metric, error) {
+	args := m.Called(ctx, from, to, limit, matchers)
 	return args.Get(0).([]model.Metric), args.Error(1)
 }
-func (m *MockDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]model.Metric, error) {
-	args := m.Called(ctx, from, to, matchers)
+func (m *MockDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, to model.Time, limit int, matchers ...*labels.Matcher) ([]model.Metric, error) {
+	args := m.Called(ctx, from, to, limit, matchers)
 	return args.Get(0).([]model.Metric), args.Error(1)
 }
 

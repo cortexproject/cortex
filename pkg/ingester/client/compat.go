@@ -114,7 +114,7 @@ func ToQueryResponse(matrix model.Matrix) *QueryResponse {
 }
 
 // ToMetricsForLabelMatchersRequest builds a MetricsForLabelMatchersRequest proto
-func ToMetricsForLabelMatchersRequest(from, to model.Time, matchers []*labels.Matcher) (*MetricsForLabelMatchersRequest, error) {
+func ToMetricsForLabelMatchersRequest(from, to model.Time, limit int, matchers []*labels.Matcher) (*MetricsForLabelMatchersRequest, error) {
 	ms, err := toLabelMatchers(matchers)
 	if err != nil {
 		return nil, err
@@ -124,6 +124,7 @@ func ToMetricsForLabelMatchersRequest(from, to model.Time, matchers []*labels.Ma
 		StartTimestampMs: int64(from),
 		EndTimestampMs:   int64(to),
 		MatchersSet:      []*LabelMatchers{{Matchers: ms}},
+		Limit:            int64(limit),
 	}, nil
 }
 
@@ -174,22 +175,22 @@ func SeriesSetToQueryResponse(s storage.SeriesSet) (*QueryResponse, error) {
 }
 
 // FromMetricsForLabelMatchersRequest unpacks a MetricsForLabelMatchersRequest proto
-func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (model.Time, model.Time, [][]*labels.Matcher, error) {
+func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (model.Time, model.Time, int, [][]*labels.Matcher, error) {
 	matchersSet := make([][]*labels.Matcher, 0, len(req.MatchersSet))
 	for _, matchers := range req.MatchersSet {
 		matchers, err := FromLabelMatchers(matchers.Matchers)
 		if err != nil {
-			return 0, 0, nil, err
+			return 0, 0, 0, nil, err
 		}
 		matchersSet = append(matchersSet, matchers)
 	}
 	from := model.Time(req.StartTimestampMs)
 	to := model.Time(req.EndTimestampMs)
-	return from, to, matchersSet, nil
+	return from, to, int(req.Limit), matchersSet, nil
 }
 
 // ToLabelValuesRequest builds a LabelValuesRequest proto
-func ToLabelValuesRequest(labelName model.LabelName, from, to model.Time, matchers []*labels.Matcher) (*LabelValuesRequest, error) {
+func ToLabelValuesRequest(labelName model.LabelName, from, to model.Time, limit int, matchers []*labels.Matcher) (*LabelValuesRequest, error) {
 	ms, err := toLabelMatchers(matchers)
 	if err != nil {
 		return nil, err
@@ -200,22 +201,23 @@ func ToLabelValuesRequest(labelName model.LabelName, from, to model.Time, matche
 		StartTimestampMs: int64(from),
 		EndTimestampMs:   int64(to),
 		Matchers:         &LabelMatchers{Matchers: ms},
+		Limit:            int64(limit),
 	}, nil
 }
 
 // FromLabelValuesRequest unpacks a LabelValuesRequest proto
-func FromLabelValuesRequest(req *LabelValuesRequest) (string, int64, int64, []*labels.Matcher, error) {
+func FromLabelValuesRequest(req *LabelValuesRequest) (string, int64, int64, int, []*labels.Matcher, error) {
 	var err error
 	var matchers []*labels.Matcher
 
 	if req.Matchers != nil {
 		matchers, err = FromLabelMatchers(req.Matchers.Matchers)
 		if err != nil {
-			return "", 0, 0, nil, err
+			return "", 0, 0, 0, nil, err
 		}
 	}
 
-	return req.LabelName, req.StartTimestampMs, req.EndTimestampMs, matchers, nil
+	return req.LabelName, req.StartTimestampMs, req.EndTimestampMs, int(req.Limit), matchers, nil
 }
 
 func toLabelMatchers(matchers []*labels.Matcher) ([]*LabelMatcher, error) {

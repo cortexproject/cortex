@@ -82,7 +82,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
 	f.Var(&cfg.HTTPRequestHeadersToLog, "api.http-request-headers-to-log", "Which HTTP Request headers to add to logs")
 	f.BoolVar(&cfg.buildInfoEnabled, "api.build-info-enabled", false, "If enabled, build Info API will be served by query frontend or querier.")
-	f.BoolVar(&cfg.ProtobufQuerierHandler, "api.protobuf_querier_handler", false, "Enable using querier handler with protobuf response serialization for query range and unsharded instant query requests")
+	f.BoolVar(&cfg.ProtobufQuerierHandler, "api.protobuf_querier_handler", false, "Enable protobuf serialization for range query and unsharded instant query responses from querier")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 

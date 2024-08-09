@@ -46,8 +46,6 @@ type queues struct {
 	// this list when there are ""'s at the end of it.
 	users []string
 
-	maxUserQueueSize int
-
 	// How long to wait before removing a querier which has got disconnected
 	// but hasn't notified about a graceful shutdown.
 	forgetDelay time.Duration
@@ -87,16 +85,15 @@ type userQueue struct {
 	index int
 }
 
-func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limits, queueLength *prometheus.GaugeVec) *queues {
+func newUserQueues(forgetDelay time.Duration, limits Limits, queueLength *prometheus.GaugeVec) *queues {
 	return &queues{
-		userQueues:       map[string]*userQueue{},
-		users:            nil,
-		maxUserQueueSize: maxUserQueueSize,
-		forgetDelay:      forgetDelay,
-		queriers:         map[string]*querier{},
-		sortedQueriers:   nil,
-		limits:           limits,
-		queueLength:      queueLength,
+		userQueues:     map[string]*userQueue{},
+		users:          nil,
+		forgetDelay:    forgetDelay,
+		queriers:       map[string]*querier{},
+		sortedQueriers: nil,
+		limits:         limits,
+		queueLength:    queueLength,
 	}
 }
 
@@ -215,12 +212,6 @@ func (q *queues) createUserRequestQueue(userID string) userRequestQueue {
 	}
 
 	queueSize := q.limits.MaxOutstandingPerTenant(userID)
-
-	// 0 is the default value of the flag. If the old flag is set
-	// then we use its value for compatibility reason.
-	if q.maxUserQueueSize != 0 {
-		queueSize = q.maxUserQueueSize
-	}
 
 	return NewFIFORequestQueue(make(chan Request, queueSize), userID, q.queueLength)
 }

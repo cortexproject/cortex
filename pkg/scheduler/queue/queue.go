@@ -66,9 +66,9 @@ type RequestQueue struct {
 	discardedRequests *prometheus.CounterVec // Per user and priority.
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec, limits Limits, registerer prometheus.Registerer) *RequestQueue {
+func NewRequestQueue(forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec, limits Limits, registerer prometheus.Registerer) *RequestQueue {
 	q := &RequestQueue{
-		queues:                  newUserQueues(maxOutstandingPerTenant, forgetDelay, limits, queueLength),
+		queues:                  newUserQueues(forgetDelay, limits, queueLength),
 		connectedQuerierWorkers: atomic.NewInt32(0),
 		totalRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_request_queue_requests_total",

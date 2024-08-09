@@ -22,10 +22,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func setupFrontend(t *testing.T, config Config) (*Frontend, error) {
+func setupFrontend(t *testing.T, maxOutstanding int, config Config) (*Frontend, error) {
 	logger := log.NewNopLogger()
 
-	limits := MockLimits{Queriers: 3, MockLimits: queue.MockLimits{MaxOutstanding: 100}}
+	limits := MockLimits{Queriers: 3, MockLimits: queue.MockLimits{MaxOutstanding: maxOutstanding}}
 	frontend, err := New(config, limits, logger, nil, transport.NewRetry(0, nil))
 	require.NoError(t, err)
 
@@ -51,10 +51,9 @@ func testReq(ctx context.Context, reqID, user string) *request {
 func TestDequeuesExpiredRequests(t *testing.T) {
 	var config Config
 	flagext.DefaultValues(&config)
-	config.MaxOutstandingPerTenant = 10
 	userID := "1"
 
-	f, err := setupFrontend(t, config)
+	f, err := setupFrontend(t, 10, config)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), userID)
@@ -62,7 +61,7 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	cancel()
 
 	good := 0
-	for i := 0; i < config.MaxOutstandingPerTenant; i++ {
+	for i := 0; i < 10; i++ {
 		var err error
 		if i%5 == 0 {
 			good++
@@ -99,9 +98,7 @@ func TestRoundRobinQueues(t *testing.T) {
 		tenants  = 10
 	)
 
-	config.MaxOutstandingPerTenant = requests
-
-	f, err := setupFrontend(t, config)
+	f, err := setupFrontend(t, requests, config)
 	require.NoError(t, err)
 
 	for i := 0; i < requests; i++ {

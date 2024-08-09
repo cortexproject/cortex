@@ -18,20 +18,53 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
+type versionsImagesFlags struct {
+	flagsForOldImage func(map[string]string) map[string]string
+	flagsForNewImage func(map[string]string) map[string]string
+}
+
 var (
 	// If you change the image tag, remember to update it in the preloading done
 	// by GitHub Actions too (see .github/workflows/test-build-deploy.yml).
-	previousVersionImages = map[string]func(map[string]string) map[string]string{
-		"quay.io/cortexproject/cortex:v1.13.1": func(m map[string]string) map[string]string {
-			m["-ingester.stream-chunks-when-using-blocks"] = "true"
-			return m
+	previousVersionImages = map[string]*versionsImagesFlags{
+		"quay.io/cortexproject/cortex:v1.13.1": {
+			flagsForOldImage: func(m map[string]string) map[string]string {
+				m["-ingester.stream-chunks-when-using-blocks"] = "true"
+				return m
+			},
+			flagsForNewImage: func(m map[string]string) map[string]string {
+				m["-ingester.client.grpc-compression"] = "snappy"
+				return m
+			},
 		},
-		"quay.io/cortexproject/cortex:v1.13.2": func(m map[string]string) map[string]string {
-			m["-ingester.stream-chunks-when-using-blocks"] = "true"
-			return m
+		"quay.io/cortexproject/cortex:v1.13.2": {
+			flagsForOldImage: func(m map[string]string) map[string]string {
+				m["-ingester.stream-chunks-when-using-blocks"] = "true"
+				return m
+			},
+			flagsForNewImage: func(m map[string]string) map[string]string {
+				m["-ingester.client.grpc-compression"] = "snappy"
+				return m
+			},
 		},
-		"quay.io/cortexproject/cortex:v1.14.0": nil,
-		"quay.io/cortexproject/cortex:v1.14.1": nil,
+		"quay.io/cortexproject/cortex:v1.14.0": {
+			flagsForOldImage: func(m map[string]string) map[string]string {
+				return m
+			},
+			flagsForNewImage: func(m map[string]string) map[string]string {
+				m["-ingester.client.grpc-compression"] = "snappy"
+				return m
+			},
+		},
+		"quay.io/cortexproject/cortex:v1.14.1": {
+			flagsForOldImage: func(m map[string]string) map[string]string {
+				return m
+			},
+			flagsForNewImage: func(m map[string]string) map[string]string {
+				m["-ingester.client.grpc-compression"] = "snappy"
+				return m
+			},
+		},
 		"quay.io/cortexproject/cortex:v1.15.0": nil,
 		"quay.io/cortexproject/cortex:v1.15.1": nil,
 		"quay.io/cortexproject/cortex:v1.15.2": nil,
@@ -44,27 +77,41 @@ var (
 )
 
 func TestBackwardCompatibilityWithBlocksStorage(t *testing.T) {
-	for previousImage, flagsFn := range previousVersionImages {
+	for previousImage, imagesFlags := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
 			flags := blocksStorageFlagsWithFlushOnShutdown()
-			if flagsFn != nil {
-				flags = flagsFn(flags)
+			var flagsForNewImage func(map[string]string) map[string]string
+			if imagesFlags != nil {
+				if imagesFlags.flagsForOldImage != nil {
+					flags = imagesFlags.flagsForOldImage(flags)
+				}
+
+				if imagesFlags.flagsForNewImage != nil {
+					flagsForNewImage = imagesFlags.flagsForNewImage
+				}
 			}
 
-			runBackwardCompatibilityTestWithBlocksStorage(t, previousImage, flags)
+			runBackwardCompatibilityTestWithBlocksStorage(t, previousImage, flags, flagsForNewImage)
 		})
 	}
 }
 
 func TestNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T) {
-	for previousImage, flagsFn := range previousVersionImages {
+	for previousImage, imagesFlags := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
 			flags := blocksStorageFlagsWithFlushOnShutdown()
-			if flagsFn != nil {
-				flags = flagsFn(flags)
+			var flagsForNewImage func(map[string]string) map[string]string
+			if imagesFlags != nil {
+				if imagesFlags.flagsForOldImage != nil {
+					flags = imagesFlags.flagsForOldImage(flags)
+				}
+
+				if imagesFlags.flagsForNewImage != nil {
+					flagsForNewImage = imagesFlags.flagsForNewImage
+				}
 			}
 
-			runNewDistributorsCanPushToOldIngestersWithReplication(t, previousImage, flags)
+			runNewDistributorsCanPushToOldIngestersWithReplication(t, previousImage, flags, flagsForNewImage)
 		})
 	}
 }
@@ -75,7 +122,7 @@ func blocksStorageFlagsWithFlushOnShutdown() map[string]string {
 	})
 }
 
-func runBackwardCompatibilityTestWithBlocksStorage(t *testing.T, previousImage string, flagsForOldImage map[string]string) {
+func runBackwardCompatibilityTestWithBlocksStorage(t *testing.T, previousImage string, flagsForOldImage map[string]string, flagsForNewImageFn func(map[string]string) map[string]string) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -86,6 +133,10 @@ func runBackwardCompatibilityTestWithBlocksStorage(t *testing.T, previousImage s
 	require.NoError(t, s.StartAndWaitReady(minio, consul))
 
 	flagsForNewImage := blocksStorageFlagsWithFlushOnShutdown()
+
+	if flagsForNewImageFn != nil {
+		flagsForNewImage = flagsForNewImageFn(flagsForNewImage)
+	}
 
 	// Start other Cortex components (ingester running on previous version).
 	ingester1 := e2ecortex.NewIngester("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
@@ -127,7 +178,7 @@ func runBackwardCompatibilityTestWithBlocksStorage(t *testing.T, previousImage s
 }
 
 // Check for issues like https://github.com/cortexproject/cortex/issues/2356
-func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previousImage string, flagsForPreviousImage map[string]string) {
+func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previousImage string, flagsForPreviousImage map[string]string, flagsForNewImageFn func(map[string]string) map[string]string) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -140,6 +191,10 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	flagsForNewImage := mergeFlags(blocksStorageFlagsWithFlushOnShutdown(), map[string]string{
 		"-distributor.replication-factor": "3",
 	})
+
+	if flagsForNewImageFn != nil {
+		flagsForNewImage = flagsForNewImageFn(flagsForNewImage)
+	}
 
 	// Start other Cortex components (ingester running on previous version).
 	ingester1 := e2ecortex.NewIngester("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flagsForPreviousImage, previousImage)

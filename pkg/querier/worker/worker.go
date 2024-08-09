@@ -45,7 +45,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", false, "Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.")
 	f.StringVar(&cfg.QuerierID, "querier.id", "", "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
 
-	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", "", f)
 }
 
 func (cfg *Config) Validate(log log.Logger) error {

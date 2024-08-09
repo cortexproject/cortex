@@ -3,10 +3,10 @@ package client
 import (
 	"context"
 	"flag"
-	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"

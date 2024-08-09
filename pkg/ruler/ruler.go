@@ -911,13 +911,15 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		}
 		interval := group.Interval()
 
+		queryOffset := group.QueryOffset()
 		groupDesc := &GroupStateDesc{
 			Group: &rulespb.RuleGroupDesc{
-				Name:      group.Name(),
-				Namespace: string(decodedNamespace),
-				Interval:  interval,
-				User:      userID,
-				Limit:     int64(group.Limit()),
+				Name:        group.Name(),
+				Namespace:   string(decodedNamespace),
+				Interval:    interval,
+				User:        userID,
+				Limit:       int64(group.Limit()),
+				QueryOffset: &queryOffset,
 			},
 
 			EvaluationTimestamp: group.GetLastEvaluation(),
@@ -950,19 +952,21 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 					continue
 				}
 				alerts := []*AlertStateDesc{}
-				for _, a := range rule.ActiveAlerts() {
-					alerts = append(alerts, &AlertStateDesc{
-						State:           a.State.String(),
-						Labels:          cortexpb.FromLabelsToLabelAdapters(a.Labels),
-						Annotations:     cortexpb.FromLabelsToLabelAdapters(a.Annotations),
-						Value:           a.Value,
-						ActiveAt:        a.ActiveAt,
-						FiredAt:         a.FiredAt,
-						ResolvedAt:      a.ResolvedAt,
-						LastSentAt:      a.LastSentAt,
-						ValidUntil:      a.ValidUntil,
-						KeepFiringSince: a.KeepFiringSince,
-					})
+				if !rulesRequest.ExcludeAlerts {
+					for _, a := range rule.ActiveAlerts() {
+						alerts = append(alerts, &AlertStateDesc{
+							State:           a.State.String(),
+							Labels:          cortexpb.FromLabelsToLabelAdapters(a.Labels),
+							Annotations:     cortexpb.FromLabelsToLabelAdapters(a.Annotations),
+							Value:           a.Value,
+							ActiveAt:        a.ActiveAt,
+							FiredAt:         a.FiredAt,
+							ResolvedAt:      a.ResolvedAt,
+							LastSentAt:      a.LastSentAt,
+							ValidUntil:      a.ValidUntil,
+							KeepFiringSince: a.KeepFiringSince,
+						})
+					}
 				}
 				ruleDesc = &RuleStateDesc{
 					Rule: &rulespb.RuleDesc{
@@ -1057,11 +1061,12 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 
 		groupDesc := &GroupStateDesc{
 			Group: &rulespb.RuleGroupDesc{
-				Name:      group.GetName(),
-				Namespace: group.GetNamespace(),
-				Interval:  interval,
-				User:      userID,
-				Limit:     group.Limit,
+				Name:        group.GetName(),
+				Namespace:   group.GetNamespace(),
+				Interval:    interval,
+				User:        userID,
+				Limit:       group.Limit,
+				QueryOffset: group.QueryOffset,
 			},
 			// We are keeping default value for EvaluationTimestamp and EvaluationDuration since the backup is not evaluating
 		}
@@ -1174,6 +1179,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 			RuleGroupNames: rulesRequest.GetRuleGroupNames(),
 			Files:          rulesRequest.GetFiles(),
 			Type:           rulesRequest.GetType(),
+			ExcludeAlerts:  rulesRequest.GetExcludeAlerts(),
 			Matchers:       rulesRequest.GetMatchers(),
 		})
 

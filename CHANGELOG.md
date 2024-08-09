@@ -5,12 +5,18 @@
 * [CHANGE] Ingester: Remove `-querier.query-store-for-labels-enabled` flag. Querying long-term store for labels is always enabled. #5984
 * [CHANGE] Server: Instrument `cortex_request_duration_seconds` metric with native histogram. If `native-histograms` feature is enabled in monitoring Prometheus then the metric name needs to be updated in your dashboards. #6056
 * [CHANGE] Distributor/Ingester: Change `cortex_distributor_ingester_appends_total`, `cortex_distributor_ingester_append_failures_total`, `cortex_distributor_ingester_queries_total`, and `cortex_distributor_ingester_query_failures_total` metrics to use the ingester ID instead of its IP as the label value. #6078
-* [FEATURE] Ingester: Experimental: Enable native histogram ingestion via `-blocks-storage.tsdb.enable-native-histograms` flag. #5986
+* [CHANGE] OTLP: Set `AddMetricSuffixes` to true to always enable metric name normalization. #6136
+* [FEATURE] Ingester/Distributor: Experimental: Enable native histogram ingestion via `-blocks-storage.tsdb.enable-native-histograms` flag. #5986 #6010 #6020
+* [FEATURE] Querier: Enable querying native histogram chunks. #5944 #6031
+* [FEATURE] Query Frontend: Support native histogram in query frontend response. #5996 #6043
+* [FEATURE] Ruler: Support sending native histogram samples to Ingester. #6029
+* [FEATURE] Ruler: Add support for filtering out alerts in ListRules API. #6011
 * [FEATURE] Query Frontend: Added a query rejection mechanism to block resource-intensive queries. #6005
-* [FEATURE] OTLP: Support ingesting OTLP exponential metrics as native histograms. #6071
+* [FEATURE] OTLP: Support ingesting OTLP exponential metrics as native histograms. #6071 #6135
 * [FEATURE] Ingester: Add `ingester.instance-limits.max-inflight-query-requests` to allow limiting ingester concurrent queries. #6081
 * [FEATURE] Distributor: Add `validation.max-native-histogram-buckets` to limit max number of bucket count. Distributor will try to automatically reduce histogram resolution until it is within the bucket limit or resolution cannot be reduced anymore. #6104
 * [FEATURE] Store Gateway: Token bucket limiter. #6016
+* [FEATURE] Ruler: Add support for `query_offset` field on RuleGroup and new `ruler_query_offset` per-tenant limit. #6085
 * [ENHANCEMENT] rulers: Add support to persist tokens in rulers. #5987
 * [ENHANCEMENT] Query Frontend/Querier: Added store gateway postings touched count and touched size in Querier stats and log in Query Frontend. #5892
 * [ENHANCEMENT] Query Frontend/Querier: Returns `warnings` on prometheus query responses. #5916
@@ -33,6 +39,8 @@
 * [ENHANCEMENT] Compactor: Differentiate retry and halt error and retry failed compaction only on retriable error. #6111
 * [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
 * [ENHANCEMENT] Compactor: Split cleaner cycle for active and deleted tenants. #6112
+* [ENHANCEMENT] Compactor: Introduce cleaner visit marker. #6113
+* [ENHANCEMENT] Query Frontend: Add cortex_query_samples_total metric. #6142
 * [ENHANCEMENT] Ingester: Implement metadata API limit. #6128
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920
 * [BUGFIX] Ingester: Fix `user` and `type` labels for the `cortex_ingester_tsdb_head_samples_appended_total` TSDB metric. #5952
@@ -40,6 +48,7 @@
 * [BUGFIX] Ingester: Fix issue with the minimize token generator where it was not taking in consideration the current ownerhip of an instance when generating extra tokens. #6062
 * [BUGFIX] Scheduler: Fix user queue in scheduler that was not thread-safe. #6077
 * [BUGFIX] Ingester: Include out-of-order head compaction when compacting TSDB head. #6108
+* [BUGFIX] Ingester: Fix `cortex_ingester_tsdb_mmap_chunks_total` metric. #6134
 
 ## 1.17.1 2024-05-20
 

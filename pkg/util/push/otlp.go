@@ -38,7 +38,11 @@ func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handle
 		}
 
 		promConverter := prometheusremotewrite.NewPrometheusConverter()
-		err = promConverter.FromMetrics(convertToMetricsAttributes(req.Metrics()), prometheusremotewrite.Settings{DisableTargetInfo: true})
+		setting := prometheusremotewrite.Settings{
+			AddMetricSuffixes: true,
+			DisableTargetInfo: true,
+		}
+		err = promConverter.FromMetrics(convertToMetricsAttributes(req.Metrics()), setting)
 		if err != nil {
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -54,9 +58,10 @@ func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handle
 		tsList := []cortexpb.PreallocTimeseries(nil)
 		for _, v := range promConverter.TimeSeries() {
 			tsList = append(tsList, cortexpb.PreallocTimeseries{TimeSeries: &cortexpb.TimeSeries{
-				Labels:    makeLabels(v.Labels),
-				Samples:   makeSamples(v.Samples),
-				Exemplars: makeExemplars(v.Exemplars),
+				Labels:     makeLabels(v.Labels),
+				Samples:    makeSamples(v.Samples),
+				Exemplars:  makeExemplars(v.Exemplars),
+				Histograms: makeHistograms(v.Histograms),
 			}})
 		}
 		prwReq.Timeseries = tsList
@@ -104,6 +109,14 @@ func makeExemplars(in []prompb.Exemplar) []cortexpb.Exemplar {
 			Value:       e.Value,
 			TimestampMs: e.Timestamp,
 		})
+	}
+	return out
+}
+
+func makeHistograms(in []prompb.Histogram) []cortexpb.Histogram {
+	out := make([]cortexpb.Histogram, 0, len(in))
+	for _, h := range in {
+		out = append(out, cortexpb.HistogramPromProtoToHistogramProto(h))
 	}
 	return out
 }

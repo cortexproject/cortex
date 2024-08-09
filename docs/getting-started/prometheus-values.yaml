@@ -249,6 +249,8 @@ server:
   ##
   remoteWrite:
     - url: http://cortex-nginx/api/v1/push
+      headers:
+        X-Scope-OrgID: "cortex"
   ## https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_read
   ##
   remoteRead: []

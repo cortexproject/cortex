@@ -178,6 +178,7 @@ type RulesLimits interface {
 	RulerTenantShardSize(userID string) int
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
+	RulerQueryOffset(userID string) time.Duration
 	DisabledRuleGroups(userID string) validation.DisabledRuleGroups
 }
 
@@ -358,6 +359,9 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			ResendDelay:            cfg.ResendDelay,
 			ConcurrentEvalsEnabled: cfg.ConcurrentEvalsEnabled,
 			MaxConcurrentEvals:     cfg.MaxConcurrentEvals,
+			DefaultRuleQueryOffset: func() time.Duration {
+				return overrides.RulerQueryOffset(userID)
+			},
 		})
 	}
 }

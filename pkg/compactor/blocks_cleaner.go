@@ -50,8 +50,13 @@ type BlocksCleaner struct {
 	bucketClient objstore.InstrumentedBucket
 	usersScanner *cortex_tsdb.UsersScanner
 
+	ringLifecyclerID string
+
 	// Keep track of the last owned users.
 	lastOwnedUsers []string
+
+	cleanerVisitMarkerTimeout            time.Duration
+	cleanerVisitMarkerFileUpdateInterval time.Duration
 
 	// Metrics.
 	runsStarted                       *prometheus.CounterVec
@@ -76,15 +81,21 @@ func NewBlocksCleaner(
 	usersScanner *cortex_tsdb.UsersScanner,
 	cfgProvider ConfigProvider,
 	logger log.Logger,
+	ringLifecyclerID string,
 	reg prometheus.Registerer,
+	cleanerVisitMarkerTimeout time.Duration,
+	cleanerVisitMarkerFileUpdateInterval time.Duration,
 	blocksMarkedForDeletion *prometheus.CounterVec,
 ) *BlocksCleaner {
 	c := &BlocksCleaner{
-		cfg:          cfg,
-		bucketClient: bucketClient,
-		usersScanner: usersScanner,
-		cfgProvider:  cfgProvider,
-		logger:       log.With(logger, "component", "cleaner"),
+		cfg:                                  cfg,
+		bucketClient:                         bucketClient,
+		usersScanner:                         usersScanner,
+		cfgProvider:                          cfgProvider,
+		logger:                               log.With(logger, "component", "cleaner"),
+		ringLifecyclerID:                     ringLifecyclerID,
+		cleanerVisitMarkerTimeout:            cleanerVisitMarkerTimeout,
+		cleanerVisitMarkerFileUpdateInterval: cleanerVisitMarkerFileUpdateInterval,
 		runsStarted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_started_total",
 			Help: "Total number of blocks cleanup runs started.",
@@ -246,7 +257,15 @@ func (c *BlocksCleaner) cleanUpActiveUsers(ctx context.Context, users []string, 
 	return concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 		userLogger := util_log.WithUserID(userID, c.logger)
 		userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
+		visitMarkerManager, isVisited, err := c.obtainVisitMarkerManager(ctx, userLogger, userBucket)
+		if err != nil {
+			return err
+		}
+		if isVisited {
+			return nil
+		}
 		errChan := make(chan error, 1)
+		go visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
 		defer func() {
 			errChan <- nil
 		}()
@@ -273,7 +292,15 @@ func (c *BlocksCleaner) cleanDeletedUsers(ctx context.Context, users []string) e
 	return concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 		userLogger := util_log.WithUserID(userID, c.logger)
 		userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
+		visitMarkerManager, isVisited, err := c.obtainVisitMarkerManager(ctx, userLogger, userBucket)
+		if err != nil {
+			return err
+		}
+		if isVisited {
+			return nil
+		}
 		errChan := make(chan error, 1)
+		go visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
 		defer func() {
 			errChan <- nil
 		}()
@@ -305,6 +332,19 @@ func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, erro
 	c.lastOwnedUsers = allUsers
 
 	return users, deleted, nil
+}
+
+func (c *BlocksCleaner) obtainVisitMarkerManager(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) (visitMarkerManager *VisitMarkerManager, isVisited bool, err error) {
+	cleanerVisitMarker := NewCleanerVisitMarker(c.ringLifecyclerID)
+	visitMarkerManager = NewVisitMarkerManager(userBucket, userLogger, c.ringLifecyclerID, cleanerVisitMarker)
+
+	existingCleanerVisitMarker := &CleanerVisitMarker{}
+	err = visitMarkerManager.ReadVisitMarker(ctx, existingCleanerVisitMarker)
+	if err != nil && !errors.Is(err, errorVisitMarkerNotFound) {
+		return nil, false, errors.Wrapf(err, "failed to read cleaner visit marker")
+	}
+	isVisited = !errors.Is(err, errorVisitMarkerNotFound) && existingCleanerVisitMarker.IsVisited(c.cleanerVisitMarkerTimeout)
+	return visitMarkerManager, isVisited, nil
 }
 
 // Remove blocks and remaining data for tenant marked for deletion.

@@ -295,6 +295,17 @@ compactor:
   # CLI flag: -compactor.block-visit-marker-file-update-interval
   [block_visit_marker_file_update_interval: <duration> | default = 1m]
 
+  # How long cleaner visit marker file should be considered as expired and able
+  # to be picked up by cleaner again. The value should be smaller than
+  # -compactor.cleanup-interval
+  # CLI flag: -compactor.cleaner-visit-marker-timeout
+  [cleaner_visit_marker_timeout: <duration> | default = 10m]
+
+  # How frequently cleaner visit marker file should be updated when cleaning
+  # user.
+  # CLI flag: -compactor.cleaner-visit-marker-file-update-interval
+  [cleaner_visit_marker_file_update_interval: <duration> | default = 5m]
+
   # When enabled, index verification will ignore out of order label names.
   # CLI flag: -compactor.accept-malformed-index
   [accept_malformed_index: <boolean> | default = false]

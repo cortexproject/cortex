@@ -7,9 +7,9 @@ toolchain go1.22.5
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/alecthomas/units v0.0.0-20231202071711-9a357b53e9c9
-	github.com/alicebob/miniredis/v2 v2.32.1
+	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/armon/go-metrics v0.4.1
-	github.com/aws/aws-sdk-go v1.54.19
+	github.com/aws/aws-sdk-go v1.55.5
 	github.com/bradfitz/gomemcache v0.0.0-20230905024940-24af94b03874
 	github.com/cespare/xxhash v1.1.0
 	github.com/cortexproject/promqlsmith v0.0.0-20240506042652-6cfdd9739a5e
@@ -29,14 +29,14 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
-	github.com/hashicorp/consul/api v1.29.1
+	github.com/hashicorp/consul/api v1.29.2
 	github.com/hashicorp/go-cleanhttp v0.5.2
 	github.com/hashicorp/go-sockaddr v1.0.6
 	github.com/hashicorp/memberlist v0.5.1
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.17.9
 	github.com/lib/pq v1.10.9
-	github.com/minio/minio-go/v7 v7.0.73
+	github.com/minio/minio-go/v7 v7.0.74
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/oklog/ulid v1.3.1
 	github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e
@@ -70,7 +70,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.28.0
 	go.uber.org/atomic v1.11.0
 	golang.org/x/net v0.27.0
-	golang.org/x/sync v0.7.0
+	golang.org/x/sync v0.8.0
 	golang.org/x/time v0.5.0
 	google.golang.org/grpc v1.65.0
 	gopkg.in/yaml.v2 v2.4.0

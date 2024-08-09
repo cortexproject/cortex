@@ -605,6 +605,15 @@ datasources:
       access: proxy
       isDefault: true
       editable: true
+      jsonData:
+        cacheLevel: None
+        httpHeaderName1: X-Scope-OrgID
+        httpMethod: POST
+        prometheusType: Cortex
+        prometheusVersion: 1.14.0
+        timeInterval: 15s
+      secureJsonData:
+        httpHeaderValue1: cortex
 #    - name: CloudWatch
 #      type: cloudwatch
 #      access: proxy
@@ -912,7 +921,7 @@ sidecar:
     # Sets the size limit of the alert sidecar emptyDir volume
     sizeLimit: {}
   dashboards:
-    enabled: false
+    enabled: true
     # Additional environment variables for the dashboards sidecar
     env: {}
     # Do not reprocess already processed unchanged resources on k8s API reconnect.

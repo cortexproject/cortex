@@ -35,8 +35,6 @@ const testMaxOutstandingPerTenant = 5
 func setupScheduler(t *testing.T, reg prometheus.Registerer) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	cfg.MaxOutstandingPerTenant = testMaxOutstandingPerTenant
-
 	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MockLimits: queue.MockLimits{MaxOutstanding: testMaxOutstandingPerTenant}}, log.NewNopLogger(), reg)
 	require.NoError(t, err)
 

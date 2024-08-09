@@ -82,17 +82,12 @@ func defaultRulerConfig(t testing.TB) Config {
 }
 
 type ruleLimits struct {
-	evalDelay            time.Duration
 	tenantShard          int
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
 	disabledRuleGroups   validation.DisabledRuleGroups
 	maxQueryLength       time.Duration
 	queryOffset          time.Duration
-}
-
-func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
-	return r.evalDelay
 }
 
 func (r ruleLimits) RulerTenantShardSize(_ string) int {
@@ -178,7 +173,7 @@ func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Eng
 	reg := prometheus.NewRegistry()
 	queryable := testQueryableFunc(querierTestConfig, reg, l)
 
-	return engine, queryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
+	return engine, queryable, pusher, l, ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
 }
 
 func newManager(t *testing.T, cfg Config) *DefaultMultiTenantManager {
@@ -971,7 +966,7 @@ func TestGetRules(t *testing.T) {
 				}
 
 				r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
-				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
+				r.limits = ruleLimits{tenantShard: tc.shuffleShardSize}
 				rulerAddrMap[id] = r
 				if r.ring != nil {
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
@@ -1208,7 +1203,7 @@ func TestGetRulesFromBackup(t *testing.T) {
 		}
 
 		r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
-		r.limits = ruleLimits{evalDelay: 0, tenantShard: 3}
+		r.limits = ruleLimits{tenantShard: 3}
 		rulerAddrMap[id] = r
 		if r.ring != nil {
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
@@ -1792,7 +1787,7 @@ func TestSharding(t *testing.T) {
 				}
 
 				r, _ := buildRuler(t, cfg, nil, store, nil)
-				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
+				r.limits = ruleLimits{tenantShard: tc.shuffleShardSize}
 
 				if forceRing != nil {
 					r.ring = forceRing
@@ -1941,7 +1936,7 @@ func Test_LoadPartialGroups(t *testing.T) {
 	}
 
 	r1, manager := buildRuler(t, cfg, nil, store, nil)
-	r1.limits = ruleLimits{evalDelay: 0, tenantShard: 1}
+	r1.limits = ruleLimits{tenantShard: 1}
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r1))
 	t.Cleanup(r1.StopAsync)
@@ -2465,7 +2460,7 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 				}
 
 				r, _ := buildRuler(t, cfg, nil, store, nil)
-				r.limits = ruleLimits{evalDelay: 0, tenantShard: 3, disabledRuleGroups: tc.disabledRuleGroups}
+				r.limits = ruleLimits{tenantShard: 3, disabledRuleGroups: tc.disabledRuleGroups}
 
 				if forceRing != nil {
 					r.ring = forceRing

@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
-	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -46,27 +45,15 @@ type PusherAppender struct {
 	histogramLabels []labels.Labels
 	histograms      []cortexpb.Histogram
 	userID          string
-	evaluationDelay time.Duration
 }
 
 func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, l labels.Labels, t int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	if h == nil && fh == nil {
 		return 0, errors.New("no histogram")
 	}
-
 	if h != nil {
-		// A histogram sample is considered stale if its sum is set to NaN.
-		// https://github.com/prometheus/prometheus/blob/b6ef745016fa9472fdd0ae20f75a9682e01d1e5c/tsdb/head_append.go#L339-L346
-		if a.evaluationDelay > 0 && (value.IsStaleNaN(h.Sum)) {
-			t -= a.evaluationDelay.Milliseconds()
-		}
 		a.histograms = append(a.histograms, cortexpb.HistogramToHistogramProto(t, h))
 	} else {
-		// A histogram sample is considered stale if its sum is set to NaN.
-		// https://github.com/prometheus/prometheus/blob/b6ef745016fa9472fdd0ae20f75a9682e01d1e5c/tsdb/head_append.go#L339-L346
-		if a.evaluationDelay > 0 && (value.IsStaleNaN(fh.Sum)) {
-			t -= a.evaluationDelay.Milliseconds()
-		}
 		a.histograms = append(a.histograms, cortexpb.FloatHistogramToHistogramProto(t, fh))
 	}
 	a.histogramLabels = append(a.histogramLabels, l)
@@ -75,19 +62,6 @@ func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, l labels.Labels, t
 
 func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
 	a.labels = append(a.labels, l)
-
-	// Adapt staleness markers for ruler evaluation delay. As the upstream code
-	// is using the actual time, when there is a no longer available series.
-	// This then causes 'out of order' append failures once the series is
-	// becoming available again.
-	// see https://github.com/prometheus/prometheus/blob/6c56a1faaaad07317ff585bda75b99bdba0517ad/rules/manager.go#L647-L660
-	// Similar to staleness markers, the rule manager also appends actual time to the ALERTS and ALERTS_FOR_STATE series.
-	// See: https://github.com/prometheus/prometheus/blob/ae086c73cb4d6db9e8b67d5038d3704fea6aec4a/rules/alerting.go#L414-L417
-	metricName := l.Get(labels.MetricName)
-	if a.evaluationDelay > 0 && (value.IsStaleNaN(v) || metricName == "ALERTS" || metricName == "ALERTS_FOR_STATE") {
-		t -= a.evaluationDelay.Milliseconds()
-	}
-
 	a.samples = append(a.samples, cortexpb.Sample{
 		TimestampMs: t,
 		Value:       v,
@@ -164,16 +138,14 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 		failedWrites: t.failedWrites,
 		totalWrites:  t.totalWrites,
 
-		ctx:             ctx,
-		pusher:          t.pusher,
-		userID:          t.userID,
-		evaluationDelay: t.rulesLimits.EvaluationDelay(t.userID),
+		ctx:    ctx,
+		pusher: t.pusher,
+		userID: t.userID,
 	}
 }
 
 // RulesLimits defines limits used by Ruler.
 type RulesLimits interface {
-	EvaluationDelay(userID string) time.Duration
 	MaxQueryLength(userID string) time.Duration
 	RulerTenantShardSize(userID string) int
 	RulerMaxRuleGroupsPerTenant(userID string) int
@@ -182,7 +154,7 @@ type RulesLimits interface {
 	DisabledRuleGroups(userID string) validation.DisabledRuleGroups
 }
 
-// EngineQueryFunc returns a new engine query function by passing an altered timestamp.
+// EngineQueryFunc returns a new engine query function validating max queryLength.
 // Modified from Prometheus rules.EngineQueryFunc
 // https://github.com/prometheus/prometheus/blob/v2.39.1/rules/manager.go#L189.
 func EngineQueryFunc(engine promql.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
@@ -202,8 +174,7 @@ func EngineQueryFunc(engine promql.QueryEngine, q storage.Queryable, overrides R
 			}
 		}
 
-		evaluationDelay := overrides.EvaluationDelay(userID)
-		q, err := engine.NewInstantQuery(ctx, q, nil, qs, t.Add(-evaluationDelay))
+		q, err := engine.NewInstantQuery(ctx, q, nil, qs, t)
 		if err != nil {
 			return nil, err
 		}

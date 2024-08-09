@@ -176,13 +176,6 @@ tenant_federation:
 [memberlist: <memberlist_config>]
 
 query_scheduler:
-  # Deprecated (use frontend.max-outstanding-requests-per-tenant instead) and
-  # will be removed in v1.17.0: Maximum number of outstanding requests per
-  # tenant per query-scheduler. In-flight requests above this limit will fail
-  # with HTTP response status code 429.
-  # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
-  [max_outstanding_requests_per_tenant: <int> | default = 0]
-
   # If a querier disconnects without sending notification about graceful
   # shutdown, the query-scheduler will keep the querier in the tenant's shard
   # until the forget delay has passed. This feature is useful to reduce the
@@ -3698,9 +3691,10 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.timeout
 [timeout: <duration> | default = 2m]
 
-# Use streaming RPCs for metadata APIs from ingester.
+# Deprecated (This feature will be always on after v1.18): Use streaming RPCs
+# for metadata APIs from ingester.
 # CLI flag: -querier.ingester-metadata-streaming
-[ingester_metadata_streaming: <boolean> | default = false]
+[ingester_metadata_streaming: <boolean> | default = true]
 
 # Maximum number of samples a single query can load into memory.
 # CLI flag: -querier.max-samples
@@ -3833,12 +3827,6 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # statistics is logged for every query.
 # CLI flag: -frontend.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
-
-# Deprecated (use frontend.max-outstanding-requests-per-tenant instead) and will
-# be removed in v1.17.0: Maximum number of outstanding requests per tenant per
-# frontend; requests beyond this error with HTTP 429.
-# CLI flag: -querier.max-outstanding-requests-per-tenant
-[max_outstanding_per_tenant: <int> | default = 0]
 
 # If a querier disconnects without sending notification about graceful shutdown,
 # the query-frontend will keep the querier in the tenant's shard until the

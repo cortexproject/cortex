@@ -12,6 +12,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/gogo/protobuf/proto"
+
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -31,7 +33,7 @@ import (
 )
 
 var (
-	InstantQueryCodec tripperware.Codec = newInstantQueryCodec()
+	InstantQueryCodec tripperware.Codec = NewInstantQueryCodec("", true)
 
 	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
@@ -108,11 +110,23 @@ func (r *PrometheusRequest) WithStats(stats string) tripperware.Request {
 
 type instantQueryCodec struct {
 	tripperware.Codec
-	now func() time.Time
+	compression    queryrange.Compression
+	enableProtobuf bool
+	now            func() time.Time
 }
 
-func newInstantQueryCodec() instantQueryCodec {
-	return instantQueryCodec{now: time.Now}
+func NewInstantQueryCodec(c string, enableProtobuf bool) instantQueryCodec {
+	var compression queryrange.Compression
+	if c == "gzip" || c == "snappy" {
+		compression = queryrange.Compression(c)
+	} else {
+		compression = queryrange.DisableCompression
+	}
+	return instantQueryCodec{
+		compression:    compression,
+		enableProtobuf: enableProtobuf,
+		now:            time.Now,
+	}
 }
 
 func (resp *PrometheusInstantQueryResponse) HTTPHeaders() map[string][]string {
@@ -172,17 +186,24 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	}
 
 	var resp PrometheusInstantQueryResponse
-	if err := json.Unmarshal(buf, &resp); err != nil {
+	if r.Header != nil && r.Header.Get("Content-Type") == "application/x-protobuf" {
+		err = proto.Unmarshal(buf, &resp)
+	} else {
+		err = json.Unmarshal(buf, &resp)
+	}
+
+	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 
 	for h, hv := range r.Header {
 		resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
 	}
+
 	return &resp, nil
 }
 
-func (instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
+func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
 	promReq, ok := r.(*PrometheusRequest)
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
@@ -209,8 +230,14 @@ func (instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		}
 	}
 
-	// Always ask gzip to the querier
-	h.Set("Accept-Encoding", "gzip")
+	if c.compression == queryrange.SnappyCompression || c.compression == queryrange.GzipCompression {
+		h.Set("Accept-Encoding", string(c.compression))
+	}
+	if c.enableProtobuf {
+		h.Set("Accept", "application/x-protobuf")
+	} else {
+		h.Set("Accept", "application/json")
+	}
 
 	req := &http.Request{
 		Method:     "GET",
@@ -667,6 +694,9 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 			Data:       s.Result.GetVector().Samples,
 			Stats:      s.Stats,
 		}
+		if res.Data == nil {
+			res.Data = []*Sample{}
+		}
 		return json.Marshal(res)
 	case model.ValMatrix.String():
 		res := struct {
@@ -677,6 +707,9 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 			ResultType: s.ResultType,
 			Data:       s.Result.GetMatrix().SampleStreams,
 			Stats:      s.Stats,
+		}
+		if res.Data == nil {
+			res.Data = []tripperware.SampleStream{}
 		}
 		return json.Marshal(res)
 	default:

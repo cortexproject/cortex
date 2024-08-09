@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
+
 	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -29,6 +31,16 @@ import (
 // StatusSuccess Prometheus success result.
 const StatusSuccess = "success"
 
+type Compression string
+
+const (
+	DisableCompression Compression = ""
+	GzipCompression    Compression = "gzip"
+	SnappyCompression  Compression = "snappy"
+	applicationProtobuf string = "application/x-protobuf"
+	applicationJson     string = "application/json"
+)
+
 var (
 	matrix = model.ValMatrix.String()
 	json   = jsoniter.Config{
@@ -45,11 +57,23 @@ var (
 )
 
 type prometheusCodec struct {
-	sharded bool
+	sharded        bool
+	compression    Compression
+	enableProtobuf bool
 }
 
-func NewPrometheusCodec(sharded bool) *prometheusCodec { //nolint:revive
-	return &prometheusCodec{sharded: sharded}
+func NewPrometheusCodec(sharded bool, c string, enableProtobuf bool) *prometheusCodec { //nolint:revive
+	var compression Compression
+	if c == "gzip" || c == "snappy" {
+		compression = Compression(c)
+	} else {
+		compression = DisableCompression
+	}
+	return &prometheusCodec{
+		sharded:        sharded,
+		compression:    compression,
+		enableProtobuf: enableProtobuf,
+	}
 }
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
@@ -219,7 +243,7 @@ func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwa
 	return &result, nil
 }
 
-func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
+func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
 	promReq, ok := r.(*PrometheusRequest)
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
@@ -243,8 +267,14 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request)
 		}
 	}
 
-	// Always ask gzip to the querier
-	h.Set("Accept-Encoding", "gzip")
+	if c.compression == SnappyCompression || c.compression == GzipCompression {
+		h.Set("Accept-Encoding", string(c.compression))
+	}
+	if c.enableProtobuf {
+		h.Set("Accept", applicationProtobuf)
+	} else {
+		h.Set("Accept", applicationJson)
+	}
 
 	req := &http.Request{
 		Method:     "GET",
@@ -257,7 +287,7 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request)
 	return req.WithContext(ctx), nil
 }
 
-func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
+func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
@@ -276,7 +306,13 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 	log.LogFields(otlog.Int("bytes", len(buf)))
 
 	var resp PrometheusResponse
-	if err := json.Unmarshal(buf, &resp); err != nil {
+	if r.Header != nil && r.Header.Get("Content-Type") == applicationProtobuf {
+		err = proto.Unmarshal(buf, &resp)
+	} else {
+		err = json.Unmarshal(buf, &resp)
+	}
+
+	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 
@@ -306,7 +342,7 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res tripperware.Respo
 
 	resp := http.Response{
 		Header: http.Header{
-			"Content-Type": []string{"application/json"},
+			"Content-Type": []string{applicationJson},
 		},
 		Body:          io.NopCloser(bytes.NewBuffer(b)),
 		StatusCode:    http.StatusOK,

@@ -50,6 +50,9 @@ type Config struct {
 	AtModifierEnabled         bool          `yaml:"at_modifier_enabled" doc:"hidden"`
 	EnablePerStepStats        bool          `yaml:"per_step_stats_enabled"`
 
+	// Use compression when returning promql response. Supported values 'gzip', 'snappy', and '' (disable compression)
+	PrometheusCodecCompression string `yaml:"prometheus_codec_compression"`
+
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
 	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
 	MaxQueryIntoFuture time.Duration `yaml:"max_query_into_future"`
@@ -112,6 +115,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.BoolVar(&cfg.EnablePerStepStats, "querier.per-step-stats-enabled", false, "Enable returning samples stats per steps in query response.")
+	f.StringVar(&cfg.PrometheusCodecCompression, "querier.prometheus_codec_compression", "", "Use compression when returning promql response. Supported values 'gzip', 'snappy', and '' (disable compression)")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")

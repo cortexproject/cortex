@@ -13,6 +13,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/golang/snappy"
+
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
@@ -242,6 +244,9 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 		defer runutil.CloseWithLogOnErr(logger, gReader, "close gzip reader")
 
 		return io.ReadAll(gReader)
+	} else if strings.EqualFold(res.Header.Get("Content-Encoding"), "snappy") {
+		sReader := snappy.NewReader(buf)
+		return io.ReadAll(sReader)
 	}
 
 	return buf.Bytes(), nil
@@ -449,4 +454,16 @@ func marshalHistogramBucket(b HistogramBucket, stream *jsoniter.Stream) {
 	stream.WriteMore()
 	jsonutil.MarshalFloat(b.Count, stream)
 	stream.WriteArrayEnd()
+}
+
+func (s *PrometheusResponseStats) MarshalJSON() ([]byte, error) {
+	stats := struct {
+		Samples *PrometheusResponseSamplesStats `json:"samples"`
+	}{
+		Samples: s.Samples,
+	}
+	if s.Samples.TotalQueryableSamplesPerStep == nil {
+		s.Samples.TotalQueryableSamplesPerStep = []*PrometheusResponseQueryableSamplesStatsPerStep{}
+	}
+	return json.Marshal(stats)
 }

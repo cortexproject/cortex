@@ -175,7 +175,7 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
+	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", "", f)
 	cfg.Ring.RegisterFlags(f)
 	cfg.Notifier.RegisterFlags(f)
 

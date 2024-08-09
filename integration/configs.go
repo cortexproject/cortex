@@ -63,14 +63,6 @@ receivers:
     labels: {}
     annotations: {}	
 `
-
-	cortexRulerEvalStaleNanConfigYaml = `groups:
-- name: rule
-  interval: 1s
-  rules:
-  - record: stale_nan_eval
-    expr: a_sometimes_stale_nan_series * 2
-`
 )
 
 var (

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"github.com/go-kit/log/level"
 	"math"
 	"regexp"
 	"strings"
@@ -174,6 +175,7 @@ type Limits struct {
 	QueryRejection              QueryRejection `yaml:"query_rejection" json:"query_rejection" doc:"nocli|description=Configuration for query rejection."`
 
 	// Ruler defaults and limits.
+	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
 	RulerTenantShardSize        int            `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
 	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
@@ -212,7 +214,6 @@ type Limits struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "ingester.max-series-per-query", "Deprecated: The maximum number of series for which a query can fetch samples from each ingester. This limit is enforced only in the ingesters (when querying samples not flushed to the storage yet) and it's a per-instance limit. This limit is ignored when running the Cortex blocks storage. When running Cortex with blocks storage use -querier.max-fetched-series-per-query limit instead.", util_log.Logger)
-	flagext.DeprecatedFlag(f, "ruler.evaluation-delay-duration", "Deprecated: Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex. This limit was replaced by ruler.query-offset", util_log.Logger)
 
 	f.IntVar(&l.IngestionTenantShardSize, "distributor.ingestion-tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set both on ingesters and distributors. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
@@ -265,6 +266,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
 
+	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0: Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
@@ -789,7 +791,13 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 
 // RulerQueryOffset returns the rule query offset for a given user.
 func (o *Overrides) RulerQueryOffset(userID string) time.Duration {
-	return time.Duration(o.GetOverridesForUser(userID).RulerQueryOffset)
+	ruleOffset := time.Duration(o.GetOverridesForUser(userID).RulerQueryOffset)
+	evaluationDelay := time.Duration(o.GetOverridesForUser(userID).RulerEvaluationDelay)
+	if evaluationDelay > ruleOffset {
+		level.Warn(util_log.Logger).Log("msg", "ruler.query-offset was overridden by highest value in [Deprecated]ruler.evaluation-delay-duration", "ruler.query-offset", ruleOffset, "ruler.evaluation-delay-duration", evaluationDelay)
+		return evaluationDelay
+	}
+	return ruleOffset
 }
 
 // StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.

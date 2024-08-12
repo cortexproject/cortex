@@ -3333,6 +3333,12 @@ query_rejection:
   # them.
   [query_attributes: <list of QueryAttribute> | default = []]
 
+# Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0:
+# Duration to delay the evaluation of rules to ensure the underlying metrics
+# have been pushed to Cortex.
+# CLI flag: -ruler.evaluation-delay-duration
+[ruler_evaluation_delay_duration: <duration> | default = 0s]
+
 # The default tenant's shard size when the shuffle-sharding strategy is used by
 # ruler. When this setting is specified in the per-tenant overrides, a value of
 # 0 disables shuffle sharding for the tenant.

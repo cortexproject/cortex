@@ -1303,22 +1303,22 @@ func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, m
 func (m *errDistributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, int, ...*labels.Matcher) ([]string, error) {
+func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, int, ...*labels.Matcher) ([]string, error) {
+func (m *errDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, int) ([]string, error) {
+func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time, int) ([]string, error) {
+func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, limit int, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, limit int, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (m *errDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, errDistributorError
 }
 
@@ -1354,27 +1354,27 @@ func (d *emptyDistributor) QueryExemplars(ctx context.Context, from, to model.Ti
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, int, ...*labels.Matcher) ([]string, error) {
+func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, int, ...*labels.Matcher) ([]string, error) {
+func (d *emptyDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, int) ([]string, error) {
+func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time, int) ([]string, error) {
+func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, limit int, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (d *emptyDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, limit int, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (d *emptyDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, nil
 }
 

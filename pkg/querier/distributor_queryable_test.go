@@ -213,9 +213,9 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 				{"job": "baz", "foo": "boom"},
 			}
 			d := &MockDistributor{}
-			d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), 0, someMatchers).
+			d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
 				Return(metrics, nil)
-			d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), 0, someMatchers).
+			d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
 				Return(metrics, nil)
 
 			queryable := newDistributorQueryable(d, streamingEnabled, nil, 0)

@@ -9,7 +9,7 @@
 * [CHANGE] Querier: Deprecate and enable by default `querier.ingester-metadata-streaming` flag. #6147
 * [CHANGE] QueryFrontend/QueryScheduler: Deprecate `-querier.max-outstanding-requests-per-tenant` and `-query-scheduler.max-outstanding-requests-per-tenant` flags. Use frontend.max-outstanding-requests-per-tenant instead. #6146
 * [CHANGE] Ingesters: Enable 'snappy-block' compression on ingester clients by default. #6148
-* [CHANGE] Ruler: Scheduling `evaluation-delay-duration` to be deprecated. Use the highest value between `evaluation-delay-duration` and `ruler.query_offset` #6149
+* [CHANGE] Ruler: Scheduling `ruler.evaluation-delay-duration` to be deprecated. Use the highest value between `ruler.evaluation-delay-duration` and `ruler.query_offset` #6149
 * [FEATURE] Ingester/Distributor: Experimental: Enable native histogram ingestion via `-blocks-storage.tsdb.enable-native-histograms` flag. #5986 #6010 #6020
 * [FEATURE] Querier: Enable querying native histogram chunks. #5944 #6031
 * [FEATURE] Query Frontend: Support native histogram in query frontend response. #5996 #6043

@@ -44,7 +44,8 @@ type queues struct {
 	// List of all users with queues, used for iteration when searching for next queue to handle.
 	// Users removed from the middle are replaced with "". To avoid skipping users during iteration, we only shrink
 	// this list when there are ""'s at the end of it.
-	users []string
+	users   []string
+	usersMx sync.RWMutex
 
 	// How long to wait before removing a querier which has got disconnected
 	// but hasn't notified about a graceful shutdown.
@@ -110,6 +111,9 @@ func (q *queues) deleteQueue(userID string) {
 		return
 	}
 
+	q.usersMx.Lock()
+	defer q.usersMx.Unlock()
+
 	delete(q.userQueues, userID)
 	q.users[uq.index] = ""
 
@@ -156,7 +160,9 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue 
 		for ix, u := range q.users {
 			if u == "" {
 				uq.index = ix
+				q.usersMx.Lock()
 				q.users[ix] = userID
+				q.usersMx.Unlock()
 				break
 			}
 		}
@@ -231,7 +237,9 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (us
 			uid = 0
 		}
 
+		q.usersMx.RLock()
 		u := q.users[uid]
+		q.usersMx.RUnlock()
 		if u == "" {
 			continue
 		}

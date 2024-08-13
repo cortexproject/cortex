@@ -1904,7 +1904,7 @@ func BenchmarkDistributor_GetLabelsValues(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err := ds[0].LabelValuesForLabelName(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__")
+				_, err := ds[0].LabelValuesForLabelName(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__", nil)
 				require.NoError(b, err)
 			}
 		})
@@ -2270,7 +2270,7 @@ func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
 		}
 
 		for i := 0; i < 50; i++ {
-			_, err := ds[0].MetricsForLabelMatchers(ctx, now, now, mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test"))
+			_, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test"))
 			require.NoError(t, err)
 		}
 	}
@@ -2439,7 +2439,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				}
 
 				{
-					metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
+					metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, testData.matchers...)
 
 					if testData.expectedErr != nil {
 						assert.ErrorIs(t, err, testData.expectedErr)
@@ -2457,7 +2457,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				}
 
 				{
-					metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, testData.matchers...)
+					metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, nil, testData.matchers...)
 					if testData.expectedErr != nil {
 						assert.ErrorIs(t, err, testData.expectedErr)
 						return
@@ -2544,7 +2544,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 
 			for n := 0; n < b.N; n++ {
 				now := model.Now()
-				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
+				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, testData.matchers...)
 
 				if testData.expectedErr != nil {
 					assert.EqualError(b, err, testData.expectedErr.Error())
@@ -3197,7 +3197,7 @@ func (i *mockIngester) MetricsForLabelMatchersStream(ctx context.Context, req *c
 		return nil, errFail
 	}
 
-	_, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -3229,7 +3229,7 @@ func (i *mockIngester) MetricsForLabelMatchers(ctx context.Context, req *client.
 		return nil, errFail
 	}
 
-	_, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
 		return nil, err
 	}

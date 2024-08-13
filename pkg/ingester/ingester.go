@@ -1500,7 +1500,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	labelName, startTimestampMs, endTimestampMs, matchers, err := client.FromLabelValuesRequest(req)
+	labelName, startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelValuesRequest(req)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1534,9 +1534,13 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 	defer c()
-	vals, _, err := q.LabelValues(ctx, labelName, nil, matchers...)
+	vals, _, err := q.LabelValues(ctx, labelName, &storage.LabelHints{Limit: limit}, matchers...)
 	if err != nil {
 		return nil, cleanup, err
+	}
+
+	if limit > 0 && len(vals) > limit {
+		vals = vals[:limit]
 	}
 
 	return &client.LabelValuesResponse{
@@ -1601,6 +1605,8 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
+	limit := int(req.Limit)
+
 	q, err := db.Querier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
@@ -1615,9 +1621,13 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 	defer c()
-	names, _, err := q.LabelNames(ctx, nil)
+	names, _, err := q.LabelNames(ctx, &storage.LabelHints{Limit: limit})
 	if err != nil {
 		return nil, cleanup, err
+	}
+
+	if limit > 0 && len(names) > limit {
+		names = names[:limit]
 	}
 
 	return &client.LabelNamesResponse{
@@ -1676,7 +1686,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 	}
 
 	// Parse the request
-	_, _, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, limit, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1705,6 +1715,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		Start: mint,
 		End:   maxt,
 		Func:  "series", // There is no series function, this token is used for lookups that don't need samples.
+		Limit: limit,
 	}
 	if len(matchersSet) > 1 {
 		for _, matchers := range matchersSet {
@@ -1735,6 +1746,9 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		result.Metric = append(result.Metric, &cortexpb.Metric{
 			Labels: cortexpb.FromLabelsToLabelAdapters(mergedSet.At().Labels()),
 		})
+		if limit > 0 && len(result.Metric) >= limit {
+			break
+		}
 	}
 
 	return result, cleanup, nil

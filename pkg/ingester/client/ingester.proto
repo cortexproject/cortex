@@ -67,6 +67,7 @@ message LabelValuesRequest {
   int64 start_timestamp_ms = 2;
   int64 end_timestamp_ms = 3;
   LabelMatchers matchers = 4;
+  int64 limit = 5;
 }
 
 message LabelValuesResponse {
@@ -80,6 +81,7 @@ message LabelValuesStreamResponse {
 message LabelNamesRequest {
   int64 start_timestamp_ms = 1;
   int64 end_timestamp_ms = 2;
+  int64 limit = 3;
 }
 
 message LabelNamesResponse {
@@ -113,6 +115,7 @@ message MetricsForLabelMatchersRequest {
   int64 start_timestamp_ms = 1;
   int64 end_timestamp_ms = 2;
   repeated LabelMatchers matchers_set = 3;
+  int64 limit = 4;
 }
 
 message MetricsForLabelMatchersResponse {

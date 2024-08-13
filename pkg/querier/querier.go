@@ -47,7 +47,6 @@ type Config struct {
 	IngesterMetadataStreaming bool          `yaml:"ingester_metadata_streaming"`
 	MaxSamples                int           `yaml:"max_samples"`
 	QueryIngestersWithin      time.Duration `yaml:"query_ingesters_within"`
-	AtModifierEnabled         bool          `yaml:"at_modifier_enabled" doc:"hidden"`
 	EnablePerStepStats        bool          `yaml:"per_step_stats_enabled"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
@@ -94,8 +93,6 @@ var (
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
-	flagext.DeprecatedFlag(f, "querier.at-modifier-enabled", "This flag is no longer functional; at-modifier is always enabled now.", util_log.Logger)
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.ingester-streaming", "Deprecated: Use streaming RPCs to query ingester. QueryStream is always enabled and the flag is not effective anymore.", util_log.Logger)
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods

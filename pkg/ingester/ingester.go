@@ -1737,9 +1737,11 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		Metric: make([]*cortexpb.Metric, 0),
 	}
 
+	cnt := 0
 	for mergedSet.Next() {
+		cnt++
 		// Interrupt if the context has been canceled.
-		if ctx.Err() != nil {
+		if cnt%util.CheckContextEveryNIterations == 0 && ctx.Err() != nil {
 			return nil, cleanup, ctx.Err()
 		}
 

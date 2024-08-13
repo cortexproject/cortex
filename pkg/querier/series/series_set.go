@@ -27,6 +27,7 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // ConcreteSeriesSet implements storage.SeriesSet.
@@ -143,8 +144,8 @@ func MatrixToSeriesSet(sortSeries bool, m model.Matrix) storage.SeriesSet {
 // MetricsToSeriesSet creates a storage.SeriesSet from a []metric.Metric
 func MetricsToSeriesSet(ctx context.Context, sortSeries bool, ms []model.Metric) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(ms))
-	for _, m := range ms {
-		if ctx.Err() != nil {
+	for i, m := range ms {
+		if (i+1)%util.CheckContextEveryNIterations == 0 && ctx.Err() != nil {
 			return storage.ErrSeriesSet(ctx.Err())
 		}
 		series = append(series, &ConcreteSeries{

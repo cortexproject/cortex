@@ -53,6 +53,7 @@
 * [BUGFIX] Ingester: Include out-of-order head compaction when compacting TSDB head. #6108
 * [BUGFIX] Ingester: Fix `cortex_ingester_tsdb_mmap_chunks_total` metric. #6134
 * [BUGFIX] Query Frontend: Fix query rejection bug for metadata queries. #6143
+* [BUGFIX] Scheduler: Fix data race in user list of a queue. #6160
 
 ## 1.17.1 2024-05-20
 

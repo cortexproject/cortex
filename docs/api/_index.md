@@ -355,7 +355,7 @@ GET,POST <prometheus-http-prefix>/api/v1/series
 GET,POST <legacy-http-prefix>/api/v1/series
 ```
 
-Find series by label matchers. Cortex honors the `start` and `end` request parameters and fetches series from either ingester, store gateway or both. The special case is that if `start` param is not specified, Cortex currently fetches series from data stored in the ingesters.
+Find series by label matchers. Starting from release v1.18.0, Cortex by default honors the `start` and `end` request parameters and fetches series from either ingester, store gateway or both. The special case is that if `start` param is not specified, Cortex currently fetches series from data stored in the ingesters.
 
 _For more information, please check out the Prometheus [series endpoint](https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers) documentation._
 
@@ -370,7 +370,7 @@ GET,POST <prometheus-http-prefix>/api/v1/labels
 GET,POST <legacy-http-prefix>/api/v1/labels
 ```
 
-Get label names of ingested series. Cortex honors the `start` and `end` request parameters and fetches label names from either ingester, store gateway or both.
+Get label names of ingested series. Starting from release v1.18.0, Cortex by default honors the `start` and `end` request parameters and fetches label names from either ingester, store gateway or both.
 
 _For more information, please check out the Prometheus [get label names](https://prometheus.io/docs/prometheus/latest/querying/api/#getting-label-names) documentation._
 
@@ -385,7 +385,7 @@ GET <prometheus-http-prefix>/api/v1/label/{name}/values
 GET <legacy-http-prefix>/api/v1/label/{name}/values
 ```
 
-Get label values for a given label name. Cortex honors the `start` and `end` request parameters and fetches label values from either ingester, store gateway or both.
+Get label values for a given label name. Starting from release v1.18.0, Cortex by default honors the `start` and `end` request parameters and fetches label values from either ingester, store gateway or both.
 
 _For more information, please check out the Prometheus [get label values](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-label-values) documentation._
 

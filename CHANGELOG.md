@@ -11,6 +11,7 @@
 * [CHANGE] Ingesters: Enable 'snappy-block' compression on ingester clients by default. #6148
 * [CHANGE] Ruler: Scheduling `ruler.evaluation-delay-duration` to be deprecated. Use the highest value between `ruler.evaluation-delay-duration` and `ruler.query-offset` #6149
 * [CHANGE] Querier: Remove `-querier.at-modifier-enabled` flag. #6157
+* [CHANGE] Tracing: Remove deprecated `oltp_endpoint` config entirely. #6158
 * [FEATURE] Ingester/Distributor: Experimental: Enable native histogram ingestion via `-blocks-storage.tsdb.enable-native-histograms` flag. #5986 #6010 #6020
 * [FEATURE] Querier: Enable querying native histogram chunks. #5944 #6031
 * [FEATURE] Query Frontend: Support native histogram in query frontend response. #5996 #6043

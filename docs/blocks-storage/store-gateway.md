@@ -66,7 +66,7 @@ The **`zone-stable-shuffle-sharding`** strategy achieves the same as the **`shuf
 
 Zone stable shuffle sharding can be enabled via `-store-gateway.sharding-ring.zone-stable-shuffle-sharding` CLI flag.
 
-It will become the default shuffle sharding strategy for store gateway in `v1.18.0` release and the previous shuffle sharding algorithm will be removed in `v1.19.0` release.
+It will become the default shuffle sharding strategy for store gateway in `v1.17.0` release and the previous shuffle sharding algorithm will be removed in `v1.18.0` release.
 
 _Please check out the [shuffle sharding documentation](../guides/shuffle-sharding.md) for more information about how it works._
 

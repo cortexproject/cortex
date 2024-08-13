@@ -52,7 +52,7 @@
 * [BUGFIX] Ingester: Fix `user` and `type` labels for the `cortex_ingester_tsdb_head_samples_appended_total` TSDB metric. #5952
 * [BUGFIX] Querier: Enforce max query length check for `/api/v1/series` API even though `ignoreMaxQueryLength` is set to true. #6018
 * [BUGFIX] Ingester: Fix issue with the minimize token generator where it was not taking in consideration the current ownerhip of an instance when generating extra tokens. #6062
-* [BUGFIX] Scheduler: Fix user queue in scheduler that was not thread-safe. #6077
+* [BUGFIX] Scheduler: Fix user queue in scheduler that was not thread-safe. #6077 #6160
 * [BUGFIX] Ingester: Include out-of-order head compaction when compacting TSDB head. #6108
 * [BUGFIX] Ingester: Fix `cortex_ingester_tsdb_mmap_chunks_total` metric. #6134
 * [BUGFIX] Query Frontend: Fix query rejection bug for metadata queries. #6143

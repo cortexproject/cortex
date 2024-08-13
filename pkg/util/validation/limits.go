@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -265,7 +266,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
 
-	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
+	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0: Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
@@ -758,11 +759,6 @@ func (o *Overrides) IngestionTenantShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).IngestionTenantShardSize
 }
 
-// EvaluationDelay returns the rules evaluation delay for a given user.
-func (o *Overrides) EvaluationDelay(userID string) time.Duration {
-	return time.Duration(o.GetOverridesForUser(userID).RulerEvaluationDelay)
-}
-
 // CompactorBlocksRetentionPeriod returns the retention period for a given user.
 func (o *Overrides) CompactorBlocksRetentionPeriod(userID string) time.Duration {
 	return time.Duration(o.GetOverridesForUser(userID).CompactorBlocksRetentionPeriod)
@@ -795,7 +791,13 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 
 // RulerQueryOffset returns the rule query offset for a given user.
 func (o *Overrides) RulerQueryOffset(userID string) time.Duration {
-	return time.Duration(o.GetOverridesForUser(userID).RulerQueryOffset)
+	ruleOffset := time.Duration(o.GetOverridesForUser(userID).RulerQueryOffset)
+	evaluationDelay := time.Duration(o.GetOverridesForUser(userID).RulerEvaluationDelay)
+	if evaluationDelay > ruleOffset {
+		level.Warn(util_log.Logger).Log("msg", "ruler.query-offset was overridden by highest value in [Deprecated]ruler.evaluation-delay-duration", "ruler.query-offset", ruleOffset, "ruler.evaluation-delay-duration", evaluationDelay)
+		return evaluationDelay
+	}
+	return ruleOffset
 }
 
 // StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.

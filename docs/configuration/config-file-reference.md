@@ -3333,6 +3333,7 @@ query_rejection:
   # them.
   [query_attributes: <list of QueryAttribute> | default = []]
 
+# Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0:
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration

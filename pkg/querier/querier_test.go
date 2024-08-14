@@ -1411,7 +1411,6 @@ type mockStoreQuerier struct {
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
 func (q *mockStoreQuerier) Select(ctx context.Context, _ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	// We will hit this for /series lookup when -querier.query-store-for-labels-enabled is set.
 	// If we don't skip here, it'll make /series lookups extremely slow as all the chunks will be loaded.
 	// That flag is only to be set with blocks storage engine, and this is a protective measure.
 	if sp != nil && sp.Func == "series" {

@@ -2731,7 +2731,7 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[1].lbls)},
 			},
 		},
-		"should filter metrics by time range if queryStoreForLabels and queryIngestersWithin is enabled": {
+		"should filter metrics by time range if queryIngestersWithin is enabled": {
 			from: 99999,
 			to:   100001,
 			matchers: []*client.LabelMatchers{{

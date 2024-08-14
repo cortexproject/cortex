@@ -12471,7 +12471,6 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;h2 id="api-compatibility">API Compatibility&lt;/h2>
 &lt;p>Cortex strives to be 100% API compatible with Prometheus (under &lt;code>/prometheus/*&lt;/code> and &lt;code>/api/prom/*&lt;/code>); any deviation from this is considered a bug, except:&lt;/p>
 &lt;ul>
-&lt;li>For queries to the &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> endpoints, query&amp;rsquo;s time range is ignored and the data is always fetched from ingesters. There is experimental support to query the long-term store with the &lt;em>blocks&lt;/em> storage engine when &lt;code>-querier.query-store-for-labels-enabled&lt;/code> is set.&lt;/li>
 &lt;li>Additional API endpoints for creating, removing and modifying alerts and recording rules.&lt;/li>
 &lt;li>Additional API around pushing metrics (under &lt;code>/api/push&lt;/code>).&lt;/li>
 &lt;li>Additional API endpoints for management of Cortex itself, such as the ring. These APIs are not part of the any compatibility guarantees.&lt;/li>
@@ -12501,7 +12500,6 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;li>OpenStack Swift storage support.&lt;/li>
 &lt;li>Metric relabeling in the distributor.&lt;/li>
 &lt;li>Scalable query-frontend (when using query-scheduler)&lt;/li>
-&lt;li>Querying store for series, labels APIs (&lt;code>-querier.query-store-for-labels-enabled&lt;/code>)&lt;/li>
 &lt;li>Ingester: do not unregister from ring on shutdown (&lt;code>-ingester.unregister-on-shutdown=false&lt;/code>)&lt;/li>
 &lt;li>Distributor: do not extend writes on unhealthy ingesters (&lt;code>-distributor.extend-writes=false&lt;/code>)&lt;/li>
 &lt;li>Tenant Deletion in Purger, for blocks storage.&lt;/li>

@@ -1,6 +1,10 @@
 # Changelog
 
 ## master / unreleased
+
+
+## 1.18.0 in progress
+
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
 * [CHANGE] Ingester: Remove `-querier.query-store-for-labels-enabled` flag. Querying long-term store for labels is always enabled. #5984
 * [CHANGE] Server: Instrument `cortex_request_duration_seconds` metric with native histogram. If `native-histograms` feature is enabled in monitoring Prometheus then the metric name needs to be updated in your dashboards. #6056

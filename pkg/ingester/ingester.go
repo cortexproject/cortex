@@ -2881,12 +2881,7 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-const (
-	mode     = "mode"
-	READONLY = "READONLY"
-	ACTIVE   = "ACTIVE"
-)
-
+// ModeHandler Change mode of ingester. It will also update set unregisterOnShutdown to true if READONLY mode
 func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
@@ -2895,48 +2890,43 @@ func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mode := strings.ToUpper(r.Form.Get(mode))
-
 	currentState := i.lifecycler.GetState()
-
-	switch mode {
-	case READONLY:
-		if currentState == ring.ACTIVE {
+	reqMode := strings.ToUpper(r.Form.Get("mode"))
+	switch reqMode {
+	case "READONLY":
+		if currentState != ring.READONLY {
 			err = i.lifecycler.ChangeState(r.Context(), ring.READONLY)
-			if err == nil {
-				i.lifecycler.SetUnregisterOnShutdown(true)
+			if err != nil {
+				respMsg := fmt.Sprintf("failed to change state: %s", err)
+				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(respMsg))
+				return
 			}
-		} else if currentState != ring.READONLY {
-			level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid ingester state", "mode", mode, "state", currentState)
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			i.lifecycler.SetUnregisterOnShutdown(true)
 		}
-	case ACTIVE:
-		if currentState == ring.READONLY {
+	case "ACTIVE":
+		if currentState != ring.ACTIVE {
 			err = i.lifecycler.ChangeState(r.Context(), ring.ACTIVE)
-			if err == nil {
-				i.lifecycler.SetUnregisterOnShutdown(i.cfg.LifecyclerConfig.UnregisterOnShutdown)
+			if err != nil {
+				respMsg := fmt.Sprintf("failed to change state: %s", err)
+				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(respMsg))
+				return
 			}
-		} else if currentState != ring.ACTIVE {
-			level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid ingester state", "mode", mode, "state", currentState)
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			i.lifecycler.SetUnregisterOnShutdown(i.cfg.LifecyclerConfig.UnregisterOnShutdown)
 		}
 	default:
-		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid mode input", "mode", mode)
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid mode input", "mode", reqMode)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if err != nil {
-		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "failed to change mode", "mode", mode, "err", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	respMsg := fmt.Sprintf("mode changed to %s and unregisterOnShutdown to %t", mode, i.lifecycler.ShouldUnregisterOnShutdown())
+	respMsg := fmt.Sprintf("Ingester mode %s and unregisterOnShutdown %t", reqMode, i.lifecycler.ShouldUnregisterOnShutdown())
 	level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
 	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(respMsg))
 }
 
 // metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.

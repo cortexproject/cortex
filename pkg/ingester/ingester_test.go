@@ -5109,6 +5109,9 @@ func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest 
 
 func Test_Ingester_ModeHandler(t *testing.T) {
 	tests := map[string]struct {
+		method             string
+		requestBody        io.Reader
+		requestUrl         string
 		initialState       ring.InstanceState
 		mode               string
 		expectedState      ring.InstanceState
@@ -5116,38 +5119,68 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 		expectedUnregister bool
 	}{
 		"should change to READONLY mode": {
+			method:             "POST",
 			initialState:       ring.ACTIVE,
-			mode:               "reAdOnLy",
+			requestUrl:         "/mode?mode=reAdOnLy",
+			expectedState:      ring.READONLY,
+			expectedResponse:   http.StatusOK,
+			expectedUnregister: true,
+		},
+		"should change mode on GET method": {
+			method:             "GET",
+			initialState:       ring.ACTIVE,
+			requestUrl:         "/mode?mode=READONLY",
+			expectedState:      ring.READONLY,
+			expectedResponse:   http.StatusOK,
+			expectedUnregister: true,
+		},
+		"should change mode on POST method via body": {
+			method:             "POST",
+			initialState:       ring.ACTIVE,
+			requestUrl:         "/mode",
+			requestBody:        strings.NewReader("mode=readonly"),
 			expectedState:      ring.READONLY,
 			expectedResponse:   http.StatusOK,
 			expectedUnregister: true,
 		},
 		"should change to ACTIVE mode": {
+			method:             "POST",
 			initialState:       ring.READONLY,
-			mode:               "active",
+			requestUrl:         "/mode?mode=active",
 			expectedState:      ring.ACTIVE,
 			expectedResponse:   http.StatusOK,
 			expectedUnregister: false,
 		},
 		"should fail to unknown mode": {
+			method:             "POST",
 			initialState:       ring.ACTIVE,
-			mode:               "NotSupported",
+			requestUrl:         "/mode?mode=NotSupported",
 			expectedState:      ring.ACTIVE,
 			expectedResponse:   http.StatusBadRequest,
 			expectedUnregister: false,
 		},
 		"should maintain in readonly": {
+			method:             "POST",
 			initialState:       ring.READONLY,
-			mode:               READONLY,
+			requestUrl:         "/mode?mode=READONLY",
 			expectedState:      ring.READONLY,
 			expectedResponse:   http.StatusOK,
 			expectedUnregister: true,
 		},
 		"should maintain in active": {
+			method:             "POST",
 			initialState:       ring.ACTIVE,
-			mode:               ACTIVE,
+			requestUrl:         "/mode?mode=ACTIVE",
 			expectedState:      ring.ACTIVE,
 			expectedResponse:   http.StatusOK,
+			expectedUnregister: false,
+		},
+		"should fail mode READONLY if LEAVING state": {
+			method:             "POST",
+			initialState:       ring.LEAVING,
+			requestUrl:         "/mode?mode=READONLY",
+			expectedState:      ring.LEAVING,
+			expectedResponse:   http.StatusBadRequest,
 			expectedUnregister: false,
 		},
 	}
@@ -5166,7 +5199,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 				return i.lifecycler.GetState()
 			})
 
-			if testData.initialState == ring.READONLY {
+			if testData.initialState != ring.ACTIVE {
 				err = i.lifecycler.ChangeState(context.Background(), testData.initialState)
 				require.NoError(t, err)
 
@@ -5174,13 +5207,19 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 				test.Poll(t, 1*time.Second, testData.initialState, func() interface{} {
 					return i.lifecycler.GetState()
 				})
+			}
 
-				// This would be done on lifecycle starting
+			// This would be done on lifecycle starting. It is not done as we are changing state after start
+			if testData.initialState == ring.READONLY {
 				i.lifecycler.SetUnregisterOnShutdown(true)
 			}
 
 			response := httptest.NewRecorder()
-			i.ModeHandler(response, httptest.NewRequest("POST", "/mode?mode="+testData.mode, nil))
+			request := httptest.NewRequest(testData.method, testData.requestUrl, testData.requestBody)
+			if testData.requestBody != nil {
+				request.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
+			}
+			i.ModeHandler(response, request)
 
 			require.Equal(t, testData.expectedResponse, response.Code)
 			require.Equal(t, testData.expectedState, i.lifecycler.GetState())

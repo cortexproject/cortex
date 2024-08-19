@@ -112,7 +112,7 @@ var (
 		return s == READONLY
 	})
 
-	// Read operation that extends the replica set if an instance is not ACTIVE, LEAVING, JOINING OR READONLY
+	// Read operation that extends the replica set if an instance is not ACTIVE, PENDING, LEAVING, JOINING OR READONLY
 	Read = NewOp([]InstanceState{ACTIVE, PENDING, LEAVING, JOINING, READONLY}, func(s InstanceState) bool {
 		// To match Write with extended replica set we have to also increase the
 		// size of the replica set for Read, but we can read from LEAVING ingesters.

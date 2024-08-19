@@ -3086,7 +3086,7 @@ func TestUpdateMetrics(t *testing.T) {
 		ring_members{name="test",state="JOINING"} 0
 		ring_members{name="test",state="LEAVING"} 0
 		ring_members{name="test",state="PENDING"} 0
-        ring_members{name="test",state="READONLY"} 0
+		ring_members{name="test",state="READONLY"} 0
 		ring_members{name="test",state="Unhealthy"} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge

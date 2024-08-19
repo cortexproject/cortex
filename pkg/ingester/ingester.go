@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"math"
 	"net/http"
@@ -2900,7 +2901,8 @@ func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
 				respMsg := fmt.Sprintf("failed to change state: %s", err)
 				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
 				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte(respMsg))
+				// We ignore errors here, because we cannot do anything about them.
+				_, _ = w.Write([]byte(respMsg))
 				return
 			}
 			i.lifecycler.SetUnregisterOnShutdown(true)
@@ -2912,21 +2914,23 @@ func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
 				respMsg := fmt.Sprintf("failed to change state: %s", err)
 				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
 				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte(respMsg))
+				// We ignore errors here, because we cannot do anything about them.
+				_, _ = w.Write([]byte(respMsg))
 				return
 			}
 			i.lifecycler.SetUnregisterOnShutdown(i.cfg.LifecyclerConfig.UnregisterOnShutdown)
 		}
 	default:
-		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid mode input", "mode", reqMode)
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid mode input", "mode", html.EscapeString(reqMode))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	respMsg := fmt.Sprintf("Ingester mode %s and unregisterOnShutdown %t", reqMode, i.lifecycler.ShouldUnregisterOnShutdown())
+	respMsg := fmt.Sprintf("Ingester mode %s and unregisterOnShutdown %t", i.lifecycler.GetState(), i.lifecycler.ShouldUnregisterOnShutdown())
 	level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(respMsg))
+	// We ignore errors here, because we cannot do anything about them.
+	_, _ = w.Write([]byte(respMsg)) //no
 }
 
 // metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.

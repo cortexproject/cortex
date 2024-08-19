@@ -5183,6 +5183,12 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			expectedResponse:   http.StatusBadRequest,
 			expectedUnregister: false,
 		},
+		"should fail with malformatted request": {
+			method:           "GET",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mod;e=READONLY",
+			expectedResponse: http.StatusBadRequest,
+		},
 	}
 
 	for testName, testData := range tests {

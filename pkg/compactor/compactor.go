@@ -60,7 +60,7 @@ var (
 	errInvalidCompactionStrategy             = errors.New("invalid compaction strategy")
 	errInvalidCompactionStrategyPartitioning = errors.New("compaction strategy partitioning can only be enabled when shuffle sharding is enabled")
 
-	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, blocksMarkedForNoCompaction prometheus.Counter, _ prometheus.Counter, _ prometheus.Counter, syncerMetrics *compact.SyncerMetrics, compactorMetrics *compactorMetrics, _ *ring.Ring, _ *ring.Lifecycler, _ Limits, _ string, _ *compact.GatherNoCompactionMarkFilter) compact.Grouper {
+	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, blocksMarkedForNoCompaction prometheus.Counter, _ prometheus.Counter, _ prometheus.Counter, syncerMetrics *compact.SyncerMetrics, compactorMetrics *compactorMetrics, _ *ring.Ring, _ *ring.Lifecycler, _ Limits, _ string, _ *compact.GatherNoCompactionMarkFilter, _ int) compact.Grouper {
 		return compact.NewDefaultGrouperWithMetrics(
 			logger,
 			bkt,
@@ -79,7 +79,7 @@ var (
 			cfg.BlocksFetchConcurrency)
 	}
 
-	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, blocksMarkedForNoCompaction prometheus.Counter, blockVisitMarkerReadFailed prometheus.Counter, blockVisitMarkerWriteFailed prometheus.Counter, syncerMetrics *compact.SyncerMetrics, compactorMetrics *compactorMetrics, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits Limits, userID string, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter) compact.Grouper {
+	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, blocksMarkedForNoCompaction prometheus.Counter, blockVisitMarkerReadFailed prometheus.Counter, blockVisitMarkerWriteFailed prometheus.Counter, syncerMetrics *compact.SyncerMetrics, compactorMetrics *compactorMetrics, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits Limits, userID string, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ingestionReplicationFactor int) compact.Grouper {
 		if cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 			return NewPartitionCompactionGrouper(
 				ctx,
@@ -102,7 +102,8 @@ var (
 				cfg.CompactionConcurrency,
 				true,
 				cfg.CompactionVisitMarkerTimeout,
-				noCompactionMarkFilter.NoCompactMarkedBlocks)
+				noCompactionMarkFilter.NoCompactMarkedBlocks,
+				ingestionReplicationFactor)
 		} else {
 			return NewShuffleShardingGrouper(
 				ctx,
@@ -177,6 +178,7 @@ type BlocksGrouperFactory func(
 	limit Limits,
 	userID string,
 	noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter,
+	ingestionReplicationFactor int,
 ) compact.Grouper
 
 // BlocksCompactorFactory builds and returns the compactor and planner to use to compact a tenant's blocks.
@@ -205,8 +207,6 @@ type Limits interface {
 	CompactorTenantShardSize(userID string) int
 	CompactorPartitionIndexSizeLimitInBytes(userID string) int64
 	CompactorPartitionSeriesCountLimit(userID string) int64
-	CompactorPartitionLevel1IndexSizeLimitInBytes(userID string) int64
-	CompactorPartitionLevel1SeriesCountLimit(userID string) int64
 }
 
 // Config holds the Compactor config.
@@ -404,10 +404,13 @@ type Compactor struct {
 
 	// Thanos compactor metrics per user
 	compactorMetrics *compactorMetrics
+
+	// Replication factor of ingester ring
+	ingestionReplicationFactor int
 }
 
 // NewCompactor makes a new Compactor.
-func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Compactor, error) {
+func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides, ingestionReplicationFactor int) (*Compactor, error) {
 	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
@@ -430,7 +433,11 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 		}
 	}
 
-	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, limits)
+	if ingestionReplicationFactor <= 0 {
+		ingestionReplicationFactor = 1
+	}
+
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, limits, ingestionReplicationFactor)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
 	}
@@ -447,6 +454,7 @@ func newCompactor(
 	blocksGrouperFactory BlocksGrouperFactory,
 	blocksCompactorFactory BlocksCompactorFactory,
 	limits *validation.Overrides,
+	ingestionReplicationFactor int,
 ) (*Compactor, error) {
 	var compactorMetrics *compactorMetrics
 	if compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -521,8 +529,9 @@ func newCompactor(
 			Name: "cortex_compactor_block_visit_marker_write_failed",
 			Help: "Number of block visit marker file failed to be written.",
 		}),
-		limits:           limits,
-		compactorMetrics: compactorMetrics,
+		limits:                     limits,
+		compactorMetrics:           compactorMetrics,
+		ingestionReplicationFactor: ingestionReplicationFactor,
 	}
 
 	if len(compactorCfg.EnabledTenants) > 0 {
@@ -954,7 +963,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	compactor, err := compact.NewBucketCompactor(
 		ulogger,
 		syncer,
-		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, c.BlocksMarkedForNoCompaction, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, syncerMetrics, c.compactorMetrics, c.ring, c.ringLifecycler, c.limits, userID, noCompactMarkerFilter),
+		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, c.BlocksMarkedForNoCompaction, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, syncerMetrics, c.compactorMetrics, c.ring, c.ringLifecycler, c.limits, userID, noCompactMarkerFilter, c.ingestionReplicationFactor),
 		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, userID, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, c.compactorMetrics),
 		c.blocksCompactor,
 		c.compactDirForUser(userID),

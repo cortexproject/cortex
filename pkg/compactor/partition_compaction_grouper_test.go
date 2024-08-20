@@ -1929,8 +1929,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 			}
 
 			limits := &validation.Limits{
-				CompactorPartitionSeriesCountLimit:       4,
-				CompactorPartitionLevel1SeriesCountLimit: 4,
+				CompactorPartitionSeriesCountLimit: 4,
 			}
 			overrides, err := validation.NewOverrides(*limits, nil)
 			require.NoError(t, err)
@@ -1989,6 +1988,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				false,
 				visitMarkerTimeout,
 				noCompactFilter,
+				1,
 			)
 			actual, err := g.generateCompactionJobs(testCase.getBlocks())
 			require.NoError(t, err)

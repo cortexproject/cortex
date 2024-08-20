@@ -53,6 +53,8 @@ type PartitionCompactionGrouper struct {
 
 	noCompBlocksFunc            func() map[ulid.ULID]*metadata.NoCompactMark
 	partitionVisitMarkerTimeout time.Duration
+
+	ingestionReplicationFactor int
 }
 
 func NewPartitionCompactionGrouper(
@@ -77,6 +79,7 @@ func NewPartitionCompactionGrouper(
 	doRandomPick bool,
 	partitionVisitMarkerTimeout time.Duration,
 	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark,
+	ingestionReplicationFactor int,
 ) *PartitionCompactionGrouper {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -104,6 +107,7 @@ func NewPartitionCompactionGrouper(
 		doRandomPick:                doRandomPick,
 		partitionVisitMarkerTimeout: partitionVisitMarkerTimeout,
 		noCompBlocksFunc:            noCompBlocksFunc,
+		ingestionReplicationFactor:  ingestionReplicationFactor,
 	}
 }
 
@@ -440,9 +444,9 @@ func (g *PartitionCompactionGrouper) calculatePartitionCount(group blocksGroupWi
 	smallestRange := g.compactorCfg.BlockRanges.ToMilliseconds()[0]
 	groupRange := group.rangeLength()
 	if smallestRange >= groupRange {
-		level.Info(g.logger).Log("msg", "use level 1 block limits", "partitioned_group_id", groupHash, "smallestRange", smallestRange, "groupRange", groupRange)
-		indexSizeLimit = g.limits.CompactorPartitionLevel1IndexSizeLimitInBytes(g.userID)
-		seriesCountLimit = g.limits.CompactorPartitionLevel1SeriesCountLimit(g.userID)
+		level.Info(g.logger).Log("msg", "calculate level 1 block limits", "partitioned_group_id", groupHash, "smallest_range", smallestRange, "group_range", groupRange, "ingestion_replication_factor", g.ingestionReplicationFactor)
+		indexSizeLimit = indexSizeLimit * int64(g.ingestionReplicationFactor)
+		seriesCountLimit = seriesCountLimit * int64(g.ingestionReplicationFactor)
 	}
 
 	totalIndexSizeInBytes := int64(0)

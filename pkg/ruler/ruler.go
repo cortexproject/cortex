@@ -1302,6 +1302,8 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		ctx, cancel := context.WithTimeout(ctx, r.cfg.ListRulesFanoutTimeout)
 		defer cancel()
 
+		ctx, cancel := context.WithTimeout(ctx, r.cfg.ListRulesFanoutTimeout)
+		defer cancel()
 		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{
 			RuleNames:      rulesRequest.GetRuleNames(),
 			RuleGroupNames: rulesRequest.GetRuleGroupNames(),

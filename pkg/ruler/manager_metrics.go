@@ -271,3 +271,39 @@ func (m *RuleEvalMetrics) deletePerUserMetrics(userID string) {
 		m.RulerQuerySeconds.DeleteLabelValues(userID)
 	}
 }
+
+type RuleGroupMetrics struct {
+	RuleGroupsInStore *prometheus.GaugeVec
+	tenants           map[string]struct{}
+	allowedTenants    *util.AllowedTenants
+}
+
+func NewRuleGroupMetrics(reg prometheus.Registerer, allowedTenants *util.AllowedTenants) *RuleGroupMetrics {
+	m := &RuleGroupMetrics{
+		RuleGroupsInStore: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ruler_rule_groups_in_store",
+			Help: "The number of rule groups a tenant has in store.",
+		}, []string{"user"}),
+		allowedTenants: allowedTenants,
+	}
+	return m
+}
+
+// UpdateRuleGroupsInStore updates the cortex_ruler_rule_groups_in_store metric with the provided number of rule
+// groups per tenant and removing the metrics for tenants that are not present anymore
+func (r *RuleGroupMetrics) UpdateRuleGroupsInStore(ruleGroupsCount map[string]int) {
+	tenants := make(map[string]struct{}, len(ruleGroupsCount))
+	for userID, count := range ruleGroupsCount {
+		if !r.allowedTenants.IsAllowed(userID) { // if the tenant is disabled just ignore its rule groups
+			continue
+		}
+		tenants[userID] = struct{}{}
+		r.RuleGroupsInStore.WithLabelValues(userID).Set(float64(count))
+	}
+	for userID := range r.tenants {
+		if _, ok := tenants[userID]; !ok {
+			r.RuleGroupsInStore.DeleteLabelValues(userID)
+		}
+	}
+	r.tenants = tenants
+}

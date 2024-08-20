@@ -294,6 +294,7 @@ type Ruler struct {
 	ruleGroupStoreLoadDuration prometheus.Gauge
 	ruleGroupSyncDuration      prometheus.Gauge
 	rulerGetRulesFailures      *prometheus.CounterVec
+	ruleGroupMetrics           *RuleGroupMetrics
 
 	allowedTenants *util.AllowedTenants
 
@@ -342,6 +343,7 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 			Help: "The total number of failed rules request sent to rulers in getShardedRules.",
 		}, []string{"ruler"}),
 	}
+	ruler.ruleGroupMetrics = NewRuleGroupMetrics(reg, ruler.allowedTenants)
 
 	if len(cfg.EnabledTenants) > 0 {
 		level.Info(ruler.logger).Log("msg", "ruler using enabled users", "enabled", strings.Join(cfg.EnabledTenants, ", "))
@@ -667,7 +669,9 @@ func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulespb.Rul
 	if err != nil {
 		return nil, nil, err
 	}
+	ruleGroupCounts := make(map[string]int, len(allRuleGroups))
 	for userID, groups := range allRuleGroups {
+		ruleGroupCounts[userID] = len(groups)
 		disabledRuleGroupsForUser := r.limits.DisabledRuleGroups(userID)
 		if len(disabledRuleGroupsForUser) == 0 {
 			continue
@@ -682,6 +686,7 @@ func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulespb.Rul
 		}
 		allRuleGroups[userID] = filteredGroupsForUser
 	}
+	r.ruleGroupMetrics.UpdateRuleGroupsInStore(ruleGroupCounts)
 	return allRuleGroups, nil, nil
 }
 
@@ -691,9 +696,11 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 		return nil, nil, err
 	}
 
+	ruleGroupCounts := make(map[string]int, len(configs))
 	ownedConfigs := make(map[string]rulespb.RuleGroupList)
 	backedUpConfigs := make(map[string]rulespb.RuleGroupList)
 	for userID, groups := range configs {
+		ruleGroupCounts[userID] = len(groups)
 		owned := filterRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(owned) > 0 {
 			ownedConfigs[userID] = owned
@@ -705,6 +712,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 			}
 		}
 	}
+	r.ruleGroupMetrics.UpdateRuleGroupsInStore(ruleGroupCounts)
 	return ownedConfigs, backedUpConfigs, nil
 }
 
@@ -732,6 +740,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	}
 
 	if len(userRings) == 0 {
+		r.ruleGroupMetrics.UpdateRuleGroupsInStore(make(map[string]int))
 		return nil, nil, nil
 	}
 
@@ -744,6 +753,8 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	mu := sync.Mutex{}
 	owned := map[string]rulespb.RuleGroupList{}
 	backedUp := map[string]rulespb.RuleGroupList{}
+	gLock := sync.Mutex{}
+	ruleGroupCounts := make(map[string]int, len(userRings))
 
 	concurrency := loadRulesConcurrency
 	if len(userRings) < concurrency {
@@ -758,6 +769,9 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 				if err != nil {
 					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 				}
+				gLock.Lock()
+				ruleGroupCounts[userID] = len(groups)
+				gLock.Unlock()
 
 				filterOwned := filterRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 				var filterBackup []*rulespb.RuleGroupDesc
@@ -781,6 +795,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	}
 
 	err = g.Wait()
+	r.ruleGroupMetrics.UpdateRuleGroupsInStore(ruleGroupCounts)
 	return owned, backedUp, err
 }
 

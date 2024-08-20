@@ -267,6 +267,9 @@ func TestRulerSharding(t *testing.T) {
 	// between the two rulers.
 	require.NoError(t, ruler1.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
 	require.NoError(t, ruler2.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
+	// Even with rules sharded, we expect rulers to have the same cortex_ruler_rule_groups_in_store metric values
+	require.NoError(t, ruler1.WaitSumMetrics(e2e.Equals(numRulesGroups), "cortex_ruler_rule_groups_in_store"))
+	require.NoError(t, ruler2.WaitSumMetrics(e2e.Equals(numRulesGroups), "cortex_ruler_rule_groups_in_store"))
 
 	// Fetch the rules and ensure they match the configured ones.
 	actualGroups, err := c.GetPrometheusRules(e2ecortex.DefaultFilter)

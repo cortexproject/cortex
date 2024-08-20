@@ -6,7 +6,7 @@ slug: ruler-ha
 ---
 
 - Author: [Anand Rajagopal](https://github.com/rajagopalanand)
-- Date: April 2024
+- Date: Aug 2024
 - Status: Proposed
 ---
 
@@ -26,20 +26,21 @@ This proposal attempts to mitigate the above risks by enabling a ruler replicati
 
 ### Make ReplicationFactor configurable
 
-ReplicationFactor in Ruler is currently hardcoded to 1.  Making this a configurable parameter is the first step to enabling HA in ruler, and would also be the mechanism for the user to turn the feature on.  The parameter value will be 1 by default, equating to the feature being turned off by default.
+ReplicationFactor in Ruler is currently hardcoded to 1.  Making this a configurable parameter is the first step to enabling HA in ruler.  The parameter value will be 1 by default. To enable Ruler HA for rule group evaluation, a new flag will be created
 
-A replication factor greater than 1 will result in multiple rulers loading the same rule groups but only one ruler evaluating the rule group. The replicas are in "passive" state until it is necessary for them to become active
+A replication factor greater than 1 will result in the following
 
-This redundancy will allow for missed rule evaluations from single ruler outages to be covered by other instances evaluating the same rule groups.
+ - Ring will pick R rulers for a rule group where R=RF
+ - The primary ruler (R1), when active, will take ownership of the rule group
+ - Non-primary ruler R2 will check if R1 is active. If R1 is not active, R2 will take ownership of the rule group
+ - Non-primary ruler R3 (if RF=3) will check if R1 and R2 are active. If they are both inactive/unhealthy, then R3 will take owership of the rule group
+ - Non-primary rulers will drop their ownership when R1 becomes active after an outage
 
-To avoid inconsistent rule group state, which is maintained by Prometheus, the author proposes making a change in Prometheus rule group evaluation logic as described below
+With this redundancy, the maximum duration of missed evaluations will be limited to the sync interval of the rule groups, reducing the impact of primary Ruler unavailability.
 
 ### Prometheus change
 
-The author proposes making a change to Prometheus to allow for pausing and resuming (or activating and deactivating) a rule group as described [here](https://github.com/prometheus/prometheus/issues/13630)
-
-If the proposal is not accepted by Prometheus community, the proposal is to maintain a fork of Prometheus for Cortex with modified rule group evaluation behavior. This [draft PR](https://github.com/prometheus/prometheus/pull/13858)
-shows the changes required in Prometheus to support pausing and resuming a rule group evaluation
+No Prometheus change is required for this proposal
 
 ### API HA
 
@@ -48,5 +49,5 @@ The difference is that after Ruler HA, the replicas could potentially return pro
 
 PRs:
 
-* Prometheus PR [#13858](https://github.com/prometheus/prometheus/pull/13858) [draft]
+* For Rule evaluation [#6129](https://github.com/cortexproject/cortex/pull/6129)
 * For API HA [#5773](https://github.com/cortexproject/cortex/issues/5773)

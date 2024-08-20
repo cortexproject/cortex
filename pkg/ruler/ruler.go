@@ -1299,8 +1299,6 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		if err != nil {
 			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
-		ctx, cancel := context.WithTimeout(ctx, r.cfg.ListRulesFanoutTimeout)
-		defer cancel()
 
 		ctx, cancel := context.WithTimeout(ctx, r.cfg.ListRulesFanoutTimeout)
 		defer cancel()

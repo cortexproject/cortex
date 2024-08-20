@@ -992,8 +992,7 @@ func TestRulerHA(t *testing.T) {
 	// Generate multiple rule groups, with 1 rule each.
 	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
 	expectedNames := make([]string, numRulesGroups)
-	alertCount := 0
-	evalInterval, _ := model.ParseDuration("5s")
+	evalInterval, _ := model.ParseDuration("2s")
 	for i := 0; i < numRulesGroups; i++ {
 		num := random.Intn(10)
 		var ruleNode yaml.Node
@@ -1006,7 +1005,6 @@ func TestRulerHA(t *testing.T) {
 		expectedNames[i] = ruleName
 
 		if num%2 == 0 {
-			alertCount++
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
 				Interval: evalInterval,
@@ -1117,9 +1115,16 @@ func TestRulerHA(t *testing.T) {
 	countFunc(ruler3Rules)
 	require.Equal(t, numRulesGroups, ruleCount)
 
+	// each rule group in this test is set to evaluate at a 2 second interval. If a Ruler is down and another Ruler
+	// assumes ownership, it might not immediately evaluate until it's time to evaluate. The following sleep is to ensure the
+	// rulers have evaluated the rule groups
+	time.Sleep(2100 * time.Millisecond)
 	results, err := c.GetPrometheusRules(e2ecortex.RuleFilter{})
 	require.NoError(t, err)
 	require.Equal(t, numRulesGroups, len(results))
+	for _, v := range results {
+		require.False(t, v.LastEvaluation.IsZero())
+	}
 }
 
 func TestRulerKeepFiring(t *testing.T) {

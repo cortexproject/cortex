@@ -1162,7 +1162,7 @@ go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconvut
 # go.opentelemetry.io/contrib/propagators/autoprop v0.53.0
 ## explicit; go 1.21
 go.opentelemetry.io/contrib/propagators/autoprop
-# go.opentelemetry.io/contrib/propagators/aws v1.28.0
+# go.opentelemetry.io/contrib/propagators/aws v1.29.0
 ## explicit; go 1.21
 go.opentelemetry.io/contrib/propagators/aws/xray
 # go.opentelemetry.io/contrib/propagators/b3 v1.28.0

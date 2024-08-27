@@ -2905,7 +2905,6 @@ func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
 				_, _ = w.Write([]byte(respMsg))
 				return
 			}
-			i.lifecycler.SetUnregisterOnShutdown(true)
 		}
 	case "ACTIVE":
 		if currentState != ring.ACTIVE {
@@ -2918,7 +2917,6 @@ func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
 				_, _ = w.Write([]byte(respMsg))
 				return
 			}
-			i.lifecycler.SetUnregisterOnShutdown(i.cfg.LifecyclerConfig.UnregisterOnShutdown)
 		}
 	default:
 		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid mode input", "mode", html.EscapeString(reqMode))

@@ -119,42 +119,6 @@ func TestIngester_ShutdownHandler(t *testing.T) {
 	}
 }
 
-func TestIngester_ReadOnly_Unregister(t *testing.T) {
-	for _, unregister := range []bool{false, true} {
-		t.Run(fmt.Sprintf("unregister=%t", unregister), func(t *testing.T) {
-			registry := prometheus.NewRegistry()
-			cfg := defaultIngesterTestConfig(t)
-			cfg.LifecyclerConfig.UnregisterOnShutdown = unregister
-			ingester, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
-			require.NoError(t, err)
-
-			//Add ingester as READONLY on the ring
-			consul := cfg.LifecyclerConfig.RingConfig.KVStore.Mock
-			err = consul.CAS(context.Background(), RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
-				ringDesc := ring.NewDesc()
-
-				ringDesc.AddIngester(cfg.LifecyclerConfig.ID, cfg.LifecyclerConfig.Addr, cfg.LifecyclerConfig.Zone, []uint32{123}, ring.READONLY, time.Now())
-				return ringDesc, true, nil
-			})
-			require.NoError(t, err)
-
-			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
-
-			// Make sure the ingester has been added to the ring.
-			test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-				return numTokens(cfg.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", RingKey)
-			})
-
-			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ingester))
-
-			// Make sure the ingester has been removed from the ring even when UnregisterFromRing is false.
-			test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
-				return numTokens(cfg.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", RingKey)
-			})
-		})
-	}
-}
-
 // numTokens determines the number of tokens owned by the specified
 // address
 func numTokens(c kv.Client, name, ringKey string) int {

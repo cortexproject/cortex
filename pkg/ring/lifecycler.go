@@ -453,11 +453,6 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		return errors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
-	// We always want to unregister if ingester shutdown on READONLY
-	if i.GetState() == READONLY {
-		i.SetUnregisterOnShutdown(true)
-	}
-
 	// We do various period tasks
 	var autoJoinAfter <-chan time.Time
 	var observeChan <-chan time.Time

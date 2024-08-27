@@ -5109,79 +5109,70 @@ func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest 
 
 func Test_Ingester_ModeHandler(t *testing.T) {
 	tests := map[string]struct {
-		method             string
-		requestBody        io.Reader
-		requestUrl         string
-		initialState       ring.InstanceState
-		mode               string
-		expectedState      ring.InstanceState
-		expectedResponse   int
-		expectedUnregister bool
+		method           string
+		requestBody      io.Reader
+		requestUrl       string
+		initialState     ring.InstanceState
+		mode             string
+		expectedState    ring.InstanceState
+		expectedResponse int
 	}{
 		"should change to READONLY mode": {
-			method:             "POST",
-			initialState:       ring.ACTIVE,
-			requestUrl:         "/mode?mode=reAdOnLy",
-			expectedState:      ring.READONLY,
-			expectedResponse:   http.StatusOK,
-			expectedUnregister: true,
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=reAdOnLy",
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
 		},
 		"should change mode on GET method": {
-			method:             "GET",
-			initialState:       ring.ACTIVE,
-			requestUrl:         "/mode?mode=READONLY",
-			expectedState:      ring.READONLY,
-			expectedResponse:   http.StatusOK,
-			expectedUnregister: true,
+			method:           "GET",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=READONLY",
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
 		},
 		"should change mode on POST method via body": {
-			method:             "POST",
-			initialState:       ring.ACTIVE,
-			requestUrl:         "/mode",
-			requestBody:        strings.NewReader("mode=readonly"),
-			expectedState:      ring.READONLY,
-			expectedResponse:   http.StatusOK,
-			expectedUnregister: true,
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode",
+			requestBody:      strings.NewReader("mode=readonly"),
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
 		},
 		"should change to ACTIVE mode": {
-			method:             "POST",
-			initialState:       ring.READONLY,
-			requestUrl:         "/mode?mode=active",
-			expectedState:      ring.ACTIVE,
-			expectedResponse:   http.StatusOK,
-			expectedUnregister: false,
+			method:           "POST",
+			initialState:     ring.READONLY,
+			requestUrl:       "/mode?mode=active",
+			expectedState:    ring.ACTIVE,
+			expectedResponse: http.StatusOK,
 		},
 		"should fail to unknown mode": {
-			method:             "POST",
-			initialState:       ring.ACTIVE,
-			requestUrl:         "/mode?mode=NotSupported",
-			expectedState:      ring.ACTIVE,
-			expectedResponse:   http.StatusBadRequest,
-			expectedUnregister: false,
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=NotSupported",
+			expectedState:    ring.ACTIVE,
+			expectedResponse: http.StatusBadRequest,
 		},
 		"should maintain in readonly": {
-			method:             "POST",
-			initialState:       ring.READONLY,
-			requestUrl:         "/mode?mode=READONLY",
-			expectedState:      ring.READONLY,
-			expectedResponse:   http.StatusOK,
-			expectedUnregister: true,
+			method:           "POST",
+			initialState:     ring.READONLY,
+			requestUrl:       "/mode?mode=READONLY",
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
 		},
 		"should maintain in active": {
-			method:             "POST",
-			initialState:       ring.ACTIVE,
-			requestUrl:         "/mode?mode=ACTIVE",
-			expectedState:      ring.ACTIVE,
-			expectedResponse:   http.StatusOK,
-			expectedUnregister: false,
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=ACTIVE",
+			expectedState:    ring.ACTIVE,
+			expectedResponse: http.StatusOK,
 		},
 		"should fail mode READONLY if LEAVING state": {
-			method:             "POST",
-			initialState:       ring.LEAVING,
-			requestUrl:         "/mode?mode=READONLY",
-			expectedState:      ring.LEAVING,
-			expectedResponse:   http.StatusBadRequest,
-			expectedUnregister: false,
+			method:           "POST",
+			initialState:     ring.LEAVING,
+			requestUrl:       "/mode?mode=READONLY",
+			expectedState:    ring.LEAVING,
+			expectedResponse: http.StatusBadRequest,
 		},
 		"should fail with malformatted request": {
 			method:           "GET",
@@ -5194,7 +5185,6 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			cfg := defaultIngesterTestConfig(t)
-			cfg.LifecyclerConfig.UnregisterOnShutdown = false
 			i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -5215,11 +5205,6 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 				})
 			}
 
-			// This would be done on lifecycle starting. It is not done as we are changing state after start
-			if testData.initialState == ring.READONLY {
-				i.lifecycler.SetUnregisterOnShutdown(true)
-			}
-
 			response := httptest.NewRecorder()
 			request := httptest.NewRequest(testData.method, testData.requestUrl, testData.requestBody)
 			if testData.requestBody != nil {
@@ -5229,7 +5214,6 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 
 			require.Equal(t, testData.expectedResponse, response.Code)
 			require.Equal(t, testData.expectedState, i.lifecycler.GetState())
-			require.Equal(t, testData.expectedUnregister, i.lifecycler.ShouldUnregisterOnShutdown())
 		})
 	}
 }

@@ -1804,7 +1804,42 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return &client.UserStatsResponse{}, nil
 	}
 
-	return createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled), nil
+	userStat := createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled)
+
+	return &client.UserStatsResponse{
+		IngestionRate:     userStat.IngestionRate,
+		NumSeries:         userStat.NumSeries,
+		ApiIngestionRate:  userStat.APIIngestionRate,
+		RuleIngestionRate: userStat.RuleIngestionRate,
+		ActiveSeries:      userStat.ActiveSeries,
+		LoadBlocks:        userStat.LoadBlocks,
+	}, nil
+}
+
+func (i *Ingester) userStats() []UserIDStats {
+	i.stoppedMtx.RLock()
+	defer i.stoppedMtx.RUnlock()
+
+	perUserTotals := make(map[string]UserStats)
+
+	users := i.TSDBState.dbs
+
+	response := make([]UserIDStats, 0, len(perUserTotals))
+	for id, db := range users {
+		response = append(response, UserIDStats{
+			UserID:    id,
+			UserStats: createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled),
+		})
+	}
+
+	return response
+}
+
+// AllUserStatsHandler shows stats for all users.
+func (i *Ingester) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {
+	stats := i.userStats()
+
+	AllUserStatsRender(w, r, stats, 0)
 }
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
@@ -1813,24 +1848,28 @@ func (i *Ingester) AllUserStats(_ context.Context, _ *client.UserStatsRequest) (
 		return nil, err
 	}
 
-	i.stoppedMtx.RLock()
-	defer i.stoppedMtx.RUnlock()
-
-	users := i.TSDBState.dbs
+	userStats := i.userStats()
 
 	response := &client.UsersStatsResponse{
-		Stats: make([]*client.UserIDStatsResponse, 0, len(users)),
+		Stats: make([]*client.UserIDStatsResponse, 0, len(userStats)),
 	}
-	for userID, db := range users {
+	for _, userStat := range userStats {
 		response.Stats = append(response.Stats, &client.UserIDStatsResponse{
-			UserId: userID,
-			Data:   createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled),
+			UserId: userStat.UserID,
+			Data: &client.UserStatsResponse{
+				IngestionRate:     userStat.IngestionRate,
+				NumSeries:         userStat.NumSeries,
+				ApiIngestionRate:  userStat.APIIngestionRate,
+				RuleIngestionRate: userStat.RuleIngestionRate,
+				ActiveSeries:      userStat.ActiveSeries,
+				LoadBlocks:        userStat.LoadBlocks,
+			},
 		})
 	}
 	return response, nil
 }
 
-func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) *client.UserStatsResponse {
+func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) UserStats {
 	apiRate := db.ingestedAPISamples.Rate()
 	ruleRate := db.ingestedRuleSamples.Rate()
 
@@ -1839,12 +1878,13 @@ func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) *client.User
 		activeSeries = uint64(db.activeSeries.Active())
 	}
 
-	return &client.UserStatsResponse{
+	return UserStats{
 		IngestionRate:     apiRate + ruleRate,
-		ApiIngestionRate:  apiRate,
+		APIIngestionRate:  apiRate,
 		RuleIngestionRate: ruleRate,
 		NumSeries:         db.Head().NumSeries(),
 		ActiveSeries:      activeSeries,
+		LoadBlocks:        uint64(len(db.Blocks())),
 	}
 }
 

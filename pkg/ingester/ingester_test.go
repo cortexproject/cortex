@@ -4248,6 +4248,7 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 				ApiIngestionRate:  0.2,
 				RuleIngestionRate: 0,
 				ActiveSeries:      3,
+				LoadBlocks:        0,
 			},
 		},
 		{
@@ -4258,10 +4259,89 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 				ApiIngestionRate:  0.13333333333333333,
 				RuleIngestionRate: 0,
 				ActiveSeries:      2,
+				LoadBlocks:        0,
 			},
 		},
 	}
 	assert.ElementsMatch(t, expect, res.Stats)
+}
+
+func Test_Ingester_AllUserStatsHandler(t *testing.T) {
+	series := []struct {
+		user      string
+		lbls      labels.Labels
+		value     float64
+		timestamp int64
+	}{
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_2"}}, 2, 200000},
+		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_1"}}, 2, 200000},
+		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_2"}}, 2, 200000},
+	}
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+	for _, series := range series {
+		ctx := user.InjectOrgID(context.Background(), series.user)
+		req, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
+		_, err := i.Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// Force compaction to test loaded blocks
+	compactionCallbackCh := make(chan struct{})
+	i.TSDBState.forceCompactTrigger <- requestWithUsersAndCallback{users: nil, callback: compactionCallbackCh}
+	<-compactionCallbackCh
+
+	// force update statistics
+	for _, db := range i.TSDBState.dbs {
+		db.ingestedAPISamples.Tick()
+		db.ingestedRuleSamples.Tick()
+	}
+
+	// Get label names
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/all_user_stats", nil)
+	request.Header.Add("Accept", "application/json")
+	i.AllUserStatsHandler(response, request)
+	var resp UserStatsByTimeseries
+	err = json.Unmarshal(response.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	expect := UserStatsByTimeseries{
+		{
+			UserID: "user-1",
+			UserStats: UserStats{
+				IngestionRate:     0.2,
+				NumSeries:         0,
+				APIIngestionRate:  0.2,
+				RuleIngestionRate: 0,
+				ActiveSeries:      3,
+				LoadBlocks:        1,
+			},
+		},
+		{
+			UserID: "user-2",
+			UserStats: UserStats{
+				IngestionRate:     0.13333333333333333,
+				NumSeries:         0,
+				APIIngestionRate:  0.13333333333333333,
+				RuleIngestionRate: 0,
+				ActiveSeries:      2,
+				LoadBlocks:        1,
+			},
+		},
+	}
+	assert.ElementsMatch(t, expect, resp)
 }
 
 func TestIngesterCompactIdleBlock(t *testing.T) {

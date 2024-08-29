@@ -229,19 +229,25 @@ func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 	}
 }
 
-func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Counter, logger log.Logger) rules.QueryFunc {
-	if queryTime == nil {
-		return qf
-	}
+func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetrics *RuleEvalMetrics, logger log.Logger) rules.QueryFunc {
+	queryTime := evalMetrics.RulerQuerySeconds.WithLabelValues(userID)
+	querySeries := evalMetrics.RulerQuerySeries.WithLabelValues(userID)
+	querySample := evalMetrics.RulerQuerySamples.WithLabelValues(userID)
+	queryChunkBytes := evalMetrics.RulerQueryChunkBytes.WithLabelValues(userID)
+	queryDataBytes := evalMetrics.RulerQueryDataBytes.WithLabelValues(userID)
 
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		queryStats, ctx := stats.ContextWithEmptyStats(ctx)
 		// If we've been passed a counter we want to record the wall time spent executing this request.
 		timer := prometheus.NewTimer(nil)
+
 		defer func() {
 			querySeconds := timer.ObserveDuration().Seconds()
 			queryTime.Add(querySeconds)
-
+			querySeries.Add(float64(queryStats.FetchedSeriesCount))
+			querySample.Add(float64(queryStats.FetchedSamplesCount))
+			queryChunkBytes.Add(float64(queryStats.FetchedChunkBytes))
+			queryDataBytes.Add(float64(queryStats.FetchedDataBytes))
 			// Log ruler query stats.
 			logMessage := []interface{}{
 				"msg", "query stats",
@@ -303,23 +309,24 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 	q = querier.NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
 
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
-		var queryTime prometheus.Counter
-		if evalMetrics.RulerQuerySeconds != nil {
-			queryTime = evalMetrics.RulerQuerySeconds.WithLabelValues(userID)
-		}
-
 		failedQueries := evalMetrics.FailedQueriesVec.WithLabelValues(userID)
 		totalQueries := evalMetrics.TotalQueriesVec.WithLabelValues(userID)
 		totalWrites := evalMetrics.TotalWritesVec.WithLabelValues(userID)
 		failedWrites := evalMetrics.FailedWritesVec.WithLabelValues(userID)
 
+		var queryFunc rules.QueryFunc
 		engineQueryFunc := EngineQueryFunc(engine, q, overrides, userID, cfg.LookbackDelta)
 		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)
+		if cfg.EnableQueryStats {
+			queryFunc = RecordAndReportRuleQueryMetrics(metricsQueryFunc, userID, evalMetrics, logger)
+		} else {
+			queryFunc = metricsQueryFunc
+		}
 
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:             NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
 			Queryable:              q,
-			QueryFunc:              RecordAndReportRuleQueryMetrics(metricsQueryFunc, queryTime, logger),
+			QueryFunc:              queryFunc,
 			Context:                user.InjectOrgID(ctx, userID),
 			ExternalURL:            cfg.ExternalURL.URL,
 			NotifyFunc:             SendAlerts(notifier, cfg.ExternalURL.URL.String()),

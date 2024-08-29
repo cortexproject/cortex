@@ -363,7 +363,7 @@ func TestMergeSampleStreams(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			output := make(map[string]SampleStream)
-			MergeSampleStreams(output, tc.sampleStreams)
+			mergeSampleStreams(output, tc.sampleStreams)
 			assert.Equal(t, tc.expectedOutput, output)
 		})
 	}
@@ -593,6 +593,72 @@ func TestSliceHistograms(t *testing.T) {
 			t.Parallel()
 			actual := sliceHistograms(tc.histograms, tc.minTs)
 			assert.Equal(t, tc.expectedHistograms, actual)
+		})
+	}
+}
+
+func Test_sortPlanForQuery(t *testing.T) {
+	tc := []struct {
+		query        string
+		expectedPlan sortPlan
+		err          bool
+	}{
+		{
+			query:        "invalid(10, up)",
+			expectedPlan: mergeOnly,
+			err:          true,
+		},
+		{
+			query:        "topk(10, up)",
+			expectedPlan: mergeOnly,
+			err:          false,
+		},
+		{
+			query:        "bottomk(10, up)",
+			expectedPlan: mergeOnly,
+			err:          false,
+		},
+		{
+			query:        "1 + topk(10, up)",
+			expectedPlan: sortByLabels,
+			err:          false,
+		},
+		{
+			query:        "1 + sort_desc(sum by (job) (up) )",
+			expectedPlan: sortByValuesDesc,
+			err:          false,
+		},
+		{
+			query:        "sort(topk by (job) (10, up))",
+			expectedPlan: sortByValuesAsc,
+			err:          false,
+		},
+		{
+			query:        "topk(5, up) by (job) + sort_desc(up)",
+			expectedPlan: sortByValuesDesc,
+			err:          false,
+		},
+		{
+			query:        "sort(up) + topk(5, up) by (job)",
+			expectedPlan: sortByValuesAsc,
+			err:          false,
+		},
+		{
+			query:        "sum(up) by (job)",
+			expectedPlan: sortByLabels,
+			err:          false,
+		},
+	}
+
+	for _, tc := range tc {
+		t.Run(tc.query, func(t *testing.T) {
+			p, err := sortPlanForQuery(tc.query)
+			if tc.err {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedPlan, p)
+			}
 		})
 	}
 }

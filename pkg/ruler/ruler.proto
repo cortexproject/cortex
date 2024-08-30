@@ -31,9 +31,7 @@ message RulesRequest {
   bool excludeAlerts = 8;
 }
 
-message LivenessCheckRequest{
-  string rulerAddress = 1;
-}
+message LivenessCheckRequest{}
 
 message LivenessCheckResponse{
   int32 state = 1;

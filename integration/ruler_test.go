@@ -1040,7 +1040,7 @@ func TestRulerHA(t *testing.T) {
 		"-ruler.ring.replication-factor":                    "2",
 		"-ruler.enable-ha-evaluation":                       "true",
 		"-ruler.poll-interval":                              "5s",
-		"-ruler.list-rules-fanout-timeout":                  "10ms",
+		"-ruler.client.remote-timeout":                      "10ms",
 	}
 
 	rulerFlags := mergeFlags(

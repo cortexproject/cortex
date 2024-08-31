@@ -37,7 +37,6 @@ import (
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -100,7 +99,7 @@ type Config struct {
 	// Labels to add to all alerts
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"nocli|description=Labels to add to all alerts."`
 	// GRPC Client configuration.
-	ClientTLSConfig grpcclient.Config `yaml:"ruler_client"`
+	ClientTLSConfig ClientConfig `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
 	// How frequently to poll for updated rules.
@@ -154,8 +153,7 @@ type Config struct {
 	EnableQueryStats      bool `yaml:"query_stats_enabled"`
 	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
 
-	EnableHAEvaluation     bool          `yaml:"enable_ha_evaluation"`
-	ListRulesFanoutTimeout time.Duration `yaml:"list_rules_fanout_timeout"`
+	EnableHAEvaluation bool `yaml:"enable_ha_evaluation"`
 }
 
 // Validate config and returns error on failure
@@ -180,7 +178,7 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", "", f)
+	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
 	cfg.Ring.RegisterFlags(f)
 	cfg.Notifier.RegisterFlags(f)
 
@@ -226,7 +224,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
 
 	f.BoolVar(&cfg.EnableHAEvaluation, "ruler.enable-ha-evaluation", false, "Enable high availability")
-	f.DurationVar(&cfg.ListRulesFanoutTimeout, "ruler.list-rules-fanout-timeout", 2*time.Minute, "Timeout for fanout calls to other rulers")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }
@@ -312,7 +309,7 @@ type Ruler struct {
 
 // NewRuler creates a new ruler from a distributor and chunk store.
 func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
-	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg))
+	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig.Config, logger, reg))
 }
 
 func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
@@ -1300,7 +1297,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, r.cfg.ListRulesFanoutTimeout)
+		ctx, cancel := context.WithTimeout(ctx, r.cfg.ClientTLSConfig.RemoteTimeout)
 		defer cancel()
 		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{
 			RuleNames:      rulesRequest.GetRuleNames(),

@@ -4142,6 +4142,10 @@ ruler_client:
   # CLI flag: -ruler.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+  # Timeout for downstream rulers.
+  # CLI flag: -ruler.client.remote-timeout
+  [remote_timeout: <duration> | default = 2m]
+
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m]
@@ -4382,10 +4386,6 @@ ring:
 # Enable high availability
 # CLI flag: -ruler.enable-ha-evaluation
 [enable_ha_evaluation: <boolean> | default = false]
-
-# Timeout for fanout calls to other rulers
-# CLI flag: -ruler.list-rules-fanout-timeout
-[list_rules_fanout_timeout: <duration> | default = 2m]
 ```
 
 ### `ruler_storage_config`

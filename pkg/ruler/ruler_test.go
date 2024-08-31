@@ -229,7 +229,7 @@ func (p *mockRulerClientsPool) GetClientFor(addr string) (RulerClient, error) {
 
 func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer, rulerAddrMap map[string]*Ruler) *mockRulerClientsPool {
 	return &mockRulerClientsPool{
-		ClientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
+		ClientsPool:  newRulerClientPool(cfg.ClientTLSConfig.Config, logger, reg),
 		cfg:          cfg,
 		rulerAddrMap: rulerAddrMap,
 	}

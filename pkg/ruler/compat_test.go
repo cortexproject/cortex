@@ -23,6 +23,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -392,14 +393,23 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 }
 
 func TestRecordAndReportRuleQueryMetrics(t *testing.T) {
-	queryTime := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"})
+	metrics := NewRuleEvalMetrics(Config{EnableQueryStats: true}, prometheus.DefaultRegisterer)
 
 	mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
+		queryStats := stats.FromContext(ctx)
+		queryStats.AddFetchedSeries(2)
+		queryStats.AddFetchedSamples(2)
+		queryStats.AddFetchedChunkBytes(10)
+		queryStats.AddFetchedDataBytes(14)
 		time.Sleep(1 * time.Second)
 		return promql.Vector{}, nil
 	}
-	qf := RecordAndReportRuleQueryMetrics(mockFunc, queryTime.WithLabelValues("userID"), log.NewNopLogger())
+	qf := RecordAndReportRuleQueryMetrics(mockFunc, "userID", metrics, log.NewNopLogger())
 	_, _ = qf(context.Background(), "test", time.Now())
 
-	require.GreaterOrEqual(t, testutil.ToFloat64(queryTime.WithLabelValues("userID")), float64(1))
+	require.GreaterOrEqual(t, testutil.ToFloat64(metrics.RulerQuerySeconds.WithLabelValues("userID")), float64(1))
+	require.Equal(t, testutil.ToFloat64(metrics.RulerQuerySeries.WithLabelValues("userID")), float64(2))
+	require.Equal(t, testutil.ToFloat64(metrics.RulerQuerySamples.WithLabelValues("userID")), float64(2))
+	require.Equal(t, testutil.ToFloat64(metrics.RulerQueryChunkBytes.WithLabelValues("userID")), float64(10))
+	require.Equal(t, testutil.ToFloat64(metrics.RulerQueryDataBytes.WithLabelValues("userID")), float64(14))
 }

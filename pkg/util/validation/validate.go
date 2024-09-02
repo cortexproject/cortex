@@ -74,9 +74,10 @@ const (
 )
 
 type ValidateMetrics struct {
-	DiscardedSamples   *prometheus.CounterVec
-	DiscardedExemplars *prometheus.CounterVec
-	DiscardedMetadata  *prometheus.CounterVec
+	DiscardedSamples                  *prometheus.CounterVec
+	DiscardedExemplars                *prometheus.CounterVec
+	DiscardedMetadata                 *prometheus.CounterVec
+	HistogramSamplesReducedResolution *prometheus.CounterVec
 }
 
 func registerCollector(r prometheus.Registerer, c prometheus.Collector) {
@@ -111,10 +112,19 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		[]string{discardReasonLabel, "user"},
 	)
 	registerCollector(r, discardedMetadata)
+	histogramSamplesReducedResolution := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cortex_reduced_resolution_histogram_samples_total",
+			Help: "The total number of histogram samples that had the resolution reduced.",
+		},
+		[]string{"user"},
+	)
+	registerCollector(r, histogramSamplesReducedResolution)
 	m := &ValidateMetrics{
-		DiscardedSamples:   discardedSamples,
-		DiscardedExemplars: discardedExemplars,
-		DiscardedMetadata:  discardedMetadata,
+		DiscardedSamples:                  discardedSamples,
+		DiscardedExemplars:                discardedExemplars,
+		DiscardedMetadata:                 discardedMetadata,
+		HistogramSamplesReducedResolution: histogramSamplesReducedResolution,
 	}
 
 	return m
@@ -286,12 +296,16 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 		}
 		fh := cortexpb.FloatHistogramProtoToFloatHistogram(histogramSample)
+		oBuckets := len(fh.PositiveBuckets) + len(fh.NegativeBuckets)
 		for len(fh.PositiveBuckets)+len(fh.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
 			if fh.Schema <= histogram.ExponentialSchemaMin {
 				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 				return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 			}
 			fh = fh.ReduceResolution(fh.Schema - 1)
+		}
+		if oBuckets != len(fh.PositiveBuckets)+len(fh.NegativeBuckets) {
+			validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID).Inc()
 		}
 		// If resolution reduced, convert new float histogram to protobuf type again.
 		return cortexpb.FloatHistogramToHistogramProto(histogramSample.TimestampMs, fh), nil
@@ -308,12 +322,16 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 		return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 	}
 	h := cortexpb.HistogramProtoToHistogram(histogramSample)
+	oBuckets := len(h.PositiveBuckets) + len(h.NegativeBuckets)
 	for len(h.PositiveBuckets)+len(h.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
 		if h.Schema <= histogram.ExponentialSchemaMin {
 			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 		}
 		h = h.ReduceResolution(h.Schema - 1)
+	}
+	if oBuckets != len(h.PositiveBuckets)+len(h.NegativeBuckets) {
+		validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID).Inc()
 	}
 	// If resolution reduced, convert new histogram to protobuf type again.
 	return cortexpb.HistogramToHistogramProto(histogramSample.TimestampMs, h), nil
@@ -330,5 +348,8 @@ func DeletePerUserValidationMetrics(validateMetrics *ValidateMetrics, userID str
 	}
 	if err := util.DeleteMatchingLabels(validateMetrics.DiscardedMetadata, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_discarded_metadata_total metric for user", "user", userID, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(validateMetrics.HistogramSamplesReducedResolution, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_reduced_resolution_histogram_samples_total metric for user", "user", userID, "err", err)
 	}
 }

@@ -1812,7 +1812,7 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		ApiIngestionRate:  userStat.APIIngestionRate,
 		RuleIngestionRate: userStat.RuleIngestionRate,
 		ActiveSeries:      userStat.ActiveSeries,
-		LoadBlocks:        userStat.LoadBlocks,
+		LoadedBlocks:      userStat.LoadedBlocks,
 	}, nil
 }
 
@@ -1862,7 +1862,7 @@ func (i *Ingester) AllUserStats(_ context.Context, _ *client.UserStatsRequest) (
 				ApiIngestionRate:  userStat.APIIngestionRate,
 				RuleIngestionRate: userStat.RuleIngestionRate,
 				ActiveSeries:      userStat.ActiveSeries,
-				LoadBlocks:        userStat.LoadBlocks,
+				LoadedBlocks:      userStat.LoadedBlocks,
 			},
 		})
 	}
@@ -1884,7 +1884,7 @@ func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) UserStats {
 		RuleIngestionRate: ruleRate,
 		NumSeries:         db.Head().NumSeries(),
 		ActiveSeries:      activeSeries,
-		LoadBlocks:        uint64(len(db.Blocks())),
+		LoadedBlocks:      uint64(len(db.Blocks())),
 	}
 }
 

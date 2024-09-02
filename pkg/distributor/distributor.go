@@ -1384,7 +1384,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 			s.RuleIngestionRate += u.Data.RuleIngestionRate
 			s.NumSeries += u.Data.NumSeries
 			s.ActiveSeries += u.Data.ActiveSeries
-			s.LoadBlocks += u.Data.LoadBlocks
+			s.LoadedBlocks += u.Data.LoadedBlocks
 			perUserTotals[u.UserId] = s
 		}
 	}
@@ -1400,7 +1400,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 				RuleIngestionRate: stats.RuleIngestionRate,
 				NumSeries:         stats.NumSeries,
 				ActiveSeries:      stats.ActiveSeries,
-				LoadBlocks:        stats.LoadBlocks,
+				LoadedBlocks:      stats.LoadedBlocks,
 			},
 		})
 	}

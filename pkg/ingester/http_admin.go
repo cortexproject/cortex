@@ -86,7 +86,7 @@ type UserStats struct {
 	APIIngestionRate  float64 `json:"APIIngestionRate"`
 	RuleIngestionRate float64 `json:"RuleIngestionRate"`
 	ActiveSeries      uint64  `json:"activeSeries"`
-	LoadBlocks        uint64  `json:"loadBlocks"`
+	LoadedBlocks      uint64  `json:"loadedBlocks"`
 }
 
 // AllUserStatsRender render data for all users or return in json format.

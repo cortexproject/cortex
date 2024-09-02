@@ -4248,7 +4248,7 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 				ApiIngestionRate:  0.2,
 				RuleIngestionRate: 0,
 				ActiveSeries:      3,
-				LoadBlocks:        0,
+				LoadedBlocks:      0,
 			},
 		},
 		{
@@ -4259,7 +4259,7 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 				ApiIngestionRate:  0.13333333333333333,
 				RuleIngestionRate: 0,
 				ActiveSeries:      2,
-				LoadBlocks:        0,
+				LoadedBlocks:      0,
 			},
 		},
 	}
@@ -4326,7 +4326,7 @@ func Test_Ingester_AllUserStatsHandler(t *testing.T) {
 				APIIngestionRate:  0.2,
 				RuleIngestionRate: 0,
 				ActiveSeries:      3,
-				LoadBlocks:        1,
+				LoadedBlocks:      1,
 			},
 		},
 		{
@@ -4337,7 +4337,7 @@ func Test_Ingester_AllUserStatsHandler(t *testing.T) {
 				APIIngestionRate:  0.13333333333333333,
 				RuleIngestionRate: 0,
 				ActiveSeries:      2,
-				LoadBlocks:        1,
+				LoadedBlocks:      1,
 			},
 		},
 	}

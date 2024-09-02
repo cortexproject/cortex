@@ -310,6 +310,7 @@ func TestValidateNativeHistogram(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		bucketLimit       int
+		resolutionReduced bool
 		histogram         cortexpb.Histogram
 		expectedHistogram cortexpb.Histogram
 		expectedErr       error
@@ -341,12 +342,14 @@ func TestValidateNativeHistogram(t *testing.T) {
 			bucketLimit:       6,
 			histogram:         cortexpb.HistogramToHistogramProto(0, h.Copy()),
 			expectedHistogram: cortexpb.HistogramToHistogramProto(0, h.Copy().ReduceResolution(0)),
+			resolutionReduced: true,
 		},
 		{
 			name:              "exceed limit and reduce resolution for 1 level, float histogram",
 			bucketLimit:       6,
 			histogram:         cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
 			expectedHistogram: cortexpb.FloatHistogramToHistogramProto(0, fh.Copy().ReduceResolution(0)),
+			resolutionReduced: true,
 		},
 		{
 			name:              "exceed limit and reduce resolution for 2 levels, histogram",
@@ -394,7 +397,13 @@ func TestValidateNativeHistogram(t *testing.T) {
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, actualErr)
 				require.Equal(t, float64(1), testutil.ToFloat64(validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID)))
+				// Should never increment if error was returned
+				require.Equal(t, float64(0), testutil.ToFloat64(validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID)))
+
 			} else {
+				if tc.resolutionReduced {
+					require.Equal(t, float64(1), testutil.ToFloat64(validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID)))
+				}
 				require.NoError(t, actualErr)
 				require.Equal(t, tc.expectedHistogram, actualHistogram)
 			}

@@ -574,8 +574,16 @@ func TestRuleEvalMetricsDeletePerUserMetrics(t *testing.T) {
 	m.FailedQueriesVec.WithLabelValues("fake2").Add(10)
 	m.RulerQuerySeconds.WithLabelValues("fake1").Add(10)
 	m.RulerQuerySeconds.WithLabelValues("fake2").Add(10)
+	m.RulerQuerySeries.WithLabelValues("fake1").Add(10)
+	m.RulerQuerySeries.WithLabelValues("fake2").Add(10)
+	m.RulerQuerySamples.WithLabelValues("fake1").Add(10)
+	m.RulerQuerySamples.WithLabelValues("fake2").Add(10)
+	m.RulerQueryChunkBytes.WithLabelValues("fake1").Add(10)
+	m.RulerQueryChunkBytes.WithLabelValues("fake2").Add(10)
+	m.RulerQueryDataBytes.WithLabelValues("fake1").Add(10)
+	m.RulerQueryDataBytes.WithLabelValues("fake2").Add(10)
 
-	metricNames := []string{"cortex_ruler_write_requests_total", "cortex_ruler_write_requests_failed_total", "cortex_ruler_queries_total", "cortex_ruler_queries_failed_total", "cortex_ruler_query_seconds_total"}
+	metricNames := []string{"cortex_ruler_write_requests_total", "cortex_ruler_write_requests_failed_total", "cortex_ruler_queries_total", "cortex_ruler_queries_failed_total", "cortex_ruler_query_seconds_total", "cortex_ruler_fetched_series_total", "cortex_ruler_samples_total", "cortex_ruler_fetched_chunks_bytes_total", "cortex_ruler_fetched_data_bytes_total"}
 	gm, err := reg.Gather()
 	require.NoError(t, err)
 	mfm, err := util.NewMetricFamilyMap(gm)

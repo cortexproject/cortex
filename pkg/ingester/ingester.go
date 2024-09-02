@@ -2886,8 +2886,11 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
-		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "failed to parse HTTP request in mode handler", "err", err)
+		respMsg := "failed to parse HTTP request in mode handler"
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg, "err", err)
 		w.WriteHeader(http.StatusBadRequest)
+		// We ignore errors here, because we cannot do anything about them.
+		_, _ = w.Write([]byte(respMsg))
 		return
 	}
 
@@ -2919,16 +2922,19 @@ func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	default:
-		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "invalid mode input", "mode", html.EscapeString(reqMode))
+		respMsg := fmt.Sprintf("invalid mode input: %s", html.EscapeString(reqMode))
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
 		w.WriteHeader(http.StatusBadRequest)
+		// We ignore errors here, because we cannot do anything about them.
+		_, _ = w.Write([]byte(respMsg))
 		return
 	}
 
-	respMsg := fmt.Sprintf("Ingester mode %s and unregisterOnShutdown %t", i.lifecycler.GetState(), i.lifecycler.ShouldUnregisterOnShutdown())
+	respMsg := fmt.Sprintf("Ingester mode %s", i.lifecycler.GetState())
 	level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
 	w.WriteHeader(http.StatusOK)
 	// We ignore errors here, because we cannot do anything about them.
-	_, _ = w.Write([]byte(respMsg)) //no
+	_, _ = w.Write([]byte(respMsg))
 }
 
 // metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.

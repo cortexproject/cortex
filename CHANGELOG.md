@@ -3,7 +3,7 @@
 ## master / unreleased
 
 
-## 1.18.0 in progress
+## 1.18.0 2024-09-03
 
 * [CHANGE] Ingester: Remove `-querier.query-store-for-labels-enabled` flag. Querying long-term store for labels is always enabled. #5984
 * [CHANGE] Server: Instrument `cortex_request_duration_seconds` metric with native histogram. If `native-histograms` feature is enabled in monitoring Prometheus then the metric name needs to be updated in your dashboards. #6056

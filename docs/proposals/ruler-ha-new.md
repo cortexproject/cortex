@@ -1,8 +1,8 @@
 ---
-title: "Ruler HA"
-linkTitle: "Ruler HA"
+title: "Ruler High Availability"
+linkTitle: "Ruler High Availability"
 weight: 1
-slug: ruler-ha
+slug: ruler-high-availability
 ---
 
 - Author: [Anand Rajagopal](https://github.com/rajagopalanand)
@@ -18,7 +18,7 @@ Rulers in Cortex currently run with a replication factor of 1, wherein each Rule
     - Missed evaluations due to a ruler outage, possibly caused by a deployment, noisy neighbour, hardware failure, etc.
     - Missed evaluations due to a ruler brownout due to other tenant rule groups sharing the same ruler (noisy neighbour)
 - API
-  - inconsistent API results during resharding (e.g. due to a deployment) when rulers are in a transition state loading rule groups
+  - Inconsistent API results during resharding (e.g. due to a deployment) when rulers are in a transition state loading rule groups
 
 This proposal attempts to mitigate the above risks by enabling a ruler replication factor of greater than 1, allowing multiple rulers to evaluate the same rule group — effectively.
 

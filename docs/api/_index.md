@@ -33,6 +33,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Shutdown](#shutdown) | Ingester || `GET,POST /ingester/shutdown` |
 | [Ingesters ring status](#ingesters-ring-status) | Ingester || `GET /ingester/ring` |
 | [Ingester tenants stats](#ingester-tenants-stats) | Ingester || `GET /ingester/all_user_stats` |
+| [Ingester mode](#ingester-mode) | Ingester || `GET,POST /ingester/mode` |
 | [Instant query](#instant-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query` |
 | [Range query](#range-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query_range` |
 | [Exemplar query](#exemplar-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query_exemplars` |
@@ -305,6 +306,15 @@ GET /ingester/all_user_stats
 ```
 
 Displays a web page with per-tenant statistics updated in realtime, including the total number of loaded blocks and active series from a specific ingester as well as the current ingestion rate (samples / sec).
+
+### Ingester mode
+
+```
+GET,POST /ingester/mode
+```
+Change ingester mode between ACTIVE or READONLY. READONLY ingester does not receive push requests and will only be called for query operations.
+
+The endpoint accept query param `mode` or POST as `application/x-www-form-urlencoded` with mode type.
 
 
 ## Querier / Query-frontend

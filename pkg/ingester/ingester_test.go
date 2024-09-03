@@ -5187,6 +5187,117 @@ func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest 
 	return cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
 }
 
+func Test_Ingester_ModeHandler(t *testing.T) {
+	tests := map[string]struct {
+		method           string
+		requestBody      io.Reader
+		requestUrl       string
+		initialState     ring.InstanceState
+		mode             string
+		expectedState    ring.InstanceState
+		expectedResponse int
+	}{
+		"should change to READONLY mode": {
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=reAdOnLy",
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
+		},
+		"should change mode on GET method": {
+			method:           "GET",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=READONLY",
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
+		},
+		"should change mode on POST method via body": {
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode",
+			requestBody:      strings.NewReader("mode=readonly"),
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
+		},
+		"should change to ACTIVE mode": {
+			method:           "POST",
+			initialState:     ring.READONLY,
+			requestUrl:       "/mode?mode=active",
+			expectedState:    ring.ACTIVE,
+			expectedResponse: http.StatusOK,
+		},
+		"should fail to unknown mode": {
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=NotSupported",
+			expectedState:    ring.ACTIVE,
+			expectedResponse: http.StatusBadRequest,
+		},
+		"should maintain in readonly": {
+			method:           "POST",
+			initialState:     ring.READONLY,
+			requestUrl:       "/mode?mode=READONLY",
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
+		},
+		"should maintain in active": {
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=ACTIVE",
+			expectedState:    ring.ACTIVE,
+			expectedResponse: http.StatusOK,
+		},
+		"should fail mode READONLY if LEAVING state": {
+			method:           "POST",
+			initialState:     ring.LEAVING,
+			requestUrl:       "/mode?mode=READONLY",
+			expectedState:    ring.LEAVING,
+			expectedResponse: http.StatusBadRequest,
+		},
+		"should fail with malformatted request": {
+			method:           "GET",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mod;e=READONLY",
+			expectedResponse: http.StatusBadRequest,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			cfg := defaultIngesterTestConfig(t)
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			if testData.initialState != ring.ACTIVE {
+				err = i.lifecycler.ChangeState(context.Background(), testData.initialState)
+				require.NoError(t, err)
+
+				// Wait until initial state
+				test.Poll(t, 1*time.Second, testData.initialState, func() interface{} {
+					return i.lifecycler.GetState()
+				})
+			}
+
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(testData.method, testData.requestUrl, testData.requestBody)
+			if testData.requestBody != nil {
+				request.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
+			}
+			i.ModeHandler(response, request)
+
+			require.Equal(t, testData.expectedResponse, response.Code)
+			require.Equal(t, testData.expectedState, i.lifecycler.GetState())
+		})
+	}
+}
+
 // mockTenantLimits exposes per-tenant limits based on a provided map
 type mockTenantLimits struct {
 	limits map[string]*validation.Limits

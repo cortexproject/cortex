@@ -51,4 +51,6 @@ enum InstanceState {
 	// This state is only used by gossiping code to distribute information about
 	// instances that have been removed from the ring. Ring users should not use it directly.
 	LEFT = 4;
+
+	READONLY= 5;
 }

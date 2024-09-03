@@ -981,7 +981,7 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 	})
 }
 
-func TestRulerHA(t *testing.T) {
+func TestRulerHAEvaluation(t *testing.T) {
 	const numRulesGroups = 20
 
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))

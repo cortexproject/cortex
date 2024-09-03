@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [FEATURE] Ruler: Minimize chances of missed rule group evaluations that can occur due to OOM kills, bad underlying nodes, or due to an unhealthy ruler that appears in the ring as healthy. This feature is enabled via `-ruler.enable-ha-evaluation` flag. #6129
 * [ENHANCEMENT] Ruler: Add new ruler metric `cortex_ruler_rule_groups_in_store` that is the total rule groups per tenant in store, which can be used to compare with `cortex_prometheus_rule_group_rules` to count the number of rule groups that are not loaded by a ruler. #5869
 * [ENHANCEMENT] Ingester/Ring: New `READONLY` status on ring to be used by Ingester. New ingester API to change mode of ingester #6163
 * [ENHANCEMENT] Ruler: Add query statistics metrics when --ruler.query-stats-enabled=true. #6173
@@ -22,7 +23,6 @@
 * [CHANGE] Querier: Remove `-querier.at-modifier-enabled` flag. #6157
 * [CHANGE] Tracing: Remove deprecated `oltp_endpoint` config entirely. #6158
 * [CHANGE] Store Gateway: Enable store gateway zone stable shuffle sharding by default. #6161
-* [FEATURE] Ruler: Minimize rule group missed evaluations via `-ruler.enable-ha` flag. #6129
 * [FEATURE] Ingester/Distributor: Experimental: Enable native histogram ingestion via `-blocks-storage.tsdb.enable-native-histograms` flag. #5986 #6010 #6020
 * [FEATURE] Querier: Enable querying native histogram chunks. #5944 #6031
 * [FEATURE] Query Frontend: Support native histogram in query frontend response. #5996 #6043

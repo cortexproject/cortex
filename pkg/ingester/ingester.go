@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"math"
 	"net/http"
@@ -2879,6 +2880,61 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ModeHandler Change mode of ingester. It will also update set unregisterOnShutdown to true if READONLY mode
+func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		respMsg := "failed to parse HTTP request in mode handler"
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg, "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		// We ignore errors here, because we cannot do anything about them.
+		_, _ = w.Write([]byte(respMsg))
+		return
+	}
+
+	currentState := i.lifecycler.GetState()
+	reqMode := strings.ToUpper(r.Form.Get("mode"))
+	switch reqMode {
+	case "READONLY":
+		if currentState != ring.READONLY {
+			err = i.lifecycler.ChangeState(r.Context(), ring.READONLY)
+			if err != nil {
+				respMsg := fmt.Sprintf("failed to change state: %s", err)
+				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+				w.WriteHeader(http.StatusBadRequest)
+				// We ignore errors here, because we cannot do anything about them.
+				_, _ = w.Write([]byte(respMsg))
+				return
+			}
+		}
+	case "ACTIVE":
+		if currentState != ring.ACTIVE {
+			err = i.lifecycler.ChangeState(r.Context(), ring.ACTIVE)
+			if err != nil {
+				respMsg := fmt.Sprintf("failed to change state: %s", err)
+				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+				w.WriteHeader(http.StatusBadRequest)
+				// We ignore errors here, because we cannot do anything about them.
+				_, _ = w.Write([]byte(respMsg))
+				return
+			}
+		}
+	default:
+		respMsg := fmt.Sprintf("invalid mode input: %s", html.EscapeString(reqMode))
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+		w.WriteHeader(http.StatusBadRequest)
+		// We ignore errors here, because we cannot do anything about them.
+		_, _ = w.Write([]byte(respMsg))
+		return
+	}
+
+	respMsg := fmt.Sprintf("Ingester mode %s", i.lifecycler.GetState())
+	level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+	w.WriteHeader(http.StatusOK)
+	// We ignore errors here, because we cannot do anything about them.
+	_, _ = w.Write([]byte(respMsg))
 }
 
 // metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.

@@ -106,13 +106,17 @@ var (
 	})
 
 	// WriteNoExtend is like Write, but with no replicaset extension.
-	WriteNoExtend = NewOp([]InstanceState{ACTIVE}, nil)
+	WriteNoExtend = NewOp([]InstanceState{ACTIVE}, func(s InstanceState) bool {
+		// We want to skip instances that are READONLY. So we will increase the size of replication
+		// for the key
+		return s == READONLY
+	})
 
-	// Read operation that extends the replica set if an instance is not ACTIVE, LEAVING OR JOINING
-	Read = NewOp([]InstanceState{ACTIVE, PENDING, LEAVING, JOINING}, func(s InstanceState) bool {
+	// Read operation that extends the replica set if an instance is not ACTIVE, PENDING, LEAVING, JOINING OR READONLY
+	Read = NewOp([]InstanceState{ACTIVE, PENDING, LEAVING, JOINING, READONLY}, func(s InstanceState) bool {
 		// To match Write with extended replica set we have to also increase the
 		// size of the replica set for Read, but we can read from LEAVING ingesters.
-		return s != ACTIVE && s != LEAVING && s != JOINING
+		return s != ACTIVE && s != LEAVING && s != JOINING && s != READONLY
 	})
 
 	// Reporting is a special value for inquiring about health.
@@ -661,7 +665,7 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 	oldestTimestampByState := map[string]int64{}
 
 	// Initialized to zero so we emit zero-metrics (instead of not emitting anything)
-	for _, s := range []string{unhealthy, ACTIVE.String(), LEAVING.String(), PENDING.String(), JOINING.String()} {
+	for _, s := range []string{unhealthy, ACTIVE.String(), LEAVING.String(), PENDING.String(), JOINING.String(), READONLY.String()} {
 		numByState[s] = 0
 		oldestTimestampByState[s] = 0
 	}
@@ -995,7 +999,7 @@ func NewOp(healthyStates []InstanceState, shouldExtendReplicaSet func(s Instance
 	}
 
 	if shouldExtendReplicaSet != nil {
-		for _, s := range []InstanceState{ACTIVE, LEAVING, PENDING, JOINING, LEFT} {
+		for _, s := range []InstanceState{ACTIVE, LEAVING, PENDING, JOINING, LEFT, READONLY} {
 			if shouldExtendReplicaSet(s) {
 				op |= (0x10000 << s)
 			}

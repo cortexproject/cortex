@@ -726,12 +726,14 @@ func TestRing_Get_ExtendedReplicationSet(t *testing.T) {
 	unhealthyTimestamp := time.Now().Add(-2 * time.Minute).Unix()
 
 	tests := map[string]struct {
+		operation         Operation
 		instances         map[string]InstanceDesc
 		numberOfZones     int
 		replicationFactor int
 		expectedInstances []InstanceDesc
 	}{
 		"should return exactly number of replication factor when there is no extended replica set": {
+			operation: NewOp([]InstanceState{JOINING, ACTIVE}, func(s InstanceState) bool { return s == JOINING }),
 			instances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Timestamp: healthyTimestamp},
 				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
@@ -747,6 +749,7 @@ func TestRing_Get_ExtendedReplicationSet(t *testing.T) {
 			},
 		},
 		"extended replica set should be included in the set": {
+			operation: NewOp([]InstanceState{JOINING, ACTIVE}, func(s InstanceState) bool { return s == JOINING }),
 			instances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Timestamp: healthyTimestamp},
 				"instance-2": {Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
@@ -765,6 +768,7 @@ func TestRing_Get_ExtendedReplicationSet(t *testing.T) {
 			},
 		},
 		"unhealthy instances should be excluded from the set": {
+			operation: NewOp([]InstanceState{JOINING, ACTIVE}, func(s InstanceState) bool { return s == JOINING }),
 			instances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Timestamp: unhealthyTimestamp},
 				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
@@ -779,6 +783,7 @@ func TestRing_Get_ExtendedReplicationSet(t *testing.T) {
 			},
 		},
 		"should return exactly number of replication factor when there is no extended replica set, when zone awareness is enabled": {
+			operation: NewOp([]InstanceState{JOINING, ACTIVE}, func(s InstanceState) bool { return s == JOINING }),
 			instances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
 				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
@@ -794,6 +799,7 @@ func TestRing_Get_ExtendedReplicationSet(t *testing.T) {
 			},
 		},
 		"extended replica set should be included in the set, when zone awareness is enabled": {
+			operation: NewOp([]InstanceState{JOINING, ACTIVE}, func(s InstanceState) bool { return s == JOINING }),
 			instances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
 				"instance-2": {Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
@@ -813,6 +819,7 @@ func TestRing_Get_ExtendedReplicationSet(t *testing.T) {
 			},
 		},
 		"extended replica set should be included in the set, when zone awareness is enabled and RF is greater than zones": {
+			operation: NewOp([]InstanceState{JOINING, ACTIVE}, func(s InstanceState) bool { return s == JOINING }),
 			instances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
 				"instance-2": {Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
@@ -832,6 +839,56 @@ func TestRing_Get_ExtendedReplicationSet(t *testing.T) {
 				{Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Zone: "zone-2", Timestamp: healthyTimestamp},
 				{Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
 				{Addr: "127.0.0.7", State: ACTIVE, Tokens: []uint32{7}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+		},
+		"extended replica set should be included in the set, when readonly using WriteNoExtend operation": {
+			operation: WriteNoExtend,
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: READONLY, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: READONLY, Tokens: []uint32{3}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-6": {Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+				"instance-7": {Addr: "127.0.0.7", State: ACTIVE, Tokens: []uint32{7}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     3,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+		},
+		"extended replica set should be included in the set, when readonly using Write operation": {
+			operation: Write,
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: READONLY, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: READONLY, Tokens: []uint32{3}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-6": {Addr: "127.0.0.6", State: LEAVING, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+				"instance-7": {Addr: "127.0.0.7", State: ACTIVE, Tokens: []uint32{7}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     3,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.7", State: ACTIVE, Tokens: []uint32{7}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+		},
+		"extended replica set should be included in the set, when readonly using Write operation and 1 zone": {
+			operation: Write,
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: READONLY, Tokens: []uint32{1}, Zone: "", Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Zone: "", Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     1,
+			replicationFactor: 1,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Zone: "", Timestamp: healthyTimestamp},
 			},
 		},
 	}
@@ -854,8 +911,7 @@ func TestRing_Get_ExtendedReplicationSet(t *testing.T) {
 				KVClient:            &MockClient{},
 			}
 
-			testOperation := NewOp([]InstanceState{JOINING, ACTIVE}, func(s InstanceState) bool { return s == JOINING })
-			set, err := ring.Get(0, testOperation, nil, nil, nil)
+			set, err := ring.Get(0, testData.operation, nil, nil, nil)
 			assert.NoError(t, err)
 			assert.Equal(t, testData.expectedInstances, set.Instances)
 		})
@@ -887,11 +943,12 @@ func TestRing_GetAllHealthy(t *testing.T) {
 				"instance-2": {Addr: "127.0.0.2", State: PENDING, Timestamp: now.Add(-10 * time.Second).Unix()},
 				"instance-3": {Addr: "127.0.0.3", State: JOINING, Timestamp: now.Add(-20 * time.Second).Unix()},
 				"instance-4": {Addr: "127.0.0.4", State: LEAVING, Timestamp: now.Add(-30 * time.Second).Unix()},
-				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix()},
+				"instance-5": {Addr: "127.0.0.5", State: READONLY, Timestamp: now.Add(-40 * time.Second).Unix()},
+				"instance-6": {Addr: "127.0.0.6", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix()},
 			},
-			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
+			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
 			expectedSetForWrite:     []string{"127.0.0.1"},
-			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
+			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
 		},
 	}
 
@@ -1086,6 +1143,34 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 			expectedErrForRead:      ErrTooManyUnhealthyInstances,
 			expectedErrForWrite:     ErrTooManyUnhealthyInstances,
 			expectedErrForReporting: ErrTooManyUnhealthyInstances,
+		},
+		"should succeed with READONLY instance": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-1", "", 128, true)},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-2", "", 128, true)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-3", "", 128, true)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-4", "", 128, true)},
+				"instance-5": {Addr: "127.0.0.5", State: READONLY, Timestamp: now.Add(-40 * time.Second).Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-5", "", 128, true)},
+			},
+			ringHeartbeatTimeout:    time.Minute,
+			ringReplicationFactor:   1,
+			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedErrForWrite:     ErrTooManyUnhealthyInstances,
+			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+		},
+		"should succeed with READONLY instance and RF = 3": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-1", "", 128, true)},
+				"instance-2": {Addr: "127.0.0.2", State: READONLY, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-2", "", 128, true)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-3", "", 128, true)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-4", "", 128, true)},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-40 * time.Second).Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-5", "", 128, true)},
+			},
+			ringHeartbeatTimeout:    time.Minute,
+			ringReplicationFactor:   3,
+			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
 		},
 	}
 
@@ -3001,6 +3086,7 @@ func TestUpdateMetrics(t *testing.T) {
 		ring_members{name="test",state="JOINING"} 0
 		ring_members{name="test",state="LEAVING"} 0
 		ring_members{name="test",state="PENDING"} 0
+		ring_members{name="test",state="READONLY"} 0
 		ring_members{name="test",state="Unhealthy"} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
@@ -3008,6 +3094,7 @@ func TestUpdateMetrics(t *testing.T) {
 		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
 		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
 		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="READONLY"} 0
 		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
 		# HELP ring_tokens_owned The number of tokens in the ring owned by the member
 		# TYPE ring_tokens_owned gauge
@@ -3027,6 +3114,7 @@ func TestUpdateMetrics(t *testing.T) {
 		ring_members{name="test",state="JOINING"} 0
 		ring_members{name="test",state="LEAVING"} 0
 		ring_members{name="test",state="PENDING"} 0
+		ring_members{name="test",state="READONLY"} 0
 		ring_members{name="test",state="Unhealthy"} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
@@ -3034,6 +3122,7 @@ func TestUpdateMetrics(t *testing.T) {
 		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
 		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
 		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="READONLY"} 0
 		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
 		# HELP ring_tokens_total Number of tokens in the ring
 		# TYPE ring_tokens_total gauge
@@ -3105,6 +3194,7 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_members{name="test",state="JOINING"} 0
 		ring_members{name="test",state="LEAVING"} 0
 		ring_members{name="test",state="PENDING"} 0
+		ring_members{name="test",state="READONLY"} 0
 		ring_members{name="test",state="Unhealthy"} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
@@ -3112,6 +3202,7 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
 		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
 		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="READONLY"} 0
 		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
 		# HELP ring_tokens_owned The number of tokens in the ring owned by the member
 		# TYPE ring_tokens_owned gauge
@@ -3140,6 +3231,7 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_members{name="test",state="JOINING"} 0
 		ring_members{name="test",state="LEAVING"} 0
 		ring_members{name="test",state="PENDING"} 0
+		ring_members{name="test",state="READONLY"} 0
 		ring_members{name="test",state="Unhealthy"} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
@@ -3147,6 +3239,7 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
 		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
 		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="READONLY"} 0
 		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
 		# HELP ring_tokens_owned The number of tokens in the ring owned by the member
 		# TYPE ring_tokens_owned gauge

@@ -1,4 +1,4 @@
-package distributor
+package ingester
 
 import (
 	"encoding/json"
@@ -22,13 +22,16 @@ const tpl = `
 	<body>
 		<h1>Cortex Ingester Stats</h1>
 		<p>Current time: {{ .Now }}</p>
+		{{if (gt .ReplicationFactor 0)}}
 		<p><b>NB stats do not account for replication factor, which is currently set to {{ .ReplicationFactor }}</b></p>
+		{{end}}
 		<form action="" method="POST">
 			<input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
 			<table border="1">
 				<thead>
 					<tr>
 						<th>User</th>
+						<th>Loaded Blocks</th>
 						<th># Series</th>
 						<th># Active Series</th>
 						<th>Total Ingest Rate</th>
@@ -40,6 +43,7 @@ const tpl = `
 					{{ range .Stats }}
 					<tr>
 						<td>{{ .UserID }}</td>
+						<td align='right'>{{ .UserStats.LoadBlocks }}</td>
 						<td align='right'>{{ .UserStats.NumSeries }}</td>
 						<td align='right'>{{ .UserStats.ActiveSeries }}</td>
 						<td align='right'>{{ printf "%.2f" .UserStats.IngestionRate }}</td>
@@ -53,31 +57,41 @@ const tpl = `
 	</body>
 </html>`
 
-var tmpl *template.Template
+var UserStatsTmpl *template.Template
 
 func init() {
-	tmpl = template.Must(template.New("webpage").Parse(tpl))
+	UserStatsTmpl = template.Must(template.New("webpage").Parse(tpl))
 }
 
-type userStatsByTimeseries []UserIDStats
+type UserStatsByTimeseries []UserIDStats
 
-func (s userStatsByTimeseries) Len() int      { return len(s) }
-func (s userStatsByTimeseries) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s UserStatsByTimeseries) Len() int      { return len(s) }
+func (s UserStatsByTimeseries) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 
-func (s userStatsByTimeseries) Less(i, j int) bool {
+func (s UserStatsByTimeseries) Less(i, j int) bool {
 	return s[i].NumSeries > s[j].NumSeries ||
 		(s[i].NumSeries == s[j].NumSeries && s[i].UserID < s[j].UserID)
 }
 
-// AllUserStatsHandler shows stats for all users.
-func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {
-	stats, err := d.AllUserStats(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+// UserIDStats models ingestion statistics for one user, including the user ID
+type UserIDStats struct {
+	UserID string `json:"userID"`
+	UserStats
+}
 
-	sort.Sort(userStatsByTimeseries(stats))
+// UserStats models ingestion statistics for one user.
+type UserStats struct {
+	IngestionRate     float64 `json:"ingestionRate"`
+	NumSeries         uint64  `json:"numSeries"`
+	APIIngestionRate  float64 `json:"APIIngestionRate"`
+	RuleIngestionRate float64 `json:"RuleIngestionRate"`
+	ActiveSeries      uint64  `json:"activeSeries"`
+	LoadedBlocks      uint64  `json:"loadedBlocks"`
+}
+
+// AllUserStatsRender render data for all users or return in json format.
+func AllUserStatsRender(w http.ResponseWriter, r *http.Request, stats []UserIDStats, rf int) {
+	sort.Sort(UserStatsByTimeseries(stats))
 
 	if encodings, found := r.Header["Accept"]; found &&
 		len(encodings) > 0 && strings.Contains(encodings[0], "json") {
@@ -94,6 +108,6 @@ func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request
 	}{
 		Now:               time.Now(),
 		Stats:             stats,
-		ReplicationFactor: d.ingestersRing.ReplicationFactor(),
-	}, tmpl, r)
+		ReplicationFactor: rf,
+	}, UserStatsTmpl, r)
 }

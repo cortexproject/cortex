@@ -29,6 +29,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ha"
+	"github.com/cortexproject/cortex/pkg/ingester"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
@@ -1319,7 +1320,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 }
 
 // UserStats returns statistics about the current user.
-func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
+func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
@@ -1336,7 +1337,7 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 		return nil, err
 	}
 
-	totalStats := &UserStats{}
+	totalStats := &ingester.UserStats{}
 	for _, resp := range resps {
 		r := resp.(*ingester_client.UserStatsResponse)
 		totalStats.IngestionRate += r.IngestionRate
@@ -1354,17 +1355,11 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	return totalStats, nil
 }
 
-// UserIDStats models ingestion statistics for one user, including the user ID
-type UserIDStats struct {
-	UserID string `json:"userID"`
-	UserStats
-}
-
 // AllUserStats returns statistics about all users.
 // Note it does not divide by the ReplicationFactor like UserStats()
-func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
+func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats, error) {
 	// Add up by user, across all responses from ingesters
-	perUserTotals := make(map[string]UserStats)
+	perUserTotals := make(map[string]ingester.UserStats)
 
 	req := &ingester_client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
@@ -1389,26 +1384,39 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 			s.RuleIngestionRate += u.Data.RuleIngestionRate
 			s.NumSeries += u.Data.NumSeries
 			s.ActiveSeries += u.Data.ActiveSeries
+			s.LoadedBlocks += u.Data.LoadedBlocks
 			perUserTotals[u.UserId] = s
 		}
 	}
 
 	// Turn aggregated map into a slice for return
-	response := make([]UserIDStats, 0, len(perUserTotals))
+	response := make([]ingester.UserIDStats, 0, len(perUserTotals))
 	for id, stats := range perUserTotals {
-		response = append(response, UserIDStats{
+		response = append(response, ingester.UserIDStats{
 			UserID: id,
-			UserStats: UserStats{
+			UserStats: ingester.UserStats{
 				IngestionRate:     stats.IngestionRate,
 				APIIngestionRate:  stats.APIIngestionRate,
 				RuleIngestionRate: stats.RuleIngestionRate,
 				NumSeries:         stats.NumSeries,
 				ActiveSeries:      stats.ActiveSeries,
+				LoadedBlocks:      stats.LoadedBlocks,
 			},
 		})
 	}
 
 	return response, nil
+}
+
+// AllUserStatsHandler shows stats for all users.
+func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {
+	stats, err := d.AllUserStats(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ingester.AllUserStatsRender(w, r, stats, d.ingestersRing.ReplicationFactor())
 }
 
 func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {

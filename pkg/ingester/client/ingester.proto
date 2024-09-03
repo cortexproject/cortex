@@ -100,6 +100,7 @@ message UserStatsResponse {
   double api_ingestion_rate = 3;
   double rule_ingestion_rate = 4;
   uint64 active_series = 5;
+  uint64 loaded_blocks = 6;
 }
 
 message UserIDStatsResponse {

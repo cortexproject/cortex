@@ -263,26 +263,12 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		"cortex_compactor_runs_started_total",
 		"cortex_compactor_runs_completed_total",
 		"cortex_compactor_runs_failed_total",
-		"cortex_compactor_garbage_collected_blocks_total",
-		"cortex_compactor_garbage_collection_duration_seconds",
-		"cortex_compactor_garbage_collection_failures_total",
-		"cortex_compactor_garbage_collection_total",
-		"cortex_compactor_meta_sync_consistency_delay_seconds",
-		"cortex_compactor_meta_sync_duration_seconds",
-		"cortex_compactor_meta_sync_failures_total",
-		"cortex_compactor_meta_syncs_total",
-		"cortex_compactor_group_compaction_runs_completed_total",
-		"cortex_compactor_group_compaction_runs_started_total",
-		"cortex_compactor_group_compactions_failures_total",
-		"cortex_compactor_group_compactions_total",
-		"cortex_compactor_group_vertical_compactions_total",
 		"cortex_compactor_block_cleanup_failures_total",
 		"cortex_compactor_blocks_cleaned_total",
-		"cortex_compactor_blocks_marked_for_deletion_total",
 		"cortex_compactor_blocks_marked_for_no_compaction_total",
+		"cortex_compactor_meta_sync_consistency_delay_seconds",
 		"cortex_compactor_block_cleanup_started_total",
 		"cortex_compactor_block_cleanup_completed_total",
-		"cortex_compactor_block_cleanup_failed_total",
 	))
 }
 
@@ -350,25 +336,10 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 		"cortex_compactor_runs_started_total",
 		"cortex_compactor_runs_completed_total",
 		"cortex_compactor_runs_failed_total",
-		"cortex_compactor_garbage_collected_blocks_total",
-		"cortex_compactor_garbage_collection_duration_seconds",
-		"cortex_compactor_garbage_collection_failures_total",
-		"cortex_compactor_garbage_collection_total",
-		"cortex_compactor_meta_sync_consistency_delay_seconds",
-		"cortex_compactor_meta_sync_duration_seconds",
-		"cortex_compactor_meta_sync_failures_total",
-		"cortex_compactor_meta_syncs_total",
-		"cortex_compactor_group_compaction_runs_completed_total",
-		"cortex_compactor_group_compaction_runs_started_total",
-		"cortex_compactor_group_compactions_failures_total",
-		"cortex_compactor_group_compactions_total",
-		"cortex_compactor_group_vertical_compactions_total",
 		"cortex_compactor_block_cleanup_failures_total",
 		"cortex_compactor_blocks_cleaned_total",
-		"cortex_compactor_blocks_marked_for_deletion_total",
 		"cortex_compactor_blocks_marked_for_no_compaction_total",
-		"cortex_compactor_block_cleanup_started_total",
-		"cortex_compactor_block_cleanup_completed_total",
+		"cortex_compactor_meta_sync_consistency_delay_seconds",
 		"cortex_compactor_block_cleanup_failed_total",
 	))
 }
@@ -572,7 +543,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	testedMetrics := []string{
 		"cortex_compactor_runs_started_total", "cortex_compactor_runs_completed_total", "cortex_compactor_runs_failed_total",
 		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total", "cortex_compactor_blocks_marked_for_deletion_total",
-		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total", "cortex_compactor_block_cleanup_failed_total",
+		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total",
 		"cortex_compactor_blocks_marked_for_no_compaction_total",
 	}
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
@@ -698,7 +669,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	testedMetrics := []string{
 		"cortex_compactor_runs_started_total", "cortex_compactor_runs_completed_total", "cortex_compactor_runs_failed_total",
 		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total", "cortex_compactor_blocks_marked_for_deletion_total",
-		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total", "cortex_compactor_block_cleanup_failed_total",
+		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total",
 		"cortex_compactor_blocks_marked_for_no_compaction_total",
 	}
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
@@ -887,9 +858,8 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	// Real shipper metrics are too variable to embed into a test.
 	testedMetrics := []string{
 		"cortex_compactor_runs_started_total", "cortex_compactor_runs_completed_total", "cortex_compactor_runs_failed_total",
-		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total", "cortex_compactor_blocks_marked_for_deletion_total",
-		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total", "cortex_compactor_block_cleanup_failed_total",
-		"cortex_bucket_blocks_count", "cortex_bucket_blocks_marked_for_deletion_count", "cortex_bucket_index_last_successful_update_timestamp_seconds",
+		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total",
+		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total",
 		"cortex_compactor_blocks_marked_for_no_compaction_total",
 	}
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
@@ -2081,7 +2051,6 @@ func TestCompactor_FailedWithRetriableError(t *testing.T) {
 		# TYPE cortex_compactor_compaction_error_total counter
 		cortex_compactor_compaction_error_total{type="retriable", user="user-1"} 2
 	`),
-		"cortex_compactor_compaction_retry_error_total",
 		"cortex_compactor_compaction_error_total",
 	))
 }
@@ -2135,7 +2104,6 @@ func TestCompactor_FailedWithHaltError(t *testing.T) {
 		# TYPE cortex_compactor_compaction_error_total counter
 		cortex_compactor_compaction_error_total{type="halt", user="user-1"} 1
 	`),
-		"cortex_compactor_compaction_retry_error_total",
 		"cortex_compactor_compaction_error_total",
 	))
 }

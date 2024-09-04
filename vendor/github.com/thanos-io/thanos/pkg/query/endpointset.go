@@ -717,7 +717,7 @@ func (er *endpointRef) updateMetadata(metadata *endpointMetadata, err error) {
 }
 
 // isQueryable returns true if an endpointRef should be used for querying.
-// A strict endpointRef is always queriable. A non-strict endpointRef
+// A strict endpointRef is always queryable. A non-strict endpointRef
 // is queryable if the last health check (info call) succeeded.
 func (er *endpointRef) isQueryable() bool {
 	er.mtx.RLock()
@@ -797,11 +797,7 @@ func (er *endpointRef) labelSets() []labels.Labels {
 
 	labelSet := make([]labels.Labels, 0, len(er.metadata.LabelSets))
 	for _, ls := range labelpb.ZLabelSetsToPromLabelSets(er.metadata.LabelSets...) {
-		if len(ls) == 0 {
-			continue
-		}
-		// Compatibility label for Queriers pre 0.8.1. Filter it out now.
-		if ls[0].Name == store.CompatibilityTypeLabelName {
+		if ls.Len() == 0 {
 			continue
 		}
 		labelSet = append(labelSet, ls.Copy())

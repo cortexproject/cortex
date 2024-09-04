@@ -117,6 +117,9 @@ const (
 
 	// SeriesBatchSize is the default batch size when fetching series from object storage.
 	SeriesBatchSize = 10000
+
+	// checkContextEveryNIterations is used in some tight loops to check if the context is done.
+	checkContextEveryNIterations = 128
 )
 
 var (
@@ -1005,6 +1008,7 @@ type blockSeriesClient struct {
 
 	mint           int64
 	maxt           int64
+	seriesLimit    int
 	indexr         *bucketIndexReader
 	chunkr         *bucketChunkReader
 	loadAggregates []storepb.Aggr
@@ -1080,6 +1084,7 @@ func newBlockSeriesClient(
 
 		mint:                   req.MinTime,
 		maxt:                   req.MaxTime,
+		seriesLimit:            int(req.Limit),
 		indexr:                 b.indexReader(logger),
 		chunkr:                 chunkr,
 		seriesLimiter:          seriesLimiter,
@@ -1159,14 +1164,20 @@ func (b *blockSeriesClient) ExpandPostings(
 		b.expandedPostings = make([]storage.SeriesRef, 0, len(b.lazyPostings.postings)/2)
 		b.lazyExpandedPostingsCount.Inc()
 	} else {
+		// If seriesLimit is set, it can be applied here to limit the amount of series.
+		// Note: This can only be done when postings are not expanded lazily.
+		if b.seriesLimit > 0 && len(b.lazyPostings.postings) > b.seriesLimit {
+			b.lazyPostings.postings = b.lazyPostings.postings[:b.seriesLimit]
+		}
+
 		// Apply series limiter eargerly if lazy postings not enabled.
-		if err := seriesLimiter.Reserve(uint64(len(ps.postings))); err != nil {
+		if err := seriesLimiter.Reserve(uint64(len(b.lazyPostings.postings))); err != nil {
 			return httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded series limit: %s", err)
 		}
 	}
 
-	if b.batchSize > len(ps.postings) {
-		b.batchSize = len(ps.postings)
+	if b.batchSize > len(b.lazyPostings.postings) {
+		b.batchSize = len(b.lazyPostings.postings)
 	}
 
 	b.entries = make([]seriesEntry, 0, b.batchSize)
@@ -1288,6 +1299,11 @@ OUTER:
 		}
 
 		seriesMatched++
+		if b.seriesLimit > 0 && seriesMatched > b.seriesLimit {
+			// Exit early if seriesLimit is set.
+			b.hasMorePostings = false
+			break
+		}
 		s := seriesEntry{lset: completeLabelset}
 		if b.skipChunks {
 			b.entries = append(b.entries, s)
@@ -1691,7 +1707,12 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, seriesSrv storepb.Store
 	tracing.DoInSpan(ctx, "bucket_store_merge_all", func(ctx context.Context) {
 		begin := time.Now()
 		set := NewResponseDeduplicator(NewProxyResponseLoserTree(respSets...))
+		i := 0
 		for set.Next() {
+			i++
+			if req.Limit > 0 && i > int(req.Limit) {
+				break
+			}
 			at := set.At()
 			warn := at.GetWarning()
 			if warn != "" {
@@ -1942,8 +1963,13 @@ func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReq
 		return nil, status.Error(codes.Unknown, errors.Wrap(err, "marshal label names response hints").Error())
 	}
 
+	names := strutil.MergeSlices(sets...)
+	if req.Limit > 0 && len(names) > int(req.Limit) {
+		names = names[:req.Limit]
+	}
+
 	return &storepb.LabelNamesResponse{
-		Names: strutil.MergeSlices(sets...),
+		Names: names,
 		Hints: anyHints,
 	}, nil
 }
@@ -1957,7 +1983,7 @@ func (b *bucketBlock) FilterExtLabelsMatchers(matchers []*labels.Matcher) ([]*la
 		// If value is empty string the matcher is a valid one since it's not part of external labels.
 		if v == "" {
 			result = append(result, m)
-		} else if v != "" && v != m.Value {
+		} else if v != "" && !m.Matches(v) {
 			// If matcher is external label but value is different we don't want to look in block anyway.
 			return []*labels.Matcher{}, false
 		}
@@ -2157,8 +2183,13 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 		return nil, status.Error(codes.Unknown, errors.Wrap(err, "marshal label values response hints").Error())
 	}
 
+	vals := strutil.MergeSlices(sets...)
+	if req.Limit > 0 && len(vals) > int(req.Limit) {
+		vals = vals[:req.Limit]
+	}
+
 	return &storepb.LabelValuesResponse{
-		Values: strutil.MergeSlices(sets...),
+		Values: vals,
 		Hints:  anyHints,
 	}, nil
 }
@@ -2605,10 +2636,15 @@ func (r *bucketIndexReader) ExpandedPostings(ctx context.Context, ms sortedMatch
 }
 
 // ExpandPostingsWithContext returns the postings expanded as a slice and considers context.
-func ExpandPostingsWithContext(ctx context.Context, p index.Postings) (res []storage.SeriesRef, err error) {
+func ExpandPostingsWithContext(ctx context.Context, p index.Postings) ([]storage.SeriesRef, error) {
+	res := make([]storage.SeriesRef, 0, 1024) // Pre-allocate slice with initial capacity
+	i := 0
 	for p.Next() {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+		i++
+		if i%checkContextEveryNIterations == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 		}
 		res = append(res, p.At())
 	}
@@ -2831,8 +2867,8 @@ func toPostingGroup(ctx context.Context, lvalsFn func(name string) ([]string, er
 			return nil, nil, err
 		}
 
-		for _, val := range vals {
-			if ctx.Err() != nil {
+		for i, val := range vals {
+			if (i+1)%checkContextEveryNIterations == 0 && ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
 			if !m.Matches(val) {
@@ -2860,8 +2896,8 @@ func toPostingGroup(ctx context.Context, lvalsFn func(name string) ([]string, er
 	}
 
 	var toAdd []string
-	for _, val := range vals {
-		if ctx.Err() != nil {
+	for i, val := range vals {
+		if (i+1)%checkContextEveryNIterations == 0 && ctx.Err() != nil {
 			return nil, nil, ctx.Err()
 		}
 		if m.Matches(val) {
@@ -2964,8 +3000,10 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 	// If we have a miss, mark key to be fetched in `ptrs` slice.
 	// Overlaps are well handled by partitioner, so we don't need to deduplicate keys.
 	for ix, key := range keys {
-		if err := ctx.Err(); err != nil {
-			return nil, closeFns, err
+		if (ix+1)%checkContextEveryNIterations == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, closeFns, err
+			}
 		}
 		// Get postings for the given key from cache first.
 		if b, ok := fromCache[key]; ok {
@@ -3567,10 +3605,10 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 	bufPooled, err := r.block.chunkPool.Get(r.block.estimatedMaxChunkSize)
 	if err == nil {
 		buf = *bufPooled
+		defer r.block.chunkPool.Put(&buf)
 	} else {
 		buf = make([]byte, r.block.estimatedMaxChunkSize)
 	}
-	defer r.block.chunkPool.Put(&buf)
 
 	for i, pIdx := range pIdxs {
 		// Fast forward range reader to the next chunk start in case of sparse (for our purposes) byte range.

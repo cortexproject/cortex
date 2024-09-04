@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,9 +16,11 @@ import (
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/util/jsonutil"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -117,6 +118,164 @@ func decodeSampleStream(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	}
 }
 
+type CachingOptions struct {
+	Disabled bool
+}
+
+type PrometheusRequest struct {
+	Request
+	Time           int64
+	Start          int64
+	End            int64
+	Step           int64
+	Timeout        time.Duration
+	Query          string
+	Path           string
+	Headers        http.Header
+	Stats          string
+	CachingOptions CachingOptions
+}
+
+func (m *PrometheusRequest) GetPath() string {
+	if m != nil {
+		return m.Path
+	}
+	return ""
+}
+
+func (m *PrometheusRequest) GetStart() int64 {
+	if m != nil {
+		return m.Start
+	}
+	return 0
+}
+
+func (m *PrometheusRequest) GetEnd() int64 {
+	if m != nil {
+		return m.End
+	}
+	return 0
+}
+
+func (m *PrometheusRequest) GetStep() int64 {
+	if m != nil {
+		return m.Step
+	}
+	return 0
+}
+
+func (m *PrometheusRequest) GetTimeout() time.Duration {
+	if m != nil {
+		return m.Timeout
+	}
+	return 0
+}
+
+func (m *PrometheusRequest) GetQuery() string {
+	if m != nil {
+		return m.Query
+	}
+	return ""
+}
+
+func (m *PrometheusRequest) GetCachingOptions() CachingOptions {
+	if m != nil {
+		return m.CachingOptions
+	}
+	return CachingOptions{}
+}
+
+func (m *PrometheusRequest) GetHeaders() http.Header {
+	if m != nil {
+		return m.Headers
+	}
+	return nil
+}
+
+func (m *PrometheusRequest) GetStats() string {
+	if m != nil {
+		return m.Stats
+	}
+	return ""
+}
+
+// WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
+func (m *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
+	new := *m
+	new.Start = start
+	new.End = end
+	return &new
+}
+
+// WithQuery clones the current `PrometheusRequest` with a new query.
+func (m *PrometheusRequest) WithQuery(query string) Request {
+	new := *m
+	new.Query = query
+	return &new
+}
+
+// WithStats clones the current `PrometheusRequest` with a new stats.
+func (m *PrometheusRequest) WithStats(stats string) Request {
+	new := *m
+	new.Stats = stats
+	return &new
+}
+
+// LogToSpan logs the current `PrometheusRequest` parameters to the specified span.
+func (m *PrometheusRequest) LogToSpan(sp opentracing.Span) {
+	if m.GetStep() > 0 {
+		sp.LogFields(
+			otlog.String("query", m.GetQuery()),
+			otlog.String("start", timestamp.Time(m.GetStart()).String()),
+			otlog.String("end", timestamp.Time(m.GetEnd()).String()),
+			otlog.Int64("step (ms)", m.GetStep()),
+		)
+	} else if m != nil {
+		sp.LogFields(
+			otlog.String("query", m.GetQuery()),
+			otlog.String("time", timestamp.Time(m.Time).String()),
+		)
+	}
+}
+
+func (resp *PrometheusResponse) HTTPHeaders() map[string][]string {
+	if resp != nil && resp.GetHeaders() != nil {
+		r := map[string][]string{}
+		for _, header := range resp.GetHeaders() {
+			if header != nil {
+				r[header.Name] = header.Values
+			}
+		}
+
+		return r
+	}
+	return nil
+}
+
+// NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
+func NewEmptyPrometheusResponse(instant bool) *PrometheusResponse {
+	if instant {
+		return &PrometheusResponse{
+			Status: StatusSuccess,
+			Data: PrometheusData{
+				ResultType: model.ValVector.String(),
+				Result: PrometheusQueryResult{
+					Result: &PrometheusQueryResult_Vector{},
+				},
+			},
+		}
+	}
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
+			ResultType: model.ValMatrix.String(),
+			Result: PrometheusQueryResult{
+				Result: &PrometheusQueryResult_Matrix{},
+			},
+		},
+	}
+}
+
 func encodeSampleStream(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	ss := (*SampleStream)(ptr)
 	stream.WriteObjectStart()
@@ -153,6 +312,58 @@ func encodeSampleStream(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 			MarshalSampleHistogramPairJSON(unsafe.Pointer(&h), stream)
 		}
 		stream.WriteArrayEnd()
+	}
+
+	stream.WriteObjectEnd()
+}
+
+func decodeSample(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+	ss := (*Sample)(ptr)
+	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
+		switch field {
+		case "metric":
+			metricString := iter.ReadAny().ToString()
+			lbls := labels.Labels{}
+			if err := json.UnmarshalFromString(metricString, &lbls); err != nil {
+				iter.ReportError("unmarshal Sample", err.Error())
+				return
+			}
+			ss.Labels = cortexpb.FromLabelsToLabelAdapters(lbls)
+		case "value":
+			ss.Sample = &cortexpb.Sample{}
+			cortexpb.SampleJsoniterDecode(unsafe.Pointer(ss.Sample), iter)
+		case "histogram":
+			ss.Histogram = &SampleHistogramPair{}
+			UnmarshalSampleHistogramPairJSON(unsafe.Pointer(ss.Histogram), iter)
+		default:
+			iter.ReportError("unmarshal Sample", fmt.Sprint("unexpected key:", field))
+			return
+		}
+	}
+}
+
+func encodeSample(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	ss := (*Sample)(ptr)
+	stream.WriteObjectStart()
+
+	stream.WriteObjectField(`metric`)
+	lbls, err := cortexpb.FromLabelAdaptersToLabels(ss.Labels).MarshalJSON()
+	if err != nil {
+		stream.Error = err
+		return
+	}
+	stream.SetBuffer(append(stream.Buffer(), lbls...))
+
+	if ss.Sample != nil {
+		stream.WriteMore()
+		stream.WriteObjectField(`value`)
+		cortexpb.SampleJsoniterEncode(unsafe.Pointer(ss.Sample), stream)
+	}
+
+	if ss.Histogram != nil {
+		stream.WriteMore()
+		stream.WriteObjectField(`histogram`)
+		MarshalSampleHistogramPairJSON(unsafe.Pointer(ss.Histogram), stream)
 	}
 
 	stream.WriteObjectEnd()
@@ -196,6 +407,8 @@ func init() {
 	jsoniter.RegisterTypeDecoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode)
 	jsoniter.RegisterTypeEncoderFunc("tripperware.SampleStream", encodeSampleStream, marshalJSONIsEmpty)
 	jsoniter.RegisterTypeDecoderFunc("tripperware.SampleStream", decodeSampleStream)
+	jsoniter.RegisterTypeEncoderFunc("tripperware.Sample", encodeSample, marshalJSONIsEmpty)
+	jsoniter.RegisterTypeDecoderFunc("tripperware.Sample", decodeSample)
 	jsoniter.RegisterTypeEncoderFunc("tripperware.SampleHistogramPair", MarshalSampleHistogramPairJSON, marshalJSONIsEmpty)
 	jsoniter.RegisterTypeDecoderFunc("tripperware.SampleHistogramPair", UnmarshalSampleHistogramPairJSON)
 }
@@ -266,21 +479,79 @@ func BodyBufferFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logge
 	return res.Body, nil
 }
 
-func StatsMerge(stats map[int64]*PrometheusResponseQueryableSamplesStatsPerStep) *PrometheusResponseStats {
-	keys := make([]int64, 0, len(stats))
-	for key := range stats {
-		keys = append(keys, key)
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *PrometheusData) UnmarshalJSON(data []byte) error {
+	var queryData struct {
+		ResultType string                   `json:"resultType"`
+		Stats      *PrometheusResponseStats `json:"stats,omitempty"`
 	}
 
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-
-	result := &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
-	for _, key := range keys {
-		result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, stats[key])
-		result.Samples.TotalQueryableSamples += stats[key].Value
+	if err := json.Unmarshal(data, &queryData); err != nil {
+		return err
 	}
+	s.ResultType = queryData.ResultType
+	s.Stats = queryData.Stats
+	switch s.ResultType {
+	case model.ValVector.String():
+		var result struct {
+			Samples []*Sample `json:"result"`
+		}
+		if err := json.Unmarshal(data, &result); err != nil {
+			return err
+		}
+		s.Result = PrometheusQueryResult{
+			Result: &PrometheusQueryResult_Vector{Vector: &Vector{
+				Samples: result.Samples,
+			}},
+		}
+	case model.ValMatrix.String():
+		var result struct {
+			SampleStreams []SampleStream `json:"result"`
+		}
+		if err := json.Unmarshal(data, &result); err != nil {
+			return err
+		}
+		s.Result = PrometheusQueryResult{
+			Result: &PrometheusQueryResult_Matrix{Matrix: &Matrix{
+				SampleStreams: result.SampleStreams,
+			}},
+		}
+	default:
+		s.Result = PrometheusQueryResult{
+			Result: &PrometheusQueryResult_RawBytes{data},
+		}
+	}
+	return nil
+}
 
-	return result
+// MarshalJSON implements json.Marshaler.
+func (s *PrometheusData) MarshalJSON() ([]byte, error) {
+	switch s.ResultType {
+	case model.ValVector.String():
+		res := struct {
+			ResultType string                   `json:"resultType"`
+			Data       []*Sample                `json:"result"`
+			Stats      *PrometheusResponseStats `json:"stats,omitempty"`
+		}{
+			ResultType: s.ResultType,
+			Data:       s.Result.GetVector().Samples,
+			Stats:      s.Stats,
+		}
+		return json.Marshal(res)
+	case model.ValMatrix.String():
+		res := struct {
+			ResultType string                   `json:"resultType"`
+			Data       []SampleStream           `json:"result"`
+			Stats      *PrometheusResponseStats `json:"stats,omitempty"`
+		}{
+			ResultType: s.ResultType,
+			Data:       s.Result.GetMatrix().SampleStreams,
+			Stats:      s.Stats,
+		}
+		return json.Marshal(res)
+	default:
+		return s.Result.GetRawBytes(), nil
+	}
 }
 
 // Adapted from https://github.com/prometheus/client_golang/blob/4b158abea9470f75b6f07460cdc2189b91914562/api/prometheus/v1/api.go#L84.

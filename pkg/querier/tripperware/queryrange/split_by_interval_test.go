@@ -72,14 +72,14 @@ func TestSplitQuery(t *testing.T) {
 		interval time.Duration
 	}{
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   60 * 60 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
 			expected: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 0,
 					End:   60 * 60 * seconds,
 					Step:  15 * seconds,
@@ -89,14 +89,14 @@ func TestSplitQuery(t *testing.T) {
 			interval: day,
 		},
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 60 * 60 * seconds,
 				End:   60 * 60 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
 			expected: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 60 * 60 * seconds,
 					End:   60 * 60 * seconds,
 					Step:  15 * seconds,
@@ -106,14 +106,14 @@ func TestSplitQuery(t *testing.T) {
 			interval: day,
 		},
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   60 * 60 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
 			expected: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 0,
 					End:   60 * 60 * seconds,
 					Step:  15 * seconds,
@@ -123,14 +123,14 @@ func TestSplitQuery(t *testing.T) {
 			interval: 3 * time.Hour,
 		},
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   24 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
 			expected: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 0,
 					End:   24 * 3600 * seconds,
 					Step:  15 * seconds,
@@ -140,14 +140,14 @@ func TestSplitQuery(t *testing.T) {
 			interval: day,
 		},
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   3 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
 			expected: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 0,
 					End:   3 * 3600 * seconds,
 					Step:  15 * seconds,
@@ -157,20 +157,20 @@ func TestSplitQuery(t *testing.T) {
 			interval: 3 * time.Hour,
 		},
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   2 * 24 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo @ start()",
 			},
 			expected: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 0,
 					End:   (24 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo @ 0.000",
 				},
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 24 * 3600 * seconds,
 					End:   2 * 24 * 3600 * seconds,
 					Step:  15 * seconds,
@@ -180,20 +180,20 @@ func TestSplitQuery(t *testing.T) {
 			interval: day,
 		},
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   2 * 3 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
 			expected: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 0,
 					End:   (3 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo",
 				},
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 3 * 3600 * seconds,
 					End:   2 * 3 * 3600 * seconds,
 					Step:  15 * seconds,
@@ -203,26 +203,26 @@ func TestSplitQuery(t *testing.T) {
 			interval: 3 * time.Hour,
 		},
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 3 * 3600 * seconds,
 				End:   3 * 24 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
 			expected: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 3 * 3600 * seconds,
 					End:   (24 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo",
 				},
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 24 * 3600 * seconds,
 					End:   (2 * 24 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo",
 				},
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 2 * 24 * 3600 * seconds,
 					End:   3 * 24 * 3600 * seconds,
 					Step:  15 * seconds,
@@ -232,26 +232,26 @@ func TestSplitQuery(t *testing.T) {
 			interval: day,
 		},
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 2 * 3600 * seconds,
 				End:   3 * 3 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
 			expected: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 2 * 3600 * seconds,
 					End:   (3 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo",
 				},
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 3 * 3600 * seconds,
 					End:   (2 * 3 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo",
 				},
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 2 * 3 * 3600 * seconds,
 					End:   3 * 3 * 3600 * seconds,
 					Step:  15 * seconds,

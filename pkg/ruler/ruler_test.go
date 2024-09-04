@@ -1930,6 +1930,7 @@ func Test_LoadPartialGroups(t *testing.T) {
 	store := newMockRuleStore(allRules, map[string]error{user1: fmt.Errorf("test")})
 	u, _ := url.Parse("")
 	cfg := Config{
+		RulePath:         t.TempDir(),
 		EnableSharding:   true,
 		ExternalURL:      flagext.URLValue{URL: u},
 		PollInterval:     time.Millisecond * 100,

@@ -71,6 +71,38 @@ func TestGetReplicationSetForListRule(t *testing.T) {
 			expectedSet:           []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"},
 			expectedMaxError:      1,
 		},
+		"max errors must be 0 when RF=3 and healthy instances=1": {
+			ringInstances: map[string]ring.InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-1", "", 128, true)},
+			},
+			ringHeartbeatTimeout:  time.Minute,
+			ringReplicationFactor: 3,
+			expectedSet:           []string{"127.0.0.1"},
+			expectedMaxError:      0,
+		},
+		"max errors must be 1 when RF=3 and healthy instances=2": {
+			ringInstances: map[string]ring.InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-1", "", 128, true)},
+				"instance-2": {Addr: "127.0.0.2", State: ring.ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-2", "", 128, true)},
+			},
+			ringHeartbeatTimeout:  time.Minute,
+			ringReplicationFactor: 3,
+			expectedSet:           []string{"127.0.0.1", "127.0.0.2"},
+			expectedMaxError:      1,
+		},
+		"max errors must be 1 when RF=2 and healthy instances=5": {
+			ringInstances: map[string]ring.InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-1", "", 128, true)},
+				"instance-2": {Addr: "127.0.0.2", State: ring.ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-2", "", 128, true)},
+				"instance-3": {Addr: "127.0.0.3", State: ring.ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-3", "", 128, true)},
+				"instance-4": {Addr: "127.0.0.4", State: ring.ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-4", "", 128, true)},
+				"instance-5": {Addr: "127.0.0.5", State: ring.ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-5", "", 128, true)},
+			},
+			ringHeartbeatTimeout:  time.Minute,
+			ringReplicationFactor: 2,
+			expectedSet:           []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedMaxError:      1,
+		},
 		"should succeed on 2 unhealthy instances and RF=3": {
 			ringInstances: map[string]ring.InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-1", "", 128, true)},
@@ -144,7 +176,7 @@ func TestGetReplicationSetForListRule(t *testing.T) {
 			},
 			expectedMaxUnavailableZones: 2,
 		},
-		"should fail on 3 unhealthy instances in 3 zonez and RF=3 zone replication enabled": {
+		"should fail on 3 unhealthy instances in 3 zones and RF=3 zone replication enabled": {
 			ringInstances: map[string]ring.InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-1", "z1", 128, true), Zone: "z1"},
 				"instance-2": {Addr: "127.0.0.2", State: ring.ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-2", "z2", 128, true), Zone: "z2"},

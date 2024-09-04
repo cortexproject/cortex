@@ -53,8 +53,8 @@ type RingConfig struct {
 	InstanceZone           string   `yaml:"instance_availability_zone" doc:"hidden"`
 	NumTokens              int      `yaml:"num_tokens"`
 
-	FinalSleep time.Duration `yaml:"final_sleep"`
-
+	FinalSleep                      time.Duration `yaml:"final_sleep"`
+	KeepInstanceInTheRingOnShutdown bool          `yaml:"keep_instance_in_the_ring_on_shutdown"`
 	// Injected internally
 	ListenPort int `yaml:"-"`
 
@@ -86,6 +86,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.InstanceID, "ruler.ring.instance-id", hostname, "Instance ID to register in the ring.")
 	f.StringVar(&cfg.InstanceZone, "ruler.ring.instance-availability-zone", "", "The availability zone where this instance is running. Required if zone-awareness is enabled.")
 	f.IntVar(&cfg.NumTokens, "ruler.ring.num-tokens", 128, "Number of tokens for each ruler.")
+	f.BoolVar(&cfg.KeepInstanceInTheRingOnShutdown, "ruler.ring.keep-instance-in-the-ring-on-shutdown", false, "Keep instance in the ring on shut down.")
 }
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the ruler
@@ -99,13 +100,14 @@ func (cfg *RingConfig) ToLifecyclerConfig(logger log.Logger) (ring.BasicLifecycl
 	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
 
 	return ring.BasicLifecyclerConfig{
-		ID:                  cfg.InstanceID,
-		Addr:                fmt.Sprintf("%s:%d", instanceAddr, instancePort),
-		Zone:                cfg.InstanceZone,
-		HeartbeatPeriod:     cfg.HeartbeatPeriod,
-		TokensObservePeriod: 0,
-		NumTokens:           cfg.NumTokens,
-		FinalSleep:          cfg.FinalSleep,
+		ID:                              cfg.InstanceID,
+		Addr:                            fmt.Sprintf("%s:%d", instanceAddr, instancePort),
+		Zone:                            cfg.InstanceZone,
+		HeartbeatPeriod:                 cfg.HeartbeatPeriod,
+		TokensObservePeriod:             0,
+		NumTokens:                       cfg.NumTokens,
+		FinalSleep:                      cfg.FinalSleep,
+		KeepInstanceInTheRingOnShutdown: cfg.KeepInstanceInTheRingOnShutdown,
 	}, nil
 }
 

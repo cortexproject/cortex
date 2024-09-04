@@ -4142,6 +4142,10 @@ ruler_client:
   # CLI flag: -ruler.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+  # Timeout for downstream rulers.
+  # CLI flag: -ruler.client.remote-timeout
+  [remote_timeout: <duration> | default = 2m]
+
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m]
@@ -4340,6 +4344,10 @@ ring:
   # CLI flag: -ruler.ring.final-sleep
   [final_sleep: <duration> | default = 0s]
 
+  # Keep instance in the ring on shut down.
+  # CLI flag: -ruler.ring.keep-instance-in-the-ring-on-shutdown
+  [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
+
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period
 [flush_period: <duration> | default = 1m]
@@ -4374,6 +4382,10 @@ ring:
 # Disable the rule_group label on exported metrics
 # CLI flag: -ruler.disable-rule-group-label
 [disable_rule_group_label: <boolean> | default = false]
+
+# Enable high availability
+# CLI flag: -ruler.enable-ha-evaluation
+[enable_ha_evaluation: <boolean> | default = false]
 ```
 
 ### `ruler_storage_config`

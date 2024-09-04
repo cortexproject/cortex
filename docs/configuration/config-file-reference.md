@@ -176,13 +176,6 @@ tenant_federation:
 [memberlist: <memberlist_config>]
 
 query_scheduler:
-  # Deprecated (use frontend.max-outstanding-requests-per-tenant instead) and
-  # will be removed in v1.17.0: Maximum number of outstanding requests per
-  # tenant per query-scheduler. In-flight requests above this limit will fail
-  # with HTTP response status code 429.
-  # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
-  [max_outstanding_requests_per_tenant: <int> | default = 0]
-
   # If a querier disconnects without sending notification about graceful
   # shutdown, the query-scheduler will keep the querier in the tenant's shard
   # until the forget delay has passed. This feature is useful to reduce the
@@ -2223,6 +2216,10 @@ sharding_ring:
   # CLI flag: -compactor.ring.wait-active-instance-timeout
   [wait_active_instance_timeout: <duration> | default = 10m]
 
+# The compaction strategy to use. Supported values are: default, partitioning.
+# CLI flag: -compactor.compaction-mode
+[compaction_mode: <string> | default = "default"]
+
 # How long block visit marker file should be considered as expired and able to
 # be picked up by compactor again.
 # CLI flag: -compactor.block-visit-marker-timeout
@@ -3027,7 +3024,7 @@ grpc_client_config:
   # Use compression when sending messages. Supported values are: 'gzip',
   # 'snappy', 'snappy-block' ,'zstd' and '' (disable compression)
   # CLI flag: -ingester.client.grpc-compression
-  [grpc_compression: <string> | default = ""]
+  [grpc_compression: <string> | default = "snappy-block"]
 
   # Rate limit for gRPC client; 0 means disabled.
   # CLI flag: -ingester.client.grpc-client-rate-limit
@@ -3340,6 +3337,7 @@ query_rejection:
   # them.
   [query_attributes: <list of QueryAttribute> | default = []]
 
+# Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0:
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
@@ -3698,9 +3696,10 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.timeout
 [timeout: <duration> | default = 2m]
 
-# Use streaming RPCs for metadata APIs from ingester.
+# Deprecated (This feature will be always on after v1.18): Use streaming RPCs
+# for metadata APIs from ingester.
 # CLI flag: -querier.ingester-metadata-streaming
-[ingester_metadata_streaming: <boolean> | default = false]
+[ingester_metadata_streaming: <boolean> | default = true]
 
 # Maximum number of samples a single query can load into memory.
 # CLI flag: -querier.max-samples
@@ -3833,12 +3832,6 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # statistics is logged for every query.
 # CLI flag: -frontend.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
-
-# Deprecated (use frontend.max-outstanding-requests-per-tenant instead) and will
-# be removed in v1.17.0: Maximum number of outstanding requests per tenant per
-# frontend; requests beyond this error with HTTP 429.
-# CLI flag: -querier.max-outstanding-requests-per-tenant
-[max_outstanding_per_tenant: <int> | default = 0]
 
 # If a querier disconnects without sending notification about graceful shutdown,
 # the query-frontend will keep the querier in the tenant's shard until the
@@ -4149,6 +4142,10 @@ ruler_client:
   # CLI flag: -ruler.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+  # Timeout for downstream rulers.
+  # CLI flag: -ruler.client.remote-timeout
+  [remote_timeout: <duration> | default = 2m]
+
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m]
@@ -4347,6 +4344,10 @@ ring:
   # CLI flag: -ruler.ring.final-sleep
   [final_sleep: <duration> | default = 0s]
 
+  # Keep instance in the ring on shut down.
+  # CLI flag: -ruler.ring.keep-instance-in-the-ring-on-shutdown
+  [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
+
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period
 [flush_period: <duration> | default = 1m]
@@ -4373,14 +4374,18 @@ ring:
 # CLI flag: -ruler.disabled-tenants
 [disabled_tenants: <string> | default = ""]
 
-# Report the wall time for ruler queries to complete as a per user metric and as
-# an info level log message.
+# Report query statistics for ruler queries to complete as a per user metric and
+# as an info level log message.
 # CLI flag: -ruler.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
 
 # Disable the rule_group label on exported metrics
 # CLI flag: -ruler.disable-rule-group-label
 [disable_rule_group_label: <boolean> | default = false]
+
+# Enable high availability
+# CLI flag: -ruler.enable-ha-evaluation
+[enable_ha_evaluation: <boolean> | default = false]
 ```
 
 ### `ruler_storage_config`

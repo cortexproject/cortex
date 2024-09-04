@@ -185,7 +185,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				# TYPE cortex_ingester_usage_per_labelset gauge
 				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
-	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total"))
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
 	// Should impose limits
 	for _, set := range limits.LimitsPerLabelSet {
@@ -653,8 +653,6 @@ func TestIngester_Push(t *testing.T) {
 		"cortex_ingester_memory_users",
 		"cortex_ingester_memory_series_created_total",
 		"cortex_ingester_memory_series_removed_total",
-		"cortex_discarded_samples_total",
-		"cortex_ingester_active_series",
 	}
 	userID := "test"
 
@@ -695,7 +693,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedMetadataIngested: []*cortexpb.MetricMetadata{
 				{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
 			},
-			additionalMetrics:      []string{},
+			additionalMetrics:      []string{"cortex_discarded_samples_total", "cortex_ingester_active_series"},
 			disableNativeHistogram: true,
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -757,6 +755,7 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_memory_metadata_created_total",
 				"cortex_ingester_ingested_metadata_total",
 				"cortex_ingester_ingested_metadata_failures_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_metadata_failures_total The total number of metadata that errored on ingestion.
@@ -854,6 +853,7 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage",
 				"cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds",
 				"cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -964,6 +964,8 @@ func TestIngester_Push(t *testing.T) {
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_out_of_order_samples_total",
 				"cortex_ingester_tsdb_head_out_of_order_samples_appended_total",
+				"cortex_discarded_samples_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1020,6 +1022,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
+			additionalMetrics: []string{"cortex_ingester_active_series"},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1067,6 +1070,10 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
+			additionalMetrics: []string{
+				"cortex_discarded_samples_total",
+				"cortex_ingester_active_series",
+			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1113,6 +1120,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (60 * 1000)}, {Value: 2, TimestampMs: 1575043969}}},
 			},
+			additionalMetrics: []string{"cortex_ingester_active_series"},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1156,6 +1164,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
+			additionalMetrics: []string{"cortex_discarded_samples_total", "cortex_ingester_active_series"},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1214,6 +1223,7 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage",
 				"cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds",
 				"cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1274,6 +1284,7 @@ func TestIngester_Push(t *testing.T) {
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1323,6 +1334,7 @@ func TestIngester_Push(t *testing.T) {
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1373,6 +1385,7 @@ func TestIngester_Push(t *testing.T) {
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
 				"cortex_ingester_tsdb_out_of_order_samples_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -2204,7 +2217,7 @@ func Test_Ingester_LabelNames(t *testing.T) {
 		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
 	}
 
-	expected := []string{"__name__", "status", "route"}
+	expected := []string{"__name__", "route", "status"}
 
 	// Create ingester
 	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
@@ -2226,10 +2239,27 @@ func Test_Ingester_LabelNames(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Get label names
-	res, err := i.LabelNames(ctx, &client.LabelNamesRequest{})
-	require.NoError(t, err)
-	assert.ElementsMatch(t, expected, res.LabelNames)
+	tests := map[string]struct {
+		limit    int
+		expected []string
+	}{
+		"should return all label names if no limit is set": {
+			expected: expected,
+		},
+		"should return limited label names if a limit is set": {
+			limit:    2,
+			expected: expected[:2],
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Get label names
+			res, err := i.LabelNames(ctx, &client.LabelNamesRequest{Limit: int64(testData.limit)})
+			require.NoError(t, err)
+			assert.ElementsMatch(t, testData.expected, res.LabelNames)
+		})
+	}
 }
 
 func Test_Ingester_LabelValues(t *testing.T) {
@@ -2270,13 +2300,31 @@ func Test_Ingester_LabelValues(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Get label values
-	for labelName, expectedValues := range expected {
-		req := &client.LabelValuesRequest{LabelName: labelName}
-		res, err := i.LabelValues(ctx, req)
-		require.NoError(t, err)
-		assert.ElementsMatch(t, expectedValues, res.LabelValues)
+	tests := map[string]struct {
+		limit int64
+	}{
+		"should return all label values if no limit is set": {
+			limit: 0,
+		},
+		"should return limited label values if a limit is set": {
+			limit: 1,
+		},
 	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			for labelName, expectedValues := range expected {
+				req := &client.LabelValuesRequest{LabelName: labelName, Limit: testData.limit}
+				res, err := i.LabelValues(ctx, req)
+				require.NoError(t, err)
+				if testData.limit > 0 && len(expectedValues) > int(testData.limit) {
+					expectedValues = expectedValues[:testData.limit]
+				}
+				assert.ElementsMatch(t, expectedValues, res.LabelValues)
+			}
+		})
+	}
+
 }
 
 func Test_Ingester_LabelValue_MaxInflightQueryRequest(t *testing.T) {
@@ -2635,6 +2683,7 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 	tests := map[string]struct {
 		from                 int64
 		to                   int64
+		limit                int64
 		matchers             []*client.LabelMatchers
 		expected             []*cortexpb.Metric
 		queryIngestersWithin time.Duration
@@ -2695,7 +2744,7 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[1].lbls)},
 			},
 		},
-		"should filter metrics by time range if queryStoreForLabels and queryIngestersWithin is enabled": {
+		"should filter metrics by time range if queryIngestersWithin is enabled": {
 			from: 99999,
 			to:   100001,
 			matchers: []*client.LabelMatchers{{
@@ -2742,6 +2791,26 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[4].lbls)},
 			},
 		},
+		"should return only limited results": {
+			from:  math.MinInt64,
+			to:    math.MaxInt64,
+			limit: 1,
+			matchers: []*client.LabelMatchers{
+				{
+					Matchers: []*client.LabelMatcher{
+						{Type: client.EQUAL, Name: "status", Value: "200"},
+					},
+				},
+				{
+					Matchers: []*client.LabelMatcher{
+						{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_2"},
+					},
+				},
+			},
+			expected: []*cortexpb.Metric{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[0].lbls)},
+			},
+		},
 	}
 
 	// Create ingester
@@ -2773,6 +2842,7 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 				StartTimestampMs: testData.from,
 				EndTimestampMs:   testData.to,
 				MatchersSet:      testData.matchers,
+				Limit:            testData.limit,
 			}
 			i.cfg.QueryIngestersWithin = testData.queryIngestersWithin
 			res, err := i.MetricsForLabelMatchers(ctx, req)
@@ -4191,6 +4261,7 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 				ApiIngestionRate:  0.2,
 				RuleIngestionRate: 0,
 				ActiveSeries:      3,
+				LoadedBlocks:      0,
 			},
 		},
 		{
@@ -4201,10 +4272,89 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 				ApiIngestionRate:  0.13333333333333333,
 				RuleIngestionRate: 0,
 				ActiveSeries:      2,
+				LoadedBlocks:      0,
 			},
 		},
 	}
 	assert.ElementsMatch(t, expect, res.Stats)
+}
+
+func Test_Ingester_AllUserStatsHandler(t *testing.T) {
+	series := []struct {
+		user      string
+		lbls      labels.Labels
+		value     float64
+		timestamp int64
+	}{
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_2"}}, 2, 200000},
+		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_1"}}, 2, 200000},
+		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_2"}}, 2, 200000},
+	}
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+	for _, series := range series {
+		ctx := user.InjectOrgID(context.Background(), series.user)
+		req, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
+		_, err := i.Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// Force compaction to test loaded blocks
+	compactionCallbackCh := make(chan struct{})
+	i.TSDBState.forceCompactTrigger <- requestWithUsersAndCallback{users: nil, callback: compactionCallbackCh}
+	<-compactionCallbackCh
+
+	// force update statistics
+	for _, db := range i.TSDBState.dbs {
+		db.ingestedAPISamples.Tick()
+		db.ingestedRuleSamples.Tick()
+	}
+
+	// Get label names
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/all_user_stats", nil)
+	request.Header.Add("Accept", "application/json")
+	i.AllUserStatsHandler(response, request)
+	var resp UserStatsByTimeseries
+	err = json.Unmarshal(response.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	expect := UserStatsByTimeseries{
+		{
+			UserID: "user-1",
+			UserStats: UserStats{
+				IngestionRate:     0.2,
+				NumSeries:         0,
+				APIIngestionRate:  0.2,
+				RuleIngestionRate: 0,
+				ActiveSeries:      3,
+				LoadedBlocks:      1,
+			},
+		},
+		{
+			UserID: "user-2",
+			UserStats: UserStats{
+				IngestionRate:     0.13333333333333333,
+				NumSeries:         0,
+				APIIngestionRate:  0.13333333333333333,
+				RuleIngestionRate: 0,
+				ActiveSeries:      2,
+				LoadedBlocks:      1,
+			},
+		},
+	}
+	assert.ElementsMatch(t, expect, resp)
 }
 
 func TestIngesterCompactIdleBlock(t *testing.T) {
@@ -4317,8 +4467,10 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 
 	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
 
-	metricsToCheck := []string{memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series",
-		"cortex_ingester_memory_metadata", "cortex_ingester_memory_metadata_created_total", "cortex_ingester_memory_metadata_removed_total"}
+	userMetrics := []string{memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_active_series"}
+
+	globalMetrics := []string{"cortex_ingester_memory_users", "cortex_ingester_memory_metadata"}
+	metricsToCheck := append(userMetrics, globalMetrics...)
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
@@ -4358,24 +4510,19 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load()) // Flushing removed all series from memory.
 
 	// Verify that user has disappeared from metrics.
+	err = testutil.GatherAndCompare(r, strings.NewReader(""), userMetrics...)
+	require.ErrorContains(t, err, "expected metric name(s) not found")
+	require.ErrorContains(t, err, strings.Join(userMetrics, " "))
+
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
-		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
-		# TYPE cortex_ingester_memory_series_created_total counter
-
-		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
-		# TYPE cortex_ingester_memory_series_removed_total counter
-
 		# HELP cortex_ingester_memory_users The current number of users in memory.
 		# TYPE cortex_ingester_memory_users gauge
 		cortex_ingester_memory_users 0
 
-		# HELP cortex_ingester_active_series Number of currently active series per user.
-		# TYPE cortex_ingester_active_series gauge
-
 		# HELP cortex_ingester_memory_metadata The current number of metadata in memory.
 		# TYPE cortex_ingester_memory_metadata gauge
 		cortex_ingester_memory_metadata 0
-    `), metricsToCheck...))
+    `), "cortex_ingester_memory_users", "cortex_ingester_memory_metadata"))
 
 	// Pushing another sample will recreate TSDB.
 	pushSingleSampleWithMetadata(t, i)
@@ -5048,6 +5195,117 @@ func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest 
 	}
 
 	return cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
+}
+
+func Test_Ingester_ModeHandler(t *testing.T) {
+	tests := map[string]struct {
+		method           string
+		requestBody      io.Reader
+		requestUrl       string
+		initialState     ring.InstanceState
+		mode             string
+		expectedState    ring.InstanceState
+		expectedResponse int
+	}{
+		"should change to READONLY mode": {
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=reAdOnLy",
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
+		},
+		"should change mode on GET method": {
+			method:           "GET",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=READONLY",
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
+		},
+		"should change mode on POST method via body": {
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode",
+			requestBody:      strings.NewReader("mode=readonly"),
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
+		},
+		"should change to ACTIVE mode": {
+			method:           "POST",
+			initialState:     ring.READONLY,
+			requestUrl:       "/mode?mode=active",
+			expectedState:    ring.ACTIVE,
+			expectedResponse: http.StatusOK,
+		},
+		"should fail to unknown mode": {
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=NotSupported",
+			expectedState:    ring.ACTIVE,
+			expectedResponse: http.StatusBadRequest,
+		},
+		"should maintain in readonly": {
+			method:           "POST",
+			initialState:     ring.READONLY,
+			requestUrl:       "/mode?mode=READONLY",
+			expectedState:    ring.READONLY,
+			expectedResponse: http.StatusOK,
+		},
+		"should maintain in active": {
+			method:           "POST",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mode=ACTIVE",
+			expectedState:    ring.ACTIVE,
+			expectedResponse: http.StatusOK,
+		},
+		"should fail mode READONLY if LEAVING state": {
+			method:           "POST",
+			initialState:     ring.LEAVING,
+			requestUrl:       "/mode?mode=READONLY",
+			expectedState:    ring.LEAVING,
+			expectedResponse: http.StatusBadRequest,
+		},
+		"should fail with malformatted request": {
+			method:           "GET",
+			initialState:     ring.ACTIVE,
+			requestUrl:       "/mode?mod;e=READONLY",
+			expectedResponse: http.StatusBadRequest,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			cfg := defaultIngesterTestConfig(t)
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			if testData.initialState != ring.ACTIVE {
+				err = i.lifecycler.ChangeState(context.Background(), testData.initialState)
+				require.NoError(t, err)
+
+				// Wait until initial state
+				test.Poll(t, 1*time.Second, testData.initialState, func() interface{} {
+					return i.lifecycler.GetState()
+				})
+			}
+
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(testData.method, testData.requestUrl, testData.requestBody)
+			if testData.requestBody != nil {
+				request.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
+			}
+			i.ModeHandler(response, request)
+
+			require.Equal(t, testData.expectedResponse, response.Code)
+			require.Equal(t, testData.expectedState, i.lifecycler.GetState())
+		})
+	}
 }
 
 // mockTenantLimits exposes per-tenant limits based on a provided map

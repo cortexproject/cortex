@@ -99,6 +99,7 @@ func Test_rejectQueryOrSetPriorityShouldRejectIfMatches(t *testing.T) {
 	type testCase struct {
 		queryRejectionEnabled bool
 		path                  string
+		headers               http.Header
 		expectedError         error
 		expectedPriority      int64
 		rejectQueryAttribute  validation.QueryAttribute
@@ -149,10 +150,10 @@ func Test_rejectQueryOrSetPriorityShouldRejectIfMatches(t *testing.T) {
 			},
 		},
 
-		"should reject if query rejection enabled with step limit and subQuery step match": {
+		"should not reject if query rejection enabled with step limit and query type is not range query": {
 			queryRejectionEnabled: true,
 			path:                  "/api/v1/query?time=1536716898&query=avg_over_time%28rate%28node_cpu_seconds_total%5B1m%5D%29%5B10m%3A5s%5D%29", //avg_over_time(rate(node_cpu_seconds_total[1m])[10m:5s])
-			expectedError:         httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage),
+			expectedError:         nil,
 			rejectQueryAttribute: validation.QueryAttribute{
 				QueryStepLimit: validation.QueryStepLimit{
 					Min: model.Duration(time.Second * 5),
@@ -211,12 +212,64 @@ func Test_rejectQueryOrSetPriorityShouldRejectIfMatches(t *testing.T) {
 				CompiledRegex: regexp.MustCompile(".*sum.*"),
 			},
 		},
+
+		"should reject if only dashboard and panelId properties provided and query has both headers matching the property": {
+			queryRejectionEnabled: true,
+			path:                  fmt.Sprintf("/api/v1/query?start=%d&end=%d&step=7s&query=%s", now.Add(-30*time.Minute).UnixMilli()/1000, now.Add(-20*time.Minute).UnixMilli()/1000, url.QueryEscape("count(sum(up))")),
+			headers: http.Header{
+				"X-Dashboard-Uid": {"dashboard-uid"},
+				"X-Panel-Id":      {"pane"},
+			},
+			expectedError: httpgrpc.Errorf(http.StatusUnprocessableEntity, QueryRejectErrorMessage),
+			rejectQueryAttribute: validation.QueryAttribute{
+				DashboardUID: "dashboard-uid",
+				PanelID:      "pane",
+			},
+		},
+
+		"should not reject if query_rejection properties only provides dashboard_uuid and panel_id but query doesn't have those header": {
+			queryRejectionEnabled: true,
+			path:                  fmt.Sprintf("/api/v1/series?start=%d&end=%d&step=7s&match[]=%s", now.Add(-30*time.Minute).UnixMilli()/1000, now.Add(-20*time.Minute).UnixMilli()/1000, url.QueryEscape("count(sum(up))")),
+			headers:               http.Header{},
+			expectedError:         nil,
+			rejectQueryAttribute: validation.QueryAttribute{
+				PanelID:      "panel",
+				DashboardUID: "dash123",
+			},
+		},
+
+		"should not reject if query_rejection properties only provides dashboard_uid and query doesn't have X-Dashboard-Uid header": {
+			queryRejectionEnabled: true,
+			path:                  fmt.Sprintf("/api/v1/series?start=%d&end=%d&step=7s&match[]=%s", now.Add(-30*time.Minute).UnixMilli()/1000, now.Add(-20*time.Minute).UnixMilli()/1000, url.QueryEscape("count(sum(up))")),
+			headers: http.Header{
+				"X-Panel-Id": {"pane"},
+			},
+			expectedError: nil,
+			rejectQueryAttribute: validation.QueryAttribute{
+				DashboardUID: "dash123",
+			},
+		},
+
+		"should not reject if query_rejection properties only provides user agent regex and query doesn't have User-Agent header": {
+			queryRejectionEnabled: true,
+			path:                  fmt.Sprintf("/api/v1/series?start=%d&end=%d&step=7s&match[]=%s", now.Add(-30*time.Minute).UnixMilli()/1000, now.Add(-20*time.Minute).UnixMilli()/1000, url.QueryEscape("count(sum(up))")),
+			headers: http.Header{
+				"X-Dashboard-Uid": {"dashboard-uid"},
+				"X-Panel-Id":      {"pane"},
+			},
+			expectedError: nil,
+			rejectQueryAttribute: validation.QueryAttribute{
+				UserAgentRegex:         "^goclient",
+				CompiledUserAgentRegex: regexp.MustCompile("^goclient"),
+			},
+		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			req, err := http.NewRequest("GET", testData.path, http.NoBody)
 			require.NoError(t, err)
+			req.Header = testData.headers
 			reqStats, ctx := stats.ContextWithEmptyStats(context.Background())
 			req = req.WithContext(ctx)
 			limits.queryRejection.Enabled = testData.queryRejectionEnabled
@@ -257,10 +310,10 @@ func Test_matchAttributeForExpressionQueryShouldMatchRegex(t *testing.T) {
 			query:  "count(sum(up))",
 			result: true,
 		},
-		"should hit if regex is an empty string": {
+		"should miss if regex is an empty string and is only provided property of query_rejection": {
 			regex:  "",
 			query:  "sum(up)",
-			result: true,
+			result: false,
 		},
 	}
 
@@ -526,15 +579,15 @@ func Test_matchAttributeForExpressionQueryHeadersShouldBeCheckedIfSet(t *testing
 	}
 
 	tests := map[string]testCase{
-		"should not check any of them if attributes are empty (match)": {
-			expectedResult: true,
+		"should consider no match if no properties provided for query_attributes": {
+			expectedResult: false,
 		},
-		"should not check if attributes are empty even corresponding headers exist (match)": {
+		"should consider no match if no properties provided for query_attributes even corresponding headers exist": {
 			headers: http.Header{
 				"X-Dashboard-Uid": {"dashboard-uid"},
 				"X-Panel-Id":      {"panel-id"},
 			},
-			expectedResult: true,
+			expectedResult: false,
 		},
 		"should match all attributes if all set and all headers provided": {
 			headers: http.Header{
@@ -564,14 +617,14 @@ func Test_matchAttributeForExpressionQueryHeadersShouldBeCheckedIfSet(t *testing
 				PanelID: "panel-id",
 			},
 		},
-		"should not compare if values are empty (match)": {
+		"should ignore if query_rejection property values are empty therefore shouldn't match if only those parameters was provided": {
 			headers: http.Header{
 				"X-Panel-Id": {""},
 			},
 			queryAttribute: validation.QueryAttribute{
 				PanelID: "",
 			},
-			expectedResult: true,
+			expectedResult: false,
 		},
 		"should match if headers match provided attributes ": {
 			headers: http.Header{
@@ -582,6 +635,14 @@ func Test_matchAttributeForExpressionQueryHeadersShouldBeCheckedIfSet(t *testing
 				PanelID: "pane",
 			},
 			expectedResult: true,
+		},
+		"should not match if only dashboard and panel properties are specified and query missing those headers (metadata queries)": {
+			headers: http.Header{},
+			queryAttribute: validation.QueryAttribute{
+				DashboardUID: "dashboard",
+				PanelID:      "pane",
+			},
+			expectedResult: false,
 		},
 	}
 
@@ -620,10 +681,10 @@ func Test_matchAttributeForExpressionQueryShouldMatchUserAgentRegex(t *testing.T
 			userAgentHeader: "grafana-agent/v0.19.0",
 			result:          true,
 		},
-		"should hit if regex is an empty string": {
+		"should miss if regex is an empty string and only provided property for query_attribute": {
 			userAgentRegex:  "",
 			userAgentHeader: "grafana-agent/v0.19.0",
-			result:          true,
+			result:          false,
 		},
 	}
 

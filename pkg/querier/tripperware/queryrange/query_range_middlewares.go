@@ -96,7 +96,7 @@ func Middlewares(
 	var c cache.Cache
 	if cfg.CacheResults {
 		shouldCache := func(r tripperware.Request) bool {
-			if v, ok := r.(*PrometheusRequest); ok {
+			if v, ok := r.(*tripperware.PrometheusRequest); ok {
 				return !v.CachingOptions.Disabled
 			}
 			return false

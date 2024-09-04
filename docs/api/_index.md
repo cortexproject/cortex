@@ -32,6 +32,8 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Flush blocks](#flush-blocks) | Ingester || `GET,POST /ingester/flush` |
 | [Shutdown](#shutdown) | Ingester || `GET,POST /ingester/shutdown` |
 | [Ingesters ring status](#ingesters-ring-status) | Ingester || `GET /ingester/ring` |
+| [Ingester tenants stats](#ingester-tenants-stats) | Ingester || `GET /ingester/all_user_stats` |
+| [Ingester mode](#ingester-mode) | Ingester || `GET,POST /ingester/mode` |
 | [Instant query](#instant-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query` |
 | [Range query](#range-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query_range` |
 | [Exemplar query](#exemplar-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query_exemplars` |
@@ -241,7 +243,7 @@ GET /distributor/all_user_stats
 GET /all_user_stats
 ```
 
-Displays a web page with per-tenant statistics updated in realtime, including the total number of active series across all ingesters and the current ingestion rate (samples / sec).
+Displays a web page with per-tenant statistics updated in realtime, including the total number of loaded blocks and active series across all ingesters as well as the current ingestion rate (samples / sec).
 
 ### HA tracker status
 
@@ -295,6 +297,24 @@ GET /ring
 ```
 
 Displays a web page with the ingesters hash ring status, including the state, healthy and last heartbeat time of each ingester.
+
+### Ingester tenants stats
+
+```
+GET /ingester/all_user_stats
+
+```
+
+Displays a web page with per-tenant statistics updated in realtime, including the total number of loaded blocks and active series from a specific ingester as well as the current ingestion rate (samples / sec).
+
+### Ingester mode
+
+```
+GET,POST /ingester/mode
+```
+Change ingester mode between ACTIVE or READONLY. READONLY ingester does not receive push requests and will only be called for query operations.
+
+The endpoint accept query param `mode` or POST as `application/x-www-form-urlencoded` with mode type.
 
 
 ## Querier / Query-frontend
@@ -355,9 +375,7 @@ GET,POST <prometheus-http-prefix>/api/v1/series
 GET,POST <legacy-http-prefix>/api/v1/series
 ```
 
-Find series by label matchers. Differently than Prometheus and due to scalability and performances reasons, if `-querier.query-store-for-labels-enabled` is not set or if `start` param is not specified, Cortex currently always fetches series from data stored in the ingesters.
-
-If `-querier.query-store-for-labels-enabled` is configured, Cortex also queries the long-term store with the *blocks* storage engine.
+Find series by label matchers. Starting from release v1.18.0, Cortex by default honors the `start` and `end` request parameters and fetches series from either ingester, store gateway or both. The special case is that if `start` param is not specified, Cortex currently fetches series from data stored in the ingesters.
 
 _For more information, please check out the Prometheus [series endpoint](https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers) documentation._
 
@@ -372,7 +390,7 @@ GET,POST <prometheus-http-prefix>/api/v1/labels
 GET,POST <legacy-http-prefix>/api/v1/labels
 ```
 
-Get label names of ingested series. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the label names from in-memory data stored in the ingesters. There is experimental support to query the long-term store with the *blocks* storage engine when `-querier.query-store-for-labels-enabled` is set.
+Get label names of ingested series. Starting from release v1.18.0, Cortex by default honors the `start` and `end` request parameters and fetches label names from either ingester, store gateway or both.
 
 _For more information, please check out the Prometheus [get label names](https://prometheus.io/docs/prometheus/latest/querying/api/#getting-label-names) documentation._
 
@@ -387,7 +405,7 @@ GET <prometheus-http-prefix>/api/v1/label/{name}/values
 GET <legacy-http-prefix>/api/v1/label/{name}/values
 ```
 
-Get label values for a given label name. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the label values from in-memory data stored in the ingesters. There is experimental support to query the long-term store with the *blocks* storage engine when `-querier.query-store-for-labels-enabled` is set.
+Get label values for a given label name. Starting from release v1.18.0, Cortex by default honors the `start` and `end` request parameters and fetches label values from either ingester, store gateway or both.
 
 _For more information, please check out the Prometheus [get label values](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-label-values) documentation._
 

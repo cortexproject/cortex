@@ -16,6 +16,8 @@ import (
 
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/tenancy"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type InMemoryIndexCache struct {
@@ -147,8 +149,8 @@ func (c *InMemoryIndexCache) FetchMultiPostings(ctx context.Context, blockID uli
 	blockIDKey := blockID.String()
 	requests := 0
 	hit := 0
-	for _, key := range keys {
-		if ctx.Err() != nil {
+	for i, key := range keys {
+		if (i+1)%util.CheckContextEveryNIterations == 0 && ctx.Err() != nil {
 			c.commonMetrics.RequestTotal.WithLabelValues(storecache.CacheTypePostings, tenant).Add(float64(requests))
 			c.commonMetrics.HitsTotal.WithLabelValues(storecache.CacheTypePostings, tenant).Add(float64(hit))
 			return hits, misses
@@ -208,8 +210,8 @@ func (c *InMemoryIndexCache) FetchMultiSeries(ctx context.Context, blockID ulid.
 	blockIDKey := blockID.String()
 	requests := 0
 	hit := 0
-	for _, id := range ids {
-		if ctx.Err() != nil {
+	for i, id := range ids {
+		if (i+1)%util.CheckContextEveryNIterations == 0 && ctx.Err() != nil {
 			c.commonMetrics.RequestTotal.WithLabelValues(storecache.CacheTypeSeries, tenant).Add(float64(requests))
 			c.commonMetrics.HitsTotal.WithLabelValues(storecache.CacheTypeSeries, tenant).Add(float64(hit))
 			return hits, misses

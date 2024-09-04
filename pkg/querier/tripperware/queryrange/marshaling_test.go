@@ -3,8 +3,7 @@ package queryrange
 import (
 	"bytes"
 	"context"
-	"github.com/gogo/protobuf/proto"
-	io "io"
+	"io"
 	"math/rand"
 	"net/http"
 	"testing"
@@ -59,7 +58,7 @@ func BenchmarkPrometheusCodec_EncodeResponse(b *testing.B) {
 	}
 }
 
-func mockPrometheusResponse(numSeries, numSamplesPerSeries int) *PrometheusResponse {
+func mockPrometheusResponse(numSeries, numSamplesPerSeries int) *tripperware.PrometheusResponse {
 	stream := make([]tripperware.SampleStream, numSeries)
 	for s := 0; s < numSeries; s++ {
 		// Generate random samples.
@@ -84,11 +83,17 @@ func mockPrometheusResponse(numSeries, numSamplesPerSeries int) *PrometheusRespo
 		}
 	}
 
-	return &PrometheusResponse{
+	return &tripperware.PrometheusResponse{
 		Status: "success",
-		Data: PrometheusData{
+		Data: tripperware.PrometheusData{
 			ResultType: "vector",
-			Result:     stream,
+			Result: tripperware.PrometheusQueryResult{
+				Result: &tripperware.PrometheusQueryResult_Matrix{
+					Matrix: &tripperware.Matrix{
+						SampleStreams: stream,
+					},
+				},
+			},
 		},
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"math"
 	"net/http"
@@ -1500,7 +1501,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	labelName, startTimestampMs, endTimestampMs, matchers, err := client.FromLabelValuesRequest(req)
+	labelName, startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelValuesRequest(req)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1534,9 +1535,13 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 	defer c()
-	vals, _, err := q.LabelValues(ctx, labelName, nil, matchers...)
+	vals, _, err := q.LabelValues(ctx, labelName, &storage.LabelHints{Limit: limit}, matchers...)
 	if err != nil {
 		return nil, cleanup, err
+	}
+
+	if limit > 0 && len(vals) > limit {
+		vals = vals[:limit]
 	}
 
 	return &client.LabelValuesResponse{
@@ -1601,6 +1606,8 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
+	limit := int(req.Limit)
+
 	q, err := db.Querier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
@@ -1615,9 +1622,13 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 	defer c()
-	names, _, err := q.LabelNames(ctx, nil)
+	names, _, err := q.LabelNames(ctx, &storage.LabelHints{Limit: limit})
 	if err != nil {
 		return nil, cleanup, err
+	}
+
+	if limit > 0 && len(names) > limit {
+		names = names[:limit]
 	}
 
 	return &client.LabelNamesResponse{
@@ -1676,7 +1687,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 	}
 
 	// Parse the request
-	_, _, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, limit, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1705,6 +1716,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		Start: mint,
 		End:   maxt,
 		Func:  "series", // There is no series function, this token is used for lookups that don't need samples.
+		Limit: limit,
 	}
 	if len(matchersSet) > 1 {
 		for _, matchers := range matchersSet {
@@ -1726,15 +1738,20 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		Metric: make([]*cortexpb.Metric, 0),
 	}
 
+	cnt := 0
 	for mergedSet.Next() {
+		cnt++
 		// Interrupt if the context has been canceled.
-		if ctx.Err() != nil {
+		if cnt%util.CheckContextEveryNIterations == 0 && ctx.Err() != nil {
 			return nil, cleanup, ctx.Err()
 		}
 
 		result.Metric = append(result.Metric, &cortexpb.Metric{
 			Labels: cortexpb.FromLabelsToLabelAdapters(mergedSet.At().Labels()),
 		})
+		if limit > 0 && len(result.Metric) >= limit {
+			break
+		}
 	}
 
 	return result, cleanup, nil
@@ -1788,7 +1805,42 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return &client.UserStatsResponse{}, nil
 	}
 
-	return createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled), nil
+	userStat := createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled)
+
+	return &client.UserStatsResponse{
+		IngestionRate:     userStat.IngestionRate,
+		NumSeries:         userStat.NumSeries,
+		ApiIngestionRate:  userStat.APIIngestionRate,
+		RuleIngestionRate: userStat.RuleIngestionRate,
+		ActiveSeries:      userStat.ActiveSeries,
+		LoadedBlocks:      userStat.LoadedBlocks,
+	}, nil
+}
+
+func (i *Ingester) userStats() []UserIDStats {
+	i.stoppedMtx.RLock()
+	defer i.stoppedMtx.RUnlock()
+
+	perUserTotals := make(map[string]UserStats)
+
+	users := i.TSDBState.dbs
+
+	response := make([]UserIDStats, 0, len(perUserTotals))
+	for id, db := range users {
+		response = append(response, UserIDStats{
+			UserID:    id,
+			UserStats: createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled),
+		})
+	}
+
+	return response
+}
+
+// AllUserStatsHandler shows stats for all users.
+func (i *Ingester) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {
+	stats := i.userStats()
+
+	AllUserStatsRender(w, r, stats, 0)
 }
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
@@ -1797,24 +1849,28 @@ func (i *Ingester) AllUserStats(_ context.Context, _ *client.UserStatsRequest) (
 		return nil, err
 	}
 
-	i.stoppedMtx.RLock()
-	defer i.stoppedMtx.RUnlock()
-
-	users := i.TSDBState.dbs
+	userStats := i.userStats()
 
 	response := &client.UsersStatsResponse{
-		Stats: make([]*client.UserIDStatsResponse, 0, len(users)),
+		Stats: make([]*client.UserIDStatsResponse, 0, len(userStats)),
 	}
-	for userID, db := range users {
+	for _, userStat := range userStats {
 		response.Stats = append(response.Stats, &client.UserIDStatsResponse{
-			UserId: userID,
-			Data:   createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled),
+			UserId: userStat.UserID,
+			Data: &client.UserStatsResponse{
+				IngestionRate:     userStat.IngestionRate,
+				NumSeries:         userStat.NumSeries,
+				ApiIngestionRate:  userStat.APIIngestionRate,
+				RuleIngestionRate: userStat.RuleIngestionRate,
+				ActiveSeries:      userStat.ActiveSeries,
+				LoadedBlocks:      userStat.LoadedBlocks,
+			},
 		})
 	}
 	return response, nil
 }
 
-func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) *client.UserStatsResponse {
+func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) UserStats {
 	apiRate := db.ingestedAPISamples.Rate()
 	ruleRate := db.ingestedRuleSamples.Rate()
 
@@ -1823,12 +1879,13 @@ func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) *client.User
 		activeSeries = uint64(db.activeSeries.Active())
 	}
 
-	return &client.UserStatsResponse{
+	return UserStats{
 		IngestionRate:     apiRate + ruleRate,
-		ApiIngestionRate:  apiRate,
+		APIIngestionRate:  apiRate,
 		RuleIngestionRate: ruleRate,
 		NumSeries:         db.Head().NumSeries(),
 		ActiveSeries:      activeSeries,
+		LoadedBlocks:      uint64(len(db.Blocks())),
 	}
 }
 
@@ -2863,6 +2920,61 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ModeHandler Change mode of ingester. It will also update set unregisterOnShutdown to true if READONLY mode
+func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		respMsg := "failed to parse HTTP request in mode handler"
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg, "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		// We ignore errors here, because we cannot do anything about them.
+		_, _ = w.Write([]byte(respMsg))
+		return
+	}
+
+	currentState := i.lifecycler.GetState()
+	reqMode := strings.ToUpper(r.Form.Get("mode"))
+	switch reqMode {
+	case "READONLY":
+		if currentState != ring.READONLY {
+			err = i.lifecycler.ChangeState(r.Context(), ring.READONLY)
+			if err != nil {
+				respMsg := fmt.Sprintf("failed to change state: %s", err)
+				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+				w.WriteHeader(http.StatusBadRequest)
+				// We ignore errors here, because we cannot do anything about them.
+				_, _ = w.Write([]byte(respMsg))
+				return
+			}
+		}
+	case "ACTIVE":
+		if currentState != ring.ACTIVE {
+			err = i.lifecycler.ChangeState(r.Context(), ring.ACTIVE)
+			if err != nil {
+				respMsg := fmt.Sprintf("failed to change state: %s", err)
+				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+				w.WriteHeader(http.StatusBadRequest)
+				// We ignore errors here, because we cannot do anything about them.
+				_, _ = w.Write([]byte(respMsg))
+				return
+			}
+		}
+	default:
+		respMsg := fmt.Sprintf("invalid mode input: %s", html.EscapeString(reqMode))
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+		w.WriteHeader(http.StatusBadRequest)
+		// We ignore errors here, because we cannot do anything about them.
+		_, _ = w.Write([]byte(respMsg))
+		return
+	}
+
+	respMsg := fmt.Sprintf("Ingester mode %s", i.lifecycler.GetState())
+	level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+	w.WriteHeader(http.StatusOK)
+	// We ignore errors here, because we cannot do anything about them.
+	_, _ = w.Write([]byte(respMsg))
 }
 
 // metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.

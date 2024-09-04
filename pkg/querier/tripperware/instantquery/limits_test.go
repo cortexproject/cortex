@@ -71,12 +71,12 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
-			req := &PrometheusRequest{Query: testData.query}
+			req := &tripperware.PrometheusRequest{Query: testData.query}
 
 			limits := &mockLimits{maxQueryLength: testData.maxQueryLength}
 			middleware := NewLimitsMiddleware(limits, 5*time.Minute)
 
-			innerRes := NewEmptyPrometheusInstantQueryResponse()
+			innerRes := tripperware.NewEmptyPrometheusResponse(true)
 			inner := &mockHandler{}
 			inner.On("Do", mock.Anything, mock.Anything).Return(innerRes, nil)
 

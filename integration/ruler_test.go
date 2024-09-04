@@ -10,7 +10,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/rand"
 	"net/http"
 	"os"
@@ -24,7 +23,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
-	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -200,119 +198,6 @@ func TestRulerAPISingleBinary(t *testing.T) {
 	require.NoError(t, cortexRestarted.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
 }
 
-func TestRulerEvaluationDelay(t *testing.T) {
-	s, err := e2e.NewScenario(networkName)
-	require.NoError(t, err)
-	defer s.Close()
-
-	namespace := "ns"
-	user := "fake"
-
-	evaluationDelay := time.Minute * 5
-
-	configOverrides := map[string]string{
-		"-ruler-storage.local.directory":   filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
-		"-ruler.poll-interval":             "2s",
-		"-ruler.rule-path":                 filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
-		"-ruler.evaluation-delay-duration": evaluationDelay.String(),
-	}
-
-	// Start Cortex components.
-	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-local.yaml", cortexConfigFile))
-	require.NoError(t, writeFileToSharedDir(s, filepath.Join("ruler_configs", user, namespace), []byte(cortexRulerEvalStaleNanConfigYaml)))
-	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, configOverrides, "", 9009, 9095)
-	require.NoError(t, s.StartAndWaitReady(cortex))
-
-	// Create a client with the ruler address configured
-	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", cortex.HTTPEndpoint(), "")
-	require.NoError(t, err)
-
-	now := time.Now()
-
-	// Generate series that includes stale nans
-	samplesToSend := 10
-	series := prompb.TimeSeries{
-		Labels: []prompb.Label{
-			{Name: "__name__", Value: "a_sometimes_stale_nan_series"},
-			{Name: "instance", Value: "sometimes-stale"},
-		},
-	}
-	series.Samples = make([]prompb.Sample, samplesToSend)
-	posStale := 2
-
-	// Create samples, that are delayed by the evaluation delay with increasing values.
-	for pos := range series.Samples {
-		series.Samples[pos].Timestamp = e2e.TimeToMilliseconds(now.Add(-evaluationDelay).Add(time.Duration(pos) * time.Second))
-		series.Samples[pos].Value = float64(pos + 1)
-
-		// insert staleness marker at the positions marked by posStale
-		if pos == posStale {
-			series.Samples[pos].Value = math.Float64frombits(value.StaleNaN)
-		}
-	}
-
-	// Insert metrics
-	res, err := c.Push([]prompb.TimeSeries{series})
-	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-
-	// Get number of rule evaluations just after push
-	ruleEvaluationsAfterPush, err := cortex.SumMetrics([]string{"cortex_prometheus_rule_evaluations_total"})
-	require.NoError(t, err)
-
-	// Wait until the rule is evaluated for the first time
-	require.NoError(t, cortex.WaitSumMetrics(e2e.Greater(ruleEvaluationsAfterPush[0]), "cortex_prometheus_rule_evaluations_total"))
-
-	// Query the timestamp of the latest result to ensure the evaluation is delayed
-	result, err := c.Query("timestamp(stale_nan_eval)", now)
-	require.NoError(t, err)
-	require.Equal(t, model.ValVector, result.Type())
-
-	vector := result.(model.Vector)
-	require.Equal(t, 1, vector.Len(), "expect one sample returned")
-
-	// 290 seconds gives 10 seconds of slack between the rule evaluation and the query
-	// to account for CI latency, but ensures the latest evaluation was in the past.
-	var maxDiff int64 = 290_000
-	require.GreaterOrEqual(t, e2e.TimeToMilliseconds(time.Now())-int64(vector[0].Value)*1000, maxDiff)
-
-	// Wait until all the pushed samples have been evaluated by the rule. This
-	// ensures that rule results are successfully written even after a
-	// staleness period.
-	require.NoError(t, cortex.WaitSumMetrics(e2e.GreaterOrEqual(ruleEvaluationsAfterPush[0]+float64(samplesToSend)), "cortex_prometheus_rule_evaluations_total"))
-
-	// query all results to verify rules have been evaluated correctly
-	result, err = c.QueryRange("stale_nan_eval", now.Add(-evaluationDelay), now, time.Second)
-	require.NoError(t, err)
-	require.Equal(t, model.ValMatrix, result.Type())
-
-	matrix := result.(model.Matrix)
-	require.GreaterOrEqual(t, 1, matrix.Len(), "expect at least a series returned")
-
-	// Iterate through the values recorded and ensure they exist as expected.
-	inputPos := 0
-	for _, m := range matrix {
-		for _, v := range m.Values {
-			// Skip values for stale positions
-			if inputPos == posStale {
-				inputPos++
-			}
-
-			expectedValue := model.SampleValue(2 * (inputPos + 1))
-			require.Equal(t, expectedValue, v.Value)
-
-			// Look for next value
-			inputPos++
-
-			// We have found all input values
-			if inputPos >= len(series.Samples) {
-				break
-			}
-		}
-	}
-	require.Equal(t, len(series.Samples), inputPos, "expect to have returned all evaluations")
-}
-
 func TestRulerSharding(t *testing.T) {
 	const numRulesGroups = 100
 
@@ -382,6 +267,9 @@ func TestRulerSharding(t *testing.T) {
 	// between the two rulers.
 	require.NoError(t, ruler1.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
 	require.NoError(t, ruler2.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
+	// Even with rules sharded, we expect rulers to have the same cortex_ruler_rule_groups_in_store metric values
+	require.NoError(t, ruler1.WaitSumMetrics(e2e.Equals(numRulesGroups), "cortex_ruler_rule_groups_in_store"))
+	require.NoError(t, ruler2.WaitSumMetrics(e2e.Equals(numRulesGroups), "cortex_ruler_rule_groups_in_store"))
 
 	// Fetch the rules and ensure they match the configured ones.
 	actualGroups, err := c.GetPrometheusRules(e2ecortex.DefaultFilter)
@@ -1093,6 +981,152 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 	})
 }
 
+func TestRulerHAEvaluation(t *testing.T) {
+	const numRulesGroups = 20
+
+	random := rand.New(rand.NewSource(time.Now().UnixNano()))
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Generate multiple rule groups, with 1 rule each.
+	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
+	expectedNames := make([]string, numRulesGroups)
+	evalInterval, _ := model.ParseDuration("2s")
+	for i := 0; i < numRulesGroups; i++ {
+		num := random.Intn(10)
+		var ruleNode yaml.Node
+		var exprNode yaml.Node
+
+		ruleNode.SetString(fmt.Sprintf("rule_%d", i))
+		exprNode.SetString(strconv.Itoa(i))
+		ruleName := fmt.Sprintf("test_%d", i)
+
+		expectedNames[i] = ruleName
+
+		if num%2 == 0 {
+			ruleGroups[i] = rulefmt.RuleGroup{
+				Name:     ruleName,
+				Interval: evalInterval,
+				Rules: []rulefmt.RuleNode{{
+					Alert: ruleNode,
+					Expr:  exprNode,
+				}},
+			}
+		} else {
+			ruleGroups[i] = rulefmt.RuleGroup{
+				Name:     ruleName,
+				Interval: evalInterval,
+				Rules: []rulefmt.RuleNode{{
+					Record: ruleNode,
+					Expr:   exprNode,
+				}},
+			}
+		}
+	}
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Configure the ruler.
+	overrides := map[string]string{
+		// Since we're not going to run any rule, we don't need the
+		// store-gateway to be configured to a valid address.
+		"-querier.store-gateway-addresses": "localhost:12345",
+		// Enable the bucket index so we can skip the initial bucket scan.
+		"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+		"-ruler.ring.replication-factor":                    "2",
+		"-ruler.enable-ha-evaluation":                       "true",
+		"-ruler.poll-interval":                              "5s",
+		"-ruler.client.remote-timeout":                      "10ms",
+	}
+
+	rulerFlags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		RulerShardingFlags(consul.NetworkHTTPEndpoint()),
+		overrides,
+	)
+
+	// Start rulers.
+	ruler1 := e2ecortex.NewRuler("ruler-1", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	ruler2 := e2ecortex.NewRuler("ruler-2", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	ruler3 := e2ecortex.NewRuler("ruler-3", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	rulers := e2ecortex.NewCompositeCortexService(ruler1, ruler2, ruler3)
+	require.NoError(t, s.StartAndWaitReady(ruler1, ruler2, ruler3))
+
+	// Upload rule groups to one of the rulers.
+	c, err := e2ecortex.NewClient("", "", "", ruler1.HTTPEndpoint(), "user-1")
+	require.NoError(t, err)
+	namespaceNames := []string{"test1", "test2", "test3", "test4", "test5"}
+	namespaceNameCount := make([]int, len(namespaceNames))
+	nsRand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for _, ruleGroup := range ruleGroups {
+		index := nsRand.Intn(len(namespaceNames))
+		namespaceNameCount[index] = namespaceNameCount[index] + 1
+		require.NoError(t, c.SetRuleGroup(ruleGroup, namespaceNames[index]))
+	}
+
+	// Wait until rulers have loaded all rules.
+	require.NoError(t, rulers.WaitSumMetricsWithOptions(e2e.Equals(numRulesGroups), []string{"cortex_prometheus_rule_group_rules"}, e2e.WaitMissingMetrics))
+
+	ruler1SyncTotal, err := ruler1.SumMetrics([]string{"cortex_ruler_sync_rules_total"})
+	require.NoError(t, err)
+	ruler3SyncTotal, err := ruler3.SumMetrics([]string{"cortex_ruler_sync_rules_total"})
+	require.NoError(t, err)
+
+	err = consul.Kill() // kill consul so the rulers will operate with the tokens/instances they already have
+	require.NoError(t, err)
+
+	err = ruler2.Kill()
+	require.NoError(t, err)
+
+	// wait for another sync
+	require.NoError(t, ruler1.WaitSumMetrics(e2e.Greater(ruler1SyncTotal[0]), "cortex_ruler_sync_rules_total"))
+	require.NoError(t, ruler3.WaitSumMetrics(e2e.Greater(ruler3SyncTotal[0]), "cortex_ruler_sync_rules_total"))
+
+	rulers = e2ecortex.NewCompositeCortexService(ruler1, ruler3)
+	require.NoError(t, rulers.WaitSumMetricsWithOptions(e2e.Equals(numRulesGroups), []string{"cortex_prometheus_rule_group_rules"}, e2e.WaitMissingMetrics))
+
+	t.Log(ruler1.SumMetrics([]string{"cortex_prometheus_rule_group_rules"}))
+	t.Log(ruler3.SumMetrics([]string{"cortex_prometheus_rule_group_rules"}))
+
+	c3, err := e2ecortex.NewClient("", "", "", ruler3.HTTPEndpoint(), "user-1")
+	require.NoError(t, err)
+
+	ruler1Rules, err := c.GetRuleGroups()
+	require.NoError(t, err)
+
+	ruler3Rules, err := c3.GetRuleGroups()
+	require.NoError(t, err)
+
+	ruleCount := 0
+	countFunc := func(ruleGroups map[string][]rulefmt.RuleGroup) {
+		for _, v := range ruleGroups {
+			ruleCount += len(v)
+		}
+	}
+
+	countFunc(ruler1Rules)
+	require.Equal(t, numRulesGroups, ruleCount)
+	ruleCount = 0
+	countFunc(ruler3Rules)
+	require.Equal(t, numRulesGroups, ruleCount)
+
+	// each rule group in this test is set to evaluate at a 2 second interval. If a Ruler is down and another Ruler
+	// assumes ownership, it might not immediately evaluate until it's time to evaluate. The following sleep is to ensure the
+	// rulers have evaluated the rule groups
+	time.Sleep(2100 * time.Millisecond)
+	results, err := c.GetPrometheusRules(e2ecortex.RuleFilter{})
+	require.NoError(t, err)
+	require.Equal(t, numRulesGroups, len(results))
+	for _, v := range results {
+		require.False(t, v.LastEvaluation.IsZero())
+	}
+}
+
 func TestRulerKeepFiring(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
@@ -1237,24 +1271,6 @@ type Alert struct {
 	Value           string        `json:"value"`
 }
 
-func alertRuleWithKeepFiringFor(groupName string, ruleName string, expression string, keepFiring model.Duration) rulefmt.RuleGroup {
-	var recordNode = yaml.Node{}
-	var exprNode = yaml.Node{}
-
-	recordNode.SetString(ruleName)
-	exprNode.SetString(expression)
-
-	return rulefmt.RuleGroup{
-		Name:     groupName,
-		Interval: 10,
-		Rules: []rulefmt.RuleNode{{
-			Alert:         recordNode,
-			Expr:          exprNode,
-			KeepFiringFor: keepFiring,
-		}},
-	}
-}
-
 func ruleGroupMatcher(user, namespace, groupName string) *labels.Matcher {
 	return labels.MustNewMatcher(labels.MatchEqual, "rule_group", fmt.Sprintf("/rules/%s/%s;%s", user, namespace, groupName))
 }
@@ -1273,6 +1289,24 @@ func ruleGroupWithRule(groupName string, ruleName string, expression string) rul
 		Rules: []rulefmt.RuleNode{{
 			Record: recordNode,
 			Expr:   exprNode,
+		}},
+	}
+}
+
+func alertRuleWithKeepFiringFor(groupName string, ruleName string, expression string, keepFiring model.Duration) rulefmt.RuleGroup {
+	var recordNode = yaml.Node{}
+	var exprNode = yaml.Node{}
+
+	recordNode.SetString(ruleName)
+	exprNode.SetString(expression)
+
+	return rulefmt.RuleGroup{
+		Name:     groupName,
+		Interval: 10,
+		Rules: []rulefmt.RuleNode{{
+			Alert:         recordNode,
+			Expr:          exprNode,
+			KeepFiringFor: keepFiring,
 		}},
 	}
 }

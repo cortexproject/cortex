@@ -6,6 +6,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
@@ -116,7 +117,7 @@ type Config struct {
 
 // RegisterFlags registers configuration settings used by the ingester client config.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingester.client", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingester.client", snappyblock.Name, f)
 	f.Int64Var(&cfg.MaxInflightPushRequests, "ingester.client.max-inflight-push-requests", 0, "Max inflight push requests that this ingester client can handle. This limit is per-ingester-client. Additional requests will be rejected. 0 = unlimited.")
 }
 

@@ -12,15 +12,15 @@ import (
 
 func TestStepAlign(t *testing.T) {
 	for i, tc := range []struct {
-		input, expected *PrometheusRequest
+		input, expected *tripperware.PrometheusRequest
 	}{
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100,
 				Step:  10,
 			},
-			expected: &PrometheusRequest{
+			expected: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100,
 				Step:  10,
@@ -28,12 +28,12 @@ func TestStepAlign(t *testing.T) {
 		},
 
 		{
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 2,
 				End:   102,
 				Step:  10,
 			},
-			expected: &PrometheusRequest{
+			expected: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100,
 				Step:  10,
@@ -43,10 +43,10 @@ func TestStepAlign(t *testing.T) {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
-			var result *PrometheusRequest
+			var result *tripperware.PrometheusRequest
 			s := stepAlign{
 				next: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
-					result = req.(*PrometheusRequest)
+					result = req.(*tripperware.PrometheusRequest)
 					return nil, nil
 				}),
 			}

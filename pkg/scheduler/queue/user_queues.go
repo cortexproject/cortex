@@ -38,15 +38,12 @@ type querier struct {
 // This struct holds user queues for pending requests. It also keeps track of connected queriers,
 // and mapping between users and queriers.
 type queues struct {
-	userQueues   map[string]*userQueue
-	userQueuesMx sync.RWMutex
-
 	// List of all users with queues, used for iteration when searching for next queue to handle.
 	// Users removed from the middle are replaced with "". To avoid skipping users during iteration, we only shrink
 	// this list when there are ""'s at the end of it.
-	users []string
-
-	maxUserQueueSize int
+	users      []string
+	userQueues map[string]*userQueue
+	queuesMx   sync.RWMutex
 
 	// How long to wait before removing a querier which has got disconnected
 	// but hasn't notified about a graceful shutdown.
@@ -87,16 +84,15 @@ type userQueue struct {
 	index int
 }
 
-func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limits, queueLength *prometheus.GaugeVec) *queues {
+func newUserQueues(forgetDelay time.Duration, limits Limits, queueLength *prometheus.GaugeVec) *queues {
 	return &queues{
-		userQueues:       map[string]*userQueue{},
-		users:            nil,
-		maxUserQueueSize: maxUserQueueSize,
-		forgetDelay:      forgetDelay,
-		queriers:         map[string]*querier{},
-		sortedQueriers:   nil,
-		limits:           limits,
-		queueLength:      queueLength,
+		userQueues:     map[string]*userQueue{},
+		users:          nil,
+		forgetDelay:    forgetDelay,
+		queriers:       map[string]*querier{},
+		sortedQueriers: nil,
+		limits:         limits,
+		queueLength:    queueLength,
 	}
 }
 
@@ -105,8 +101,8 @@ func (q *queues) len() int {
 }
 
 func (q *queues) deleteQueue(userID string) {
-	q.userQueuesMx.Lock()
-	defer q.userQueuesMx.Unlock()
+	q.queuesMx.Lock()
+	defer q.queuesMx.Unlock()
 
 	uq := q.userQueues[userID]
 	if uq == nil {
@@ -137,8 +133,8 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue 
 		maxQueriers = 0
 	}
 
-	q.userQueuesMx.Lock()
-	defer q.userQueuesMx.Unlock()
+	q.queuesMx.Lock()
+	defer q.queuesMx.Unlock()
 
 	uq := q.userQueues[userID]
 	priorityEnabled := q.limits.QueryPriority(userID).Enabled
@@ -216,12 +212,6 @@ func (q *queues) createUserRequestQueue(userID string) userRequestQueue {
 
 	queueSize := q.limits.MaxOutstandingPerTenant(userID)
 
-	// 0 is the default value of the flag. If the old flag is set
-	// then we use its value for compatibility reason.
-	if q.maxUserQueueSize != 0 {
-		queueSize = q.maxUserQueueSize
-	}
-
 	return NewFIFORequestQueue(make(chan Request, queueSize), userID, q.queueLength)
 }
 
@@ -230,6 +220,9 @@ func (q *queues) createUserRequestQueue(userID string) userRequestQueue {
 // last user index, use -1.
 func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (userRequestQueue, string, int) {
 	uid := lastUserIndex
+
+	q.queuesMx.RLock()
+	defer q.queuesMx.RUnlock()
 
 	for iters := 0; iters < len(q.users); iters++ {
 		uid = uid + 1
@@ -244,9 +237,6 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (us
 		if u == "" {
 			continue
 		}
-
-		q.userQueuesMx.RLock()
-		defer q.userQueuesMx.RUnlock()
 
 		uq := q.userQueues[u]
 

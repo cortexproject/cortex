@@ -404,21 +404,25 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 	d := dists[0]
 	reg := regs[0]
 
-	metrics := []string{
+	permanentMetrics := []string{
 		"cortex_distributor_received_samples_total",
 		"cortex_distributor_received_exemplars_total",
 		"cortex_distributor_received_metadata_total",
-		"cortex_distributor_deduped_samples_total",
 		"cortex_distributor_samples_in_total",
-		"cortex_distributor_exemplars_in_total",
-		"cortex_distributor_metadata_in_total",
-		"cortex_distributor_non_ha_samples_received_total",
-		"cortex_distributor_latest_seen_sample_timestamp_seconds",
 		"cortex_distributor_ingester_append_failures_total",
 		"cortex_distributor_ingester_appends_total",
 		"cortex_distributor_ingester_query_failures_total",
 		"cortex_distributor_ingester_queries_total",
 	}
+	removedMetrics := []string{
+		"cortex_distributor_deduped_samples_total",
+		"cortex_distributor_exemplars_in_total",
+		"cortex_distributor_metadata_in_total",
+		"cortex_distributor_non_ha_samples_received_total",
+		"cortex_distributor_latest_seen_sample_timestamp_seconds",
+	}
+
+	allMetrics := append(removedMetrics, permanentMetrics...)
 
 	d.receivedSamples.WithLabelValues("userA", sampleMetricTypeFloat).Add(5)
 	d.receivedSamples.WithLabelValues("userB", sampleMetricTypeFloat).Add(10)
@@ -505,7 +509,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_ingester_query_failures_total counter
 		cortex_distributor_ingester_query_failures_total{ingester="ingester-0"} 1
 		cortex_distributor_ingester_query_failures_total{ingester="ingester-1"} 1
-		`), metrics...))
+		`), allMetrics...))
 
 	d.cleanupInactiveUser("userA")
 
@@ -524,18 +528,6 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 	d.cleanStaleIngesterMetrics()
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.
-		# TYPE cortex_distributor_deduped_samples_total counter
-
-		# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
-		# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-
-		# HELP cortex_distributor_metadata_in_total The total number of metadata the have come in to the distributor, including rejected.
-		# TYPE cortex_distributor_metadata_in_total counter
-
-		# HELP cortex_distributor_non_ha_samples_received_total The total number of received samples for a user that has HA tracking turned on, but the sample didn't contain both HA labels.
-		# TYPE cortex_distributor_non_ha_samples_received_total counter
-
 		# HELP cortex_distributor_received_metadata_total The total number of received metadata, excluding rejected.
 		# TYPE cortex_distributor_received_metadata_total counter
 		cortex_distributor_received_metadata_total{user="userB"} 10
@@ -553,9 +545,6 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_received_exemplars_total counter
 		cortex_distributor_received_exemplars_total{user="userB"} 10
 
-		# HELP cortex_distributor_exemplars_in_total The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.
-		# TYPE cortex_distributor_exemplars_in_total counter
-
 		# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 		# TYPE cortex_distributor_ingester_append_failures_total counter
 		cortex_distributor_ingester_append_failures_total{ingester="ingester-1",status="2xx",type="metadata"} 1
@@ -568,7 +557,11 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# HELP cortex_distributor_ingester_query_failures_total The total number of failed queries sent to ingesters.
 		# TYPE cortex_distributor_ingester_query_failures_total counter
 		cortex_distributor_ingester_query_failures_total{ingester="ingester-1"} 1
-		`), metrics...))
+		`), permanentMetrics...))
+
+	err = testutil.GatherAndCompare(reg, strings.NewReader(""), removedMetrics...)
+	require.ErrorContains(t, err, "expected metric name(s) not found")
+	require.ErrorContains(t, err, strings.Join(removedMetrics, " "))
 }
 
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
@@ -1904,7 +1897,7 @@ func BenchmarkDistributor_GetLabelsValues(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err := ds[0].LabelValuesForLabelName(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__")
+				_, err := ds[0].LabelValuesForLabelName(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__", nil)
 				require.NoError(b, err)
 			}
 		})
@@ -2270,7 +2263,7 @@ func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
 		}
 
 		for i := 0; i < 50; i++ {
-			_, err := ds[0].MetricsForLabelMatchers(ctx, now, now, mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test"))
+			_, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test"))
 			require.NoError(t, err)
 		}
 	}
@@ -2439,7 +2432,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				}
 
 				{
-					metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
+					metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, testData.matchers...)
 
 					if testData.expectedErr != nil {
 						assert.ErrorIs(t, err, testData.expectedErr)
@@ -2457,7 +2450,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				}
 
 				{
-					metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, testData.matchers...)
+					metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, nil, testData.matchers...)
 					if testData.expectedErr != nil {
 						assert.ErrorIs(t, err, testData.expectedErr)
 						return
@@ -2544,7 +2537,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 
 			for n := 0; n < b.N; n++ {
 				now := model.Now()
-				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
+				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, testData.matchers...)
 
 				if testData.expectedErr != nil {
 					assert.EqualError(b, err, testData.expectedErr.Error())
@@ -3197,7 +3190,7 @@ func (i *mockIngester) MetricsForLabelMatchersStream(ctx context.Context, req *c
 		return nil, errFail
 	}
 
-	_, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -3229,7 +3222,7 @@ func (i *mockIngester) MetricsForLabelMatchers(ctx context.Context, req *client.
 		return nil, errFail
 	}
 
-	_, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
 		return nil, err
 	}

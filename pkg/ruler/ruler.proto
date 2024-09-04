@@ -17,6 +17,7 @@ option (gogoproto.unmarshaler_all) = true;
 
 service Ruler {
   rpc Rules(RulesRequest) returns (RulesResponse) {};
+  rpc LivenessCheck(LivenessCheckRequest) returns (LivenessCheckResponse){};
 }
 
 message RulesRequest {
@@ -28,6 +29,12 @@ message RulesRequest {
   string health = 6;
   repeated string matchers = 7;
   bool excludeAlerts = 8;
+}
+
+message LivenessCheckRequest{}
+
+message LivenessCheckResponse{
+  int32 state = 1;
 }
 
 message RulesResponse {

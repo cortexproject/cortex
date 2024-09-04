@@ -285,6 +285,10 @@ compactor:
     # CLI flag: -compactor.ring.wait-active-instance-timeout
     [wait_active_instance_timeout: <duration> | default = 10m]
 
+  # The compaction strategy to use. Supported values are: default, partitioning.
+  # CLI flag: -compactor.compaction-mode
+  [compaction_mode: <string> | default = "default"]
+
   # How long block visit marker file should be considered as expired and able to
   # be picked up by compactor again.
   # CLI flag: -compactor.block-visit-marker-timeout

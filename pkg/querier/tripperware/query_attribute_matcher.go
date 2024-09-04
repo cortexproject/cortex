@@ -14,7 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-const QueryRejectErrorMessage = "This query has been rejected by the service operator."
+const QueryRejectErrorMessage = "This query does not perform well and has been rejected by the service operator."
 
 func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time.Duration, limits Limits, userStr string, rejectedQueriesPerTenant *prometheus.CounterVec) error {
 	if limits == nil || !(limits.QueryPriority(userStr).Enabled || limits.QueryRejection(userStr).Enabled) {
@@ -86,89 +86,120 @@ func getOperation(r *http.Request) string {
 }
 
 func matchAttributeForExpressionQuery(attribute validation.QueryAttribute, op string, r *http.Request, query string, now time.Time, minTime, maxTime int64) bool {
-	if attribute.ApiType != "" && attribute.ApiType != op {
-		return false
+	matched := false
+	if attribute.ApiType != "" {
+		matched = true
+		if attribute.ApiType != op {
+			return false
+		}
 	}
-	if attribute.Regex != "" && attribute.Regex != ".*" && attribute.Regex != ".+" {
-		if attribute.CompiledRegex != nil && !attribute.CompiledRegex.MatchString(query) {
+	if attribute.Regex != "" {
+		matched = true
+		if attribute.Regex != ".*" && attribute.Regex != ".+" && attribute.CompiledRegex != nil && !attribute.CompiledRegex.MatchString(query) {
 			return false
 		}
 	}
 
-	if !isWithinTimeAttributes(attribute.TimeWindow, now, minTime, maxTime) {
-		return false
-	}
-
-	if !isWithinTimeRangeAttribute(attribute.TimeRangeLimit, minTime, maxTime) {
-		return false
-	}
-
-	if op == "query_range" && !isWithinQueryStepLimit(attribute.QueryStepLimit, r) {
-		return false
-	}
-
-	if attribute.UserAgentRegex != "" && attribute.UserAgentRegex != ".*" && attribute.CompiledUserAgentRegex != nil {
-		if !attribute.CompiledUserAgentRegex.MatchString(r.Header.Get("User-Agent")) {
+	if attribute.TimeWindow.Start != 0 || attribute.TimeWindow.End != 0 {
+		matched = true
+		if !isWithinTimeAttributes(attribute.TimeWindow, now, minTime, maxTime) {
 			return false
 		}
 	}
 
-	if attribute.DashboardUID != "" && attribute.DashboardUID != r.Header.Get("X-Dashboard-Uid") {
-		return false
+	if attribute.TimeRangeLimit.Min != 0 || attribute.TimeRangeLimit.Max != 0 {
+		matched = true
+		if !isWithinTimeRangeAttribute(attribute.TimeRangeLimit, minTime, maxTime) {
+			return false
+		}
 	}
 
-	if attribute.PanelID != "" && attribute.PanelID != r.Header.Get("X-Panel-Id") {
-		return false
+	if op == "query_range" && (attribute.QueryStepLimit.Min != 0 || attribute.QueryStepLimit.Max != 0) {
+		matched = true
+		if !isWithinQueryStepLimit(attribute.QueryStepLimit, r) {
+			return false
+		}
 	}
 
-	return true
+	if attribute.UserAgentRegex != "" {
+		matched = true
+		if attribute.UserAgentRegex != ".*" && attribute.CompiledUserAgentRegex != nil && !attribute.CompiledUserAgentRegex.MatchString(r.Header.Get("User-Agent")) {
+			return false
+		}
+	}
+
+	if attribute.DashboardUID != "" {
+		matched = true
+		if attribute.DashboardUID != r.Header.Get("X-Dashboard-Uid") {
+			return false
+		}
+	}
+
+	if attribute.PanelID != "" {
+		matched = true
+		if attribute.PanelID != r.Header.Get("X-Panel-Id") {
+			return false
+		}
+	}
+
+	return matched
 }
 
 func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, op string, r *http.Request, now time.Time) bool {
-	if attribute.ApiType != "" && attribute.ApiType != op {
-		return false
+	matched := false
+	if attribute.ApiType != "" {
+		matched = true
+		if attribute.ApiType != op {
+			return false
+		}
 	}
 	if err := r.ParseForm(); err != nil {
 		return false
 	}
-	if attribute.Regex != "" && attribute.Regex != ".*" && attribute.CompiledRegex != nil {
-		atLeastOneMatched := false
-		for _, matcher := range r.Form["match[]"] {
-			if attribute.CompiledRegex.MatchString(matcher) {
-				atLeastOneMatched = true
-				break
+	if attribute.Regex != "" {
+		matched = true
+		if attribute.Regex != ".*" && attribute.CompiledRegex != nil {
+			atLeastOneMatched := false
+			for _, matcher := range r.Form["match[]"] {
+				if attribute.CompiledRegex.MatchString(matcher) {
+					atLeastOneMatched = true
+					break
+				}
 			}
-		}
-		if !atLeastOneMatched {
-			return false
+			if !atLeastOneMatched {
+				return false
+			}
 		}
 	}
 
 	startTime, _ := util.ParseTime(r.FormValue("start"))
 	endTime, _ := util.ParseTime(r.FormValue("end"))
 
-	if !isWithinTimeAttributes(attribute.TimeWindow, now, startTime, endTime) {
-		return false
-	}
-
-	if !isWithinTimeRangeAttribute(attribute.TimeRangeLimit, startTime, endTime) {
-		return false
-	}
-
-	if attribute.UserAgentRegex != "" && attribute.UserAgentRegex != ".*" && attribute.CompiledUserAgentRegex != nil {
-		if !attribute.CompiledUserAgentRegex.MatchString(r.Header.Get("User-Agent")) {
+	if attribute.TimeWindow.Start != 0 || attribute.TimeWindow.End != 0 {
+		matched = true
+		if !isWithinTimeAttributes(attribute.TimeWindow, now, startTime, endTime) {
 			return false
 		}
 	}
 
-	return true
+	if attribute.TimeRangeLimit.Min != 0 || attribute.TimeRangeLimit.Max != 0 {
+		matched = true
+		if !isWithinTimeRangeAttribute(attribute.TimeRangeLimit, startTime, endTime) {
+			return false
+		}
+	}
+
+	if attribute.UserAgentRegex != "" {
+		matched = true
+		if attribute.UserAgentRegex != ".*" && attribute.CompiledUserAgentRegex != nil && !attribute.CompiledUserAgentRegex.MatchString(r.Header.Get("User-Agent")) {
+			return false
+		}
+	}
+
+	return matched
 }
 
 func isWithinTimeAttributes(timeWindow validation.TimeWindow, now time.Time, startTime, endTime int64) bool {
-	if timeWindow.Start == 0 && timeWindow.End == 0 {
-		return true
-	}
-
 	if timeWindow.Start != 0 {
 		startTimeThreshold := now.Add(-1 * time.Duration(timeWindow.Start).Abs()).Add(-1 * time.Minute).Truncate(time.Minute).UnixMilli()
 		if startTime == 0 || startTime < startTimeThreshold {
@@ -187,9 +218,6 @@ func isWithinTimeAttributes(timeWindow validation.TimeWindow, now time.Time, sta
 }
 
 func isWithinTimeRangeAttribute(limit validation.TimeRangeLimit, startTime, endTime int64) bool {
-	if limit.Min == 0 && limit.Max == 0 {
-		return true
-	}
 
 	if startTime == 0 || endTime == 0 {
 		return false
@@ -208,9 +236,6 @@ func isWithinTimeRangeAttribute(limit validation.TimeRangeLimit, startTime, endT
 }
 
 func isWithinQueryStepLimit(queryStepLimit validation.QueryStepLimit, r *http.Request) bool {
-	if queryStepLimit.Min == 0 && queryStepLimit.Max == 0 {
-		return true
-	}
 
 	step, err := util.ParseDurationMs(r.FormValue("step"))
 	if err != nil {

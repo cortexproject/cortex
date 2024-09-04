@@ -91,6 +91,7 @@ type Handler struct {
 	// Metrics.
 	querySeconds    *prometheus.CounterVec
 	querySeries     *prometheus.CounterVec
+	querySamples    *prometheus.CounterVec
 	queryChunkBytes *prometheus.CounterVec
 	queryDataBytes  *prometheus.CounterVec
 	rejectedQueries *prometheus.CounterVec
@@ -116,6 +117,11 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Number of series fetched to execute a query.",
 		}, []string{"user"})
 
+		h.querySamples = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_query_samples_total",
+			Help: "Number of samples fetched to execute a query.",
+		}, []string{"user"})
+
 		h.queryChunkBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_fetched_chunks_bytes_total",
 			Help: "Size of all chunks fetched to execute a query in bytes.",
@@ -137,6 +143,7 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 			h.querySeconds.DeleteLabelValues(user)
 			h.querySeries.DeleteLabelValues(user)
+			h.querySamples.DeleteLabelValues(user)
 			h.queryChunkBytes.DeleteLabelValues(user)
 			h.queryDataBytes.DeleteLabelValues(user)
 			if err := util.DeleteMatchingLabels(h.rejectedQueries, map[string]string{"user": user}); err != nil {
@@ -305,6 +312,7 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
 	f.querySeries.WithLabelValues(userID).Add(float64(numSeries))
+	f.querySamples.WithLabelValues(userID).Add(float64(numSamples))
 	f.queryChunkBytes.WithLabelValues(userID).Add(float64(numChunkBytes))
 	f.queryDataBytes.WithLabelValues(userID).Add(float64(numDataBytes))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())

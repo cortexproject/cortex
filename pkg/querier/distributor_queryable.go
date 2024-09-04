@@ -27,12 +27,12 @@ import (
 type Distributor interface {
 	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
 	QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error)
-	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName, matchers ...*labels.Matcher) ([]string, error)
-	LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, label model.LabelName, matchers ...*labels.Matcher) ([]string, error)
-	LabelNames(context.Context, model.Time, model.Time) ([]string, error)
-	LabelNamesStream(context.Context, model.Time, model.Time) ([]string, error)
-	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]model.Metric, error)
-	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]model.Metric, error)
+	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName, hint *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error)
+	LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, label model.LabelName, hint *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error)
+	LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error)
+	LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error)
+	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error)
+	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error)
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
@@ -115,9 +115,9 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 		)
 
 		if q.streamingMetadata {
-			ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
+			ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(minT), model.Time(maxT), sp, matchers...)
 		} else {
-			ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(minT), model.Time(maxT), matchers...)
+			ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(minT), model.Time(maxT), sp, matchers...)
 		}
 
 		if err != nil {
@@ -171,9 +171,9 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 	)
 
 	if q.streamingMetadata {
-		lvs, err = q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), matchers...)
+		lvs, err = q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, matchers...)
 	} else {
-		lvs, err = q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), matchers...)
+		lvs, err = q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, matchers...)
 	}
 
 	return lvs, nil, err
@@ -181,7 +181,7 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 
 func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	if len(matchers) > 0 {
-		return q.labelNamesWithMatchers(ctx, matchers...)
+		return q.labelNamesWithMatchers(ctx, hints, matchers...)
 	}
 
 	log, ctx := spanlogger.New(ctx, "distributorQuerier.LabelNames")
@@ -193,16 +193,16 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 	)
 
 	if q.streamingMetadata {
-		ln, err = q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt))
+		ln, err = q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt), hints)
 	} else {
-		ln, err = q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt))
+		ln, err = q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt), hints)
 	}
 
 	return ln, nil, err
 }
 
 // labelNamesWithMatchers performs the LabelNames call by calling ingester's MetricsForLabelMatchers method
-func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	log, ctx := spanlogger.New(ctx, "distributorQuerier.labelNamesWithMatchers")
 	defer log.Span.Finish()
 
@@ -212,9 +212,9 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, matcher
 	)
 
 	if q.streamingMetadata {
-		ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
+		ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), matchers...)
 	} else {
-		ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
+		ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), matchers...)
 	}
 
 	if err != nil {
@@ -279,4 +279,14 @@ func (q *distributorExemplarQuerier) Select(start, end int64, matchers ...[]*lab
 		ret[i] = e
 	}
 	return ret, nil
+}
+
+func labelHintsToSelectHints(hints *storage.LabelHints) *storage.SelectHints {
+	if hints == nil {
+		return nil
+	}
+
+	return &storage.SelectHints{
+		Limit: hints.Limit,
+	}
 }

@@ -910,7 +910,10 @@ func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error
 		(currState == JOINING && state == PENDING) || // triggered by TransferChunks on failure
 		(currState == JOINING && state == ACTIVE) || // triggered by TransferChunks on success
 		(currState == PENDING && state == ACTIVE) || // triggered by autoJoin
-		(currState == ACTIVE && state == LEAVING)) { // triggered by shutdown
+		(currState == ACTIVE && state == LEAVING) || // triggered by shutdown
+		(currState == ACTIVE && state == READONLY) || // triggered by ingester mode
+		(currState == READONLY && state == ACTIVE) || // triggered by ingester mode
+		(currState == READONLY && state == LEAVING)) { // triggered by shutdown
 		return fmt.Errorf("Changing instance state from %v -> %v is disallowed", currState, state)
 	}
 

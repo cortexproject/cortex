@@ -6224,10 +6224,11 @@ decode the data stored in the kv store.&lt;/p>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/soonping-amzn">Soon-Ping Phang&lt;/a>&lt;/li>
 &lt;li>Date: June 2022&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
+&lt;li>Status: Deprecated&lt;/li>
 &lt;/ul>
 &lt;hr>
 &lt;h2 id="introduction">Introduction&lt;/h2>
+&lt;p>&lt;em>This proposal is deprecated in favor of the new &lt;a href="/docs/proposals/ruler-high-availability/">proposal&lt;/a>&lt;/em>&lt;/p>
 &lt;p>This proposal consolidates multiple existing PRs from the AWS team working on this feature, as well as future work needed to complete support. The hope is that a more holistic view will make for more productive discussion and review of the individual changes, as well as provide better tracking of overall progress.&lt;/p>
 &lt;p>The original issue is &lt;a href="https://github.com/cortexproject/cortex/issues/4435">#4435&lt;/a>.&lt;/p>
 &lt;h2 id="problem">Problem&lt;/h2>
@@ -6279,7 +6280,51 @@ decode the data stored in the kv store.&lt;/p>
 &lt;h4 id="alternatives-to-a-quorum-api-parameter">Alternatives to a quorum API parameter&lt;/h4>
 &lt;h5 id="weak-or-strong-quorum-by-default">Weak or strong quorum by default&lt;/h5>
 &lt;p>Another option for making ListRules work in HA mode is to implement one of the quorum rules (weak or strong) as the default, with no control to select between the two, outside of maybe a configuration parameter. AWS itself runs multitenant Cortex instances, and we have an internal use-case for the strong quorum implementation, but we do not want to impose the subsequent availability hit on our customers, particularly given that replication_factor is not currently a tenant-specific parameter in Cortex, for ingesters, alert manager, or ruler.&lt;/p>
-&lt;p>Making HA availability the default, while giving users the choice to knowingly request for more consistency at the cost of more error-handling seems like a good balance.&lt;/p></description></item><item><title>Docs: Ruler Tenant Federation</title><link>/docs/proposals/ruler-tenant-federation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/ruler-tenant-federation/</guid><description>
+&lt;p>Making HA availability the default, while giving users the choice to knowingly request for more consistency at the cost of more error-handling seems like a good balance.&lt;/p></description></item><item><title>Docs: Ruler High Availability</title><link>/docs/proposals/ruler-high-availability/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/ruler-high-availability/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/rajagopalanand">Anand Rajagopal&lt;/a>&lt;/li>
+&lt;li>Date: Aug 2024&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;hr>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;p>Rulers in Cortex currently run with a replication factor of 1, wherein each RuleGroup is assigned to exactly 1 ruler. This lack of redundancy creates the following risks:&lt;/p>
+&lt;ul>
+&lt;li>Rule group evaluation
+&lt;ul>
+&lt;li>Missed evaluations due to a ruler outage, possibly caused by a deployment, noisy neighbour, hardware failure, etc.&lt;/li>
+&lt;li>Missed evaluations due to a ruler brownout due to other tenant rule groups sharing the same ruler (noisy neighbour)&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>API
+&lt;ul>
+&lt;li>Inconsistent API results during resharding (e.g. due to a deployment) when rulers are in a transition state loading rule groups&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>This proposal attempts to mitigate the above risks by enabling a ruler replication factor of greater than 1, allowing multiple rulers to evaluate the same rule group — effectively.&lt;/p>
+&lt;h2 id="proposal">Proposal&lt;/h2>
+&lt;h3 id="make-replicationfactor-configurable">Make ReplicationFactor configurable&lt;/h3>
+&lt;p>ReplicationFactor in Ruler is currently hardcoded to 1. Making this a configurable parameter is the first step to enabling HA in ruler. The parameter value will be 1 by default. To enable Ruler HA for rule group evaluation, a new flag will be created&lt;/p>
+&lt;p>A replication factor greater than 1 will result in the following&lt;/p>
+&lt;ul>
+&lt;li>Ring will pick R rulers for a rule group where R=RF&lt;/li>
+&lt;li>The primary ruler (R1), when active, will take ownership of the rule group&lt;/li>
+&lt;li>Non-primary ruler R2 will check if R1 is active. If R1 is not active, R2 will take ownership of the rule group&lt;/li>
+&lt;li>Non-primary ruler R3 (if RF=3) will check if R1 and R2 are active. If they are both inactive/unhealthy, then R3 will take owership of the rule group&lt;/li>
+&lt;li>Non-primary rulers will drop their ownership when R1 becomes active after an outage&lt;/li>
+&lt;/ul>
+&lt;p>With this redundancy, the maximum duration of missed evaluations will be limited to the sync interval of the rule groups, reducing the impact of primary Ruler unavailability.&lt;/p>
+&lt;h3 id="prometheus-change">Prometheus change&lt;/h3>
+&lt;p>No Prometheus change is required for this proposal&lt;/p>
+&lt;h3 id="api-ha">API HA&lt;/h3>
+&lt;p>An interim solution is addressed in this &lt;a href="https://github.com/cortexproject/cortex/issues/5773">#5773&lt;/a> PR. This will be modified such that the replicas will return both active and passive rule groups and the API handler will continue to de-duplicate the results.
+The difference is that after Ruler HA, the replicas could potentially return proper rule group state if those replicas evaluated the rule group&lt;/p>
+&lt;p>PRs:&lt;/p>
+&lt;ul>
+&lt;li>For Rule evaluation &lt;a href="https://github.com/cortexproject/cortex/pull/6129">#6129&lt;/a>&lt;/li>
+&lt;li>For API HA &lt;a href="https://github.com/cortexproject/cortex/issues/5773">#5773&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Ruler Tenant Federation</title><link>/docs/proposals/ruler-tenant-federation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/ruler-tenant-federation/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/rdooley">Rees Dooley&lt;/a>&lt;/li>
 &lt;li>Date: November 2021&lt;/li>
@@ -12612,91 +12657,4 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;/ul>
 &lt;/li>
 &lt;li>Query-frontend: query rejection (&lt;code>-frontend.query-rejection.enabled&lt;/code>)&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Migrate the storage from Thanos and Prometheus</title><link>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</guid><description>
-&lt;p>The Cortex blocks storage engine stores series in TSDB blocks uploaded in the storage bucket. This makes very easy to migrate the storage from Thanos and/or Prometheus to Cortex, when running the blocks storage.&lt;/p>
-&lt;h2 id="cortex-blocks-storage-requirements">Cortex blocks storage requirements&lt;/h2>
-&lt;p>The Cortex blocks storage has few requirements that should be considered when migrating TSDB blocks from Thanos / Prometheus to Cortex:&lt;/p>
-&lt;ol>
-&lt;li>&lt;strong>The blocks in the bucket should be located at &lt;code>bucket://&amp;lt;tenant-id&amp;gt;/&lt;/code>&lt;/strong>&lt;br />
-Cortex isolates blocks on a per-tenant basis in the bucket and, for this reason, each tenant blocks should be uploaded to a different location in the bucket. The bucket prefix, where a specific tenant blocks should be uploaded, is &lt;code>/&amp;lt;tenant-id&amp;gt;/&lt;/code>; if Cortex is running with auth disabled (no multi-tenancy) then the &lt;code>&amp;lt;tenant-id&amp;gt;&lt;/code> to use is &lt;code>fake&lt;/code>.&lt;/li>
-&lt;li>&lt;strong>Remove Thanos external labels and inject &lt;code>__org_id__&lt;/code> into each block&amp;rsquo;s &lt;code>meta.json&lt;/code>&lt;/strong>&lt;br />
-Every block has a little metadata file named &lt;code>meta.json&lt;/code>. Thanos stores external labels at &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>, which should be all removed when migrating to Cortex, while the &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code> added.&lt;/li>
-&lt;/ol>
-&lt;h2 id="how-to-migrate-the-storage">How to migrate the storage&lt;/h2>
-&lt;h3 id="upload-tsdb-blocks-to-cortex-bucket">Upload TSDB blocks to Cortex bucket&lt;/h3>
-&lt;p>TSDB blocks stored in Prometheus local disk or Thanos bucket should be copied/uploaded to the Cortex bucket at the location &lt;code>bucket://&amp;lt;tenant-id&amp;gt;/&lt;/code> (when Cortex is running with auth disabled then &lt;code>&amp;lt;tenant-id&amp;gt;&lt;/code> must be &lt;code>fake&lt;/code>).&lt;/p>
-&lt;h3 id="migrate-block-metadata-metajson-to-cortex">Migrate block metadata (&lt;code>meta.json&lt;/code>) to Cortex&lt;/h3>
-&lt;p>For each block copied/uploaded to the Cortex bucket, there are a few changes required to the &lt;code>meta.json&lt;/code>.&lt;/p>
-&lt;h4 id="automatically-migrate-metadata-using-the-thanosconvert-tool">Automatically migrate metadata using the &lt;code>thanosconvert&lt;/code> tool&lt;/h4>
-&lt;p>&lt;code>thanosconvert&lt;/code> can iterate over a Cortex bucket and make sure that each &lt;code>meta.json&lt;/code> has the correct &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> layout.&lt;/p>
-&lt;p>⚠ Warning ⚠ &lt;code>thanosconvert&lt;/code> will modify files in the bucket you specify. It&amp;rsquo;s recommended that you have backups or enable object versioning before running this tool.&lt;/p>
-&lt;p>To run &lt;code>thanosconvert&lt;/code>, you need to provide it with the bucket configuration in the same format as the &lt;a href="/docs/configuration/configuration-file/#blocks_storage_config">blocks storage bucket configuration&lt;/a>.&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic"># bucket-config.yaml&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">backend&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">s3&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">s3&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">endpoint&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">s3.us-east-1.amazonaws.com&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bucket_name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">my-cortex-bucket&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can run thanosconvert directly using Go:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>go install github.com/cortexproject/cortex/cmd/thanosconvert
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>thanosconvert
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Or use the provided docker image:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>docker run quay.io/cortexproject/thanosconvert
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can run the tool in dry-run mode first to find out what which blocks it will migrate:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>thanosconvert -config ./bucket-config.yaml -dry-run
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Once you&amp;rsquo;re happy with the results, you can run without dry run to migrate blocks:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>thanosconvert -config ./bucket-config.yaml
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can cancel a conversion in progress (with Ctrl+C) and rerun &lt;code>thanosconvert&lt;/code>. It won&amp;rsquo;t change any blocks which have been written by Cortex or already converted from Thanos, so you can run &lt;code>thanosconvert&lt;/code> multiple times.&lt;/p>
-&lt;h4 id="migrate-metadata-manually">Migrate metadata manually&lt;/h4>
-&lt;p>If you need to migrate the block metadata manually, you need to:&lt;/p>
-&lt;ol>
-&lt;li>Download the &lt;code>meta.json&lt;/code> to the local filesystem&lt;/li>
-&lt;li>Decode the JSON&lt;/li>
-&lt;li>Manipulate the data structure (&lt;em>see below&lt;/em>)&lt;/li>
-&lt;li>Re-encode the JSON&lt;/li>
-&lt;li>Re-upload it to the bucket (overwriting the previous version of the &lt;code>meta.json&lt;/code> file)&lt;/li>
-&lt;/ol>
-&lt;p>The &lt;code>meta.json&lt;/code> should be manipulated in order to ensure:&lt;/p>
-&lt;ul>
-&lt;li>It contains the &lt;code>thanos&lt;/code> root-level entry&lt;/li>
-&lt;li>The &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> do not contain any Thanos-specific external label&lt;/li>
-&lt;li>The &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> contain the Cortex-specific external label &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;h5 id="when-migrating-from-thanos">When migrating from Thanos&lt;/h5>
-&lt;p>When migrating from Thanos, the easiest approach would be keep the existing &lt;code>thanos&lt;/code> root-level entry as is, except:&lt;/p>
-&lt;ol>
-&lt;li>Completely remove the content of &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>&lt;/li>
-&lt;li>Add &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code> to &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>&lt;/li>
-&lt;/ol>
-&lt;p>For example, when migrating a block from Thanos for the tenant &lt;code>user-1&lt;/code>, the &lt;code>thanos&lt;/code> root-level property within the &lt;code>meta.json&lt;/code> file will look like:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-json" data-lang="json">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;thanos&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;labels&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;__org_id__&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;user-1&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;downsample&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;resolution&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;source&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;compactor&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Right now Cortex doesn&amp;rsquo;t support downsampling so Thanos downsampled blocks are not supported. Downsampled blocks will be simply skipped by the &lt;code>thanosconvert&lt;/code> tool.&lt;/p>
-&lt;p>If downsampled blocks are uploaded to the Cortex bucket, they cannot be queried so please exclude them when migrating TSDB blocks.&lt;/p>
-&lt;h5 id="when-migrating-from-prometheus">When migrating from Prometheus&lt;/h5>
-&lt;p>When migrating from Prometheus, the &lt;code>meta.json&lt;/code> file will not contain any &lt;code>thanos&lt;/code> root-level entry and, for this reason, it would need to be generated:&lt;/p>
-&lt;ol>
-&lt;li>Create the &lt;code>thanos&lt;/code> root-level entry (&lt;em>see below&lt;/em>)&lt;/li>
-&lt;li>Add &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code> to &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>&lt;/li>
-&lt;/ol>
-&lt;p>For example, when migrating a block from Prometheus for the tenant &lt;code>user-1&lt;/code>, the &lt;code>thanos&lt;/code> root-level property within the &lt;code>meta.json&lt;/code> file should be as follow:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-json" data-lang="json">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;thanos&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;labels&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;__org_id__&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;user-1&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;downsample&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;resolution&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">&amp;#34;source&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;compactor&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item></channel></rss>
+&lt;/ul></description></item></channel></rss>

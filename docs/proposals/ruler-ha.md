@@ -7,10 +7,12 @@ slug: ruler-ha
 
 - Author: [Soon-Ping Phang](https://github.com/soonping-amzn)
 - Date: June 2022
-- Status: Proposed
+- Status: Deprecated
 ---
 
 ## Introduction
+
+_This proposal is deprecated in favor of the new [proposal](./ruler-ha-new.md)_
 
 This proposal consolidates multiple existing PRs from the AWS team working on this feature, as well as future work needed to complete support.  The hope is that a more holistic view will make for more productive discussion and review of the individual changes, as well as provide better tracking of overall progress.
 

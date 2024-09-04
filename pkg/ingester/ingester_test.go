@@ -185,7 +185,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				# TYPE cortex_ingester_usage_per_labelset gauge
 				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
-	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total"))
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
 	// Should impose limits
 	for _, set := range limits.LimitsPerLabelSet {
@@ -653,8 +653,6 @@ func TestIngester_Push(t *testing.T) {
 		"cortex_ingester_memory_users",
 		"cortex_ingester_memory_series_created_total",
 		"cortex_ingester_memory_series_removed_total",
-		"cortex_discarded_samples_total",
-		"cortex_ingester_active_series",
 	}
 	userID := "test"
 
@@ -695,7 +693,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedMetadataIngested: []*cortexpb.MetricMetadata{
 				{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
 			},
-			additionalMetrics:      []string{},
+			additionalMetrics:      []string{"cortex_discarded_samples_total", "cortex_ingester_active_series"},
 			disableNativeHistogram: true,
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -757,6 +755,7 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_memory_metadata_created_total",
 				"cortex_ingester_ingested_metadata_total",
 				"cortex_ingester_ingested_metadata_failures_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_metadata_failures_total The total number of metadata that errored on ingestion.
@@ -854,6 +853,7 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage",
 				"cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds",
 				"cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -964,6 +964,8 @@ func TestIngester_Push(t *testing.T) {
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_out_of_order_samples_total",
 				"cortex_ingester_tsdb_head_out_of_order_samples_appended_total",
+				"cortex_discarded_samples_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1020,6 +1022,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
+			additionalMetrics: []string{"cortex_ingester_active_series"},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1067,6 +1070,10 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
+			additionalMetrics: []string{
+				"cortex_discarded_samples_total",
+				"cortex_ingester_active_series",
+			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1113,6 +1120,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (60 * 1000)}, {Value: 2, TimestampMs: 1575043969}}},
 			},
+			additionalMetrics: []string{"cortex_ingester_active_series"},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1156,6 +1164,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
+			additionalMetrics: []string{"cortex_discarded_samples_total", "cortex_ingester_active_series"},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1214,6 +1223,7 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage",
 				"cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds",
 				"cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1274,6 +1284,7 @@ func TestIngester_Push(t *testing.T) {
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1323,6 +1334,7 @@ func TestIngester_Push(t *testing.T) {
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1373,6 +1385,7 @@ func TestIngester_Push(t *testing.T) {
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
 				"cortex_ingester_tsdb_out_of_order_samples_total",
+				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -4454,8 +4467,10 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 
 	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
 
-	metricsToCheck := []string{memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series",
-		"cortex_ingester_memory_metadata", "cortex_ingester_memory_metadata_created_total", "cortex_ingester_memory_metadata_removed_total"}
+	userMetrics := []string{memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_active_series"}
+
+	globalMetrics := []string{"cortex_ingester_memory_users", "cortex_ingester_memory_metadata"}
+	metricsToCheck := append(userMetrics, globalMetrics...)
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
@@ -4495,24 +4510,19 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load()) // Flushing removed all series from memory.
 
 	// Verify that user has disappeared from metrics.
+	err = testutil.GatherAndCompare(r, strings.NewReader(""), userMetrics...)
+	require.ErrorContains(t, err, "expected metric name(s) not found")
+	require.ErrorContains(t, err, strings.Join(userMetrics, " "))
+
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
-		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
-		# TYPE cortex_ingester_memory_series_created_total counter
-
-		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
-		# TYPE cortex_ingester_memory_series_removed_total counter
-
 		# HELP cortex_ingester_memory_users The current number of users in memory.
 		# TYPE cortex_ingester_memory_users gauge
 		cortex_ingester_memory_users 0
 
-		# HELP cortex_ingester_active_series Number of currently active series per user.
-		# TYPE cortex_ingester_active_series gauge
-
 		# HELP cortex_ingester_memory_metadata The current number of metadata in memory.
 		# TYPE cortex_ingester_memory_metadata gauge
 		cortex_ingester_memory_metadata 0
-    `), metricsToCheck...))
+    `), "cortex_ingester_memory_users", "cortex_ingester_memory_metadata"))
 
 	// Pushing another sample will recreate TSDB.
 	pushSingleSampleWithMetadata(t, i)

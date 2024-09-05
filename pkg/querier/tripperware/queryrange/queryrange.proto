@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package queryrange;
+
+option go_package = "queryrange";
+
+import "gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/querier/tripperware/query.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message PrometheusResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  PrometheusData Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
+  string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+  repeated tripperware.PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
+  repeated string Warnings = 6 [(gogoproto.jsontag) = "warnings,omitempty"];
+}
+
+message PrometheusData {
+  string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
+  repeated tripperware.SampleStream Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
+  tripperware.PrometheusResponseStats stats = 3 [(gogoproto.jsontag) = "stats,omitempty"];
+}
+

@@ -548,6 +548,8 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	}
 
 	t.Cfg.Ruler.LookbackDelta = t.Cfg.Querier.LookbackDelta
+	t.Cfg.Ruler.FrontendTimeout = t.Cfg.Querier.Timeout
+	t.Cfg.Ruler.PrometheusHTTPPrefix = t.Cfg.API.PrometheusHTTPPrefix
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	metrics := ruler.NewRuleEvalMetrics(t.Cfg.Ruler, prometheus.DefaultRegisterer)
 

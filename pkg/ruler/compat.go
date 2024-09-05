@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/ring/client"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	promql_util "github.com/cortexproject/cortex/pkg/util/promql"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -157,7 +158,7 @@ type RulesLimits interface {
 // EngineQueryFunc returns a new engine query function validating max queryLength.
 // Modified from Prometheus rules.EngineQueryFunc
 // https://github.com/prometheus/prometheus/blob/v2.39.1/rules/manager.go#L189.
-func EngineQueryFunc(engine promql.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
+func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// Enforce the max query length.
 		maxQueryLength := overrides.MaxQueryLength(userID)
@@ -174,25 +175,34 @@ func EngineQueryFunc(engine promql.QueryEngine, q storage.Queryable, overrides R
 			}
 		}
 
-		q, err := engine.NewInstantQuery(ctx, q, nil, qs, t)
-		if err != nil {
-			return nil, err
-		}
-		res := q.Exec(ctx)
-		if res.Err != nil {
-			return nil, res.Err
-		}
-		switch v := res.Value.(type) {
-		case promql.Vector:
+		if frontendClient != nil {
+			v, err := frontendClient.InstantQuery(ctx, qs, t)
+			if err != nil {
+				return nil, err
+			}
+
 			return v, nil
-		case promql.Scalar:
-			return promql.Vector{promql.Sample{
-				T:      v.T,
-				F:      v.V,
-				Metric: labels.Labels{},
-			}}, nil
-		default:
-			return nil, errors.New("rule result is not a vector or scalar")
+		} else {
+			q, err := engine.NewInstantQuery(ctx, q, nil, qs, t)
+			if err != nil {
+				return nil, err
+			}
+			res := q.Exec(ctx)
+			if res.Err != nil {
+				return nil, res.Err
+			}
+			switch v := res.Value.(type) {
+			case promql.Vector:
+				return v, nil
+			case promql.Scalar:
+				return promql.Vector{promql.Sample{
+					T:      v.T,
+					F:      v.V,
+					Metric: labels.Labels{},
+				}}, nil
+			default:
+				return nil, errors.New("rule result is not a vector or scalar")
+			}
 		}
 	}
 }
@@ -300,7 +310,7 @@ type RulesManager interface {
 }
 
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
-type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
+type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, frontendPool *client.Pool, reg prometheus.Registerer) (RulesManager, error)
 
 func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine promql.QueryEngine, overrides RulesLimits, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer) ManagerFactory {
 	// Wrap errors returned by Queryable to our wrapper, so that we can distinguish between those errors
@@ -308,14 +318,22 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 	// Errors from PromQL are always "user" errors.
 	q = querier.NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
 
-	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
+	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, frontendPool *client.Pool, reg prometheus.Registerer) (RulesManager, error) {
+		var client *frontendClient
 		failedQueries := evalMetrics.FailedQueriesVec.WithLabelValues(userID)
 		totalQueries := evalMetrics.TotalQueriesVec.WithLabelValues(userID)
 		totalWrites := evalMetrics.TotalWritesVec.WithLabelValues(userID)
 		failedWrites := evalMetrics.FailedWritesVec.WithLabelValues(userID)
 
+		if cfg.FrontendAddress != "" {
+			c, err := frontendPool.GetClientFor(cfg.FrontendAddress)
+			if err != nil {
+				return nil, err
+			}
+			client = c.(*frontendClient)
+		}
 		var queryFunc rules.QueryFunc
-		engineQueryFunc := EngineQueryFunc(engine, q, overrides, userID, cfg.LookbackDelta)
+		engineQueryFunc := EngineQueryFunc(engine, client, q, overrides, userID, cfg.LookbackDelta)
 		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)
 		if cfg.EnableQueryStats {
 			queryFunc = RecordAndReportRuleQueryMetrics(metricsQueryFunc, userID, evalMetrics, logger)
@@ -340,7 +358,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			DefaultRuleQueryOffset: func() time.Duration {
 				return overrides.RulerQueryOffset(userID)
 			},
-		})
+		}), nil
 	}
 }
 

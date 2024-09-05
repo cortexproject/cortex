@@ -35,6 +35,7 @@ Cortex is an actively developed project and we want to encourage the introductio
 
 Currently experimental features are:
 
+- Ruler: Evaluate rules to query frontend instead of ingesters (enabled via `-ruler.frontend-address` )
 - S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).
 - Azure blob storage.
 - Zone awareness based replication.

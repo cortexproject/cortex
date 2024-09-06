@@ -176,4 +176,4 @@ There are several commercial services where you can use Cortex on-demand:
 
 ## History of Cortex
 
-The Cortex project was started by Tom Wilkie (Grafana Labs' VP Product) and Julius Volz (Prometheus' co-founder) in June 2016.
+The Cortex project was started by Tom Wilkie and Julius Volz (Prometheus' co-founder) in June 2016.

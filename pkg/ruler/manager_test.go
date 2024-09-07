@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -304,13 +305,13 @@ func getManager(m *DefaultMultiTenantManager, user string) RulesManager {
 }
 
 func RuleManagerFactory(groupsToReturn [][]*promRules.Group, waitDurations []time.Duration) ManagerFactory {
-	return func(_ context.Context, _ string, _ *notifier.Manager, _ log.Logger, _ prometheus.Registerer) RulesManager {
+	return func(_ context.Context, _ string, _ *notifier.Manager, _ log.Logger, _ *client.Pool, _ prometheus.Registerer) (RulesManager, error) {
 		return &mockRulesManager{
 			done:           make(chan struct{}),
 			groupsToReturn: groupsToReturn,
 			waitDurations:  waitDurations,
 			iteration:      -1,
-		}
+		}, nil
 	}
 }
 

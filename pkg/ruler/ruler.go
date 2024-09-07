@@ -37,6 +37,7 @@ import (
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -94,6 +95,12 @@ func (e *DisabledRuleGroupErr) Error() string {
 
 // Config is the configuration for the recording rules server.
 type Config struct {
+	// This is used for query to query frontend to evaluate rules
+	FrontendAddress string `yaml:"frontend_address"`
+	// HTTP timeout duration when querying to query frontend to evaluate rules
+	FrontendTimeout time.Duration `yaml:"-"`
+	// Query frontend GRPC Client configuration.
+	GRPCClientConfig grpcclient.Config `yaml:"frontend_client"`
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
 	// Labels to add to all alerts
@@ -148,7 +155,8 @@ type Config struct {
 	RingCheckPeriod time.Duration `yaml:"-"`
 
 	// Field will be populated during runtime.
-	LookbackDelta time.Duration `yaml:"-"`
+	LookbackDelta        time.Duration `yaml:"-"`
+	PrometheusHTTPPrefix string        `yaml:"-"`
 
 	EnableQueryStats      bool `yaml:"query_stats_enabled"`
 	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
@@ -170,6 +178,10 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 		return errors.Wrap(err, "invalid ruler gRPC client config")
 	}
 
+	if err := cfg.GRPCClientConfig.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid query frontend gRPC client config")
+	}
+
 	if cfg.ConcurrentEvalsEnabled && cfg.MaxConcurrentEvals <= 0 {
 		return errInvalidMaxConcurrentEvals
 	}
@@ -179,6 +191,7 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ruler.frontendClient", "", f)
 	cfg.Ring.RegisterFlags(f)
 	cfg.Notifier.RegisterFlags(f)
 
@@ -193,6 +206,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "ruler.alertmanager-use-v2", "This flag is no longer functional. V1 API is deprecated and removed", util_log.Logger)
 
+	f.StringVar(&cfg.FrontendAddress, "ruler.frontend-address", "", "[Experimental] GRPC listen address of the Query Frontend, in host:port format. If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries to Ingesters directly.")
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")

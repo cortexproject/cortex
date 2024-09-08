@@ -252,6 +252,21 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 		if err != nil {
 			return nil, err
 		}
+		// Make sure we only cache old response format for backward compatibility.
+		// TODO: expose a flag to switch to write new format.
+		for i, ext := range extents {
+			resp, err := extentToResponse(ext)
+			if err != nil {
+				return nil, err
+			}
+			// Convert response in extent to old format.
+			resp = convertFromTripperwarePrometheusResponse(resp)
+			any, err := types.MarshalAny(resp)
+			if err != nil {
+				return nil, err
+			}
+			extents[i].Response = any
+		}
 		s.put(ctx, key, extents)
 	}
 
@@ -479,7 +494,7 @@ func (s resultsCache) handleHit(ctx context.Context, r tripperware.Request, exte
 
 		accumulator.TraceId = jaegerTraceID(ctx)
 		accumulator.End = extents[i].End
-		currentRes, err := extents[i].ToResponse()
+		currentRes, err := extentToResponse(extents[i])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -518,7 +533,7 @@ func merge(extents []tripperware.Extent, acc *accumulator) ([]tripperware.Extent
 }
 
 func newAccumulator(base tripperware.Extent) (*accumulator, error) {
-	res, err := base.ToResponse()
+	res, err := extentToResponse(base)
 	if err != nil {
 		return nil, err
 	}
@@ -539,6 +554,74 @@ func toExtent(ctx context.Context, req tripperware.Request, res tripperware.Resp
 		Response: any,
 		TraceId:  jaegerTraceID(ctx),
 	}, nil
+}
+
+func extentToResponse(e tripperware.Extent) (tripperware.Response, error) {
+	msg, err := types.EmptyAny(e.Response)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := types.UnmarshalAny(e.Response, msg); err != nil {
+		return nil, err
+	}
+
+	resp, ok := msg.(tripperware.Response)
+	if ok {
+		return convertToTripperwarePrometheusResponse(resp), nil
+	}
+	return nil, fmt.Errorf("bad cached type")
+}
+
+// convertToTripperwarePrometheusResponse converts response from queryrange.PrometheusResponse format to tripperware.PrometheusResponse
+func convertToTripperwarePrometheusResponse(resp tripperware.Response) tripperware.Response {
+	r, ok := resp.(*PrometheusResponse)
+	if !ok {
+		// Should be tripperware.PrometheusResponse so we can return directly.
+		return resp
+	}
+	if r.Data.GetResult() == nil {
+		return tripperware.NewEmptyPrometheusResponse(false)
+	}
+	return &tripperware.PrometheusResponse{
+		Status: r.Status,
+		Data: tripperware.PrometheusData{
+			ResultType: r.Data.ResultType,
+			Result: tripperware.PrometheusQueryResult{
+				Result: &tripperware.PrometheusQueryResult_Matrix{
+					Matrix: &tripperware.Matrix{
+						SampleStreams: r.Data.GetResult(),
+					},
+				},
+			},
+			Stats: r.Data.Stats,
+		},
+		ErrorType: r.ErrorType,
+		Error:     r.Error,
+		Headers:   r.Headers,
+		Warnings:  r.Warnings,
+	}
+}
+
+// convertFromTripperwarePrometheusResponse converts response from tripperware.PrometheusResponse format to queryrange.PrometheusResponse
+func convertFromTripperwarePrometheusResponse(resp tripperware.Response) tripperware.Response {
+	r, ok := resp.(*tripperware.PrometheusResponse)
+	if !ok {
+		// Should be queryrange.PrometheusResponse so we can return directly.
+		return resp
+	}
+	return &PrometheusResponse{
+		Status: r.Status,
+		Data: PrometheusData{
+			ResultType: r.Data.ResultType,
+			Result:     r.Data.Result.GetMatrix().GetSampleStreams(),
+			Stats:      r.Data.Stats,
+		},
+		ErrorType: r.ErrorType,
+		Error:     r.Error,
+		Headers:   r.Headers,
+		Warnings:  r.Warnings,
+	}
 }
 
 // partition calculates the required requests to satisfy req given the cached data.
@@ -569,7 +652,7 @@ func (s resultsCache) partition(req tripperware.Request, extents []tripperware.E
 			r := req.WithStartEnd(start, extent.Start)
 			requests = append(requests, r)
 		}
-		res, err := extent.ToResponse()
+		res, err := extentToResponse(extent)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -599,7 +682,7 @@ func (s resultsCache) filterRecentExtents(req tripperware.Request, maxCacheFresh
 		// Never cache data for the latest freshness period.
 		if extents[i].End > maxCacheTime {
 			extents[i].End = maxCacheTime
-			res, err := extents[i].ToResponse()
+			res, err := extentToResponse(extents[i])
 			if err != nil {
 				return nil, err
 			}

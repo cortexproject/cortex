@@ -91,6 +91,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		storeSetResponses []interface{}
 		limits            BlocksStoreLimits
 		queryLimiter      *limiter.QueryLimiter
+		seriesLimit       int
 		expectedSeries    []seriesResult
 		expectedErr       error
 		expectedMetrics   string
@@ -617,6 +618,48 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				cortex_querier_storegateway_refetches_per_query_sum 0
 				cortex_querier_storegateway_refetches_per_query_count 1
 			`,
+		},
+		"multiple store-gateway instances holds the required blocks with overlapping series with limit (multiple returned series)": {
+			seriesLimit: 1,
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}}, nil, nil),
+						mockHintsResponse(block1),
+					}}: {block1},
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockHintsResponse(block2),
+					}}: {block2},
+					&storeGatewayClientMock{remoteAddr: "3.3.3.3", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 3, TimestampMs: minT + 1}}, nil, nil),
+						mockHintsResponse(block3),
+					}}: {block3},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			// TODO (johrry): Update this after passing limit in merge
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 1},
+						{t: minT + 1, v: 2},
+					},
+				}, {
+					lbls: labels.New(metricNameLabel, series2Label),
+					values: []valueResult{
+						{t: minT, v: 1},
+						{t: minT + 1, v: 3},
+					},
+				},
+			},
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned histogram series)": {
 			finderResult: bucketindex.Blocks{
@@ -1484,6 +1527,15 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
+			var hints *storage.SelectHints
+			if testData.seriesLimit > 0 {
+				hints = &storage.SelectHints{
+					Limit: testData.seriesLimit,
+					Start: minT,
+					End:   maxT,
+				}
+			}
+
 			ctx := user.InjectOrgID(context.Background(), "user-1")
 			ctx = limiter.AddQueryLimiterToContext(ctx, testData.queryLimiter)
 			reg := prometheus.NewPedanticRegistry()
@@ -1506,7 +1558,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName),
 			}
 
-			set := q.Select(ctx, true, nil, matchers...)
+			set := q.Select(ctx, true, hints, matchers...)
 			if testData.expectedErr != nil {
 				assert.EqualError(t, set.Err(), testData.expectedErr.Error())
 				assert.IsType(t, set.Err(), testData.expectedErr)
@@ -1594,6 +1646,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 	tests := map[string]struct {
 		finderResult        bucketindex.Blocks
 		finderErr           error
+		limit               int
 		storeSetResponses   []interface{}
 		expectedLabelNames  []string
 		expectedLabelValues []string // For __name__
@@ -1799,6 +1852,61 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 				cortex_querier_storegateway_refetches_per_query_sum 0
 				cortex_querier_storegateway_refetches_per_query_count 1
 			`,
+		},
+		"multiple store-gateway instances holds the required blocks with overlapping series with limit (multiple returned series)": {
+			limit: 2,
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+			},
+			// Block1 has series1 and series2
+			// Block2 has only series1
+			// Block3 has only series2
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1, series2)[:2],
+							Warnings: []string{},
+							Hints:    mockNamesHints(block1),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1, series2)[:2],
+							Warnings: []string{},
+							Hints:    mockValuesHints(block1),
+						},
+					}: {block1},
+					&storeGatewayClientMock{
+						remoteAddr: "2.2.2.2",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1)[:2],
+							Warnings: []string{},
+							Hints:    mockNamesHints(block2),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block2),
+						},
+					}: {block2},
+					&storeGatewayClientMock{
+						remoteAddr: "3.3.3.3",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series2)[:2],
+							Warnings: []string{},
+							Hints:    mockNamesHints(block3),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series2),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block3),
+						},
+					}: {block3},
+				},
+			},
+			expectedLabelNames:  namesFromSeries(series1, series2),
+			expectedLabelValues: valuesFromSeries(labels.MetricName, series1, series2),
 		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
@@ -2012,6 +2120,13 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 
 	for testName, testData := range tests {
 		testData := testData
+		var hints *storage.LabelHints
+		if testData.limit > 0 {
+			hints = &storage.LabelHints{
+				Limit: testData.limit,
+			}
+		}
+
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
@@ -2036,7 +2151,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 				}
 
 				if testFunc == "LabelNames" {
-					names, warnings, err := q.LabelNames(ctx, nil)
+					names, warnings, err := q.LabelNames(ctx, hints)
 					if testData.expectedErr != "" {
 						require.Equal(t, testData.expectedErr, err.Error())
 						continue
@@ -2053,7 +2168,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 				}
 
 				if testFunc == "LabelValues" {
-					values, warnings, err := q.LabelValues(ctx, labels.MetricName, nil)
+					values, warnings, err := q.LabelValues(ctx, labels.MetricName, hints)
 					if testData.expectedErr != "" {
 						require.Equal(t, testData.expectedErr, err.Error())
 						continue
@@ -2339,6 +2454,7 @@ type storeGatewayClientMock struct {
 
 func (m *storeGatewayClientMock) Series(ctx context.Context, in *storepb.SeriesRequest, opts ...grpc.CallOption) (storegatewaypb.StoreGateway_SeriesClient, error) {
 	seriesClient := &storeGatewaySeriesClientMock{
+		limit:                 in.Limit,
 		mockedResponses:       m.mockedSeriesResponses,
 		mockedSeriesStreamErr: m.mockedSeriesStreamErr,
 	}
@@ -2346,11 +2462,17 @@ func (m *storeGatewayClientMock) Series(ctx context.Context, in *storepb.SeriesR
 	return seriesClient, m.mockedSeriesErr
 }
 
-func (m *storeGatewayClientMock) LabelNames(context.Context, *storepb.LabelNamesRequest, ...grpc.CallOption) (*storepb.LabelNamesResponse, error) {
+func (m *storeGatewayClientMock) LabelNames(_ context.Context, r *storepb.LabelNamesRequest, _ ...grpc.CallOption) (*storepb.LabelNamesResponse, error) {
+	if r.Limit > 0 && len(m.mockedLabelNamesResponse.Names) > int(r.Limit) {
+		m.mockedLabelNamesResponse.Names = m.mockedLabelNamesResponse.Names[:r.Limit]
+	}
 	return m.mockedLabelNamesResponse, nil
 }
 
-func (m *storeGatewayClientMock) LabelValues(context.Context, *storepb.LabelValuesRequest, ...grpc.CallOption) (*storepb.LabelValuesResponse, error) {
+func (m *storeGatewayClientMock) LabelValues(_ context.Context, r *storepb.LabelValuesRequest, _ ...grpc.CallOption) (*storepb.LabelValuesResponse, error) {
+	if r.Limit > 0 && len(m.mockedLabelValuesResponse.Values) > int(r.Limit) {
+		m.mockedLabelNamesResponse.Names = m.mockedLabelValuesResponse.Values[:r.Limit]
+	}
 	return m.mockedLabelValuesResponse, m.mockedLabelValuesErr
 }
 
@@ -2361,6 +2483,7 @@ func (m *storeGatewayClientMock) RemoteAddress() string {
 type storeGatewaySeriesClientMock struct {
 	grpc.ClientStream
 
+	limit                 int64
 	mockedResponses       []*storepb.SeriesResponse
 	mockedSeriesStreamErr error
 }

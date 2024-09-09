@@ -372,8 +372,18 @@ func mergeSampleStreams(output map[string]SampleStream, sampleStreams []SampleSt
 				stream.Histograms = sliceHistograms(stream.Histograms, existingEndTs)
 			}
 		}
+		// Same for above.
+		if len(existing.RawHistograms) > 0 && len(stream.RawHistograms) > 0 {
+			existingEndTs := existing.RawHistograms[len(existing.RawHistograms)-1].GetTimestampMs()
+			if existingEndTs == stream.RawHistograms[0].GetTimestampMs() {
+				stream.RawHistograms = stream.RawHistograms[1:]
+			} else if existingEndTs > stream.RawHistograms[0].GetTimestampMs() {
+				stream.RawHistograms = sliceRawHistograms(stream.RawHistograms, existingEndTs)
+			}
+		}
 		existing.Samples = append(existing.Samples, stream.Samples...)
 		existing.Histograms = append(existing.Histograms, stream.Histograms...)
+		existing.RawHistograms = append(existing.RawHistograms, stream.RawHistograms...)
 
 		output[metric] = existing
 	}
@@ -404,7 +414,27 @@ func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
 // return a sub slice whose first element's is the smallest timestamp that is strictly
 // bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
 // timestamps in histogram.
-func sliceHistograms(histograms []SampleHistogramPair, minTs int64) []SampleHistogramPair {
+func sliceHistograms(histograms []*SampleHistogramPair, minTs int64) []*SampleHistogramPair {
+	if len(histograms) <= 0 || minTs < histograms[0].GetTimestampMs() {
+		return histograms
+	}
+
+	if len(histograms) > 0 && minTs > histograms[len(histograms)-1].GetTimestampMs() {
+		return histograms[len(histograms):]
+	}
+
+	searchResult := sort.Search(len(histograms), func(i int) bool {
+		return histograms[i].GetTimestampMs() > minTs
+	})
+
+	return histograms[searchResult:]
+}
+
+// sliceRawHistograms assumes given histogram are sorted by timestamp in ascending order and
+// return a sub slice whose first element's is the smallest timestamp that is strictly
+// bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
+// timestamps in histogram.
+func sliceRawHistograms(histograms []*cortexpb.Histogram, minTs int64) []*cortexpb.Histogram {
 	if len(histograms) <= 0 || minTs < histograms[0].GetTimestampMs() {
 		return histograms
 	}

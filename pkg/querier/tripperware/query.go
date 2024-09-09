@@ -123,7 +123,7 @@ func decodeSampleStream(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 			for iter.ReadArray() {
 				h := SampleHistogramPair{}
 				UnmarshalSampleHistogramPairJSON(unsafe.Pointer(&h), iter)
-				ss.Histograms = append(ss.Histograms, h)
+				ss.Histograms = append(ss.Histograms, &h)
 			}
 		default:
 			iter.ReportError("unmarshal SampleStream", fmt.Sprint("unexpected key:", field))
@@ -323,7 +323,7 @@ func encodeSampleStream(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 			if i > 0 {
 				stream.WriteMore()
 			}
-			MarshalSampleHistogramPairJSON(unsafe.Pointer(&h), stream)
+			MarshalSampleHistogramPairJSON(unsafe.Pointer(h), stream)
 		}
 		stream.WriteArrayEnd()
 	}

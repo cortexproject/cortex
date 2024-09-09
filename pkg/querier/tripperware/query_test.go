@@ -122,7 +122,7 @@ func generateData(timeseries, datapoints int) (floatMatrix, histogramMatrix []*S
 		})
 		now := model.Time(1677587274055).Time()
 		floats := make([]cortexpb.Sample, datapoints)
-		histograms := make([]SampleHistogramPair, datapoints)
+		histograms := make([]*SampleHistogramPair, datapoints)
 
 		for x := datapoints; x > 0; x-- {
 			f := float64(x)
@@ -132,7 +132,7 @@ func generateData(timeseries, datapoints int) (floatMatrix, histogramMatrix []*S
 				TimestampMs: util.TimeToMillis(now.Add(time.Second * -15 * time.Duration(x))),
 				Value:       f,
 			}
-			histograms[x-1] = SampleHistogramPair{
+			histograms[x-1] = &SampleHistogramPair{
 				TimestampMs: util.TimeToMillis(now.Add(time.Second * -15 * time.Duration(x))),
 				Histogram: SampleHistogram{
 					Count: 13.5 * f,

@@ -99,7 +99,7 @@ func TestMergeSampleStreams(t *testing.T) {
 			sampleStreams: []SampleStream{
 				{
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 					},
 				},
@@ -107,7 +107,7 @@ func TestMergeSampleStreams(t *testing.T) {
 			expectedOutput: map[string]SampleStream{
 				ingester_client.LabelsToKeyString(lbls): {
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 					},
 				},
@@ -121,7 +121,7 @@ func TestMergeSampleStreams(t *testing.T) {
 					Samples: []cortexpb.Sample{
 						{Value: 0, TimestampMs: 0},
 					},
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 					},
 				},
@@ -132,7 +132,7 @@ func TestMergeSampleStreams(t *testing.T) {
 					Samples: []cortexpb.Sample{
 						{Value: 0, TimestampMs: 0},
 					},
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 					},
 				},
@@ -175,7 +175,7 @@ func TestMergeSampleStreams(t *testing.T) {
 			sampleStreams: []SampleStream{
 				{
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 						{Histogram: testHistogram1, TimestampMs: 2},
 						{Histogram: testHistogram1, TimestampMs: 3},
@@ -183,7 +183,7 @@ func TestMergeSampleStreams(t *testing.T) {
 				},
 				{
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 						{Histogram: testHistogram1, TimestampMs: 1},
 						{Histogram: testHistogram1, TimestampMs: 4},
@@ -193,7 +193,7 @@ func TestMergeSampleStreams(t *testing.T) {
 			expectedOutput: map[string]SampleStream{
 				ingester_client.LabelsToKeyString(lbls): {
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 						{Histogram: testHistogram1, TimestampMs: 2},
 						{Histogram: testHistogram1, TimestampMs: 3},
@@ -212,7 +212,7 @@ func TestMergeSampleStreams(t *testing.T) {
 						{Value: 2, TimestampMs: 2},
 						{Value: 3, TimestampMs: 3},
 					},
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 						{Histogram: testHistogram1, TimestampMs: 2},
 						{Histogram: testHistogram1, TimestampMs: 3},
@@ -225,7 +225,7 @@ func TestMergeSampleStreams(t *testing.T) {
 						{Value: 1, TimestampMs: 1},
 						{Value: 4, TimestampMs: 4},
 					},
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 						{Histogram: testHistogram1, TimestampMs: 1},
 						{Histogram: testHistogram1, TimestampMs: 4},
@@ -241,7 +241,7 @@ func TestMergeSampleStreams(t *testing.T) {
 						{Value: 3, TimestampMs: 3},
 						{Value: 4, TimestampMs: 4},
 					},
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 						{Histogram: testHistogram1, TimestampMs: 2},
 						{Histogram: testHistogram1, TimestampMs: 3},
@@ -309,7 +309,7 @@ func TestMergeSampleStreams(t *testing.T) {
 			sampleStreams: []SampleStream{
 				{
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 						{Histogram: testHistogram1, TimestampMs: 2},
 						{Histogram: testHistogram1, TimestampMs: 3},
@@ -317,14 +317,14 @@ func TestMergeSampleStreams(t *testing.T) {
 				},
 				{
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram2, TimestampMs: 1},
 						{Histogram: testHistogram2, TimestampMs: 4},
 					},
 				},
 				{
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls1),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 						{Histogram: testHistogram1, TimestampMs: 1},
 						{Histogram: testHistogram1, TimestampMs: 4},
@@ -332,7 +332,7 @@ func TestMergeSampleStreams(t *testing.T) {
 				},
 				{
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls1),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram2, TimestampMs: 2},
 						{Histogram: testHistogram2, TimestampMs: 3},
 					},
@@ -341,7 +341,7 @@ func TestMergeSampleStreams(t *testing.T) {
 			expectedOutput: map[string]SampleStream{
 				ingester_client.LabelsToKeyString(lbls): {
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 						{Histogram: testHistogram1, TimestampMs: 2},
 						{Histogram: testHistogram1, TimestampMs: 3},
@@ -350,7 +350,7 @@ func TestMergeSampleStreams(t *testing.T) {
 				},
 				ingester_client.LabelsToKeyString(lbls1): {
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls1),
-					Histograms: []SampleHistogramPair{
+					Histograms: []*SampleHistogramPair{
 						{Histogram: testHistogram1, TimestampMs: 0},
 						{Histogram: testHistogram1, TimestampMs: 1},
 						{Histogram: testHistogram1, TimestampMs: 4},
@@ -452,21 +452,21 @@ func TestSliceHistograms(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name               string
-		histograms         []SampleHistogramPair
+		histograms         []*SampleHistogramPair
 		minTs              int64
-		expectedHistograms []SampleHistogramPair
+		expectedHistograms []*SampleHistogramPair
 	}{
 		{name: "empty histograms"},
 		{
 			name: "minTs smaller than first histogram's timestamp",
-			histograms: []SampleHistogramPair{
+			histograms: []*SampleHistogramPair{
 				{
 					TimestampMs: 1,
 					Histogram:   testHistogram1,
 				},
 			},
 			minTs: 0,
-			expectedHistograms: []SampleHistogramPair{
+			expectedHistograms: []*SampleHistogramPair{
 				{
 					TimestampMs: 1,
 					Histogram:   testHistogram1,
@@ -475,7 +475,7 @@ func TestSliceHistograms(t *testing.T) {
 		},
 		{
 			name: "input histograms are not sorted, return all histograms",
-			histograms: []SampleHistogramPair{
+			histograms: []*SampleHistogramPair{
 				{
 					TimestampMs: 3,
 					Histogram:   testHistogram1,
@@ -486,7 +486,7 @@ func TestSliceHistograms(t *testing.T) {
 				},
 			},
 			minTs: 2,
-			expectedHistograms: []SampleHistogramPair{
+			expectedHistograms: []*SampleHistogramPair{
 				{
 					TimestampMs: 3,
 					Histogram:   testHistogram1,
@@ -499,7 +499,7 @@ func TestSliceHistograms(t *testing.T) {
 		},
 		{
 			name: "minTs greater than the last histogram's timestamp",
-			histograms: []SampleHistogramPair{
+			histograms: []*SampleHistogramPair{
 				{
 					TimestampMs: 1,
 					Histogram:   testHistogram1,
@@ -510,11 +510,11 @@ func TestSliceHistograms(t *testing.T) {
 				},
 			},
 			minTs:              3,
-			expectedHistograms: []SampleHistogramPair{},
+			expectedHistograms: []*SampleHistogramPair{},
 		},
 		{
 			name: "input histograms not sorted, minTs greater than the last histogram's timestamp",
-			histograms: []SampleHistogramPair{
+			histograms: []*SampleHistogramPair{
 				{
 					TimestampMs: 0,
 					Histogram:   testHistogram1,
@@ -529,11 +529,11 @@ func TestSliceHistograms(t *testing.T) {
 				},
 			},
 			minTs:              2,
-			expectedHistograms: []SampleHistogramPair{},
+			expectedHistograms: []*SampleHistogramPair{},
 		},
 		{
 			name: "input histograms are sorted",
-			histograms: []SampleHistogramPair{
+			histograms: []*SampleHistogramPair{
 				{
 					TimestampMs: 2,
 					Histogram:   testHistogram1,
@@ -548,7 +548,7 @@ func TestSliceHistograms(t *testing.T) {
 				},
 			},
 			minTs: 1,
-			expectedHistograms: []SampleHistogramPair{
+			expectedHistograms: []*SampleHistogramPair{
 				{
 					TimestampMs: 2,
 					Histogram:   testHistogram1,
@@ -565,7 +565,7 @@ func TestSliceHistograms(t *testing.T) {
 		},
 		{
 			name: "input histograms are sorted, get sliced histograms",
-			histograms: []SampleHistogramPair{
+			histograms: []*SampleHistogramPair{
 				{
 					TimestampMs: 1,
 					Histogram:   testHistogram1,
@@ -580,7 +580,7 @@ func TestSliceHistograms(t *testing.T) {
 				},
 			},
 			minTs: 2,
-			expectedHistograms: []SampleHistogramPair{
+			expectedHistograms: []*SampleHistogramPair{
 				{
 					TimestampMs: 3,
 					Histogram:   testHistogram1,

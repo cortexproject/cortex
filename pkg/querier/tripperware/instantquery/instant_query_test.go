@@ -692,7 +692,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: make([]*/tripperware.Sample, 0),
+									Samples: make([]tripperware.Sample, 0),
 								},
 							},
 						},
@@ -715,7 +715,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{},
+									Samples: []tripperware.Sample{},
 								},
 							},
 						},
@@ -744,7 +744,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -774,7 +774,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{Name: "__name__", Value: "up"},
@@ -812,7 +812,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -835,7 +835,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -865,7 +865,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{Name: "__name__", Value: "up"},
@@ -896,7 +896,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{Name: "__name__", Value: "up"},
@@ -934,7 +934,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -958,7 +958,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -989,7 +989,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1013,7 +1013,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1044,7 +1044,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1068,7 +1068,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1099,7 +1099,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1123,7 +1123,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1154,7 +1154,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1179,7 +1179,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1211,7 +1211,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{Name: "__name__", Value: "up"},
@@ -1243,7 +1243,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{Name: "__name__", Value: "up"},
@@ -1527,7 +1527,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1551,7 +1551,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1583,7 +1583,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},
@@ -1607,7 +1607,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 						Result: tripperware.PrometheusQueryResult{
 							Result: &tripperware.PrometheusQueryResult_Vector{
 								Vector: &tripperware.Vector{
-									Samples: []*/tripperware.Sample{
+									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
 												{"__name__", "up"},

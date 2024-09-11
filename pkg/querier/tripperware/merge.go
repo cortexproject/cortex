@@ -181,7 +181,7 @@ func vectorMerge(ctx context.Context, req Request, resps []*PrometheusResponse) 
 	for k, v := range output {
 		samples = append(samples, &pair{
 			metric: k,
-			s:      &v,
+			s:      v,
 		})
 	}
 
@@ -199,7 +199,7 @@ func vectorMerge(ctx context.Context, req Request, resps []*PrometheusResponse) 
 	})
 
 	for _, p := range samples {
-		result.Samples = append(result.Samples, *p.s)
+		result.Samples = append(result.Samples, p.s)
 	}
 	return result, nil
 }
@@ -261,7 +261,7 @@ const (
 
 type pair struct {
 	metric string
-	s      *Sample
+	s      Sample
 }
 
 // getSortValueFromPair gets the float value used for sorting from samples.

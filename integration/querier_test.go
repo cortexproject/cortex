@@ -365,26 +365,33 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 
 				// Configure the blocks storage to frequently compact TSDB head
 				// and ship blocks to the storage.
-				flags := mergeFlags(BlocksStorageFlags(), map[string]string{
-					"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
-					"-blocks-storage.tsdb.ship-interval":                "1s",
-					"-blocks-storage.bucket-store.sync-interval":        "1s",
-					"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
-					"-blocks-storage.bucket-store.index-cache.backend":  testCfg.indexCacheBackend,
-					"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
-					"-querier.query-store-for-labels-enabled":           "true",
-					"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
-					// Ingester.
-					"-ring.store":      "consul",
-					"-consul.hostname": consul.NetworkHTTPEndpoint(),
-					// Distributor.
-					"-distributor.replication-factor": strconv.FormatInt(seriesReplicationFactor, 10),
-					// Store-gateway.
-					"-store-gateway.sharding-enabled":                 strconv.FormatBool(testCfg.blocksShardingEnabled),
-					"-store-gateway.sharding-ring.store":              "consul",
-					"-store-gateway.sharding-ring.consul.hostname":    consul.NetworkHTTPEndpoint(),
-					"-store-gateway.sharding-ring.replication-factor": "1",
-				})
+				flags := mergeFlags(
+					BlocksStorageFlags(),
+					AlertmanagerLocalFlags(),
+					map[string]string{
+						"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
+						"-blocks-storage.tsdb.ship-interval":                "1s",
+						"-blocks-storage.bucket-store.sync-interval":        "1s",
+						"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
+						"-blocks-storage.bucket-store.index-cache.backend":  testCfg.indexCacheBackend,
+						"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
+						"-querier.query-store-for-labels-enabled":           "true",
+						"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
+						// Ingester.
+						"-ring.store":      "consul",
+						"-consul.hostname": consul.NetworkHTTPEndpoint(),
+						// Distributor.
+						"-distributor.replication-factor": strconv.FormatInt(seriesReplicationFactor, 10),
+						// Store-gateway.
+						"-store-gateway.sharding-enabled":                 strconv.FormatBool(testCfg.blocksShardingEnabled),
+						"-store-gateway.sharding-ring.store":              "consul",
+						"-store-gateway.sharding-ring.consul.hostname":    consul.NetworkHTTPEndpoint(),
+						"-store-gateway.sharding-ring.replication-factor": "1",
+						// alert manager
+						"-alertmanager.web.external-url": "http://localhost/alertmanager",
+					},
+				)
+				require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
 
 				// Add the cache address to the flags.
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {

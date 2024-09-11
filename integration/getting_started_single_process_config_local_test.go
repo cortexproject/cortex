@@ -4,6 +4,7 @@
 package integration
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -24,7 +25,14 @@ func TestGettingStartedSingleProcessConfigWithFilesystem(t *testing.T) {
 	// Start Cortex components.
 	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-local.yaml", cortexConfigFile))
 
-	flags := map[string]string{}
+	flags := map[string]string{
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+	}
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, flags, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex))

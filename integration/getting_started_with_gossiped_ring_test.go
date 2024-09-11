@@ -5,6 +5,7 @@ package integration
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -45,7 +46,14 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 		"-blocks-storage.s3.insecure":                              "true",
 		"-store-gateway.sharding-ring.wait-stability-min-duration": "0", // start quickly
 		"-store-gateway.sharding-ring.wait-stability-max-duration": "0", // start quickly
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 	}
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	// This cortex will fail to join the cluster configured in yaml file. That's fine.
 	cortex1 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", "config1.yaml", e2e.MergeFlags(flags, map[string]string{

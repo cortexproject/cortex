@@ -9,8 +9,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"unsafe"
-
 	"github.com/gogo/protobuf/proto"
 
 	jsoniter "github.com/json-iterator/go"
@@ -26,7 +24,7 @@ import (
 )
 
 var (
-	InstantQueryCodec tripperware.Codec = newInstantQueryCodec("", true)
+	InstantQueryCodec tripperware.Codec = NewInstantQueryCodec("", true)
 
 	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
@@ -42,7 +40,7 @@ type instantQueryCodec struct {
 	now            func() time.Time
 }
 
-func newInstantQueryCodec(compressionStr string, enableProtobuf bool) instantQueryCodec {
+func NewInstantQueryCodec(compressionStr string, enableProtobuf bool) instantQueryCodec {
 	var compression queryrange.Compression
 	if compressionStr == "gzip" {
 		compression = queryrange.Compression(compressionStr)

@@ -21,7 +21,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
-	api "github.com/prometheus/prometheus/web/api/v1"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 
@@ -194,28 +194,28 @@ func NewQuerierHandler(
 		Help:      "Current number of inflight requests to the querier.",
 	}, []string{"method", "route"})
 
-	api := api.NewAPI(
+	api := v1.NewAPI(
 		engine,
 		querier.NewErrorTranslateSampleAndChunkQueryable(queryable), // Translate errors to errors expected by API.
 		nil, // No remote write support.
 		exemplarQueryable,
-		func(ctx context.Context) api.ScrapePoolsRetriever { return nil },
-		func(context.Context) api.TargetRetriever { return &querier.DummyTargetRetriever{} },
-		func(context.Context) api.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
+		func(ctx context.Context) v1.ScrapePoolsRetriever { return nil },
+		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
+		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
 		map[string]string{}, // TODO: include configuration flags
-		api.GlobalURLOptions{},
+		v1.GlobalURLOptions{},
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		nil,   // Only needed for admin APIs.
 		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
 		logger,
-		func(context.Context) api.RulesRetriever { return &querier.DummyRulesRetriever{} },
+		func(context.Context) v1.RulesRetriever { return &querier.DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
 		false,
 		regexp.MustCompile(".*"),
-		func() (api.RuntimeInfo, error) { return api.RuntimeInfo{}, errors.New("not implemented") },
-		&api.PrometheusVersion{
+		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
+		&v1.PrometheusVersion{
 			Version:   version.Version,
 			Branch:    version.Branch,
 			Revision:  version.Revision,
@@ -233,8 +233,7 @@ func NewQuerierHandler(
 	)
 
 	if cfg.ProtobufQuerierHandler {
-		api.InstallCodec(codec.InstantQueryProtobufCodec{})
-		api.InstallCodec(codec.QueryRangeProtobufCodec{})
+		api.InstallCodec(codec.ProtobufCodec{})
 	}
 
 	router := mux.NewRouter()
@@ -301,13 +300,13 @@ type buildInfoHandler struct {
 
 type buildInfoResponse struct {
 	Status string                   `json:"status"`
-	Data   *api.PrometheusVersion `json:"data"`
+	Data   *v1.PrometheusVersion `json:"data"`
 }
 
 func (h *buildInfoHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Request) {
 	infoResponse := buildInfoResponse{
 		Status: "success",
-		Data: &api.PrometheusVersion{
+		Data: &v1.PrometheusVersion{
 			Version:   version.Version,
 			Branch:    version.Branch,
 			Revision:  version.Revision,

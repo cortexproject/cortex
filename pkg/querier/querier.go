@@ -49,7 +49,7 @@ type Config struct {
 	QueryIngestersWithin      time.Duration `yaml:"query_ingesters_within"`
 	EnablePerStepStats        bool          `yaml:"per_step_stats_enabled"`
 
-	// Use compression when returning promql response. Supported values 'gzip', 'snappy', and '' (disable compression)
+	// Use compression when returning promql response. Supported values are 'gzip' or '' (disable compression)
 	PrometheusCodecCompression string `yaml:"prometheus_codec_compression"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.

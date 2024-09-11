@@ -58,10 +58,10 @@ type prometheusCodec struct {
 	enableProtobuf bool
 }
 
-func NewPrometheusCodec(sharded bool, c string, enableProtobuf bool) *prometheusCodec { //nolint:revive
+func NewPrometheusCodec(sharded bool, compressionStr string, enableProtobuf bool) *prometheusCodec { //nolint:revive
 	var compression Compression
-	if c == "gzip" {
-		compression = Compression(c)
+	if compressionStr == "gzip" || compressionStr == "snappy" {
+		compression = Compression(compressionStr)
 	} else {
 		compression = DisableCompression
 	}

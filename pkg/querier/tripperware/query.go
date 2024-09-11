@@ -499,7 +499,7 @@ func (s *PrometheusData) UnmarshalJSON(data []byte) error {
 	switch s.ResultType {
 	case model.ValVector.String():
 		var result struct {
-			Samples []*Sample `json:"result"`
+			Samples []Sample `json:"result"`
 		}
 		if err := json.Unmarshal(data, &result); err != nil {
 			return err
@@ -535,7 +535,7 @@ func (s *PrometheusData) MarshalJSON() ([]byte, error) {
 	case model.ValVector.String():
 		res := struct {
 			ResultType string                   `json:"resultType"`
-			Data       []*Sample                `json:"result"`
+			Data       []Sample                 `json:"result"`
 			Stats      *PrometheusResponseStats `json:"stats,omitempty"`
 		}{
 			ResultType: s.ResultType,

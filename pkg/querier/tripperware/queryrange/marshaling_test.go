@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"

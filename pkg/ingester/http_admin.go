@@ -43,7 +43,7 @@ const tpl = `
 					{{ range .Stats }}
 					<tr>
 						<td>{{ .UserID }}</td>
-						<td align='right'>{{ .UserStats.LoadBlocks }}</td>
+						<td align='right'>{{ .UserStats.LoadedBlocks }}</td>
 						<td align='right'>{{ .UserStats.NumSeries }}</td>
 						<td align='right'>{{ .UserStats.ActiveSeries }}</td>
 						<td align='right'>{{ printf "%.2f" .UserStats.IngestionRate }}</td>

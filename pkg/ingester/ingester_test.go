@@ -2302,6 +2302,7 @@ func Test_Ingester_LabelValues(t *testing.T) {
 
 	tests := map[string]struct {
 		limit int64
+		match []*labels.Matcher
 	}{
 		"should return all label values if no limit is set": {
 			limit: 0,

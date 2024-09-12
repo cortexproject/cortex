@@ -1591,6 +1591,11 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
+	startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelNamesRequest(req)
+	if err != nil {
+		return nil, cleanup, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, cleanup, err
@@ -1601,12 +1606,10 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return &client.LabelNamesResponse{}, cleanup, nil
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
 	if err != nil {
 		return nil, cleanup, err
 	}
-
-	limit := int(req.Limit)
 
 	q, err := db.Querier(mint, maxt)
 	if err != nil {
@@ -1622,7 +1625,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 	defer c()
-	names, _, err := q.LabelNames(ctx, &storage.LabelHints{Limit: limit})
+	names, _, err := q.LabelNames(ctx, &storage.LabelHints{Limit: limit}, matchers...)
 	if err != nil {
 		return nil, cleanup, err
 	}

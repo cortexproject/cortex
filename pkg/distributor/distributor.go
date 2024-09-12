@@ -1101,7 +1101,7 @@ func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, t
 	}, matchers...)
 }
 
-func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time, hints *storage.LabelHints, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error)) ([]string, error) {
+func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time, hints *storage.LabelHints, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error), matchers ...*labels.Matcher) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelNames", opentracing.Tags{
 		"start": from.Unix(),
 		"end":   to.Unix(),
@@ -1113,11 +1113,11 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 	}
 
 	limit := getLimitFromLabelHints(hints)
-	req := &ingester_client.LabelNamesRequest{
-		StartTimestampMs: int64(from),
-		EndTimestampMs:   int64(to),
-		Limit:            int64(limit),
+	req, err := ingester_client.ToLabelNamesRequest(from, to, limit, matchers)
+	if err != nil {
+		return nil, err
 	}
+
 	resps, err := f(ctx, replicationSet, req)
 	if err != nil {
 		return nil, err
@@ -1142,7 +1142,7 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 	return r, nil
 }
 
-func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time, hints *storage.LabelHints) ([]string, error) {
+func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
 	return d.LabelNamesCommon(ctx, from, to, hints, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			stream, err := client.LabelNamesStream(ctx, req)
@@ -1164,11 +1164,11 @@ func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time,
 
 			return allLabelNames, nil
 		})
-	})
+	}, matchers...)
 }
 
 // LabelNames returns all the label names.
-func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time, hint *storage.LabelHints) ([]string, error) {
+func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time, hint *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
 	return d.LabelNamesCommon(ctx, from, to, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			resp, err := client.LabelNames(ctx, req)
@@ -1177,7 +1177,7 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time, hint 
 			}
 			return resp.LabelNames, nil
 		})
-	})
+	}, matchers...)
 }
 
 // MetricsForLabelMatchers gets the metrics that match said matchers

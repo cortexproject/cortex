@@ -153,7 +153,7 @@ func (i *InstanceDesc) IsReady(storageLastUpdated time.Time, heartbeatTimeout ti
 	if !i.IsHeartbeatHealthy(heartbeatTimeout, storageLastUpdated) {
 		return fmt.Errorf("instance %s past heartbeat timeout", i.Addr)
 	}
-	if i.State != ACTIVE {
+	if i.State != ACTIVE && i.State != READONLY {
 		return fmt.Errorf("instance %s in state %v", i.Addr, i.State)
 	}
 	return nil

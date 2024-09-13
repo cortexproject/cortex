@@ -269,7 +269,7 @@ func TestResponse(t *testing.T) {
 			},
 		},
 		{
-			jsonBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1,"137"],[2,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
+			jsonBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1,"137"],[2,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]],"peakSamples":10}}}}`,
 			promBody: &tripperware.PrometheusResponse{
 				Status: "success",
 				Data: tripperware.PrometheusData{
@@ -298,6 +298,7 @@ func TestResponse(t *testing.T) {
 								{Value: 5, TimestampMs: 1536673780000},
 							},
 							TotalQueryableSamples: 10,
+							PeakSamples: 10,
 						},
 					},
 				},
@@ -732,6 +733,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 							Samples: &tripperware.PrometheusResponseSamplesStats{
 								TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{},
 								TotalQueryableSamples:        0,
+								PeakSamples: 10,
 							},
 						},
 					},
@@ -740,7 +742,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 					},
 				},
 			},
-			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[],"stats":{"samples":{"totalQueryableSamples":0,"totalQueryableSamplesPerStep":[]}}}}`,
+			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[],"stats":{"samples":{"totalQueryableSamples":0,"totalQueryableSamplesPerStep":[],"peakSamples":10}}}}`,
 		},
 		{
 			name: "single response",
@@ -800,6 +802,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									{Value: 10, TimestampMs: 1000},
 								},
 								TotalQueryableSamples: 10,
+								PeakSamples: 10,
 							},
 						},
 					},
@@ -808,7 +811,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 					},
 				},
 			},
-			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
+			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]],"peakSamples":10}}}}`,
 		},
 		{
 			name: "duplicated response",
@@ -891,6 +894,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									{Value: 10, TimestampMs: 1000},
 								},
 								TotalQueryableSamples: 10,
+								PeakSamples: 10,
 							},
 						},
 					},
@@ -922,6 +926,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									{Value: 10, TimestampMs: 1000},
 								},
 								TotalQueryableSamples: 10,
+								PeakSamples: 10,
 							},
 						},
 					},
@@ -930,7 +935,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 					},
 				},
 			},
-			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]]}}}}`,
+			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]],"peakSamples":10}}}}`,
 		},
 		{
 			name: "merge two responses",
@@ -1238,6 +1243,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									{Value: 10, TimestampMs: 1000},
 								},
 								TotalQueryableSamples: 10,
+								PeakSamples: 10,
 							},
 						},
 					},
@@ -1270,6 +1276,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									{Value: 10, TimestampMs: 1000},
 								},
 								TotalQueryableSamples: 10,
+								PeakSamples: 10,
 							},
 						},
 					},
@@ -1278,7 +1285,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 					},
 				},
 			},
-			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]]}}}}`,
+			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]],"peakSamples":10}}}}`,
 		},
 		{
 			name: "responses don't contain vector, should return an error",
@@ -1313,7 +1320,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: fmt.Errorf("unexpected result type on instant query: %s", "string"),
+			expectedErr: errors.New("unexpected result type: string"),
 		},
 		{
 			name: "single matrix response",

@@ -362,7 +362,7 @@ func TestResponseWithStats(t *testing.T) {
 			isProtobuf: true,
 		},
 		{
-			jsonBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
+			jsonBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]],"peakSamples":16}}}}`,
 			promBody: &tripperware.PrometheusResponse{
 				Status: "success",
 				Data: tripperware.PrometheusData{
@@ -391,6 +391,7 @@ func TestResponseWithStats(t *testing.T) {
 								{Value: 5, TimestampMs: 1536673680000},
 								{Value: 5, TimestampMs: 1536673780000},
 							},
+							PeakSamples: 16,
 						},
 					},
 				},
@@ -1208,7 +1209,7 @@ func TestCompressedResponse(t *testing.T) {
 							{Value: 2, TimestampMs: 2000},
 							{Value: 3, TimestampMs: 3000},
 						},
-						PeakSamples: 16,
+						PeakSamples: 10,
 					}},
 				},
 				Headers: []*tripperware.PrometheusResponseHeader{},

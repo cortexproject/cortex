@@ -23,6 +23,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
@@ -31,6 +32,7 @@ type DefaultMultiTenantManager struct {
 	notifierCfg     *config.Config
 	managerFactory  ManagerFactory
 	ruleEvalMetrics *RuleEvalMetrics
+	frontendPool    *client.Pool
 
 	mapper *mapper
 
@@ -87,6 +89,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, eva
 		cfg:                       cfg,
 		notifierCfg:               ncfg,
 		managerFactory:            managerFactory,
+		frontendPool:              newFrontendPool(cfg, logger, reg),
 		ruleEvalMetrics:           evalMetrics,
 		notifiers:                 map[string]*rulerNotifier{},
 		notifiersDiscoveryMetrics: notifiersDiscoveryMetrics,
@@ -269,7 +272,7 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 		return nil, err
 	}
 
-	return r.managerFactory(ctx, userID, notifier, r.logger, reg), nil
+	return r.managerFactory(ctx, userID, notifier, r.logger, r.frontendPool, reg)
 }
 
 func (r *DefaultMultiTenantManager) removeNotifier(userID string) {

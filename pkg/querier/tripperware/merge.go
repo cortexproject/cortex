@@ -208,6 +208,7 @@ func vectorMerge(ctx context.Context, req Request, resps []*PrometheusResponse) 
 func statsMerge(shouldSumStats bool, resps []*PrometheusResponse) *PrometheusResponseStats {
 	output := map[int64]*PrometheusResponseQueryableSamplesStatsPerStep{}
 	hasStats := false
+	var peakSamples int64
 	for _, resp := range resps {
 		if resp.Data.Stats == nil {
 			continue
@@ -229,6 +230,7 @@ func statsMerge(shouldSumStats bool, resps []*PrometheusResponse) *PrometheusRes
 				output[s.GetTimestampMs()] = s
 			}
 		}
+		peakSamples = max(peakSamples, resp.Data.Stats.Samples.PeakSamples)
 	}
 
 	if !hasStats {
@@ -246,6 +248,7 @@ func statsMerge(shouldSumStats bool, resps []*PrometheusResponse) *PrometheusRes
 		result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, output[key])
 		result.Samples.TotalQueryableSamples += output[key].Value
 	}
+	result.Samples.PeakSamples = peakSamples
 
 	return result
 }

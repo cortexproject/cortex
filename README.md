@@ -61,14 +61,9 @@ comprehensive overview of the topics discussed and decisions made.
 To ensure you never miss a meeting, we've made it easy for you to keep track:
 
 - View the Cortex Community Call schedule in your
-  browser [here](https://calendar.google.com/calendar/u/0/embed?src=cncf-cortex-maintainers@lists.cncf.io&ctz=UTC). The
-  displayed time zone is UTC.
-- If you're a Google Calendar user, you can seamlessly integrate the Cortex Community Call schedule into your personal
-  calendar.
-  Click [here](https://calendar.google.com/calendar/u/0?cid=Y25jZi1jb3J0ZXgtbWFpbnRhaW5lcnNAbGlzdHMuY25jZi5pbw) to add
-  the Cortex calendar.
+  browser [here](https://zoom-lfx.platform.linuxfoundation.org/meetings/cortex?view=month).
 - Alternatively, download the .ics
-  file [here](https://calendar.google.com/calendar/ical/cncf-cortex-maintainers%40lists.cncf.io/public/basic.ics) for
+  file [here](https://webcal.prod.itx.linuxfoundation.org/lfx/a092M00001IfTjPQAV) for
   use with any calendar application or service that supports the iCal format.
 
 Join us in shaping the future of Cortex, and let's build something amazing together!
@@ -181,4 +176,4 @@ There are several commercial services where you can use Cortex on-demand:
 
 ## History of Cortex
 
-The Cortex project was started by Tom Wilkie (Grafana Labs' VP Product) and Julius Volz (Prometheus' co-founder) in June 2016.
+The Cortex project was started by Tom Wilkie and Julius Volz (Prometheus' co-founder) in June 2016.

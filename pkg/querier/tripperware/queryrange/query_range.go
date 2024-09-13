@@ -52,6 +52,20 @@ var (
 	cacheControlHeader = "Cache-Control"
 )
 
+func (resp *PrometheusResponse) HTTPHeaders() map[string][]string {
+	if resp != nil && resp.GetHeaders() != nil {
+		r := map[string][]string{}
+		for _, header := range resp.GetHeaders() {
+			if header != nil {
+				r[header.Name] = header.Values
+			}
+		}
+
+		return r
+	}
+	return nil
+}
+
 type prometheusCodec struct {
 	sharded        bool
 	compression    Compression
@@ -80,6 +94,11 @@ func (c prometheusCodec) MergeResponse(ctx context.Context, req tripperware.Requ
 		return tripperware.NewEmptyPrometheusResponse(false), nil
 	}
 
+	// Safety guard in case any response from results cache middleware
+	// still uses the old queryrange.PrometheusResponse type.
+	for i, resp := range responses {
+		responses[i] = convertToTripperwarePrometheusResponse(resp)
+	}
 	return tripperware.MergeResponse(ctx, c.sharded, nil, responses...)
 }
 

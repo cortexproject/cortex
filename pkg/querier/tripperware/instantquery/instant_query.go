@@ -80,7 +80,7 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 }
 
 func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
-	log, ctx := spanlogger.New(ctx, "tripperware.PrometheusResponse") //nolint:ineffassign,staticcheck
+	log, ctx := spanlogger.New(ctx, "DecodeQueryInstantResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
 	if err := ctx.Err(); err != nil {

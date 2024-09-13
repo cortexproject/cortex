@@ -325,7 +325,7 @@ func TestResponseWithStats(t *testing.T) {
 		isProtobuf       bool
 	}{
 		{
-			jsonBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
+			jsonBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]],"peakSamples":16}}}}`,
 			promBody: &tripperware.PrometheusResponse{
 				Status: "success",
 				Data: tripperware.PrometheusData{
@@ -354,6 +354,7 @@ func TestResponseWithStats(t *testing.T) {
 								{Value: 5, TimestampMs: 1536673680000},
 								{Value: 5, TimestampMs: 1536673780000},
 							},
+							PeakSamples: 16,
 						},
 					},
 				},
@@ -1103,6 +1104,54 @@ func TestMergeAPIResponses(t *testing.T) {
 					}},
 				},
 			},
+		}, {
+			name: "[stats] Peak samples should be the largest one among the responses",
+			input: []tripperware.Response{
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]],"peakSamples":20}}}}`),
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"],[4,"4"],[5,"5"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3],[4,4],[5,5]],"peakSamples":22}}}}`),
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[6,"6"],[7,"7"],[8,"8"],[9,"9"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[6,6],[7,7],[8,8],[9,9]],"peakSamples":25}}}}`),
+			},
+			expected: &tripperware.PrometheusResponse{
+				Status: StatusSuccess,
+				Data: tripperware.PrometheusData{
+					ResultType: matrix,
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Matrix{
+							Matrix: &tripperware.Matrix{
+								SampleStreams: []tripperware.SampleStream{
+									{
+										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Samples: []cortexpb.Sample{
+											{Value: 2, TimestampMs: 2000},
+											{Value: 3, TimestampMs: 3000},
+											{Value: 4, TimestampMs: 4000},
+											{Value: 5, TimestampMs: 5000},
+											{Value: 6, TimestampMs: 6000},
+											{Value: 7, TimestampMs: 7000},
+											{Value: 8, TimestampMs: 8000},
+											{Value: 9, TimestampMs: 9000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Stats: &tripperware.PrometheusResponseStats{Samples: &tripperware.PrometheusResponseSamplesStats{
+						TotalQueryableSamples: 44,
+						TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+							{Value: 2, TimestampMs: 2000},
+							{Value: 3, TimestampMs: 3000},
+							{Value: 4, TimestampMs: 4000},
+							{Value: 5, TimestampMs: 5000},
+							{Value: 6, TimestampMs: 6000},
+							{Value: 7, TimestampMs: 7000},
+							{Value: 8, TimestampMs: 8000},
+							{Value: 9, TimestampMs: 9000},
+						},
+						PeakSamples: 25,
+					}},
+				},
+			},
 		}} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -1159,11 +1208,12 @@ func TestCompressedResponse(t *testing.T) {
 							{Value: 2, TimestampMs: 2000},
 							{Value: 3, TimestampMs: 3000},
 						},
+						PeakSamples: 16,
 					}},
 				},
 				Headers: []*tripperware.PrometheusResponseHeader{},
 			},
-			jsonBody:`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]]}}}}`,
+			jsonBody:`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]],"peakSamples":10}}}}`,
 			status: 200,
 		},
 		{

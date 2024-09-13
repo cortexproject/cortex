@@ -1235,6 +1235,72 @@ func TestRulerKeepFiring(t *testing.T) {
 	require.Equal(t, 0, len(alert.Alerts)) // alert should be resolved once keepFiringFor time expires
 }
 
+func TestRulerEvalWithQueryFrontend(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Configure the ruler.
+	flags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		map[string]string{
+			// Evaluate rules often, so that we don't need to wait for metrics to show up.
+			"-ruler.evaluation-interval": "2s",
+			// We run single ingester only, no replication.
+			"-distributor.replication-factor": "1",
+		},
+	)
+
+	const namespace = "test"
+	const user = "user"
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-ruler.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
+	}), "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(ruler, querier))
+
+	c, err := e2ecortex.NewClient("", "", "", ruler.HTTPEndpoint(), user)
+	require.NoError(t, err)
+
+	expression := "metric"
+	groupName := "rule_group"
+	ruleName := "rule_name"
+	require.NoError(t, c.SetRuleGroup(ruleGroupWithRule(groupName, ruleName, expression), namespace))
+
+	rgMatcher := ruleGroupMatcher(user, namespace, groupName)
+	// Wait until ruler has loaded the group.
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_rule_group_rules"}, e2e.WithLabelMatchers(rgMatcher), e2e.WaitMissingMetrics))
+	// Wait until rule group has tried to evaluate the rule.
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(rgMatcher), e2e.WaitMissingMetrics))
+
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "user", user)
+	// Check that cortex_ruler_query_frontend_clients went up
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ruler_query_frontend_clients"}, e2e.WaitMissingMetrics))
+	// Check that cortex_ruler_queries_total went up
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_queries_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+	// Check that cortex_ruler_queries_failed_total is zero
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_ruler_queries_failed_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+	// Check that cortex_ruler_write_requests_total went up
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_write_requests_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+	// Check that cortex_ruler_write_requests_failed_total is zero
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_ruler_write_requests_failed_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+}
+
 func parseAlertFromRule(t *testing.T, rules interface{}) *alertingRule {
 	responseJson, err := json.Marshal(rules)
 	require.NoError(t, err)

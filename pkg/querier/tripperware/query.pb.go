@@ -567,6 +567,7 @@ func (m *PrometheusResponseStats) GetSamples() *PrometheusResponseSamplesStats {
 type PrometheusResponseSamplesStats struct {
 	TotalQueryableSamples        int64                                             `protobuf:"varint,1,opt,name=totalQueryableSamples,proto3" json:"totalQueryableSamples"`
 	TotalQueryableSamplesPerStep []*PrometheusResponseQueryableSamplesStatsPerStep `protobuf:"bytes,2,rep,name=totalQueryableSamplesPerStep,proto3" json:"totalQueryableSamplesPerStep"`
+	PeakSamples                  int64                                             `protobuf:"varint,3,opt,name=peakSamples,proto3" json:"peakSamples"`
 }
 
 func (m *PrometheusResponseSamplesStats) Reset()      { *m = PrometheusResponseSamplesStats{} }
@@ -613,6 +614,13 @@ func (m *PrometheusResponseSamplesStats) GetTotalQueryableSamplesPerStep() []*Pr
 		return m.TotalQueryableSamplesPerStep
 	}
 	return nil
+}
+
+func (m *PrometheusResponseSamplesStats) GetPeakSamples() int64 {
+	if m != nil {
+		return m.PeakSamples
+	}
+	return 0
 }
 
 type PrometheusResponseQueryableSamplesStatsPerStep struct {
@@ -1393,6 +1401,9 @@ func (this *PrometheusResponseSamplesStats) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if this.PeakSamples != that1.PeakSamples {
+		return false
+	}
 	return true
 }
 func (this *PrometheusResponseQueryableSamplesStatsPerStep) Equal(that interface{}) bool {
@@ -1790,12 +1801,13 @@ func (this *PrometheusResponseSamplesStats) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
+	s := make([]string, 0, 7)
 	s = append(s, "&tripperware.PrometheusResponseSamplesStats{")
 	s = append(s, "TotalQueryableSamples: "+fmt.Sprintf("%#v", this.TotalQueryableSamples)+",\n")
 	if this.TotalQueryableSamplesPerStep != nil {
 		s = append(s, "TotalQueryableSamplesPerStep: "+fmt.Sprintf("%#v", this.TotalQueryableSamplesPerStep)+",\n")
 	}
+	s = append(s, "PeakSamples: "+fmt.Sprintf("%#v", this.PeakSamples)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2391,6 +2403,11 @@ func (m *PrometheusResponseSamplesStats) MarshalToSizedBuffer(dAtA []byte) (int,
 	_ = i
 	var l int
 	_ = l
+	if m.PeakSamples != 0 {
+		i = encodeVarintQuery(dAtA, i, uint64(m.PeakSamples))
+		i--
+		dAtA[i] = 0x18
+	}
 	if len(m.TotalQueryableSamplesPerStep) > 0 {
 		for iNdEx := len(m.TotalQueryableSamplesPerStep) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -2925,6 +2942,9 @@ func (m *PrometheusResponseSamplesStats) Size() (n int) {
 			n += 1 + l + sovQuery(uint64(l))
 		}
 	}
+	if m.PeakSamples != 0 {
+		n += 1 + sovQuery(uint64(m.PeakSamples))
+	}
 	return n
 }
 
@@ -3215,6 +3235,7 @@ func (this *PrometheusResponseSamplesStats) String() string {
 	s := strings.Join([]string{`&PrometheusResponseSamplesStats{`,
 		`TotalQueryableSamples:` + fmt.Sprintf("%v", this.TotalQueryableSamples) + `,`,
 		`TotalQueryableSamplesPerStep:` + repeatedStringForTotalQueryableSamplesPerStep + `,`,
+		`PeakSamples:` + fmt.Sprintf("%v", this.PeakSamples) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4656,6 +4677,25 @@ func (m *PrometheusResponseSamplesStats) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PeakSamples", wireType)
+			}
+			m.PeakSamples = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PeakSamples |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipQuery(dAtA[iNdEx:])

@@ -46,7 +46,7 @@ require (
 	github.com/prometheus/alertmanager v0.27.0
 	github.com/prometheus/client_golang v1.20.3
 	github.com/prometheus/client_model v0.6.1
-	github.com/prometheus/common v0.58.0
+	github.com/prometheus/common v0.59.1
 	// Prometheus maps version 2.x.y to tags v0.x.y.
 	github.com/prometheus/prometheus v0.54.0-rc.0
 	github.com/segmentio/fasthash v1.0.3

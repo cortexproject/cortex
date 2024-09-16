@@ -26,8 +26,10 @@ import (
 const (
 	query                    = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
 	queryWithWarnings        = "/api/v1/query_range?end=1536716898&query=sumsum%28warnings%29&start=1536673680&stats=all&step=120&warnings=true"
+	queryWithInfos           = "/api/v1/query_range?end=1536716898&query=rate%28go_gc_gogc_percent%5B5m%5D%29&start=1536673680&stats=all&step=120"
 	responseBody             = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 	responseBodyWithWarnings = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]},"warnings":["test-warn"]}`
+	responseBodyWithInfos    = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]},"infos":["PromQL info: metric might not be a counter, name does not end in _total/_sum/_count/_bucket: \"go_gc_gogc_percent\" (1:6)"]}`
 )
 
 var (
@@ -91,6 +93,30 @@ var (
 	parsedResponseWithWarnings = &tripperware.PrometheusResponse{
 		Status:   "success",
 		Warnings: []string{"test-warn"},
+		Data: tripperware.PrometheusData{
+			ResultType: model.ValMatrix.String(),
+			Result: tripperware.PrometheusQueryResult{
+				Result: &tripperware.PrometheusQueryResult_Matrix{
+					Matrix: &tripperware.Matrix{
+						SampleStreams: []tripperware.SampleStream{
+							{
+								Labels: []cortexpb.LabelAdapter{
+									{Name: "foo", Value: "bar"},
+								},
+								Samples: []cortexpb.Sample{
+									{Value: 137, TimestampMs: 1536673680000},
+									{Value: 137, TimestampMs: 1536673780000},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	parsedResponseWithInfos = &tripperware.PrometheusResponse{
+		Status: "success",
+		Infos:  []string{"PromQL info: metric might not be a counter, name does not end in _total/_sum/_count/_bucket: \"go_gc_gogc_percent\" (1:6)"},
 		Data: tripperware.PrometheusData{
 			ResultType: model.ValMatrix.String(),
 			Result: tripperware.PrometheusQueryResult{

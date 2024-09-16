@@ -363,6 +363,15 @@ func TestMergeResponse(t *testing.T) {
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]},{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]},"warnings":["warning1","warning2","warning3"]}`,
 		},
 		{
+			name: "merge with infos.",
+			req:  &tripperware.PrometheusRequest{Query: "topk(10, up) by(job)"},
+			resps: []string{
+				`{"status":"success","infos":["info1","info2"],"data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
+				`{"status":"success","infos":["info1","info3"],"data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
+			},
+			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]},{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]},"infos":["info1","info2","info3"]}`,
+		},
+		{
 			name: "merge two responses with stats",
 			req:  defaultReq,
 			resps: []string{

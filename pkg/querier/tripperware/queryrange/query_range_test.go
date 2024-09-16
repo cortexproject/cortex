@@ -92,8 +92,10 @@ func TestResponse(t *testing.T) {
 	t.Parallel()
 	r := *parsedResponse
 	rWithWarnings := *parsedResponseWithWarnings
+	rWithInfos := *parsedResponseWithInfos
 	r.Headers = respHeaders
 	rWithWarnings.Headers = respHeaders
+	rWithInfos.Headers = respHeaders
 	for i, tc := range []struct {
 		body                  string
 		expected              *tripperware.PrometheusResponse
@@ -107,6 +109,10 @@ func TestResponse(t *testing.T) {
 		{
 			body:     responseBodyWithWarnings,
 			expected: &rWithWarnings,
+		},
+		{
+			body:     responseBodyWithInfos,
+			expected: &rWithInfos,
 		},
 		{
 			body:                  responseBody,
@@ -465,6 +471,34 @@ func TestMergeAPIResponses(t *testing.T) {
 			expected: &tripperware.PrometheusResponse{
 				Status:   StatusSuccess,
 				Warnings: []string{"warning1", "warning2", "warning3"},
+				Data: tripperware.PrometheusData{
+					ResultType: matrix,
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Matrix{
+							Matrix: &tripperware.Matrix{
+								SampleStreams: []tripperware.SampleStream{
+									{
+										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Samples: []cortexpb.Sample{
+											{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Merge response with infos.",
+			input: []tripperware.Response{
+				mustParse(t, `{"status":"success","infos":["info1","info2"],"data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"]]}]}}`),
+				mustParse(t, `{"status":"success","infos":["info1","info3"],"data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"]]}]}}`),
+			},
+			expected: &tripperware.PrometheusResponse{
+				Status: StatusSuccess,
+				Infos:  []string{"info1", "info2", "info3"},
 				Data: tripperware.PrometheusData{
 					ResultType: matrix,
 					Result: tripperware.PrometheusQueryResult{

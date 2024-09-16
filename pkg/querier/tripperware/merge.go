@@ -42,10 +42,14 @@ func MergeResponse(ctx context.Context, sumStats bool, req Request, responses ..
 	}
 	promResponses := make([]*PrometheusResponse, 0, len(responses))
 	warnings := make([][]string, 0, len(responses))
+	infos := make([][]string, 0, len(responses))
 	for _, resp := range responses {
 		promResponses = append(promResponses, resp.(*PrometheusResponse))
 		if w := resp.(*PrometheusResponse).Warnings; w != nil {
 			warnings = append(warnings, w)
+		}
+		if i := resp.(*PrometheusResponse).Infos; i != nil {
+			infos = append(infos, i)
 		}
 	}
 
@@ -96,6 +100,7 @@ func MergeResponse(ctx context.Context, sumStats bool, req Request, responses ..
 		Status:   StatusSuccess,
 		Data:     data,
 		Warnings: strutil.MergeUnsortedSlices(warnings...),
+		Infos:    strutil.MergeUnsortedSlices(infos...),
 	}
 	return res, nil
 }

@@ -543,8 +543,9 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 
 func (i *Lifecycler) heartbeat(ctx context.Context) {
 	i.lifecyclerMetrics.consulHeartbeats.Inc()
-	ctx, _ = context.WithTimeout(ctx, i.cfg.HeartbeatPeriod)
-	if err := i.updateConsul(context.Background()); err != nil {
+	ctx, cancel := context.WithTimeout(ctx, i.cfg.HeartbeatPeriod)
+	defer cancel()
+	if err := i.updateConsul(ctx); err != nil {
 		level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 	}
 }

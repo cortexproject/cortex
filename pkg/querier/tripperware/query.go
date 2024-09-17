@@ -38,6 +38,12 @@ var (
 	}.Froze()
 )
 
+const (
+	GzipCompression     string = "gzip"
+	ApplicationProtobuf string = "application/x-protobuf"
+	ApplicationJson     string = "application/json"
+)
+
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
 type Codec interface {
 	Merger
@@ -737,4 +743,22 @@ func (s *PrometheusResponseStats) MarshalJSON() ([]byte, error) {
 		s.Samples.TotalQueryableSamplesPerStep = []*PrometheusResponseQueryableSamplesStatsPerStep{}
 	}
 	return json.Marshal(stats)
+}
+
+func SetRequestHeaders(h http.Header, defaultCodec string, compression string) {
+	if compression == GzipCompression {
+		h.Set("Accept-Encoding", GzipCompression)
+	}
+	if defaultCodec == "protobuf" {
+		h.Set("Accept", ApplicationProtobuf)
+	}
+	h.Set("Accept", ApplicationJson)
+}
+
+func UnmarshalResponse(r *http.Response, buf []byte, resp *PrometheusResponse) error {
+	if r.Header != nil && r.Header.Get("Content-Type") == ApplicationProtobuf {
+		return proto.Unmarshal(buf, resp)
+	} else {
+		return json.Unmarshal(buf, resp)
+	}
 }

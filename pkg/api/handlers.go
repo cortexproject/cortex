@@ -232,9 +232,8 @@ func NewQuerierHandler(
 		false,
 	)
 
-	if cfg.ProtobufQuerierHandler {
-		api.InstallCodec(codec.ProtobufCodec{})
-	}
+	// JSON codec is already installed. Install Protobuf codec to give the option for using either.
+	api.InstallCodec(codec.ProtobufCodec{})
 
 	router := mux.NewRouter()
 

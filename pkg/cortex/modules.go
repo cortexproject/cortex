@@ -442,9 +442,9 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
 	queryAnalyzer := querysharding.NewQueryAnalyzer()
 	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
-	prometheusCodec := queryrange.NewPrometheusCodec(false, t.Cfg.Querier.PrometheusCodecCompression, t.Cfg.API.ProtobufQuerierHandler)
+	prometheusCodec := queryrange.NewPrometheusCodec(false, t.Cfg.Querier.PrometheusCodecCompression, t.Cfg.API.QuerierDefaultCodec)
 	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
-	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, t.Cfg.Querier.PrometheusCodecCompression, t.Cfg.API.ProtobufQuerierHandler)
+	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, t.Cfg.Querier.PrometheusCodecCompression, t.Cfg.API.QuerierDefaultCodec)
 
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
@@ -472,7 +472,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryRangeMiddlewares,
 		instantQueryMiddlewares,
 		prometheusCodec,
-		instantquery.NewInstantQueryCodec(t.Cfg.Querier.PrometheusCodecCompression, t.Cfg.API.ProtobufQuerierHandler),
+		instantquery.NewInstantQueryCodec(t.Cfg.Querier.PrometheusCodecCompression, t.Cfg.API.QuerierDefaultCodec),
 		t.Overrides,
 		queryAnalyzer,
 		t.Cfg.Querier.DefaultEvaluationInterval,

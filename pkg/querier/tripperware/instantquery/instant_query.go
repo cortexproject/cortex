@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"github.com/gogo/protobuf/proto"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -18,13 +17,12 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 var (
-	InstantQueryCodec tripperware.Codec = NewInstantQueryCodec("", true)
+	InstantQueryCodec tripperware.Codec = NewInstantQueryCodec("", "protobuf")
 
 	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
@@ -35,21 +33,15 @@ var (
 
 type instantQueryCodec struct {
 	tripperware.Codec
-	compression    queryrange.Compression
-	enableProtobuf bool
+	compression    string
+	defaultCodec   string
 	now            func() time.Time
 }
 
-func NewInstantQueryCodec(compressionStr string, enableProtobuf bool) instantQueryCodec {
-	var compression queryrange.Compression
-	if compressionStr == "gzip" {
-		compression = queryrange.Compression(compressionStr)
-	} else {
-		compression = queryrange.DisableCompression
-	}
+func NewInstantQueryCodec(compression string, defaultCodec string) instantQueryCodec {
 	return instantQueryCodec{
 		compression:    compression,
-		enableProtobuf: enableProtobuf,
+		defaultCodec:   defaultCodec,
 		now:            time.Now,
 	}
 }
@@ -97,11 +89,7 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	}
 
 	var resp tripperware.PrometheusResponse
-	if r.Header != nil && r.Header.Get("Content-Type") == "application/x-protobuf" {
-		err = proto.Unmarshal(buf, &resp)
-	} else {
-		err = json.Unmarshal(buf, &resp)
-	}
+	err = tripperware.UnmarshalResponse(r, buf, &resp)
 
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
@@ -141,14 +129,7 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 		}
 	}
 
-	if c.compression == queryrange.GzipCompression {
-		h.Set("Accept-Encoding", string(c.compression))
-	}
-	if c.enableProtobuf {
-		h.Set("Accept", "application/x-protobuf")
-	} else {
-		h.Set("Accept", "application/json")
-	}
+	tripperware.SetRequestHeaders(h, c.defaultCodec, c.compression)
 
 	req := &http.Request{
 		Method:     "GET",
@@ -179,7 +160,7 @@ func (instantQueryCodec) EncodeResponse(ctx context.Context, res tripperware.Res
 
 	resp := http.Response{
 		Header: http.Header{
-			"Content-Type": []string{"application/json"},
+			"Content-Type": []string{tripperware.ApplicationJson},
 		},
 		Body:          io.NopCloser(bytes.NewBuffer(b)),
 		StatusCode:    http.StatusOK,

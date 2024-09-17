@@ -172,8 +172,8 @@ func TestCompressedResponse(t *testing.T) {
 				protobuf, err := proto.Marshal(tc.promBody)
 				b = protobuf
 				require.NoError(t, err)
-				h.Set("Content-Type", "application/x-protobuf")
-				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Type", Values: []string{"application/x-protobuf"}})
+				h.Set("Content-Type", tripperware.ApplicationProtobuf)
+				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Type", Values: []string{tripperware.ApplicationProtobuf}})
 			} else {
 				b = []byte(tc.jsonBody)
 				h.Set("Content-Type", "application/json")
@@ -376,10 +376,10 @@ func TestResponse(t *testing.T) {
 				require.NoError(t, err)
 				response = &http.Response{
 					StatusCode: 200,
-					Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
+					Header:     http.Header{"Content-Type": []string{tripperware.ApplicationProtobuf}},
 					Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
 				}
-				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Type", Values: []string{"application/x-protobuf"}})
+				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Type", Values: []string{tripperware.ApplicationProtobuf}})
 			} else {
 				response = &http.Response{
 					StatusCode: 200,

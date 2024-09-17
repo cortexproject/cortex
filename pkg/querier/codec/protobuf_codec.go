@@ -152,6 +152,7 @@ func getStats(builtin *stats.BuiltinStats) *tripperware.PrometheusResponseSample
 	statSamples := tripperware.PrometheusResponseSamplesStats{
 		TotalQueryableSamples:        builtin.Samples.TotalQueryableSamples,
 		TotalQueryableSamplesPerStep: queryableSamplesStatsPerStep,
+		PeakSamples: 			      int64(builtin.Samples.PeakSamples),
 	}
 
 	return &statSamples

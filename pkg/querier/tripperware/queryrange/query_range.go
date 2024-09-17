@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-
 	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -27,15 +25,6 @@ import (
 
 // StatusSuccess Prometheus success result.
 const StatusSuccess = "success"
-
-type Compression string
-
-const (
-	DisableCompression Compression = ""
-	GzipCompression    Compression = "gzip"
-	applicationProtobuf string = "application/x-protobuf"
-	applicationJson     string = "application/json"
-)
 
 var (
 	matrix = model.ValMatrix.String()
@@ -67,22 +56,17 @@ func (resp *PrometheusResponse) HTTPHeaders() map[string][]string {
 }
 
 type prometheusCodec struct {
+	tripperware.Codec
 	sharded        bool
-	compression    Compression
-	enableProtobuf bool
+	compression    string
+	defaultCodec   string
 }
 
-func NewPrometheusCodec(sharded bool, compressionStr string, enableProtobuf bool) *prometheusCodec { //nolint:revive
-	var compression Compression
-	if compressionStr == "gzip" || compressionStr == "snappy" {
-		compression = Compression(compressionStr)
-	} else {
-		compression = DisableCompression
-	}
+func NewPrometheusCodec(sharded bool, compression string, defaultCodec string) *prometheusCodec { //nolint:revive
 	return &prometheusCodec{
 		sharded:        sharded,
 		compression:    compression,
-		enableProtobuf: enableProtobuf,
+		defaultCodec:   defaultCodec,
 	}
 }
 
@@ -182,14 +166,7 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		}
 	}
 
-	if c.compression == GzipCompression {
-		h.Set("Accept-Encoding", string(c.compression))
-	}
-	if c.enableProtobuf {
-		h.Set("Accept", applicationProtobuf)
-	} else {
-		h.Set("Accept", applicationJson)
-	}
+	tripperware.SetRequestHeaders(h, c.defaultCodec, c.compression)
 
 	req := &http.Request{
 		Method:     "GET",
@@ -221,11 +198,7 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	log.LogFields(otlog.Int("bytes", len(buf)))
 
 	var resp tripperware.PrometheusResponse
-	if r.Header != nil && r.Header.Get("Content-Type") == applicationProtobuf {
-		err = proto.Unmarshal(buf, &resp)
-	} else {
-		err = json.Unmarshal(buf, &resp)
-	}
+	err = tripperware.UnmarshalResponse(r, buf, &resp)
 
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
@@ -260,7 +233,7 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res tripperware.Respo
 
 	resp := http.Response{
 		Header: http.Header{
-			"Content-Type": []string{applicationJson},
+			"Content-Type": []string{tripperware.ApplicationJson},
 		},
 		Body:          io.NopCloser(bytes.NewBuffer(b)),
 		StatusCode:    http.StatusOK,

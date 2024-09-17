@@ -277,14 +277,14 @@ func TestResponse(t *testing.T) {
 			if tc.isProtobuf {
 				response = &http.Response{
 					StatusCode: 200,
-					Header:     http.Header{"Content-Type": []string{applicationProtobuf}},
+					Header:     http.Header{"Content-Type": []string{tripperware.ApplicationProtobuf}},
 					Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
 				}
 				tc.promBody.Headers = respHeadersProtobuf
 			} else {
 				response = &http.Response{
 					StatusCode: 200,
-					Header:     http.Header{"Content-Type": []string{applicationJson}},
+					Header:     http.Header{"Content-Type": []string{tripperware.ApplicationJson}},
 					Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
 				}
 				tc.promBody.Headers = respHeadersJson
@@ -409,14 +409,14 @@ func TestResponseWithStats(t *testing.T) {
 			if tc.isProtobuf {
 				response = &http.Response{
 					StatusCode: 200,
-					Header:     http.Header{"Content-Type": []string{applicationProtobuf}},
+					Header:     http.Header{"Content-Type": []string{tripperware.ApplicationProtobuf}},
 					Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
 				}
 				tc.promBody.Headers = respHeadersProtobuf
 			} else {
 				response = &http.Response{
 					StatusCode: 200,
-					Header:     http.Header{"Content-Type": []string{applicationJson}},
+					Header:     http.Header{"Content-Type": []string{tripperware.ApplicationJson}},
 					Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
 				}
 				tc.promBody.Headers = respHeadersJson
@@ -1282,12 +1282,12 @@ func TestCompressedResponse(t *testing.T) {
 				protobuf, err := proto.Marshal(tc.promBody)
 				b = protobuf
 				require.NoError(t, err)
-				h.Set("Content-Type", "application/x-protobuf")
-				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Type", Values: []string{"application/x-protobuf"}})
+				h.Set("Content-Type", tripperware.ApplicationProtobuf)
+				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Type", Values: []string{tripperware.ApplicationProtobuf}})
 
 			} else {
 				b = []byte(tc.jsonBody)
-				h.Set("Content-Type", "application/json")
+				h.Set("Content-Type", tripperware.ApplicationJson)
 			}
 
 			responseBody := bytes.NewBuffer(b)

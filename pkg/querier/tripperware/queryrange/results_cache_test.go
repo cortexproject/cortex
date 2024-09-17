@@ -61,14 +61,14 @@ var (
 	respHeadersJson = []*tripperware.PrometheusResponseHeader{
 		{
 			Name:   "Content-Type",
-			Values: []string{applicationJson},
+			Values: []string{tripperware.ApplicationJson},
 		},
 	}
 
 	respHeadersProtobuf = []*tripperware.PrometheusResponseHeader{
 		{
 			Name:   "Content-Type",
-			Values: []string{applicationProtobuf},
+			Values: []string{tripperware.ApplicationProtobuf},
 		},
 	}
 	parsedResponse = &tripperware.PrometheusResponse{

@@ -25,27 +25,27 @@ func (p ProtobufCodec) CanEncode(resp *v1.Response) bool {
 }
 
 func (p ProtobufCodec) Encode(resp *v1.Response) ([]byte, error) {
-	prometheusInstantQueryResponse, err := createPrometheusInstantQueryResponse(resp)
+	prometheusQueryResponse, err := createPrometheusQueryResponse(resp)
 	if err != nil {
 		return []byte{}, err
 	}
-	b, err := proto.Marshal(prometheusInstantQueryResponse)
+	b, err := proto.Marshal(prometheusQueryResponse)
 	return b, err
 }
 
-func createPrometheusInstantQueryResponse(resp *v1.Response) (*tripperware.PrometheusResponse, error) {
+func createPrometheusQueryResponse(resp *v1.Response) (*tripperware.PrometheusResponse, error) {
 	var data = resp.Data.(*v1.QueryData)
 
-	var instantQueryResult tripperware.PrometheusQueryResult
+	var queryResult tripperware.PrometheusQueryResult
 	switch string(data.ResultType) {
 	case model.ValMatrix.String():
-		instantQueryResult.Result = &tripperware.PrometheusQueryResult_Matrix{
+		queryResult.Result = &tripperware.PrometheusQueryResult_Matrix{
 			Matrix: &tripperware.Matrix{
 				SampleStreams: *getMatrixSampleStreams(data),
 			},
 		}
 	case model.ValVector.String():
-		instantQueryResult.Result = &tripperware.PrometheusQueryResult_Vector{
+		queryResult.Result = &tripperware.PrometheusQueryResult_Vector{
 			Vector: &tripperware.Vector{
 				Samples: *getVectorSamples(data),
 			},
@@ -56,7 +56,7 @@ func createPrometheusInstantQueryResponse(resp *v1.Response) (*tripperware.Prome
 		if err != nil {
 			return nil, err
 		}
-		instantQueryResult.Result = &tripperware.PrometheusQueryResult_RawBytes{RawBytes: rawBytes}
+		queryResult.Result = &tripperware.PrometheusQueryResult_RawBytes{RawBytes: rawBytes}
 	}
 
 	var stats *tripperware.PrometheusResponseStats
@@ -69,7 +69,7 @@ func createPrometheusInstantQueryResponse(resp *v1.Response) (*tripperware.Prome
 		Status: string(resp.Status),
 		Data: tripperware.PrometheusData{
 			ResultType: string(data.ResultType),
-			Result:     instantQueryResult,
+			Result:     queryResult,
 			Stats:      stats,
 		},
 		ErrorType: string(resp.ErrorType),

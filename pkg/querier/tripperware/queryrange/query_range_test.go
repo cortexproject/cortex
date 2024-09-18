@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"context"
 	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
 	"io"
 	"net/http"
 	"strconv"
@@ -1218,58 +1217,13 @@ func TestCompressedResponse(t *testing.T) {
 			status: 200,
 		},
 		{
-			compression: `snappy`,
-			promBody: &tripperware.PrometheusResponse{
-				Status: StatusSuccess,
-				Data: tripperware.PrometheusData{
-					ResultType: matrix,
-					Result: tripperware.PrometheusQueryResult{
-						Result: &tripperware.PrometheusQueryResult_Matrix{
-							Matrix: &tripperware.Matrix{
-								SampleStreams: []tripperware.SampleStream{
-									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-										Samples: []cortexpb.Sample{
-											{Value: 2, TimestampMs: 2000},
-											{Value: 3, TimestampMs: 3000},
-										},
-									},
-								},
-							},
-						},
-					},
-					Stats: &tripperware.PrometheusResponseStats{Samples: &tripperware.PrometheusResponseSamplesStats{
-						TotalQueryableSamples: 20,
-						TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
-							{Value: 2, TimestampMs: 2000},
-							{Value: 3, TimestampMs: 3000},
-						},
-					}},
-				},
-				Headers: []*tripperware.PrometheusResponseHeader{},
-			},
-			jsonBody:`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]]}}}}`,
-			status: 200,
-		},
-		{
 			compression: `gzip`,
 			jsonBody:    `error generic 400`,
 			status:      400,
 			err:         httpgrpc.Errorf(400, `error generic 400`),
 		},
 		{
-			compression: `snappy`,
-			jsonBody:    `error generic 400`,
-			status:      400,
-			err:         httpgrpc.Errorf(400, `error generic 400`),
-		},
-		{
 			compression: `gzip`,
-			status:      400,
-			err:         httpgrpc.Errorf(400, ""),
-		},
-		{
-			compression: `snappy`,
 			status:      400,
 			err:         httpgrpc.Errorf(400, ""),
 		},
@@ -1293,23 +1247,13 @@ func TestCompressedResponse(t *testing.T) {
 			responseBody := bytes.NewBuffer(b)
 
 			var buf bytes.Buffer
-			if tc.compression == "gzip" {
-				h.Set("Content-Encoding", "gzip")
-				if tc.promBody != nil {tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Encoding", Values: []string{"gzip"}})}
-				w := gzip.NewWriter(&buf)
-				_, err := w.Write(b)
-				require.NoError(t, err)
-				w.Close()
-				responseBody = &buf
-			} else if tc.compression == "snappy" {
-				h.Set("Content-Encoding", "snappy")
-				if tc.promBody != nil {tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Encoding", Values: []string{"snappy"}})}
-				w := snappy.NewBufferedWriter(&buf)
-				_, err := w.Write(b)
-				require.NoError(t, err)
-				w.Close()
-				responseBody = &buf
-			}
+			h.Set("Content-Encoding", tc.compression)
+			if tc.promBody != nil {tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Encoding", Values: []string{"gzip"}})}
+			w := gzip.NewWriter(&buf)
+			_, err := w.Write(b)
+			require.NoError(t, err)
+			w.Close()
+			responseBody = &buf
 
 			response := &http.Response{
 				StatusCode: tc.status,

@@ -33,9 +33,9 @@ var (
 
 type instantQueryCodec struct {
 	tripperware.Codec
-	compression       tripperware.Compression
-	defaultCodecType  tripperware.CodecType
-	now               func() time.Time
+	compression      tripperware.Compression
+	defaultCodecType tripperware.CodecType
+	now              func() time.Time
 }
 
 func NewInstantQueryCodec(compressionStr string, defaultCodecTypeStr string) instantQueryCodec {
@@ -48,11 +48,11 @@ func NewInstantQueryCodec(compressionStr string, defaultCodecTypeStr string) ins
 	if defaultCodecTypeStr == string(tripperware.ProtobufCodecType) {
 		defaultCodecType = tripperware.ProtobufCodecType
 	}
-	
+
 	return instantQueryCodec{
-		compression:       compression,
-		defaultCodecType:  defaultCodecType,
-		now:               time.Now,
+		compression:      compression,
+		defaultCodecType: defaultCodecType,
+		now:              time.Now,
 	}
 }
 

@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"github.com/gogo/protobuf/proto"
 	"io"
 	"net/http"
 	"strconv"
 	"testing"
+
+	"github.com/gogo/protobuf/proto"
 
 	"github.com/prometheus/common/model"
 
@@ -121,8 +122,8 @@ func TestResponse(t *testing.T) {
 					},
 				},
 			},
-			jsonBody:         responseBody,
-			isProtobuf:       true,
+			jsonBody:   responseBody,
+			isProtobuf: true,
 		},
 		{
 			promBody: &tripperware.PrometheusResponse{
@@ -176,8 +177,8 @@ func TestResponse(t *testing.T) {
 					},
 				},
 			},
-			jsonBody:         responseBody,
-			isProtobuf:       false,
+			jsonBody:   responseBody,
+			isProtobuf: false,
 		},
 		{
 			promBody: &tripperware.PrometheusResponse{
@@ -232,8 +233,8 @@ func TestResponse(t *testing.T) {
 					},
 				},
 			},
-			jsonBody:         responseBodyWithWarnings,
-			isProtobuf:       true,
+			jsonBody:   responseBodyWithWarnings,
+			isProtobuf: true,
 		},
 		{
 			promBody: &tripperware.PrometheusResponse{
@@ -260,10 +261,10 @@ func TestResponse(t *testing.T) {
 					},
 				},
 			},
-			jsonBody:         responseBodyWithWarnings,
-			isProtobuf:       false,
+			jsonBody:   responseBodyWithWarnings,
+			isProtobuf: false,
 		},
-	}	
+	}
 	for i, tc := range testCases {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
@@ -271,7 +272,7 @@ func TestResponse(t *testing.T) {
 			protobuf, err := proto.Marshal(tc.promBody)
 			require.NoError(t, err)
 			ctx, cancelCtx := context.WithCancel(context.Background())
-			
+
 			var response *http.Response
 			if tc.isProtobuf {
 				response = &http.Response{
@@ -319,9 +320,9 @@ func TestResponse(t *testing.T) {
 func TestResponseWithStats(t *testing.T) {
 	t.Parallel()
 	for i, tc := range []struct {
-		promBody         *tripperware.PrometheusResponse
-		jsonBody         string
-		isProtobuf       bool
+		promBody   *tripperware.PrometheusResponse
+		jsonBody   string
+		isProtobuf bool
 	}{
 		{
 			jsonBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]],"peakSamples":16}}}}`,
@@ -1213,8 +1214,8 @@ func TestCompressedResponse(t *testing.T) {
 				},
 				Headers: []*tripperware.PrometheusResponseHeader{},
 			},
-			jsonBody:`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]],"peakSamples":10}}}}`,
-			status: 200,
+			jsonBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]],"peakSamples":10}}}}`,
+			status:   200,
 		},
 		{
 			compression: `gzip`,
@@ -1238,22 +1239,20 @@ func TestCompressedResponse(t *testing.T) {
 				require.NoError(t, err)
 				h.Set("Content-Type", tripperware.ApplicationProtobuf)
 				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Type", Values: []string{tripperware.ApplicationProtobuf}})
-
 			} else {
 				b = []byte(tc.jsonBody)
 				h.Set("Content-Type", tripperware.ApplicationJson)
 			}
 
-			responseBody := bytes.NewBuffer(b)
-
-			var buf bytes.Buffer
 			h.Set("Content-Encoding", tc.compression)
-			if tc.promBody != nil {tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Encoding", Values: []string{"gzip"}})}
-			w := gzip.NewWriter(&buf)
+			if tc.promBody != nil {
+				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Encoding", Values: []string{"gzip"}})
+			}
+			responseBody := &bytes.Buffer{}
+			w := gzip.NewWriter(responseBody)
 			_, err := w.Write(b)
 			require.NoError(t, err)
 			w.Close()
-			responseBody = &buf
 
 			response := &http.Response{
 				StatusCode: tc.status,

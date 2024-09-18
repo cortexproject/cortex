@@ -94,31 +94,6 @@ var (
 			},
 		},
 	}
-
-	parsedResponseWithWarnings = &tripperware.PrometheusResponse{
-		Status:   "success",
-		Warnings: []string{"test-warn"},
-		Data: tripperware.PrometheusData{
-			ResultType: model.ValMatrix.String(),
-			Result: tripperware.PrometheusQueryResult{
-				Result: &tripperware.PrometheusQueryResult_Matrix{
-					Matrix: &tripperware.Matrix{
-						SampleStreams: []tripperware.SampleStream{
-							{
-								Labels: []cortexpb.LabelAdapter{
-									{Name: "foo", Value: "bar"},
-								},
-								Samples: []cortexpb.Sample{
-									{Value: 137, TimestampMs: 1536673680000},
-									{Value: 137, TimestampMs: 1536673780000},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
 )
 
 func mkAPIResponse(start, end, step int64) tripperware.Response {

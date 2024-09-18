@@ -57,9 +57,9 @@ func (resp *PrometheusResponse) HTTPHeaders() map[string][]string {
 
 type prometheusCodec struct {
 	tripperware.Codec
-	sharded           bool
-	compression       tripperware.Compression
-	defaultCodecType  tripperware.CodecType
+	sharded          bool
+	compression      tripperware.Compression
+	defaultCodecType tripperware.CodecType
 }
 
 func NewPrometheusCodec(sharded bool, compressionStr string, defaultCodecTypeStr string) *prometheusCodec { //nolint:revive

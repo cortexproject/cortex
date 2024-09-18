@@ -44,10 +44,10 @@ type Compression string
 const (
 	GzipCompression     Compression = "gzip"
 	NonCompression      Compression = ""
-	JsonCodecType       CodecType = "json"
-	ProtobufCodecType   CodecType = "protobuf"
-	ApplicationProtobuf string = "application/x-protobuf"
-	ApplicationJson     string = "application/json"
+	JsonCodecType       CodecType   = "json"
+	ProtobufCodecType   CodecType   = "protobuf"
+	ApplicationProtobuf string      = "application/x-protobuf"
+	ApplicationJson     string      = "application/json"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
@@ -756,7 +756,7 @@ func SetRequestHeaders(h http.Header, defaultCodecType CodecType, compression Co
 		h.Set("Accept-Encoding", string(GzipCompression))
 	}
 	if defaultCodecType == ProtobufCodecType {
-		h.Set("Accept", ApplicationProtobuf + ", " + ApplicationJson)
+		h.Set("Accept", ApplicationProtobuf+", "+ApplicationJson)
 	} else {
 		h.Set("Accept", ApplicationJson)
 	}
@@ -765,7 +765,7 @@ func SetRequestHeaders(h http.Header, defaultCodecType CodecType, compression Co
 func UnmarshalResponse(r *http.Response, buf []byte, resp *PrometheusResponse) error {
 	if r.Header != nil && r.Header.Get("Content-Type") == ApplicationProtobuf {
 		return proto.Unmarshal(buf, resp)
-	}else {
+	} else {
 		return json.Unmarshal(buf, resp)
 	}
 }

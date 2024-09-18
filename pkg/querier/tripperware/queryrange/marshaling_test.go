@@ -33,7 +33,7 @@ func BenchmarkPrometheusCodec_DecodeResponse_Json(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		_, err := PrometheusCodec.DecodeResponse(context.Background(), &http.Response{
 			StatusCode:    200,
-			Header:     http.Header{"Content-Type": []string{tripperware.ApplicationJson}},
+			Header:        http.Header{"Content-Type": []string{tripperware.ApplicationJson}},
 			Body:          io.NopCloser(bytes.NewReader(encodedRes)),
 			ContentLength: int64(len(encodedRes)),
 		}, nil)
@@ -59,7 +59,7 @@ func BenchmarkPrometheusCodec_DecodeResponse_Protobuf(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		_, err := PrometheusCodec.DecodeResponse(context.Background(), &http.Response{
 			StatusCode:    200,
-			Header:     http.Header{"Content-Type": []string{tripperware.ApplicationProtobuf}},
+			Header:        http.Header{"Content-Type": []string{tripperware.ApplicationProtobuf}},
 			Body:          io.NopCloser(bytes.NewReader(encodedRes)),
 			ContentLength: int64(len(encodedRes)),
 		}, nil)

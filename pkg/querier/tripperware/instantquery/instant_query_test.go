@@ -122,7 +122,11 @@ func TestCompressedResponse(t *testing.T) {
 				Status: "success",
 				Data: tripperware.PrometheusData{
 					ResultType: model.ValString.String(),
-					Result:     tripperware.PrometheusQueryResult{Result: &tripperware.PrometheusQueryResult_RawBytes{[]byte(`{"resultType":"string","result":[1,"foo"]}`)}},
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_RawBytes{
+							RawBytes: []byte(`{"resultType":"string","result":[1,"foo"]}`),
+						},
+					},
 				},
 				Headers: []*tripperware.PrometheusResponseHeader{},
 			},
@@ -154,18 +158,16 @@ func TestCompressedResponse(t *testing.T) {
 				b = []byte(tc.jsonBody)
 				h.Set("Content-Type", "application/json")
 			}
-			responseBody := bytes.NewBuffer(b)
 
-			var buf bytes.Buffer
 			h.Set("Content-Encoding", tc.compression)
 			if tc.promBody != nil {
 				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Encoding", Values: []string{"gzip"}})
 			}
-			w := gzip.NewWriter(&buf)
+			responseBody := &bytes.Buffer{}
+			w := gzip.NewWriter(responseBody)
 			_, err := w.Write(b)
 			require.NoError(t, err)
 			w.Close()
-			responseBody = &buf
 
 			response := &http.Response{
 				StatusCode: tc.status,
@@ -216,7 +218,11 @@ func TestResponse(t *testing.T) {
 				Status: "success",
 				Data: tripperware.PrometheusData{
 					ResultType: model.ValString.String(),
-					Result:     tripperware.PrometheusQueryResult{Result: &tripperware.PrometheusQueryResult_RawBytes{[]byte(`{"resultType":"string","result":[1,"foo"]}`)}},
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_RawBytes{
+							RawBytes: []byte(`{"resultType":"string","result":[1,"foo"]}`),
+						},
+					},
 				},
 				Headers: []*tripperware.PrometheusResponseHeader{},
 			},
@@ -227,7 +233,11 @@ func TestResponse(t *testing.T) {
 				Status: "success",
 				Data: tripperware.PrometheusData{
 					ResultType: model.ValString.String(),
-					Result:     tripperware.PrometheusQueryResult{Result: &tripperware.PrometheusQueryResult_RawBytes{[]byte(`{"resultType":"string","result":[1,"foo"],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}`)}},
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_RawBytes{
+							RawBytes: []byte(`{"resultType":"string","result":[1,"foo"],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}`),
+						},
+					},
 				},
 				Headers: []*tripperware.PrometheusResponseHeader{},
 			},
@@ -244,7 +254,7 @@ func TestResponse(t *testing.T) {
 								SampleStreams: []tripperware.SampleStream{
 									{
 										Labels: []cortexpb.LabelAdapter{
-											{"foo", "bar"},
+											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
 											{Value: 137, TimestampMs: 1000},
@@ -262,7 +272,7 @@ func TestResponse(t *testing.T) {
 								{Value: 5, TimestampMs: 1536673780000},
 							},
 							TotalQueryableSamples: 10,
-							PeakSamples: 10,
+							PeakSamples:           10,
 						},
 					},
 				},
@@ -281,7 +291,7 @@ func TestResponse(t *testing.T) {
 								SampleStreams: []tripperware.SampleStream{
 									{
 										Labels: []cortexpb.LabelAdapter{
-											{"foo", "bar"},
+											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
 											{Value: 137, TimestampMs: 1000},
@@ -302,7 +312,11 @@ func TestResponse(t *testing.T) {
 				Status: "success",
 				Data: tripperware.PrometheusData{
 					ResultType: model.ValString.String(),
-					Result:     tripperware.PrometheusQueryResult{Result: &tripperware.PrometheusQueryResult_RawBytes{[]byte(`{"resultType":"scalar","result":[1,"13"]}`)}},
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_RawBytes{
+							RawBytes: []byte(`{"resultType":"scalar","result":[1,"13"]}`),
+						},
+					},
 				},
 				Headers: []*tripperware.PrometheusResponseHeader{},
 			},
@@ -697,7 +711,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 							Samples: &tripperware.PrometheusResponseSamplesStats{
 								TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{},
 								TotalQueryableSamples:        0,
-								PeakSamples: 10,
+								PeakSamples:                  10,
 							},
 						},
 					},
@@ -722,7 +736,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
+												{Name: "__name__", Value: "up"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 										},
@@ -766,7 +780,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									{Value: 10, TimestampMs: 1000},
 								},
 								TotalQueryableSamples: 10,
-								PeakSamples: 10,
+								PeakSamples:           10,
 							},
 						},
 					},
@@ -791,7 +805,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
+												{Name: "__name__", Value: "up"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 										},
@@ -814,7 +828,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
+												{Name: "__name__", Value: "up"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 										},
@@ -858,7 +872,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									{Value: 10, TimestampMs: 1000},
 								},
 								TotalQueryableSamples: 10,
-								PeakSamples: 10,
+								PeakSamples:           10,
 							},
 						},
 					},
@@ -890,7 +904,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									{Value: 10, TimestampMs: 1000},
 								},
 								TotalQueryableSamples: 10,
-								PeakSamples: 10,
+								PeakSamples:           10,
 							},
 						},
 					},
@@ -915,8 +929,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "foo"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "foo"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 										},
@@ -939,8 +953,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "bar"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "bar"},
 											},
 											Sample: &cortexpb.Sample{Value: 2, TimestampMs: 2000},
 										},
@@ -970,8 +984,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "foo"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "foo"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 										},
@@ -994,8 +1008,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "bar"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "bar"},
 											},
 											Sample: &cortexpb.Sample{Value: 2, TimestampMs: 1000},
 										},
@@ -1025,8 +1039,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "foo"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "foo"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 										},
@@ -1049,8 +1063,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "bar"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "bar"},
 											},
 											Sample: &cortexpb.Sample{Value: 2, TimestampMs: 1000},
 										},
@@ -1080,8 +1094,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "foo"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "foo"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 										},
@@ -1104,8 +1118,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "bar"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "bar"},
 											},
 											Sample: &cortexpb.Sample{Value: 2, TimestampMs: 1000},
 										},
@@ -1135,8 +1149,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "foo"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "foo"},
 											},
 											Sample: &cortexpb.Sample{Value: 2, TimestampMs: 1000},
 										},
@@ -1160,8 +1174,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "bar"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "bar"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 										},
@@ -1207,7 +1221,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									{Value: 10, TimestampMs: 1000},
 								},
 								TotalQueryableSamples: 10,
-								PeakSamples: 10,
+								PeakSamples:           10,
 							},
 						},
 					},
@@ -1240,7 +1254,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									{Value: 10, TimestampMs: 1000},
 								},
 								TotalQueryableSamples: 10,
-								PeakSamples: 10,
+								PeakSamples:           10,
 							},
 						},
 					},
@@ -1300,7 +1314,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									SampleStreams: []tripperware.SampleStream{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
+												{Name: "__name__", Value: "up"},
 											},
 											Samples: []cortexpb.Sample{
 												{Value: 1, TimestampMs: 1000},
@@ -1333,7 +1347,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									SampleStreams: []tripperware.SampleStream{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "bar"},
+												{Name: "__name__", Value: "bar"},
 											},
 											Samples: []cortexpb.Sample{
 												{Value: 1, TimestampMs: 1000},
@@ -1359,7 +1373,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									SampleStreams: []tripperware.SampleStream{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "foo"},
+												{Name: "__name__", Value: "foo"},
 											},
 											Samples: []cortexpb.Sample{
 												{Value: 3, TimestampMs: 3000},
@@ -1392,7 +1406,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									SampleStreams: []tripperware.SampleStream{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "bar"},
+												{Name: "__name__", Value: "bar"},
 											},
 											Samples: []cortexpb.Sample{
 												{Value: 1, TimestampMs: 1000},
@@ -1418,7 +1432,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									SampleStreams: []tripperware.SampleStream{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "bar"},
+												{Name: "__name__", Value: "bar"},
 											},
 											Samples: []cortexpb.Sample{
 												{Value: 3, TimestampMs: 3000},
@@ -1450,7 +1464,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									SampleStreams: []tripperware.SampleStream{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "bar"},
+												{Name: "__name__", Value: "bar"},
 											},
 											Samples: []cortexpb.Sample{
 												{Value: 1, TimestampMs: 1000},
@@ -1476,7 +1490,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									SampleStreams: []tripperware.SampleStream{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "bar"},
+												{Name: "__name__", Value: "bar"},
 											},
 											Samples: []cortexpb.Sample{
 												{Value: 1, TimestampMs: 1000},
@@ -1510,8 +1524,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "foo"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "foo"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 										},
@@ -1534,8 +1548,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "bar"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "bar"},
 											},
 											Sample: &cortexpb.Sample{Value: 2, TimestampMs: 1000},
 										},
@@ -1566,8 +1580,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "foo"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "foo"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 										},
@@ -1590,8 +1604,8 @@ func TestMergeResponseProtobuf(t *testing.T) {
 									Samples: []tripperware.Sample{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "up"},
-												{"job", "bar"},
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "bar"},
 											},
 											Sample: &cortexpb.Sample{Value: 2, TimestampMs: 1000},
 										},
@@ -1617,6 +1631,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 			var resps []tripperware.Response
 			for _, r := range tc.resps {
 				protobuf, err := proto.Marshal(r)
+				require.NoError(t, err)
 				hr := &http.Response{
 					StatusCode: 200,
 					Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},

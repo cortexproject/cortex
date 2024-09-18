@@ -33,16 +33,26 @@ var (
 
 type instantQueryCodec struct {
 	tripperware.Codec
-	compression    string
-	defaultCodec   string
-	now            func() time.Time
+	compression       tripperware.Compression
+	defaultCodecType  tripperware.CodecType
+	now               func() time.Time
 }
 
-func NewInstantQueryCodec(compression string, defaultCodec string) instantQueryCodec {
+func NewInstantQueryCodec(compressionStr string, defaultCodecTypeStr string) instantQueryCodec {
+	compression := tripperware.NonCompression // default
+	if compressionStr == string(tripperware.GzipCompression) {
+		compression = tripperware.GzipCompression
+	}
+
+	defaultCodecType := tripperware.JsonCodecType // default
+	if defaultCodecTypeStr == string(tripperware.ProtobufCodecType) {
+		defaultCodecType = tripperware.ProtobufCodecType
+	}
+	
 	return instantQueryCodec{
-		compression:    compression,
-		defaultCodec:   defaultCodec,
-		now:            time.Now,
+		compression:       compression,
+		defaultCodecType:  defaultCodecType,
+		now:               time.Now,
 	}
 }
 
@@ -129,7 +139,7 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 		}
 	}
 
-	tripperware.SetRequestHeaders(h, c.defaultCodec, c.compression)
+	tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
 
 	req := &http.Request{
 		Method:     "GET",

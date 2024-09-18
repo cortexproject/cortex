@@ -182,6 +182,9 @@ func (c *Config) Validate(log log.Logger) error {
 		return errInvalidHTTPPrefix
 	}
 
+	if err := c.API.Validate(); err != nil {
+		return errors.Wrap(err, "invalid api config")
+	}
 	if err := c.Storage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
 	}

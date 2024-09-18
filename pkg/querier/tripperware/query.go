@@ -38,8 +38,14 @@ var (
 	}.Froze()
 )
 
+type CodecType string
+type Compression string
+
 const (
-	GzipCompression     string = "gzip"
+	GzipCompression     Compression = "gzip"
+	NonCompression      Compression = ""
+	JsonCodecType       CodecType = "json"
+	ProtobufCodecType   CodecType = "protobuf"
 	ApplicationProtobuf string = "application/x-protobuf"
 	ApplicationJson     string = "application/json"
 )
@@ -745,20 +751,21 @@ func (s *PrometheusResponseStats) MarshalJSON() ([]byte, error) {
 	return json.Marshal(stats)
 }
 
-func SetRequestHeaders(h http.Header, defaultCodec string, compression string) {
+func SetRequestHeaders(h http.Header, defaultCodecType CodecType, compression Compression) {
 	if compression == GzipCompression {
-		h.Set("Accept-Encoding", GzipCompression)
+		h.Set("Accept-Encoding", string(GzipCompression))
 	}
-	if defaultCodec == "protobuf" {
-		h.Set("Accept", ApplicationProtobuf)
+	if defaultCodecType == ProtobufCodecType {
+		h.Set("Accept", ApplicationProtobuf + ", " + ApplicationJson)
+	} else {
+		h.Set("Accept", ApplicationJson)
 	}
-	h.Set("Accept", ApplicationJson)
 }
 
 func UnmarshalResponse(r *http.Response, buf []byte, resp *PrometheusResponse) error {
 	if r.Header != nil && r.Header.Get("Content-Type") == ApplicationProtobuf {
 		return proto.Unmarshal(buf, resp)
-	} else {
+	}else {
 		return json.Unmarshal(buf, resp)
 	}
 }

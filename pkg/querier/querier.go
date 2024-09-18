@@ -49,8 +49,8 @@ type Config struct {
 	QueryIngestersWithin      time.Duration `yaml:"query_ingesters_within"`
 	EnablePerStepStats        bool          `yaml:"per_step_stats_enabled"`
 
-	// Use compression when returning promql response. Supported values are 'gzip' or '' (disable compression)
-	PrometheusCodecCompression string `yaml:"prometheus_codec_compression"`
+	// Use compression for metrics query API or instant and range query APIs.
+	ResponseCompression string `yaml:"response_compression"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
 	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
@@ -92,6 +92,7 @@ var (
 	errBadLookbackConfigs                             = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
 	errShuffleShardingLookbackLessThanQueryStoreAfter = errors.New("the shuffle-sharding lookback period should be greater or equal than the configured 'query store after'")
 	errEmptyTimeRange                                 = errors.New("empty time range")
+	errUnsupportedResponseCompression                 = errors.New("unsupported response compression. Supported compression 'gzip' and '' (disable compression)")
 )
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -112,7 +113,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.BoolVar(&cfg.EnablePerStepStats, "querier.per-step-stats-enabled", false, "Enable returning samples stats per steps in query response.")
-	f.StringVar(&cfg.PrometheusCodecCompression, "querier.prometheus_codec_compression", "", "Use compression when returning promql response. Supported values 'gzip', 'snappy', and '' (disable compression)")
+	f.StringVar(&cfg.ResponseCompression, "querier.response-compression", "", "Use compression for metrics query API or instant and range query APIs. Supports 'gzip' and '' (disable compression)")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
@@ -133,6 +134,10 @@ func (cfg *Config) Validate() error {
 		if cfg.QueryStoreAfter >= cfg.QueryIngestersWithin {
 			return errBadLookbackConfigs
 		}
+	}
+
+	if cfg.ResponseCompression != "" && cfg.ResponseCompression != "gzip" {
+		return errUnsupportedResponseCompression
 	}
 
 	if cfg.ShuffleShardingIngestersLookbackPeriod > 0 {

@@ -57,16 +57,26 @@ func (resp *PrometheusResponse) HTTPHeaders() map[string][]string {
 
 type prometheusCodec struct {
 	tripperware.Codec
-	sharded        bool
-	compression    string
-	defaultCodec   string
+	sharded           bool
+	compression       tripperware.Compression
+	defaultCodecType  tripperware.CodecType
 }
 
-func NewPrometheusCodec(sharded bool, compression string, defaultCodec string) *prometheusCodec { //nolint:revive
+func NewPrometheusCodec(sharded bool, compressionStr string, defaultCodecTypeStr string) *prometheusCodec { //nolint:revive
+	compression := tripperware.NonCompression // default
+	if compressionStr == string(tripperware.GzipCompression) {
+		compression = tripperware.GzipCompression
+	}
+
+	defaultCodecType := tripperware.JsonCodecType // default
+	if defaultCodecTypeStr == string(tripperware.ProtobufCodecType) {
+		defaultCodecType = tripperware.ProtobufCodecType
+	}
+
 	return &prometheusCodec{
-		sharded:        sharded,
-		compression:    compression,
-		defaultCodec:   defaultCodec,
+		sharded:          sharded,
+		compression:      compression,
+		defaultCodecType: defaultCodecType,
 	}
 }
 
@@ -166,7 +176,7 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		}
 	}
 
-	tripperware.SetRequestHeaders(h, c.defaultCodec, c.compression)
+	tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
 
 	req := &http.Request{
 		Method:     "GET",

@@ -13,6 +13,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
 
@@ -103,6 +104,22 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
+
+	// protobuf serialization treats empty slices as nil
+	switch resp.Data.ResultType {
+	case model.ValMatrix.String():
+		if resp.Data.Result.GetMatrix().SampleStreams == nil {
+			resp.Data.Result.GetMatrix().SampleStreams = []tripperware.SampleStream{}
+		}
+	case model.ValVector.String():
+		if resp.Data.Result.GetVector().Samples == nil {
+			resp.Data.Result.GetVector().Samples = []tripperware.Sample{}
+		}
+	}
+
+	if resp.Headers == nil {
+		resp.Headers = []*tripperware.PrometheusResponseHeader{}
 	}
 
 	for h, hv := range r.Header {

@@ -298,7 +298,7 @@ type buildInfoHandler struct {
 }
 
 type buildInfoResponse struct {
-	Status string                   `json:"status"`
+	Status string                `json:"status"`
 	Data   *v1.PrometheusVersion `json:"data"`
 }
 

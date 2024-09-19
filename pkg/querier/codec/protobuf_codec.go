@@ -1,15 +1,17 @@
 package codec
 
 import (
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/prometheus/prometheus/util/stats"
+	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/web/api/v1"
-	"github.com/gogo/protobuf/proto"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/util/stats"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
+
 type ProtobufCodec struct{}
 
 func (p ProtobufCodec) ContentType() v1.MIMEType {
@@ -74,7 +76,7 @@ func createPrometheusQueryResponse(resp *v1.Response) (*tripperware.PrometheusRe
 		},
 		ErrorType: string(resp.ErrorType),
 		Error:     resp.Error,
-		Warnings: resp.Warnings,
+		Warnings:  resp.Warnings,
 	}, nil
 }
 
@@ -152,7 +154,7 @@ func getStats(builtin *stats.BuiltinStats) *tripperware.PrometheusResponseSample
 	statSamples := tripperware.PrometheusResponseSamplesStats{
 		TotalQueryableSamples:        builtin.Samples.TotalQueryableSamples,
 		TotalQueryableSamplesPerStep: queryableSamplesStatsPerStep,
-		PeakSamples: 			      int64(builtin.Samples.PeakSamples),
+		PeakSamples:                  int64(builtin.Samples.PeakSamples),
 	}
 
 	return &statSamples

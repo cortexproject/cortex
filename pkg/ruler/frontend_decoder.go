@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/cortexproject/cortex/pkg/util/api"
 )
 
 const (
@@ -19,13 +21,8 @@ type JsonDecoder struct{}
 type Warning []string
 
 func (j JsonDecoder) Decode(body []byte) (promql.Vector, Warning, error) {
-	var response struct {
-		Status    string          `json:"status"`
-		Data      json.RawMessage `json:"data"`
-		ErrorType string          `json:"errorType"`
-		Warnings  Warning         `json:"warnings"`
-		Error     string          `json:"error"`
-	}
+	var response api.Response
+
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&response); err != nil {
 		return nil, nil, err
 	}
@@ -37,8 +34,12 @@ func (j JsonDecoder) Decode(body []byte) (promql.Vector, Warning, error) {
 		Result json.RawMessage `json:"result"`
 	}{}
 
-	if err := json.Unmarshal(response.Data, &data); err != nil {
+	if responseDataBytes, err := json.Marshal(response.Data); err != nil {
 		return nil, response.Warnings, err
+	} else {
+		if err = json.Unmarshal(responseDataBytes, &data); err != nil {
+			return nil, response.Warnings, err
+		}
 	}
 
 	switch data.Type {

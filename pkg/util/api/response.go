@@ -23,6 +23,7 @@ type Response struct {
 	ErrorType v1.ErrorType `json:"errorType,omitempty"`
 	Error     string       `json:"error,omitempty"`
 	Warnings  []string     `json:"warnings,omitempty"`
+	Infos     []string     `json:"infos,omitempty"`
 }
 
 // RespondFromGRPCError writes gRPC error in Prometheus response format.

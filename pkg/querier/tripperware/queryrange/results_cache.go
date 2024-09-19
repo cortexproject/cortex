@@ -101,6 +101,7 @@ func (PrometheusResponseExtractor) Extract(start, end int64, from tripperware.Re
 		},
 		Headers:  promRes.Headers,
 		Warnings: promRes.Warnings,
+		Infos:    promRes.Infos,
 	}
 }
 
@@ -116,6 +117,7 @@ func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp tripperware.Respo
 			Stats:      promRes.Data.Stats,
 		},
 		Warnings: promRes.Warnings,
+		Infos:    promRes.Infos,
 	}
 }
 
@@ -130,6 +132,7 @@ func (PrometheusResponseExtractor) ResponseWithoutStats(resp tripperware.Respons
 		},
 		Headers:  promRes.Headers,
 		Warnings: promRes.Warnings,
+		Infos:    promRes.Infos,
 	}
 }
 
@@ -600,6 +603,7 @@ func convertToTripperwarePrometheusResponse(resp tripperware.Response) tripperwa
 		Error:     r.Error,
 		Headers:   r.Headers,
 		Warnings:  r.Warnings,
+		Infos:     r.Infos,
 	}
 }
 
@@ -621,6 +625,7 @@ func convertFromTripperwarePrometheusResponse(resp tripperware.Response) tripper
 		Error:     r.Error,
 		Headers:   r.Headers,
 		Warnings:  r.Warnings,
+		Infos:     r.Infos,
 	}
 }
 

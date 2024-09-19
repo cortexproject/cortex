@@ -878,7 +878,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 
 				// all labels are gone, exemplars will be discarded
 				d.validateMetrics.DiscardedExemplars.WithLabelValues(
-					validation.DroppedByUserConfigurationOverride,
+					validation.DroppedByRelabelConfiguration,
 					userID,
 				).Add(float64(len(ts.Exemplars)))
 				continue

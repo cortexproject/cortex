@@ -3811,34 +3811,43 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	flagext.DefaultValues(&limits)
 	limits.MetricRelabelConfigs = metricRelabelConfigs
 
-	ds, ingesters, _, _ := prepare(t, prepConfig{
-		numIngesters:     2,
-		happyIngesters:   2,
-		numDistributors:  1,
-		shardByAllLabels: true,
-		limits:           &limits,
-	})
+	for _, histogramEnabled := range []bool{false, true} {
+		ds, ingesters, _, _ := prepare(t, prepConfig{
+			numIngesters:     2,
+			happyIngesters:   2,
+			numDistributors:  1,
+			shardByAllLabels: true,
+			limits:           &limits,
+		})
 
-	// Push the series to the distributor
-	id := "user"
-	req := mockWriteRequest(inputSeries, 1, 1, false)
-	req.Timeseries[0].Exemplars = []cortexpb.Exemplar{
-		{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("test", "a")), Value: 1, TimestampMs: 0},
-		{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("test", "b")), Value: 1, TimestampMs: 0},
+		// Push the series to the distributor
+		id := "user"
+		req := mockWriteRequest(inputSeries, 1, 1, histogramEnabled)
+		req.Timeseries[0].Exemplars = []cortexpb.Exemplar{
+			{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("test", "a")), Value: 1, TimestampMs: 0},
+			{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("test", "b")), Value: 1, TimestampMs: 0},
+		}
+		ctx := user.InjectOrgID(context.Background(), id)
+		_, err = ds[0].Push(ctx, req)
+		require.NoError(t, err)
+
+		for i := range ingesters {
+			timeseries := ingesters[i].series()
+			assert.Equal(t, 1, len(timeseries))
+		}
+
+		require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByRelabelConfiguration, id)), float64(1))
+		require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedExemplars.WithLabelValues(validation.DroppedByRelabelConfiguration, id)), float64(2))
+		receivedFloatSamples := testutil.ToFloat64(ds[0].receivedSamples.WithLabelValues(id, "float"))
+		receivedHistogramSamples := testutil.ToFloat64(ds[0].receivedSamples.WithLabelValues(id, "histogram"))
+		if histogramEnabled {
+			require.Equal(t, receivedFloatSamples, float64(0))
+			require.Equal(t, receivedHistogramSamples, float64(1))
+		} else {
+			require.Equal(t, receivedFloatSamples, float64(1))
+			require.Equal(t, receivedHistogramSamples, float64(0))
+		}
 	}
-	ctx := user.InjectOrgID(context.Background(), id)
-	_, err = ds[0].Push(ctx, req)
-	require.NoError(t, err)
-
-	for i := range ingesters {
-		timeseries := ingesters[i].series()
-		assert.Equal(t, 1, len(timeseries))
-	}
-
-	require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByRelabelConfiguration, id)), float64(1))
-	require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedExemplars.WithLabelValues(validation.DroppedByRelabelConfiguration, id)), float64(2))
-	require.Equal(t, testutil.ToFloat64(ds[0].receivedSamples.WithLabelValues(id, "float")), float64(1))
-	require.Equal(t, testutil.ToFloat64(ds[0].receivedSamples.WithLabelValues(id, "histogram")), float64(0))
 }
 
 func countMockIngestersCalls(ingesters []*mockIngester, name string) int {

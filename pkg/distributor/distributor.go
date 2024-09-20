@@ -874,7 +874,13 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 				d.validateMetrics.DiscardedSamples.WithLabelValues(
 					validation.DroppedByRelabelConfiguration,
 					userID,
-				).Add(float64(len(ts.Samples)))
+				).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+
+				// all labels are gone, exemplars will be discarded
+				d.validateMetrics.DiscardedExemplars.WithLabelValues(
+					validation.DroppedByRelabelConfiguration,
+					userID,
+				).Add(float64(len(ts.Exemplars)))
 				continue
 			}
 			ts.Labels = cortexpb.FromLabelsToLabelAdapters(l)
@@ -892,11 +898,15 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		}
 
 		if len(ts.Labels) == 0 {
+			d.validateMetrics.DiscardedSamples.WithLabelValues(
+				validation.DroppedByUserConfigurationOverride,
+				userID,
+			).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+
 			d.validateMetrics.DiscardedExemplars.WithLabelValues(
 				validation.DroppedByUserConfigurationOverride,
 				userID,
-			).Add(float64(len(ts.Samples)))
-
+			).Add(float64(len(ts.Exemplars)))
 			continue
 		}
 

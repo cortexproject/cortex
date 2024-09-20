@@ -204,6 +204,24 @@ querier:
     # CLI flag: -querier.store-gateway-client.grpc-compression
     [grpc_compression: <string> | default = ""]
 
+    # EXPERIMENTAL: If enabled, gRPC clients perform health checks for each
+    # target and fail the request if the target is marked as unhealthy.
+    healthcheck_config:
+      # The number of consecutive failed health checks required before
+      # considering a target unhealthy. 0 means disabled.
+      # CLI flag: -querier.store-gateway-client.unhealthy-threshold
+      [unhealthy_threshold: <int> | default = 0]
+
+      # The approximate amount of time between health checks of an individual
+      # target.
+      # CLI flag: -querier.store-gateway-client.interval
+      [interval: <duration> | default = 1s]
+
+      # The amount of time during which no response from a target means a failed
+      # health check.
+      # CLI flag: -querier.store-gateway-client.timeout
+      [timeout: <duration> | default = 1s]
+
   # If enabled, store gateway query stats will be logged using `info` log level.
   # CLI flag: -querier.store-gateway-query-stats-enabled
   [store_gateway_query_stats: <boolean> | default = true]

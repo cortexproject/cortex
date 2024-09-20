@@ -29,14 +29,26 @@ type Config struct {
 	BackoffOnRatelimits bool           `yaml:"backoff_on_ratelimits"`
 	BackoffConfig       backoff.Config `yaml:"backoff_config"`
 
+	HealthCheckConfig HealthCheckConfig `yaml:"-"`
+
 	TLSEnabled               bool             `yaml:"tls_enabled"`
 	TLS                      tls.ClientConfig `yaml:",inline"`
 	SignWriteRequestsEnabled bool             `yaml:"-"`
 }
 
+type ConfigWithHealthCheck struct {
+	Config            `yaml:",inline"`
+	HealthCheckConfig HealthCheckConfig `yaml:"healthcheck_config" doc:"description=EXPERIMENTAL: If enabled, gRPC clients perform health checks for each target and fail the request if the target is marked as unhealthy."`
+}
+
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", "", f)
+}
+
+func (cfg *ConfigWithHealthCheck) RegisterFlagsWithPrefix(prefix, defaultGrpcCompression string, f *flag.FlagSet) {
+	cfg.Config.RegisterFlagsWithPrefix(prefix, defaultGrpcCompression, f)
+	cfg.HealthCheckConfig.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // RegisterFlagsWithPrefix registers flags with prefix.
@@ -90,6 +102,10 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 
 	if cfg.RateLimit > 0 {
 		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimiter(cfg)}, unaryClientInterceptors...)
+	}
+	if cfg.HealthCheckConfig.HealthCheckInterceptors != nil {
+		unaryClientInterceptors = append(unaryClientInterceptors, cfg.HealthCheckConfig.UnaryHealthCheckInterceptor(*cfg))
+		streamClientInterceptors = append(streamClientInterceptors, cfg.HealthCheckConfig.StreamClientInterceptor(*cfg))
 	}
 
 	if cfg.SignWriteRequestsEnabled {

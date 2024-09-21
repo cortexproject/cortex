@@ -29,8 +29,6 @@ type Config struct {
 	BackoffOnRatelimits bool           `yaml:"backoff_on_ratelimits"`
 	BackoffConfig       backoff.Config `yaml:"backoff_config"`
 
-	HealthCheckConfig HealthCheckConfig `yaml:"-"`
-
 	TLSEnabled               bool             `yaml:"tls_enabled"`
 	TLS                      tls.ClientConfig `yaml:",inline"`
 	SignWriteRequestsEnabled bool             `yaml:"-"`
@@ -87,6 +85,15 @@ func (cfg *Config) CallOptions() []grpc.CallOption {
 	return opts
 }
 
+func (cfg *ConfigWithHealthCheck) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
+	if cfg.HealthCheckConfig.HealthCheckInterceptors != nil {
+		unaryClientInterceptors = append(unaryClientInterceptors, cfg.HealthCheckConfig.UnaryHealthCheckInterceptor(cfg))
+		streamClientInterceptors = append(streamClientInterceptors, cfg.HealthCheckConfig.StreamClientInterceptor(cfg))
+	}
+
+	return cfg.Config.DialOption(unaryClientInterceptors, streamClientInterceptors)
+}
+
 // DialOption returns the config as a grpc.DialOptions.
 func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
 	var opts []grpc.DialOption
@@ -102,10 +109,6 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 
 	if cfg.RateLimit > 0 {
 		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimiter(cfg)}, unaryClientInterceptors...)
-	}
-	if cfg.HealthCheckConfig.HealthCheckInterceptors != nil {
-		unaryClientInterceptors = append(unaryClientInterceptors, cfg.HealthCheckConfig.UnaryHealthCheckInterceptor(*cfg))
-		streamClientInterceptors = append(streamClientInterceptors, cfg.HealthCheckConfig.StreamClientInterceptor(*cfg))
 	}
 
 	if cfg.SignWriteRequestsEnabled {

@@ -17,7 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
-func newStoreGatewayClientFactory(clientCfg grpcclient.Config, reg prometheus.Registerer) client.PoolFactory {
+func newStoreGatewayClientFactory(clientCfg grpcclient.ConfigWithHealthCheck, reg prometheus.Registerer) client.PoolFactory {
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:   "cortex",
 		Name:        "storegateway_client_request_duration_seconds",
@@ -31,7 +31,7 @@ func newStoreGatewayClientFactory(clientCfg grpcclient.Config, reg prometheus.Re
 	}
 }
 
-func dialStoreGatewayClient(clientCfg grpcclient.Config, addr string, requestDuration *prometheus.HistogramVec) (*storeGatewayClient, error) {
+func dialStoreGatewayClient(clientCfg grpcclient.ConfigWithHealthCheck, addr string, requestDuration *prometheus.HistogramVec) (*storeGatewayClient, error) {
 	opts, err := clientCfg.DialOption(grpcclient.Instrument(requestDuration))
 	if err != nil {
 		return nil, err
@@ -69,16 +69,18 @@ func (c *storeGatewayClient) RemoteAddress() string {
 
 func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, clientConfig ClientConfig, logger log.Logger, reg prometheus.Registerer) *client.Pool {
 	// We prefer sane defaults instead of exposing further config options.
-	clientCfg := grpcclient.Config{
-		MaxRecvMsgSize:      100 << 20,
-		MaxSendMsgSize:      16 << 20,
-		GRPCCompression:     clientConfig.GRPCCompression,
-		HealthCheckConfig:   clientConfig.HealthCheckConfig,
-		RateLimit:           0,
-		RateLimitBurst:      0,
-		BackoffOnRatelimits: false,
-		TLSEnabled:          clientConfig.TLSEnabled,
-		TLS:                 clientConfig.TLS,
+	clientCfg := grpcclient.ConfigWithHealthCheck{
+		Config: grpcclient.Config{
+			MaxRecvMsgSize:      100 << 20,
+			MaxSendMsgSize:      16 << 20,
+			GRPCCompression:     clientConfig.GRPCCompression,
+			RateLimit:           0,
+			RateLimitBurst:      0,
+			BackoffOnRatelimits: false,
+			TLSEnabled:          clientConfig.TLSEnabled,
+			TLS:                 clientConfig.TLS,
+		},
+		HealthCheckConfig: clientConfig.HealthCheckConfig,
 	}
 	poolCfg := client.PoolConfig{
 		CheckInterval:      time.Minute,

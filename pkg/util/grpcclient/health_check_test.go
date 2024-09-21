@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/health/grpc_health_v1"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	utillog "github.com/cortexproject/cortex/pkg/util/log"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 )
 
 type healthClientMock struct {
@@ -32,7 +32,7 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 	hMock := &healthClientMock{
 		err: fmt.Errorf("some error"),
 	}
-	cfg := Config{
+	cfg := ConfigWithHealthCheck{
 		HealthCheckConfig: HealthCheckConfig{
 			UnhealthyThreshold: 2,
 			Interval:           0,
@@ -43,8 +43,9 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 		return hMock
 	}
 
-	ui := i.UnaryHealthCheckInterceptor(cfg)
+	ui := i.UnaryHealthCheckInterceptor(&cfg)
 	ccUnhealthy, err := grpc.NewClient("localhost:999", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
 	ccHealthy, err := grpc.NewClient("localhost:111", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	invokedMap := map[string]int{}
@@ -58,7 +59,7 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 	require.NoError(t, ui(context.Background(), "", struct{}{}, struct{}{}, ccUnhealthy, invoker))
 
 	// first health check
-	i.iteration(context.Background())
+	require.NoError(t, i.iteration(context.Background()))
 
 	//Should second first call
 	require.NoError(t, ui(context.Background(), "", struct{}{}, struct{}{}, ccUnhealthy, invoker))
@@ -66,7 +67,7 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 	require.Equal(t, invokedMap["localhost:999"], 2)
 
 	// Second Healthcheck -> should mark as unhealthy
-	i.iteration(context.Background())
+	require.NoError(t, i.iteration(context.Background()))
 
 	cortex_testutil.Poll(t, time.Second, true, func() interface{} {
 		return errors.Is(ui(context.Background(), "", struct{}{}, struct{}{}, ccUnhealthy, invoker), unhealthyErr)
@@ -77,7 +78,7 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 
 	// Should mark the instance back to healthy
 	hMock.err = nil
-	i.iteration(context.Background())
+	require.NoError(t, i.iteration(context.Background()))
 	cortex_testutil.Poll(t, time.Second, true, func() interface{} {
 		return ui(context.Background(), "", struct{}{}, struct{}{}, ccUnhealthy, invoker) == nil
 	})

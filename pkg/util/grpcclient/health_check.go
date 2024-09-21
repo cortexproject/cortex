@@ -32,14 +32,14 @@ type HealthCheckConfig struct {
 
 // RegisterFlagsWithPrefix for Config.
 func (cfg *HealthCheckConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&cfg.UnhealthyThreshold, prefix+".unhealthy-threshold", 0, "The number of consecutive failed health checks required before considering a target unhealthy. 0 means disabled.")
+	f.IntVar(&cfg.UnhealthyThreshold, prefix+".unhealthy-threshold", 3, "The number of consecutive failed health checks required before considering a target unhealthy. 0 means disabled.")
 	f.DurationVar(&cfg.Timeout, prefix+".timeout", 1*time.Second, "The amount of time during which no response from a target means a failed health check.")
-	f.DurationVar(&cfg.Interval, prefix+".interval", 1*time.Second, "The approximate amount of time between health checks of an individual target.")
+	f.DurationVar(&cfg.Interval, prefix+".interval", 5*time.Second, "The approximate amount of time between health checks of an individual target.")
 }
 
 type healthCheckEntry struct {
 	address      string
-	clientConfig Config
+	clientConfig *ConfigWithHealthCheck
 
 	sync.RWMutex
 	unhealthyCount int
@@ -75,7 +75,7 @@ func (e *healthCheckEntry) isHealthy() bool {
 	return e.unhealthyCount < e.clientConfig.HealthCheckConfig.UnhealthyThreshold
 }
 
-func (e *healthCheckEntry) recordHealth(err error) {
+func (e *healthCheckEntry) recordHealth(err error) error {
 	e.Lock()
 	defer e.Unlock()
 	if err != nil {
@@ -83,6 +83,8 @@ func (e *healthCheckEntry) recordHealth(err error) {
 	} else {
 		e.unhealthyCount = 0
 	}
+
+	return err
 }
 
 func (e *healthCheckEntry) tick() {
@@ -101,9 +103,9 @@ func (h *HealthCheckInterceptors) registeredInstances() []*healthCheckEntry {
 }
 
 func (h *HealthCheckInterceptors) iteration(ctx context.Context) error {
-	level.Warn(h.logger).Log("msg", "Performing health check")
+	level.Warn(h.logger).Log("msg", "Performing health check", "registeredInstances", len(h.registeredInstances()))
 	for _, instance := range h.registeredInstances() {
-		dialOpts, err := instance.clientConfig.DialOption(nil, nil)
+		dialOpts, err := instance.clientConfig.Config.DialOption(nil, nil)
 		if err != nil {
 			return err
 		}
@@ -126,9 +128,8 @@ func (h *HealthCheckInterceptors) iteration(ctx context.Context) error {
 		instance.lastCheckTime.Store(time.Now())
 
 		go func(i *healthCheckEntry) {
-			i.recordHealth(healthCheck(c, i.clientConfig.HealthCheckConfig.Timeout))
-			if !i.isHealthy() {
-				level.Warn(h.logger).Log("msg", "instance marked as unhealthy", "address", i.address)
+			if err := i.recordHealth(healthCheck(c, i.clientConfig.HealthCheckConfig.Timeout)); !i.isHealthy() {
+				level.Warn(h.logger).Log("msg", "instance marked as unhealthy", "address", i.address, "err", err)
 			}
 			if err := conn.Close(); err != nil {
 				level.Warn(h.logger).Log("msg", "error closing connection", "address", i.address, "err", err)
@@ -138,7 +139,7 @@ func (h *HealthCheckInterceptors) iteration(ctx context.Context) error {
 	return nil
 }
 
-func (h *HealthCheckInterceptors) getOrAddHealthCheckEntry(address string, clientConfig Config) *healthCheckEntry {
+func (h *HealthCheckInterceptors) getOrAddHealthCheckEntry(address string, clientConfig *ConfigWithHealthCheck) *healthCheckEntry {
 	h.RLock()
 	e := h.activeInstances[address]
 	h.RUnlock()
@@ -160,7 +161,7 @@ func (h *HealthCheckInterceptors) getOrAddHealthCheckEntry(address string, clien
 	return h.activeInstances[address]
 }
 
-func (h *HealthCheckInterceptors) StreamClientInterceptor(clientConfig Config) grpc.StreamClientInterceptor {
+func (h *HealthCheckInterceptors) StreamClientInterceptor(clientConfig *ConfigWithHealthCheck) grpc.StreamClientInterceptor {
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 		e := h.getOrAddHealthCheckEntry(cc.Target(), clientConfig)
 		e.tick()
@@ -172,7 +173,7 @@ func (h *HealthCheckInterceptors) StreamClientInterceptor(clientConfig Config) g
 	}
 }
 
-func (h *HealthCheckInterceptors) UnaryHealthCheckInterceptor(clientConfig Config) grpc.UnaryClientInterceptor {
+func (h *HealthCheckInterceptors) UnaryHealthCheckInterceptor(clientConfig *ConfigWithHealthCheck) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		e := h.getOrAddHealthCheckEntry(cc.Target(), clientConfig)
 		e.tick()

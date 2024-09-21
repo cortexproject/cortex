@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -49,6 +48,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"

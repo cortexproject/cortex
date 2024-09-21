@@ -53,12 +53,15 @@ type HealthCheckInterceptors struct {
 
 	sync.RWMutex
 	activeInstances map[string]*healthCheckEntry
+
+	healthClientFactory func(cc grpc.ClientConnInterface) grpc_health_v1.HealthClient
 }
 
 func NewHealthCheckInterceptors(logger log.Logger) *HealthCheckInterceptors {
 	h := &HealthCheckInterceptors{
-		logger:          logger,
-		activeInstances: make(map[string]*healthCheckEntry),
+		logger:              logger,
+		healthClientFactory: grpc_health_v1.NewHealthClient,
+		activeInstances:     make(map[string]*healthCheckEntry),
 	}
 
 	h.Service = services.
@@ -105,7 +108,7 @@ func (h *HealthCheckInterceptors) iteration(ctx context.Context) error {
 			return err
 		}
 		conn, err := grpc.NewClient(instance.address, dialOpts...)
-		c := grpc_health_v1.NewHealthClient(conn)
+		c := h.healthClientFactory(conn)
 		if err != nil {
 			return err
 		}
@@ -120,6 +123,7 @@ func (h *HealthCheckInterceptors) iteration(ctx context.Context) error {
 		if time.Since(instance.lastCheckTime.Load()) < instance.clientConfig.HealthCheckConfig.Interval {
 			continue
 		}
+		instance.lastCheckTime.Store(time.Now())
 
 		go func(i *healthCheckEntry) {
 			i.recordHealth(healthCheck(c, i.clientConfig.HealthCheckConfig.Timeout))

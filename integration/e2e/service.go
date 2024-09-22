@@ -151,6 +151,9 @@ func (s *ConcreteService) Stop() error {
 		logger.Log(string(out))
 		return err
 	}
+
+	s.Wait()
+
 	s.usedNetworkName = ""
 
 	return nil
@@ -168,13 +171,20 @@ func (s *ConcreteService) Kill() error {
 		return err
 	}
 
-	// Wait until the container actually stopped. However, this could fail if
-	// the container already exited, so we just ignore the error.
-	_, _ = RunCommandAndGetOutput("docker", "wait", s.containerName())
+	s.Wait()
 
 	s.usedNetworkName = ""
 
 	return nil
+}
+
+// Wait waits until the service is stopped.
+func (s *ConcreteService) Wait() {
+	// Wait until the container actually stopped. However, this could fail if
+	// the container already exited, so we just ignore the error.
+	if out, err := RunCommandAndGetOutput("docker", "wait", s.containerName()); err != nil {
+		logger.Log(string(out))
+	}
 }
 
 // Endpoint returns external (from host perspective) service endpoint (host:port) for given internal port.

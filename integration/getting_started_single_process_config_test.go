@@ -5,6 +5,7 @@ package integration
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -38,7 +39,13 @@ func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
 		"-blocks-storage.s3.bucket-name":       bucketName,
 		"-blocks-storage.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
 		"-blocks-storage.s3.insecure":          "true",
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 	}
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, flags, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex))

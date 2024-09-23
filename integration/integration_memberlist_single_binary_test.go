@@ -43,6 +43,9 @@ func testSingleBinaryEnv(t *testing.T, tlsEnabled bool, flags map[string]string)
 	require.NoError(t, err)
 	defer s.Close()
 
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
 	// Start dependencies
 	minio := e2edb.NewMinio(9000, bucketName)
 	// Look ma, no Consul!
@@ -116,16 +119,21 @@ func testSingleBinaryEnv(t *testing.T, tlsEnabled bool, flags map[string]string)
 }
 
 func newSingleBinary(name string, servername string, join string, testFlags map[string]string) *e2ecortex.CortexService {
-	flags := map[string]string{
-		"-ingester.final-sleep":              "0s",
-		"-ingester.join-after":               "0s", // join quickly
-		"-ingester.min-ready-duration":       "0s",
-		"-ingester.num-tokens":               "512",
-		"-ingester.observe-period":           "5s", // to avoid conflicts in tokens
-		"-ring.store":                        "memberlist",
-		"-memberlist.bind-port":              "8000",
-		"-memberlist.left-ingesters-timeout": "600s", // effectively disable
-	}
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-ingester.final-sleep":              "0s",
+			"-ingester.join-after":               "0s", // join quickly
+			"-ingester.min-ready-duration":       "0s",
+			"-ingester.num-tokens":               "512",
+			"-ingester.observe-period":           "5s", // to avoid conflicts in tokens
+			"-ring.store":                        "memberlist",
+			"-memberlist.bind-port":              "8000",
+			"-memberlist.left-ingesters-timeout": "600s", // effectively disable
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
 
 	if join != "" {
 		flags["-memberlist.join"] = join
@@ -157,6 +165,9 @@ func TestSingleBinaryWithMemberlistScaling(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	minio := e2edb.NewMinio(9000, bucketName)
 	require.NoError(t, s.StartAndWaitReady(minio))

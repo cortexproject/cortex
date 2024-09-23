@@ -215,7 +215,8 @@ func TestQueryFrontendProtobufCodec(t *testing.T) {
 			require.NoError(t, s.StartAndWaitReady(minio))
 
 			flags = mergeFlags(e2e.EmptyFlags(), map[string]string{
-				"-api.querier-default-codec": "protobuf",
+				"-api.querier-default-codec":    "protobuf",
+				"-querier.response-compression": "gzip",
 			})
 			return cortexConfigFile, flags
 		},

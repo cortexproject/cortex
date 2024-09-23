@@ -4460,6 +4460,12 @@ ring:
 # Enable high availability
 # CLI flag: -ruler.enable-ha-evaluation
 [enable_ha_evaluation: <boolean> | default = false]
+
+# Timeout duration for non-primary rulers during liveness checks. If the check
+# times out, the non-primary ruler will evaluate the rule group. Applicable when
+# ruler.enable-ha-evaluation is true.
+# CLI flag: -ruler.liveness-check-timeout
+[liveness_check_timeout: <duration> | default = 1s]
 ```
 
 ### `ruler_storage_config`

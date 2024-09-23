@@ -296,7 +296,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		}
 
 		distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
-		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
 
 		tCases := []struct {
 			name                 string
@@ -442,7 +442,7 @@ func TestLimits(t *testing.T) {
 			response: &streamResponse,
 		}
 
-		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
 
 		tCases := []struct {
 			name                 string
@@ -1119,8 +1119,8 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 
 				t.Run("label names", func(t *testing.T) {
 					distributor := &MockDistributor{}
-					distributor.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
-					distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+					distributor.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+					distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -1309,10 +1309,10 @@ func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, mo
 func (m *errDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
+func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
+func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
 func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
@@ -1362,11 +1362,11 @@ func (d *emptyDistributor) LabelValuesForLabelNameStream(context.Context, model.
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
+func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
+func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 

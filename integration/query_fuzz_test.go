@@ -45,25 +45,32 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	consul2 := e2edb.NewConsulWithName("consul2")
 	require.NoError(t, s.StartAndWaitReady(consul1, consul2))
 
-	flags := map[string]string{
-		"-store.engine":                                     blocksStorageEngine,
-		"-blocks-storage.backend":                           "filesystem",
-		"-blocks-storage.tsdb.head-compaction-interval":     "4m",
-		"-blocks-storage.tsdb.block-ranges-period":          "2h",
-		"-blocks-storage.tsdb.ship-interval":                "1h",
-		"-blocks-storage.bucket-store.sync-interval":        "15m",
-		"-blocks-storage.tsdb.retention-period":             "2h",
-		"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
-		"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-		"-querier.query-store-for-labels-enabled":           "true",
-		// Ingester.
-		"-ring.store":      "consul",
-		"-consul.hostname": consul1.NetworkHTTPEndpoint(),
-		// Distributor.
-		"-distributor.replication-factor": "1",
-		// Store-gateway.
-		"-store-gateway.sharding-enabled": "false",
-	}
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                     blocksStorageEngine,
+			"-blocks-storage.backend":                           "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
+			"-blocks-storage.tsdb.block-ranges-period":          "2h",
+			"-blocks-storage.tsdb.ship-interval":                "1h",
+			"-blocks-storage.bucket-store.sync-interval":        "15m",
+			"-blocks-storage.tsdb.retention-period":             "2h",
+			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+			"-querier.query-store-for-labels-enabled":           "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor": "1",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	path1 := path.Join(s.SharedDir(), "cortex-1")
 	path2 := path.Join(s.SharedDir(), "cortex-2")

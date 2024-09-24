@@ -12,10 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortex/storage"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,14 +20,20 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -92,9 +94,22 @@ func TestCortex(t *testing.T) {
 				Directory: os.TempDir(),
 			},
 		},
-
-		Target: []string{All, Compactor},
+		AlertmanagerStorage: alertstore.Config{
+			Config: bucket.Config{
+				Backend: "local",
+			},
+		},
+		Target: []string{All},
 	}
+
+	externalURL := flagext.URLValue{}
+	err := externalURL.Set("http://localhost/alertmanager")
+	require.NoError(t, err)
+
+	multiAlertmanagerCfg := &alertmanager.MultitenantAlertmanagerConfig{}
+	flagext.DefaultValues(multiAlertmanagerCfg)
+	multiAlertmanagerCfg.ExternalURL = externalURL
+	cfg.Alertmanager = *multiAlertmanagerCfg
 
 	c, err := New(cfg)
 	require.NoError(t, err)
@@ -114,8 +129,9 @@ func TestCortex(t *testing.T) {
 	require.NotNil(t, serviceMap[Ring])
 	require.NotNil(t, serviceMap[DistributorService])
 
-	// check that compactor is configured which is not part of Target=All
+	// check compactor and alertmanager are configured.
 	require.NotNil(t, serviceMap[Compactor])
+	require.NotNil(t, serviceMap[AlertManager])
 }
 
 func TestConfigValidation(t *testing.T) {

@@ -89,7 +89,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]model.Metric{}, nil)
 
 				ctx := user.InjectOrgID(context.Background(), "test")
-				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, nil, testData.queryIngestersWithin)
+				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, testData.queryIngestersWithin)
 				querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
 
@@ -128,7 +128,7 @@ func TestDistributorQueryableFilter(t *testing.T) {
 	t.Parallel()
 
 	d := &MockDistributor{}
-	dq := newDistributorQueryable(d, false, nil, 1*time.Hour)
+	dq := newDistributorQueryable(d, false, true, nil, 1*time.Hour)
 
 	now := time.Now()
 
@@ -172,7 +172,7 @@ func TestIngesterStreaming(t *testing.T) {
 			nil)
 
 		ctx := user.InjectOrgID(context.Background(), "0")
-		queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, 0)
+		queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0)
 		querier, err := queryable.Querier(mint, maxt)
 		require.NoError(t, err)
 
@@ -202,31 +202,42 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 	someMatchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}
 	labelNames := []string{"foo", "job"}
 
-	for _, streamingEnabled := range []bool{false, true} {
-		streamingEnabled := streamingEnabled
-		t.Run("with matchers", func(t *testing.T) {
-			t.Parallel()
+	for _, labelNamesWithMatchers := range []bool{false, true} {
+		for _, streamingEnabled := range []bool{false, true} {
+			streamingEnabled := streamingEnabled
+			labelNamesWithMatchers := labelNamesWithMatchers
+			t.Run("with matchers", func(t *testing.T) {
+				t.Parallel()
 
-			metrics := []model.Metric{
-				{"foo": "bar"},
-				{"job": "baz"},
-				{"job": "baz", "foo": "boom"},
-			}
-			d := &MockDistributor{}
-			d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-				Return(metrics, nil)
-			d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-				Return(metrics, nil)
+				metrics := []model.Metric{
+					{"foo": "bar"},
+					{"job": "baz"},
+					{"job": "baz", "foo": "boom"},
+				}
+				d := &MockDistributor{}
 
-			queryable := newDistributorQueryable(d, streamingEnabled, nil, 0)
-			querier, err := queryable.Querier(mint, maxt)
-			require.NoError(t, err)
+				if labelNamesWithMatchers {
+					d.On("LabelNames", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+						Return(labelNames, nil)
+					d.On("LabelNamesStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+						Return(labelNames, nil)
+				} else {
+					d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+						Return(metrics, nil)
+					d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+						Return(metrics, nil)
+				}
 
-			ctx := context.Background()
-			names, warnings, err := querier.LabelNames(ctx, nil, someMatchers...)
-			require.NoError(t, err)
-			assert.Empty(t, warnings)
-			assert.Equal(t, labelNames, names)
-		})
+				queryable := newDistributorQueryable(d, streamingEnabled, labelNamesWithMatchers, nil, 0)
+				querier, err := queryable.Querier(mint, maxt)
+				require.NoError(t, err)
+
+				ctx := context.Background()
+				names, warnings, err := querier.LabelNames(ctx, nil, someMatchers...)
+				require.NoError(t, err)
+				assert.Empty(t, warnings)
+				assert.Equal(t, labelNames, names)
+			})
+		}
 	}
 }

@@ -91,6 +91,9 @@ func TestRequest(t *testing.T) {
 
 func TestResponse(t *testing.T) {
 	t.Parallel()
+	r := *parsedResponse
+	rWithWarnings := *parsedResponseWithWarnings
+	rWithInfos := *parsedResponseWithInfos
 	testCases := []struct {
 		promBody              *tripperware.PrometheusResponse
 		jsonBody              string
@@ -124,6 +127,77 @@ func TestResponse(t *testing.T) {
 			},
 			jsonBody:   responseBody,
 			isProtobuf: true,
+		},
+		{
+			promBody:   &r,
+			jsonBody:   responseBody,
+			isProtobuf: false,
+		},
+		{
+			promBody: &tripperware.PrometheusResponse{
+				Status:   "success",
+				Warnings: []string{"test-warn"},
+				Data: tripperware.PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Matrix{
+							Matrix: &tripperware.Matrix{
+								SampleStreams: []tripperware.SampleStream{
+									{
+										Labels: []cortexpb.LabelAdapter{
+											{Name: "foo", Value: "bar"},
+										},
+										Samples: []cortexpb.Sample{
+											{Value: 137, TimestampMs: 1536673680000},
+											{Value: 137, TimestampMs: 1536673780000},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			jsonBody:   responseBodyWithWarnings,
+			isProtobuf: true,
+		},
+		{
+			promBody:   &rWithWarnings,
+			jsonBody:   responseBodyWithWarnings,
+			isProtobuf: false,
+		},
+		{
+			promBody: &tripperware.PrometheusResponse{
+				Status: "success",
+				Infos:  []string{"PromQL info: metric might not be a counter, name does not end in _total/_sum/_count/_bucket: \"go_gc_gogc_percent\" (1:6)"},
+				Data: tripperware.PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Matrix{
+							Matrix: &tripperware.Matrix{
+								SampleStreams: []tripperware.SampleStream{
+									{
+										Labels: []cortexpb.LabelAdapter{
+											{Name: "foo", Value: "bar"},
+										},
+										Samples: []cortexpb.Sample{
+											{Value: 137, TimestampMs: 1536673680000},
+											{Value: 137, TimestampMs: 1536673780000},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			jsonBody:   responseBodyWithInfos,
+			isProtobuf: true,
+		},
+		{
+			promBody:   &rWithInfos,
+			jsonBody:   responseBodyWithInfos,
+			isProtobuf: false,
 		},
 		{
 			promBody: &tripperware.PrometheusResponse{
@@ -177,92 +251,9 @@ func TestResponse(t *testing.T) {
 					},
 				},
 			},
-			jsonBody:   responseBody,
-			isProtobuf: false,
-		},
-		{
-			promBody: &tripperware.PrometheusResponse{
-				Status: "success",
-				Data: tripperware.PrometheusData{
-					ResultType: model.ValMatrix.String(),
-					Result: tripperware.PrometheusQueryResult{
-						Result: &tripperware.PrometheusQueryResult_Matrix{
-							Matrix: &tripperware.Matrix{
-								SampleStreams: []tripperware.SampleStream{
-									{
-										Labels: []cortexpb.LabelAdapter{
-											{Name: "foo", Value: "bar"},
-										},
-										Samples: []cortexpb.Sample{
-											{Value: 137, TimestampMs: 1536673680000},
-											{Value: 137, TimestampMs: 1536673780000},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
 			cancelCtxBeforeDecode: true,
 			expectedDecodeErr:     context.Canceled,
 			isProtobuf:            false,
-		},
-		{
-			promBody: &tripperware.PrometheusResponse{
-				Status:   "success",
-				Warnings: []string{"test-warn"},
-				Data: tripperware.PrometheusData{
-					ResultType: model.ValMatrix.String(),
-					Result: tripperware.PrometheusQueryResult{
-						Result: &tripperware.PrometheusQueryResult_Matrix{
-							Matrix: &tripperware.Matrix{
-								SampleStreams: []tripperware.SampleStream{
-									{
-										Labels: []cortexpb.LabelAdapter{
-											{Name: "foo", Value: "bar"},
-										},
-										Samples: []cortexpb.Sample{
-											{Value: 137, TimestampMs: 1536673680000},
-											{Value: 137, TimestampMs: 1536673780000},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			jsonBody:   responseBodyWithWarnings,
-			isProtobuf: true,
-		},
-		{
-			promBody: &tripperware.PrometheusResponse{
-				Status:   "success",
-				Warnings: []string{"test-warn"},
-				Data: tripperware.PrometheusData{
-					ResultType: model.ValMatrix.String(),
-					Result: tripperware.PrometheusQueryResult{
-						Result: &tripperware.PrometheusQueryResult_Matrix{
-							Matrix: &tripperware.Matrix{
-								SampleStreams: []tripperware.SampleStream{
-									{
-										Labels: []cortexpb.LabelAdapter{
-											{Name: "foo", Value: "bar"},
-										},
-										Samples: []cortexpb.Sample{
-											{Value: 137, TimestampMs: 1536673680000},
-											{Value: 137, TimestampMs: 1536673780000},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			jsonBody:   responseBodyWithWarnings,
-			isProtobuf: false,
 		},
 	}
 	for i, tc := range testCases {
@@ -686,6 +677,34 @@ func TestMergeAPIResponses(t *testing.T) {
 			expected: &tripperware.PrometheusResponse{
 				Status:   StatusSuccess,
 				Warnings: []string{"warning1", "warning2", "warning3"},
+				Data: tripperware.PrometheusData{
+					ResultType: matrix,
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Matrix{
+							Matrix: &tripperware.Matrix{
+								SampleStreams: []tripperware.SampleStream{
+									{
+										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Samples: []cortexpb.Sample{
+											{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Merge response with infos.",
+			input: []tripperware.Response{
+				mustParse(t, `{"status":"success","infos":["info1","info2"],"data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"]]}]}}`),
+				mustParse(t, `{"status":"success","infos":["info1","info3"],"data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"]]}]}}`),
+			},
+			expected: &tripperware.PrometheusResponse{
+				Status: StatusSuccess,
+				Infos:  []string{"info1", "info2", "info3"},
 				Data: tripperware.PrometheusData{
 					ResultType: matrix,
 					Result: tripperware.PrometheusQueryResult{

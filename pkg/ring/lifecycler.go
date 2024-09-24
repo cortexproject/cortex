@@ -468,7 +468,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		// We are jittering for at least half of the time and max the time of the heartbeat.
 		// If we jitter too soon, we can have problems of concurrency with autoJoin leaving the instance on ACTIVE without tokens
 		time.AfterFunc(time.Duration(uint64(i.cfg.HeartbeatPeriod/2)+uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod/2)), func() {
-			i.heartbeat()
+			i.heartbeat(ctx)
 			heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
 		})
 		defer heartbeatTicker.Stop()
@@ -530,7 +530,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			}
 
 		case <-heartbeatTickerChan:
-			i.heartbeat()
+			i.heartbeat(ctx)
 		case f := <-i.actorChan:
 			f()
 
@@ -541,9 +541,11 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	}
 }
 
-func (i *Lifecycler) heartbeat() {
+func (i *Lifecycler) heartbeat(ctx context.Context) {
 	i.lifecyclerMetrics.consulHeartbeats.Inc()
-	if err := i.updateConsul(context.Background()); err != nil {
+	ctx, cancel := context.WithTimeout(ctx, i.cfg.HeartbeatPeriod)
+	defer cancel()
+	if err := i.updateConsul(ctx); err != nil {
 		level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 	}
 }

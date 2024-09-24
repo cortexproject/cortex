@@ -2302,6 +2302,7 @@ func Test_Ingester_LabelValues(t *testing.T) {
 
 	tests := map[string]struct {
 		limit int64
+		match []*labels.Matcher
 	}{
 		"should return all label values if no limit is set": {
 			limit: 0,
@@ -5206,6 +5207,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 		mode             string
 		expectedState    ring.InstanceState
 		expectedResponse int
+		expectedIsReady  bool
 	}{
 		"should change to READONLY mode": {
 			method:           "POST",
@@ -5213,6 +5215,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			requestUrl:       "/mode?mode=reAdOnLy",
 			expectedState:    ring.READONLY,
 			expectedResponse: http.StatusOK,
+			expectedIsReady:  true,
 		},
 		"should change mode on GET method": {
 			method:           "GET",
@@ -5220,6 +5223,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			requestUrl:       "/mode?mode=READONLY",
 			expectedState:    ring.READONLY,
 			expectedResponse: http.StatusOK,
+			expectedIsReady:  true,
 		},
 		"should change mode on POST method via body": {
 			method:           "POST",
@@ -5228,6 +5232,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			requestBody:      strings.NewReader("mode=readonly"),
 			expectedState:    ring.READONLY,
 			expectedResponse: http.StatusOK,
+			expectedIsReady:  true,
 		},
 		"should change to ACTIVE mode": {
 			method:           "POST",
@@ -5235,6 +5240,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			requestUrl:       "/mode?mode=active",
 			expectedState:    ring.ACTIVE,
 			expectedResponse: http.StatusOK,
+			expectedIsReady:  true,
 		},
 		"should fail to unknown mode": {
 			method:           "POST",
@@ -5242,6 +5248,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			requestUrl:       "/mode?mode=NotSupported",
 			expectedState:    ring.ACTIVE,
 			expectedResponse: http.StatusBadRequest,
+			expectedIsReady:  true,
 		},
 		"should maintain in readonly": {
 			method:           "POST",
@@ -5249,6 +5256,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			requestUrl:       "/mode?mode=READONLY",
 			expectedState:    ring.READONLY,
 			expectedResponse: http.StatusOK,
+			expectedIsReady:  true,
 		},
 		"should maintain in active": {
 			method:           "POST",
@@ -5256,6 +5264,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			requestUrl:       "/mode?mode=ACTIVE",
 			expectedState:    ring.ACTIVE,
 			expectedResponse: http.StatusOK,
+			expectedIsReady:  true,
 		},
 		"should fail mode READONLY if LEAVING state": {
 			method:           "POST",
@@ -5263,18 +5272,21 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			requestUrl:       "/mode?mode=READONLY",
 			expectedState:    ring.LEAVING,
 			expectedResponse: http.StatusBadRequest,
+			expectedIsReady:  false,
 		},
 		"should fail with malformatted request": {
 			method:           "GET",
 			initialState:     ring.ACTIVE,
 			requestUrl:       "/mode?mod;e=READONLY",
 			expectedResponse: http.StatusBadRequest,
+			expectedIsReady:  true,
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.MinReadyDuration = 0
 			i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -5304,6 +5316,13 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 
 			require.Equal(t, testData.expectedResponse, response.Code)
 			require.Equal(t, testData.expectedState, i.lifecycler.GetState())
+
+			err = i.CheckReady(context.Background())
+			if testData.expectedIsReady {
+				require.NoError(t, err)
+			} else {
+				require.NotNil(t, err)
+			}
 		})
 	}
 }

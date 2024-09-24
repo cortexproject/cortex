@@ -3701,6 +3701,10 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.ingester-metadata-streaming
 [ingester_metadata_streaming: <boolean> | default = true]
 
+# Use LabelNames ingester RPCs with match params.
+# CLI flag: -querier.ingester-label-names-with-matchers
+[ingester_label_names_with_matchers: <boolean> | default = false]
+
 # Maximum number of samples a single query can load into memory.
 # CLI flag: -querier.max-samples
 [max_samples: <int> | default = 50000000]

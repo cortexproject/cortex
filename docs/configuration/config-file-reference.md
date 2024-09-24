@@ -95,6 +95,11 @@ api:
   # CLI flag: -api.build-info-enabled
   [build_info_enabled: <boolean> | default = false]
 
+  # Choose default codec for querier response serialization. Supports 'json' and
+  # 'protobuf'.
+  # CLI flag: -api.querier-default-codec
+  [querier_default_codec: <string> | default = "json"]
+
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).
 [server: <server_config>]
@@ -3717,6 +3722,11 @@ The `querier_config` configures the Cortex querier.
 # Enable returning samples stats per steps in query response.
 # CLI flag: -querier.per-step-stats-enabled
 [per_step_stats_enabled: <boolean> | default = false]
+
+# Use compression for metrics query API or instant and range query APIs.
+# Supports 'gzip' and '' (disable compression)
+# CLI flag: -querier.response-compression
+[response_compression: <string> | default = ""]
 
 # The time after which a metric should be queried from storage and not just
 # ingesters. 0 means all queries are sent to store. When running the blocks

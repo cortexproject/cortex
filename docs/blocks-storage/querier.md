@@ -126,6 +126,11 @@ querier:
   # CLI flag: -querier.per-step-stats-enabled
   [per_step_stats_enabled: <boolean> | default = false]
 
+  # Use compression for metrics query API or instant and range query APIs.
+  # Supports 'gzip' and '' (disable compression)
+  # CLI flag: -querier.response-compression
+  [response_compression: <string> | default = ""]
+
   # The time after which a metric should be queried from storage and not just
   # ingesters. 0 means all queries are sent to store. When running the blocks
   # storage, if this option is enabled, the time range of the query sent to the

@@ -472,15 +472,16 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 		return nil
 	}
 	deletable := tsdb.DefaultBlocksToDelete(u.db)(blocks)
-	if u.shipper == nil {
-		return deletable
-	}
 
 	now := time.Now().UnixMilli()
 	for _, b := range blocks {
 		if now-b.MaxTime() >= u.blockRetentionPeriod {
 			deletable[b.Meta().ULID] = struct{}{}
 		}
+	}
+
+	if u.shipper == nil {
+		return deletable
 	}
 
 	shippedBlocks := u.getCachedShippedBlocks()

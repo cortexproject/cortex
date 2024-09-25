@@ -42,14 +42,15 @@ const (
 
 // Validation errors
 var (
-	errInvalidShipConcurrency       = errors.New("invalid TSDB ship concurrency")
-	errInvalidOpeningConcurrency    = errors.New("invalid TSDB opening concurrency")
-	errInvalidCompactionInterval    = errors.New("invalid TSDB compaction interval")
-	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
-	errInvalidWALSegmentSizeBytes   = errors.New("invalid TSDB WAL segment size bytes")
-	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
-	errInvalidOutOfOrderCapMax      = errors.New("invalid TSDB OOO chunks capacity (in samples)")
-	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
+	errInvalidShipConcurrency        = errors.New("invalid TSDB ship concurrency")
+	errInvalidOpeningConcurrency     = errors.New("invalid TSDB opening concurrency")
+	errInvalidCompactionInterval     = errors.New("invalid TSDB compaction interval")
+	errInvalidCompactionConcurrency  = errors.New("invalid TSDB compaction concurrency")
+	errInvalidWALSegmentSizeBytes    = errors.New("invalid TSDB WAL segment size bytes")
+	errInvalidStripeSize             = errors.New("invalid TSDB stripe size")
+	errInvalidOutOfOrderCapMax       = errors.New("invalid TSDB OOO chunks capacity (in samples)")
+	errEmptyBlockranges              = errors.New("empty block ranges for TSDB")
+	errUnSupportedWALCompressionType = errors.New("unsupported WAL compression type, valid types are (zstd, snappy and '')")
 
 	ErrInvalidBucketIndexBlockDiscoveryStrategy = errors.New("bucket index block discovery strategy can only be enabled when bucket index is enabled")
 	ErrBlockDiscoveryStrategy                   = errors.New("invalid block discovery strategy")
@@ -137,6 +138,7 @@ type TSDBConfig struct {
 	HeadChunksWriteBufferSize int           `yaml:"head_chunks_write_buffer_size_bytes"`
 	StripeSize                int           `yaml:"stripe_size"`
 	WALCompressionEnabled     bool          `yaml:"wal_compression_enabled"`
+	WALCompressionType        string        `yaml:"wal_compression_type"`
 	WALSegmentSizeBytes       int           `yaml:"wal_segment_size_bytes"`
 	FlushBlocksOnShutdown     bool          `yaml:"flush_blocks_on_shutdown"`
 	CloseIdleTSDBTimeout      time.Duration `yaml:"close_idle_tsdb_timeout"`
@@ -183,7 +185,8 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeadCompactionIdleTimeout, "blocks-storage.tsdb.head-compaction-idle-timeout", 1*time.Hour, "If TSDB head is idle for this duration, it is compacted. Note that up to 25% jitter is added to the value to avoid ingesters compacting concurrently. 0 means disabled.")
 	f.IntVar(&cfg.HeadChunksWriteBufferSize, "blocks-storage.tsdb.head-chunks-write-buffer-size-bytes", chunks.DefaultWriteBufferSize, "The write buffer size used by the head chunks mapper. Lower values reduce memory utilisation on clusters with a large number of tenants at the cost of increased disk I/O operations.")
 	f.IntVar(&cfg.StripeSize, "blocks-storage.tsdb.stripe-size", 16384, "The number of shards of series to use in TSDB (must be a power of 2). Reducing this will decrease memory footprint, but can negatively impact performance.")
-	f.BoolVar(&cfg.WALCompressionEnabled, "blocks-storage.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
+	f.BoolVar(&cfg.WALCompressionEnabled, "blocks-storage.tsdb.wal-compression-enabled", false, "Deprecated (use blocks-storage.tsdb.wal-compression-type instead): True to enable TSDB WAL compression.")
+	f.StringVar(&cfg.WALCompressionType, "blocks-storage.tsdb.wal-compression-type", "", "TSDB WAL type. Supported values are: 'snappy', 'zstd' and '' (disable compression)")
 	f.IntVar(&cfg.WALSegmentSizeBytes, "blocks-storage.tsdb.wal-segment-size-bytes", wlog.DefaultSegmentSize, "TSDB WAL segments files max size (bytes).")
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "blocks-storage.tsdb.flush-blocks-on-shutdown", false, "True to flush blocks to storage on shutdown. If false, incomplete blocks will be reused after restart.")
 	f.DurationVar(&cfg.CloseIdleTSDBTimeout, "blocks-storage.tsdb.close-idle-tsdb-timeout", 0, "If TSDB has not received any data for this duration, and all blocks from TSDB have been shipped, TSDB is closed and deleted from local disk. If set to positive value, this value should be equal or higher than -querier.query-ingesters-within flag to make sure that TSDB is not closed prematurely, which could cause partial query results. 0 or negative value disables closing of idle TSDB.")
@@ -230,6 +233,13 @@ func (cfg *TSDBConfig) Validate() error {
 
 	if cfg.OutOfOrderCapMax <= 0 {
 		return errInvalidOutOfOrderCapMax
+	}
+
+	switch cfg.WALCompressionType {
+	case "snappy", "zstd", "":
+		// valid
+	default:
+		return errUnSupportedWALCompressionType
 	}
 
 	return nil

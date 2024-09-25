@@ -2160,11 +2160,12 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		enableExemplars = true
 	}
 	oooTimeWindow := i.limits.OutOfOrderTimeWindow(userID)
+
 	walCompressType := wlog.CompressionNone
-	// TODO(yeya24): expose zstd compression for WAL.
-	if i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled {
-		walCompressType = wlog.CompressionSnappy
+	if i.cfg.BlocksStorageConfig.TSDB.WALCompressionType != "" {
+		walCompressType = wlog.CompressionType(i.cfg.BlocksStorageConfig.TSDB.WALCompressionType)
 	}
+
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration:              i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),

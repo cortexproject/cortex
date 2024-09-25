@@ -129,7 +129,7 @@ querier:
   # Use compression for metrics query API or instant and range query APIs.
   # Supports 'gzip' and '' (disable compression)
   # CLI flag: -querier.response-compression
-  [response_compression: <string> | default = ""]
+  [response_compression: <string> | default = "gzip"]
 
   # The time after which a metric should be queried from storage and not just
   # ingesters. 0 means all queries are sent to store. When running the blocks

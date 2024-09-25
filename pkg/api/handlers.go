@@ -26,6 +26,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/codec"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -230,6 +231,9 @@ func NewQuerierHandler(
 		nil,
 		false,
 	)
+
+	// JSON codec is already installed. Install Protobuf codec to give the option for using either.
+	api.InstallCodec(codec.ProtobufCodec{})
 
 	router := mux.NewRouter()
 

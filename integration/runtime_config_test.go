@@ -41,6 +41,10 @@ func TestLoadRuntimeConfigFromStorageBackend(t *testing.T) {
 			name: "no storage backend provided",
 			flags: map[string]string{
 				"-runtime-config.file": filePath,
+				// alert manager
+				"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+				"-alertmanager-storage.backend":    "local",
+				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 			},
 		},
 		{
@@ -48,6 +52,10 @@ func TestLoadRuntimeConfigFromStorageBackend(t *testing.T) {
 			flags: map[string]string{
 				"-runtime-config.file":    filePath,
 				"-runtime-config.backend": "filesystem",
+				// alert manager
+				"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+				"-alertmanager-storage.backend":    "local",
+				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 			},
 		},
 		{
@@ -65,6 +73,8 @@ func TestLoadRuntimeConfigFromStorageBackend(t *testing.T) {
 			workDir: "/var/lib/cortex",
 		},
 	}
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -96,7 +106,14 @@ func TestLoadRuntimeConfigFromCloudStorage(t *testing.T) {
 		"-runtime-config.s3.insecure":          "true",
 		"-runtime-config.file":                 configFileName,
 		"-runtime-config.reload-period":        "2s",
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 	}
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
 	// create s3 storage backend
 	minio := e2edb.NewMinio(9000, bucketName)
 	require.NoError(t, s.StartAndWaitReady(minio))

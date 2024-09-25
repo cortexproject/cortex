@@ -135,7 +135,7 @@ func matrixMerge(ctx context.Context, resps []*PrometheusResponse) ([]SampleStre
 }
 
 func vectorMerge(ctx context.Context, req Request, resps []*PrometheusResponse) (*Vector, error) {
-	output := map[string]*Sample{}
+	output := map[string]Sample{}
 	metrics := []string{} // Used to preserve the order for topk and bottomk.
 	sortPlan, err := sortPlanForQuery(req.GetQuery())
 	if err != nil {
@@ -156,9 +156,6 @@ func vectorMerge(ctx context.Context, req Request, resps []*PrometheusResponse) 
 		}
 		for _, sample := range resp.Data.Result.GetVector().Samples {
 			s := sample
-			if s == nil {
-				continue
-			}
 			metric := string(cortexpb.FromLabelAdaptersToLabels(sample.Labels).Bytes(buf))
 			if existingSample, ok := output[metric]; !ok {
 				output[metric] = s
@@ -171,7 +168,7 @@ func vectorMerge(ctx context.Context, req Request, resps []*PrometheusResponse) 
 	}
 
 	result := &Vector{
-		Samples: make([]*Sample, 0, len(output)),
+		Samples: make([]Sample, 0, len(output)),
 	}
 
 	if len(output) == 0 {
@@ -272,7 +269,7 @@ const (
 
 type pair struct {
 	metric string
-	s      *Sample
+	s      Sample
 }
 
 // getSortValueFromPair gets the float value used for sorting from samples.

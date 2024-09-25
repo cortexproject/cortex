@@ -56,11 +56,28 @@ func (resp *PrometheusResponse) HTTPHeaders() map[string][]string {
 }
 
 type prometheusCodec struct {
-	sharded bool
+	tripperware.Codec
+	sharded          bool
+	compression      tripperware.Compression
+	defaultCodecType tripperware.CodecType
 }
 
-func NewPrometheusCodec(sharded bool) *prometheusCodec { //nolint:revive
-	return &prometheusCodec{sharded: sharded}
+func NewPrometheusCodec(sharded bool, compressionStr string, defaultCodecTypeStr string) *prometheusCodec { //nolint:revive
+	compression := tripperware.NonCompression // default
+	if compressionStr == string(tripperware.GzipCompression) {
+		compression = tripperware.GzipCompression
+	}
+
+	defaultCodecType := tripperware.JsonCodecType // default
+	if defaultCodecTypeStr == string(tripperware.ProtobufCodecType) {
+		defaultCodecType = tripperware.ProtobufCodecType
+	}
+
+	return &prometheusCodec{
+		sharded:          sharded,
+		compression:      compression,
+		defaultCodecType: defaultCodecType,
+	}
 }
 
 func (c prometheusCodec) MergeResponse(ctx context.Context, req tripperware.Request, responses ...tripperware.Response) (tripperware.Response, error) {
@@ -135,7 +152,7 @@ func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwa
 	return &result, nil
 }
 
-func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
+func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
 	promReq, ok := r.(*tripperware.PrometheusRequest)
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
@@ -159,8 +176,7 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request)
 		}
 	}
 
-	// Always ask gzip to the querier
-	h.Set("Accept-Encoding", "gzip")
+	tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
 
 	req := &http.Request{
 		Method:     "GET",
@@ -173,7 +189,7 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request)
 	return req.WithContext(ctx), nil
 }
 
-func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
+func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
@@ -192,8 +208,19 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 	log.LogFields(otlog.Int("bytes", len(buf)))
 
 	var resp tripperware.PrometheusResponse
-	if err := json.Unmarshal(buf, &resp); err != nil {
+	err = tripperware.UnmarshalResponse(r, buf, &resp)
+
+	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
+
+	// protobuf serialization treats empty slices as nil
+	if resp.Data.ResultType == model.ValMatrix.String() && resp.Data.Result.GetMatrix().SampleStreams == nil {
+		resp.Data.Result.GetMatrix().SampleStreams = []tripperware.SampleStream{}
+	}
+
+	if resp.Headers == nil {
+		resp.Headers = []*tripperware.PrometheusResponseHeader{}
 	}
 
 	for h, hv := range r.Header {
@@ -225,7 +252,7 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res tripperware.Respo
 
 	resp := http.Response{
 		Header: http.Header{
-			"Content-Type": []string{"application/json"},
+			"Content-Type": []string{tripperware.ApplicationJson},
 		},
 		Body:          io.NopCloser(bytes.NewBuffer(b)),
 		StatusCode:    http.StatusOK,

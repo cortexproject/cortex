@@ -97,7 +97,7 @@ message PrometheusQueryResult {
 }
 
 message Vector {
-  repeated Sample samples = 1;
+  repeated Sample samples = 1 [(gogoproto.nullable) = false];
 }
 
 message Sample {

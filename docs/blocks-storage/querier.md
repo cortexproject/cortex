@@ -109,6 +109,10 @@ querier:
   # CLI flag: -querier.ingester-metadata-streaming
   [ingester_metadata_streaming: <boolean> | default = true]
 
+  # Use LabelNames ingester RPCs with match params.
+  # CLI flag: -querier.ingester-label-names-with-matchers
+  [ingester_label_names_with_matchers: <boolean> | default = false]
+
   # Maximum number of samples a single query can load into memory.
   # CLI flag: -querier.max-samples
   [max_samples: <int> | default = 50000000]
@@ -121,6 +125,11 @@ querier:
   # Enable returning samples stats per steps in query response.
   # CLI flag: -querier.per-step-stats-enabled
   [per_step_stats_enabled: <boolean> | default = false]
+
+  # Use compression for metrics query API or instant and range query APIs.
+  # Supports 'gzip' and '' (disable compression)
+  # CLI flag: -querier.response-compression
+  [response_compression: <string> | default = "gzip"]
 
   # The time after which a metric should be queried from storage and not just
   # ingesters. 0 means all queries are sent to store. When running the blocks
@@ -1414,9 +1423,15 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.stripe-size
     [stripe_size: <int> | default = 16384]
 
-    # True to enable TSDB WAL compression.
+    # Deprecated (use blocks-storage.tsdb.wal-compression-type instead): True to
+    # enable TSDB WAL compression.
     # CLI flag: -blocks-storage.tsdb.wal-compression-enabled
     [wal_compression_enabled: <boolean> | default = false]
+
+    # TSDB WAL type. Supported values are: 'snappy', 'zstd' and '' (disable
+    # compression)
+    # CLI flag: -blocks-storage.tsdb.wal-compression-type
+    [wal_compression_type: <string> | default = ""]
 
     # TSDB WAL segments files max size (bytes).
     # CLI flag: -blocks-storage.tsdb.wal-segment-size-bytes

@@ -81,8 +81,6 @@ const (
 	unknownHealthFilter string = "unknown"
 	okHealthFilter      string = "ok"
 	errHealthFilter     string = "err"
-
-	livenessCheckTimeout = 100 * time.Millisecond
 )
 
 type DisabledRuleGroupErr struct {
@@ -161,7 +159,8 @@ type Config struct {
 	EnableQueryStats      bool `yaml:"query_stats_enabled"`
 	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
 
-	EnableHAEvaluation bool `yaml:"enable_ha_evaluation"`
+	EnableHAEvaluation   bool          `yaml:"enable_ha_evaluation"`
+	LivenessCheckTimeout time.Duration `yaml:"liveness_check_timeout"`
 }
 
 // Validate config and returns error on failure
@@ -238,6 +237,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
 
 	f.BoolVar(&cfg.EnableHAEvaluation, "ruler.enable-ha-evaluation", false, "Enable high availability")
+	f.DurationVar(&cfg.LivenessCheckTimeout, "ruler.liveness-check-timeout", 1*time.Second, "Timeout duration for non-primary rulers during liveness checks. If the check times out, the non-primary ruler will evaluate the rule group. Applicable when ruler.enable-ha-evaluation is true.")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }
@@ -590,7 +590,7 @@ func (r *Ruler) nonPrimaryInstanceOwnsRuleGroup(g *rulespb.RuleGroupDesc, replic
 	responseChan := make(chan *LivenessCheckResponse, len(jobs))
 
 	ctx := user.InjectOrgID(context.Background(), userID)
-	ctx, cancel := context.WithTimeout(ctx, livenessCheckTimeout)
+	ctx, cancel := context.WithTimeout(ctx, r.cfg.LivenessCheckTimeout)
 	defer cancel()
 
 	err := concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {

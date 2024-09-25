@@ -203,6 +203,26 @@ func TestQueryFrontendWithVerticalShardingQueryScheduler(t *testing.T) {
 	})
 }
 
+func TestQueryFrontendProtobufCodec(t *testing.T) {
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: false,
+		querySchedulerEnabled: true,
+		queryStatsEnabled:     true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+
+			minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
+
+			flags = mergeFlags(e2e.EmptyFlags(), map[string]string{
+				"-api.querier-default-codec":    "protobuf",
+				"-querier.response-compression": "gzip",
+			})
+			return cortexConfigFile, flags
+		},
+	})
+}
+
 func TestQueryFrontendRemoteRead(t *testing.T) {
 	runQueryFrontendTest(t, queryFrontendTestConfig{
 		remoteReadEnabled: true,

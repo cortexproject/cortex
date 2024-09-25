@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,10 +23,19 @@ func TestIndexAPIEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
+	configOverrides := map[string]string{
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+	}
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
 	// Start Cortex in single binary mode, reading the config from file.
 	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-local.yaml", cortexConfigFile))
 
-	cortex1 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, nil, "", 9009, 9095)
+	cortex1 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, configOverrides, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex1))
 
 	// GET / should succeed
@@ -44,10 +54,19 @@ func TestConfigAPIEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
+	configOverrides := map[string]string{
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+	}
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
 	// Start Cortex in single binary mode, reading the config from file.
 	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-local.yaml", cortexConfigFile))
 
-	cortex1 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, nil, "", 9009, 9095)
+	cortex1 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, configOverrides, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex1))
 
 	// Get config from /config API endpoint.
@@ -62,6 +81,7 @@ func TestConfigAPIEndpoint(t *testing.T) {
 	// Start again Cortex in single binary with the exported config
 	// and ensure it starts (pass the readiness probe).
 	require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, body))
-	cortex2 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-2", cortexConfigFile, nil, "", 9009, 9095)
+	configOverrides["-alertmanager.cluster.peers"] = cortex1.HTTPEndpoint()
+	cortex2 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-2", cortexConfigFile, configOverrides, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex2))
 }

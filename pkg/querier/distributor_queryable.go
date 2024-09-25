@@ -29,27 +29,29 @@ type Distributor interface {
 	QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error)
 	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName, hint *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error)
 	LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, label model.LabelName, hint *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error)
-	LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error)
-	LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error)
+	LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error)
+	LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error)
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error)
 	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error)
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streamingMetdata bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration) QueryableWithFilter {
 	return distributorQueryable{
-		distributor:          distributor,
-		streamingMetdata:     streamingMetdata,
-		iteratorFn:           iteratorFn,
-		queryIngestersWithin: queryIngestersWithin,
+		distributor:            distributor,
+		streamingMetdata:       streamingMetdata,
+		labelNamesWithMatchers: labelNamesWithMatchers,
+		iteratorFn:             iteratorFn,
+		queryIngestersWithin:   queryIngestersWithin,
 	}
 }
 
 type distributorQueryable struct {
-	distributor          Distributor
-	streamingMetdata     bool
-	iteratorFn           chunkIteratorFunc
-	queryIngestersWithin time.Duration
+	distributor            Distributor
+	streamingMetdata       bool
+	labelNamesWithMatchers bool
+	iteratorFn             chunkIteratorFunc
+	queryIngestersWithin   time.Duration
 }
 
 func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
@@ -58,6 +60,7 @@ func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error)
 		mint:                 mint,
 		maxt:                 maxt,
 		streamingMetadata:    d.streamingMetdata,
+		labelNamesMatchers:   d.labelNamesWithMatchers,
 		chunkIterFn:          d.iteratorFn,
 		queryIngestersWithin: d.queryIngestersWithin,
 	}, nil
@@ -72,6 +75,7 @@ type distributorQuerier struct {
 	distributor          Distributor
 	mint, maxt           int64
 	streamingMetadata    bool
+	labelNamesMatchers   bool
 	chunkIterFn          chunkIteratorFunc
 	queryIngestersWithin time.Duration
 }
@@ -180,7 +184,7 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 }
 
 func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	if len(matchers) > 0 {
+	if len(matchers) > 0 && !q.labelNamesMatchers {
 		return q.labelNamesWithMatchers(ctx, hints, matchers...)
 	}
 
@@ -193,9 +197,9 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 	)
 
 	if q.streamingMetadata {
-		ln, err = q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt), hints)
+		ln, err = q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt), hints, matchers...)
 	} else {
-		ln, err = q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt), hints)
+		ln, err = q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt), hints, matchers...)
 	}
 
 	return ln, nil, err

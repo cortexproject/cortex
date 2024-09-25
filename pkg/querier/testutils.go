@@ -41,12 +41,12 @@ func (m *MockDistributor) LabelValuesForLabelNameStream(ctx context.Context, fro
 	args := m.Called(ctx, from, to, lbl, hints, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) LabelNames(ctx context.Context, from, to model.Time, hints *storage.LabelHints) ([]string, error) {
-	args := m.Called(ctx, from, to, hints)
+func (m *MockDistributor) LabelNames(ctx context.Context, from, to model.Time, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
+	args := m.Called(ctx, from, to, hints, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) LabelNamesStream(ctx context.Context, from, to model.Time, hints *storage.LabelHints) ([]string, error) {
-	args := m.Called(ctx, from, to, hints)
+func (m *MockDistributor) LabelNamesStream(ctx context.Context, from, to model.Time, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
+	args := m.Called(ctx, from, to, hints, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
 func (m *MockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {

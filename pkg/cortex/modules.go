@@ -456,9 +456,9 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
 	queryAnalyzer := querysharding.NewQueryAnalyzer()
 	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
-	prometheusCodec := queryrange.NewPrometheusCodec(false)
+	prometheusCodec := queryrange.NewPrometheusCodec(false, t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
-	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true)
+	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
@@ -486,7 +486,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryRangeMiddlewares,
 		instantQueryMiddlewares,
 		prometheusCodec,
-		instantquery.InstantQueryCodec,
+		instantquery.NewInstantQueryCodec(t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec),
 		t.Overrides,
 		queryAnalyzer,
 		t.Cfg.Querier.DefaultEvaluationInterval,
@@ -802,7 +802,7 @@ func (t *Cortex) setupModuleManager() error {
 		TenantDeletion:           {API, Overrides},
 		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},
-		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler},
+		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler, Compactor, AlertManager},
 	}
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
 		deps[Ruler] = []string{Overrides, RulerStorage}

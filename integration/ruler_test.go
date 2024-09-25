@@ -154,7 +154,13 @@ func TestRulerAPISingleBinary(t *testing.T) {
 		"-ruler-storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
 		"-ruler.poll-interval":           "2s",
 		"-ruler.rule-path":               filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 	}
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	// Start Cortex components.
 	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-local.yaml", cortexConfigFile))

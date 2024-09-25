@@ -60,12 +60,20 @@ var (
 		Query:          "sum(container_memory_rss) by (namespace)",
 		CachingOptions: tripperware.CachingOptions{Disabled: true},
 	}
-	respHeaders = []*tripperware.PrometheusResponseHeader{
+	respHeadersJson = []*tripperware.PrometheusResponseHeader{
 		{
 			Name:   "Content-Type",
-			Values: []string{"application/json"},
+			Values: []string{tripperware.ApplicationJson},
 		},
 	}
+
+	respHeadersProtobuf = []*tripperware.PrometheusResponseHeader{
+		{
+			Name:   "Content-Type",
+			Values: []string{tripperware.ApplicationProtobuf},
+		},
+	}
+
 	parsedResponse = &tripperware.PrometheusResponse{
 		Status: "success",
 		Data: tripperware.PrometheusData{
@@ -114,6 +122,7 @@ var (
 			},
 		},
 	}
+
 	parsedResponseWithInfos = &tripperware.PrometheusResponse{
 		Status: "success",
 		Infos:  []string{"PromQL info: metric might not be a counter, name does not end in _total/_sum/_count/_bucket: \"go_gc_gogc_percent\" (1:6)"},

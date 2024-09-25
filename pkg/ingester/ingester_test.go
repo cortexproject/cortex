@@ -5564,7 +5564,7 @@ func CreateBlock(t *testing.T, ctx context.Context, dir string, mint, maxt int64
 
 	var ref storage.SeriesRef
 	start := (maxt-mint)/2 + mint
-	ref, err = app.Append(ref, labels.Labels{labels.Label{Name: "test_label", Value: "test_value"}}, start, float64(1))
+	_, err = app.Append(ref, labels.Labels{labels.Label{Name: "test_label", Value: "test_value"}}, start, float64(1))
 	require.NoError(t, err)
 	err = app.Commit()
 	require.NoError(t, err)

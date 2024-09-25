@@ -12,6 +12,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/golang/snappy"
+
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
@@ -34,6 +36,18 @@ var (
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: false,
 	}.Froze()
+)
+
+type CodecType string
+type Compression string
+
+const (
+	GzipCompression     Compression = "gzip"
+	NonCompression      Compression = ""
+	JsonCodecType       CodecType   = "json"
+	ProtobufCodecType   CodecType   = "protobuf"
+	ApplicationProtobuf string      = "application/x-protobuf"
+	ApplicationJson     string      = "application/json"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
@@ -455,6 +469,9 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 		defer runutil.CloseWithLogOnErr(logger, gReader, "close gzip reader")
 
 		return io.ReadAll(gReader)
+	} else if strings.EqualFold(res.Header.Get("Content-Encoding"), "snappy") {
+		sReader := snappy.NewReader(buf)
+		return io.ReadAll(sReader)
 	}
 
 	return buf.Bytes(), nil
@@ -494,7 +511,7 @@ func (s *PrometheusData) UnmarshalJSON(data []byte) error {
 	switch s.ResultType {
 	case model.ValVector.String():
 		var result struct {
-			Samples []*Sample `json:"result"`
+			Samples []Sample `json:"result"`
 		}
 		if err := json.Unmarshal(data, &result); err != nil {
 			return err
@@ -530,7 +547,7 @@ func (s *PrometheusData) MarshalJSON() ([]byte, error) {
 	case model.ValVector.String():
 		res := struct {
 			ResultType string                   `json:"resultType"`
-			Data       []*Sample                `json:"result"`
+			Data       []Sample                 `json:"result"`
 			Stats      *PrometheusResponseStats `json:"stats,omitempty"`
 		}{
 			ResultType: s.ResultType,
@@ -720,4 +737,35 @@ func marshalHistogramBucket(b HistogramBucket, stream *jsoniter.Stream) {
 	stream.WriteMore()
 	jsonutil.MarshalFloat(b.Count, stream)
 	stream.WriteArrayEnd()
+}
+
+func (s *PrometheusResponseStats) MarshalJSON() ([]byte, error) {
+	stats := struct {
+		Samples *PrometheusResponseSamplesStats `json:"samples"`
+	}{
+		Samples: s.Samples,
+	}
+	if s.Samples.TotalQueryableSamplesPerStep == nil {
+		s.Samples.TotalQueryableSamplesPerStep = []*PrometheusResponseQueryableSamplesStatsPerStep{}
+	}
+	return json.Marshal(stats)
+}
+
+func SetRequestHeaders(h http.Header, defaultCodecType CodecType, compression Compression) {
+	if compression == GzipCompression {
+		h.Set("Accept-Encoding", string(GzipCompression))
+	}
+	if defaultCodecType == ProtobufCodecType {
+		h.Set("Accept", ApplicationProtobuf+", "+ApplicationJson)
+	} else {
+		h.Set("Accept", ApplicationJson)
+	}
+}
+
+func UnmarshalResponse(r *http.Response, buf []byte, resp *PrometheusResponse) error {
+	if r.Header != nil && r.Header.Get("Content-Type") == ApplicationProtobuf {
+		return proto.Unmarshal(buf, resp)
+	} else {
+		return json.Unmarshal(buf, resp)
+	}
 }

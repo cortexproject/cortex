@@ -62,6 +62,10 @@ func TestLoadRuntimeConfigFromStorageBackend(t *testing.T) {
 			name: "runtime-config.file is a relative path",
 			flags: map[string]string{
 				"-runtime-config.file": runtimeConfigFile,
+				// alert manager
+				"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+				"-alertmanager-storage.backend":    "local",
+				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 			},
 			workDir: e2e.ContainerSharedDir,
 		},
@@ -69,6 +73,10 @@ func TestLoadRuntimeConfigFromStorageBackend(t *testing.T) {
 			name: "runtime-config.file is an absolute path but working directory is not /",
 			flags: map[string]string{
 				"-runtime-config.file": filePath,
+				// alert manager
+				"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+				"-alertmanager-storage.backend":    "local",
+				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 			},
 			workDir: "/var/lib/cortex",
 		},

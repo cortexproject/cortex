@@ -309,6 +309,8 @@ type userTSDB struct {
 	// Used to dedup strings and keep a single reference in memory
 	labelsStringInterningEnabled bool
 	interner                     util.Interner
+
+	blockRetentionPeriod int64
 }
 
 // Explicitly wrapping the tsdb.DB functions that we use.
@@ -470,6 +472,14 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 		return nil
 	}
 	deletable := tsdb.DefaultBlocksToDelete(u.db)(blocks)
+
+	now := time.Now().UnixMilli()
+	for _, b := range blocks {
+		if now-b.MaxTime() >= u.blockRetentionPeriod {
+			deletable[b.Meta().ULID] = struct{}{}
+		}
+	}
+
 	if u.shipper == nil {
 		return deletable
 	}
@@ -2152,6 +2162,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		instanceSeriesCount:          &i.TSDBState.seriesCount,
 		interner:                     util.NewInterner(),
 		labelsStringInterningEnabled: i.cfg.LabelsStringInterningEnabled,
+
+		blockRetentionPeriod: i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
 	}
 
 	enableExemplars := false

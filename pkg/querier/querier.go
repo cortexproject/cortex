@@ -431,7 +431,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 
 // LabelValues implements storage.Querier.
 func (q querier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, _, _, _, _, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, _, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -441,6 +441,14 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 	defer func() {
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
+
+	startTime := model.Time(mint)
+	endTime := model.Time(maxt)
+
+	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
+		limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
+		return nil, nil, limitErr
+	}
 
 	if len(queriers) == 1 {
 		return queriers[0].LabelValues(ctx, name, hints, matchers...)
@@ -481,7 +489,7 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 }
 
 func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, _, _, _, _, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, _, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -491,6 +499,14 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 	defer func() {
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
+
+	startTime := model.Time(mint)
+	endTime := model.Time(maxt)
+
+	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
+		limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
+		return nil, nil, limitErr
+	}
 
 	if len(queriers) == 1 {
 		return queriers[0].LabelNames(ctx, hints, matchers...)

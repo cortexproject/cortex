@@ -10,7 +10,7 @@ import (
 )
 
 func TestTokens_Serialization(t *testing.T) {
-	tokens := make(Tokens, 512)
+	tokens := make(Tokens, 0, 512)
 	for i := 0; i < 512; i++ {
 		tokens = append(tokens, uint32(rand.Int31()))
 	}

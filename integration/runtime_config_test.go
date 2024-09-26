@@ -33,8 +33,9 @@ func TestLoadRuntimeConfigFromStorageBackend(t *testing.T) {
 
 	filePath := filepath.Join(e2e.ContainerSharedDir, runtimeConfigFile)
 	tests := []struct {
-		name  string
-		flags map[string]string
+		name    string
+		flags   map[string]string
+		workDir string
 	}{
 		{
 			name: "no storage backend provided",
@@ -57,6 +58,28 @@ func TestLoadRuntimeConfigFromStorageBackend(t *testing.T) {
 				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 			},
 		},
+		{
+			name: "runtime-config.file is a relative path",
+			flags: map[string]string{
+				"-runtime-config.file": runtimeConfigFile,
+				// alert manager
+				"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+				"-alertmanager-storage.backend":    "local",
+				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+			},
+			workDir: e2e.ContainerSharedDir,
+		},
+		{
+			name: "runtime-config.file is an absolute path but working directory is not /",
+			flags: map[string]string{
+				"-runtime-config.file": filePath,
+				// alert manager
+				"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+				"-alertmanager-storage.backend":    "local",
+				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+			},
+			workDir: "/var/lib/cortex",
+		},
 	}
 	// make alert manager config dir
 	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
@@ -64,6 +87,8 @@ func TestLoadRuntimeConfigFromStorageBackend(t *testing.T) {
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cortexSvc := e2ecortex.NewSingleBinaryWithConfigFile(fmt.Sprintf("cortex-%d", i), cortexConfigFile, tt.flags, "", 9009, 9095)
+			cortexSvc.SetWorkDir(tt.workDir)
+
 			require.NoError(t, s.StartAndWaitReady(cortexSvc))
 
 			assertRuntimeConfigLoadedCorrectly(t, cortexSvc)

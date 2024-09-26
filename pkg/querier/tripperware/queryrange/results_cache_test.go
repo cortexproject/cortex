@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -148,6 +149,12 @@ var (
 		},
 	}
 )
+
+func sortPrometheusResponseHeader(headers []*tripperware.PrometheusResponseHeader) {
+	sort.Slice(headers, func(i, j int) bool {
+		return headers[i].Name < headers[j].Name
+	})
+}
 
 func mkAPIResponse(start, end, step int64) tripperware.Response {
 	return mkAPIResponseWithStats(start, end, step, false, false)

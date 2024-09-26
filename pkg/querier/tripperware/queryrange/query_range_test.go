@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -22,6 +23,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
+
+func sortPrometheusResponseHeader(headers []*tripperware.PrometheusResponseHeader) {
+	sort.Slice(headers, func(i, j int) bool {
+		return headers[i].Name < headers[j].Name
+	})
+}
 
 func TestRequest(t *testing.T) {
 	t.Parallel()

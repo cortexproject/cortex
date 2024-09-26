@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -22,6 +23,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
+
+func sortPrometheusResponseHeader(headers []*tripperware.PrometheusResponseHeader) {
+	sort.Slice(headers, func(i, j int) bool {
+		return headers[i].Name < headers[j].Name
+	})
+}
 
 func TestRequest(t *testing.T) {
 	t.Parallel()
@@ -1263,10 +1270,11 @@ func TestCompressedResponse(t *testing.T) {
 				h.Set("Content-Type", tripperware.ApplicationJson)
 			}
 
-			h.Set("Content-Encoding", tc.compression)
 			if tc.promBody != nil {
-				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Encoding", Values: []string{"gzip"}})
+				tc.promBody.Headers = append(tc.promBody.Headers, &tripperware.PrometheusResponseHeader{Name: "Content-Encoding", Values: []string{tc.compression}})
 			}
+			h.Set("Content-Encoding", tc.compression)
+
 			responseBody := &bytes.Buffer{}
 			w := gzip.NewWriter(responseBody)
 			_, err := w.Write(b)
@@ -1283,7 +1291,9 @@ func TestCompressedResponse(t *testing.T) {
 
 			if err == nil {
 				require.NoError(t, err)
-				require.Equal(t, tc.promBody.Data, resp.(*tripperware.PrometheusResponse).Data)
+				sortPrometheusResponseHeader(tc.promBody.Headers)
+				sortPrometheusResponseHeader(resp.(*tripperware.PrometheusResponse).Headers)
+				require.Equal(t, tc.promBody, resp)
 			}
 		})
 	}

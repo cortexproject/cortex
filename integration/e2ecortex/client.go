@@ -231,6 +231,73 @@ func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics 
 	return metrics
 }
 
+func otlpWriteRequest(name string) pmetricotlp.ExportRequest {
+	d := pmetric.NewMetrics()
+
+	// Generate One Counter, One Gauge, One Histogram, One Exponential-Histogram
+	// with resource attributes: service.name="test-service", service.instance.id="test-instance", host.name="test-host"
+	// with metric attibute: foo.bar="baz"
+
+	timestamp := time.Now()
+
+	resourceMetric := d.ResourceMetrics().AppendEmpty()
+	resourceMetric.Resource().Attributes().PutStr("service.name", "test-service")
+	resourceMetric.Resource().Attributes().PutStr("service.instance.id", "test-instance")
+	resourceMetric.Resource().Attributes().PutStr("host.name", "test-host")
+
+	scopeMetric := resourceMetric.ScopeMetrics().AppendEmpty()
+
+	// Generate One Counter
+	counterMetric := scopeMetric.Metrics().AppendEmpty()
+	counterMetric.SetName(name)
+	counterMetric.SetDescription("test-counter-description")
+
+	counterMetric.SetEmptySum()
+	counterMetric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+
+	counterDataPoint := counterMetric.Sum().DataPoints().AppendEmpty()
+	counterDataPoint.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
+	counterDataPoint.SetDoubleValue(10.0)
+	counterDataPoint.Attributes().PutStr("foo.bar", "baz")
+
+	counterExemplar := counterDataPoint.Exemplars().AppendEmpty()
+	counterExemplar.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
+	counterExemplar.SetDoubleValue(10.0)
+	counterExemplar.SetSpanID(pcommon.SpanID{0, 1, 2, 3, 4, 5, 6, 7})
+	counterExemplar.SetTraceID(pcommon.TraceID{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
+
+	return pmetricotlp.NewExportRequestFromMetrics(d)
+}
+
+func (c *Client) OTLPPushExemplar(name string) (*http.Response, error) {
+	data, err := otlpWriteRequest(name).MarshalProto()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/api/v1/otlp/v1/metrics", c.distributorAddress), bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+	req.Header.Set("Content-Type", "application/x-protobuf")
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+
+	return res, nil
+}
+
 // Push series to OTLP endpoint
 func (c *Client) OTLP(timeseries []prompb.TimeSeries) (*http.Response, error) {
 
@@ -265,6 +332,13 @@ func (c *Client) OTLP(timeseries []prompb.TimeSeries) (*http.Response, error) {
 func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 	value, _, err := c.querierClient.Query(context.Background(), query, ts)
 	return value, err
+}
+
+// QueryExemplars runs an exemplars query
+func (c *Client) QueryExemplars(query string, start, end time.Time) ([]promv1.ExemplarQueryResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	return c.querierClient.QueryExemplars(ctx, query, start, end)
 }
 
 // QueryRange runs a query range.

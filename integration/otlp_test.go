@@ -98,3 +98,49 @@ func TestOTLP(t *testing.T) {
 	require.Equal(t, float64(expectedHistogram.Count), float64(v[0].Histogram.Count))
 	require.Equal(t, expectedHistogram.Sum, float64(v[0].Histogram.Sum))
 }
+
+func TestOTLPIngestExemplar(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	minio := e2edb.NewMinio(9000, bucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	// Start Cortex components.
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks.yaml", cortexConfigFile))
+
+	// Start Cortex in single binary mode, reading the config from file and overwriting
+	// the backend config to make it work with Minio.
+	flags := map[string]string{
+		"-blocks-storage.s3.access-key-id":              e2edb.MinioAccessKey,
+		"-blocks-storage.s3.secret-access-key":          e2edb.MinioSecretKey,
+		"-blocks-storage.s3.bucket-name":                bucketName,
+		"-blocks-storage.s3.endpoint":                   fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-blocks-storage.s3.insecure":                   "true",
+		"-blocks-storage.tsdb.enable-native-histograms": "true",
+		"-ingester.max-exemplars":                       "100",
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+	}
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, flags, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	res, err := c.OTLPPushExemplar("exemplar_1")
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	now := time.Now()
+	exemplars, err := c.QueryExemplars("exemplar_1", now.Add(-time.Minute), now.Add(time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(exemplars))
+}

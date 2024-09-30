@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alecthomas/units"
 	"github.com/go-kit/log"
 	"github.com/golang/snappy"
 	"github.com/oklog/ulid"
@@ -18,22 +19,28 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/cache"
 	"github.com/thanos-io/thanos/pkg/cacheutil"
+	"github.com/thanos-io/thanos/pkg/model"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+)
+
+var (
+	errUnsupportedChunkCacheBackend = errors.New("unsupported chunk cache backend")
 )
 
 const (
 	CacheBackendMemcached = "memcached"
 	CacheBackendRedis     = "redis"
+	CacheBackendInMemory  = "inmemory"
 )
 
-type CacheBackend struct {
+type MetadataCacheBackend struct {
 	Backend   string                `yaml:"backend"`
 	Memcached MemcachedClientConfig `yaml:"memcached"`
 	Redis     RedisClientConfig     `yaml:"redis"`
 }
 
 // Validate the config.
-func (cfg *CacheBackend) Validate() error {
+func (cfg *MetadataCacheBackend) Validate() error {
 	switch cfg.Backend {
 	case CacheBackendMemcached:
 		return cfg.Memcached.Validate()
@@ -46,8 +53,29 @@ func (cfg *CacheBackend) Validate() error {
 	return nil
 }
 
+type ChunkCacheBackend struct {
+	Backend   string                   `yaml:"backend"`
+	InMemory  InMemoryChunkCacheConfig `yaml:"inmemory"`
+	Memcached MemcachedClientConfig    `yaml:"memcached"`
+	Redis     RedisClientConfig        `yaml:"redis"`
+}
+
+// Validate the config.
+func (cfg *ChunkCacheBackend) Validate() error {
+	switch cfg.Backend {
+	case CacheBackendMemcached:
+		return cfg.Memcached.Validate()
+	case CacheBackendRedis:
+		return cfg.Redis.Validate()
+	case CacheBackendInMemory, "":
+	default:
+		return errUnsupportedChunkCacheBackend
+	}
+	return nil
+}
+
 type ChunksCacheConfig struct {
-	CacheBackend `yaml:",inline"`
+	ChunkCacheBackend `yaml:",inline"`
 
 	SubrangeSize        int64         `yaml:"subrange_size"`
 	MaxGetRangeRequests int           `yaml:"max_get_range_requests"`
@@ -56,10 +84,11 @@ type ChunksCacheConfig struct {
 }
 
 func (cfg *ChunksCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for chunks cache, if not empty. Supported values: %s.", CacheBackendMemcached))
+	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for chunks cache, if not empty. Supported values: %s, %s, %s, and '' (disable).", CacheBackendMemcached, CacheBackendRedis, CacheBackendInMemory))
 
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 	cfg.Redis.RegisterFlagsWithPrefix(f, prefix+"redis.")
+	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.")
 
 	f.Int64Var(&cfg.SubrangeSize, prefix+"subrange-size", 16000, "Size of each subrange that bucket object is split into for better caching.")
 	f.IntVar(&cfg.MaxGetRangeRequests, prefix+"max-get-range-requests", 3, "Maximum number of sub-GetRange requests that a single GetRange request can be split into when fetching chunks. Zero or negative value = unlimited number of sub-requests.")
@@ -68,11 +97,34 @@ func (cfg *ChunksCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix st
 }
 
 func (cfg *ChunksCacheConfig) Validate() error {
-	return cfg.CacheBackend.Validate()
+	return cfg.ChunkCacheBackend.Validate()
+}
+
+type InMemoryChunkCacheConfig struct {
+	MaxSizeBytes uint64 `yaml:"max_size_bytes"`
+}
+
+func (cfg *InMemoryChunkCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	f.Uint64Var(&cfg.MaxSizeBytes, prefix+"max-size-bytes", uint64(1*units.Gibibyte), "Maximum size in bytes of in-memory chunk cache used to speed up chunk lookups (shared between all tenants).")
+}
+
+func (cfg *InMemoryChunkCacheConfig) toInMemoryChunkCacheConfig() cache.InMemoryCacheConfig {
+	maxCacheSize := model.Bytes(cfg.MaxSizeBytes)
+
+	// Calculate the max item size.
+	maxItemSize := defaultMaxItemSize
+	if maxItemSize > maxCacheSize {
+		maxItemSize = maxCacheSize
+	}
+
+	return cache.InMemoryCacheConfig{
+		MaxSize:     maxCacheSize,
+		MaxItemSize: maxItemSize,
+	}
 }
 
 type MetadataCacheConfig struct {
-	CacheBackend `yaml:",inline"`
+	MetadataCacheBackend `yaml:",inline"`
 
 	TenantsListTTL          time.Duration `yaml:"tenants_list_ttl"`
 	TenantBlocksListTTL     time.Duration `yaml:"tenant_blocks_list_ttl"`
@@ -107,14 +159,14 @@ func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix 
 }
 
 func (cfg *MetadataCacheConfig) Validate() error {
-	return cfg.CacheBackend.Validate()
+	return cfg.MetadataCacheBackend.Validate()
 }
 
 func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig MetadataCacheConfig, matchers Matchers, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
 	cfg := cache.NewCachingBucketConfig()
 	cachingConfigured := false
 
-	chunksCache, err := createCache("chunks-cache", &chunksConfig.CacheBackend, logger, reg)
+	chunksCache, err := createChunkCache("chunks-cache", &chunksConfig.ChunkCacheBackend, logger, reg)
 	if err != nil {
 		return nil, errors.Wrapf(err, "chunks-cache")
 	}
@@ -124,7 +176,7 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 		cfg.CacheGetRange("chunks", chunksCache, matchers.GetChunksMatcher(), chunksConfig.SubrangeSize, chunksConfig.AttributesTTL, chunksConfig.SubrangeTTL, chunksConfig.MaxGetRangeRequests)
 	}
 
-	metadataCache, err := createCache("metadata-cache", &metadataConfig.CacheBackend, logger, reg)
+	metadataCache, err := createMetadataCache("metadata-cache", &metadataConfig.MetadataCacheBackend, logger, reg)
 	if err != nil {
 		return nil, errors.Wrapf(err, "metadata-cache")
 	}
@@ -152,12 +204,42 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 	return storecache.NewCachingBucket(bkt, cfg, logger, reg)
 }
 
-func createCache(cacheName string, cacheBackend *CacheBackend, logger log.Logger, reg prometheus.Registerer) (cache.Cache, error) {
+func createMetadataCache(cacheName string, cacheBackend *MetadataCacheBackend, logger log.Logger, reg prometheus.Registerer) (cache.Cache, error) {
 	switch cacheBackend.Backend {
 	case "":
 		// No caching.
 		return nil, nil
+	case CacheBackendMemcached:
+		var client cacheutil.MemcachedClient
+		client, err := cacheutil.NewMemcachedClientWithConfig(logger, cacheName, cacheBackend.Memcached.ToMemcachedClientConfig(), reg)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create memcached client")
+		}
+		return cache.NewMemcachedCache(cacheName, logger, client, reg), nil
 
+	case CacheBackendRedis:
+		redisCache, err := cacheutil.NewRedisClientWithConfig(logger, cacheName, cacheBackend.Redis.ToRedisClientConfig(), reg)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create redis client")
+		}
+		return cache.NewRedisCache(cacheName, logger, redisCache, reg), nil
+
+	default:
+		return nil, errors.Errorf("unsupported cache type for cache %s: %s", cacheName, cacheBackend.Backend)
+	}
+}
+
+func createChunkCache(cacheName string, cacheBackend *ChunkCacheBackend, logger log.Logger, reg prometheus.Registerer) (cache.Cache, error) {
+	switch cacheBackend.Backend {
+	case "":
+		// No caching.
+		return nil, nil
+	case CacheBackendInMemory:
+		inMemoryCache, err := cache.NewInMemoryCacheWithConfig(cacheName, logger, reg, cacheBackend.InMemory.toInMemoryChunkCacheConfig())
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create in-memory chunk cache")
+		}
+		return inMemoryCache, nil
 	case CacheBackendMemcached:
 		var client cacheutil.MemcachedClient
 		client, err := cacheutil.NewMemcachedClientWithConfig(logger, cacheName, cacheBackend.Memcached.ToMemcachedClientConfig(), reg)

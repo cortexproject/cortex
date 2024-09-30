@@ -2,10 +2,11 @@
 
 ## master / unreleased
 
-* [FEATURE] Query Frontend/Querier: Add protobuf codec `-api.querier-default-codec` and the option to choose response compression type `-querier.response-compression`. #5527
 * [CHANGE] Enable Compactor and Alertmanager in target all. #6204
+* [FEATURE] Query Frontend/Querier: Add protobuf codec `-api.querier-default-codec` and the option to choose response compression type `-querier.response-compression`. #5527
 * [FEATURE] Ruler: Experimental: Add `ruler.frontend-address` to allow query to query frontends instead of ingesters. #6151
 * [FEATURE] Ruler: Minimize chances of missed rule group evaluations that can occur due to OOM kills, bad underlying nodes, or due to an unhealthy ruler that appears in the ring as healthy. This feature is enabled via `-ruler.enable-ha-evaluation` flag. #6129
+* [FEATURE] Store Gateway: Add an in-memory chunk cache. #6245
 * [ENHANCEMENT] Ingester: Add `blocks-storage.tsdb.wal-compression-type` to support zstd wal compression type. #6232
 * [ENHANCEMENT] Query Frontend: Add info field to query response. #6207
 * [ENHANCEMENT] Query Frontend: Add peakSample in query stats response. #6188

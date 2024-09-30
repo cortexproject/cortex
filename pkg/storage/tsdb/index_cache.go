@@ -208,7 +208,7 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 		case IndexCacheBackendInMemory:
 			c, err := newInMemoryIndexCache(cfg.InMemory, logger, iReg)
 			if err != nil {
-				return c, err
+				return nil, err
 			}
 			caches = append(caches, c)
 			enabledItems = append(enabledItems, cfg.InMemory.EnabledItems)

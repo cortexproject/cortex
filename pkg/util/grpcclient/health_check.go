@@ -32,7 +32,7 @@ type HealthCheckConfig struct {
 
 // RegisterFlagsWithPrefix for Config.
 func (cfg *HealthCheckConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&cfg.UnhealthyThreshold, prefix+".unhealthy-threshold", 3, "The number of consecutive failed health checks required before considering a target unhealthy. 0 means disabled.")
+	f.IntVar(&cfg.UnhealthyThreshold, prefix+".unhealthy-threshold", 0, "The number of consecutive failed health checks required before considering a target unhealthy. 0 means disabled.")
 	f.DurationVar(&cfg.Timeout, prefix+".timeout", 1*time.Second, "The amount of time during which no response from a target means a failed health check.")
 	f.DurationVar(&cfg.Interval, prefix+".interval", 5*time.Second, "The approximate amount of time between health checks of an individual target.")
 }
@@ -103,7 +103,7 @@ func (h *HealthCheckInterceptors) registeredInstances() []*healthCheckEntry {
 }
 
 func (h *HealthCheckInterceptors) iteration(ctx context.Context) error {
-	level.Warn(h.logger).Log("msg", "Performing health check", "registeredInstances", len(h.registeredInstances()))
+	level.Debug(h.logger).Log("msg", "Performing health check", "registeredInstances", len(h.registeredInstances()))
 	for _, instance := range h.registeredInstances() {
 		dialOpts, err := instance.clientConfig.Config.DialOption(nil, nil)
 		if err != nil {
@@ -125,6 +125,7 @@ func (h *HealthCheckInterceptors) iteration(ctx context.Context) error {
 		if time.Since(instance.lastCheckTime.Load()) < instance.clientConfig.HealthCheckConfig.Interval {
 			continue
 		}
+
 		instance.lastCheckTime.Store(time.Now())
 
 		go func(i *healthCheckEntry) {

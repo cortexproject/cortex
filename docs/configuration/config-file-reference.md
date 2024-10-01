@@ -3110,7 +3110,7 @@ grpc_client_config:
     # The approximate amount of time between health checks of an individual
     # target.
     # CLI flag: -ingester.client.interval
-    [interval: <duration> | default = 1s]
+    [interval: <duration> | default = 5s]
 
     # The amount of time during which no response from a target means a failed
     # health check.
@@ -3844,7 +3844,7 @@ store_gateway_client:
     # The approximate amount of time between health checks of an individual
     # target.
     # CLI flag: -querier.store-gateway-client.interval
-    [interval: <duration> | default = 1s]
+    [interval: <duration> | default = 5s]
 
     # The amount of time during which no response from a target means a failed
     # health check.

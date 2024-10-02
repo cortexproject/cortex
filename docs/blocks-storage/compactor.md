@@ -292,7 +292,7 @@ compactor:
   # How long compaction visit marker file should be considered as expired and
   # able to be picked up by compactor again.
   # CLI flag: -compactor.compaction-visit-marker-timeout
-  [compaction_visit_marker_timeout: <duration> | default = 1m30s]
+  [compaction_visit_marker_timeout: <duration> | default = 10m]
 
   # How frequently compaction visit marker file should be updated duration
   # compaction.

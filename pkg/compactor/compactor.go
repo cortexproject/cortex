@@ -296,7 +296,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "compactor.disabled-tenants", "Comma separated list of tenants that cannot be compacted by this compactor. If specified, and compactor would normally pick given tenant for compaction (via -compactor.enabled-tenants or sharding), it will be ignored instead.")
 
-	f.DurationVar(&cfg.CompactionVisitMarkerTimeout, "compactor.compaction-visit-marker-timeout", 90*time.Second, "How long compaction visit marker file should be considered as expired and able to be picked up by compactor again.")
+	f.DurationVar(&cfg.CompactionVisitMarkerTimeout, "compactor.compaction-visit-marker-timeout", 10*time.Minute, "How long compaction visit marker file should be considered as expired and able to be picked up by compactor again.")
 	f.DurationVar(&cfg.CompactionVisitMarkerFileUpdateInterval, "compactor.compaction-visit-marker-file-update-interval", 1*time.Minute, "How frequently compaction visit marker file should be updated duration compaction.")
 
 	f.DurationVar(&cfg.CleanerVisitMarkerTimeout, "compactor.cleaner-visit-marker-timeout", 10*time.Minute, "How long cleaner visit marker file should be considered as expired and able to be picked up by cleaner again. The value should be smaller than -compactor.cleanup-interval")

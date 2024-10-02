@@ -8,6 +8,57 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func Test_ChunkCacheBackendValidation(t *testing.T) {
+	tests := map[string]struct {
+		cfg         ChunkCacheBackend
+		expectedErr error
+	}{
+		"valid chunk cache type ('')": {
+			cfg: ChunkCacheBackend{
+				Backend: "",
+			},
+			expectedErr: nil,
+		},
+		"valid chunk cache type (in-memory)": {
+			cfg: ChunkCacheBackend{
+				Backend: CacheBackendInMemory,
+			},
+			expectedErr: nil,
+		},
+		"valid chunk cache type (memcached)": {
+			cfg: ChunkCacheBackend{
+				Backend: CacheBackendMemcached,
+				Memcached: MemcachedClientConfig{
+					Addresses: "dns+localhost:11211",
+				},
+			},
+			expectedErr: nil,
+		},
+		"valid chunk cache type (redis)": {
+			cfg: ChunkCacheBackend{
+				Backend: CacheBackendRedis,
+				Redis: RedisClientConfig{
+					Addresses: "localhost:6379",
+				},
+			},
+			expectedErr: nil,
+		},
+		"invalid chunk cache type": {
+			cfg: ChunkCacheBackend{
+				Backend: "dummy",
+			},
+			expectedErr: errUnsupportedChunkCacheBackend,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			assert.Equal(t, tc.expectedErr, err)
+		})
+	}
+}
+
 func TestIsTenantDir(t *testing.T) {
 	assert.False(t, isTenantBlocksDir(""))
 	assert.True(t, isTenantBlocksDir("test"))

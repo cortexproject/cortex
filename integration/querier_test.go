@@ -97,6 +97,19 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
 			bucketIndexEnabled:     true,
 		},
+		"blocks default sharding, in-memory chunk cache": {
+			blocksShardingStrategy: "default",
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
+		"blocks shuffle sharding, in-memory chunk cache": {
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
 	}
 
 	for testName, testCfg := range tests {

@@ -788,9 +788,16 @@ blocks_storage:
         [max_backfill_items: <int> | default = 10000]
 
     chunks_cache:
-      # Backend for chunks cache, if not empty. Supported values: memcached.
+      # Backend for chunks cache, if not empty. Supported values: memcached,
+      # redis, inmemory, and '' (disable).
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
       [backend: <string> | default = ""]
+
+      inmemory:
+        # Maximum size in bytes of in-memory chunk cache used to speed up chunk
+        # lookups (shared between all tenants).
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.inmemory.max-size-bytes
+        [max_size_bytes: <int> | default = 1073741824]
 
       memcached:
         # Comma separated list of memcached addresses. Supported prefixes are:

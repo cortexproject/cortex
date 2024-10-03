@@ -129,8 +129,10 @@ func MergeSortedSlices(ctx context.Context, a ...[]string) ([]string, error) {
 
 	r := make([]string, 0, sumLengh*2/10)
 	var current string
+	cnt := 0
 	for lt.Next() {
-		if ctx.Err() != nil {
+		cnt++
+		if cnt%CheckContextEveryNIterations == 0 && ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		if lt.At() != current {

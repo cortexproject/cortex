@@ -1135,7 +1135,8 @@ blocks_storage:
       [subrange_ttl: <duration> | default = 24h]
 
     metadata_cache:
-      # Backend for metadata cache, if not empty. Supported values: memcached.
+      # Backend for metadata cache, if not empty. Supported values: memcached,
+      # redis, and '' (disable).
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.backend
       [backend: <string> | default = ""]
 

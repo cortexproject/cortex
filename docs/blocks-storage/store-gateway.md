@@ -547,6 +547,18 @@ blocks_storage:
     # CLI flag: -blocks-storage.swift.auth-url
     [auth_url: <string> | default = ""]
 
+    # OpenStack Swift application credential ID.
+    # CLI flag: -blocks-storage.swift.application-credential-id
+    [application_credential_id: <string> | default = ""]
+
+    # OpenStack Swift application credential name.
+    # CLI flag: -blocks-storage.swift.application-credential-name
+    [application_credential_name: <string> | default = ""]
+
+    # OpenStack Swift application credential secret.
+    # CLI flag: -blocks-storage.swift.application-credential-secret
+    [application_credential_secret: <string> | default = ""]
+
     # OpenStack Swift username.
     # CLI flag: -blocks-storage.swift.username
     [username: <string> | default = ""]

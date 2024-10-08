@@ -903,8 +903,10 @@ blocks_storage:
         [max_backfill_items: <int> | default = 10000]
 
     chunks_cache:
-      # Backend for chunks cache, if not empty. Supported values: memcached,
-      # redis, inmemory, and '' (disable).
+      # The chunks cache backend type. Single or Multiple cache backend can be
+      # provided. Supported values in single cache: memcached, redis, inmemory,
+      # and '' (disable). Supported values in multi level cache: a
+      # comma-separated list of (inmemory, memcached, redis)
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
       [backend: <string> | default = ""]
 
@@ -1114,6 +1116,21 @@ blocks_storage:
           # Failure percentage to determine if the circuit breaker should open.
           # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.failure-percent
           [failure_percent: <float> | default = 0.05]
+
+      multilevel:
+        # The maximum number of concurrent asynchronous operations can occur
+        # when backfilling cache items.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.multilevel.max-async-concurrency
+        [max_async_concurrency: <int> | default = 3]
+
+        # The maximum number of enqueued asynchronous operations allowed when
+        # backfilling cache items.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.multilevel.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
+        # The maximum number of items to backfill per asynchronous operation.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.multilevel.max-backfill-items
+        [max_backfill_items: <int> | default = 10000]
 
       # Size of each subrange that bucket object is split into for better
       # caching.

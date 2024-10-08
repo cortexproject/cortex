@@ -48,6 +48,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -65,6 +66,7 @@ const (
 	Server                   string = "server"
 	Distributor              string = "distributor"
 	DistributorService       string = "distributor-service"
+	GrpcClientService        string = "grpcclient-service"
 	Ingester                 string = "ingester"
 	IngesterService          string = "ingester-service"
 	Flusher                  string = "flusher"
@@ -228,6 +230,19 @@ func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	}
 
 	return t.Distributor, nil
+}
+
+func (t *Cortex) initGrpcClientServices() (serv services.Service, err error) {
+	s := grpcclient.NewHealthCheckInterceptors(util_log.Logger)
+	if t.Cfg.IngesterClient.GRPCClientConfig.HealthCheckConfig.UnhealthyThreshold > 0 {
+		t.Cfg.IngesterClient.GRPCClientConfig.HealthCheckConfig.HealthCheckInterceptors = s
+	}
+
+	if t.Cfg.Querier.StoreGatewayClient.HealthCheckConfig.UnhealthyThreshold > 0 {
+		t.Cfg.Querier.StoreGatewayClient.HealthCheckConfig.HealthCheckInterceptors = s
+	}
+
+	return s, nil
 }
 
 func (t *Cortex) initDistributor() (serv services.Service, err error) {
@@ -754,6 +769,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(DistributorService, t.initDistributorService, modules.UserInvisibleModule)
+	mm.RegisterModule(GrpcClientService, t.initGrpcClientServices, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterService, t.initIngesterService, modules.UserInvisibleModule)
 	mm.RegisterModule(Flusher, t.initFlusher)
@@ -782,14 +798,14 @@ func (t *Cortex) setupModuleManager() error {
 		Ring:                     {API, RuntimeConfig, MemberlistKV},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {RuntimeConfig},
-		Distributor:              {DistributorService, API},
+		Distributor:              {DistributorService, API, GrpcClientService},
 		DistributorService:       {Ring, Overrides},
 		Ingester:                 {IngesterService, Overrides, API},
 		IngesterService:          {Overrides, RuntimeConfig, MemberlistKV},
 		Flusher:                  {Overrides, API},
 		Queryable:                {Overrides, DistributorService, Overrides, Ring, API, StoreQueryable, MemberlistKV},
 		Querier:                  {TenantFederation},
-		StoreQueryable:           {Overrides, Overrides, MemberlistKV},
+		StoreQueryable:           {Overrides, Overrides, MemberlistKV, GrpcClientService},
 		QueryFrontendTripperware: {API, Overrides},
 		QueryFrontend:            {QueryFrontendTripperware},
 		QueryScheduler:           {API, Overrides},

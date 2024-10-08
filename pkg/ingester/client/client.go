@@ -111,8 +111,8 @@ func (c *closableHealthAndIngesterClient) Close() error {
 
 // Config is the configuration struct for the ingester client
 type Config struct {
-	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config"`
-	MaxInflightPushRequests int64             `yaml:"max_inflight_push_requests"`
+	GRPCClientConfig        grpcclient.ConfigWithHealthCheck `yaml:"grpc_client_config"`
+	MaxInflightPushRequests int64                            `yaml:"max_inflight_push_requests"`
 }
 
 // RegisterFlags registers configuration settings used by the ingester client config.

@@ -76,7 +76,22 @@ func TestFlagParsing(t *testing.T) {
 
 		"root level configuration option specified as an empty node in YAML": {
 			yaml:          "querier:",
-			stderrMessage: "the Querier configuration in YAML has been specified as an empty YAML node",
+			stderrMessage: "the querier configuration in YAML has been specified as an empty YAML node",
+		},
+
+		"root level configuration option specified as an empty object node in YAML": {
+			yaml:          "querier: {}",
+			stderrMessage: "the querier configuration in YAML has been specified as an empty YAML node",
+		},
+
+		"root level configuration option specified as a null node in YAML": {
+			yaml:          "querier: null",
+			stderrMessage: "the querier configuration in YAML has been specified as an empty YAML node",
+		},
+
+		"root level configuration option specified with all zero values": {
+			yaml:           "flusher: { exit_after_flush: false }",
+			stderrExcluded: "empty YAML node",
 		},
 
 		"version": {

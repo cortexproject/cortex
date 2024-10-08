@@ -702,6 +702,18 @@ swift:
   # CLI flag: -alertmanager-storage.swift.auth-url
   [auth_url: <string> | default = ""]
 
+  # OpenStack Swift application credential ID.
+  # CLI flag: -alertmanager-storage.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -alertmanager-storage.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -alertmanager-storage.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
+
   # OpenStack Swift username.
   # CLI flag: -alertmanager-storage.swift.username
   [username: <string> | default = ""]
@@ -980,6 +992,18 @@ swift:
   # OpenStack Swift authentication URL
   # CLI flag: -blocks-storage.swift.auth-url
   [auth_url: <string> | default = ""]
+
+  # OpenStack Swift application credential ID.
+  # CLI flag: -blocks-storage.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -blocks-storage.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -blocks-storage.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
 
   # OpenStack Swift username.
   # CLI flag: -blocks-storage.swift.username
@@ -4690,6 +4714,18 @@ swift:
   # CLI flag: -ruler-storage.swift.auth-url
   [auth_url: <string> | default = ""]
 
+  # OpenStack Swift application credential ID.
+  # CLI flag: -ruler-storage.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -ruler-storage.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -ruler-storage.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
+
   # OpenStack Swift username.
   # CLI flag: -ruler-storage.swift.username
   [username: <string> | default = ""]
@@ -4976,6 +5012,18 @@ swift:
   # OpenStack Swift authentication URL
   # CLI flag: -runtime-config.swift.auth-url
   [auth_url: <string> | default = ""]
+
+  # OpenStack Swift application credential ID.
+  # CLI flag: -runtime-config.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -runtime-config.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -runtime-config.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
 
   # OpenStack Swift username.
   # CLI flag: -runtime-config.swift.username

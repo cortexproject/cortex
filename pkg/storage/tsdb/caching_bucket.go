@@ -24,6 +24,8 @@ import (
 )
 
 var (
+	supportedMetadataCacheBackends = []string{CacheBackendMemcached, CacheBackendRedis}
+
 	errUnsupportedChunkCacheBackend = errors.New("unsupported chunk cache backend")
 )
 
@@ -140,7 +142,7 @@ type MetadataCacheConfig struct {
 }
 
 func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for metadata cache, if not empty. Supported values: %s.", CacheBackendMemcached))
+	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for metadata cache, if not empty. Supported values: %s, and '' (disable).", strings.Join(supportedMetadataCacheBackends, ", ")))
 
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 	cfg.Redis.RegisterFlagsWithPrefix(f, prefix+"redis.")

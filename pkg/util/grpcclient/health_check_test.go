@@ -31,6 +31,10 @@ func (h *healthClientMock) Check(ctx context.Context, in *grpc_health_v1.HealthC
 
 func TestNewHealthCheckService(t *testing.T) {
 	i := NewHealthCheckInterceptors(utillog.Logger)
+
+	// set the gc timeout to 5 seconds
+	i.instanceGcTimeout = time.Second * 5
+
 	hMock := &healthClientMock{}
 	i.healthClientFactory = func(cc grpc.ClientConnInterface) grpc_health_v1.HealthClient {
 		return hMock
@@ -70,6 +74,10 @@ func TestNewHealthCheckService(t *testing.T) {
 	hMock.err.Store(nil)
 	cortex_testutil.Poll(t, 5*time.Second, true, func() interface{} {
 		return instances[0].isHealthy()
+	})
+
+	cortex_testutil.Poll(t, i.instanceGcTimeout*2, 0, func() interface{} {
+		return len(i.registeredInstances())
 	})
 }
 

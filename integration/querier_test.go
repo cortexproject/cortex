@@ -97,6 +97,12 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
 			bucketIndexEnabled:     true,
 		},
+		"blocks sharding disabled, in-memory chunk cache": {
+			blocksShardingStrategy: "",
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
 		"blocks default sharding, in-memory chunk cache": {
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
@@ -108,6 +114,25 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			tenantShardSize:        1,
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
+		"block sharding disabled, multi-level chunk cache": {
+			blocksShardingStrategy: "",
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
+			bucketIndexEnabled:     true,
+		},
+		"block default sharding, multi-level chunk cache": {
+			blocksShardingStrategy: "default",
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
+			bucketIndexEnabled:     true,
+		},
+		"block shuffle sharding, multi-level chunk cache": {
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
 			bucketIndexEnabled:     true,
 		},
 	}
@@ -154,9 +179,10 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendRedis) {
 					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
-				if testCfg.chunkCacheBackend == tsdb.CacheBackendMemcached {
+				if strings.Contains(testCfg.chunkCacheBackend, tsdb.CacheBackendMemcached) {
 					flags["-blocks-storage.bucket-store.chunks-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
-				} else if testCfg.chunkCacheBackend == tsdb.CacheBackendRedis {
+				}
+				if strings.Contains(testCfg.chunkCacheBackend, tsdb.CacheBackendRedis) {
 					flags["-blocks-storage.bucket-store.chunks-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 

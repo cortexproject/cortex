@@ -21,12 +21,16 @@ import (
 	"github.com/thanos-io/thanos/pkg/cacheutil"
 	"github.com/thanos-io/thanos/pkg/model"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
+	supportedChunkCacheBackends    = []string{CacheBackendInMemory, CacheBackendMemcached, CacheBackendRedis}
 	supportedMetadataCacheBackends = []string{CacheBackendMemcached, CacheBackendRedis}
 
 	errUnsupportedChunkCacheBackend = errors.New("unsupported chunk cache backend")
+	errDuplicatedChunkCacheBackend  = errors.New("duplicated chunk cache backend")
 )
 
 const (
@@ -56,23 +60,52 @@ func (cfg *MetadataCacheBackend) Validate() error {
 }
 
 type ChunkCacheBackend struct {
-	Backend   string                   `yaml:"backend"`
-	InMemory  InMemoryChunkCacheConfig `yaml:"inmemory"`
-	Memcached MemcachedClientConfig    `yaml:"memcached"`
-	Redis     RedisClientConfig        `yaml:"redis"`
+	Backend    string                     `yaml:"backend"`
+	InMemory   InMemoryChunkCacheConfig   `yaml:"inmemory"`
+	Memcached  MemcachedClientConfig      `yaml:"memcached"`
+	Redis      RedisClientConfig          `yaml:"redis"`
+	MultiLevel MultiLevelChunkCacheConfig `yaml:"multilevel"`
 }
 
 // Validate the config.
 func (cfg *ChunkCacheBackend) Validate() error {
-	switch cfg.Backend {
-	case CacheBackendMemcached:
-		return cfg.Memcached.Validate()
-	case CacheBackendRedis:
-		return cfg.Redis.Validate()
-	case CacheBackendInMemory, "":
-	default:
-		return errUnsupportedChunkCacheBackend
+	if cfg.Backend == "" {
+		return nil
 	}
+
+	splitBackends := strings.Split(cfg.Backend, ",")
+	configuredBackends := map[string]struct{}{}
+
+	if len(splitBackends) > 1 {
+		if err := cfg.MultiLevel.Validate(); err != nil {
+			return err
+		}
+	}
+
+	for _, backend := range splitBackends {
+		if !util.StringsContain(supportedChunkCacheBackends, backend) {
+			return errUnsupportedChunkCacheBackend
+		}
+
+		if _, ok := configuredBackends[backend]; ok {
+			return errDuplicatedChunkCacheBackend
+		}
+
+		switch backend {
+		case CacheBackendMemcached:
+			if err := cfg.Memcached.Validate(); err != nil {
+				return err
+			}
+		case CacheBackendRedis:
+			if err := cfg.Redis.Validate(); err != nil {
+				return err
+			}
+		case CacheBackendInMemory:
+		}
+
+		configuredBackends[backend] = struct{}{}
+	}
+
 	return nil
 }
 
@@ -86,16 +119,22 @@ type ChunksCacheConfig struct {
 }
 
 func (cfg *ChunksCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for chunks cache, if not empty. Supported values: %s, %s, %s, and '' (disable).", CacheBackendMemcached, CacheBackendRedis, CacheBackendInMemory))
+	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("The chunks cache backend type. Single or Multiple cache backend can be provided. "+
+		"Supported values in single cache: %s, %s, %s, and '' (disable). "+
+		"Supported values in multi level cache: a comma-separated list of (%s)", CacheBackendMemcached, CacheBackendRedis, CacheBackendInMemory, strings.Join(supportedChunkCacheBackends, ", ")))
 
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 	cfg.Redis.RegisterFlagsWithPrefix(f, prefix+"redis.")
 	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.")
+	cfg.MultiLevel.RegisterFlagsWithPrefix(f, prefix+"multilevel.")
 
 	f.Int64Var(&cfg.SubrangeSize, prefix+"subrange-size", 16000, "Size of each subrange that bucket object is split into for better caching.")
 	f.IntVar(&cfg.MaxGetRangeRequests, prefix+"max-get-range-requests", 3, "Maximum number of sub-GetRange requests that a single GetRange request can be split into when fetching chunks. Zero or negative value = unlimited number of sub-requests.")
 	f.DurationVar(&cfg.AttributesTTL, prefix+"attributes-ttl", 168*time.Hour, "TTL for caching object attributes for chunks.")
 	f.DurationVar(&cfg.SubrangeTTL, prefix+"subrange-ttl", 24*time.Hour, "TTL for caching individual chunks subranges.")
+
+	// In the multi level chunk cache, backfill TTL follows subrange TTL
+	cfg.ChunkCacheBackend.MultiLevel.BackFillTTL = cfg.SubrangeTTL
 }
 
 func (cfg *ChunksCacheConfig) Validate() error {
@@ -232,34 +271,41 @@ func createMetadataCache(cacheName string, cacheBackend *MetadataCacheBackend, l
 }
 
 func createChunkCache(cacheName string, cacheBackend *ChunkCacheBackend, logger log.Logger, reg prometheus.Registerer) (cache.Cache, error) {
-	switch cacheBackend.Backend {
-	case "":
+	if cacheBackend.Backend == "" {
 		// No caching.
 		return nil, nil
-	case CacheBackendInMemory:
-		inMemoryCache, err := cache.NewInMemoryCacheWithConfig(cacheName, logger, reg, cacheBackend.InMemory.toInMemoryChunkCacheConfig())
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create in-memory chunk cache")
-		}
-		return inMemoryCache, nil
-	case CacheBackendMemcached:
-		var client cacheutil.MemcachedClient
-		client, err := cacheutil.NewMemcachedClientWithConfig(logger, cacheName, cacheBackend.Memcached.ToMemcachedClientConfig(), reg)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create memcached client")
-		}
-		return cache.NewMemcachedCache(cacheName, logger, client, reg), nil
-
-	case CacheBackendRedis:
-		redisCache, err := cacheutil.NewRedisClientWithConfig(logger, cacheName, cacheBackend.Redis.ToRedisClientConfig(), reg)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create redis client")
-		}
-		return cache.NewRedisCache(cacheName, logger, redisCache, reg), nil
-
-	default:
-		return nil, errors.Errorf("unsupported cache type for cache %s: %s", cacheName, cacheBackend.Backend)
 	}
+
+	splitBackends := strings.Split(cacheBackend.Backend, ",")
+	var (
+		caches []cache.Cache
+	)
+
+	for _, backend := range splitBackends {
+		switch backend {
+		case CacheBackendInMemory:
+			inMemoryCache, err := cache.NewInMemoryCacheWithConfig(cacheName, logger, reg, cacheBackend.InMemory.toInMemoryChunkCacheConfig())
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to create in-memory chunk cache")
+			}
+			caches = append(caches, inMemoryCache)
+		case CacheBackendMemcached:
+			var client cacheutil.MemcachedClient
+			client, err := cacheutil.NewMemcachedClientWithConfig(logger, cacheName, cacheBackend.Memcached.ToMemcachedClientConfig(), reg)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to create memcached client")
+			}
+			caches = append(caches, cache.NewMemcachedCache(cacheName, logger, client, reg))
+		case CacheBackendRedis:
+			redisCache, err := cacheutil.NewRedisClientWithConfig(logger, cacheName, cacheBackend.Redis.ToRedisClientConfig(), reg)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to create redis client")
+			}
+			caches = append(caches, cache.NewRedisCache(cacheName, logger, redisCache, reg))
+		}
+	}
+
+	return newMultiLevelChunkCache(cacheName, cacheBackend.MultiLevel, reg, caches...), nil
 }
 
 type Matchers struct {

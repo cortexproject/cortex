@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -20,7 +21,13 @@ import (
 
 type healthClientMock struct {
 	grpc_health_v1.HealthClient
-	err atomic.Error
+	err  atomic.Error
+	open atomic.Bool
+}
+
+func (h *healthClientMock) Close() error {
+	h.open.Store(false)
+	return nil
 }
 
 func (h *healthClientMock) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
@@ -36,8 +43,9 @@ func TestNewHealthCheckService(t *testing.T) {
 	i.instanceGcTimeout = time.Second * 5
 
 	hMock := &healthClientMock{}
-	i.healthClientFactory = func(cc grpc.ClientConnInterface) grpc_health_v1.HealthClient {
-		return hMock
+	i.healthClientFactory = func(cc *grpc.ClientConn) (grpc_health_v1.HealthClient, io.Closer) {
+		hMock.open.Store(true)
+		return hMock, hMock
 	}
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -79,6 +87,8 @@ func TestNewHealthCheckService(t *testing.T) {
 	cortex_testutil.Poll(t, i.instanceGcTimeout*2, 0, func() interface{} {
 		return len(i.registeredInstances())
 	})
+
+	require.False(t, hMock.open.Load())
 }
 
 func TestNewHealthCheckInterceptors(t *testing.T) {
@@ -92,8 +102,9 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 			Timeout:            time.Second,
 		},
 	}
-	i.healthClientFactory = func(cc grpc.ClientConnInterface) grpc_health_v1.HealthClient {
-		return hMock
+	i.healthClientFactory = func(cc *grpc.ClientConn) (grpc_health_v1.HealthClient, io.Closer) {
+		hMock.open.Store(true)
+		return hMock, hMock
 	}
 
 	ui := i.UnaryHealthCheckInterceptor(&cfg)
@@ -113,6 +124,7 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 
 	// first health check
 	require.NoError(t, i.iteration(context.Background()))
+	require.False(t, hMock.open.Load())
 
 	//Should second call even with error
 	require.NoError(t, ui(context.Background(), "", struct{}{}, struct{}{}, ccUnhealthy, invoker))
@@ -121,6 +133,7 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 
 	// Second Healthcheck -> should mark as unhealthy
 	require.NoError(t, i.iteration(context.Background()))
+	require.False(t, hMock.open.Load())
 
 	cortex_testutil.Poll(t, time.Second, true, func() interface{} {
 		return errors.Is(ui(context.Background(), "", struct{}{}, struct{}{}, ccUnhealthy, invoker), unhealthyErr)

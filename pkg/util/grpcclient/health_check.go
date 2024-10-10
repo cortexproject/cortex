@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -55,15 +56,17 @@ type HealthCheckInterceptors struct {
 	activeInstances map[string]*healthCheckEntry
 
 	instanceGcTimeout   time.Duration
-	healthClientFactory func(cc grpc.ClientConnInterface) grpc_health_v1.HealthClient
+	healthClientFactory func(cc *grpc.ClientConn) (grpc_health_v1.HealthClient, io.Closer)
 }
 
 func NewHealthCheckInterceptors(logger log.Logger) *HealthCheckInterceptors {
 	h := &HealthCheckInterceptors{
-		logger:              logger,
-		instanceGcTimeout:   2 * time.Minute,
-		healthClientFactory: grpc_health_v1.NewHealthClient,
-		activeInstances:     make(map[string]*healthCheckEntry),
+		logger:            logger,
+		instanceGcTimeout: 2 * time.Minute,
+		healthClientFactory: func(cc *grpc.ClientConn) (grpc_health_v1.HealthClient, io.Closer) {
+			return grpc_health_v1.NewHealthClient(cc), cc
+		},
+		activeInstances: make(map[string]*healthCheckEntry),
 	}
 
 	h.Service = services.
@@ -107,16 +110,6 @@ func (h *HealthCheckInterceptors) registeredInstances() []*healthCheckEntry {
 func (h *HealthCheckInterceptors) iteration(ctx context.Context) error {
 	level.Debug(h.logger).Log("msg", "Performing health check", "registeredInstances", len(h.registeredInstances()))
 	for _, instance := range h.registeredInstances() {
-		dialOpts, err := instance.clientConfig.Config.DialOption(nil, nil)
-		if err != nil {
-			return err
-		}
-		conn, err := grpc.NewClient(instance.address, dialOpts...)
-		c := h.healthClientFactory(conn)
-		if err != nil {
-			return err
-		}
-
 		if time.Since(instance.lastTickTime.Load()) >= h.instanceGcTimeout {
 			h.Lock()
 			delete(h.activeInstances, instance.address)
@@ -131,11 +124,27 @@ func (h *HealthCheckInterceptors) iteration(ctx context.Context) error {
 		instance.lastCheckTime.Store(time.Now())
 
 		go func(i *healthCheckEntry) {
-			if err := i.recordHealth(healthCheck(c, i.clientConfig.HealthCheckConfig.Timeout)); !i.isHealthy() {
-				level.Warn(h.logger).Log("msg", "instance marked as unhealthy", "address", i.address, "err", err)
+			dialOpts, err := i.clientConfig.Config.DialOption(nil, nil)
+			if err != nil {
+				level.Error(h.logger).Log("msg", "error creating dialOpts to perform healthcheck", "address", i.address, "err", err)
+				return
 			}
-			if err := conn.Close(); err != nil {
-				level.Warn(h.logger).Log("msg", "error closing connection", "address", i.address, "err", err)
+			conn, err := grpc.NewClient(i.address, dialOpts...)
+			if err != nil {
+				level.Error(h.logger).Log("msg", "error creating client to perform healthcheck", "address", i.address, "err", err)
+				return
+			}
+
+			client, closer := h.healthClientFactory(conn)
+
+			defer func() {
+				if err := closer.Close(); err != nil {
+					level.Warn(h.logger).Log("msg", "error closing connection", "address", i.address, "err", err)
+				}
+			}()
+
+			if err := i.recordHealth(healthCheck(client, i.clientConfig.HealthCheckConfig.Timeout)); !i.isHealthy() {
+				level.Warn(h.logger).Log("msg", "instance marked as unhealthy", "address", i.address, "err", err)
 			}
 		}(instance)
 	}

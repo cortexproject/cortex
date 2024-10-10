@@ -564,7 +564,7 @@ blocks_storage:
     index_cache:
       # The index cache backend type. Multiple cache backend can be provided as
       # a comma-separated ordered list to enable the implementation of a cache
-      # hierarchy. Supported values: inmemory, memcached, redis.
+      # hierarchy. Supported values: inmemory, badger, memcached, redis.
       # CLI flag: -blocks-storage.bucket-store.index-cache.backend
       [backend: <string> | default = "inmemory"]
 
@@ -578,6 +578,20 @@ blocks_storage:
         # ExpandedPostings and Series
         # CLI flag: -blocks-storage.bucket-store.index-cache.inmemory.enabled-items
         [enabled_items: <list of string> | default = []]
+
+      badger:
+        # [Experimental] Data directory in which to cache index data
+        # CLI flag: -blocks-storage.bucket-store.index-cache.badger.data-dir
+        [data_dir: <string> | default = "./index"]
+
+        # [Experimental] Selectively cache index item types. Supported values
+        # are Postings, ExpandedPostings and Series
+        # CLI flag: -blocks-storage.bucket-store.index-cache.badger.enabled-items
+        [enabled_items: <list of string> | default = []]
+
+        # [Experimental] How long to cache an index for a block.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.badger.index-ttl
+        [index_ttl: <duration> | default = 24h]
 
       memcached:
         # Comma separated list of memcached addresses. Supported prefixes are:

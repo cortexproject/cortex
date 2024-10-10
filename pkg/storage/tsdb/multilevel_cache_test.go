@@ -53,6 +53,16 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 			},
 			expectedType: &multiLevelCache{},
 		},
+		"instantiate multiples backends - inmemory/badger": {
+			cfg: IndexCacheConfig{
+				Backend: "inmemory,badger",
+				Badger: BadgerIndexCacheConfig{
+					DataDir: "./index",
+				},
+				MultiLevel: multiLevelCfg,
+			},
+			expectedType: &multiLevelCache{},
+		},
 		"instantiate multiples backends - inmemory/memcached": {
 			cfg: IndexCacheConfig{
 				Backend: "inmemory,memcached",

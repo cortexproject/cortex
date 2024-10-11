@@ -1,4 +1,4 @@
-FROM golang:1.22.7-bullseye
+FROM golang:1.23.2-bullseye
 ARG goproxyValue
 ENV GOPROXY=${goproxyValue}
 RUN apt-get update && apt-get install -y curl file jq unzip protobuf-compiler libprotobuf-dev && \

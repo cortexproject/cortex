@@ -1,6 +1,8 @@
 module github.com/cortexproject/cortex
 
-go 1.23.0
+go 1.22.0
+
+toolchain go1.22.5
 
 require (
 	github.com/Masterminds/squirrel v1.5.4

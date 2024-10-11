@@ -6,15 +6,15 @@ package logicalplan
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/util/annotations"
-
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/api"
 	"github.com/thanos-io/promql-engine/query"
@@ -185,7 +185,38 @@ func (m DistributedExecutionOptimizer) Optimize(plan Node, opts *query.Options) 
 		return false
 	})
 
+	// Preprocess rewrite distributable averages as sum/count
 	var warns = annotations.New()
+	TraverseBottomUp(nil, &plan, func(parent, current *Node) (stop bool) {
+		if !(isDistributive(current, m.SkipBinaryPushdown, engineLabels, warns) || isAvgAggregation(current)) {
+			return true
+		}
+		// If the current node is avg(), distribute the operation and
+		// stop the traversal.
+		if aggr, ok := (*current).(*Aggregation); ok {
+			if aggr.Op != parser.AVG {
+				return true
+			}
+
+			sum := *(*current).(*Aggregation)
+			sum.Op = parser.SUM
+			count := *(*current).(*Aggregation)
+			count.Op = parser.COUNT
+			*current = &Binary{
+				Op:  parser.DIV,
+				LHS: &sum,
+				RHS: &count,
+				VectorMatching: &parser.VectorMatching{
+					Include:        aggr.Grouping,
+					MatchingLabels: aggr.Grouping,
+					On:             true,
+				},
+			}
+			return true
+		}
+		return !(isDistributive(parent, m.SkipBinaryPushdown, engineLabels, warns) || isAvgAggregation(parent))
+	})
+
 	TraverseBottomUp(nil, &plan, func(parent, current *Node) (stop bool) {
 		// If the current operation is not distributive, stop the traversal.
 		if !isDistributive(current, m.SkipBinaryPushdown, engineLabels, warns) {
@@ -463,7 +494,7 @@ func isDistributive(expr *Node, skipBinaryPushdown bool, engineLabels map[string
 	case Deduplicate, RemoteExecution:
 		return false
 	case *Binary:
-		return isBinaryExpressionWithOneScalarSide(e) || (!skipBinaryPushdown && isBinaryExpressionWithDistributableMatching(e))
+		return isBinaryExpressionWithOneScalarSide(e) || (!skipBinaryPushdown && isBinaryExpressionWithDistributableMatching(e, engineLabels))
 	case *Aggregation:
 		// Certain aggregations are currently not supported.
 		if _, ok := distributiveAggregations[e.Op]; !ok {
@@ -488,14 +519,31 @@ func isBinaryExpressionWithOneScalarSide(expr *Binary) bool {
 	return lhsConstant || rhsConstant
 }
 
-func isBinaryExpressionWithDistributableMatching(expr *Binary) bool {
+func isBinaryExpressionWithDistributableMatching(expr *Binary, engineLabels map[string]struct{}) bool {
 	if expr.VectorMatching == nil {
 		return false
 	}
+	// TODO: think about "or" but for safety we dont push it down for now.
+	if expr.Op == parser.LOR {
+		return false
+	}
 
-	// we can distribute if the vector matching contains the external labels so that
-	// all potential matching partners are contained in one engine
-	return !expr.VectorMatching.On && len(expr.VectorMatching.MatchingLabels) == 0
+	if expr.VectorMatching.On {
+		// on (...) - if ... contains all partition labels we can distribute
+		for lbl := range engineLabels {
+			if !slices.Contains(expr.VectorMatching.MatchingLabels, lbl) {
+				return false
+			}
+		}
+		return true
+	}
+	// ignoring (...) - if ... does contain any engine labels we cannot distribute
+	for lbl := range engineLabels {
+		if slices.Contains(expr.VectorMatching.MatchingLabels, lbl) {
+			return false
+		}
+	}
+	return true
 }
 
 // matchesExternalLabels returns false if given matchers are not matching external labels.

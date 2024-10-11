@@ -99,8 +99,8 @@ func MergeResponse(ctx context.Context, sumStats bool, req Request, responses ..
 	res := &PrometheusResponse{
 		Status:   StatusSuccess,
 		Data:     data,
-		Warnings: strutil.MergeUnsortedSlices(warnings...),
-		Infos:    strutil.MergeUnsortedSlices(infos...),
+		Warnings: strutil.MergeUnsortedSlices(0, warnings...),
+		Infos:    strutil.MergeUnsortedSlices(0, infos...),
 	}
 	return res, nil
 }

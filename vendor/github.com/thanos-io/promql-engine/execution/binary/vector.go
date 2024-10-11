@@ -77,7 +77,7 @@ func NewVectorOperator(
 		sigFunc:    signatureFunc(matching.On, matching.MatchingLabels...),
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
 
 	return oper, nil
 }

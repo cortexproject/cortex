@@ -23,10 +23,27 @@ import (
 
 type Scanners struct {
 	selectors *SelectorPool
+
+	querier storage.Querier
 }
 
-func NewPrometheusScanners(queryable storage.Queryable) *Scanners {
-	return &Scanners{selectors: NewSelectorPool(queryable)}
+func (s *Scanners) Close() error {
+	return s.querier.Close()
+}
+
+func NewPrometheusScanners(queryable storage.Queryable, qOpts *query.Options, lplan logicalplan.Plan) (*Scanners, error) {
+	var min, max int64
+	if lplan != nil {
+		min, max = lplan.MinMaxTime(qOpts)
+	} else {
+		min, max = qOpts.Start.UnixMilli(), qOpts.End.UnixMilli()
+	}
+
+	querier, err := queryable.Querier(min, max)
+	if err != nil {
+		return nil, errors.Wrap(err, "create querier")
+	}
+	return &Scanners{querier: querier, selectors: NewSelectorPool(querier)}, nil
 }
 
 func (p Scanners) NewVectorSelector(

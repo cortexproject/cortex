@@ -66,7 +66,7 @@ func newHistogramOperator(
 		vectorOp:     vectorOp,
 		scalarPoints: make([]float64, opts.StepsBatch),
 	}
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
 
 	return oper
 }

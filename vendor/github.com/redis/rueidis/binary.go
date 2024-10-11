@@ -15,7 +15,7 @@ import (
 //
 // To read back the []byte of the string returned from the Redis, it is recommended to use the RedisMessage.AsReader.
 func BinaryString(bs []byte) string {
-	return *(*string)(unsafe.Pointer(&bs))
+	return unsafe.String(unsafe.SliceData(bs), len(bs))
 }
 
 // VectorString32 convert the provided []float32 into a string. Users can use this to build vector search queries:
@@ -34,7 +34,7 @@ func VectorString32(v []float32) string {
 
 // ToVector32 reverts VectorString32. User can use this to convert redis response back to []float32.
 func ToVector32(s string) []float32 {
-	bs := []byte(s)
+	bs := unsafe.Slice(unsafe.StringData(s), len(s))
 	vs := make([]float32, 0, len(bs)/4)
 	for i := 0; i < len(bs); i += 4 {
 		vs = append(vs, math.Float32frombits(binary.LittleEndian.Uint32(bs[i:i+4])))
@@ -58,7 +58,7 @@ func VectorString64(v []float64) string {
 
 // ToVector64 reverts VectorString64. User can use this to convert redis response back to []float64.
 func ToVector64(s string) []float64 {
-	bs := []byte(s)
+	bs := unsafe.Slice(unsafe.StringData(s), len(s))
 	vs := make([]float64, 0, len(bs)/8)
 	for i := 0; i < len(bs); i += 8 {
 		vs = append(vs, math.Float64frombits(binary.LittleEndian.Uint64(bs[i:i+8])))

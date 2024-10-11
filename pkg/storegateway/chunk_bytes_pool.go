@@ -7,14 +7,14 @@ import (
 )
 
 type chunkBytesPool struct {
-	pool *pool.BucketedBytes
+	pool *pool.BucketedPool[byte]
 
 	// Metrics.
 	poolByteStats *prometheus.CounterVec
 }
 
 func newChunkBytesPool(minBucketSize, maxBucketSize int, maxChunkPoolBytes uint64, reg prometheus.Registerer) (*chunkBytesPool, error) {
-	upstream, err := pool.NewBucketedBytes(minBucketSize, maxBucketSize, 2, maxChunkPoolBytes)
+	upstream, err := pool.NewBucketedPool[byte](minBucketSize, maxBucketSize, 2, maxChunkPoolBytes)
 	if err != nil {
 		return nil, err
 	}

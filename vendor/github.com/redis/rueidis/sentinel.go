@@ -5,15 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"math/rand"
-
 	"github.com/redis/rueidis/internal/cmds"
+	"github.com/redis/rueidis/internal/util"
 )
 
 func newSentinelClient(opt *ClientOption, connFn connFn) (client *sentinelClient, err error) {
@@ -142,6 +142,23 @@ retry:
 	return err
 }
 
+func (c *sentinelClient) DoStream(ctx context.Context, cmd Completed) RedisResultStream {
+	resp := c.mConn.Load().(conn).DoStream(ctx, cmd)
+	cmds.PutCompleted(cmd)
+	return resp
+}
+
+func (c *sentinelClient) DoMultiStream(ctx context.Context, multi ...Completed) MultiRedisResultStream {
+	if len(multi) == 0 {
+		return RedisResultStream{e: io.EOF}
+	}
+	s := c.mConn.Load().(conn).DoMultiStream(ctx, multi...)
+	for _, cmd := range multi {
+		cmds.PutCompleted(cmd)
+	}
+	return s
+}
+
 func (c *sentinelClient) Dedicated(fn func(DedicatedClient) error) (err error) {
 	master := c.mConn.Load().(conn)
 	wire := master.Acquire()
@@ -160,7 +177,8 @@ func (c *sentinelClient) Dedicate() (DedicatedClient, func()) {
 
 func (c *sentinelClient) Nodes() map[string]Client {
 	conn := c.mConn.Load().(conn)
-	return map[string]Client{conn.Addr(): newSingleClientWithConn(conn, c.cmd, c.retry)}
+	disableCache := c.mOpt != nil && c.mOpt.DisableCache
+	return map[string]Client{conn.Addr(): newSingleClientWithConn(conn, c.cmd, c.retry, disableCache)}
 }
 
 func (c *sentinelClient) Close() {
@@ -252,7 +270,7 @@ retry:
 }
 
 func (c *sentinelClient) refresh() (err error) {
-	return c.sc.Do(c._refresh)
+	return c.sc.Do(context.Background(), c._refresh)
 }
 
 func (c *sentinelClient) _refresh() (err error) {
@@ -418,7 +436,7 @@ func pickReplica(resp []RedisResult) (string, error) {
 	}
 
 	// choose a replica randomly
-	m := eligible[rand.Intn(len(eligible))]
+	m := eligible[util.FastRand(len(eligible))]
 	return net.JoinHostPort(m["ip"], m["port"]), nil
 }
 

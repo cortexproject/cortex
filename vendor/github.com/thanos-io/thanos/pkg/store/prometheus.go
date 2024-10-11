@@ -24,6 +24,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -107,31 +108,6 @@ func NewPrometheusStore(
 func (p *PrometheusStore) labelCallsSupportMatchers() bool {
 	version, parseErr := semver.Parse(p.promVersion())
 	return parseErr == nil && version.GTE(baseVer)
-}
-
-// Info returns store information about the Prometheus instance.
-// NOTE(bwplotka): MaxTime & MinTime are not accurate nor adjusted dynamically.
-// This is fine for now, but might be needed in future.
-func (p *PrometheusStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.InfoResponse, error) {
-	lset := p.externalLabelsFn()
-	mint, maxt := p.timestamps()
-
-	res := &storepb.InfoResponse{
-		Labels:    labelpb.ZLabelsFromPromLabels(lset),
-		StoreType: p.component.ToProto(),
-		MinTime:   mint,
-		MaxTime:   maxt,
-	}
-
-	// Until we deprecate the single labels in the reply, we just duplicate
-	// them here for migration/compatibility purposes.
-	res.LabelSets = []labelpb.ZLabelSet{}
-	if len(res.Labels) > 0 {
-		res.LabelSets = append(res.LabelSets, labelpb.ZLabelSet{
-			Labels: res.Labels,
-		})
-	}
-	return res, nil
 }
 
 func (p *PrometheusStore) getBuffer() *[]byte {
@@ -320,7 +296,7 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 	seriesStats := &storepb.SeriesStatsCounter{}
 
 	// TODO(bwplotka): Put read limit as a flag.
-	stream := remote.NewChunkedReader(bodySizer, remote.DefaultChunkedReadLimit, *data)
+	stream := remote.NewChunkedReader(bodySizer, config.DefaultChunkedReadLimit, *data)
 	hasher := hashPool.Get().(hash.Hash64)
 	defer hashPool.Put(hasher)
 	for {

@@ -84,7 +84,7 @@ func NewScalar(
 		bothScalars:   scalarSide == ScalarSideBoth,
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(op, opts.EnableAnalysis)
+	oper.OperatorTelemetry = model.NewTelemetry(op, opts)
 
 	return oper, nil
 

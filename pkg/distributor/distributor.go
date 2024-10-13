@@ -662,11 +662,13 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			if errors.Is(err, ha.ReplicasNotMatchError{}) {
 				// These samples have been deduped.
 				d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numFloatSamples + numHistogramSamples))
+				// nolint:govet
 				return nil, httpgrpc.Errorf(http.StatusAccepted, err.Error())
 			}
 
 			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
 				d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numFloatSamples + numHistogramSamples))
+				// nolint:govet
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 
@@ -930,6 +932,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		if validationErr != nil && firstPartialErr == nil {
 			// The series labels may be retained by validationErr but that's not a problem for this
 			// use case because we format it calling Error() and then we discard it.
+			// nolint:govet
 			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
 		}
 

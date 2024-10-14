@@ -286,7 +286,7 @@ func (s *ProxyStore) TSDBInfos() []infopb.TSDBInfo {
 
 func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
 	// TODO(bwplotka): This should be part of request logger, otherwise it does not make much sense. Also, could be
-	// triggered by tracing span to reduce cognitive load.
+	// tiggered by tracing span to reduce cognitive load.
 	reqLogger := log.With(s.logger, "component", "proxy")
 	if s.debugLogging {
 		reqLogger = log.With(reqLogger, "request", originalRequest.String())
@@ -327,7 +327,6 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 	r := &storepb.SeriesRequest{
 		MinTime:                 originalRequest.MinTime,
 		MaxTime:                 originalRequest.MaxTime,
-		Limit:                   originalRequest.Limit,
 		Matchers:                append(storeMatchers, MatchersForLabelSets(storeLabelSets)...),
 		Aggregates:              originalRequest.Aggregates,
 		MaxResolutionWindow:     originalRequest.MaxResolutionWindow,
@@ -364,13 +363,7 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 	level.Debug(reqLogger).Log("msg", "Series: started fanout streams", "status", strings.Join(storeDebugMsgs, ";"))
 
 	respHeap := NewResponseDeduplicator(NewProxyResponseLoserTree(storeResponses...))
-
-	i := 0
 	for respHeap.Next() {
-		i++
-		if r.Limit > 0 && i > int(r.Limit) {
-			break
-		}
 		resp := respHeap.At()
 
 		if resp.GetWarning() != "" && (r.PartialResponseDisabled || r.PartialResponseStrategy == storepb.PartialResponseStrategy_ABORT) {
@@ -388,7 +381,7 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 // LabelNames returns all known label names.
 func (s *ProxyStore) LabelNames(ctx context.Context, originalRequest *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
 	// TODO(bwplotka): This should be part of request logger, otherwise it does not make much sense. Also, could be
-	// triggered by tracing span to reduce cognitive load.
+	// tiggered by tracing span to reduce cognitive load.
 	reqLogger := log.With(s.logger, "component", "proxy")
 	if s.debugLogging {
 		reqLogger = log.With(reqLogger, "request", originalRequest.String())
@@ -426,7 +419,6 @@ func (s *ProxyStore) LabelNames(ctx context.Context, originalRequest *storepb.La
 		End:                     originalRequest.End,
 		Matchers:                append(storeMatchers, MatchersForLabelSets(storeLabelSets)...),
 		WithoutReplicaLabels:    originalRequest.WithoutReplicaLabels,
-		Hints:                   originalRequest.Hints,
 	}
 
 	var (
@@ -473,13 +465,8 @@ func (s *ProxyStore) LabelNames(ctx context.Context, originalRequest *storepb.La
 		return nil, err
 	}
 
-	result := strutil.MergeUnsortedSlices(names...)
-	if originalRequest.Limit > 0 && len(result) > int(originalRequest.Limit) {
-		result = result[:originalRequest.Limit]
-	}
-
 	return &storepb.LabelNamesResponse{
-		Names:    result,
+		Names:    strutil.MergeUnsortedSlices(names...),
 		Warnings: warnings,
 	}, nil
 }
@@ -489,7 +476,7 @@ func (s *ProxyStore) LabelValues(ctx context.Context, originalRequest *storepb.L
 	*storepb.LabelValuesResponse, error,
 ) {
 	// TODO(bwplotka): This should be part of request logger, otherwise it does not make much sense. Also, could be
-	// triggered by tracing span to reduce cognitive load.
+	// tiggered by tracing span to reduce cognitive load.
 	reqLogger := log.With(s.logger, "component", "proxy")
 	if s.debugLogging {
 		reqLogger = log.With(reqLogger, "request", originalRequest.String())
@@ -533,7 +520,6 @@ func (s *ProxyStore) LabelValues(ctx context.Context, originalRequest *storepb.L
 		End:                     originalRequest.End,
 		Matchers:                append(storeMatchers, MatchersForLabelSets(storeLabelSets)...),
 		WithoutReplicaLabels:    originalRequest.WithoutReplicaLabels,
-		Limit:                   originalRequest.Limit,
 	}
 
 	var (
@@ -581,13 +567,8 @@ func (s *ProxyStore) LabelValues(ctx context.Context, originalRequest *storepb.L
 		return nil, err
 	}
 
-	vals := strutil.MergeUnsortedSlices(all...)
-	if originalRequest.Limit > 0 && len(vals) > int(originalRequest.Limit) {
-		vals = vals[:originalRequest.Limit]
-	}
-
 	return &storepb.LabelValuesResponse{
-		Values:   vals,
+		Values:   strutil.MergeUnsortedSlices(all...),
 		Warnings: warnings,
 	}, nil
 }

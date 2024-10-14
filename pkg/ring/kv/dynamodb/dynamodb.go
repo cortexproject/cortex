@@ -237,7 +237,7 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 			totalCapacity += getCapacityUnits(consumedCapacity)
 		}
 
-		if resp.UnprocessedItems != nil && len(resp.UnprocessedItems) > 0 {
+		if len(resp.UnprocessedItems) > 0 {
 			return totalCapacity, fmt.Errorf("error processing batch request for %s requests", resp.UnprocessedItems)
 		}
 	}

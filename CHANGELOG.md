@@ -19,6 +19,7 @@
 * [ENHANCEMENT] StoreGateway: Implement metadata API limit in queryable. #6195
 * [ENHANCEMENT] Ingester: Add matchers to ingester LabelNames() and LabelNamesStream() RPC. #6209
 * [ENHANCEMENT] Ingester/Store Gateway Clients: Introduce an experimental HealthCheck handler to quickly fail requests directed to unhealthy targets. #6225 #6257
+* [ENHANCEMENT] Upgrade build image and Go version to 1.23.2. #6261 #6262
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 
 ## 1.18.0 2024-09-03

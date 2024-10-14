@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-## 1.18.1 2024-10-12
+## 1.18.1 2024-10-14
 
 * [BUGFIX] Backporting upgrade to go 1.22.7 to patch CVE-2024-34155, CVE-2024-34156, CVE-2024-34158 #6217 #6264
 

@@ -891,7 +891,7 @@ blocks_storage:
         # The maximum number of concurrent asynchronous operations can occur
         # when backfilling cache items.
         # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-async-concurrency
-        [max_async_concurrency: <int> | default = 50]
+        [max_async_concurrency: <int> | default = 3]
 
         # The maximum number of enqueued asynchronous operations allowed when
         # backfilling cache items.

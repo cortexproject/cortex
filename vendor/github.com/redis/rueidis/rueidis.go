@@ -1,16 +1,19 @@
 // Package rueidis is a fast Golang Redis RESP3 client that does auto pipelining and supports client side caching.
 package rueidis
 
+//go:generate go run hack/cmds/gen.go internal/cmds hack/cmds/*.json
+
 import (
 	"context"
 	"crypto/tls"
 	"errors"
 	"math"
-	"math/rand"
 	"net"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/redis/rueidis/internal/util"
 )
 
 const (
@@ -28,6 +31,8 @@ const (
 	DefaultReadBuffer = 1 << 19
 	// DefaultWriteBuffer is the default value of bufio.NewWriterSize for each connection, which is 0.5MiB
 	DefaultWriteBuffer = 1 << 19
+	// MaxPipelineMultiplex is the maximum meaningful value for ClientOption.PipelineMultiplex
+	MaxPipelineMultiplex = 8
 )
 
 var (
@@ -41,6 +46,13 @@ var (
 	ErrRESP2PubSubMixed = errors.New("rueidis does not support SUBSCRIBE/PSUBSCRIBE/SSUBSCRIBE mixed with other commands in RESP2")
 	// ErrDoCacheAborted means redis abort EXEC request or connection closed
 	ErrDoCacheAborted = errors.New("failed to fetch the cache because EXEC was aborted by redis or connection closed")
+	// ErrReplicaOnlyNotSupported means ReplicaOnly flag is not supported by
+	// current client
+	ErrReplicaOnlyNotSupported = errors.New("ReplicaOnly is not supported for single client")
+	// ErrWrongPipelineMultiplex means wrong value for ClientOption.PipelineMultiplex
+	ErrWrongPipelineMultiplex = errors.New("ClientOption.PipelineMultiplex must not be bigger than MaxPipelineMultiplex")
+	// ErrDedicatedClientRecycled means the caller attempted to use the dedicated client which has been already recycled (after canceled/closed).
+	ErrDedicatedClientRecycled = errors.New("dedicated client should not be used after recycled")
 )
 
 // ClientOption should be passed to NewClient to construct a Client
@@ -66,6 +78,11 @@ type ClientOption struct {
 	// Note that this function must be fast, otherwise other redis messages will be blocked.
 	OnInvalidations func([]RedisMessage)
 
+	// SendToReplicas is a function that returns true if the command should be sent to replicas.
+	// currently only used for cluster client.
+	// NOTE: This function can't be used with ReplicaOnly option.
+	SendToReplicas func(cmd Completed) bool
+
 	// Sentinel options, including MasterSet and Auth options
 	Sentinel SentinelOption
 
@@ -74,7 +91,12 @@ type ClientOption struct {
 	Password   string
 	ClientName string
 
-	// ClientSetInfo will assign various info attributes to the current connection
+	// AuthCredentialsFn allows for setting the AUTH username and password dynamically on each connection attempt to
+	// support rotating credentials
+	AuthCredentialsFn func(AuthCredentialsContext) (AuthCredentials, error)
+
+	// ClientSetInfo will assign various info attributes to the current connection.
+	// Note that ClientSetInfo should have exactly 2 values, the lib name and the lib version respectively.
 	ClientSetInfo []string
 
 	// InitAddress point to redis nodes.
@@ -111,10 +133,12 @@ type ClientOption struct {
 
 	// PipelineMultiplex determines how many tcp connections used to pipeline commands to one redis instance.
 	// The default for single and sentinel clients is 2, which means 4 connections (2^2).
-	// For cluster client, PipelineMultiplex doesn't have any effect.
+	// The default for cluster clients is 0, which means 1 connection (2^0).
 	PipelineMultiplex int
 
-	// ConnWriteTimeout is applied net.Conn.SetWriteDeadline and periodic PING to redis
+	// ConnWriteTimeout is read/write timeout for each connection. If specified,
+	// it is used to control the maximum duration waits for responses to pipeline commands.
+	// Also, ConnWriteTimeout is applied net.Conn.SetDeadline and periodic PING to redis
 	// Since the Dialer.KeepAlive will not be triggered if there is data in the outgoing buffer,
 	// ConnWriteTimeout should be set in order to detect local congestion or unresponsive redis server.
 	// This default is ClientOption.Dialer.KeepAlive * (9+1), where 9 is the default of tcp_keepalive_probes on Linux.
@@ -146,7 +170,6 @@ type ClientOption struct {
 	ForceSingleClient bool
 
 	// ReplicaOnly indicates that this client will only try to connect to readonly replicas of redis setup.
-	// currently, it is only implemented for sentinel client
 	ReplicaOnly bool
 
 	// ClientNoEvict sets the client eviction mode for the current connection.
@@ -191,6 +214,22 @@ type Client interface {
 	// DoMultiCache is similar to DoCache, but works with multiple cacheable commands across different slots.
 	// It will first group commands by slots and will send only cache missed commands to redis.
 	DoMultiCache(ctx context.Context, multi ...CacheableTTL) (resp []RedisResult)
+
+	// DoStream send a command to redis through a dedicated connection acquired from a connection pool.
+	// It returns a RedisResultStream, but it does not read the command response until the RedisResultStream.WriteTo is called.
+	// After the RedisResultStream.WriteTo is called, the underlying connection is then recycled.
+	// DoStream should only be used when you want to stream redis response directly to an io.Writer without additional allocation,
+	// otherwise, the normal Do() should be used instead.
+	// Also note that DoStream can only work with commands returning string, integer, or float response.
+	DoStream(ctx context.Context, cmd Completed) RedisResultStream
+
+	// DoMultiStream is similar to DoStream, but pipelines multiple commands to redis.
+	// It returns a MultiRedisResultStream, and users should call MultiRedisResultStream.WriteTo as many times as the number of commands sequentially
+	// to read each command response from redis. After all responses are read, the underlying connection is then recycled.
+	// DoMultiStream should only be used when you want to stream redis responses directly to an io.Writer without additional allocation,
+	// otherwise, the normal DoMulti() should be used instead.
+	// DoMultiStream does not support multiple key slots when connecting to a redis cluster.
+	DoMultiStream(ctx context.Context, multi ...Completed) MultiRedisResultStream
 
 	// Dedicated acquire a connection from the blocking connection pool, no one else can use the connection
 	// during Dedicated. The main usage of Dedicated is CAS operation, which is WATCH + MULTI + EXEC.
@@ -262,14 +301,25 @@ type CacheableTTL struct {
 	TTL time.Duration
 }
 
+// AuthCredentialsContext is the parameter container of AuthCredentialsFn
+type AuthCredentialsContext struct {
+	Address net.Addr
+}
+
+// AuthCredentials is the output of AuthCredentialsFn
+type AuthCredentials struct {
+	Username string
+	Password string
+}
+
 // NewClient uses ClientOption to initialize the Client for both cluster client and single client.
 // It will first try to connect as cluster client. If the len(ClientOption.InitAddress) == 1 and
 // the address does not enable cluster mode, the NewClient() will use single client instead.
 func NewClient(option ClientOption) (client Client, err error) {
-	if option.ReadBufferEachConn <= 0 {
+	if option.ReadBufferEachConn < 32 { // the buffer should be able to hold an int64 string at least
 		option.ReadBufferEachConn = DefaultReadBuffer
 	}
-	if option.WriteBufferEachConn <= 0 {
+	if option.WriteBufferEachConn < 32 {
 		option.WriteBufferEachConn = DefaultWriteBuffer
 	}
 	if option.CacheSizeEachConn <= 0 {
@@ -285,26 +335,29 @@ func NewClient(option ClientOption) (client Client, err error) {
 		option.ConnWriteTimeout = option.Dialer.KeepAlive * 10
 	}
 	if option.ShuffleInit {
-		rand.Shuffle(len(option.InitAddress), func(i, j int) {
+		util.Shuffle(len(option.InitAddress), func(i, j int) {
 			option.InitAddress[i], option.InitAddress[j] = option.InitAddress[j], option.InitAddress[i]
 		})
+	}
+	if option.PipelineMultiplex > MaxPipelineMultiplex {
+		return nil, ErrWrongPipelineMultiplex
 	}
 	if option.Sentinel.MasterSet != "" {
 		option.PipelineMultiplex = singleClientMultiplex(option.PipelineMultiplex)
 		return newSentinelClient(&option, makeConn)
 	}
-	pmbk := option.PipelineMultiplex
-	option.PipelineMultiplex = 0 // PipelineMultiplex is meaningless for cluster client
-
 	if option.ForceSingleClient {
-		option.PipelineMultiplex = singleClientMultiplex(pmbk)
+		option.PipelineMultiplex = singleClientMultiplex(option.PipelineMultiplex)
 		return newSingleClient(&option, nil, makeConn)
 	}
 	if client, err = newClusterClient(&option, makeConn); err != nil {
+		if client == (*clusterClient)(nil) {
+			return nil, err
+		}
 		if len(option.InitAddress) == 1 && (err.Error() == redisErrMsgCommandNotAllow || strings.Contains(strings.ToUpper(err.Error()), "CLUSTER")) {
-			option.PipelineMultiplex = singleClientMultiplex(pmbk)
+			option.PipelineMultiplex = singleClientMultiplex(option.PipelineMultiplex)
 			client, err = newSingleClient(&option, client.(*clusterClient).single(), makeConn)
-		} else if client != (*clusterClient)(nil) {
+		} else {
 			client.Close()
 			return nil, err
 		}

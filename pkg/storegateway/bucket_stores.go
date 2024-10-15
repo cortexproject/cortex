@@ -57,7 +57,7 @@ type BucketStores struct {
 	indexCache storecache.IndexCache
 
 	// Chunks bytes pool shared across all tenants.
-	chunksPool pool.Bytes
+	chunksPool pool.Pool[byte]
 
 	// Partitioner shared across all tenants.
 	partitioner store.Partitioner

@@ -10,6 +10,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/util/stats"
+
+	"github.com/thanos-io/promql-engine/query"
 )
 
 type OperatorTelemetry interface {
@@ -17,13 +19,21 @@ type OperatorTelemetry interface {
 
 	AddExecutionTimeTaken(time.Duration)
 	ExecutionTimeTaken() time.Duration
-	IncrementSamplesAtStep(samples int, step int)
+	IncrementSamplesAtTimestamp(samples int, t int64)
 	Samples() *stats.QuerySamples
+	SubQuery() bool
 }
 
-func NewTelemetry(operator fmt.Stringer, enabled bool) OperatorTelemetry {
-	if enabled {
-		return NewTrackedTelemetry(operator)
+func NewTelemetry(operator fmt.Stringer, opts *query.Options) OperatorTelemetry {
+	if opts.EnableAnalysis {
+		return NewTrackedTelemetry(operator, opts, false)
+	}
+	return NewNoopTelemetry(operator)
+}
+
+func NewSubqueryTelemetry(operator fmt.Stringer, opts *query.Options) OperatorTelemetry {
+	if opts.EnableAnalysis {
+		return NewTrackedTelemetry(operator, opts, true)
 	}
 	return NewNoopTelemetry(operator)
 }
@@ -42,21 +52,34 @@ func (tm *NoopTelemetry) ExecutionTimeTaken() time.Duration {
 	return time.Duration(0)
 }
 
-func (tm *NoopTelemetry) IncrementSamplesAtStep(_, _ int) {}
+func (tm *NoopTelemetry) IncrementSamplesAtTimestamp(_ int, _ int64) {}
 
 func (tm *NoopTelemetry) Samples() *stats.QuerySamples { return nil }
+func (tm *NoopTelemetry) SubQuery() bool               { return false }
 
 type TrackedTelemetry struct {
 	fmt.Stringer
 
 	ExecutionTime time.Duration
 	LoadedSamples *stats.QuerySamples
+	subquery      bool
 }
 
-func NewTrackedTelemetry(operator fmt.Stringer) *TrackedTelemetry {
+func NewTrackedTelemetry(operator fmt.Stringer, opts *query.Options, subquery bool) *TrackedTelemetry {
+	ss := stats.NewQuerySamples(opts.EnablePerStepStats)
+	ss.InitStepTracking(opts.Start.UnixMilli(), opts.End.UnixMilli(), stepTrackingInterval(opts.Step))
 	return &TrackedTelemetry{
-		Stringer: operator,
+		Stringer:      operator,
+		LoadedSamples: ss,
+		subquery:      subquery,
 	}
+}
+
+func stepTrackingInterval(step time.Duration) int64 {
+	if step == 0 {
+		return 1
+	}
+	return int64(step / (time.Millisecond / time.Nanosecond))
 }
 
 func (ti *TrackedTelemetry) AddExecutionTimeTaken(t time.Duration) { ti.ExecutionTime += t }
@@ -65,18 +88,16 @@ func (ti *TrackedTelemetry) ExecutionTimeTaken() time.Duration {
 	return ti.ExecutionTime
 }
 
-func (ti *TrackedTelemetry) IncrementSamplesAtStep(samples, step int) {
+func (ti *TrackedTelemetry) IncrementSamplesAtTimestamp(samples int, t int64) {
 	ti.updatePeak(samples)
-	if ti.LoadedSamples == nil {
-		ti.LoadedSamples = stats.NewQuerySamples(false)
-	}
-	ti.LoadedSamples.IncrementSamplesAtStep(step, int64(samples))
+	ti.LoadedSamples.IncrementSamplesAtTimestamp(t, int64(samples))
+}
+
+func (ti *TrackedTelemetry) SubQuery() bool {
+	return ti.subquery
 }
 
 func (ti *TrackedTelemetry) updatePeak(samples int) {
-	if ti.LoadedSamples == nil {
-		ti.LoadedSamples = stats.NewQuerySamples(false)
-	}
 	ti.LoadedSamples.UpdatePeak(samples)
 }
 

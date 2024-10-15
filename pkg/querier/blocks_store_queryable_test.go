@@ -2159,6 +2159,9 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 
 					require.NoError(t, err)
 					require.Equal(t, 0, len(warnings))
+					if testData.limit > 0 {
+						testData.expectedLabelNames = testData.expectedLabelNames[:testData.limit]
+					}
 					require.Equal(t, testData.expectedLabelNames, names)
 
 					// Assert on metrics (optional, only for test cases defining it).
@@ -2172,6 +2175,10 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 					if testData.expectedErr != "" {
 						require.Equal(t, testData.expectedErr, err.Error())
 						continue
+					}
+
+					if testData.limit > 0 {
+						testData.expectedLabelValues = testData.expectedLabelValues[:testData.limit]
 					}
 
 					require.NoError(t, err)

@@ -161,6 +161,12 @@ var instantVectorFuncs = map[string]functionCall{
 	"sort_desc": simpleFunc(func(v float64) float64 {
 		return v
 	}),
+	"sort_by_label": simpleFunc(func(v float64) float64 {
+		return v
+	}),
+	"sort_by_label_desc": simpleFunc(func(v float64) float64 {
+		return v
+	}),
 }
 
 type noArgFunctionCall func(t int64) float64

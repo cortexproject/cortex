@@ -4,7 +4,7 @@ package cmds
 
 import "strconv"
 
-type Asking Completed
+type Asking Incomplete
 
 func (b Builder) Asking() (c Asking) {
 	c = Asking{cs: get(), ks: b.ks}
@@ -14,10 +14,10 @@ func (b Builder) Asking() (c Asking) {
 
 func (c Asking) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterAddslots Completed
+type ClusterAddslots Incomplete
 
 func (b Builder) ClusterAddslots() (c ClusterAddslots) {
 	c = ClusterAddslots{cs: get(), ks: b.ks}
@@ -32,7 +32,7 @@ func (c ClusterAddslots) Slot(slot ...int64) ClusterAddslotsSlot {
 	return (ClusterAddslotsSlot)(c)
 }
 
-type ClusterAddslotsSlot Completed
+type ClusterAddslotsSlot Incomplete
 
 func (c ClusterAddslotsSlot) Slot(slot ...int64) ClusterAddslotsSlot {
 	for _, n := range slot {
@@ -43,10 +43,10 @@ func (c ClusterAddslotsSlot) Slot(slot ...int64) ClusterAddslotsSlot {
 
 func (c ClusterAddslotsSlot) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterAddslotsrange Completed
+type ClusterAddslotsrange Incomplete
 
 func (b Builder) ClusterAddslotsrange() (c ClusterAddslotsrange) {
 	c = ClusterAddslotsrange{cs: get(), ks: b.ks}
@@ -58,7 +58,7 @@ func (c ClusterAddslotsrange) StartSlotEndSlot() ClusterAddslotsrangeStartSlotEn
 	return (ClusterAddslotsrangeStartSlotEndSlot)(c)
 }
 
-type ClusterAddslotsrangeStartSlotEndSlot Completed
+type ClusterAddslotsrangeStartSlotEndSlot Incomplete
 
 func (c ClusterAddslotsrangeStartSlotEndSlot) StartSlotEndSlot(startSlot int64, endSlot int64) ClusterAddslotsrangeStartSlotEndSlot {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(startSlot, 10), strconv.FormatInt(endSlot, 10))
@@ -67,10 +67,10 @@ func (c ClusterAddslotsrangeStartSlotEndSlot) StartSlotEndSlot(startSlot int64, 
 
 func (c ClusterAddslotsrangeStartSlotEndSlot) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterBumpepoch Completed
+type ClusterBumpepoch Incomplete
 
 func (b Builder) ClusterBumpepoch() (c ClusterBumpepoch) {
 	c = ClusterBumpepoch{cs: get(), ks: b.ks}
@@ -80,10 +80,10 @@ func (b Builder) ClusterBumpepoch() (c ClusterBumpepoch) {
 
 func (c ClusterBumpepoch) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterCountFailureReports Completed
+type ClusterCountFailureReports Incomplete
 
 func (b Builder) ClusterCountFailureReports() (c ClusterCountFailureReports) {
 	c = ClusterCountFailureReports{cs: get(), ks: b.ks}
@@ -96,14 +96,14 @@ func (c ClusterCountFailureReports) NodeId(nodeId string) ClusterCountFailureRep
 	return (ClusterCountFailureReportsNodeId)(c)
 }
 
-type ClusterCountFailureReportsNodeId Completed
+type ClusterCountFailureReportsNodeId Incomplete
 
 func (c ClusterCountFailureReportsNodeId) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterCountkeysinslot Completed
+type ClusterCountkeysinslot Incomplete
 
 func (b Builder) ClusterCountkeysinslot() (c ClusterCountkeysinslot) {
 	c = ClusterCountkeysinslot{cs: get(), ks: b.ks}
@@ -116,14 +116,14 @@ func (c ClusterCountkeysinslot) Slot(slot int64) ClusterCountkeysinslotSlot {
 	return (ClusterCountkeysinslotSlot)(c)
 }
 
-type ClusterCountkeysinslotSlot Completed
+type ClusterCountkeysinslotSlot Incomplete
 
 func (c ClusterCountkeysinslotSlot) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterDelslots Completed
+type ClusterDelslots Incomplete
 
 func (b Builder) ClusterDelslots() (c ClusterDelslots) {
 	c = ClusterDelslots{cs: get(), ks: b.ks}
@@ -138,7 +138,7 @@ func (c ClusterDelslots) Slot(slot ...int64) ClusterDelslotsSlot {
 	return (ClusterDelslotsSlot)(c)
 }
 
-type ClusterDelslotsSlot Completed
+type ClusterDelslotsSlot Incomplete
 
 func (c ClusterDelslotsSlot) Slot(slot ...int64) ClusterDelslotsSlot {
 	for _, n := range slot {
@@ -149,10 +149,10 @@ func (c ClusterDelslotsSlot) Slot(slot ...int64) ClusterDelslotsSlot {
 
 func (c ClusterDelslotsSlot) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterDelslotsrange Completed
+type ClusterDelslotsrange Incomplete
 
 func (b Builder) ClusterDelslotsrange() (c ClusterDelslotsrange) {
 	c = ClusterDelslotsrange{cs: get(), ks: b.ks}
@@ -164,7 +164,7 @@ func (c ClusterDelslotsrange) StartSlotEndSlot() ClusterDelslotsrangeStartSlotEn
 	return (ClusterDelslotsrangeStartSlotEndSlot)(c)
 }
 
-type ClusterDelslotsrangeStartSlotEndSlot Completed
+type ClusterDelslotsrangeStartSlotEndSlot Incomplete
 
 func (c ClusterDelslotsrangeStartSlotEndSlot) StartSlotEndSlot(startSlot int64, endSlot int64) ClusterDelslotsrangeStartSlotEndSlot {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(startSlot, 10), strconv.FormatInt(endSlot, 10))
@@ -173,10 +173,10 @@ func (c ClusterDelslotsrangeStartSlotEndSlot) StartSlotEndSlot(startSlot int64, 
 
 func (c ClusterDelslotsrangeStartSlotEndSlot) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterFailover Completed
+type ClusterFailover Incomplete
 
 func (b Builder) ClusterFailover() (c ClusterFailover) {
 	c = ClusterFailover{cs: get(), ks: b.ks}
@@ -196,24 +196,24 @@ func (c ClusterFailover) Takeover() ClusterFailoverOptionsTakeover {
 
 func (c ClusterFailover) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterFailoverOptionsForce Completed
+type ClusterFailoverOptionsForce Incomplete
 
 func (c ClusterFailoverOptionsForce) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterFailoverOptionsTakeover Completed
+type ClusterFailoverOptionsTakeover Incomplete
 
 func (c ClusterFailoverOptionsTakeover) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterFlushslots Completed
+type ClusterFlushslots Incomplete
 
 func (b Builder) ClusterFlushslots() (c ClusterFlushslots) {
 	c = ClusterFlushslots{cs: get(), ks: b.ks}
@@ -223,10 +223,10 @@ func (b Builder) ClusterFlushslots() (c ClusterFlushslots) {
 
 func (c ClusterFlushslots) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterForget Completed
+type ClusterForget Incomplete
 
 func (b Builder) ClusterForget() (c ClusterForget) {
 	c = ClusterForget{cs: get(), ks: b.ks}
@@ -239,14 +239,14 @@ func (c ClusterForget) NodeId(nodeId string) ClusterForgetNodeId {
 	return (ClusterForgetNodeId)(c)
 }
 
-type ClusterForgetNodeId Completed
+type ClusterForgetNodeId Incomplete
 
 func (c ClusterForgetNodeId) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterGetkeysinslot Completed
+type ClusterGetkeysinslot Incomplete
 
 func (b Builder) ClusterGetkeysinslot() (c ClusterGetkeysinslot) {
 	c = ClusterGetkeysinslot{cs: get(), ks: b.ks}
@@ -259,21 +259,21 @@ func (c ClusterGetkeysinslot) Slot(slot int64) ClusterGetkeysinslotSlot {
 	return (ClusterGetkeysinslotSlot)(c)
 }
 
-type ClusterGetkeysinslotCount Completed
+type ClusterGetkeysinslotCount Incomplete
 
 func (c ClusterGetkeysinslotCount) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterGetkeysinslotSlot Completed
+type ClusterGetkeysinslotSlot Incomplete
 
 func (c ClusterGetkeysinslotSlot) Count(count int64) ClusterGetkeysinslotCount {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(count, 10))
 	return (ClusterGetkeysinslotCount)(c)
 }
 
-type ClusterInfo Completed
+type ClusterInfo Incomplete
 
 func (b Builder) ClusterInfo() (c ClusterInfo) {
 	c = ClusterInfo{cs: get(), ks: b.ks}
@@ -283,10 +283,10 @@ func (b Builder) ClusterInfo() (c ClusterInfo) {
 
 func (c ClusterInfo) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterKeyslot Completed
+type ClusterKeyslot Incomplete
 
 func (b Builder) ClusterKeyslot() (c ClusterKeyslot) {
 	c = ClusterKeyslot{cs: get(), ks: b.ks}
@@ -299,14 +299,14 @@ func (c ClusterKeyslot) Key(key string) ClusterKeyslotKey {
 	return (ClusterKeyslotKey)(c)
 }
 
-type ClusterKeyslotKey Completed
+type ClusterKeyslotKey Incomplete
 
 func (c ClusterKeyslotKey) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterLinks Completed
+type ClusterLinks Incomplete
 
 func (b Builder) ClusterLinks() (c ClusterLinks) {
 	c = ClusterLinks{cs: get(), ks: b.ks}
@@ -316,10 +316,10 @@ func (b Builder) ClusterLinks() (c ClusterLinks) {
 
 func (c ClusterLinks) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterMeet Completed
+type ClusterMeet Incomplete
 
 func (b Builder) ClusterMeet() (c ClusterMeet) {
 	c = ClusterMeet{cs: get(), ks: b.ks}
@@ -332,21 +332,21 @@ func (c ClusterMeet) Ip(ip string) ClusterMeetIp {
 	return (ClusterMeetIp)(c)
 }
 
-type ClusterMeetClusterBusPort Completed
+type ClusterMeetClusterBusPort Incomplete
 
 func (c ClusterMeetClusterBusPort) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterMeetIp Completed
+type ClusterMeetIp Incomplete
 
 func (c ClusterMeetIp) Port(port int64) ClusterMeetPort {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(port, 10))
 	return (ClusterMeetPort)(c)
 }
 
-type ClusterMeetPort Completed
+type ClusterMeetPort Incomplete
 
 func (c ClusterMeetPort) ClusterBusPort(clusterBusPort int64) ClusterMeetClusterBusPort {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(clusterBusPort, 10))
@@ -355,10 +355,10 @@ func (c ClusterMeetPort) ClusterBusPort(clusterBusPort int64) ClusterMeetCluster
 
 func (c ClusterMeetPort) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterMyid Completed
+type ClusterMyid Incomplete
 
 func (b Builder) ClusterMyid() (c ClusterMyid) {
 	c = ClusterMyid{cs: get(), ks: b.ks}
@@ -368,10 +368,10 @@ func (b Builder) ClusterMyid() (c ClusterMyid) {
 
 func (c ClusterMyid) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterMyshardid Completed
+type ClusterMyshardid Incomplete
 
 func (b Builder) ClusterMyshardid() (c ClusterMyshardid) {
 	c = ClusterMyshardid{cs: get(), ks: b.ks}
@@ -381,10 +381,10 @@ func (b Builder) ClusterMyshardid() (c ClusterMyshardid) {
 
 func (c ClusterMyshardid) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterNodes Completed
+type ClusterNodes Incomplete
 
 func (b Builder) ClusterNodes() (c ClusterNodes) {
 	c = ClusterNodes{cs: get(), ks: b.ks}
@@ -394,10 +394,10 @@ func (b Builder) ClusterNodes() (c ClusterNodes) {
 
 func (c ClusterNodes) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterReplicas Completed
+type ClusterReplicas Incomplete
 
 func (b Builder) ClusterReplicas() (c ClusterReplicas) {
 	c = ClusterReplicas{cs: get(), ks: b.ks}
@@ -410,14 +410,14 @@ func (c ClusterReplicas) NodeId(nodeId string) ClusterReplicasNodeId {
 	return (ClusterReplicasNodeId)(c)
 }
 
-type ClusterReplicasNodeId Completed
+type ClusterReplicasNodeId Incomplete
 
 func (c ClusterReplicasNodeId) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterReplicate Completed
+type ClusterReplicate Incomplete
 
 func (b Builder) ClusterReplicate() (c ClusterReplicate) {
 	c = ClusterReplicate{cs: get(), ks: b.ks}
@@ -430,14 +430,14 @@ func (c ClusterReplicate) NodeId(nodeId string) ClusterReplicateNodeId {
 	return (ClusterReplicateNodeId)(c)
 }
 
-type ClusterReplicateNodeId Completed
+type ClusterReplicateNodeId Incomplete
 
 func (c ClusterReplicateNodeId) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterReset Completed
+type ClusterReset Incomplete
 
 func (b Builder) ClusterReset() (c ClusterReset) {
 	c = ClusterReset{cs: get(), ks: b.ks}
@@ -457,24 +457,24 @@ func (c ClusterReset) Soft() ClusterResetResetTypeSoft {
 
 func (c ClusterReset) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterResetResetTypeHard Completed
+type ClusterResetResetTypeHard Incomplete
 
 func (c ClusterResetResetTypeHard) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterResetResetTypeSoft Completed
+type ClusterResetResetTypeSoft Incomplete
 
 func (c ClusterResetResetTypeSoft) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterSaveconfig Completed
+type ClusterSaveconfig Incomplete
 
 func (b Builder) ClusterSaveconfig() (c ClusterSaveconfig) {
 	c = ClusterSaveconfig{cs: get(), ks: b.ks}
@@ -484,10 +484,10 @@ func (b Builder) ClusterSaveconfig() (c ClusterSaveconfig) {
 
 func (c ClusterSaveconfig) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterSetConfigEpoch Completed
+type ClusterSetConfigEpoch Incomplete
 
 func (b Builder) ClusterSetConfigEpoch() (c ClusterSetConfigEpoch) {
 	c = ClusterSetConfigEpoch{cs: get(), ks: b.ks}
@@ -500,14 +500,14 @@ func (c ClusterSetConfigEpoch) ConfigEpoch(configEpoch int64) ClusterSetConfigEp
 	return (ClusterSetConfigEpochConfigEpoch)(c)
 }
 
-type ClusterSetConfigEpochConfigEpoch Completed
+type ClusterSetConfigEpochConfigEpoch Incomplete
 
 func (c ClusterSetConfigEpochConfigEpoch) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterSetslot Completed
+type ClusterSetslot Incomplete
 
 func (b Builder) ClusterSetslot() (c ClusterSetslot) {
 	c = ClusterSetslot{cs: get(), ks: b.ks}
@@ -520,14 +520,14 @@ func (c ClusterSetslot) Slot(slot int64) ClusterSetslotSlot {
 	return (ClusterSetslotSlot)(c)
 }
 
-type ClusterSetslotNodeId Completed
+type ClusterSetslotNodeId Incomplete
 
 func (c ClusterSetslotNodeId) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterSetslotSlot Completed
+type ClusterSetslotSlot Incomplete
 
 func (c ClusterSetslotSlot) Importing() ClusterSetslotSubcommandImporting {
 	c.cs.s = append(c.cs.s, "IMPORTING")
@@ -549,7 +549,7 @@ func (c ClusterSetslotSlot) Node() ClusterSetslotSubcommandNode {
 	return (ClusterSetslotSubcommandNode)(c)
 }
 
-type ClusterSetslotSubcommandImporting Completed
+type ClusterSetslotSubcommandImporting Incomplete
 
 func (c ClusterSetslotSubcommandImporting) NodeId(nodeId string) ClusterSetslotNodeId {
 	c.cs.s = append(c.cs.s, nodeId)
@@ -558,10 +558,10 @@ func (c ClusterSetslotSubcommandImporting) NodeId(nodeId string) ClusterSetslotN
 
 func (c ClusterSetslotSubcommandImporting) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterSetslotSubcommandMigrating Completed
+type ClusterSetslotSubcommandMigrating Incomplete
 
 func (c ClusterSetslotSubcommandMigrating) NodeId(nodeId string) ClusterSetslotNodeId {
 	c.cs.s = append(c.cs.s, nodeId)
@@ -570,10 +570,10 @@ func (c ClusterSetslotSubcommandMigrating) NodeId(nodeId string) ClusterSetslotN
 
 func (c ClusterSetslotSubcommandMigrating) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterSetslotSubcommandNode Completed
+type ClusterSetslotSubcommandNode Incomplete
 
 func (c ClusterSetslotSubcommandNode) NodeId(nodeId string) ClusterSetslotNodeId {
 	c.cs.s = append(c.cs.s, nodeId)
@@ -582,10 +582,10 @@ func (c ClusterSetslotSubcommandNode) NodeId(nodeId string) ClusterSetslotNodeId
 
 func (c ClusterSetslotSubcommandNode) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterSetslotSubcommandStable Completed
+type ClusterSetslotSubcommandStable Incomplete
 
 func (c ClusterSetslotSubcommandStable) NodeId(nodeId string) ClusterSetslotNodeId {
 	c.cs.s = append(c.cs.s, nodeId)
@@ -594,10 +594,10 @@ func (c ClusterSetslotSubcommandStable) NodeId(nodeId string) ClusterSetslotNode
 
 func (c ClusterSetslotSubcommandStable) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterShards Completed
+type ClusterShards Incomplete
 
 func (b Builder) ClusterShards() (c ClusterShards) {
 	c = ClusterShards{cs: get(), ks: b.ks}
@@ -607,10 +607,10 @@ func (b Builder) ClusterShards() (c ClusterShards) {
 
 func (c ClusterShards) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterSlaves Completed
+type ClusterSlaves Incomplete
 
 func (b Builder) ClusterSlaves() (c ClusterSlaves) {
 	c = ClusterSlaves{cs: get(), ks: b.ks}
@@ -623,14 +623,14 @@ func (c ClusterSlaves) NodeId(nodeId string) ClusterSlavesNodeId {
 	return (ClusterSlavesNodeId)(c)
 }
 
-type ClusterSlavesNodeId Completed
+type ClusterSlavesNodeId Incomplete
 
 func (c ClusterSlavesNodeId) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type ClusterSlots Completed
+type ClusterSlots Incomplete
 
 func (b Builder) ClusterSlots() (c ClusterSlots) {
 	c = ClusterSlots{cs: get(), ks: b.ks}
@@ -640,10 +640,10 @@ func (b Builder) ClusterSlots() (c ClusterSlots) {
 
 func (c ClusterSlots) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type Readonly Completed
+type Readonly Incomplete
 
 func (b Builder) Readonly() (c Readonly) {
 	c = Readonly{cs: get(), ks: b.ks}
@@ -653,10 +653,10 @@ func (b Builder) Readonly() (c Readonly) {
 
 func (c Readonly) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type Readwrite Completed
+type Readwrite Incomplete
 
 func (b Builder) Readwrite() (c Readwrite) {
 	c = Readwrite{cs: get(), ks: b.ks}
@@ -666,5 +666,5 @@ func (b Builder) Readwrite() (c Readwrite) {
 
 func (c Readwrite) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }

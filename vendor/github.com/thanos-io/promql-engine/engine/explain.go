@@ -30,12 +30,36 @@ var _ ExplainableQuery = &compatibilityQuery{}
 
 func (a *AnalyzeOutputNode) TotalSamples() int64 {
 	var total int64
-	for _, child := range a.Children {
-		total += child.TotalSamples()
-	}
 	if a.OperatorTelemetry.Samples() != nil {
 		total += a.OperatorTelemetry.Samples().TotalSamples
 	}
+	if a.OperatorTelemetry.SubQuery() {
+		// Returning here to avoid double counting samples from children of subquery.
+		return total
+	}
+
+	for _, child := range a.Children {
+		c := child.TotalSamples()
+		if c > 0 {
+			total += child.TotalSamples()
+		}
+	}
+
+	return total
+}
+
+func (a *AnalyzeOutputNode) TotalSamplesPerStep() []int64 {
+	if a.OperatorTelemetry.Samples() == nil {
+		return []int64{}
+	}
+
+	total := a.OperatorTelemetry.Samples().TotalSamplesPerStep
+	for _, child := range a.Children {
+		for i, s := range child.TotalSamplesPerStep() {
+			total[i] += s
+		}
+	}
+
 	return total
 }
 

@@ -376,8 +376,7 @@ func (q *blocksStoreQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 		return nil, nil, err
 	}
 
-	// TODO(johrry): pass limit when merging.
-	return strutil.MergeSlices(resNameSets...), resWarnings, nil
+	return strutil.MergeSlices(int(limit), resNameSets...), resWarnings, nil
 }
 
 func (q *blocksStoreQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -420,8 +419,7 @@ func (q *blocksStoreQuerier) LabelValues(ctx context.Context, name string, hints
 		return nil, nil, err
 	}
 
-	// TODO(johrry): pass limit when merging.
-	return strutil.MergeSlices(resValueSets...), resWarnings, nil
+	return strutil.MergeSlices(int(limit), resValueSets...), resWarnings, nil
 }
 
 func (q *blocksStoreQuerier) Close() error {

@@ -485,7 +485,12 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 		return nil, nil, err
 	}
 
-	return strutil.MergeSlices(sets...), warnings, nil
+	limit := 0
+	if hints != nil {
+		limit = hints.Limit
+	}
+
+	return strutil.MergeSlices(limit, sets...), warnings, nil
 }
 
 func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -543,7 +548,12 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 		return nil, nil, err
 	}
 
-	return strutil.MergeSlices(sets...), warnings, nil
+	limit := 0
+	if hints != nil {
+		limit = hints.Limit
+	}
+
+	return strutil.MergeSlices(limit, sets...), warnings, nil
 }
 
 func (querier) Close() error {

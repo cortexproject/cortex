@@ -42,9 +42,14 @@ func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handle
 			AddMetricSuffixes: true,
 			DisableTargetInfo: true,
 		}
-		err = promConverter.FromMetrics(convertToMetricsAttributes(req.Metrics()), setting)
+		annots, err := promConverter.FromMetrics(ctx, convertToMetricsAttributes(req.Metrics()), setting)
+		ws, _ := annots.AsStrings("", 0, 0)
+		if len(ws) > 0 {
+			level.Warn(logger).Log("msg", "Warnings translating OTLP metrics to Prometheus write request", "warnings", ws)
+		}
+
 		if err != nil {
-			level.Error(logger).Log("err", err.Error())
+			level.Error(logger).Log("msg", "Error translating OTLP metrics to Prometheus write request", "err", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

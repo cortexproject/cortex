@@ -66,7 +66,7 @@ func newNoArgsFunctionOperator(funcExpr *logicalplan.FunctionCall, stepsBatch in
 		call:        call,
 		vectorPool:  model.NewVectorPool(stepsBatch),
 	}
-	op.OperatorTelemetry = model.NewTelemetry(op, opts.EnableAnalysis)
+	op.OperatorTelemetry = model.NewTelemetry(op, opts)
 
 	switch funcExpr.Func.Name {
 	case "pi", "time":
@@ -112,7 +112,7 @@ func newInstantVectorFunctionOperator(funcExpr *logicalplan.FunctionCall, nextOp
 		vectorIndex:  0,
 		scalarPoints: scalarPoints,
 	}
-	f.OperatorTelemetry = model.NewTelemetry(f, opts.EnableAnalysis)
+	f.OperatorTelemetry = model.NewTelemetry(f, opts)
 
 	for i := range funcExpr.Args {
 		if funcExpr.Args[i].ReturnType() == parser.ValueTypeVector {

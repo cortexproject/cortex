@@ -4,10 +4,10 @@ package cmds
 
 import "strconv"
 
-type FtAggregate Completed
+type FtAggregate Incomplete
 
 func (b Builder) FtAggregate() (c FtAggregate) {
-	c = FtAggregate{cs: get(), ks: b.ks}
+	c = FtAggregate{cs: get(), ks: b.ks, cf: int16(readonly)}
 	c.cs.s = append(c.cs.s, "FT.AGGREGATE")
 	return c
 }
@@ -17,7 +17,7 @@ func (c FtAggregate) Index(index string) FtAggregateIndex {
 	return (FtAggregateIndex)(c)
 }
 
-type FtAggregateCursorCount Completed
+type FtAggregateCursorCount Incomplete
 
 func (c FtAggregateCursorCount) Maxidle(idleTime int64) FtAggregateCursorMaxidle {
 	c.cs.s = append(c.cs.s, "MAXIDLE", strconv.FormatInt(idleTime, 10))
@@ -36,10 +36,10 @@ func (c FtAggregateCursorCount) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateCursorCount) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateCursorMaxidle Completed
+type FtAggregateCursorMaxidle Incomplete
 
 func (c FtAggregateCursorMaxidle) Params() FtAggregateParamsParams {
 	c.cs.s = append(c.cs.s, "PARAMS")
@@ -53,10 +53,10 @@ func (c FtAggregateCursorMaxidle) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateCursorMaxidle) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateCursorWithcursor Completed
+type FtAggregateCursorWithcursor Incomplete
 
 func (c FtAggregateCursorWithcursor) Count(readSize int64) FtAggregateCursorCount {
 	c.cs.s = append(c.cs.s, "COUNT", strconv.FormatInt(readSize, 10))
@@ -80,31 +80,31 @@ func (c FtAggregateCursorWithcursor) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateCursorWithcursor) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateDialect Completed
+type FtAggregateDialect Incomplete
 
 func (c FtAggregateDialect) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateIndex Completed
+type FtAggregateIndex Incomplete
 
 func (c FtAggregateIndex) Query(query string) FtAggregateQuery {
 	c.cs.s = append(c.cs.s, query)
 	return (FtAggregateQuery)(c)
 }
 
-type FtAggregateOpApplyApply Completed
+type FtAggregateOpApplyApply Incomplete
 
 func (c FtAggregateOpApplyApply) As(name string) FtAggregateOpApplyAs {
 	c.cs.s = append(c.cs.s, "AS", name)
 	return (FtAggregateOpApplyAs)(c)
 }
 
-type FtAggregateOpApplyAs Completed
+type FtAggregateOpApplyAs Incomplete
 
 func (c FtAggregateOpApplyAs) Apply(expression string) FtAggregateOpApplyApply {
 	c.cs.s = append(c.cs.s, "APPLY", expression)
@@ -158,10 +158,10 @@ func (c FtAggregateOpApplyAs) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateOpApplyAs) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpFilter Completed
+type FtAggregateOpFilter Incomplete
 
 func (c FtAggregateOpFilter) LoadAll() FtAggregateOpLoadallLoadAll {
 	c.cs.s = append(c.cs.s, "LOAD", "*")
@@ -215,10 +215,10 @@ func (c FtAggregateOpFilter) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateOpFilter) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpGroupbyGroupby Completed
+type FtAggregateOpGroupbyGroupby Incomplete
 
 func (c FtAggregateOpGroupbyGroupby) Property(property ...string) FtAggregateOpGroupbyProperty {
 	c.cs.s = append(c.cs.s, property...)
@@ -282,10 +282,10 @@ func (c FtAggregateOpGroupbyGroupby) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateOpGroupbyGroupby) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpGroupbyProperty Completed
+type FtAggregateOpGroupbyProperty Incomplete
 
 func (c FtAggregateOpGroupbyProperty) Property(property ...string) FtAggregateOpGroupbyProperty {
 	c.cs.s = append(c.cs.s, property...)
@@ -349,10 +349,10 @@ func (c FtAggregateOpGroupbyProperty) Dialect(dialect int64) FtAggregateDialect 
 
 func (c FtAggregateOpGroupbyProperty) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpGroupbyReduceArg Completed
+type FtAggregateOpGroupbyReduceArg Incomplete
 
 func (c FtAggregateOpGroupbyReduceArg) Arg(arg ...string) FtAggregateOpGroupbyReduceArg {
 	c.cs.s = append(c.cs.s, arg...)
@@ -436,10 +436,10 @@ func (c FtAggregateOpGroupbyReduceArg) Dialect(dialect int64) FtAggregateDialect
 
 func (c FtAggregateOpGroupbyReduceArg) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpGroupbyReduceAs Completed
+type FtAggregateOpGroupbyReduceAs Incomplete
 
 func (c FtAggregateOpGroupbyReduceAs) By(by string) FtAggregateOpGroupbyReduceBy {
 	c.cs.s = append(c.cs.s, "BY", by)
@@ -513,10 +513,10 @@ func (c FtAggregateOpGroupbyReduceAs) Dialect(dialect int64) FtAggregateDialect 
 
 func (c FtAggregateOpGroupbyReduceAs) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpGroupbyReduceBy Completed
+type FtAggregateOpGroupbyReduceBy Incomplete
 
 func (c FtAggregateOpGroupbyReduceBy) Asc() FtAggregateOpGroupbyReduceOrderAsc {
 	c.cs.s = append(c.cs.s, "ASC")
@@ -585,10 +585,10 @@ func (c FtAggregateOpGroupbyReduceBy) Dialect(dialect int64) FtAggregateDialect 
 
 func (c FtAggregateOpGroupbyReduceBy) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpGroupbyReduceNargs Completed
+type FtAggregateOpGroupbyReduceNargs Incomplete
 
 func (c FtAggregateOpGroupbyReduceNargs) Arg(arg ...string) FtAggregateOpGroupbyReduceArg {
 	c.cs.s = append(c.cs.s, arg...)
@@ -672,10 +672,10 @@ func (c FtAggregateOpGroupbyReduceNargs) Dialect(dialect int64) FtAggregateDiale
 
 func (c FtAggregateOpGroupbyReduceNargs) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpGroupbyReduceOrderAsc Completed
+type FtAggregateOpGroupbyReduceOrderAsc Incomplete
 
 func (c FtAggregateOpGroupbyReduceOrderAsc) Reduce(function string) FtAggregateOpGroupbyReduceReduce {
 	c.cs.s = append(c.cs.s, "REDUCE", function)
@@ -734,10 +734,10 @@ func (c FtAggregateOpGroupbyReduceOrderAsc) Dialect(dialect int64) FtAggregateDi
 
 func (c FtAggregateOpGroupbyReduceOrderAsc) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpGroupbyReduceOrderDesc Completed
+type FtAggregateOpGroupbyReduceOrderDesc Incomplete
 
 func (c FtAggregateOpGroupbyReduceOrderDesc) Reduce(function string) FtAggregateOpGroupbyReduceReduce {
 	c.cs.s = append(c.cs.s, "REDUCE", function)
@@ -796,24 +796,24 @@ func (c FtAggregateOpGroupbyReduceOrderDesc) Dialect(dialect int64) FtAggregateD
 
 func (c FtAggregateOpGroupbyReduceOrderDesc) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpGroupbyReduceReduce Completed
+type FtAggregateOpGroupbyReduceReduce Incomplete
 
 func (c FtAggregateOpGroupbyReduceReduce) Nargs(nargs int64) FtAggregateOpGroupbyReduceNargs {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(nargs, 10))
 	return (FtAggregateOpGroupbyReduceNargs)(c)
 }
 
-type FtAggregateOpLimitLimit Completed
+type FtAggregateOpLimitLimit Incomplete
 
 func (c FtAggregateOpLimitLimit) OffsetNum(offset int64, num int64) FtAggregateOpLimitOffsetNum {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(offset, 10), strconv.FormatInt(num, 10))
 	return (FtAggregateOpLimitOffsetNum)(c)
 }
 
-type FtAggregateOpLimitOffsetNum Completed
+type FtAggregateOpLimitOffsetNum Incomplete
 
 func (c FtAggregateOpLimitOffsetNum) Filter(filter string) FtAggregateOpFilter {
 	c.cs.s = append(c.cs.s, "FILTER", filter)
@@ -867,10 +867,10 @@ func (c FtAggregateOpLimitOffsetNum) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateOpLimitOffsetNum) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpLoadField Completed
+type FtAggregateOpLoadField Incomplete
 
 func (c FtAggregateOpLoadField) Field(field ...string) FtAggregateOpLoadField {
 	c.cs.s = append(c.cs.s, field...)
@@ -929,17 +929,17 @@ func (c FtAggregateOpLoadField) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateOpLoadField) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpLoadLoad Completed
+type FtAggregateOpLoadLoad Incomplete
 
 func (c FtAggregateOpLoadLoad) Field(field ...string) FtAggregateOpLoadField {
 	c.cs.s = append(c.cs.s, field...)
 	return (FtAggregateOpLoadField)(c)
 }
 
-type FtAggregateOpLoadallLoadAll Completed
+type FtAggregateOpLoadallLoadAll Incomplete
 
 func (c FtAggregateOpLoadallLoadAll) Load(count int64) FtAggregateOpLoadLoad {
 	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
@@ -993,10 +993,10 @@ func (c FtAggregateOpLoadallLoadAll) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateOpLoadallLoadAll) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpSortbyFieldsOrderAsc Completed
+type FtAggregateOpSortbyFieldsOrderAsc Incomplete
 
 func (c FtAggregateOpSortbyFieldsOrderAsc) Property(property string) FtAggregateOpSortbyFieldsProperty {
 	c.cs.s = append(c.cs.s, property)
@@ -1060,10 +1060,10 @@ func (c FtAggregateOpSortbyFieldsOrderAsc) Dialect(dialect int64) FtAggregateDia
 
 func (c FtAggregateOpSortbyFieldsOrderAsc) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpSortbyFieldsOrderDesc Completed
+type FtAggregateOpSortbyFieldsOrderDesc Incomplete
 
 func (c FtAggregateOpSortbyFieldsOrderDesc) Property(property string) FtAggregateOpSortbyFieldsProperty {
 	c.cs.s = append(c.cs.s, property)
@@ -1127,10 +1127,10 @@ func (c FtAggregateOpSortbyFieldsOrderDesc) Dialect(dialect int64) FtAggregateDi
 
 func (c FtAggregateOpSortbyFieldsOrderDesc) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpSortbyFieldsProperty Completed
+type FtAggregateOpSortbyFieldsProperty Incomplete
 
 func (c FtAggregateOpSortbyFieldsProperty) Asc() FtAggregateOpSortbyFieldsOrderAsc {
 	c.cs.s = append(c.cs.s, "ASC")
@@ -1204,10 +1204,10 @@ func (c FtAggregateOpSortbyFieldsProperty) Dialect(dialect int64) FtAggregateDia
 
 func (c FtAggregateOpSortbyFieldsProperty) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpSortbyMax Completed
+type FtAggregateOpSortbyMax Incomplete
 
 func (c FtAggregateOpSortbyMax) Apply(expression string) FtAggregateOpApplyApply {
 	c.cs.s = append(c.cs.s, "APPLY", expression)
@@ -1261,10 +1261,10 @@ func (c FtAggregateOpSortbyMax) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateOpSortbyMax) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateOpSortbySortby Completed
+type FtAggregateOpSortbySortby Incomplete
 
 func (c FtAggregateOpSortbySortby) Property(property string) FtAggregateOpSortbyFieldsProperty {
 	c.cs.s = append(c.cs.s, property)
@@ -1328,10 +1328,10 @@ func (c FtAggregateOpSortbySortby) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateOpSortbySortby) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateParamsNameValue Completed
+type FtAggregateParamsNameValue Incomplete
 
 func (c FtAggregateParamsNameValue) NameValue(name string, value string) FtAggregateParamsNameValue {
 	c.cs.s = append(c.cs.s, name, value)
@@ -1345,23 +1345,23 @@ func (c FtAggregateParamsNameValue) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateParamsNameValue) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateParamsNargs Completed
+type FtAggregateParamsNargs Incomplete
 
 func (c FtAggregateParamsNargs) NameValue() FtAggregateParamsNameValue {
 	return (FtAggregateParamsNameValue)(c)
 }
 
-type FtAggregateParamsParams Completed
+type FtAggregateParamsParams Incomplete
 
 func (c FtAggregateParamsParams) Nargs(nargs int64) FtAggregateParamsNargs {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(nargs, 10))
 	return (FtAggregateParamsNargs)(c)
 }
 
-type FtAggregateQuery Completed
+type FtAggregateQuery Incomplete
 
 func (c FtAggregateQuery) Verbatim() FtAggregateVerbatim {
 	c.cs.s = append(c.cs.s, "VERBATIM")
@@ -1425,10 +1425,10 @@ func (c FtAggregateQuery) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateQuery) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateTimeout Completed
+type FtAggregateTimeout Incomplete
 
 func (c FtAggregateTimeout) LoadAll() FtAggregateOpLoadallLoadAll {
 	c.cs.s = append(c.cs.s, "LOAD", "*")
@@ -1482,10 +1482,10 @@ func (c FtAggregateTimeout) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateTimeout) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAggregateVerbatim Completed
+type FtAggregateVerbatim Incomplete
 
 func (c FtAggregateVerbatim) Timeout(timeout int64) FtAggregateTimeout {
 	c.cs.s = append(c.cs.s, "TIMEOUT", strconv.FormatInt(timeout, 10))
@@ -1544,10 +1544,10 @@ func (c FtAggregateVerbatim) Dialect(dialect int64) FtAggregateDialect {
 
 func (c FtAggregateVerbatim) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAliasadd Completed
+type FtAliasadd Incomplete
 
 func (b Builder) FtAliasadd() (c FtAliasadd) {
 	c = FtAliasadd{cs: get(), ks: b.ks}
@@ -1560,21 +1560,21 @@ func (c FtAliasadd) Alias(alias string) FtAliasaddAlias {
 	return (FtAliasaddAlias)(c)
 }
 
-type FtAliasaddAlias Completed
+type FtAliasaddAlias Incomplete
 
 func (c FtAliasaddAlias) Index(index string) FtAliasaddIndex {
 	c.cs.s = append(c.cs.s, index)
 	return (FtAliasaddIndex)(c)
 }
 
-type FtAliasaddIndex Completed
+type FtAliasaddIndex Incomplete
 
 func (c FtAliasaddIndex) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAliasdel Completed
+type FtAliasdel Incomplete
 
 func (b Builder) FtAliasdel() (c FtAliasdel) {
 	c = FtAliasdel{cs: get(), ks: b.ks}
@@ -1587,14 +1587,14 @@ func (c FtAliasdel) Alias(alias string) FtAliasdelAlias {
 	return (FtAliasdelAlias)(c)
 }
 
-type FtAliasdelAlias Completed
+type FtAliasdelAlias Incomplete
 
 func (c FtAliasdelAlias) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAliasupdate Completed
+type FtAliasupdate Incomplete
 
 func (b Builder) FtAliasupdate() (c FtAliasupdate) {
 	c = FtAliasupdate{cs: get(), ks: b.ks}
@@ -1607,21 +1607,21 @@ func (c FtAliasupdate) Alias(alias string) FtAliasupdateAlias {
 	return (FtAliasupdateAlias)(c)
 }
 
-type FtAliasupdateAlias Completed
+type FtAliasupdateAlias Incomplete
 
 func (c FtAliasupdateAlias) Index(index string) FtAliasupdateIndex {
 	c.cs.s = append(c.cs.s, index)
 	return (FtAliasupdateIndex)(c)
 }
 
-type FtAliasupdateIndex Completed
+type FtAliasupdateIndex Incomplete
 
 func (c FtAliasupdateIndex) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAlter Completed
+type FtAlter Incomplete
 
 func (b Builder) FtAlter() (c FtAlter) {
 	c = FtAlter{cs: get(), ks: b.ks}
@@ -1634,21 +1634,21 @@ func (c FtAlter) Index(index string) FtAlterIndex {
 	return (FtAlterIndex)(c)
 }
 
-type FtAlterAdd Completed
+type FtAlterAdd Incomplete
 
 func (c FtAlterAdd) Field(field string) FtAlterField {
 	c.cs.s = append(c.cs.s, field)
 	return (FtAlterField)(c)
 }
 
-type FtAlterField Completed
+type FtAlterField Incomplete
 
 func (c FtAlterField) Options(options string) FtAlterOptions {
 	c.cs.s = append(c.cs.s, options)
 	return (FtAlterOptions)(c)
 }
 
-type FtAlterIndex Completed
+type FtAlterIndex Incomplete
 
 func (c FtAlterIndex) Skipinitialscan() FtAlterSkipinitialscan {
 	c.cs.s = append(c.cs.s, "SKIPINITIALSCAN")
@@ -1660,28 +1660,28 @@ func (c FtAlterIndex) Schema() FtAlterSchema {
 	return (FtAlterSchema)(c)
 }
 
-type FtAlterOptions Completed
+type FtAlterOptions Incomplete
 
 func (c FtAlterOptions) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtAlterSchema Completed
+type FtAlterSchema Incomplete
 
 func (c FtAlterSchema) Add() FtAlterAdd {
 	c.cs.s = append(c.cs.s, "ADD")
 	return (FtAlterAdd)(c)
 }
 
-type FtAlterSkipinitialscan Completed
+type FtAlterSkipinitialscan Incomplete
 
 func (c FtAlterSkipinitialscan) Schema() FtAlterSchema {
 	c.cs.s = append(c.cs.s, "SCHEMA")
 	return (FtAlterSchema)(c)
 }
 
-type FtConfigGet Completed
+type FtConfigGet Incomplete
 
 func (b Builder) FtConfigGet() (c FtConfigGet) {
 	c = FtConfigGet{cs: get(), ks: b.ks}
@@ -1694,14 +1694,14 @@ func (c FtConfigGet) Option(option string) FtConfigGetOption {
 	return (FtConfigGetOption)(c)
 }
 
-type FtConfigGetOption Completed
+type FtConfigGetOption Incomplete
 
 func (c FtConfigGetOption) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtConfigHelp Completed
+type FtConfigHelp Incomplete
 
 func (b Builder) FtConfigHelp() (c FtConfigHelp) {
 	c = FtConfigHelp{cs: get(), ks: b.ks}
@@ -1714,14 +1714,14 @@ func (c FtConfigHelp) Option(option string) FtConfigHelpOption {
 	return (FtConfigHelpOption)(c)
 }
 
-type FtConfigHelpOption Completed
+type FtConfigHelpOption Incomplete
 
 func (c FtConfigHelpOption) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtConfigSet Completed
+type FtConfigSet Incomplete
 
 func (b Builder) FtConfigSet() (c FtConfigSet) {
 	c = FtConfigSet{cs: get(), ks: b.ks}
@@ -1734,21 +1734,21 @@ func (c FtConfigSet) Option(option string) FtConfigSetOption {
 	return (FtConfigSetOption)(c)
 }
 
-type FtConfigSetOption Completed
+type FtConfigSetOption Incomplete
 
 func (c FtConfigSetOption) Value(value string) FtConfigSetValue {
 	c.cs.s = append(c.cs.s, value)
 	return (FtConfigSetValue)(c)
 }
 
-type FtConfigSetValue Completed
+type FtConfigSetValue Incomplete
 
 func (c FtConfigSetValue) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreate Completed
+type FtCreate Incomplete
 
 func (b Builder) FtCreate() (c FtCreate) {
 	c = FtCreate{cs: get(), ks: b.ks}
@@ -1761,7 +1761,7 @@ func (c FtCreate) Index(index string) FtCreateIndex {
 	return (FtCreateIndex)(c)
 }
 
-type FtCreateFieldAs Completed
+type FtCreateFieldAs Incomplete
 
 func (c FtCreateFieldAs) Text() FtCreateFieldFieldTypeText {
 	c.cs.s = append(c.cs.s, "TEXT")
@@ -1789,7 +1789,7 @@ func (c FtCreateFieldAs) Vector(algo string, nargs int64, args ...string) FtCrea
 	return (FtCreateFieldFieldTypeVector)(c)
 }
 
-type FtCreateFieldFieldName Completed
+type FtCreateFieldFieldName Incomplete
 
 func (c FtCreateFieldFieldName) As(alias string) FtCreateFieldAs {
 	c.cs.s = append(c.cs.s, "AS", alias)
@@ -1822,7 +1822,7 @@ func (c FtCreateFieldFieldName) Vector(algo string, nargs int64, args ...string)
 	return (FtCreateFieldFieldTypeVector)(c)
 }
 
-type FtCreateFieldFieldTypeGeo Completed
+type FtCreateFieldFieldTypeGeo Incomplete
 
 func (c FtCreateFieldFieldTypeGeo) Withsuffixtrie() FtCreateFieldOptionWithsuffixtrie {
 	c.cs.s = append(c.cs.s, "WITHSUFFIXTRIE")
@@ -1871,10 +1871,10 @@ func (c FtCreateFieldFieldTypeGeo) FieldName(fieldName string) FtCreateFieldFiel
 
 func (c FtCreateFieldFieldTypeGeo) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldFieldTypeNumeric Completed
+type FtCreateFieldFieldTypeNumeric Incomplete
 
 func (c FtCreateFieldFieldTypeNumeric) Withsuffixtrie() FtCreateFieldOptionWithsuffixtrie {
 	c.cs.s = append(c.cs.s, "WITHSUFFIXTRIE")
@@ -1923,10 +1923,10 @@ func (c FtCreateFieldFieldTypeNumeric) FieldName(fieldName string) FtCreateField
 
 func (c FtCreateFieldFieldTypeNumeric) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldFieldTypeTag Completed
+type FtCreateFieldFieldTypeTag Incomplete
 
 func (c FtCreateFieldFieldTypeTag) Withsuffixtrie() FtCreateFieldOptionWithsuffixtrie {
 	c.cs.s = append(c.cs.s, "WITHSUFFIXTRIE")
@@ -1975,10 +1975,10 @@ func (c FtCreateFieldFieldTypeTag) FieldName(fieldName string) FtCreateFieldFiel
 
 func (c FtCreateFieldFieldTypeTag) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldFieldTypeText Completed
+type FtCreateFieldFieldTypeText Incomplete
 
 func (c FtCreateFieldFieldTypeText) Withsuffixtrie() FtCreateFieldOptionWithsuffixtrie {
 	c.cs.s = append(c.cs.s, "WITHSUFFIXTRIE")
@@ -2027,10 +2027,10 @@ func (c FtCreateFieldFieldTypeText) FieldName(fieldName string) FtCreateFieldFie
 
 func (c FtCreateFieldFieldTypeText) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldFieldTypeVector Completed
+type FtCreateFieldFieldTypeVector Incomplete
 
 func (c FtCreateFieldFieldTypeVector) Withsuffixtrie() FtCreateFieldOptionWithsuffixtrie {
 	c.cs.s = append(c.cs.s, "WITHSUFFIXTRIE")
@@ -2079,10 +2079,10 @@ func (c FtCreateFieldFieldTypeVector) FieldName(fieldName string) FtCreateFieldF
 
 func (c FtCreateFieldFieldTypeVector) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldOptionCasesensitive Completed
+type FtCreateFieldOptionCasesensitive Incomplete
 
 func (c FtCreateFieldOptionCasesensitive) Withsuffixtrie() FtCreateFieldOptionWithsuffixtrie {
 	c.cs.s = append(c.cs.s, "WITHSUFFIXTRIE")
@@ -2131,10 +2131,10 @@ func (c FtCreateFieldOptionCasesensitive) FieldName(fieldName string) FtCreateFi
 
 func (c FtCreateFieldOptionCasesensitive) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldOptionNoindex Completed
+type FtCreateFieldOptionNoindex Incomplete
 
 func (c FtCreateFieldOptionNoindex) Nostem() FtCreateFieldOptionNostem {
 	c.cs.s = append(c.cs.s, "NOSTEM")
@@ -2183,10 +2183,10 @@ func (c FtCreateFieldOptionNoindex) FieldName(fieldName string) FtCreateFieldFie
 
 func (c FtCreateFieldOptionNoindex) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldOptionNostem Completed
+type FtCreateFieldOptionNostem Incomplete
 
 func (c FtCreateFieldOptionNostem) Phonetic(phonetic string) FtCreateFieldOptionPhonetic {
 	c.cs.s = append(c.cs.s, "PHONETIC", phonetic)
@@ -2235,10 +2235,10 @@ func (c FtCreateFieldOptionNostem) FieldName(fieldName string) FtCreateFieldFiel
 
 func (c FtCreateFieldOptionNostem) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldOptionPhonetic Completed
+type FtCreateFieldOptionPhonetic Incomplete
 
 func (c FtCreateFieldOptionPhonetic) Weight(weight float64) FtCreateFieldOptionWeight {
 	c.cs.s = append(c.cs.s, "WEIGHT", strconv.FormatFloat(weight, 'f', -1, 64))
@@ -2287,10 +2287,10 @@ func (c FtCreateFieldOptionPhonetic) FieldName(fieldName string) FtCreateFieldFi
 
 func (c FtCreateFieldOptionPhonetic) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldOptionSeparator Completed
+type FtCreateFieldOptionSeparator Incomplete
 
 func (c FtCreateFieldOptionSeparator) Casesensitive() FtCreateFieldOptionCasesensitive {
 	c.cs.s = append(c.cs.s, "CASESENSITIVE")
@@ -2339,10 +2339,10 @@ func (c FtCreateFieldOptionSeparator) FieldName(fieldName string) FtCreateFieldF
 
 func (c FtCreateFieldOptionSeparator) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldOptionSortableSortable Completed
+type FtCreateFieldOptionSortableSortable Incomplete
 
 func (c FtCreateFieldOptionSortableSortable) Unf() FtCreateFieldOptionSortableUnf {
 	c.cs.s = append(c.cs.s, "UNF")
@@ -2396,10 +2396,10 @@ func (c FtCreateFieldOptionSortableSortable) FieldName(fieldName string) FtCreat
 
 func (c FtCreateFieldOptionSortableSortable) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldOptionSortableUnf Completed
+type FtCreateFieldOptionSortableUnf Incomplete
 
 func (c FtCreateFieldOptionSortableUnf) Noindex() FtCreateFieldOptionNoindex {
 	c.cs.s = append(c.cs.s, "NOINDEX")
@@ -2448,10 +2448,10 @@ func (c FtCreateFieldOptionSortableUnf) FieldName(fieldName string) FtCreateFiel
 
 func (c FtCreateFieldOptionSortableUnf) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldOptionWeight Completed
+type FtCreateFieldOptionWeight Incomplete
 
 func (c FtCreateFieldOptionWeight) Separator(separator string) FtCreateFieldOptionSeparator {
 	c.cs.s = append(c.cs.s, "SEPARATOR", separator)
@@ -2500,10 +2500,10 @@ func (c FtCreateFieldOptionWeight) FieldName(fieldName string) FtCreateFieldFiel
 
 func (c FtCreateFieldOptionWeight) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFieldOptionWithsuffixtrie Completed
+type FtCreateFieldOptionWithsuffixtrie Incomplete
 
 func (c FtCreateFieldOptionWithsuffixtrie) Sortable() FtCreateFieldOptionSortableSortable {
 	c.cs.s = append(c.cs.s, "SORTABLE")
@@ -2552,10 +2552,10 @@ func (c FtCreateFieldOptionWithsuffixtrie) FieldName(fieldName string) FtCreateF
 
 func (c FtCreateFieldOptionWithsuffixtrie) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCreateFilter Completed
+type FtCreateFilter Incomplete
 
 func (c FtCreateFilter) Language(defaultLang string) FtCreateLanguage {
 	c.cs.s = append(c.cs.s, "LANGUAGE", defaultLang)
@@ -2627,7 +2627,7 @@ func (c FtCreateFilter) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateIndex Completed
+type FtCreateIndex Incomplete
 
 func (c FtCreateIndex) OnHash() FtCreateOnHash {
 	c.cs.s = append(c.cs.s, "ON", "HASH")
@@ -2719,7 +2719,7 @@ func (c FtCreateIndex) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateLanguage Completed
+type FtCreateLanguage Incomplete
 
 func (c FtCreateLanguage) LanguageField(langAttribute string) FtCreateLanguageField {
 	c.cs.s = append(c.cs.s, "LANGUAGE_FIELD", langAttribute)
@@ -2786,7 +2786,7 @@ func (c FtCreateLanguage) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateLanguageField Completed
+type FtCreateLanguageField Incomplete
 
 func (c FtCreateLanguageField) Score(defaultScore float64) FtCreateScore {
 	c.cs.s = append(c.cs.s, "SCORE", strconv.FormatFloat(defaultScore, 'f', -1, 64))
@@ -2848,7 +2848,7 @@ func (c FtCreateLanguageField) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateMaxtextfields Completed
+type FtCreateMaxtextfields Incomplete
 
 func (c FtCreateMaxtextfields) Temporary(seconds float64) FtCreateTemporary {
 	c.cs.s = append(c.cs.s, "TEMPORARY", strconv.FormatFloat(seconds, 'f', -1, 64))
@@ -2890,7 +2890,7 @@ func (c FtCreateMaxtextfields) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateNofields Completed
+type FtCreateNofields Incomplete
 
 func (c FtCreateNofields) Nofreqs() FtCreateNofreqs {
 	c.cs.s = append(c.cs.s, "NOFREQS")
@@ -2912,7 +2912,7 @@ func (c FtCreateNofields) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateNofreqs Completed
+type FtCreateNofreqs Incomplete
 
 func (c FtCreateNofreqs) Stopwords(count int64) FtCreateStopwordsStopwords {
 	c.cs.s = append(c.cs.s, "STOPWORDS", strconv.FormatInt(count, 10))
@@ -2929,7 +2929,7 @@ func (c FtCreateNofreqs) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateNohl Completed
+type FtCreateNohl Incomplete
 
 func (c FtCreateNohl) Nofields() FtCreateNofields {
 	c.cs.s = append(c.cs.s, "NOFIELDS")
@@ -2956,7 +2956,7 @@ func (c FtCreateNohl) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateNooffsets Completed
+type FtCreateNooffsets Incomplete
 
 func (c FtCreateNooffsets) Nohl() FtCreateNohl {
 	c.cs.s = append(c.cs.s, "NOHL")
@@ -2988,7 +2988,7 @@ func (c FtCreateNooffsets) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateOnHash Completed
+type FtCreateOnHash Incomplete
 
 func (c FtCreateOnHash) Prefix(count int64) FtCreatePrefixCount {
 	c.cs.s = append(c.cs.s, "PREFIX", strconv.FormatInt(count, 10))
@@ -3070,7 +3070,7 @@ func (c FtCreateOnHash) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateOnJson Completed
+type FtCreateOnJson Incomplete
 
 func (c FtCreateOnJson) Prefix(count int64) FtCreatePrefixCount {
 	c.cs.s = append(c.cs.s, "PREFIX", strconv.FormatInt(count, 10))
@@ -3152,7 +3152,7 @@ func (c FtCreateOnJson) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreatePayloadField Completed
+type FtCreatePayloadField Incomplete
 
 func (c FtCreatePayloadField) Maxtextfields() FtCreateMaxtextfields {
 	c.cs.s = append(c.cs.s, "MAXTEXTFIELDS")
@@ -3199,14 +3199,14 @@ func (c FtCreatePayloadField) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreatePrefixCount Completed
+type FtCreatePrefixCount Incomplete
 
 func (c FtCreatePrefixCount) Prefix(prefix ...string) FtCreatePrefixPrefix {
 	c.cs.s = append(c.cs.s, prefix...)
 	return (FtCreatePrefixPrefix)(c)
 }
 
-type FtCreatePrefixPrefix Completed
+type FtCreatePrefixPrefix Incomplete
 
 func (c FtCreatePrefixPrefix) Prefix(prefix ...string) FtCreatePrefixPrefix {
 	c.cs.s = append(c.cs.s, prefix...)
@@ -3288,14 +3288,14 @@ func (c FtCreatePrefixPrefix) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateSchema Completed
+type FtCreateSchema Incomplete
 
 func (c FtCreateSchema) FieldName(fieldName string) FtCreateFieldFieldName {
 	c.cs.s = append(c.cs.s, fieldName)
 	return (FtCreateFieldFieldName)(c)
 }
 
-type FtCreateScore Completed
+type FtCreateScore Incomplete
 
 func (c FtCreateScore) ScoreField(scoreAttribute string) FtCreateScoreField {
 	c.cs.s = append(c.cs.s, "SCORE_FIELD", scoreAttribute)
@@ -3352,7 +3352,7 @@ func (c FtCreateScore) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateScoreField Completed
+type FtCreateScoreField Incomplete
 
 func (c FtCreateScoreField) PayloadField(payloadAttribute string) FtCreatePayloadField {
 	c.cs.s = append(c.cs.s, "PAYLOAD_FIELD", payloadAttribute)
@@ -3404,14 +3404,14 @@ func (c FtCreateScoreField) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateSkipinitialscan Completed
+type FtCreateSkipinitialscan Incomplete
 
 func (c FtCreateSkipinitialscan) Schema() FtCreateSchema {
 	c.cs.s = append(c.cs.s, "SCHEMA")
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateStopwordsStopword Completed
+type FtCreateStopwordsStopword Incomplete
 
 func (c FtCreateStopwordsStopword) Stopword(stopword ...string) FtCreateStopwordsStopword {
 	c.cs.s = append(c.cs.s, stopword...)
@@ -3428,7 +3428,7 @@ func (c FtCreateStopwordsStopword) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateStopwordsStopwords Completed
+type FtCreateStopwordsStopwords Incomplete
 
 func (c FtCreateStopwordsStopwords) Stopword(stopword ...string) FtCreateStopwordsStopword {
 	c.cs.s = append(c.cs.s, stopword...)
@@ -3445,7 +3445,7 @@ func (c FtCreateStopwordsStopwords) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCreateTemporary Completed
+type FtCreateTemporary Incomplete
 
 func (c FtCreateTemporary) Nooffsets() FtCreateNooffsets {
 	c.cs.s = append(c.cs.s, "NOOFFSETS")
@@ -3482,7 +3482,7 @@ func (c FtCreateTemporary) Schema() FtCreateSchema {
 	return (FtCreateSchema)(c)
 }
 
-type FtCursorDel Completed
+type FtCursorDel Incomplete
 
 func (b Builder) FtCursorDel() (c FtCursorDel) {
 	c = FtCursorDel{cs: get(), ks: b.ks}
@@ -3495,21 +3495,21 @@ func (c FtCursorDel) Index(index string) FtCursorDelIndex {
 	return (FtCursorDelIndex)(c)
 }
 
-type FtCursorDelCursorId Completed
+type FtCursorDelCursorId Incomplete
 
 func (c FtCursorDelCursorId) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCursorDelIndex Completed
+type FtCursorDelIndex Incomplete
 
 func (c FtCursorDelIndex) CursorId(cursorId int64) FtCursorDelCursorId {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(cursorId, 10))
 	return (FtCursorDelCursorId)(c)
 }
 
-type FtCursorRead Completed
+type FtCursorRead Incomplete
 
 func (b Builder) FtCursorRead() (c FtCursorRead) {
 	c = FtCursorRead{cs: get(), ks: b.ks}
@@ -3522,14 +3522,14 @@ func (c FtCursorRead) Index(index string) FtCursorReadIndex {
 	return (FtCursorReadIndex)(c)
 }
 
-type FtCursorReadCount Completed
+type FtCursorReadCount Incomplete
 
 func (c FtCursorReadCount) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCursorReadCursorId Completed
+type FtCursorReadCursorId Incomplete
 
 func (c FtCursorReadCursorId) Count(readSize int64) FtCursorReadCount {
 	c.cs.s = append(c.cs.s, "COUNT", strconv.FormatInt(readSize, 10))
@@ -3538,17 +3538,17 @@ func (c FtCursorReadCursorId) Count(readSize int64) FtCursorReadCount {
 
 func (c FtCursorReadCursorId) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtCursorReadIndex Completed
+type FtCursorReadIndex Incomplete
 
 func (c FtCursorReadIndex) CursorId(cursorId int64) FtCursorReadCursorId {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(cursorId, 10))
 	return (FtCursorReadCursorId)(c)
 }
 
-type FtDictadd Completed
+type FtDictadd Incomplete
 
 func (b Builder) FtDictadd() (c FtDictadd) {
 	c = FtDictadd{cs: get(), ks: b.ks}
@@ -3561,14 +3561,14 @@ func (c FtDictadd) Dict(dict string) FtDictaddDict {
 	return (FtDictaddDict)(c)
 }
 
-type FtDictaddDict Completed
+type FtDictaddDict Incomplete
 
 func (c FtDictaddDict) Term(term ...string) FtDictaddTerm {
 	c.cs.s = append(c.cs.s, term...)
 	return (FtDictaddTerm)(c)
 }
 
-type FtDictaddTerm Completed
+type FtDictaddTerm Incomplete
 
 func (c FtDictaddTerm) Term(term ...string) FtDictaddTerm {
 	c.cs.s = append(c.cs.s, term...)
@@ -3577,10 +3577,10 @@ func (c FtDictaddTerm) Term(term ...string) FtDictaddTerm {
 
 func (c FtDictaddTerm) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtDictdel Completed
+type FtDictdel Incomplete
 
 func (b Builder) FtDictdel() (c FtDictdel) {
 	c = FtDictdel{cs: get(), ks: b.ks}
@@ -3593,14 +3593,14 @@ func (c FtDictdel) Dict(dict string) FtDictdelDict {
 	return (FtDictdelDict)(c)
 }
 
-type FtDictdelDict Completed
+type FtDictdelDict Incomplete
 
 func (c FtDictdelDict) Term(term ...string) FtDictdelTerm {
 	c.cs.s = append(c.cs.s, term...)
 	return (FtDictdelTerm)(c)
 }
 
-type FtDictdelTerm Completed
+type FtDictdelTerm Incomplete
 
 func (c FtDictdelTerm) Term(term ...string) FtDictdelTerm {
 	c.cs.s = append(c.cs.s, term...)
@@ -3609,10 +3609,10 @@ func (c FtDictdelTerm) Term(term ...string) FtDictdelTerm {
 
 func (c FtDictdelTerm) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtDictdump Completed
+type FtDictdump Incomplete
 
 func (b Builder) FtDictdump() (c FtDictdump) {
 	c = FtDictdump{cs: get(), ks: b.ks}
@@ -3625,14 +3625,14 @@ func (c FtDictdump) Dict(dict string) FtDictdumpDict {
 	return (FtDictdumpDict)(c)
 }
 
-type FtDictdumpDict Completed
+type FtDictdumpDict Incomplete
 
 func (c FtDictdumpDict) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtDropindex Completed
+type FtDropindex Incomplete
 
 func (b Builder) FtDropindex() (c FtDropindex) {
 	c = FtDropindex{cs: get(), ks: b.ks}
@@ -3645,14 +3645,14 @@ func (c FtDropindex) Index(index string) FtDropindexIndex {
 	return (FtDropindexIndex)(c)
 }
 
-type FtDropindexDeleteDocsDd Completed
+type FtDropindexDeleteDocsDd Incomplete
 
 func (c FtDropindexDeleteDocsDd) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtDropindexIndex Completed
+type FtDropindexIndex Incomplete
 
 func (c FtDropindexIndex) Dd() FtDropindexDeleteDocsDd {
 	c.cs.s = append(c.cs.s, "DD")
@@ -3661,10 +3661,10 @@ func (c FtDropindexIndex) Dd() FtDropindexDeleteDocsDd {
 
 func (c FtDropindexIndex) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtExplain Completed
+type FtExplain Incomplete
 
 func (b Builder) FtExplain() (c FtExplain) {
 	c = FtExplain{cs: get(), ks: b.ks}
@@ -3677,21 +3677,21 @@ func (c FtExplain) Index(index string) FtExplainIndex {
 	return (FtExplainIndex)(c)
 }
 
-type FtExplainDialect Completed
+type FtExplainDialect Incomplete
 
 func (c FtExplainDialect) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtExplainIndex Completed
+type FtExplainIndex Incomplete
 
 func (c FtExplainIndex) Query(query string) FtExplainQuery {
 	c.cs.s = append(c.cs.s, query)
 	return (FtExplainQuery)(c)
 }
 
-type FtExplainQuery Completed
+type FtExplainQuery Incomplete
 
 func (c FtExplainQuery) Dialect(dialect int64) FtExplainDialect {
 	c.cs.s = append(c.cs.s, "DIALECT", strconv.FormatInt(dialect, 10))
@@ -3700,10 +3700,10 @@ func (c FtExplainQuery) Dialect(dialect int64) FtExplainDialect {
 
 func (c FtExplainQuery) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtExplaincli Completed
+type FtExplaincli Incomplete
 
 func (b Builder) FtExplaincli() (c FtExplaincli) {
 	c = FtExplaincli{cs: get(), ks: b.ks}
@@ -3716,21 +3716,21 @@ func (c FtExplaincli) Index(index string) FtExplaincliIndex {
 	return (FtExplaincliIndex)(c)
 }
 
-type FtExplaincliDialect Completed
+type FtExplaincliDialect Incomplete
 
 func (c FtExplaincliDialect) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtExplaincliIndex Completed
+type FtExplaincliIndex Incomplete
 
 func (c FtExplaincliIndex) Query(query string) FtExplaincliQuery {
 	c.cs.s = append(c.cs.s, query)
 	return (FtExplaincliQuery)(c)
 }
 
-type FtExplaincliQuery Completed
+type FtExplaincliQuery Incomplete
 
 func (c FtExplaincliQuery) Dialect(dialect int64) FtExplaincliDialect {
 	c.cs.s = append(c.cs.s, "DIALECT", strconv.FormatInt(dialect, 10))
@@ -3739,10 +3739,10 @@ func (c FtExplaincliQuery) Dialect(dialect int64) FtExplaincliDialect {
 
 func (c FtExplaincliQuery) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtInfo Completed
+type FtInfo Incomplete
 
 func (b Builder) FtInfo() (c FtInfo) {
 	c = FtInfo{cs: get(), ks: b.ks}
@@ -3755,14 +3755,14 @@ func (c FtInfo) Index(index string) FtInfoIndex {
 	return (FtInfoIndex)(c)
 }
 
-type FtInfoIndex Completed
+type FtInfoIndex Incomplete
 
 func (c FtInfoIndex) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtList Completed
+type FtList Incomplete
 
 func (b Builder) FtList() (c FtList) {
 	c = FtList{cs: get(), ks: b.ks}
@@ -3772,10 +3772,10 @@ func (b Builder) FtList() (c FtList) {
 
 func (c FtList) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtProfile Completed
+type FtProfile Incomplete
 
 func (b Builder) FtProfile() (c FtProfile) {
 	c = FtProfile{cs: get(), ks: b.ks}
@@ -3788,7 +3788,7 @@ func (c FtProfile) Index(index string) FtProfileIndex {
 	return (FtProfileIndex)(c)
 }
 
-type FtProfileIndex Completed
+type FtProfileIndex Incomplete
 
 func (c FtProfileIndex) Search() FtProfileQuerytypeSearch {
 	c.cs.s = append(c.cs.s, "SEARCH")
@@ -3800,21 +3800,21 @@ func (c FtProfileIndex) Aggregate() FtProfileQuerytypeAggregate {
 	return (FtProfileQuerytypeAggregate)(c)
 }
 
-type FtProfileLimited Completed
+type FtProfileLimited Incomplete
 
 func (c FtProfileLimited) Query(query string) FtProfileQuery {
 	c.cs.s = append(c.cs.s, "QUERY", query)
 	return (FtProfileQuery)(c)
 }
 
-type FtProfileQuery Completed
+type FtProfileQuery Incomplete
 
 func (c FtProfileQuery) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtProfileQuerytypeAggregate Completed
+type FtProfileQuerytypeAggregate Incomplete
 
 func (c FtProfileQuerytypeAggregate) Limited() FtProfileLimited {
 	c.cs.s = append(c.cs.s, "LIMITED")
@@ -3826,7 +3826,7 @@ func (c FtProfileQuerytypeAggregate) Query(query string) FtProfileQuery {
 	return (FtProfileQuery)(c)
 }
 
-type FtProfileQuerytypeSearch Completed
+type FtProfileQuerytypeSearch Incomplete
 
 func (c FtProfileQuerytypeSearch) Limited() FtProfileLimited {
 	c.cs.s = append(c.cs.s, "LIMITED")
@@ -3838,10 +3838,10 @@ func (c FtProfileQuerytypeSearch) Query(query string) FtProfileQuery {
 	return (FtProfileQuery)(c)
 }
 
-type FtSearch Completed
+type FtSearch Incomplete
 
 func (b Builder) FtSearch() (c FtSearch) {
-	c = FtSearch{cs: get(), ks: b.ks}
+	c = FtSearch{cs: get(), ks: b.ks, cf: int16(readonly)}
 	c.cs.s = append(c.cs.s, "FT.SEARCH")
 	return c
 }
@@ -3851,14 +3851,14 @@ func (c FtSearch) Index(index string) FtSearchIndex {
 	return (FtSearchIndex)(c)
 }
 
-type FtSearchDialect Completed
+type FtSearchDialect Incomplete
 
 func (c FtSearchDialect) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchExpander Completed
+type FtSearchExpander Incomplete
 
 func (c FtSearchExpander) Scorer(scorer string) FtSearchScorer {
 	c.cs.s = append(c.cs.s, "SCORER", scorer)
@@ -3897,10 +3897,10 @@ func (c FtSearchExpander) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchExpander) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchExplainscore Completed
+type FtSearchExplainscore Incomplete
 
 func (c FtSearchExplainscore) Payload(payload string) FtSearchPayload {
 	c.cs.s = append(c.cs.s, "PAYLOAD", payload)
@@ -3929,17 +3929,17 @@ func (c FtSearchExplainscore) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchExplainscore) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchFilterFilter Completed
+type FtSearchFilterFilter Incomplete
 
 func (c FtSearchFilterFilter) Min(min float64) FtSearchFilterMin {
 	c.cs.s = append(c.cs.s, strconv.FormatFloat(min, 'f', -1, 64))
 	return (FtSearchFilterMin)(c)
 }
 
-type FtSearchFilterMax Completed
+type FtSearchFilterMax Incomplete
 
 func (c FtSearchFilterMax) Filter(numericField string) FtSearchFilterFilter {
 	c.cs.s = append(c.cs.s, "FILTER", numericField)
@@ -4038,38 +4038,38 @@ func (c FtSearchFilterMax) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchFilterMax) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchFilterMin Completed
+type FtSearchFilterMin Incomplete
 
 func (c FtSearchFilterMin) Max(max float64) FtSearchFilterMax {
 	c.cs.s = append(c.cs.s, strconv.FormatFloat(max, 'f', -1, 64))
 	return (FtSearchFilterMax)(c)
 }
 
-type FtSearchGeoFilterGeofilter Completed
+type FtSearchGeoFilterGeofilter Incomplete
 
 func (c FtSearchGeoFilterGeofilter) Lon(lon float64) FtSearchGeoFilterLon {
 	c.cs.s = append(c.cs.s, strconv.FormatFloat(lon, 'f', -1, 64))
 	return (FtSearchGeoFilterLon)(c)
 }
 
-type FtSearchGeoFilterLat Completed
+type FtSearchGeoFilterLat Incomplete
 
 func (c FtSearchGeoFilterLat) Radius(radius float64) FtSearchGeoFilterRadius {
 	c.cs.s = append(c.cs.s, strconv.FormatFloat(radius, 'f', -1, 64))
 	return (FtSearchGeoFilterRadius)(c)
 }
 
-type FtSearchGeoFilterLon Completed
+type FtSearchGeoFilterLon Incomplete
 
 func (c FtSearchGeoFilterLon) Lat(lat float64) FtSearchGeoFilterLat {
 	c.cs.s = append(c.cs.s, strconv.FormatFloat(lat, 'f', -1, 64))
 	return (FtSearchGeoFilterLat)(c)
 }
 
-type FtSearchGeoFilterRadius Completed
+type FtSearchGeoFilterRadius Incomplete
 
 func (c FtSearchGeoFilterRadius) M() FtSearchGeoFilterRadiusTypeM {
 	c.cs.s = append(c.cs.s, "m")
@@ -4091,7 +4091,7 @@ func (c FtSearchGeoFilterRadius) Ft() FtSearchGeoFilterRadiusTypeFt {
 	return (FtSearchGeoFilterRadiusTypeFt)(c)
 }
 
-type FtSearchGeoFilterRadiusTypeFt Completed
+type FtSearchGeoFilterRadiusTypeFt Incomplete
 
 func (c FtSearchGeoFilterRadiusTypeFt) Geofilter(geoField string) FtSearchGeoFilterGeofilter {
 	c.cs.s = append(c.cs.s, "GEOFILTER", geoField)
@@ -4185,10 +4185,10 @@ func (c FtSearchGeoFilterRadiusTypeFt) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchGeoFilterRadiusTypeFt) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchGeoFilterRadiusTypeKm Completed
+type FtSearchGeoFilterRadiusTypeKm Incomplete
 
 func (c FtSearchGeoFilterRadiusTypeKm) Geofilter(geoField string) FtSearchGeoFilterGeofilter {
 	c.cs.s = append(c.cs.s, "GEOFILTER", geoField)
@@ -4282,10 +4282,10 @@ func (c FtSearchGeoFilterRadiusTypeKm) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchGeoFilterRadiusTypeKm) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchGeoFilterRadiusTypeM Completed
+type FtSearchGeoFilterRadiusTypeM Incomplete
 
 func (c FtSearchGeoFilterRadiusTypeM) Geofilter(geoField string) FtSearchGeoFilterGeofilter {
 	c.cs.s = append(c.cs.s, "GEOFILTER", geoField)
@@ -4379,10 +4379,10 @@ func (c FtSearchGeoFilterRadiusTypeM) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchGeoFilterRadiusTypeM) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchGeoFilterRadiusTypeMi Completed
+type FtSearchGeoFilterRadiusTypeMi Incomplete
 
 func (c FtSearchGeoFilterRadiusTypeMi) Geofilter(geoField string) FtSearchGeoFilterGeofilter {
 	c.cs.s = append(c.cs.s, "GEOFILTER", geoField)
@@ -4476,10 +4476,10 @@ func (c FtSearchGeoFilterRadiusTypeMi) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchGeoFilterRadiusTypeMi) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchHighlightFieldsField Completed
+type FtSearchHighlightFieldsField Incomplete
 
 func (c FtSearchHighlightFieldsField) Field(field ...string) FtSearchHighlightFieldsField {
 	c.cs.s = append(c.cs.s, field...)
@@ -4553,17 +4553,17 @@ func (c FtSearchHighlightFieldsField) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchHighlightFieldsField) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchHighlightFieldsFields Completed
+type FtSearchHighlightFieldsFields Incomplete
 
 func (c FtSearchHighlightFieldsFields) Field(field ...string) FtSearchHighlightFieldsField {
 	c.cs.s = append(c.cs.s, field...)
 	return (FtSearchHighlightFieldsField)(c)
 }
 
-type FtSearchHighlightHighlight Completed
+type FtSearchHighlightHighlight Incomplete
 
 func (c FtSearchHighlightHighlight) Fields(count string) FtSearchHighlightFieldsFields {
 	c.cs.s = append(c.cs.s, "FIELDS", count)
@@ -4637,10 +4637,10 @@ func (c FtSearchHighlightHighlight) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchHighlightHighlight) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchHighlightTagsOpenClose Completed
+type FtSearchHighlightTagsOpenClose Incomplete
 
 func (c FtSearchHighlightTagsOpenClose) Slop(slop int64) FtSearchSlop {
 	c.cs.s = append(c.cs.s, "SLOP", strconv.FormatInt(slop, 10))
@@ -4704,17 +4704,17 @@ func (c FtSearchHighlightTagsOpenClose) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchHighlightTagsOpenClose) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchHighlightTagsTags Completed
+type FtSearchHighlightTagsTags Incomplete
 
 func (c FtSearchHighlightTagsTags) OpenClose(open string, close string) FtSearchHighlightTagsOpenClose {
 	c.cs.s = append(c.cs.s, open, close)
 	return (FtSearchHighlightTagsOpenClose)(c)
 }
 
-type FtSearchInFieldsField Completed
+type FtSearchInFieldsField Incomplete
 
 func (c FtSearchInFieldsField) Field(field ...string) FtSearchInFieldsField {
 	c.cs.s = append(c.cs.s, field...)
@@ -4798,24 +4798,24 @@ func (c FtSearchInFieldsField) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchInFieldsField) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchInFieldsInfields Completed
+type FtSearchInFieldsInfields Incomplete
 
 func (c FtSearchInFieldsInfields) Field(field ...string) FtSearchInFieldsField {
 	c.cs.s = append(c.cs.s, field...)
 	return (FtSearchInFieldsField)(c)
 }
 
-type FtSearchInKeysInkeys Completed
+type FtSearchInKeysInkeys Incomplete
 
 func (c FtSearchInKeysInkeys) Key(key ...string) FtSearchInKeysKey {
 	c.cs.s = append(c.cs.s, key...)
 	return (FtSearchInKeysKey)(c)
 }
 
-type FtSearchInKeysKey Completed
+type FtSearchInKeysKey Incomplete
 
 func (c FtSearchInKeysKey) Key(key ...string) FtSearchInKeysKey {
 	c.cs.s = append(c.cs.s, key...)
@@ -4904,17 +4904,17 @@ func (c FtSearchInKeysKey) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchInKeysKey) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchIndex Completed
+type FtSearchIndex Incomplete
 
 func (c FtSearchIndex) Query(query string) FtSearchQuery {
 	c.cs.s = append(c.cs.s, query)
 	return (FtSearchQuery)(c)
 }
 
-type FtSearchLanguage Completed
+type FtSearchLanguage Incomplete
 
 func (c FtSearchLanguage) Expander(expander string) FtSearchExpander {
 	c.cs.s = append(c.cs.s, "EXPANDER", expander)
@@ -4958,17 +4958,17 @@ func (c FtSearchLanguage) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchLanguage) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchLimitLimit Completed
+type FtSearchLimitLimit Incomplete
 
 func (c FtSearchLimitLimit) OffsetNum(offset int64, num int64) FtSearchLimitOffsetNum {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(offset, 10), strconv.FormatInt(num, 10))
 	return (FtSearchLimitOffsetNum)(c)
 }
 
-type FtSearchLimitOffsetNum Completed
+type FtSearchLimitOffsetNum Incomplete
 
 func (c FtSearchLimitOffsetNum) Params() FtSearchParamsParams {
 	c.cs.s = append(c.cs.s, "PARAMS")
@@ -4982,10 +4982,10 @@ func (c FtSearchLimitOffsetNum) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchLimitOffsetNum) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchNocontent Completed
+type FtSearchNocontent Incomplete
 
 func (c FtSearchNocontent) Verbatim() FtSearchVerbatim {
 	c.cs.s = append(c.cs.s, "VERBATIM")
@@ -5109,10 +5109,10 @@ func (c FtSearchNocontent) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchNocontent) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchNostopwords Completed
+type FtSearchNostopwords Incomplete
 
 func (c FtSearchNostopwords) Withscores() FtSearchWithscores {
 	c.cs.s = append(c.cs.s, "WITHSCORES")
@@ -5226,10 +5226,10 @@ func (c FtSearchNostopwords) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchNostopwords) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchParamsNameValue Completed
+type FtSearchParamsNameValue Incomplete
 
 func (c FtSearchParamsNameValue) NameValue(name string, value string) FtSearchParamsNameValue {
 	c.cs.s = append(c.cs.s, name, value)
@@ -5243,23 +5243,23 @@ func (c FtSearchParamsNameValue) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchParamsNameValue) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchParamsNargs Completed
+type FtSearchParamsNargs Incomplete
 
 func (c FtSearchParamsNargs) NameValue() FtSearchParamsNameValue {
 	return (FtSearchParamsNameValue)(c)
 }
 
-type FtSearchParamsParams Completed
+type FtSearchParamsParams Incomplete
 
 func (c FtSearchParamsParams) Nargs(nargs int64) FtSearchParamsNargs {
 	c.cs.s = append(c.cs.s, strconv.FormatInt(nargs, 10))
 	return (FtSearchParamsNargs)(c)
 }
 
-type FtSearchPayload Completed
+type FtSearchPayload Incomplete
 
 func (c FtSearchPayload) Sortby(sortby string) FtSearchSortbySortby {
 	c.cs.s = append(c.cs.s, "SORTBY", sortby)
@@ -5283,10 +5283,10 @@ func (c FtSearchPayload) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchPayload) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchQuery Completed
+type FtSearchQuery Incomplete
 
 func (c FtSearchQuery) Nocontent() FtSearchNocontent {
 	c.cs.s = append(c.cs.s, "NOCONTENT")
@@ -5415,10 +5415,10 @@ func (c FtSearchQuery) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchQuery) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchReturnIdentifiersAs Completed
+type FtSearchReturnIdentifiersAs Incomplete
 
 func (c FtSearchReturnIdentifiersAs) Identifier(identifier string) FtSearchReturnIdentifiersIdentifier {
 	c.cs.s = append(c.cs.s, identifier)
@@ -5497,10 +5497,10 @@ func (c FtSearchReturnIdentifiersAs) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchReturnIdentifiersAs) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchReturnIdentifiersIdentifier Completed
+type FtSearchReturnIdentifiersIdentifier Incomplete
 
 func (c FtSearchReturnIdentifiersIdentifier) As(property string) FtSearchReturnIdentifiersAs {
 	c.cs.s = append(c.cs.s, "AS", property)
@@ -5584,17 +5584,17 @@ func (c FtSearchReturnIdentifiersIdentifier) Dialect(dialect int64) FtSearchDial
 
 func (c FtSearchReturnIdentifiersIdentifier) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchReturnReturn Completed
+type FtSearchReturnReturn Incomplete
 
 func (c FtSearchReturnReturn) Identifier(identifier string) FtSearchReturnIdentifiersIdentifier {
 	c.cs.s = append(c.cs.s, identifier)
 	return (FtSearchReturnIdentifiersIdentifier)(c)
 }
 
-type FtSearchScorer Completed
+type FtSearchScorer Incomplete
 
 func (c FtSearchScorer) Explainscore() FtSearchExplainscore {
 	c.cs.s = append(c.cs.s, "EXPLAINSCORE")
@@ -5628,10 +5628,10 @@ func (c FtSearchScorer) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchScorer) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchSlop Completed
+type FtSearchSlop Incomplete
 
 func (c FtSearchSlop) Timeout(timeout int64) FtSearchTimeout {
 	c.cs.s = append(c.cs.s, "TIMEOUT", strconv.FormatInt(timeout, 10))
@@ -5690,10 +5690,10 @@ func (c FtSearchSlop) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchSlop) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchSortbyOrderAsc Completed
+type FtSearchSortbyOrderAsc Incomplete
 
 func (c FtSearchSortbyOrderAsc) Limit() FtSearchLimitLimit {
 	c.cs.s = append(c.cs.s, "LIMIT")
@@ -5712,10 +5712,10 @@ func (c FtSearchSortbyOrderAsc) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchSortbyOrderAsc) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchSortbyOrderDesc Completed
+type FtSearchSortbyOrderDesc Incomplete
 
 func (c FtSearchSortbyOrderDesc) Limit() FtSearchLimitLimit {
 	c.cs.s = append(c.cs.s, "LIMIT")
@@ -5734,10 +5734,10 @@ func (c FtSearchSortbyOrderDesc) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchSortbyOrderDesc) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchSortbySortby Completed
+type FtSearchSortbySortby Incomplete
 
 func (c FtSearchSortbySortby) Asc() FtSearchSortbyOrderAsc {
 	c.cs.s = append(c.cs.s, "ASC")
@@ -5766,10 +5766,10 @@ func (c FtSearchSortbySortby) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchSortbySortby) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchSummarizeFieldsField Completed
+type FtSearchSummarizeFieldsField Incomplete
 
 func (c FtSearchSummarizeFieldsField) Field(field ...string) FtSearchSummarizeFieldsField {
 	c.cs.s = append(c.cs.s, field...)
@@ -5858,17 +5858,17 @@ func (c FtSearchSummarizeFieldsField) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchSummarizeFieldsField) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchSummarizeFieldsFields Completed
+type FtSearchSummarizeFieldsFields Incomplete
 
 func (c FtSearchSummarizeFieldsFields) Field(field ...string) FtSearchSummarizeFieldsField {
 	c.cs.s = append(c.cs.s, field...)
 	return (FtSearchSummarizeFieldsField)(c)
 }
 
-type FtSearchSummarizeFrags Completed
+type FtSearchSummarizeFrags Incomplete
 
 func (c FtSearchSummarizeFrags) Len(fragsize int64) FtSearchSummarizeLen {
 	c.cs.s = append(c.cs.s, "LEN", strconv.FormatInt(fragsize, 10))
@@ -5947,10 +5947,10 @@ func (c FtSearchSummarizeFrags) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchSummarizeFrags) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchSummarizeLen Completed
+type FtSearchSummarizeLen Incomplete
 
 func (c FtSearchSummarizeLen) Separator(separator string) FtSearchSummarizeSeparator {
 	c.cs.s = append(c.cs.s, "SEPARATOR", separator)
@@ -6024,10 +6024,10 @@ func (c FtSearchSummarizeLen) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchSummarizeLen) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchSummarizeSeparator Completed
+type FtSearchSummarizeSeparator Incomplete
 
 func (c FtSearchSummarizeSeparator) Highlight() FtSearchHighlightHighlight {
 	c.cs.s = append(c.cs.s, "HIGHLIGHT")
@@ -6096,10 +6096,10 @@ func (c FtSearchSummarizeSeparator) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchSummarizeSeparator) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchSummarizeSummarize Completed
+type FtSearchSummarizeSummarize Incomplete
 
 func (c FtSearchSummarizeSummarize) Fields(count string) FtSearchSummarizeFieldsFields {
 	c.cs.s = append(c.cs.s, "FIELDS", count)
@@ -6188,10 +6188,10 @@ func (c FtSearchSummarizeSummarize) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchSummarizeSummarize) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchTagsInorder Completed
+type FtSearchTagsInorder Incomplete
 
 func (c FtSearchTagsInorder) Language(language string) FtSearchLanguage {
 	c.cs.s = append(c.cs.s, "LANGUAGE", language)
@@ -6240,10 +6240,10 @@ func (c FtSearchTagsInorder) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchTagsInorder) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchTimeout Completed
+type FtSearchTimeout Incomplete
 
 func (c FtSearchTimeout) Inorder() FtSearchTagsInorder {
 	c.cs.s = append(c.cs.s, "INORDER")
@@ -6297,10 +6297,10 @@ func (c FtSearchTimeout) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchTimeout) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchVerbatim Completed
+type FtSearchVerbatim Incomplete
 
 func (c FtSearchVerbatim) Nostopwords() FtSearchNostopwords {
 	c.cs.s = append(c.cs.s, "NOSTOPWORDS")
@@ -6419,10 +6419,10 @@ func (c FtSearchVerbatim) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchVerbatim) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchWithpayloads Completed
+type FtSearchWithpayloads Incomplete
 
 func (c FtSearchWithpayloads) Withsortkeys() FtSearchWithsortkeys {
 	c.cs.s = append(c.cs.s, "WITHSORTKEYS")
@@ -6526,10 +6526,10 @@ func (c FtSearchWithpayloads) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchWithpayloads) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchWithscores Completed
+type FtSearchWithscores Incomplete
 
 func (c FtSearchWithscores) Withpayloads() FtSearchWithpayloads {
 	c.cs.s = append(c.cs.s, "WITHPAYLOADS")
@@ -6638,10 +6638,10 @@ func (c FtSearchWithscores) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchWithscores) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSearchWithsortkeys Completed
+type FtSearchWithsortkeys Incomplete
 
 func (c FtSearchWithsortkeys) Filter(numericField string) FtSearchFilterFilter {
 	c.cs.s = append(c.cs.s, "FILTER", numericField)
@@ -6740,10 +6740,10 @@ func (c FtSearchWithsortkeys) Dialect(dialect int64) FtSearchDialect {
 
 func (c FtSearchWithsortkeys) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSpellcheck Completed
+type FtSpellcheck Incomplete
 
 func (b Builder) FtSpellcheck() (c FtSpellcheck) {
 	c = FtSpellcheck{cs: get(), ks: b.ks}
@@ -6756,14 +6756,14 @@ func (c FtSpellcheck) Index(index string) FtSpellcheckIndex {
 	return (FtSpellcheckIndex)(c)
 }
 
-type FtSpellcheckDialect Completed
+type FtSpellcheckDialect Incomplete
 
 func (c FtSpellcheckDialect) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSpellcheckDistance Completed
+type FtSpellcheckDistance Incomplete
 
 func (c FtSpellcheckDistance) TermsInclude() FtSpellcheckTermsTermsInclude {
 	c.cs.s = append(c.cs.s, "TERMS", "INCLUDE")
@@ -6782,17 +6782,17 @@ func (c FtSpellcheckDistance) Dialect(dialect int64) FtSpellcheckDialect {
 
 func (c FtSpellcheckDistance) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSpellcheckIndex Completed
+type FtSpellcheckIndex Incomplete
 
 func (c FtSpellcheckIndex) Query(query string) FtSpellcheckQuery {
 	c.cs.s = append(c.cs.s, query)
 	return (FtSpellcheckQuery)(c)
 }
 
-type FtSpellcheckQuery Completed
+type FtSpellcheckQuery Incomplete
 
 func (c FtSpellcheckQuery) Distance(distance int64) FtSpellcheckDistance {
 	c.cs.s = append(c.cs.s, "DISTANCE", strconv.FormatInt(distance, 10))
@@ -6816,10 +6816,10 @@ func (c FtSpellcheckQuery) Dialect(dialect int64) FtSpellcheckDialect {
 
 func (c FtSpellcheckQuery) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSpellcheckTermsDictionary Completed
+type FtSpellcheckTermsDictionary Incomplete
 
 func (c FtSpellcheckTermsDictionary) Terms(terms ...string) FtSpellcheckTermsTerms {
 	c.cs.s = append(c.cs.s, terms...)
@@ -6833,10 +6833,10 @@ func (c FtSpellcheckTermsDictionary) Dialect(dialect int64) FtSpellcheckDialect 
 
 func (c FtSpellcheckTermsDictionary) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSpellcheckTermsTerms Completed
+type FtSpellcheckTermsTerms Incomplete
 
 func (c FtSpellcheckTermsTerms) Terms(terms ...string) FtSpellcheckTermsTerms {
 	c.cs.s = append(c.cs.s, terms...)
@@ -6850,24 +6850,24 @@ func (c FtSpellcheckTermsTerms) Dialect(dialect int64) FtSpellcheckDialect {
 
 func (c FtSpellcheckTermsTerms) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSpellcheckTermsTermsExclude Completed
+type FtSpellcheckTermsTermsExclude Incomplete
 
 func (c FtSpellcheckTermsTermsExclude) Dictionary(dictionary string) FtSpellcheckTermsDictionary {
 	c.cs.s = append(c.cs.s, dictionary)
 	return (FtSpellcheckTermsDictionary)(c)
 }
 
-type FtSpellcheckTermsTermsInclude Completed
+type FtSpellcheckTermsTermsInclude Incomplete
 
 func (c FtSpellcheckTermsTermsInclude) Dictionary(dictionary string) FtSpellcheckTermsDictionary {
 	c.cs.s = append(c.cs.s, dictionary)
 	return (FtSpellcheckTermsDictionary)(c)
 }
 
-type FtSyndump Completed
+type FtSyndump Incomplete
 
 func (b Builder) FtSyndump() (c FtSyndump) {
 	c = FtSyndump{cs: get(), ks: b.ks}
@@ -6880,14 +6880,14 @@ func (c FtSyndump) Index(index string) FtSyndumpIndex {
 	return (FtSyndumpIndex)(c)
 }
 
-type FtSyndumpIndex Completed
+type FtSyndumpIndex Incomplete
 
 func (c FtSyndumpIndex) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtSynupdate Completed
+type FtSynupdate Incomplete
 
 func (b Builder) FtSynupdate() (c FtSynupdate) {
 	c = FtSynupdate{cs: get(), ks: b.ks}
@@ -6900,21 +6900,21 @@ func (c FtSynupdate) Index(index string) FtSynupdateIndex {
 	return (FtSynupdateIndex)(c)
 }
 
-type FtSynupdateIndex Completed
+type FtSynupdateIndex Incomplete
 
 func (c FtSynupdateIndex) SynonymGroupId(synonymGroupId string) FtSynupdateSynonymGroupId {
 	c.cs.s = append(c.cs.s, synonymGroupId)
 	return (FtSynupdateSynonymGroupId)(c)
 }
 
-type FtSynupdateSkipinitialscan Completed
+type FtSynupdateSkipinitialscan Incomplete
 
 func (c FtSynupdateSkipinitialscan) Term(term ...string) FtSynupdateTerm {
 	c.cs.s = append(c.cs.s, term...)
 	return (FtSynupdateTerm)(c)
 }
 
-type FtSynupdateSynonymGroupId Completed
+type FtSynupdateSynonymGroupId Incomplete
 
 func (c FtSynupdateSynonymGroupId) Skipinitialscan() FtSynupdateSkipinitialscan {
 	c.cs.s = append(c.cs.s, "SKIPINITIALSCAN")
@@ -6926,7 +6926,7 @@ func (c FtSynupdateSynonymGroupId) Term(term ...string) FtSynupdateTerm {
 	return (FtSynupdateTerm)(c)
 }
 
-type FtSynupdateTerm Completed
+type FtSynupdateTerm Incomplete
 
 func (c FtSynupdateTerm) Term(term ...string) FtSynupdateTerm {
 	c.cs.s = append(c.cs.s, term...)
@@ -6935,10 +6935,10 @@ func (c FtSynupdateTerm) Term(term ...string) FtSynupdateTerm {
 
 func (c FtSynupdateTerm) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtTagvals Completed
+type FtTagvals Incomplete
 
 func (b Builder) FtTagvals() (c FtTagvals) {
 	c = FtTagvals{cs: get(), ks: b.ks}
@@ -6951,14 +6951,14 @@ func (c FtTagvals) Index(index string) FtTagvalsIndex {
 	return (FtTagvalsIndex)(c)
 }
 
-type FtTagvalsFieldName Completed
+type FtTagvalsFieldName Incomplete
 
 func (c FtTagvalsFieldName) Build() Completed {
 	c.cs.Build()
-	return Completed(c)
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
-type FtTagvalsIndex Completed
+type FtTagvalsIndex Incomplete
 
 func (c FtTagvalsIndex) FieldName(fieldName string) FtTagvalsFieldName {
 	c.cs.s = append(c.cs.s, fieldName)

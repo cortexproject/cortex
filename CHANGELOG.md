@@ -23,6 +23,10 @@
 * [ENHANCEMENT] Upgrade build image and Go version to 1.23.2. #6261 #6262
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 
+## 1.18.1 2024-10-14
+
+* [BUGFIX] Backporting upgrade to go 1.22.7 to patch CVE-2024-34155, CVE-2024-34156, CVE-2024-34158 #6217 #6264
+
 ## 1.18.0 2024-09-03
 
 * [CHANGE] Ingester: Remove `-querier.query-store-for-labels-enabled` flag. Querying long-term store for labels is always enabled. #5984

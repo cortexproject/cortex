@@ -110,8 +110,8 @@ To publish a stable release:
 1. Do not change the release branch directly; make a PR to the release-X.Y branch with VERSION and any CHANGELOG changes.
    1. Ensure the `VERSION` file has **no** `-rc.X` suffix
    1. Update the Cortex version in the following locations:
-      - Kubernetes manifests located at `k8s/`
-      - Documentation located at `docs/`
+      - `docs/getting-started/.env`
+      - Bump version in cortex-helm-chart via PR, for example https://github.com/cortexproject/cortex-helm-chart/pull/501
 1. After merging your PR to release branch, `git tag` the new release (see [How to tag a release](#how-to-tag-a-release)) from release branch.
 1. Wait until CI pipeline succeeded (once a tag is created, the release process through GitHub actions will be triggered for this tag)
 1. Create a release in GitHub

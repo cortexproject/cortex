@@ -725,7 +725,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 
 	// Simulate ingester2 crashing and left the ring with ACTIVE state, but when it comes up
 	// it has a different ip address
-	l2 = startIngesterAndWaitActive("ing2", "0.0.0.0")
+	startIngesterAndWaitActive("ing2", "0.0.0.0")
 	ingesters = poll(func(desc *Desc) bool {
 		return desc.Ingesters["ing2"].State == ACTIVE && desc.Ingesters["ing2"].Addr == "0.0.0.0:1"
 	})

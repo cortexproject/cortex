@@ -36,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
@@ -164,11 +165,19 @@ type Config struct {
 
 	// Limits for distributor
 	InstanceLimits InstanceLimits `yaml:"instance_limits"`
+
+	// OTLPConfig
+	OTLPConfig OTLPConfig `yaml:"otlp"`
 }
 
 type InstanceLimits struct {
 	MaxIngestionRate        float64 `yaml:"max_ingestion_rate"`
 	MaxInflightPushRequests int     `yaml:"max_inflight_push_requests"`
+}
+
+type OTLPConfig struct {
+	ConvertAllAttributes      bool     `yaml:"convert_all_attributes"`
+	PromoteResourceAttributes []string `yaml:"promote_resource_attributes"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -188,6 +197,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
+
+	f.BoolVar(&cfg.OTLPConfig.ConvertAllAttributes, "distributor.otlp-config.convert-all-attributes", false, "If enabled, all resource attributes are converted to labels.")
+	f.Var((*flagext.StringSlice)(&cfg.OTLPConfig.PromoteResourceAttributes), "distributor.otlp-config.promote-resource-attributes", "A list of resource attributes that should be converted to labels.")
 }
 
 // Validate config and returns error on failure

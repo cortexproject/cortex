@@ -22,6 +22,7 @@
 * [ENHANCEMENT] Ingester/Store Gateway Clients: Introduce an experimental HealthCheck handler to quickly fail requests directed to unhealthy targets. #6225 #6257
 * [ENHANCEMENT] Upgrade build image and Go version to 1.23.2. #6261 #6262
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
+* [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled  #6271
 
 ## 1.18.0 2024-09-03
 

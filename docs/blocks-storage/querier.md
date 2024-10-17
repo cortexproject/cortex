@@ -226,6 +226,12 @@ querier:
   # CLI flag: -querier.store-gateway-query-stats-enabled
   [store_gateway_query_stats: <boolean> | default = true]
 
+  # The maximum number of times we attempt fetching missing blocks from
+  # different store-gateways. If no more store-gateways are left (ie. due to
+  # lower replication factor) than we'll end the retries earlier
+  # CLI flag: -querier.store-gateway-consistency-check-max-attempts
+  [store_gateway_consistency_check_max_attempts: <int> | default = 3]
+
   # When distributor's sharding strategy is shuffle-sharding and this setting is
   # > 0, queriers fetch in-memory series from the minimum set of required
   # ingesters, selecting only ingesters which may have received series since

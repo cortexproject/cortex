@@ -157,6 +157,7 @@ func (cfg *InMemoryIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, pr
 type MemcachedIndexCacheConfig struct {
 	ClientConfig MemcachedClientConfig `yaml:",inline"`
 	EnabledItems []string              `yaml:"enabled_items"`
+	IndexTTL     time.Duration         `yaml:"index_ttl"`
 }
 
 func (cfg *MemcachedIndexCacheConfig) Validate() error {
@@ -169,16 +170,19 @@ func (cfg *MemcachedIndexCacheConfig) Validate() error {
 func (cfg *MemcachedIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	cfg.ClientConfig.RegisterFlagsWithPrefix(f, prefix)
 	f.Var((*flagext.StringSlice)(&cfg.EnabledItems), prefix+"enabled-items", "Selectively cache index item types. Supported values are Postings, ExpandedPostings and Series")
+	f.DurationVar(&cfg.IndexTTL, prefix+"index-ttl", defaultTTL, "How long to cache an index for a block.")
 }
 
 type RedisIndexCacheConfig struct {
 	ClientConfig RedisClientConfig `yaml:",inline"`
 	EnabledItems []string          `yaml:"enabled_items"`
+	IndexTTL     time.Duration     `yaml:"index_ttl"`
 }
 
 func (cfg *RedisIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	cfg.ClientConfig.RegisterFlagsWithPrefix(f, prefix)
 	f.Var((*flagext.StringSlice)(&cfg.EnabledItems), prefix+"enabled-items", "Selectively cache index item types. Supported values are Postings, ExpandedPostings and Series")
+	f.DurationVar(&cfg.IndexTTL, prefix+"index-ttl", defaultTTL, "How long to cache an index for a block.")
 }
 
 func (cfg *RedisIndexCacheConfig) Validate() error {
@@ -217,8 +221,7 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 			if err != nil {
 				return nil, err
 			}
-			// TODO(yeya24): expose TTL
-			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
+			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, cfg.Memcached.IndexTTL)
 			if err != nil {
 				return nil, err
 			}
@@ -229,8 +232,7 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 			if err != nil {
 				return nil, err
 			}
-			// TODO(yeya24): expose TTL
-			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
+			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, cfg.Redis.IndexTTL)
 			if err != nil {
 				return nil, err
 			}

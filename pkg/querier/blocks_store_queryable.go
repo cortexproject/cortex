@@ -141,7 +141,8 @@ type BlocksStoreQueryable struct {
 	metrics         *blocksStoreQueryableMetrics
 	limits          BlocksStoreLimits
 
-	storeGatewayQueryStatsEnabled bool
+	storeGatewayQueryStatsEnabled           bool
+	storeGatewayConsistencyCheckMaxAttempts int
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -153,8 +154,7 @@ func NewBlocksStoreQueryable(
 	finder BlocksFinder,
 	consistency *BlocksConsistencyChecker,
 	limits BlocksStoreLimits,
-	queryStoreAfter time.Duration,
-	storeGatewayQueryStatsEnabled bool,
+	config Config,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*BlocksStoreQueryable, error) {
@@ -164,16 +164,17 @@ func NewBlocksStoreQueryable(
 	}
 
 	q := &BlocksStoreQueryable{
-		stores:                        stores,
-		finder:                        finder,
-		consistency:                   consistency,
-		queryStoreAfter:               queryStoreAfter,
-		logger:                        logger,
-		subservices:                   manager,
-		subservicesWatcher:            services.NewFailureWatcher(),
-		metrics:                       newBlocksStoreQueryableMetrics(reg),
-		limits:                        limits,
-		storeGatewayQueryStatsEnabled: storeGatewayQueryStatsEnabled,
+		stores:                                  stores,
+		finder:                                  finder,
+		consistency:                             consistency,
+		queryStoreAfter:                         config.QueryStoreAfter,
+		logger:                                  logger,
+		subservices:                             manager,
+		subservicesWatcher:                      services.NewFailureWatcher(),
+		metrics:                                 newBlocksStoreQueryableMetrics(reg),
+		limits:                                  limits,
+		storeGatewayQueryStatsEnabled:           config.StoreGatewayQueryStatsEnabled,
+		storeGatewayConsistencyCheckMaxAttempts: config.StoreGatewayConsistencyCheckMaxAttempts,
 	}
 
 	q.Service = services.NewBasicService(q.starting, q.running, q.stopping)
@@ -264,7 +265,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 		reg,
 	)
 
-	return NewBlocksStoreQueryable(stores, finder, consistency, limits, querierCfg.QueryStoreAfter, querierCfg.StoreGatewayQueryStatsEnabled, logger, reg)
+	return NewBlocksStoreQueryable(stores, finder, consistency, limits, querierCfg, logger, reg)
 }
 
 func (q *BlocksStoreQueryable) starting(ctx context.Context) error {
@@ -299,16 +300,17 @@ func (q *BlocksStoreQueryable) Querier(mint, maxt int64) (storage.Querier, error
 	}
 
 	return &blocksStoreQuerier{
-		minT:                          mint,
-		maxT:                          maxt,
-		finder:                        q.finder,
-		stores:                        q.stores,
-		metrics:                       q.metrics,
-		limits:                        q.limits,
-		consistency:                   q.consistency,
-		logger:                        q.logger,
-		queryStoreAfter:               q.queryStoreAfter,
-		storeGatewayQueryStatsEnabled: q.storeGatewayQueryStatsEnabled,
+		minT:                                    mint,
+		maxT:                                    maxt,
+		finder:                                  q.finder,
+		stores:                                  q.stores,
+		metrics:                                 q.metrics,
+		limits:                                  q.limits,
+		consistency:                             q.consistency,
+		logger:                                  q.logger,
+		queryStoreAfter:                         q.queryStoreAfter,
+		storeGatewayQueryStatsEnabled:           q.storeGatewayQueryStatsEnabled,
+		storeGatewayConsistencyCheckMaxAttempts: q.storeGatewayConsistencyCheckMaxAttempts,
 	}, nil
 }
 
@@ -328,6 +330,9 @@ type blocksStoreQuerier struct {
 	// If enabled, query stats of store gateway requests will be logged
 	// using `info` level.
 	storeGatewayQueryStatsEnabled bool
+
+	// The maximum number of times we attempt fetching missing blocks from different Store Gateways.
+	storeGatewayConsistencyCheckMaxAttempts int
 }
 
 // Select implements storage.Querier interface.
@@ -534,7 +539,7 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 		retryableError error
 	)
 
-	for attempt := 1; attempt <= maxFetchSeriesAttempts; attempt++ {
+	for attempt := 1; attempt <= q.storeGatewayConsistencyCheckMaxAttempts; attempt++ {
 		// Find the set of store-gateway instances having the blocks. The exclude parameter is the
 		// map of blocks queried so far, with the list of store-gateway addresses for each block.
 		clients, err := q.stores.GetClientsFor(userID, remainingBlocks, attemptedBlocks, attemptedBlocksZones)

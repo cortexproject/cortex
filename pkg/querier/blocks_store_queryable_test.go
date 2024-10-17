@@ -1552,6 +1552,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				logger:      log.NewNopLogger(),
 				metrics:     newBlocksStoreQueryableMetrics(reg),
 				limits:      testData.limits,
+
+				storeGatewayConsistencyCheckMaxAttempts: 3,
 			}
 
 			matchers := []*labels.Matcher{
@@ -2148,6 +2150,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 					logger:      log.NewNopLogger(),
 					metrics:     newBlocksStoreQueryableMetrics(reg),
 					limits:      &blocksStoreLimitsMock{},
+
+					storeGatewayConsistencyCheckMaxAttempts: 3,
 				}
 
 				if testFunc == "LabelNames" {
@@ -2371,7 +2375,12 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 				}
 
 				// Instance the querier that will be executed to run the query.
-				queryable, err := NewBlocksStoreQueryable(stores, finder, NewBlocksConsistencyChecker(0, 0, logger, nil), &blocksStoreLimitsMock{}, 0, false, logger, nil)
+				cfg := Config{
+					QueryStoreAfter:                         0,
+					StoreGatewayQueryStatsEnabled:           false,
+					StoreGatewayConsistencyCheckMaxAttempts: 3,
+				}
+				queryable, err := NewBlocksStoreQueryable(stores, finder, NewBlocksConsistencyChecker(0, 0, logger, nil), &blocksStoreLimitsMock{}, cfg, logger, nil)
 				require.NoError(t, err)
 				require.NoError(t, services.StartAndAwaitRunning(context.Background(), queryable))
 				defer services.StopAndAwaitTerminated(context.Background(), queryable) // nolint:errcheck

@@ -23,6 +23,7 @@
 * [ENHANCEMENT] Upgrade build image and Go version to 1.23.2. #6261 #6262
 * [ENHANCEMENT] Querier/Ruler: Expose `store_gateway_consistency_check_max_attempts` for max retries when querying store gateway in consistency check. #6276
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
+* [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled  #6271
 
 ## 1.18.1 2024-10-14
 

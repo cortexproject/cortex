@@ -696,6 +696,13 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			return ringDesc, true, nil
 		}
 
+		if i.cfg.HeartbeatPeriod == 0 && i.Addr != instanceDesc.Addr {
+			// Update the address if it has changed
+			instanceDesc.Addr = i.Addr
+			ringDesc.Ingesters[i.ID] = instanceDesc
+			return ringDesc, true, nil
+		}
+
 		// we haven't modified the ring, don't try to store it.
 		return nil, true, nil
 	})

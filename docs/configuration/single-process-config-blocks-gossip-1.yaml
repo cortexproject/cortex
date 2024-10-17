@@ -96,3 +96,12 @@ ruler_storage:
   backend: local
   local:
     directory: /tmp/cortex/rules
+
+alertmanager:
+  external_url: http://localhost/alertmanager
+
+alertmanager_storage:
+  backend: local
+  local:
+    # Make sure file exist
+    path: /tmp/cortex/alerts

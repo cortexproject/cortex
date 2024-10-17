@@ -453,6 +453,8 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		return errors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
+	level.Info(i.logger).Log("msg", "finished init ring", "ring", i.RingName, "state", i.GetState())
+
 	// We do various period tasks
 	var autoJoinAfter <-chan time.Time
 	var observeChan <-chan time.Time
@@ -480,6 +482,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		select {
 		case <-i.autojoinChan:
 			autoJoinAfter = time.After(i.cfg.JoinAfter)
+			level.Info(i.logger).Log("msg", "will do auto-joining after timeout", "timeout", i.cfg.JoinAfter, "state", i.GetState())
 		case <-autoJoinAfter:
 			if joined {
 				continue

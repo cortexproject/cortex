@@ -2608,6 +2608,15 @@ instance_limits:
   # unlimited.
   # CLI flag: -distributor.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
+
+otlp:
+  # If enabled, all resource attributes are converted to labels.
+  # CLI flag: -distributor.otlp-config.convert-all-attributes
+  [convert_all_attributes: <boolean> | default = false]
+
+  # A list of resource attributes that should be converted to labels.
+  # CLI flag: -distributor.otlp-config.promote-resource-attributes
+  [promote_resource_attributes: <list of string> | default = []]
 ```
 
 ### `etcd_config`

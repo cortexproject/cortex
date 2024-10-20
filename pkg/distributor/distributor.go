@@ -171,6 +171,11 @@ type InstanceLimits struct {
 	MaxInflightPushRequests int     `yaml:"max_inflight_push_requests"`
 }
 
+type HAPair struct {
+	Cluster string
+	Replica string
+}
+
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.PoolConfig.RegisterFlags(f)
@@ -649,10 +654,11 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	removeReplica := false
+	var validHAPairs map[HAPair]error
 	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
 	limits := d.limits.GetOverridesForUser(userID)
 
-	if limits.AcceptHASamples && len(req.Timeseries) > 0 {
+	if limits.AcceptHASamples && len(req.Timeseries) > 0 && !limits.AcceptMixedHASamples {
 		cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica, limits)
 		if err != nil {
@@ -676,10 +682,13 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		if !removeReplica { // False, Nil
 			d.nonHASamples.WithLabelValues(userID).Add(float64(numFloatSamples + numHistogramSamples))
 		}
+	} else if limits.AcceptHASamples && len(req.Timeseries) > 0 && limits.AcceptMixedHASamples {
+		haPairs := findUniqueHAPairs(limits.HAReplicaLabel, limits.HAClusterLabel, req.Timeseries)
+		validHAPairs = d.getValidHAPairs(haPairs, ctx, userID, limits)
 	}
 
 	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
-	seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
+	seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica, validHAPairs)
 	if err != nil {
 		return nil, err
 	}
@@ -833,7 +842,7 @@ func (d *Distributor) prepareMetadataKeys(req *cortexpb.WriteRequest, limits *va
 	return metadataKeys, validatedMetadata, firstPartialErr
 }
 
-func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []cortexpb.PreallocTimeseries, int, int, int, error, error) {
+func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool, validHAPairs map[HAPair]error) ([]uint32, []cortexpb.PreallocTimeseries, int, int, int, error, error) {
 	pSpan, _ := opentracing.StartSpanFromContext(ctx, "prepareSeriesKeys")
 	defer pSpan.Finish()
 
@@ -859,6 +868,30 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	// check each sample and discard if outside limits.
 	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
 	for _, ts := range req.Timeseries {
+		if limits.AcceptHASamples && limits.AcceptMixedHASamples {
+			cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, ts.Labels)
+
+			if cluster != "" && replica != "" {
+				err := validHAPairs[HAPair{Cluster: cluster, Replica: replica}]
+				if err != nil {
+					// discard sample (non valid HA sample)
+					if errors.Is(err, ha.ReplicasNotMatchError{}) {
+						// These samples have been deduped.
+						d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+					}
+					if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
+						d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+					}
+
+					continue
+				}
+				removeReplica = true // valid HA sample
+			} else {
+				// non HA sample
+				removeReplica = false
+				d.nonHASamples.WithLabelValues(userID).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+			}
+		}
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
 		if len(ts.Samples) > 0 {
 			latestSampleTimestampMs = max(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
@@ -1465,6 +1498,39 @@ func findHALabels(replicaLabel, clusterLabel string, labels []cortexpb.LabelAdap
 	}
 
 	return cluster, replica
+}
+
+func findUniqueHAPairs(replicaLabel, clusterLabel string, timeseries []cortexpb.PreallocTimeseries) map[HAPair]int {
+	var haPairs = make(map[HAPair]int)
+
+	for _, ts := range timeseries {
+		cluster, replica := findHALabels(replicaLabel, clusterLabel, ts.Labels)
+		if cluster != "" && replica != "" {
+			_, ok := haPairs[HAPair{Cluster: cluster, Replica: replica}]
+			if ok {
+				haPairs[HAPair{Cluster: cluster, Replica: replica}] += 1
+			} else {
+				haPairs[HAPair{Cluster: cluster, Replica: replica}] = 0
+			}
+		}
+	}
+
+	return haPairs
+}
+
+func (d *Distributor) getValidHAPairs(haPairs map[HAPair]int, ctx context.Context, userID string, limits *validation.Limits) map[HAPair]error {
+	var validHAPairs = make(map[HAPair]error)
+
+	for haPair, _ := range haPairs {
+		removeReplica, err := d.checkSample(ctx, userID, haPair.Cluster, haPair.Replica, limits)
+		if err == nil && !removeReplica {
+			continue
+		}
+
+		validHAPairs[haPair] = err
+	}
+
+	return validHAPairs
 }
 
 func getLimitFromLabelHints(hints *storage.LabelHints) int {

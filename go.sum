@@ -1513,8 +1513,8 @@ go.opentelemetry.io/contrib/propagators/ot v1.29.0 h1:CaJU78FvXrA6ajjp1dOdcABBEj
 go.opentelemetry.io/contrib/propagators/ot v1.29.0/go.mod h1:Sc0omwLb4eptUhwOAfYXfmPmErHPu2HV6vkeDge/3sY=
 go.opentelemetry.io/otel v1.31.0 h1:NsJcKPIW0D0H3NgzPDHmo0WW6SptzPdqg/L1zsIm2hY=
 go.opentelemetry.io/otel v1.31.0/go.mod h1:O0C14Yl9FgkjqcCZAsE053C13OaddMYr/hz6clDkEJE=
-go.opentelemetry.io/otel/bridge/opentracing v1.29.0 h1:qrife6xWXoBwBeif0/9nVr+18Gq3+st7kT2iTTKbu5o=
-go.opentelemetry.io/otel/bridge/opentracing v1.29.0/go.mod h1:9MckCOAmd8dHQS92890ShcIwkVz/0tF/WvnMUMd9mGQ=
+go.opentelemetry.io/otel/bridge/opentracing v1.31.0 h1:S6SA1IQdNHgfZfgkaWBKQqNIlMNiPoyQDACii2uKQ9k=
+go.opentelemetry.io/otel/bridge/opentracing v1.31.0/go.mod h1:DnEoPjq3eNCtnB41TqlUQYtarWe8PqJNWRt37daADe4=
 go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.29.0 h1:dIIDULZJpgdiHz5tXrTgKIMLkus6jEFa7x5SOKcyR7E=
 go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.29.0/go.mod h1:jlRVBe7+Z1wyxFSUs48L6OBQZ5JwH2Hg/Vbl+t9rAgI=
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.29.0 h1:nSiV3s7wiCam610XcLbYOmMfJxB9gO4uK3Xgv5gmTgg=

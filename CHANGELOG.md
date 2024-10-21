@@ -10,6 +10,7 @@
 * [FEATURE] Store Gateway: Add an in-memory chunk cache. #6245
 * [FEATURE] Chunk Cache: Support multi level cache and add metrics. #6249
 * [ENHANCEMENT] Query Frontend: Add new query stats metrics `cortex_query_samples_scanned_total` and `cortex_query_peak_samples` to track scannedSamples and peakSample per user. #6228
+* [ENHANCEMENT] OTLP: Change otlp handler to consist with the Prometheus otlp handler. Enable `target_info` metric and disable convert all attributes to labels by default. Add a config to specify promote resource attributes for tenants. #6272
 * [ENHANCEMENT] Ingester: Add `blocks-storage.tsdb.wal-compression-type` to support zstd wal compression type. #6232
 * [ENHANCEMENT] Query Frontend: Add info field to query response. #6207
 * [ENHANCEMENT] Query Frontend: Add peakSample in query stats response. #6188

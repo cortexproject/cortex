@@ -136,6 +136,7 @@ type Limits struct {
 	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
 	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
 	MaxNativeHistogramBuckets int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
+	PromoteResourceAttributes []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
 
 	// Ingester enforced limits.
 	// Series
@@ -223,6 +224,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
 	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
 	f.IntVar(&l.HAMaxClusters, "distributor.ha-tracker.max-clusters", 0, "Maximum number of clusters that HA tracker will keep track of for single user. 0 to disable the limit.")
+	f.Var((*flagext.StringSliceCSV)(&l.PromoteResourceAttributes), "distributor.promote-resource-attributes", "Comma separated list of resource attributes that should be converted to labels.")
 	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
@@ -752,6 +754,11 @@ func (o *Overrides) MaxGlobalMetricsWithMetadataPerUser(userID string) int {
 // MaxGlobalMetadataPerMetric returns the maximum number of metadata allowed per metric across the cluster.
 func (o *Overrides) MaxGlobalMetadataPerMetric(userID string) int {
 	return o.GetOverridesForUser(userID).MaxGlobalMetadataPerMetric
+}
+
+// PromoteResourceAttributes returns the promote resource attributes for a given user.
+func (o *Overrides) PromoteResourceAttributes(userID string) []string {
+	return o.GetOverridesForUser(userID).PromoteResourceAttributes
 }
 
 // IngestionTenantShardSize returns the ingesters shard size for a given user.

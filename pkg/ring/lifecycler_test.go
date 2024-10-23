@@ -40,6 +40,14 @@ func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	return lifecyclerConfig
 }
 
+// testLifecyclerConfigWithAddr creates a LifecyclerConfig with the given address.
+// This is useful for testing when we want to set the address to a specific value.
+func testLifecyclerConfigWithAddr(ringConfig Config, id string, addr string) LifecyclerConfig {
+	l := testLifecyclerConfig(ringConfig, id)
+	l.Addr = addr
+	return l
+}
+
 func checkNormalised(d interface{}, id string) bool {
 	desc, ok := d.(*Desc)
 	return ok &&
@@ -644,8 +652,8 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	}
 
 	// Starts Ingester and wait it to became active
-	startIngesterAndWaitActive := func(ingId string) *Lifecycler {
-		lifecyclerConfig := testLifecyclerConfig(ringConfig, ingId)
+	startIngesterAndWaitActive := func(ingId string, addr string) *Lifecycler {
+		lifecyclerConfig := testLifecyclerConfigWithAddr(ringConfig, ingId, addr)
 		// Disabling heartBeat and unregister_on_shutdown
 		lifecyclerConfig.UnregisterOnShutdown = false
 		lifecyclerConfig.HeartbeatPeriod = 0
@@ -662,10 +670,10 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	// test if the ingester 2 became active after:
 	// * Clean Shutdown (LEAVING after shutdown)
 	// * Crashes while in the PENDING or JOINING state
-	l1 := startIngesterAndWaitActive("ing1")
+	l1 := startIngesterAndWaitActive("ing1", "0.0.0.0")
 	defer services.StopAndAwaitTerminated(context.Background(), l1) //nolint:errcheck
 
-	l2 := startIngesterAndWaitActive("ing2")
+	l2 := startIngesterAndWaitActive("ing2", "0.0.0.0")
 
 	ingesters := poll(func(desc *Desc) bool {
 		return len(desc.Ingesters) == 2 && desc.Ingesters["ing1"].State == ACTIVE && desc.Ingesters["ing2"].State == ACTIVE
@@ -684,7 +692,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	assert.Equal(t, LEAVING, ingesters["ing2"].State)
 
 	// Start Ingester2 again - Should flip back to ACTIVE in the ring
-	l2 = startIngesterAndWaitActive("ing2")
+	l2 = startIngesterAndWaitActive("ing2", "0.0.0.0")
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
 
 	// Simulate ingester2 crash on startup and left the ring with JOINING state
@@ -698,7 +706,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	})
 	require.NoError(t, err)
 
-	l2 = startIngesterAndWaitActive("ing2")
+	l2 = startIngesterAndWaitActive("ing2", "0.0.0.0")
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
 
 	// Simulate ingester2 crash on startup and left the ring with PENDING state
@@ -712,7 +720,26 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	})
 	require.NoError(t, err)
 
-	l2 = startIngesterAndWaitActive("ing2")
+	l2 = startIngesterAndWaitActive("ing2", "0.0.0.0")
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
+
+	// Simulate ingester2 crashing and left the ring with ACTIVE state, but when it comes up
+	// it has a different ip address
+	startIngesterAndWaitActive("ing2", "0.0.0.0")
+	ingesters = poll(func(desc *Desc) bool {
+		return desc.Ingesters["ing2"].State == ACTIVE && desc.Ingesters["ing2"].Addr == "0.0.0.0:1"
+	})
+	assert.Equal(t, ACTIVE, ingesters["ing2"].State)
+	assert.Equal(t, "0.0.0.0:1", ingesters["ing2"].Addr)
+
+	l2 = startIngesterAndWaitActive("ing2", "1.1.1.1")
+
+	// The ring should have the new ip address
+	ingesters = poll(func(desc *Desc) bool {
+		return desc.Ingesters["ing2"].State == ACTIVE && desc.Ingesters["ing2"].Addr == "1.1.1.1:1"
+	})
+	assert.Equal(t, ACTIVE, ingesters["ing2"].State)
+	assert.Equal(t, "1.1.1.1:1", ingesters["ing2"].Addr)
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
 }
 

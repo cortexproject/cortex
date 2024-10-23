@@ -272,3 +272,6 @@ replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0
 
 // Pin kuberesolver/v5 to support new grpc version. Need to upgrade kuberesolver version on weaveworks/common.
 replace github.com/sercand/kuberesolver/v4 => github.com/sercand/kuberesolver/v5 v5.1.1
+
+// gRPC 1.66 introduced memory pooling which breaks Cortex queries. Pin 1.65.0 until we have a fix.
+replace google.golang.org/grpc => google.golang.org/grpc v1.65.0

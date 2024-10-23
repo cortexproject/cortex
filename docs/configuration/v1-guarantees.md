@@ -116,3 +116,5 @@ Currently experimental features are:
   - Enable string interning for metrics labels by setting `-ingester.labels-string-interning-enabled` on Ingester.
 - Query-frontend: query rejection (`-frontend.query-rejection.enabled`)
 - Querier: protobuf codec (`-api.querier-default-codec`)
+- Ingester: Enable TSDB compaction delay
+  - `-blocks-storage.tsdb.enable-delayed-compaction` (boolean) CLI flag

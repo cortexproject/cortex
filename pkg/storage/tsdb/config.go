@@ -166,6 +166,9 @@ type TSDBConfig struct {
 
 	// Enable native histogram ingestion.
 	EnableNativeHistograms bool `yaml:"enable_native_histograms"`
+
+	// Enable deployed compaction
+	EnableDelayedCompaction bool `yaml:"enable_delayed_compaction"`
 }
 
 // RegisterFlags registers the TSDBConfig flags.
@@ -195,6 +198,7 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.MemorySnapshotOnShutdown, "blocks-storage.tsdb.memory-snapshot-on-shutdown", false, "True to enable snapshotting of in-memory TSDB data on disk when shutting down.")
 	f.Int64Var(&cfg.OutOfOrderCapMax, "blocks-storage.tsdb.out-of-order-cap-max", tsdb.DefaultOutOfOrderCapMax, "[EXPERIMENTAL] Configures the maximum number of samples per chunk that can be out-of-order.")
 	f.BoolVar(&cfg.EnableNativeHistograms, "blocks-storage.tsdb.enable-native-histograms", false, "[EXPERIMENTAL] True to enable native histogram.")
+	f.BoolVar(&cfg.EnableDelayedCompaction, "blocks-storage.tsdb.enable-delayed-compaction", false, "[EXPERIMENTAL] True to enable delayed compaction.")
 }
 
 // Validate the config.

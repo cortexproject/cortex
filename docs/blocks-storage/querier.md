@@ -1528,4 +1528,8 @@ blocks_storage:
     # [EXPERIMENTAL] True to enable native histogram.
     # CLI flag: -blocks-storage.tsdb.enable-native-histograms
     [enable_native_histograms: <boolean> | default = false]
+
+    # [EXPERIMENTAL] True to enable delayed compaction.
+    # CLI flag: -blocks-storage.tsdb.enable-delayed-compaction
+    [enable_delayed_compaction: <boolean> | default = false]
 ```

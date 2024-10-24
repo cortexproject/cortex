@@ -20,21 +20,40 @@ import (
 func TestOTLPWriteHandler(t *testing.T) {
 	exportRequest := generateOTLPWriteRequest(t)
 
-	buf, err := exportRequest.MarshalProto()
-	require.NoError(t, err)
+	t.Run("Test proto format write", func(t *testing.T) {
+		buf, err := exportRequest.MarshalProto()
+		require.NoError(t, err)
 
-	req, err := http.NewRequest("", "", bytes.NewReader(buf))
-	require.NoError(t, err)
-	req.Header.Set("Content-Type", "application/x-protobuf")
+		req, err := http.NewRequest("", "", bytes.NewReader(buf))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/x-protobuf")
 
-	push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
-	handler := OTLPHandler(nil, push)
+		push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
+		handler := OTLPHandler(nil, push)
 
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, req)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
 
-	resp := recorder.Result()
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+		resp := recorder.Result()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+	t.Run("Test json format write", func(t *testing.T) {
+		buf, err := exportRequest.MarshalJSON()
+		require.NoError(t, err)
+
+		req, err := http.NewRequest("", "", bytes.NewReader(buf))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+
+		push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
+		handler := OTLPHandler(nil, push)
+
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+
+		resp := recorder.Result()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	})
 }
 
 func generateOTLPWriteRequest(t *testing.T) pmetricotlp.ExportRequest {

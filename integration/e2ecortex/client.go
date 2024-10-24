@@ -231,7 +231,7 @@ func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics 
 	return metrics
 }
 
-func otlpWriteRequest(name string) pmetricotlp.ExportRequest {
+func otlpWriteRequest(name string, labels ...prompb.Label) pmetricotlp.ExportRequest {
 	d := pmetric.NewMetrics()
 
 	// Generate One Counter, One Gauge, One Histogram, One Exponential-Histogram
@@ -244,6 +244,9 @@ func otlpWriteRequest(name string) pmetricotlp.ExportRequest {
 	resourceMetric.Resource().Attributes().PutStr("service.name", "test-service")
 	resourceMetric.Resource().Attributes().PutStr("service.instance.id", "test-instance")
 	resourceMetric.Resource().Attributes().PutStr("host.name", "test-host")
+	for _, label := range labels {
+		resourceMetric.Resource().Attributes().PutStr(label.Name, label.Value)
+	}
 
 	scopeMetric := resourceMetric.ScopeMetrics().AppendEmpty()
 
@@ -258,7 +261,6 @@ func otlpWriteRequest(name string) pmetricotlp.ExportRequest {
 	counterDataPoint := counterMetric.Sum().DataPoints().AppendEmpty()
 	counterDataPoint.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
 	counterDataPoint.SetDoubleValue(10.0)
-	counterDataPoint.Attributes().PutStr("foo.bar", "baz")
 
 	counterExemplar := counterDataPoint.Exemplars().AppendEmpty()
 	counterExemplar.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
@@ -269,8 +271,8 @@ func otlpWriteRequest(name string) pmetricotlp.ExportRequest {
 	return pmetricotlp.NewExportRequestFromMetrics(d)
 }
 
-func (c *Client) OTLPPushExemplar(name string) (*http.Response, error) {
-	data, err := otlpWriteRequest(name).MarshalProto()
+func (c *Client) OTLPPushExemplar(name string, labels ...prompb.Label) (*http.Response, error) {
+	data, err := otlpWriteRequest(name, labels...).MarshalProto()
 	if err != nil {
 		return nil, err
 	}

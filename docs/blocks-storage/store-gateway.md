@@ -403,6 +403,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.send-content-md5
     [send_content_md5: <boolean> | default = true]
 
+    # The list api version. Supported values are: v1, v2, and ''.
+    # CLI flag: -blocks-storage.s3.list-objects-version
+    [list_objects_version: <string> | default = ""]
+
     # The s3_sse_config configures the S3 server-side encryption.
     # The CLI flags prefix for this block config is: blocks-storage
     [sse: <s3_sse_config>]

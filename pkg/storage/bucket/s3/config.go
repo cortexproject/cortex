@@ -31,16 +31,21 @@ const (
 	BucketAutoLookup        = "auto"
 	BucketVirtualHostLookup = "virtual-hosted"
 	BucketPathLookup        = "path"
+
+	ListObjectsVersionV1 = "v1"
+	ListObjectsVersionV2 = "v2"
 )
 
 var (
 	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
 	supportedSSETypes              = []string{SSEKMS, SSES3}
 	supportedBucketLookupTypes     = []string{BucketAutoLookup, BucketVirtualHostLookup, BucketPathLookup}
+	supportedListObjectsVersion    = []string{ListObjectsVersionV1, ListObjectsVersionV2}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 	errUnsupportedSSEType          = errors.New("unsupported S3 SSE type")
 	errInvalidSSEContext           = errors.New("invalid S3 SSE encryption context")
 	errInvalidBucketLookupType     = errors.New("invalid bucket lookup type")
+	errInvalidListObjectsVersion   = errors.New("invalid list object version")
 )
 
 // HTTPConfig stores the http.Transport configuration for the s3 minio client.
@@ -58,15 +63,16 @@ func (cfg *HTTPConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Config holds the config options for an S3 backend
 type Config struct {
-	Endpoint         string         `yaml:"endpoint"`
-	Region           string         `yaml:"region"`
-	BucketName       string         `yaml:"bucket_name"`
-	SecretAccessKey  flagext.Secret `yaml:"secret_access_key"`
-	AccessKeyID      string         `yaml:"access_key_id"`
-	Insecure         bool           `yaml:"insecure"`
-	SignatureVersion string         `yaml:"signature_version"`
-	BucketLookupType string         `yaml:"bucket_lookup_type"`
-	SendContentMd5   bool           `yaml:"send_content_md5"`
+	Endpoint           string         `yaml:"endpoint"`
+	Region             string         `yaml:"region"`
+	BucketName         string         `yaml:"bucket_name"`
+	SecretAccessKey    flagext.Secret `yaml:"secret_access_key"`
+	AccessKeyID        string         `yaml:"access_key_id"`
+	Insecure           bool           `yaml:"insecure"`
+	SignatureVersion   string         `yaml:"signature_version"`
+	BucketLookupType   string         `yaml:"bucket_lookup_type"`
+	SendContentMd5     bool           `yaml:"send_content_md5"`
+	ListObjectsVersion string         `yaml:"list_objects_version"`
 
 	SSE  SSEConfig  `yaml:"sse"`
 	HTTP HTTPConfig `yaml:"http"`
@@ -88,6 +94,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
 	f.StringVar(&cfg.BucketLookupType, prefix+"s3.bucket-lookup-type", BucketAutoLookup, fmt.Sprintf("The s3 bucket lookup style. Supported values are: %s.", strings.Join(supportedBucketLookupTypes, ", ")))
 	f.BoolVar(&cfg.SendContentMd5, prefix+"s3.send-content-md5", true, "If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum algorithm to verify the provided digest. If false, use CRC32C algorithm instead.")
+	f.StringVar(&cfg.ListObjectsVersion, prefix+"s3.list-objects-version", "", fmt.Sprintf("The list api version. Supported values are: %s, and ''.", strings.Join(supportedListObjectsVersion, ", ")))
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
 }
@@ -99,6 +106,11 @@ func (cfg *Config) Validate() error {
 	}
 	if !util.StringsContain(supportedBucketLookupTypes, cfg.BucketLookupType) {
 		return errInvalidBucketLookupType
+	}
+	if cfg.ListObjectsVersion != "" {
+		if !util.StringsContain(supportedListObjectsVersion, cfg.ListObjectsVersion) {
+			return errInvalidListObjectsVersion
+		}
 	}
 
 	if err := cfg.SSE.Validate(); err != nil {

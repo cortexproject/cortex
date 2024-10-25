@@ -1141,7 +1141,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-buffer-size
@@ -1246,7 +1246,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-buffer-size
@@ -1379,7 +1379,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-buffer-size
@@ -1479,7 +1479,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-buffer-size
@@ -1617,7 +1617,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-buffer-size
@@ -1717,7 +1717,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-buffer-size

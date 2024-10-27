@@ -21,5 +21,9 @@ updates:
     groups:
       go-dependencies:
         dependency-type: "production"
+    ignore:
+      - dependency-name: "github.com/prometheus/prometheus"
+        versions:
+          - "*-*"
     schedule:
       interval: "daily"

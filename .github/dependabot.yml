@@ -5,11 +5,18 @@
 
 version: 2
 updates:
-  - package-ecosystem: "gomod"
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
+    labels:
+      - "infra"
   - package-ecosystem: "gomod"
-    directory: "/website"
+    directories:
+      - "/"
+      - "/website"
+    groups:
+      go-production-dependencies:
+        dependency-type: "production"
     schedule:
-      interval: "weekly" 
+      interval: "daily"

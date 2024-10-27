@@ -24,6 +24,6 @@ updates:
     ignore:
       - dependency-name: "github.com/prometheus/prometheus"
         versions:
-          - "*-*"
+          - ">=0.300.0"
     schedule:
       interval: "daily"

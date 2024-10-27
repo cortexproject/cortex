@@ -9,6 +9,9 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      actions-dependencies:
+        dependency-type: "production"
     labels:
       - "infra"
   - package-ecosystem: "gomod"
@@ -16,7 +19,7 @@ updates:
       - "/"
       - "/website"
     groups:
-      go-production-dependencies:
+      go-dependencies:
         dependency-type: "production"
     schedule:
       interval: "daily"

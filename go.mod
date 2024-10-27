@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/alecthomas/units v0.0.0-20240626203959-61d1e3462e30
 	github.com/alicebob/miniredis/v2 v2.33.0
-	github.com/armon/go-metrics v0.4.1
+	github.com/hashicorp/go-metrics v0.4.1
 	github.com/aws/aws-sdk-go v1.55.5
 	github.com/bradfitz/gomemcache v0.0.0-20230905024940-24af94b03874
 	github.com/cespare/xxhash v1.1.0

@@ -4512,9 +4512,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load()) // Flushing removed all series from memory.
 
 	// Verify that user has disappeared from metrics.
-	err = testutil.GatherAndCompare(r, strings.NewReader(""), userMetrics...)
-	require.ErrorContains(t, err, "expected metric name(s) not found")
-	require.ErrorContains(t, err, strings.Join(userMetrics, " "))
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(""), userMetrics...))
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_users The current number of users in memory.

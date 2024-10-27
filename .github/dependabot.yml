@@ -20,7 +20,8 @@ updates:
       - "/website"
     groups:
       go-dependencies:
-        dependency-type: "production"
+        exclude-patterns:
+          - "github.com/thanos-io/thanos"
     ignore:
       - dependency-name: "github.com/prometheus/prometheus"
         versions:

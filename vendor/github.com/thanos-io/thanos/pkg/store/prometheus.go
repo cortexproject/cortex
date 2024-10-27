@@ -24,7 +24,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -110,6 +109,31 @@ func (p *PrometheusStore) labelCallsSupportMatchers() bool {
 	return parseErr == nil && version.GTE(baseVer)
 }
 
+// Info returns store information about the Prometheus instance.
+// NOTE(bwplotka): MaxTime & MinTime are not accurate nor adjusted dynamically.
+// This is fine for now, but might be needed in future.
+func (p *PrometheusStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.InfoResponse, error) {
+	lset := p.externalLabelsFn()
+	mint, maxt := p.timestamps()
+
+	res := &storepb.InfoResponse{
+		Labels:    labelpb.ZLabelsFromPromLabels(lset),
+		StoreType: p.component.ToProto(),
+		MinTime:   mint,
+		MaxTime:   maxt,
+	}
+
+	// Until we deprecate the single labels in the reply, we just duplicate
+	// them here for migration/compatibility purposes.
+	res.LabelSets = []labelpb.ZLabelSet{}
+	if len(res.Labels) > 0 {
+		res.LabelSets = append(res.LabelSets, labelpb.ZLabelSet{
+			Labels: res.Labels,
+		})
+	}
+	return res, nil
+}
+
 func (p *PrometheusStore) getBuffer() *[]byte {
 	b := p.buffers.Get()
 	return b.(*[]byte)
@@ -149,7 +173,7 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, seriesSrv storepb.Sto
 
 	if r.SkipChunks {
 		finalExtLset := rmLabels(extLset.Copy(), extLsetToRemove)
-		labelMaps, err := p.client.SeriesInGRPC(s.Context(), p.base, matchers, r.MinTime, r.MaxTime, int(r.Limit))
+		labelMaps, err := p.client.SeriesInGRPC(s.Context(), p.base, matchers, r.MinTime, r.MaxTime)
 		if err != nil {
 			return err
 		}
@@ -296,7 +320,7 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 	seriesStats := &storepb.SeriesStatsCounter{}
 
 	// TODO(bwplotka): Put read limit as a flag.
-	stream := remote.NewChunkedReader(bodySizer, config.DefaultChunkedReadLimit, *data)
+	stream := remote.NewChunkedReader(bodySizer, remote.DefaultChunkedReadLimit, *data)
 	hasher := hashPool.Get().(hash.Hash64)
 	defer hashPool.Put(hasher)
 	for {
@@ -547,12 +571,12 @@ func (p *PrometheusStore) LabelNames(ctx context.Context, r *storepb.LabelNamesR
 
 	var lbls []string
 	if len(matchers) == 0 || p.labelCallsSupportMatchers() {
-		lbls, err = p.client.LabelNamesInGRPC(ctx, p.base, matchers, r.Start, r.End, int(r.Limit))
+		lbls, err = p.client.LabelNamesInGRPC(ctx, p.base, matchers, r.Start, r.End)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		sers, err := p.client.SeriesInGRPC(ctx, p.base, matchers, r.Start, r.End, int(r.Limit))
+		sers, err := p.client.SeriesInGRPC(ctx, p.base, matchers, r.Start, r.End)
 		if err != nil {
 			return nil, err
 		}
@@ -618,7 +642,7 @@ func (p *PrometheusStore) LabelValues(ctx context.Context, r *storepb.LabelValue
 		if len(matchers) == 0 {
 			return &storepb.LabelValuesResponse{Values: []string{val}}, nil
 		}
-		sers, err = p.client.SeriesInGRPC(ctx, p.base, matchers, r.Start, r.End, int(r.Limit))
+		sers, err = p.client.SeriesInGRPC(ctx, p.base, matchers, r.Start, r.End)
 		if err != nil {
 			return nil, err
 		}
@@ -629,12 +653,12 @@ func (p *PrometheusStore) LabelValues(ctx context.Context, r *storepb.LabelValue
 	}
 
 	if len(matchers) == 0 || p.labelCallsSupportMatchers() {
-		vals, err = p.client.LabelValuesInGRPC(ctx, p.base, r.Label, matchers, r.Start, r.End, int(r.Limit))
+		vals, err = p.client.LabelValuesInGRPC(ctx, p.base, r.Label, matchers, r.Start, r.End)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		sers, err = p.client.SeriesInGRPC(ctx, p.base, matchers, r.Start, r.End, int(r.Limit))
+		sers, err = p.client.SeriesInGRPC(ctx, p.base, matchers, r.Start, r.End)
 		if err != nil {
 			return nil, err
 		}

@@ -10,39 +10,33 @@ import (
 
 // MergeSlices merges a set of sorted string slices into a single ones
 // while removing all duplicates.
-// If limit is set, only the first limit results will be returned. 0 to disable.
-func MergeSlices(limit int, a ...[]string) []string {
+func MergeSlices(a ...[]string) []string {
 	if len(a) == 0 {
 		return nil
 	}
 	if len(a) == 1 {
-		return truncateToLimit(limit, a[0])
+		return a[0]
 	}
 	l := len(a) / 2
-	return mergeTwoStringSlices(limit, MergeSlices(limit, a[:l]...), MergeSlices(limit, a[l:]...))
+	return mergeTwoStringSlices(MergeSlices(a[:l]...), MergeSlices(a[l:]...))
 }
 
 // MergeUnsortedSlices behaves like StringSlices but input slices are validated
 // for sortedness and are sorted if they are not ordered yet.
-// If limit is set, only the first limit results will be returned. 0 to disable.
-func MergeUnsortedSlices(limit int, a ...[]string) []string {
+func MergeUnsortedSlices(a ...[]string) []string {
 	for _, s := range a {
 		if !sort.StringsAreSorted(s) {
 			sort.Strings(s)
 		}
 	}
-	return MergeSlices(limit, a...)
+	return MergeSlices(a...)
 }
 
-func mergeTwoStringSlices(limit int, a, b []string) []string {
-	a = truncateToLimit(limit, a)
-	b = truncateToLimit(limit, b)
-
+func mergeTwoStringSlices(a, b []string) []string {
 	maxl := len(a)
 	if len(b) > len(a) {
 		maxl = len(b)
 	}
-
 	res := make([]string, 0, maxl*10/9)
 
 	for len(a) > 0 && len(b) > 0 {
@@ -62,13 +56,5 @@ func mergeTwoStringSlices(limit int, a, b []string) []string {
 	// Append all remaining elements.
 	res = append(res, a...)
 	res = append(res, b...)
-	res = truncateToLimit(limit, res)
 	return res
-}
-
-func truncateToLimit(limit int, a []string) []string {
-	if limit > 0 && len(a) > limit {
-		return a[:limit]
-	}
-	return a
 }

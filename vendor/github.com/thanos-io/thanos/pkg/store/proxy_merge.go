@@ -26,13 +26,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/tracing"
 )
 
-type seriesStream interface {
-	Next() bool
-	At() *storepb.SeriesResponse
-}
-
 type responseDeduplicator struct {
-	h seriesStream
+	h *losertree.Tree[*storepb.SeriesResponse, respSet]
 
 	bufferedSameSeries []*storepb.SeriesResponse
 
@@ -41,23 +36,20 @@ type responseDeduplicator struct {
 
 	prev *storepb.SeriesResponse
 	ok   bool
-
-	chunkDedupMap map[uint64]storepb.AggrChunk
 }
 
 // NewResponseDeduplicator returns a wrapper around a loser tree that merges duplicated series messages into one.
 // It also deduplicates identical chunks identified by the same checksum from each series message.
-func NewResponseDeduplicator(h seriesStream) *responseDeduplicator {
+func NewResponseDeduplicator(h *losertree.Tree[*storepb.SeriesResponse, respSet]) *responseDeduplicator {
 	ok := h.Next()
 	var prev *storepb.SeriesResponse
 	if ok {
 		prev = h.At()
 	}
 	return &responseDeduplicator{
-		h:             h,
-		ok:            ok,
-		prev:          prev,
-		chunkDedupMap: make(map[uint64]storepb.AggrChunk),
+		h:    h,
+		ok:   ok,
+		prev: prev,
 	}
 }
 
@@ -81,7 +73,7 @@ func (d *responseDeduplicator) Next() bool {
 			d.ok = d.h.Next()
 			if !d.ok {
 				if len(d.bufferedSameSeries) > 0 {
-					d.bufferedResp = append(d.bufferedResp, d.chainSeriesAndRemIdenticalChunks(d.bufferedSameSeries))
+					d.bufferedResp = append(d.bufferedResp, chainSeriesAndRemIdenticalChunks(d.bufferedSameSeries))
 				}
 				return len(d.bufferedResp) > 0
 			}
@@ -109,15 +101,15 @@ func (d *responseDeduplicator) Next() bool {
 			continue
 		}
 
-		d.bufferedResp = append(d.bufferedResp, d.chainSeriesAndRemIdenticalChunks(d.bufferedSameSeries))
+		d.bufferedResp = append(d.bufferedResp, chainSeriesAndRemIdenticalChunks(d.bufferedSameSeries))
 		d.prev = s
 
 		return true
 	}
 }
 
-func (d *responseDeduplicator) chainSeriesAndRemIdenticalChunks(series []*storepb.SeriesResponse) *storepb.SeriesResponse {
-	clear(d.chunkDedupMap)
+func chainSeriesAndRemIdenticalChunks(series []*storepb.SeriesResponse) *storepb.SeriesResponse {
+	chunkDedupMap := map[uint64]*storepb.AggrChunk{}
 
 	for _, s := range series {
 		for _, chk := range s.GetSeries().Chunks {
@@ -132,9 +124,9 @@ func (d *responseDeduplicator) chainSeriesAndRemIdenticalChunks(series []*storep
 					hash = xxhash.Sum64(field.Data)
 				}
 
-				if _, ok := d.chunkDedupMap[hash]; !ok {
+				if _, ok := chunkDedupMap[hash]; !ok {
 					chk := chk
-					d.chunkDedupMap[hash] = chk
+					chunkDedupMap[hash] = &chk
 					break
 				}
 			}
@@ -142,13 +134,13 @@ func (d *responseDeduplicator) chainSeriesAndRemIdenticalChunks(series []*storep
 	}
 
 	// If no chunks were requested.
-	if len(d.chunkDedupMap) == 0 {
+	if len(chunkDedupMap) == 0 {
 		return series[0]
 	}
 
-	finalChunks := make([]storepb.AggrChunk, 0, len(d.chunkDedupMap))
-	for _, chk := range d.chunkDedupMap {
-		finalChunks = append(finalChunks, chk)
+	finalChunks := make([]storepb.AggrChunk, 0, len(chunkDedupMap))
+	for _, chk := range chunkDedupMap {
+		finalChunks = append(finalChunks, *chk)
 	}
 
 	sort.Slice(finalChunks, func(i, j int) bool {

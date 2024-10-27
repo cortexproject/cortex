@@ -9,52 +9,51 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Pool is a pool for slices of type T that can be reused.
-type Pool[T any] interface {
-	// Get returns a new T slice that fits the given size.
-	Get(sz int) (*[]T, error)
-	// Put returns a T slice to the right bucket in the pool.
-	Put(b *[]T)
+// Bytes is a pool of bytes that can be reused.
+type Bytes interface {
+	// Get returns a new byte slices that fits the given size.
+	Get(sz int) (*[]byte, error)
+	// Put returns a byte slice to the right bucket in the pool.
+	Put(b *[]byte)
 }
 
-// NoopPool is pool that always allocated required slice on heap and ignore puts.
-type NoopPool[T any] struct{}
+// NoopBytes is pool that always allocated required slice on heap and ignore puts.
+type NoopBytes struct{}
 
-func (p NoopPool[T]) Get(sz int) (*[]T, error) {
-	b := make([]T, 0, sz)
+func (p NoopBytes) Get(sz int) (*[]byte, error) {
+	b := make([]byte, 0, sz)
 	return &b, nil
 }
 
-func (p NoopPool[T]) Put(*[]T) {}
+func (p NoopBytes) Put(*[]byte) {}
 
-// BucketedPool is a bucketed pool for variably sized T slices. It can be
-// configured to not allow more than a maximum number of T items being used at a
-// given time. Every slice obtained from the pool must be returned.
-type BucketedPool[T any] struct {
+// BucketedBytes is a bucketed pool for variably sized byte slices. It can be configured to not allow
+// more than a maximum number of bytes being used at a given time.
+// Every byte slice obtained from the pool must be returned.
+type BucketedBytes struct {
 	buckets   []sync.Pool
 	sizes     []int
 	maxTotal  uint64
 	usedTotal uint64
 	mtx       sync.RWMutex
 
-	new func(s int) *[]T
+	new func(s int) *[]byte
 }
 
-// MustNewBucketedPool is like NewBucketedPool but panics if construction fails.
+// MustNewBucketedBytes is like NewBucketedBytes but panics if construction fails.
 // Useful for package internal pools.
-func MustNewBucketedPool[T any](minSize, maxSize int, factor float64, maxTotal uint64) *BucketedPool[T] {
-	pool, err := NewBucketedPool[T](minSize, maxSize, factor, maxTotal)
+func MustNewBucketedBytes(minSize, maxSize int, factor float64, maxTotal uint64) *BucketedBytes {
+	pool, err := NewBucketedBytes(minSize, maxSize, factor, maxTotal)
 	if err != nil {
 		panic(err)
 	}
 	return pool
 }
 
-// NewBucketedPool returns a new BucketedPool with size buckets for minSize to
-// maxSize increasing by the given factor and maximum number of used items. No
-// more than maxTotal items can be used at any given time unless maxTotal is set
-// to 0.
-func NewBucketedPool[T any](minSize, maxSize int, factor float64, maxTotal uint64) (*BucketedPool[T], error) {
+// NewBucketedBytes returns a new Bytes with size buckets for minSize to maxSize
+// increasing by the given factor and maximum number of used bytes.
+// No more than maxTotal bytes can be used at any given time unless maxTotal is set to 0.
+func NewBucketedBytes(minSize, maxSize int, factor float64, maxTotal uint64) (*BucketedBytes, error) {
 	if minSize < 1 {
 		return nil, errors.New("invalid minimum pool size")
 	}
@@ -70,23 +69,23 @@ func NewBucketedPool[T any](minSize, maxSize int, factor float64, maxTotal uint6
 	for s := minSize; s <= maxSize; s = int(float64(s) * factor) {
 		sizes = append(sizes, s)
 	}
-	p := &BucketedPool[T]{
+	p := &BucketedBytes{
 		buckets:  make([]sync.Pool, len(sizes)),
 		sizes:    sizes,
 		maxTotal: maxTotal,
-		new: func(sz int) *[]T {
-			s := make([]T, 0, sz)
+		new: func(sz int) *[]byte {
+			s := make([]byte, 0, sz)
 			return &s
 		},
 	}
 	return p, nil
 }
 
-// ErrPoolExhausted is returned if a pool cannot provide the requested slice.
+// ErrPoolExhausted is returned if a pool cannot provide the request bytes.
 var ErrPoolExhausted = errors.New("pool exhausted")
 
-// Get returns a slice into from the bucket that fits the given size.
-func (p *BucketedPool[T]) Get(sz int) (*[]T, error) {
+// Get returns a new byte slice that fits the given size.
+func (p *BucketedBytes) Get(sz int) (*[]byte, error) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 
@@ -98,7 +97,7 @@ func (p *BucketedPool[T]) Get(sz int) (*[]T, error) {
 		if sz > bktSize {
 			continue
 		}
-		b, ok := p.buckets[i].Get().(*[]T)
+		b, ok := p.buckets[i].Get().(*[]byte)
 		if !ok {
 			b = p.new(bktSize)
 		}
@@ -112,8 +111,8 @@ func (p *BucketedPool[T]) Get(sz int) (*[]T, error) {
 	return p.new(sz), nil
 }
 
-// Put returns a slice to the right bucket in the pool.
-func (p *BucketedPool[T]) Put(b *[]T) {
+// Put returns a byte slice to the right bucket in the pool.
+func (p *BucketedBytes) Put(b *[]byte) {
 	if b == nil {
 		return
 	}
@@ -139,7 +138,7 @@ func (p *BucketedPool[T]) Put(b *[]T) {
 	}
 }
 
-func (p *BucketedPool[T]) UsedBytes() uint64 {
+func (p *BucketedBytes) UsedBytes() uint64 {
 	p.mtx.RLock()
 	defer p.mtx.RUnlock()
 

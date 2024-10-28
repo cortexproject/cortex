@@ -10,6 +10,7 @@
 * [FEATURE] Store Gateway: Add an in-memory chunk cache. #6245
 * [FEATURE] Chunk Cache: Support multi level cache and add metrics. #6249
 * [ENHANCEMENT] S3 Bucket Client: Add a list objects version configs to configure list api object version. #6280
+* [ENHANCEMENT] OpenStack Swift: Add application credential configs for Openstack swift object storage backend. #6255
 * [ENHANCEMENT] Query Frontend: Add new query stats metrics `cortex_query_samples_scanned_total` and `cortex_query_peak_samples` to track scannedSamples and peakSample per user. #6228
 * [ENHANCEMENT] Ingester: Disable chunk trimming. #6270
 * [ENHANCEMENT] Ingester: Add `blocks-storage.tsdb.wal-compression-type` to support zstd wal compression type. #6232

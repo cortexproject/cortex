@@ -137,6 +137,8 @@ type Config struct {
 	AdminLimitMessage string `yaml:"admin_limit_message"`
 
 	LabelsStringInterningEnabled bool `yaml:"labels_string_interning_enabled"`
+
+	PostingsCache cortex_tsdb.PostingsCacheConfig `yaml:"postings_cache"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -163,6 +165,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
 
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
+
+	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
+	f.Int64Var(&cfg.PostingsCache.MaxBytes, "ingester.postings-cache.max-bytes", 10*1024*1024, "Max bytes for postings cache")
+	f.IntVar(&cfg.PostingsCache.MaxItems, "ingester.postings-cache.max-items", 10000, "Max items for postings cache")
+	f.DurationVar(&cfg.PostingsCache.Ttl, "ingester.postings-cache.ttl", 10*time.Minute, "TTL for postings cache")
+	f.BoolVar(&cfg.PostingsCache.Enabled, "ingester.postings-cache.enabled", false, "Whether the postings cache is enabled or not")
 }
 
 func (cfg *Config) Validate() error {
@@ -317,10 +325,6 @@ type userTSDB struct {
 
 func (u *userTSDB) Appender(ctx context.Context) storage.Appender {
 	return u.db.Appender(ctx)
-}
-
-func (u *userTSDB) Querier(mint, maxt int64) (storage.Querier, error) {
-	return u.db.Querier(mint, maxt)
 }
 
 func (u *userTSDB) ChunkQuerier(mint, maxt int64) (storage.ChunkQuerier, error) {
@@ -1531,7 +1535,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	q, err := db.Querier(mint, maxt)
+	q, err := db.ChunkQuerier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1621,7 +1625,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	q, err := db.Querier(mint, maxt)
+	q, err := db.ChunkQuerier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1710,7 +1714,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return nil, cleanup, err
 	}
 
-	q, err := db.Querier(mint, maxt)
+	q, err := db.ChunkQuerier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1721,8 +1725,8 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 
 	// Run a query for each matchers set and collect all the results.
 	var (
-		sets      []storage.SeriesSet
-		mergedSet storage.SeriesSet
+		sets      []storage.ChunkSeriesSet
+		mergedSet storage.ChunkSeriesSet
 	)
 
 	hints := &storage.SelectHints{
@@ -1741,7 +1745,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 			seriesSet := q.Select(ctx, true, hints, matchers...)
 			sets = append(sets, seriesSet)
 		}
-		mergedSet = storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
+		mergedSet = storage.NewMergeChunkSeriesSet(sets, storage.NewCompactingChunkSeriesMerger(storage.ChainedSeriesMerge))
 	} else {
 		mergedSet = q.Select(ctx, false, hints, matchersSet[0]...)
 	}
@@ -2204,6 +2208,13 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
+		BlockChunkQuerierFunc: func(b tsdb.BlockReader, mint, maxt int64) (storage.ChunkQuerier, error) {
+			if i.cfg.PostingsCache.Enabled {
+				return cortex_tsdb.NewCachedBlockChunkQuerier(i.cfg.PostingsCache, b, mint, maxt)
+			}
+
+			return tsdb.NewBlockChunkQuerier(b, mint, maxt)
+		},
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

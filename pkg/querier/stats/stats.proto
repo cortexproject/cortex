@@ -39,4 +39,10 @@ message Stats {
   // The total size of postings touched in store gateway for a specific query, in bytes.
   // Only successful requests from querier to store gateway are included.
   uint64 store_gateway_touched_posting_bytes = 12;
+  // The total number of samples scanned while evaluating a query.
+  // Equal to TotalSamples in https://github.com/prometheus/prometheus/blob/main/util/stats/query_stats.go
+  uint64 scanned_samples = 13;
+  // The highest count of samples considered while evaluating a query.
+  // Equal to PeakSamples in https://github.com/prometheus/prometheus/blob/main/util/stats/query_stats.go
+  uint64 peak_samples = 14;
 }

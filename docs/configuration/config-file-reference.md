@@ -563,6 +563,10 @@ s3:
   # CLI flag: -alertmanager-storage.s3.send-content-md5
   [send_content_md5: <boolean> | default = true]
 
+  # The list api version. Supported values are: v1, v2, and ''.
+  # CLI flag: -alertmanager-storage.s3.list-objects-version
+  [list_objects_version: <string> | default = ""]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: alertmanager-storage
   [sse: <s3_sse_config>]
@@ -701,6 +705,18 @@ swift:
   # OpenStack Swift authentication URL
   # CLI flag: -alertmanager-storage.swift.auth-url
   [auth_url: <string> | default = ""]
+
+  # OpenStack Swift application credential ID.
+  # CLI flag: -alertmanager-storage.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -alertmanager-storage.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -alertmanager-storage.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
 
   # OpenStack Swift username.
   # CLI flag: -alertmanager-storage.swift.username
@@ -842,6 +858,10 @@ s3:
   # CLI flag: -blocks-storage.s3.send-content-md5
   [send_content_md5: <boolean> | default = true]
 
+  # The list api version. Supported values are: v1, v2, and ''.
+  # CLI flag: -blocks-storage.s3.list-objects-version
+  [list_objects_version: <string> | default = ""]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: blocks-storage
   [sse: <s3_sse_config>]
@@ -980,6 +1000,18 @@ swift:
   # OpenStack Swift authentication URL
   # CLI flag: -blocks-storage.swift.auth-url
   [auth_url: <string> | default = ""]
+
+  # OpenStack Swift application credential ID.
+  # CLI flag: -blocks-storage.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -blocks-storage.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -blocks-storage.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
 
   # OpenStack Swift username.
   # CLI flag: -blocks-storage.swift.username
@@ -3872,6 +3904,12 @@ store_gateway_client:
 # CLI flag: -querier.store-gateway-query-stats-enabled
 [store_gateway_query_stats: <boolean> | default = true]
 
+# The maximum number of times we attempt fetching missing blocks from different
+# store-gateways. If no more store-gateways are left (ie. due to lower
+# replication factor) than we'll end the retries earlier
+# CLI flag: -querier.store-gateway-consistency-check-max-attempts
+[store_gateway_consistency_check_max_attempts: <int> | default = 3]
+
 # When distributor's sharding strategy is shuffle-sharding and this setting is >
 # 0, queriers fetch in-memory series from the minimum set of required ingesters,
 # selecting only ingesters which may have received series since 'now - lookback
@@ -4605,6 +4643,10 @@ s3:
   # CLI flag: -ruler-storage.s3.send-content-md5
   [send_content_md5: <boolean> | default = true]
 
+  # The list api version. Supported values are: v1, v2, and ''.
+  # CLI flag: -ruler-storage.s3.list-objects-version
+  [list_objects_version: <string> | default = ""]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: ruler-storage
   [sse: <s3_sse_config>]
@@ -4743,6 +4785,18 @@ swift:
   # OpenStack Swift authentication URL
   # CLI flag: -ruler-storage.swift.auth-url
   [auth_url: <string> | default = ""]
+
+  # OpenStack Swift application credential ID.
+  # CLI flag: -ruler-storage.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -ruler-storage.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -ruler-storage.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
 
   # OpenStack Swift username.
   # CLI flag: -ruler-storage.swift.username
@@ -4892,6 +4946,10 @@ s3:
   # CLI flag: -runtime-config.s3.send-content-md5
   [send_content_md5: <boolean> | default = true]
 
+  # The list api version. Supported values are: v1, v2, and ''.
+  # CLI flag: -runtime-config.s3.list-objects-version
+  [list_objects_version: <string> | default = ""]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: runtime-config
   [sse: <s3_sse_config>]
@@ -5030,6 +5088,18 @@ swift:
   # OpenStack Swift authentication URL
   # CLI flag: -runtime-config.swift.auth-url
   [auth_url: <string> | default = ""]
+
+  # OpenStack Swift application credential ID.
+  # CLI flag: -runtime-config.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -runtime-config.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -runtime-config.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
 
   # OpenStack Swift username.
   # CLI flag: -runtime-config.swift.username

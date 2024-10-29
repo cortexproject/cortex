@@ -102,9 +102,10 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			Transport:             cfg.HTTP.Transport,
 		},
 		// Enforce signature version 2 if CLI flag is set
-		SignatureV2:      cfg.SignatureVersion == SignatureVersionV2,
-		BucketLookupType: bucketLookupType,
-		AWSSDKAuth:       cfg.AccessKeyID == "",
+		ListObjectsVersion: cfg.ListObjectsVersion,
+		SignatureV2:        cfg.SignatureVersion == SignatureVersionV2,
+		BucketLookupType:   bucketLookupType,
+		AWSSDKAuth:         cfg.AccessKeyID == "",
 	}, nil
 }
 

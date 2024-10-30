@@ -53,7 +53,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/thanos-io/objstore v0.0.0-20240913074259-63feed0da069
 	github.com/thanos-io/promql-engine v0.0.0-20240921092401-37747eddbd31
-	github.com/thanos-io/thanos v0.35.2-0.20241011111532-af0900bfd290
+	github.com/thanos-io/thanos v0.35.2-0.20241029125830-62038110b1bc
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 	go.etcd.io/etcd/api/v3 v3.5.16
@@ -61,7 +61,7 @@ require (
 	go.etcd.io/etcd/client/v3 v3.5.16
 	go.opentelemetry.io/contrib/propagators/aws v1.29.0
 	go.opentelemetry.io/otel v1.31.0
-	go.opentelemetry.io/otel/bridge/opentracing v1.29.0
+	go.opentelemetry.io/otel/bridge/opentracing v1.31.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.29.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.29.0
 	go.opentelemetry.io/otel/sdk v1.29.0
@@ -69,7 +69,7 @@ require (
 	go.uber.org/atomic v1.11.0
 	golang.org/x/net v0.30.0
 	golang.org/x/sync v0.8.0
-	golang.org/x/time v0.6.0
+	golang.org/x/time v0.7.0
 	google.golang.org/grpc v1.67.1
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -83,7 +83,7 @@ require (
 	github.com/sercand/kuberesolver/v4 v4.0.0
 	go.opentelemetry.io/collector/pdata v1.14.1
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
-	google.golang.org/protobuf v1.34.2
+	google.golang.org/protobuf v1.35.1
 )
 
 require (
@@ -150,7 +150,7 @@ require (
 	github.com/google/pprof v0.0.0-20240827171923-fa2c70bbbfe5 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/googleapis/enterprise-certificate-proxy v0.3.3 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/googleapis/gax-go/v2 v2.13.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.1.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0 // indirect

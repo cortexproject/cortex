@@ -111,7 +111,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	serieses := make([]prompb.TimeSeries, numSeries)
 	lbls := make([]labels.Labels, numSeries)
 	for i := 0; i < numSeries; i++ {
-		series := e2e.GenerateSeriesWithSamples(fmt.Sprintf("test_series_%d", i), start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "foo", Value: "bar"})
+		series := e2e.GenerateSeriesWithSamples(fmt.Sprintf("test_series_%d", i), start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"})
 		serieses[i] = series
 
 		builder := labels.NewBuilder(labels.EmptyLabels())
@@ -128,6 +128,8 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	res, err = c2.Push(serieses)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
+
+	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, now)
 
 	rnd := rand.New(rand.NewSource(now.Unix()))
 	opts := []promqlsmith.Option{
@@ -291,11 +293,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	labelSet1, err := c1.Series([]string{`{job="test"}`}, start, end)
-	require.NoError(t, err)
-	labelSet2, err := c2.Series([]string{`{job="test"}`}, start, end)
-	require.NoError(t, err)
-	require.Equal(t, labelSet1, labelSet2)
+	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, end)
 
 	rnd := rand.New(rand.NewSource(now.Unix()))
 	opts := []promqlsmith.Option{
@@ -304,63 +302,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	type testCase struct {
-		query        string
-		res1, res2   model.Value
-		err1, err2   error
-		instantQuery bool
-	}
-
-	cases := make([]*testCase, 0, 200)
-	for i := 0; i < 100; i++ {
-		expr := ps.WalkInstantQuery()
-		query := expr.Pretty(0)
-		res1, err1 := c1.Query(query, now)
-		res2, err2 := c2.Query(query, now)
-		cases = append(cases, &testCase{
-			query:        query,
-			res1:         res1,
-			res2:         res2,
-			err1:         err1,
-			err2:         err2,
-			instantQuery: true,
-		})
-	}
-
-	for i := 0; i < 100; i++ {
-		expr := ps.WalkRangeQuery()
-		query := expr.Pretty(0)
-		res1, err1 := c1.QueryRange(query, start, end, scrapeInterval)
-		res2, err2 := c2.QueryRange(query, start, end, scrapeInterval)
-		cases = append(cases, &testCase{
-			query:        query,
-			res1:         res1,
-			res2:         res2,
-			err1:         err1,
-			err2:         err2,
-			instantQuery: false,
-		})
-	}
-
-	failures := 0
-	for i, tc := range cases {
-		qt := "instant query"
-		if !tc.instantQuery {
-			qt = "range query"
-		}
-		if tc.err1 != nil || tc.err2 != nil {
-			if !cmp.Equal(tc.err1, tc.err2) {
-				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
-				failures++
-			}
-		} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
-			t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
-			failures++
-		}
-	}
-	if failures > 0 {
-		require.Failf(t, "finished query fuzzing tests", "%d test cases failed", failures)
-	}
+	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 100)
 }
 
 // comparer should be used to compare promql results between engines.
@@ -901,29 +843,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	require.Equal(t, 200, res.StatusCode)
 
 	ctx := context.Background()
-	retries := backoff.New(ctx, backoff.Config{
-		MinBackoff: 5 * time.Second,
-		MaxBackoff: 10 * time.Second,
-		MaxRetries: 5,
-	})
-
-	var (
-		labelSet1 []model.LabelSet
-		labelSet2 []model.LabelSet
-	)
-	// Wait until both Cortex and Prometheus load the block.
-	for retries.Ongoing() {
-		labelSet1, err = c1.Series([]string{`{job="test"}`}, start, end)
-		require.NoError(t, err)
-		labelSet2, err = c2.Series([]string{`{job="test"}`}, start, end)
-		require.NoError(t, err)
-
-		if cmp.Equal(labelSet1, labelSet2, labelSetsComparer) {
-			break
-		}
-
-		retries.Wait()
-	}
+	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
 
 	rnd := rand.New(rand.NewSource(now.Unix()))
 	opts := []promqlsmith.Option{
@@ -932,63 +852,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	type testCase struct {
-		query        string
-		res1, res2   model.Value
-		err1, err2   error
-		instantQuery bool
-	}
-
-	cases := make([]*testCase, 0, 200)
-	for i := 0; i < 100; i++ {
-		expr := ps.WalkInstantQuery()
-		query := expr.Pretty(0)
-		res1, err1 := c1.Query(query, now)
-		res2, err2 := c2.Query(query, now)
-		cases = append(cases, &testCase{
-			query:        query,
-			res1:         res1,
-			res2:         res2,
-			err1:         err1,
-			err2:         err2,
-			instantQuery: true,
-		})
-	}
-
-	for i := 0; i < 100; i++ {
-		expr := ps.WalkRangeQuery()
-		query := expr.Pretty(0)
-		res1, err1 := c1.QueryRange(query, start, end, scrapeInterval)
-		res2, err2 := c2.QueryRange(query, start, end, scrapeInterval)
-		cases = append(cases, &testCase{
-			query:        query,
-			res1:         res1,
-			res2:         res2,
-			err1:         err1,
-			err2:         err2,
-			instantQuery: false,
-		})
-	}
-
-	failures := 0
-	for i, tc := range cases {
-		qt := "instant query"
-		if !tc.instantQuery {
-			qt = "range query"
-		}
-		if tc.err1 != nil || tc.err2 != nil {
-			if !cmp.Equal(tc.err1, tc.err2) {
-				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
-				failures++
-			}
-		} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
-			t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
-			failures++
-		}
-	}
-	if failures > 0 {
-		require.Failf(t, "finished query fuzzing tests", "%d test cases failed", failures)
-	}
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 100)
 }
 
 // TestPrometheusCompatibilityQueryFuzz compares Cortex with latest Prometheus release.
@@ -1088,6 +952,20 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 
 	c2, err := e2ecortex.NewPromQueryClient(prom.HTTPEndpoint())
 	require.NoError(t, err)
+
+	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
+
+	opts := []promqlsmith.Option{
+		promqlsmith.WithEnableOffset(true),
+		promqlsmith.WithEnableAtModifier(true),
+	}
+	ps := promqlsmith.New(rnd, lbls, opts...)
+
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 100)
+}
+
+// waitUntilReady is a helper function to wait and check if both servers to test load the expected data.
+func waitUntilReady(t *testing.T, ctx context.Context, c1, c2 *e2ecortex.Client, query string, start, end time.Time) {
 	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: 5 * time.Second,
 		MaxBackoff: 10 * time.Second,
@@ -1097,12 +975,13 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	var (
 		labelSet1 []model.LabelSet
 		labelSet2 []model.LabelSet
+		err       error
 	)
 	// Wait until both Cortex and Prometheus load the block.
 	for retries.Ongoing() {
-		labelSet1, err = c1.Series([]string{`{job="test"}`}, start, end)
+		labelSet1, err = c1.Series([]string{query}, start, end)
 		require.NoError(t, err)
-		labelSet2, err = c2.Series([]string{`{job="test"}`}, start, end)
+		labelSet2, err = c2.Series([]string{query}, start, end)
 		require.NoError(t, err)
 
 		if cmp.Equal(labelSet1, labelSet2, labelSetsComparer) {
@@ -1111,13 +990,13 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 
 		retries.Wait()
 	}
-
-	opts := []promqlsmith.Option{
-		promqlsmith.WithEnableOffset(true),
-		promqlsmith.WithEnableAtModifier(true),
+	if err := retries.Err(); err != nil {
+		t.Fatalf("failed to wait for ready, error: %v", err)
 	}
-	ps := promqlsmith.New(rnd, lbls, opts...)
+}
 
+// runQueryFuzzTestCases executes the fuzz test for the specified number of runs for both instant and range queries.
+func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2ecortex.Client, queryTime, start, end time.Time, step time.Duration, run int) {
 	type testCase struct {
 		query        string
 		res1, res2   model.Value
@@ -1125,12 +1004,12 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 		instantQuery bool
 	}
 
-	cases := make([]*testCase, 0, 200)
-	for i := 0; i < 100; i++ {
+	cases := make([]*testCase, 0, 2*run)
+	for i := 0; i < run; i++ {
 		expr := ps.WalkInstantQuery()
 		query := expr.Pretty(0)
-		res1, err1 := c1.Query(query, now)
-		res2, err2 := c2.Query(query, now)
+		res1, err1 := c1.Query(query, queryTime)
+		res2, err2 := c2.Query(query, queryTime)
 		cases = append(cases, &testCase{
 			query:        query,
 			res1:         res1,
@@ -1141,11 +1020,11 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 		})
 	}
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < run; i++ {
 		expr := ps.WalkRangeQuery()
 		query := expr.Pretty(0)
-		res1, err1 := c1.QueryRange(query, start, end, scrapeInterval)
-		res2, err2 := c2.QueryRange(query, start, end, scrapeInterval)
+		res1, err1 := c1.QueryRange(query, start, end, step)
+		res2, err2 := c2.QueryRange(query, start, end, step)
 		cases = append(cases, &testCase{
 			query:        query,
 			res1:         res1,

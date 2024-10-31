@@ -57,7 +57,7 @@ func testMinioWorking(t *testing.T, m *e2e.HTTPService) {
 	})
 	require.NoError(t, err)
 
-	bkt, err := s3.NewBucket(log.NewNopLogger(), b, "test")
+	bkt, err := s3.NewBucket(log.NewNopLogger(), b, "test", nil)
 	require.NoError(t, err)
 
 	require.NoError(t, bkt.Upload(ctx, "recipe", bytes.NewReader([]byte("Just go to Pastry Shop and buy."))))
@@ -116,7 +116,7 @@ func TestScenario(t *testing.T) {
 		SecretKey: e2edb.MinioSecretKey,
 	})
 	require.NoError(t, err)
-	bkt, err := s3.NewBucket(log.NewNopLogger(), b, "test")
+	bkt, err := s3.NewBucket(log.NewNopLogger(), b, "test", nil)
 	require.NoError(t, err)
 
 	_, err = bkt.Get(context.Background(), "recipe")
@@ -140,7 +140,7 @@ func TestScenario(t *testing.T) {
 		SecretKey: e2edb.MinioSecretKey,
 	})
 	require.NoError(t, err)
-	bkt, err = s3.NewBucket(log.NewNopLogger(), b, "test")
+	bkt, err = s3.NewBucket(log.NewNopLogger(), b, "test", nil)
 	require.NoError(t, err)
 
 	_, err = bkt.Get(context.Background(), "recipe")

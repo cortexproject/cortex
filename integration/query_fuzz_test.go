@@ -905,7 +905,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	end := now.Add(-time.Hour)
 	numSeries := 10
 	numSamples := 240
-	lbls := make([]labels.Labels, numSeries*2)
+	lbls := make([]labels.Labels, 0, numSeries*2)
 	scrapeInterval := time.Second * 15
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {

@@ -175,7 +175,6 @@ jobs:
           docker pull minio/minio:RELEASE.2024-05-28T17-19-04Z
           docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7
-          echo $TEST_TAGS
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
             docker pull quay.io/cortexproject/cortex:v1.13.1
             docker pull quay.io/cortexproject/cortex:v1.13.2

@@ -1028,9 +1028,18 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	}
 
 	cases := make([]*testCase, 0, 2*run)
+	var (
+		expr  parser.Expr
+		query string
+	)
 	for i := 0; i < run; i++ {
-		expr := ps.WalkInstantQuery()
-		query := expr.Pretty(0)
+		for {
+			expr = ps.WalkInstantQuery()
+			if isValidQuery(expr) {
+				query = expr.Pretty(0)
+				break
+			}
+		}
 		res1, err1 := c1.Query(query, queryTime)
 		res2, err2 := c2.Query(query, queryTime)
 		cases = append(cases, &testCase{
@@ -1044,8 +1053,13 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	}
 
 	for i := 0; i < run; i++ {
-		expr := ps.WalkRangeQuery()
-		query := expr.Pretty(0)
+		for {
+			expr = ps.WalkRangeQuery()
+			if isValidQuery(expr) {
+				query = expr.Pretty(0)
+				break
+			}
+		}
 		res1, err1 := c1.QueryRange(query, start, end, step)
 		res2, err2 := c2.QueryRange(query, start, end, step)
 		cases = append(cases, &testCase{
@@ -1077,4 +1091,18 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	if failures > 0 {
 		require.Failf(t, "finished query fuzzing tests", "%d test cases failed", failures)
 	}
+}
+
+func isValidQuery(generatedQuery parser.Expr) bool {
+	isValid := true
+	currentDepth := 0
+	parser.Inspect(generatedQuery, func(node parser.Node, path []parser.Node) error {
+		if currentDepth > 5 {
+			isValid = false
+			return fmt.Errorf("generated query has exceeded maxDepth of %d", 5)
+		}
+		currentDepth = len(path) + 1
+		return nil
+	})
+	return isValid
 }

@@ -1983,9 +1983,8 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 		return 0, 0, 0, err
 	}
 	hints := &storage.SelectHints{
-		Start:           from,
-		End:             through,
-		DisableTrimming: true,
+		Start: from,
+		End:   through,
 	}
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss := q.Select(ctx, false, hints, matchers...)

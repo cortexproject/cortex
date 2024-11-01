@@ -94,8 +94,8 @@ type ExpandedPostingsCache interface {
 type BlocksPostingsForMatchersCache struct {
 	strippedLock []sync.RWMutex
 
-	headCache   *fifoCache[*postingsPromise]
-	blocksCache *fifoCache[*postingsPromise]
+	headCache   *fifoCache[[]storage.SeriesRef]
+	blocksCache *fifoCache[[]storage.SeriesRef]
 
 	headSeedByMetricName    []int
 	postingsForMatchersFunc func(ctx context.Context, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error)
@@ -114,8 +114,8 @@ func NewBlocksPostingsForMatchersCache(cfg TSDBPostingsCacheConfig, metrics *Exp
 	}
 
 	return &BlocksPostingsForMatchersCache{
-		headCache:               newFifoCache[*postingsPromise](cfg.Head, "head", metrics, cfg.timeNow),
-		blocksCache:             newFifoCache[*postingsPromise](cfg.Blocks, "block", metrics, cfg.timeNow),
+		headCache:               newFifoCache[[]storage.SeriesRef](cfg.Head, "head", metrics, cfg.timeNow),
+		blocksCache:             newFifoCache[[]storage.SeriesRef](cfg.Blocks, "block", metrics, cfg.timeNow),
 		headSeedByMetricName:    make([]int, seedArraySize),
 		strippedLock:            make([]sync.RWMutex, numOfSeedsStripes),
 		postingsForMatchersFunc: cfg.PostingsForMatchers,
@@ -170,30 +170,32 @@ func (c *BlocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 
 	c.metrics.CacheRequests.WithLabelValues(cache.name).Inc()
 
-	key := c.cacheKey(seed, blockID, ms...)
+	fetch := func() ([]storage.SeriesRef, int64, error) {
+		// Use context.Background() as this promise is maybe shared across calls
+		postings, err := c.postingsForMatchersFunc(context.Background(), ix, ms...)
 
-	promise := &postingsPromise{
-		done: make(chan struct{}),
+		if err == nil {
+			ids, err := index.ExpandPostings(postings)
+			return ids, int64(len(ids) * 8), err
+		}
+
+		return nil, 0, err
 	}
-	oldPromise, loaded := cache.getOrStore(key, promise)
+
+	key := c.cacheKey(seed, blockID, ms...)
+	promise, loaded := cache.getPromiseForKey(key, fetch)
 	if loaded {
 		c.metrics.CacheHits.WithLabelValues(cache.name).Inc()
-		close(promise.done)
-		return func(ctx context.Context) (index.Postings, error) {
-			return oldPromise.result(ctx)
-		}
-	}
-	defer close(promise.done)
-	// Use context.Background() as this promise is maybe shared across calls
-	postings, err := c.postingsForMatchersFunc(context.Background(), ix, ms...)
-
-	if err == nil {
-		promise.ids, promise.err = index.ExpandPostings(postings)
-		sizeBytes := int64(len(key)) + int64(len(promise.ids)*8)
-		cache.created(key, c.timeNow(), sizeBytes)
 	}
 
-	return promise.result
+	return c.result(promise)
+}
+
+func (c *BlocksPostingsForMatchersCache) result(promise *cacheEntryPromise[[]storage.SeriesRef]) func(ctx context.Context) (index.Postings, error) {
+	return func(ctx context.Context) (index.Postings, error) {
+		ids, err := promise.result(ctx)
+		return index.NewListPostings(ids), err
+	}
 }
 
 func (c *BlocksPostingsForMatchersCache) getSeedForMetricName(metricName string) string {
@@ -298,14 +300,38 @@ func (c *fifoCache[V]) expire() {
 	}
 }
 
-func (c *fifoCache[V]) getOrStore(k string, v V) (V, bool) {
-	c.expire()
-	if !c.cfg.Enabled {
-		return v, false
+func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)) (*cacheEntryPromise[V], bool) {
+	r := &cacheEntryPromise[V]{
+		done: make(chan struct{}),
 	}
 
-	loaded, ok := c.cachedValues.LoadOrStore(k, v)
-	return loaded.(V), ok
+	defer close(r.done)
+
+	if !c.cfg.Enabled {
+		r.v, _, r.err = fetch()
+		return r, false
+	}
+
+	loaded, ok := c.cachedValues.LoadOrStore(k, r)
+
+	if !ok {
+		r.v, r.sizeBytes, r.err = fetch()
+		r.sizeBytes += int64(len(k))
+		r.ts = c.timeNow()
+		c.created(k, r.sizeBytes)
+		c.expire()
+	}
+
+	// If is cached but is expired, lets try to replace the cache value
+	if ok && loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) {
+		if c.cachedValues.CompareAndSwap(k, loaded, r) {
+			r.v, r.sizeBytes, r.err = fetch()
+			loaded = r
+			r.ts = c.timeNow()
+		}
+	}
+
+	return loaded.(*cacheEntryPromise[V]), ok
 }
 
 func (c *fifoCache[V]) contains(k string) bool {
@@ -322,57 +348,61 @@ func (c *fifoCache[V]) shouldEvictHead() bool {
 	if h == nil {
 		return false
 	}
-	ts := h.Value.(*cacheEntry).ts
-	r := c.timeNow().Sub(ts)
-	return r >= c.cfg.Ttl
-}
-func (c *fifoCache[V]) evictHead() {
-	front := c.cached.Front()
-	oldest := front.Value.(*cacheEntry)
-	c.cachedValues.Delete(oldest.key)
-	c.cached.Remove(front)
-	c.cachedBytes -= oldest.sizeBytes
+	key := h.Value.(string)
+
+	if l, ok := c.cachedValues.Load(key); ok {
+		return l.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow())
+	}
+
+	return false
 }
 
-func (c *fifoCache[V]) created(key string, ts time.Time, sizeBytes int64) {
+func (c *fifoCache[V]) evictHead() {
+	front := c.cached.Front()
+	c.cached.Remove(front)
+	oldestKey := front.Value.(string)
+	if oldest, loaded := c.cachedValues.LoadAndDelete(oldestKey); loaded {
+		c.cachedBytes -= oldest.(*cacheEntryPromise[V]).sizeBytes
+	}
+}
+
+func (c *fifoCache[V]) created(key string, sizeBytes int64) {
 	if c.cfg.Ttl <= 0 {
 		c.cachedValues.Delete(key)
 		return
 	}
 	c.cachedMtx.Lock()
 	defer c.cachedMtx.Unlock()
-	c.cached.PushBack(&cacheEntry{
-		key:       key,
-		ts:        ts,
-		sizeBytes: sizeBytes,
-	})
+	c.cached.PushBack(key)
 	c.cachedBytes += sizeBytes
 }
 
-type cacheEntry struct {
-	key       string
+type cacheEntryPromise[V any] struct {
 	ts        time.Time
 	sizeBytes int64
-}
 
-type postingsPromise struct {
 	done chan struct{}
-
-	ids []storage.SeriesRef
-	err error
+	v    V
+	err  error
 }
 
-func (p *postingsPromise) result(ctx context.Context) (index.Postings, error) {
+func (ce *cacheEntryPromise[V]) result(ctx context.Context) (V, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-p.done:
+		return ce.v, ctx.Err()
+	case <-ce.done:
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return ce.v, ctx.Err()
 		}
 
-		return index.NewListPostings(p.ids), p.err
+		return ce.v, ce.err
 	}
+}
+
+func (ce *cacheEntryPromise[V]) isExpired(ttl time.Duration, now time.Time) bool {
+	ts := ce.ts
+	r := now.Sub(ts)
+	return r >= ttl
 }
 
 func MemHashString(str string) uint64 {

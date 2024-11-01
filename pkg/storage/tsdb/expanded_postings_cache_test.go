@@ -1,7 +1,9 @@
 package tsdb
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,13 +17,21 @@ func TestFifoCacheDisabled(t *testing.T) {
 	m := NewPostingCacheMetrics(prometheus.DefaultRegisterer)
 	timeNow := time.Now
 	cache := newFifoCache[int](cfg, "test", m, timeNow)
-	old, loaded := cache.getOrStore("key1", 1)
+	old, loaded := cache.getPromiseForKey("key1", func() (int, int64, error) {
+		return 1, 0, nil
+	})
 	require.False(t, loaded)
-	require.Equal(t, 1, old)
+	v, err := old.result(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, v)
 	require.False(t, cache.contains("key1"))
 }
 
 func TestFifoCacheExpire(t *testing.T) {
+
+	keySize := 20
+	numberOfKeys := 100
+
 	tc := map[string]struct {
 		cfg                PostingsCacheConfig
 		expectedFinalItems int
@@ -42,17 +52,17 @@ func TestFifoCacheExpire(t *testing.T) {
 				MaxItems: 10 << 20,
 				Enabled:  true,
 				Ttl:      time.Hour,
-				MaxBytes: 80, // 10*8,
+				MaxBytes: int64(10 * (8 + keySize)),
 			},
 		},
 		"TTL": {
-			expectedFinalItems: 10,
+			expectedFinalItems: numberOfKeys,
 			ttlExpire:          true,
 			cfg: PostingsCacheConfig{
 				MaxItems: 10 << 20,
 				Enabled:  true,
 				Ttl:      time.Hour,
-				MaxBytes: 80, // 10*8,
+				MaxBytes: 10 << 20,
 			},
 		},
 	}
@@ -63,24 +73,29 @@ func TestFifoCacheExpire(t *testing.T) {
 			timeNow := time.Now
 			cache := newFifoCache[int](c.cfg, "test", m, timeNow)
 
-			numberOfKeys := 100
-
 			for i := 0; i < numberOfKeys; i++ {
-				key := fmt.Sprintf("key%d", i)
-				old, loaded := cache.getOrStore(key, 1)
+				key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
+				p, loaded := cache.getPromiseForKey(key, func() (int, int64, error) {
+					return 1, 8, nil
+				})
 				require.False(t, loaded)
-				cache.created(key, time.Now(), 8)
-				require.Equal(t, 1, old)
+				v, err := p.result(context.Background())
+				require.NoError(t, err)
+				require.Equal(t, 1, v)
 				require.True(t, cache.contains(key))
-				old, loaded = cache.getOrStore(key, 1)
+				p, loaded = cache.getPromiseForKey(key, func() (int, int64, error) {
+					return 1, 0, nil
+				})
 				require.True(t, loaded)
-				require.Equal(t, 1, old)
+				v, err = p.result(context.Background())
+				require.NoError(t, err)
+				require.Equal(t, 1, v)
 			}
 
 			totalCacheSize := 0
 
 			for i := 0; i < numberOfKeys; i++ {
-				key := fmt.Sprintf("key%d", i)
+				key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
 				if cache.contains(key) {
 					totalCacheSize++
 				}
@@ -90,14 +105,28 @@ func TestFifoCacheExpire(t *testing.T) {
 
 			if c.ttlExpire {
 				for i := 0; i < numberOfKeys; i++ {
-					key := fmt.Sprintf("key%d", i)
+					key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
 					cache.timeNow = func() time.Time {
 						return timeNow().Add(2 * c.cfg.Ttl)
 					}
-					_, loaded := cache.getOrStore(key, 1)
-					require.False(t, loaded)
+					p, _ := cache.getPromiseForKey(key, func() (int, int64, error) {
+						return 2, 8, nil
+					})
+					//require.False(t, loaded)
+					v, err := p.result(context.Background())
+					require.NoError(t, err)
+					// New value
+					require.Equal(t, 2, v)
 				}
 			}
 		})
 	}
+}
+
+func RepeatStringIfNeeded(seed string, length int) string {
+	if len(seed) > length {
+		return seed
+	}
+
+	return strings.Repeat(seed, 1+length/len(seed))[:max(length, len(seed))]
 }

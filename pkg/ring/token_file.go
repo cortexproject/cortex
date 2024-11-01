@@ -64,3 +64,16 @@ func LoadTokenFile(tokenFilePath string) (*TokenFile, error) {
 
 	return &t, err
 }
+
+func (p InstanceState) MarshalJSON() ([]byte, error) {
+	ss := InstanceState_name[int32(p)]
+	return json.Marshal(ss)
+}
+func (p *InstanceState) UnmarshalJSON(data []byte) error {
+	res := ""
+	if err := json.Unmarshal(data, &res); err != nil {
+		return err
+	}
+	*p = InstanceState(InstanceState_value[res])
+	return nil
+}

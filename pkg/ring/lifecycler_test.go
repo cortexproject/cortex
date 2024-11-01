@@ -757,7 +757,8 @@ func TestTokenFileOnDisk(t *testing.T) {
 	})
 
 	// Change state from ACTIVE to READONLY
-	l1.ChangeState(context.Background(), READONLY)
+	err = l1.ChangeState(context.Background(), READONLY)
+	require.NoError(t, err)
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), ringKey)
 		require.NoError(t, err)

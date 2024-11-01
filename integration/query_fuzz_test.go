@@ -6,7 +6,6 @@ package integration
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/prometheus/promql/parser"
 	"math/rand"
 	"os"
 	"path"

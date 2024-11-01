@@ -1035,7 +1035,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	for i := 0; i < run; i++ {
 		for {
 			expr = ps.WalkInstantQuery()
-			if isValidQuery(expr) {
+			if isValidQuery(expr, 5) {
 				query = expr.Pretty(0)
 				break
 			}
@@ -1055,7 +1055,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	for i := 0; i < run; i++ {
 		for {
 			expr = ps.WalkRangeQuery()
-			if isValidQuery(expr) {
+			if isValidQuery(expr, 5) {
 				query = expr.Pretty(0)
 				break
 			}
@@ -1093,13 +1093,13 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	}
 }
 
-func isValidQuery(generatedQuery parser.Expr) bool {
+func isValidQuery(generatedQuery parser.Expr, maxDepth int) bool {
 	isValid := true
 	currentDepth := 0
 	parser.Inspect(generatedQuery, func(node parser.Node, path []parser.Node) error {
-		if currentDepth > 5 {
+		if currentDepth > maxDepth {
 			isValid = false
-			return fmt.Errorf("generated query has exceeded maxDepth of %d", 5)
+			return fmt.Errorf("generated query has exceeded maxDepth of %d", maxDepth)
 		}
 		currentDepth = len(path) + 1
 		return nil

@@ -244,14 +244,18 @@ func (s *PromQLSmith) walkCall(valueTypes ...parser.ValueType) parser.Expr {
 	}
 	sort.Slice(funcs, func(i, j int) bool { return strings.Compare(funcs[i].Name, funcs[j].Name) < 0 })
 	expr.Func = funcs[s.rnd.Intn(len(funcs))]
-	s.walkFuncArgs(expr)
+	s.walkFunctions(expr)
 	return expr
 }
 
-func (s *PromQLSmith) walkFuncArgs(expr *parser.Call) {
+func (s *PromQLSmith) walkFunctions(expr *parser.Call) {
 	expr.Args = make([]parser.Expr, len(expr.Func.ArgTypes))
 	if expr.Func.Name == "holt_winters" {
 		s.walkHoltWinters(expr)
+		return
+	}
+	if expr.Func.Variadic != 0 {
+		s.walkVariadicFunctions(expr)
 		return
 	}
 	for i, arg := range expr.Func.ArgTypes {
@@ -263,6 +267,24 @@ func (s *PromQLSmith) walkHoltWinters(expr *parser.Call) {
 	expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
 	expr.Args[1] = &parser.NumberLiteral{Val: getNonZeroFloat64(s.rnd)}
 	expr.Args[2] = &parser.NumberLiteral{Val: getNonZeroFloat64(s.rnd)}
+}
+
+// Supported variadic functions include:
+// days_in_month, day_of_month, day_of_week, day_of_year, year,
+// hour, minute, month, round.
+// Unsupported variadic functions include:
+// label_join, sort_by_label_desc, sort_by_label
+func (s *PromQLSmith) walkVariadicFunctions(expr *parser.Call) {
+	switch expr.Func.Name {
+	case "round":
+		expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
+		expr.Args[1] = &parser.NumberLiteral{Val: float64(s.rnd.Intn(10))}
+	default:
+		// Rest of supported functions have either 0 or 1 function argument.
+		// If not specified it uses current timestamp instead of the vector timestamp.
+		// To reduce test flakiness we always use vector timestamp.
+		expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
+	}
 }
 
 func (s *PromQLSmith) walkVectorSelector() parser.Expr {
@@ -594,9 +616,7 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 		if !node.Without {
 			for _, lbl := range lbls {
 				for _, groupLabel := range node.Grouping {
-					if val := lbl.Get(groupLabel); val == "" {
-						continue
-					} else {
+					if val := lbl.Get(groupLabel); val != "" {
 						lb.Set(groupLabel, val)
 					}
 				}

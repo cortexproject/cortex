@@ -58,10 +58,6 @@ var (
 
 func init() {
 	for _, f := range parser.Functions {
-		// We skip variadic functions for now.
-		if f.Variadic != 0 {
-			continue
-		}
 		if slices.Contains(f.ArgTypes, parser.ValueTypeString) {
 			continue
 		}

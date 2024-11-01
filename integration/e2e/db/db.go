@@ -69,14 +69,17 @@ func NewETCD() *e2e.HTTPService {
 		9000, // Metrics
 	)
 }
-func NewPrometheus(flags map[string]string) *e2e.HTTPService {
-	return NewPrometheusWithName("prometheus", flags)
+func NewPrometheus(image string, flags map[string]string) *e2e.HTTPService {
+	return NewPrometheusWithName("prometheus", image, flags)
 }
 
-func NewPrometheusWithName(name string, flags map[string]string) *e2e.HTTPService {
+func NewPrometheusWithName(name string, image string, flags map[string]string) *e2e.HTTPService {
+	if image == "" {
+		image = images.Prometheus
+	}
 	prom := e2e.NewHTTPService(
 		name,
-		images.Prometheus,
+		image,
 		e2e.NewCommandWithoutEntrypoint("prometheus", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"--storage.tsdb.path":               filepath.Join(e2e.ContainerSharedDir, "data"),
 			"--storage.tsdb.max-block-duration": "2h",

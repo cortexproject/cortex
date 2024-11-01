@@ -6,6 +6,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/prometheus/promql/parser"
 	"math/rand"
 	"os"
 	"path"
@@ -36,6 +37,28 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
+
+var enabledFunctions []parser.Function
+
+func init() {
+	for _, f := range parser.Functions {
+		// We skip variadic functions for now.
+		if f.Variadic != 0 {
+			continue
+		}
+		if slices.Contains(f.ArgTypes, parser.ValueTypeString) {
+			continue
+		}
+		// Ignore native histogram functions for now as our test cases are only float samples.
+		if strings.Contains(f.Name, "histogram") && f.Name != "histogram_quantile" {
+			continue
+		}
+		// Ignore experimental functions for now.
+		if !f.Experimental {
+			enabledFunctions = append(enabledFunctions, f)
+		}
+	}
+}
 
 func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
@@ -134,6 +157,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
+		promqlsmith.WithEnabledFunctions(enabledFunctions),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -297,6 +321,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
+		promqlsmith.WithEnabledFunctions(enabledFunctions),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -846,6 +871,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
+		promqlsmith.WithEnabledFunctions(enabledFunctions),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -954,6 +980,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
+		promqlsmith.WithEnabledFunctions(enabledFunctions),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 

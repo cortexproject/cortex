@@ -2081,6 +2081,41 @@ tsdb:
   # [EXPERIMENTAL] True to enable native histogram.
   # CLI flag: -blocks-storage.tsdb.enable-native-histograms
   [enable_native_histograms: <boolean> | default = false]
+
+  postings_cache:
+    head:
+      # Max bytes for postings cache
+      # CLI flag: -blocks-storage.postings-cache.head.max-bytes
+      [max_bytes: <int> | default = 10485760]
+
+      # Max items for postings cache
+      # CLI flag: -blocks-storage.postings-cache.head.max-items
+      [max_items: <int> | default = 10000]
+
+      # TTL for postings cache
+      # CLI flag: -blocks-storage.postings-cache.head.ttl
+      [ttl: <duration> | default = 10m]
+
+      # Whether the postings cache is enabled or not
+      # CLI flag: -blocks-storage.postings-cache.head.enabled
+      [enabled: <boolean> | default = false]
+
+    blocks:
+      # Max bytes for postings cache
+      # CLI flag: -blocks-storage.postings-cache.block.max-bytes
+      [max_bytes: <int> | default = 10485760]
+
+      # Max items for postings cache
+      # CLI flag: -blocks-storage.postings-cache.block.max-items
+      [max_items: <int> | default = 10000]
+
+      # TTL for postings cache
+      # CLI flag: -blocks-storage.postings-cache.block.ttl
+      [ttl: <duration> | default = 10m]
+
+      # Whether the postings cache is enabled or not
+      # CLI flag: -blocks-storage.postings-cache.block.enabled
+      [enabled: <boolean> | default = false]
 ```
 
 ### `compactor_config`

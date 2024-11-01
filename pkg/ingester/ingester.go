@@ -318,6 +318,8 @@ type userTSDB struct {
 	interner                     util.Interner
 
 	blockRetentionPeriod int64
+
+	postingCache cortex_tsdb.ExpandedPostingsCache
 }
 
 // Explicitly wrapping the tsdb.DB functions that we use.
@@ -453,6 +455,10 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	if u.labelsStringInterningEnabled {
 		metric.InternStrings(u.interner.Intern)
 	}
+
+	if u.postingCache != nil {
+		u.postingCache.ExpireSeries(metric)
+	}
 }
 
 // PostDeletion implements SeriesLifecycleCallback interface.
@@ -469,6 +475,9 @@ func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) 
 		u.labelSetCounter.decreaseSeriesLabelSet(u, metric)
 		if u.labelsStringInterningEnabled {
 			metric.ReleaseStrings(u.interner.Release)
+		}
+		if u.postingCache != nil {
+			u.postingCache.ExpireSeries(metric)
 		}
 	}
 }
@@ -701,7 +710,8 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		i.getInstanceLimits,
 		i.ingestionRate,
 		&i.inflightPushRequests,
-		&i.maxInflightQueryRequests)
+		&i.maxInflightQueryRequests,
+		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled)
 	i.validateMetrics = validation.NewValidateMetrics(registerer)
 
 	// Replace specific metrics which we can't directly track but we need to read
@@ -783,6 +793,7 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		nil,
 		&i.inflightPushRequests,
 		&i.maxInflightQueryRequests,
+		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled,
 	)
 
 	i.TSDBState.shipperIngesterID = "flusher"
@@ -2162,6 +2173,12 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	blockRanges := i.cfg.BlocksStorageConfig.TSDB.BlockRanges.ToMilliseconds()
 
+	var postingCache cortex_tsdb.ExpandedPostingsCache
+	if i.cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled || i.cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled {
+		logutil.WarnExperimentalUse("expanded postings cache")
+		postingCache = cortex_tsdb.NewBlocksPostingsForMatchersCache(i.cfg.BlocksStorageConfig.TSDB.PostingsCache, i.metrics.expandedPostingsCacheMetrics)
+	}
+
 	userDB := &userTSDB{
 		userID:              userID,
 		activeSeries:        NewActiveSeries(),
@@ -2176,6 +2193,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		labelsStringInterningEnabled: i.cfg.LabelsStringInterningEnabled,
 
 		blockRetentionPeriod: i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
+		postingCache:         postingCache,
 	}
 
 	enableExemplars := false
@@ -2211,6 +2229,12 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
+		BlockChunkQuerierFunc: func(b tsdb.BlockReader, mint, maxt int64) (storage.ChunkQuerier, error) {
+			if postingCache != nil {
+				return cortex_tsdb.NewCachedBlockChunkQuerier(postingCache, b, mint, maxt)
+			}
+			return tsdb.NewBlockChunkQuerier(b, mint, maxt)
+		},
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

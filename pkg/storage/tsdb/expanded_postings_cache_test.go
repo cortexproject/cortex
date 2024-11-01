@@ -104,19 +104,23 @@ func TestFifoCacheExpire(t *testing.T) {
 			require.Equal(t, c.expectedFinalItems, totalCacheSize)
 
 			if c.ttlExpire {
+				cache.timeNow = func() time.Time {
+					return timeNow().Add(2 * c.cfg.Ttl)
+				}
+
 				for i := 0; i < numberOfKeys; i++ {
 					key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
-					cache.timeNow = func() time.Time {
-						return timeNow().Add(2 * c.cfg.Ttl)
-					}
-					p, _ := cache.getPromiseForKey(key, func() (int, int64, error) {
-						return 2, 8, nil
+					originalSize := cache.cachedBytes
+					p, loaded := cache.getPromiseForKey(key, func() (int, int64, error) {
+						return 2, 18, nil
 					})
-					//require.False(t, loaded)
+					require.False(t, loaded)
 					v, err := p.result(context.Background())
 					require.NoError(t, err)
 					// New value
 					require.Equal(t, 2, v)
+					// Total Size Updated
+					require.Equal(t, originalSize+10, cache.cachedBytes)
 				}
 			}
 		})

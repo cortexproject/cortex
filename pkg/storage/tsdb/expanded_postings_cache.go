@@ -304,7 +304,6 @@ func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)
 	r := &cacheEntryPromise[V]{
 		done: make(chan struct{}),
 	}
-
 	defer close(r.done)
 
 	if !c.cfg.Enabled {
@@ -326,8 +325,11 @@ func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)
 	if ok && loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) {
 		if c.cachedValues.CompareAndSwap(k, loaded, r) {
 			r.v, r.sizeBytes, r.err = fetch()
+			r.sizeBytes += int64(len(k))
+			c.updateSize(loaded.(*cacheEntryPromise[V]).sizeBytes, r.sizeBytes)
 			loaded = r
 			r.ts = c.timeNow()
+			ok = false
 		}
 	}
 
@@ -375,6 +377,16 @@ func (c *fifoCache[V]) created(key string, sizeBytes int64) {
 	defer c.cachedMtx.Unlock()
 	c.cached.PushBack(key)
 	c.cachedBytes += sizeBytes
+}
+
+func (c *fifoCache[V]) updateSize(oldSize, newSizeBytes int64) {
+	if oldSize == newSizeBytes {
+		return
+	}
+
+	c.cachedMtx.Lock()
+	defer c.cachedMtx.Unlock()
+	c.cachedBytes += newSizeBytes - oldSize
 }
 
 type cacheEntryPromise[V any] struct {

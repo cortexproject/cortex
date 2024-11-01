@@ -892,7 +892,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
 			"-blocks-storage.tsdb.block-ranges-period":         "2h",
 			"-blocks-storage.tsdb.ship-interval":               "1h",
-			"-blocks-storage.bucket-store.sync-interval":       "15m",
+			"-blocks-storage.bucket-store.sync-interval":       "1s",
 			"-blocks-storage.tsdb.retention-period":            "100d",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
 			"-querier.query-store-for-labels-enabled":          "true",
@@ -904,11 +904,9 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 			// Store-gateway.
 			"-store-gateway.sharding-enabled": "false",
 			// alert manager
-			"-alertmanager.web.external-url":             "http://localhost/alertmanager",
-			"-frontend.query-vertical-shard-size":        "2",
-			"-frontend.max-cache-freshness":              "1m",
-			"-blocks-storage.bucket-store.sync-interval": "1s",
-			"-blocks-storage.filesystem.dir":             path.Join(s.SharedDir(), "cortex"),
+			"-alertmanager.web.external-url":      "http://localhost/alertmanager",
+			"-frontend.query-vertical-shard-size": "2",
+			"-frontend.max-cache-freshness":       "1m",
 		},
 	)
 	// make alert manager config dir

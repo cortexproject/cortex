@@ -302,6 +302,7 @@ func (i *Lifecycler) GetState() InstanceState {
 func (i *Lifecycler) setState(state InstanceState) {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
+	level.Info(i.logger).Log("msg", "set state", "old_state", i.state, "new_state", state)
 	i.state = state
 }
 
@@ -362,10 +363,17 @@ func (i *Lifecycler) setPreviousState(state InstanceState) {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
 
+	if !(state == ACTIVE || state == READONLY) {
+		level.Error(i.logger).Log("msg", "cannot store unsupported state to disk", "new_state", state, "old_state", i.tokenFile.PreviousState)
+		return
+	}
+
 	i.tokenFile.PreviousState = state
 	if i.cfg.TokensFilePath != "" {
 		if err := i.tokenFile.StoreToFile(i.cfg.TokensFilePath); err != nil {
 			level.Error(i.logger).Log("msg", "error storing state to disk", "path", i.cfg.TokensFilePath, "err", err)
+		} else {
+			level.Info(i.logger).Log("msg", "saved state to disk", "state", state, "path", i.cfg.TokensFilePath)
 		}
 	}
 }
@@ -379,6 +387,7 @@ func (i *Lifecycler) loadTokenFile() (*TokenFile, error) {
 		return nil, err
 	}
 	i.tokenFile = t
+	level.Info(i.logger).Log("msg", "loaded token file", "state", i.tokenFile.PreviousState, "num_tokens", len(i.tokenFile.Tokens), "path", i.cfg.TokensFilePath)
 	return i.tokenFile, nil
 }
 
@@ -654,7 +663,10 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		if err != nil && !os.IsNotExist(err) {
 			level.Error(i.logger).Log("msg", "error loading tokens and previous state from file", "err", err)
 		}
-		tokensFromFile = tokenFile.Tokens
+
+		if tokenFile != nil {
+			tokensFromFile = tokenFile.Tokens
+		}
 	} else {
 		level.Info(i.logger).Log("msg", "not loading tokens from file, tokens file path is empty")
 	}

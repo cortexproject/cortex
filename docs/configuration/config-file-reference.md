@@ -3073,6 +3073,13 @@ instance_limits:
 # Experimental: Enable string interning for metrics labels.
 # CLI flag: -ingester.labels-string-interning-enabled
 [labels_string_interning_enabled: <boolean> | default = false]
+
+# Disable trimming of matching series chunks based on query Start and End time.
+# When disabled, the result may contain samples outside the queried time range
+# but select performances may be improved. Note that certain query results might
+# change by changing this option.
+# CLI flag: -ingester.disable-chunk-trimming
+[disable_chunk_trimming: <boolean> | default = false]
 ```
 
 ### `ingester_client_config`

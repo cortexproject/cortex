@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -37,7 +38,6 @@ import (
 )
 
 func TestDisableChunkTrimmingFuzz(t *testing.T) {
-	noneChunkTrimmingImage := "quay.io/cortexproject/cortex:v1.18.0"
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -47,7 +47,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	consul2 := e2edb.NewConsulWithName("consul2")
 	require.NoError(t, s.StartAndWaitReady(consul1, consul2))
 
-	flags1 := mergeFlags(
+	flags := mergeFlags(
 		AlertmanagerLocalFlags(),
 		map[string]string{
 			"-store.engine":                                     blocksStorageEngine,
@@ -61,8 +61,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
 			"-querier.query-store-for-labels-enabled":           "true",
 			// Ingester.
-			"-ring.store":      "consul",
-			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
+			"-ring.store": "consul",
 			// Distributor.
 			"-distributor.replication-factor": "1",
 			// Store-gateway.
@@ -71,41 +70,26 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 			"-alertmanager.web.external-url": "http://localhost/alertmanager",
 		},
 	)
-	flags2 := mergeFlags(
-		AlertmanagerLocalFlags(),
-		map[string]string{
-			"-store.engine":                                     blocksStorageEngine,
-			"-blocks-storage.backend":                           "filesystem",
-			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
-			"-blocks-storage.tsdb.block-ranges-period":          "2h",
-			"-blocks-storage.tsdb.ship-interval":                "1h",
-			"-blocks-storage.bucket-store.sync-interval":        "15m",
-			"-blocks-storage.tsdb.retention-period":             "2h",
-			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
-			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-			"-querier.query-store-for-labels-enabled":           "true",
-			// Ingester.
-			"-ring.store":      "consul",
-			"-consul.hostname": consul2.NetworkHTTPEndpoint(),
-			// Distributor.
-			"-distributor.replication-factor": "1",
-			// Store-gateway.
-			"-store-gateway.sharding-enabled": "false",
-			// alert manager
-			"-alertmanager.web.external-url": "http://localhost/alertmanager",
-		},
-	)
+
 	// make alert manager config dir
 	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	path1 := path.Join(s.SharedDir(), "cortex-1")
 	path2 := path.Join(s.SharedDir(), "cortex-2")
 
-	flags1 = mergeFlags(flags1, map[string]string{"-blocks-storage.filesystem.dir": path1})
-	flags2 = mergeFlags(flags2, map[string]string{"-blocks-storage.filesystem.dir": path2})
+	flags1 := mergeFlags(flags, map[string]string{
+		"-blocks-storage.filesystem.dir": path1,
+		"-consul.hostname":               consul1.NetworkHTTPEndpoint(),
+	})
+	// Disable chunk trimming for Cortex 2.
+	flags2 := mergeFlags(flags, map[string]string{
+		"-blocks-storage.filesystem.dir":   path2,
+		"-consul.hostname":                 consul2.NetworkHTTPEndpoint(),
+		"-ingester.disable-chunk-trimming": "true",
+	})
 	// Start Cortex replicas.
 	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags1, "")
-	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags2, noneChunkTrimmingImage)
+	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags2, "")
 	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2))
 
 	// Wait until Cortex replicas have updated the ring state.
@@ -162,9 +146,18 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	queryEnd := time.Now().Add(-time.Minute * 20)
 	cases := make([]*testCase, 0, 200)
 	testRun := 500
+	var (
+		expr  parser.Expr
+		query string
+	)
 	for i := 0; i < testRun; i++ {
-		expr := ps.WalkRangeQuery()
-		query := expr.Pretty(0)
+		for {
+			expr = ps.WalkRangeQuery()
+			query = expr.Pretty(0)
+			if !strings.Contains(query, "timestamp") {
+				break
+			}
+		}
 		res1, err1 := c1.QueryRange(query, queryStart, queryEnd, scrapeInterval)
 		res2, err2 := c2.QueryRange(query, queryStart, queryEnd, scrapeInterval)
 		cases = append(cases, &testCase{

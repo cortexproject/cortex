@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -76,7 +77,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	path1 := path.Join(s.SharedDir(), "cortex-1")
 	path2 := path.Join(s.SharedDir(), "cortex-2")
 
-	flags1 := mergeFlags(flags1, map[string]string{
+	flags1 := mergeFlags(flags, map[string]string{
 		"-blocks-storage.filesystem.dir": path1,
 		"-consul.hostname":               consul1.NetworkHTTPEndpoint(),
 	})

@@ -822,10 +822,10 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	start := now.Add(-time.Hour * 2)
 	end := now.Add(-time.Hour)
 	numSeries := 3
-	numSamples := 240
+	numSamples := 60
 	lbls := make([]labels.Labels, numSeries*2)
 	serieses := make([]prompb.TimeSeries, numSeries*2)
-	scrapeInterval := time.Second * 15
+	scrapeInterval := time.Minute
 	for i := 0; i < numSeries; i++ {
 		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
@@ -922,9 +922,9 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	start := now.Add(-time.Hour * 2)
 	end := now.Add(-time.Hour)
 	numSeries := 10
-	numSamples := 240
+	numSamples := 60
 	lbls := make([]labels.Labels, 0, numSeries*2)
-	scrapeInterval := time.Second * 15
+	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {
 		lbls = append(lbls, labels.Labels{

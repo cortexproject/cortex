@@ -889,6 +889,11 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	flags := mergeFlags(
 		baseFlags,
 		map[string]string{
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.tsdb.block-ranges-period":         "2h",
+			"-blocks-storage.tsdb.ship-interval":               "1h",
+			"-blocks-storage.bucket-store.sync-interval":       "15m",
+			"-blocks-storage.tsdb.retention-period":            "100d",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
 			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.

@@ -893,7 +893,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 			"-blocks-storage.tsdb.block-ranges-period":         "2h",
 			"-blocks-storage.tsdb.ship-interval":               "1h",
 			"-blocks-storage.bucket-store.sync-interval":       "1s",
-			"-blocks-storage.tsdb.retention-period":            "100d",
+			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
 			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.

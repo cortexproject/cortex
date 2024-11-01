@@ -27,6 +27,14 @@ var (
 	headULID      = ulid.MustParse("0000000000XXXXXXXXXXXXHEAD")
 )
 
+const (
+	// size of the seed array. Each seed is a 64bits int (8 bytes)
+	// totaling 8mb
+	seedArraySize = 1024 * 1024
+
+	numOfSeedsStripes = 512
+)
+
 type ExpandedPostingsCacheMetrics struct {
 	CacheRequests *prometheus.CounterVec
 	CacheHits     *prometheus.CounterVec
@@ -108,8 +116,8 @@ func NewBlocksPostingsForMatchersCache(cfg TSDBPostingsCacheConfig, metrics *Exp
 	return &BlocksPostingsForMatchersCache{
 		headCache:               newFifoCache[*postingsPromise](cfg.Head, "head", metrics, cfg.timeNow),
 		blocksCache:             newFifoCache[*postingsPromise](cfg.Blocks, "block", metrics, cfg.timeNow),
-		headSeedByMetricName:    make([]int, 10000),
-		strippedLock:            make([]sync.RWMutex, 1000),
+		headSeedByMetricName:    make([]int, seedArraySize),
+		strippedLock:            make([]sync.RWMutex, numOfSeedsStripes),
 		postingsForMatchersFunc: cfg.PostingsForMatchers,
 		timeNow:                 cfg.timeNow,
 		metrics:                 metrics,

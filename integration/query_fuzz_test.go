@@ -37,7 +37,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
-var enabledFunctions []parser.Function
+var enabledFunctions []*parser.Function
 
 func init() {
 	for _, f := range parser.Functions {

@@ -125,7 +125,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	serieses := make([]prompb.TimeSeries, numSeries)
 	lbls := make([]labels.Labels, numSeries)
 	for i := 0; i < numSeries; i++ {
-		series := e2e.GenerateSeriesWithSamples("test_series"), start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
+		series := e2e.GenerateSeriesWithSamples("test_series", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 
 		builder := labels.NewBuilder(labels.EmptyLabels())

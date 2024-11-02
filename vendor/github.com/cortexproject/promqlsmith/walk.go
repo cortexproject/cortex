@@ -16,6 +16,9 @@ import (
 const (
 	// max number of grouping labels in either by or without clause.
 	maxGroupingLabels = 5
+
+	// Destination label used in functions like label_replace and label_join.
+	destinationLabel = "__promqlsmith_dst_label__"
 )
 
 // walkExpr generates the given expression type with one of the required value type.
@@ -249,9 +252,19 @@ func (s *PromQLSmith) walkCall(valueTypes ...parser.ValueType) parser.Expr {
 }
 
 func (s *PromQLSmith) walkFunctions(expr *parser.Call) {
+	switch expr.Func.Name {
+	case "label_join":
+		s.walkLabelJoin(expr)
+		return
+	default:
+	}
+
 	expr.Args = make([]parser.Expr, len(expr.Func.ArgTypes))
 	if expr.Func.Name == "holt_winters" {
 		s.walkHoltWinters(expr)
+		return
+	} else if expr.Func.Name == "label_replace" {
+		s.walkLabelReplace(expr)
 		return
 	}
 	if expr.Func.Variadic != 0 {
@@ -267,6 +280,70 @@ func (s *PromQLSmith) walkHoltWinters(expr *parser.Call) {
 	expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
 	expr.Args[1] = &parser.NumberLiteral{Val: getNonZeroFloat64(s.rnd)}
 	expr.Args[2] = &parser.NumberLiteral{Val: getNonZeroFloat64(s.rnd)}
+}
+
+func (s *PromQLSmith) walkLabelReplace(expr *parser.Call) {
+	expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
+	expr.Args[1] = &parser.StringLiteral{Val: destinationLabel}
+	expr.Args[2] = &parser.StringLiteral{Val: "$1"}
+	seriesSet, _ := getOutputSeries(expr.Args[0])
+
+	var srcLabel string
+	if len(seriesSet) > 0 {
+		lbls := seriesSet[0]
+		if lbls.Len() > 0 {
+			idx := s.rnd.Intn(lbls.Len())
+			cnt := 0
+			lbls.Range(func(lbl labels.Label) {
+				if cnt == idx {
+					srcLabel = lbl.Name
+				}
+				cnt++
+			})
+		}
+	}
+	if srcLabel != "" {
+		// It is possible that the vector selector match nothing. In this case, it doesn't matter which label
+		// we pick. Just pick something from all series labels.
+		idx := s.rnd.Intn(len(s.labelNames))
+		srcLabel = s.labelNames[idx]
+	}
+	expr.Args[3] = &parser.StringLiteral{Val: srcLabel}
+	// Just copy the label we picked.
+	expr.Args[4] = &parser.StringLiteral{Val: "(.*)"}
+}
+
+func (s *PromQLSmith) walkLabelJoin(expr *parser.Call) {
+	expr.Args = make([]parser.Expr, 0, len(expr.Func.ArgTypes))
+	expr.Args = append(expr.Args, s.Walk(expr.Func.ArgTypes[0]))
+	seriesSet, _ := getOutputSeries(expr.Args[0])
+	expr.Args = append(expr.Args, &parser.StringLiteral{Val: destinationLabel})
+	expr.Args = append(expr.Args, &parser.StringLiteral{Val: ","})
+
+	// Let's try to not join more than 2 labels for simplicity.
+	cnt := 0
+	if len(seriesSet) > 0 {
+		seriesSet[0].Range(func(lbl labels.Label) {
+			if cnt < 2 {
+				if s.rnd.Int()%2 == 0 {
+					expr.Args = append(expr.Args, &parser.StringLiteral{Val: lbl.Name})
+					cnt++
+				}
+			}
+		})
+		return
+	}
+
+	// It is possible that the vector selector match nothing. In this case, it doesn't matter which label
+	// we pick. Just pick something from all series labels.
+	for _, name := range s.labelNames {
+		if cnt < 2 {
+			if s.rnd.Int()%2 == 0 {
+				expr.Args = append(expr.Args, &parser.StringLiteral{Val: name})
+				cnt++
+			}
+		}
+	}
 }
 
 // Supported variadic functions include:

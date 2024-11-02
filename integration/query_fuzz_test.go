@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,9 +41,6 @@ var enabledFunctions []*parser.Function
 
 func init() {
 	for _, f := range parser.Functions {
-		if slices.Contains(f.ArgTypes, parser.ValueTypeString) {
-			continue
-		}
 		// Ignore native histogram functions for now as our test cases are only float samples.
 		if strings.Contains(f.Name, "histogram") && f.Name != "histogram_quantile" {
 			continue
@@ -129,7 +125,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	serieses := make([]prompb.TimeSeries, numSeries)
 	lbls := make([]labels.Labels, numSeries)
 	for i := 0; i < numSeries; i++ {
-		series := e2e.GenerateSeriesWithSamples(fmt.Sprintf("test_series_%d", i), start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"})
+		series := e2e.GenerateSeriesWithSamples("test_series", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 
 		builder := labels.NewBuilder(labels.EmptyLabels())
@@ -175,7 +171,8 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 		for {
 			expr = ps.WalkRangeQuery()
 			query = expr.Pretty(0)
-			if !strings.Contains(query, "timestamp") {
+			// timestamp is a known function that break with disable chunk trimming.
+			if isValidQuery(expr, 5) && !strings.Contains(query, "timestamp") {
 				break
 			}
 		}

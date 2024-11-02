@@ -5,7 +5,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"golang.org/x/exp/slices"
 )
 
 var (
@@ -58,9 +57,6 @@ var (
 
 func init() {
 	for _, f := range parser.Functions {
-		if slices.Contains(f.ArgTypes, parser.ValueTypeString) {
-			continue
-		}
 		// Ignore experimental functions for now.
 		if !f.Experimental {
 			defaultSupportedFuncs = append(defaultSupportedFuncs, f)

@@ -168,7 +168,7 @@ type TSDBConfig struct {
 	EnableNativeHistograms bool `yaml:"enable_native_histograms"`
 
 	// Posting Cache Configuration for TSDB
-	PostingsCache TSDBPostingsCacheConfig `yaml:"postings_cache"`
+	PostingsCache TSDBPostingsCacheConfig `yaml:"expanded_postings_cache" doc:"description=[EXPERIMENTAL] If enabled, ingesters will cache expanded postings when querying blocks. Caching can be configured separately for the head and compacted blocks."`
 }
 
 // RegisterFlags registers the TSDBConfig flags.

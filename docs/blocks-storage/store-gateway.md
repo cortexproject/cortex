@@ -1636,38 +1636,41 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.enable-native-histograms
     [enable_native_histograms: <boolean> | default = false]
 
-    postings_cache:
+    # [EXPERIMENTAL] If enabled, ingesters will cache expanded postings when
+    # querying blocks. Caching can be configured separately for the head and
+    # compacted blocks.
+    expanded_postings_cache:
       head:
         # Max bytes for postings cache
-        # CLI flag: -blocks-storage.postings-cache.head.max-bytes
+        # CLI flag: -blocks-storage.expanded_postings_cache.head.max-bytes
         [max_bytes: <int> | default = 10485760]
 
         # Max items for postings cache
-        # CLI flag: -blocks-storage.postings-cache.head.max-items
+        # CLI flag: -blocks-storage.expanded_postings_cache.head.max-items
         [max_items: <int> | default = 10000]
 
         # TTL for postings cache
-        # CLI flag: -blocks-storage.postings-cache.head.ttl
+        # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
         [ttl: <duration> | default = 10m]
 
         # Whether the postings cache is enabled or not
-        # CLI flag: -blocks-storage.postings-cache.head.enabled
+        # CLI flag: -blocks-storage.expanded_postings_cache.head.enabled
         [enabled: <boolean> | default = false]
 
       blocks:
         # Max bytes for postings cache
-        # CLI flag: -blocks-storage.postings-cache.block.max-bytes
+        # CLI flag: -blocks-storage.expanded_postings_cache.block.max-bytes
         [max_bytes: <int> | default = 10485760]
 
         # Max items for postings cache
-        # CLI flag: -blocks-storage.postings-cache.block.max-items
+        # CLI flag: -blocks-storage.expanded_postings_cache.block.max-items
         [max_items: <int> | default = 10000]
 
         # TTL for postings cache
-        # CLI flag: -blocks-storage.postings-cache.block.ttl
+        # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl
         [ttl: <duration> | default = 10m]
 
         # Whether the postings cache is enabled or not
-        # CLI flag: -blocks-storage.postings-cache.block.enabled
+        # CLI flag: -blocks-storage.expanded_postings_cache.block.enabled
         [enabled: <boolean> | default = false]
 ```

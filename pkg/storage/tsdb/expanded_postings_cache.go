@@ -80,10 +80,10 @@ func (cfg *TSDBPostingsCacheConfig) RegisterFlagsWithPrefix(prefix string, f *fl
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *PostingsCacheConfig) RegisterFlagsWithPrefix(prefix, block string, f *flag.FlagSet) {
-	f.Int64Var(&cfg.MaxBytes, prefix+"postings-cache."+block+".max-bytes", 10*1024*1024, "Max bytes for postings cache")
-	f.IntVar(&cfg.MaxItems, prefix+"postings-cache."+block+".max-items", 10000, "Max items for postings cache")
-	f.DurationVar(&cfg.Ttl, prefix+"postings-cache."+block+".ttl", 10*time.Minute, "TTL for postings cache")
-	f.BoolVar(&cfg.Enabled, prefix+"postings-cache."+block+".enabled", false, "Whether the postings cache is enabled or not")
+	f.Int64Var(&cfg.MaxBytes, prefix+"expanded_postings_cache."+block+".max-bytes", 10*1024*1024, "Max bytes for postings cache")
+	f.IntVar(&cfg.MaxItems, prefix+"expanded_postings_cache."+block+".max-items", 10000, "Max items for postings cache")
+	f.DurationVar(&cfg.Ttl, prefix+"expanded_postings_cache."+block+".ttl", 10*time.Minute, "TTL for postings cache")
+	f.BoolVar(&cfg.Enabled, prefix+"expanded_postings_cache."+block+".enabled", false, "Whether the postings cache is enabled or not")
 }
 
 type ExpandedPostingsCache interface {

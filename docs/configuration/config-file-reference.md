@@ -4069,8 +4069,8 @@ The `query_range_config` configures the query splitting and caching in the Corte
 
 ```yaml
 # Split queries by an interval and execute in parallel, 0 disables it. You
-# should use an a multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks. This also
+# should use a multiple of 24 hours (same as the storage bucketing scheme), to
+# avoid queriers downloading and processing the same chunks. This also
 # determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]

@@ -1,9 +1,7 @@
 # Description: This Makefile is used to generate the dashboards, alerts, and rules files from the cortex-jsonnet repo.
 # It uses a customized mixin.libsonnet file to generate the files.
 
-all:
-	# Clone the cortex-jsonnet repository
-	git clone https://github.com/cortexproject/cortex-jsonnet --depth 1
+all: cortex-jsonnet
 	# Show the diff between the mixin.libsonnet file and the cortex-jsonnet/cortex-mixin/mixin.libsonnet file
 	git --no-pager diff --no-index cortex-jsonnet/cortex-mixin/mixin.libsonnet mixin.libsonnet || true
 	# Copy the mixin.libsonnet file to the cortex-jsonnet directory
@@ -14,6 +12,10 @@ all:
 	rm -rf dashboards alerts.yaml rules.yaml
 	# Copy the files from the cortex-jsonnet/cortex-mixin/out directory to the current directory
 	mv cortex-jsonnet/cortex-mixin/out/* .
+
+cortex-jsonnet:
+	# Clone the cortex-jsonnet repository
+	git clone https://github.com/cortexproject/cortex-jsonnet --depth 1
 
 clean:
 	# Remove the cortex-jsonnet directory

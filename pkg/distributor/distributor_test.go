@@ -559,9 +559,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		cortex_distributor_ingester_query_failures_total{ingester="ingester-1"} 1
 		`), permanentMetrics...))
 
-	err = testutil.GatherAndCompare(reg, strings.NewReader(""), removedMetrics...)
-	require.ErrorContains(t, err, "expected metric name(s) not found")
-	require.ErrorContains(t, err, strings.Join(removedMetrics, " "))
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(""), removedMetrics...))
 }
 
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {

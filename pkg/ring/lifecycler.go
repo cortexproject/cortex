@@ -958,10 +958,10 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error {
 	currState := i.GetState()
 	// Only the following state transitions can be triggered externally
-	if !((currState == PENDING && state == JOINING) || // triggered by TransferChunks at the beginning
-		(currState == JOINING && state == PENDING) || // triggered by TransferChunks on failure
-		(currState == JOINING && state == ACTIVE) || // triggered by TransferChunks on success
-		(currState == JOINING && state == READONLY) || // triggered by TransferChunks on success
+	if !((currState == PENDING && state == JOINING) ||
+		(currState == JOINING && state == PENDING) ||
+		(currState == JOINING && state == ACTIVE) ||
+		(currState == JOINING && state == READONLY) ||
 		(currState == PENDING && state == ACTIVE) || // triggered by autoJoin
 		(currState == PENDING && state == READONLY) || // triggered by autoJoin
 		(currState == ACTIVE && state == LEAVING) || // triggered by shutdown

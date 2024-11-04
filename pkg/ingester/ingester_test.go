@@ -5113,31 +5113,39 @@ func TestExpendedPostingsCache(t *testing.T) {
 				},
 			},
 		},
-		"enabled cache blocks": {
+		"enabled cache on compacted blocks": {
 			expectedBlockPostingCall: 1,
 			expectedHeadPostingCall:  0,
 			cacheConfig: cortex_tsdb.TSDBPostingsCacheConfig{
 				Blocks: cortex_tsdb.PostingsCacheConfig{
 					Ttl:      time.Hour,
-					MaxItems: 1000,
 					MaxBytes: 1024 * 1024 * 1024,
 					Enabled:  true,
 				},
 			},
 		},
-		"enabled cache blocks and head": {
+		"enabled cache on head": {
+			expectedBlockPostingCall: 0,
+			expectedHeadPostingCall:  1,
+			cacheConfig: cortex_tsdb.TSDBPostingsCacheConfig{
+				Head: cortex_tsdb.PostingsCacheConfig{
+					Ttl:      time.Hour,
+					MaxBytes: 1024 * 1024 * 1024,
+					Enabled:  true,
+				},
+			},
+		},
+		"enabled cache on compacted blocks and head": {
 			expectedBlockPostingCall: 1,
 			expectedHeadPostingCall:  1,
 			cacheConfig: cortex_tsdb.TSDBPostingsCacheConfig{
 				Blocks: cortex_tsdb.PostingsCacheConfig{
 					Ttl:      time.Hour,
-					MaxItems: 1000,
 					MaxBytes: 1024 * 1024 * 1024,
 					Enabled:  true,
 				},
 				Head: cortex_tsdb.PostingsCacheConfig{
 					Ttl:      time.Hour,
-					MaxItems: 1000,
 					MaxBytes: 1024 * 1024 * 1024,
 					Enabled:  true,
 				},

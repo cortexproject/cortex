@@ -68,7 +68,6 @@ type TSDBPostingsCacheConfig struct {
 
 type PostingsCacheConfig struct {
 	MaxBytes int64         `yaml:"max_bytes"`
-	MaxItems int           `yaml:"max_items"`
 	Ttl      time.Duration `yaml:"ttl"`
 	Enabled  bool          `yaml:"enabled"`
 }
@@ -81,7 +80,6 @@ func (cfg *TSDBPostingsCacheConfig) RegisterFlagsWithPrefix(prefix string, f *fl
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *PostingsCacheConfig) RegisterFlagsWithPrefix(prefix, block string, f *flag.FlagSet) {
 	f.Int64Var(&cfg.MaxBytes, prefix+"expanded_postings_cache."+block+".max-bytes", 10*1024*1024, "Max bytes for postings cache")
-	f.IntVar(&cfg.MaxItems, prefix+"expanded_postings_cache."+block+".max-items", 10000, "Max items for postings cache")
 	f.DurationVar(&cfg.Ttl, prefix+"expanded_postings_cache."+block+".ttl", 10*time.Minute, "TTL for postings cache")
 	f.BoolVar(&cfg.Enabled, prefix+"expanded_postings_cache."+block+".enabled", false, "Whether the postings cache is enabled or not")
 }
@@ -342,7 +340,7 @@ func (c *fifoCache[V]) contains(k string) bool {
 }
 
 func (c *fifoCache[V]) shouldEvictHead() bool {
-	if c.cached.Len() > c.cfg.MaxItems || c.cachedBytes > c.cfg.MaxBytes {
+	if c.cachedBytes > c.cfg.MaxBytes {
 		c.metrics.CacheEvicts.WithLabelValues(c.name).Inc()
 		return true
 	}

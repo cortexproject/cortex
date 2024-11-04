@@ -2091,10 +2091,6 @@ tsdb:
       # CLI flag: -blocks-storage.expanded_postings_cache.head.max-bytes
       [max_bytes: <int> | default = 10485760]
 
-      # Max items for postings cache
-      # CLI flag: -blocks-storage.expanded_postings_cache.head.max-items
-      [max_items: <int> | default = 10000]
-
       # TTL for postings cache
       # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
       [ttl: <duration> | default = 10m]
@@ -2107,10 +2103,6 @@ tsdb:
       # Max bytes for postings cache
       # CLI flag: -blocks-storage.expanded_postings_cache.block.max-bytes
       [max_bytes: <int> | default = 10485760]
-
-      # Max items for postings cache
-      # CLI flag: -blocks-storage.expanded_postings_cache.block.max-items
-      [max_items: <int> | default = 10000]
 
       # TTL for postings cache
       # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl

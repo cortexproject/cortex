@@ -1550,6 +1550,10 @@ blocks_storage:
     # compacted blocks.
     expanded_postings_cache:
       head:
+        # Whether the postings cache is enabled or not
+        # CLI flag: -blocks-storage.expanded_postings_cache.head.enabled
+        [enabled: <boolean> | default = false]
+
         # Max bytes for postings cache
         # CLI flag: -blocks-storage.expanded_postings_cache.head.max-bytes
         [max_bytes: <int> | default = 10485760]
@@ -1558,11 +1562,11 @@ blocks_storage:
         # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
         [ttl: <duration> | default = 10m]
 
+      blocks:
         # Whether the postings cache is enabled or not
-        # CLI flag: -blocks-storage.expanded_postings_cache.head.enabled
+        # CLI flag: -blocks-storage.expanded_postings_cache.block.enabled
         [enabled: <boolean> | default = false]
 
-      blocks:
         # Max bytes for postings cache
         # CLI flag: -blocks-storage.expanded_postings_cache.block.max-bytes
         [max_bytes: <int> | default = 10485760]
@@ -1570,8 +1574,4 @@ blocks_storage:
         # TTL for postings cache
         # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl
         [ttl: <duration> | default = 10m]
-
-        # Whether the postings cache is enabled or not
-        # CLI flag: -blocks-storage.expanded_postings_cache.block.enabled
-        [enabled: <boolean> | default = false]
 ```

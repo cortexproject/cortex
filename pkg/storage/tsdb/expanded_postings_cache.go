@@ -67,9 +67,9 @@ type TSDBPostingsCacheConfig struct {
 }
 
 type PostingsCacheConfig struct {
+	Enabled  bool          `yaml:"enabled"`
 	MaxBytes int64         `yaml:"max_bytes"`
 	Ttl      time.Duration `yaml:"ttl"`
-	Enabled  bool          `yaml:"enabled"`
 }
 
 func (cfg *TSDBPostingsCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {

@@ -37,19 +37,9 @@ func TestFifoCacheExpire(t *testing.T) {
 		expectedFinalItems int
 		ttlExpire          bool
 	}{
-		"MaxItems": {
-			expectedFinalItems: 3,
-			cfg: PostingsCacheConfig{
-				MaxItems: 3,
-				Enabled:  true,
-				Ttl:      time.Hour,
-				MaxBytes: 10 << 20,
-			},
-		},
 		"MaxBytes": {
 			expectedFinalItems: 10,
 			cfg: PostingsCacheConfig{
-				MaxItems: 10 << 20,
 				Enabled:  true,
 				Ttl:      time.Hour,
 				MaxBytes: int64(10 * (8 + keySize)),
@@ -59,7 +49,6 @@ func TestFifoCacheExpire(t *testing.T) {
 			expectedFinalItems: numberOfKeys,
 			ttlExpire:          true,
 			cfg: PostingsCacheConfig{
-				MaxItems: 10 << 20,
 				Enabled:  true,
 				Ttl:      time.Hour,
 				MaxBytes: 10 << 20,

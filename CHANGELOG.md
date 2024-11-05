@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+* [CHANGE] OTLP: Change OTLP handler to be consistent with the Prometheus OTLP handler. #6272
+- `target_info` metric is enabled by default and can be disabled via `-distributor.otlp.disable-target-info=true` flag
+- Convert all attributes to labels is disabled by default and can be enabled via `-distributor.otlp.convert-all-attributes=true` flag
+- You can specify the attributes converted to labels via `-distributor.promote-resource-attributes` flag. Supported only if `-distributor.otlp.convert-all-attributes=false`
 * [CHANGE] Change all max async concurrency default values `50` to `3` #6268
 * [CHANGE] Change default value of `-blocks-storage.bucket-store.index-cache.multilevel.max-async-concurrency` from `50` to `3` #6265
 * [CHANGE] Enable Compactor and Alertmanager in target all. #6204

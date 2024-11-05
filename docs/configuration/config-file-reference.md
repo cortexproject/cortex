@@ -2674,6 +2674,16 @@ instance_limits:
   # unlimited.
   # CLI flag: -distributor.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
+
+otlp:
+  # If true, all resource attributes are converted to labels.
+  # CLI flag: -distributor.otlp.convert-all-attributes
+  [convert_all_attributes: <boolean> | default = false]
+
+  # If true, a target_info metric is not ingested. (refer to:
+  # https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)
+  # CLI flag: -distributor.otlp.disable-target-info
+  [disable_target_info: <boolean> | default = false]
 ```
 
 ### `etcd_config`
@@ -3318,6 +3328,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Distributor.
 # CLI flag: -validation.max-native-histogram-buckets
 [max_native_histogram_buckets: <int> | default = 0]
+
+# Comma separated list of resource attributes that should be converted to
+# labels.
+# CLI flag: -distributor.promote-resource-attributes
+[promote_resource_attributes: <list of string> | default = ]
 
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user

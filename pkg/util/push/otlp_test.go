@@ -8,28 +8,239 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+func TestOTLPConvertToPromTS(t *testing.T) {
+	logger := log.NewNopLogger()
+	ctx := context.Background()
+	d := pmetric.NewMetrics()
+	resourceMetric := d.ResourceMetrics().AppendEmpty()
+	resourceMetric.Resource().Attributes().PutStr("service.name", "test-service") // converted to job, service_name
+	resourceMetric.Resource().Attributes().PutStr("attr1", "value")
+	resourceMetric.Resource().Attributes().PutStr("attr2", "value")
+	resourceMetric.Resource().Attributes().PutStr("attr3", "value")
+
+	scopeMetric := resourceMetric.ScopeMetrics().AppendEmpty()
+
+	//Generate One Counter
+	timestamp := time.Now()
+	counterMetric := scopeMetric.Metrics().AppendEmpty()
+	counterMetric.SetName("test-counter")
+	counterMetric.SetDescription("test-counter-description")
+	counterMetric.SetEmptySum()
+	counterMetric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	counterMetric.Sum().SetIsMonotonic(true)
+
+	counterDataPoint := counterMetric.Sum().DataPoints().AppendEmpty()
+	counterDataPoint.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
+	counterDataPoint.SetDoubleValue(10.0)
+
+	tests := []struct {
+		description               string
+		PromoteResourceAttributes []string
+		cfg                       distributor.OTLPConfig
+		expectedLabels            []prompb.Label
+	}{
+		{
+			description:               "target_info should be generated and an attribute that exist in promote resource attributes should be converted",
+			PromoteResourceAttributes: []string{"attr1"},
+			cfg: distributor.OTLPConfig{
+				ConvertAllAttributes: false,
+				DisableTargetInfo:    false,
+			},
+			expectedLabels: []prompb.Label{
+				{
+					Name:  "__name__",
+					Value: "test_counter_total",
+				},
+				{
+					Name:  "attr1",
+					Value: "value",
+				},
+				{
+					Name:  "job",
+					Value: "test-service",
+				},
+			},
+		},
+		{
+			description:               "an attributes that exist in promote resource attributes should be converted",
+			PromoteResourceAttributes: []string{"attr1"},
+			cfg: distributor.OTLPConfig{
+				ConvertAllAttributes: false,
+				DisableTargetInfo:    true,
+			},
+			expectedLabels: []prompb.Label{
+				{
+					Name:  "__name__",
+					Value: "test_counter_total",
+				},
+				{
+					Name:  "attr1",
+					Value: "value",
+				},
+				{
+					Name:  "job",
+					Value: "test-service",
+				},
+			},
+		},
+		{
+			description:               "not exist attribute is ignored",
+			PromoteResourceAttributes: []string{"dummy"},
+			cfg: distributor.OTLPConfig{
+				ConvertAllAttributes: false,
+				DisableTargetInfo:    true,
+			},
+			expectedLabels: []prompb.Label{
+				{
+					Name:  "__name__",
+					Value: "test_counter_total",
+				},
+				{
+					Name:  "job",
+					Value: "test-service",
+				},
+			},
+		},
+		{
+			description:               "should convert all attribute",
+			PromoteResourceAttributes: nil,
+			cfg: distributor.OTLPConfig{
+				ConvertAllAttributes: true,
+				DisableTargetInfo:    true,
+			},
+			expectedLabels: []prompb.Label{
+				{
+					Name:  "__name__",
+					Value: "test_counter_total",
+				},
+				{
+					Name:  "attr1",
+					Value: "value",
+				},
+				{
+					Name:  "attr2",
+					Value: "value",
+				},
+				{
+					Name:  "attr3",
+					Value: "value",
+				},
+				{
+					Name:  "job",
+					Value: "test-service",
+				},
+				{
+					Name:  "service_name",
+					Value: "test-service",
+				},
+			},
+		},
+		{
+			description:               "should convert all attribute regardless of promote resource attributes",
+			PromoteResourceAttributes: []string{"attr1", "attr2"},
+			cfg: distributor.OTLPConfig{
+				ConvertAllAttributes: true,
+				DisableTargetInfo:    true,
+			},
+			expectedLabels: []prompb.Label{
+				{
+					Name:  "__name__",
+					Value: "test_counter_total",
+				},
+				{
+					Name:  "attr1",
+					Value: "value",
+				},
+				{
+					Name:  "attr2",
+					Value: "value",
+				},
+				{
+					Name:  "attr3",
+					Value: "value",
+				},
+				{
+					Name:  "job",
+					Value: "test-service",
+				},
+				{
+					Name:  "service_name",
+					Value: "test-service",
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.description, func(t *testing.T) {
+			limits := validation.Limits{
+				PromoteResourceAttributes: test.PromoteResourceAttributes,
+			}
+			overrides, err := validation.NewOverrides(limits, nil)
+			require.NoError(t, err)
+			tsList, err := convertToPromTS(ctx, d, test.cfg, overrides, "user-1", logger)
+			require.NoError(t, err)
+
+			if test.cfg.DisableTargetInfo {
+				require.Equal(t, 1, len(tsList)) // test_counter_total
+			} else {
+				// target_info should exist
+				require.Equal(t, 2, len(tsList)) // test_counter_total + target_info
+			}
+
+			var counterTs prompb.TimeSeries
+			for _, ts := range tsList {
+				for _, label := range ts.Labels {
+					if label.Name == "__name__" && label.Value == "test_counter_total" {
+						// get counter ts
+						counterTs = ts
+					}
+				}
+			}
+
+			require.ElementsMatch(t, test.expectedLabels, counterTs.Labels)
+		})
+	}
+}
+
 func TestOTLPWriteHandler(t *testing.T) {
+	cfg := distributor.OTLPConfig{
+		ConvertAllAttributes: false,
+		DisableTargetInfo:    false,
+	}
+
 	exportRequest := generateOTLPWriteRequest(t)
 
 	t.Run("Test proto format write", func(t *testing.T) {
 		buf, err := exportRequest.MarshalProto()
 		require.NoError(t, err)
 
-		req, err := http.NewRequest("", "", bytes.NewReader(buf))
+		ctx := context.Background()
+		ctx = user.InjectOrgID(ctx, "user-1")
+
+		req, err := http.NewRequestWithContext(ctx, "", "", bytes.NewReader(buf))
 		require.NoError(t, err)
 		req.Header.Set("Content-Type", "application/x-protobuf")
 
 		push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
-		handler := OTLPHandler(nil, push)
+		overrides, err := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
+		require.NoError(t, err)
+		handler := OTLPHandler(overrides, cfg, nil, push)
 
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, req)
@@ -41,12 +252,17 @@ func TestOTLPWriteHandler(t *testing.T) {
 		buf, err := exportRequest.MarshalJSON()
 		require.NoError(t, err)
 
-		req, err := http.NewRequest("", "", bytes.NewReader(buf))
+		ctx := context.Background()
+		ctx = user.InjectOrgID(ctx, "user-1")
+
+		req, err := http.NewRequestWithContext(ctx, "", "", bytes.NewReader(buf))
 		require.NoError(t, err)
 		req.Header.Set("Content-Type", "application/json")
 
 		push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
-		handler := OTLPHandler(nil, push)
+		overrides, err := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
+		require.NoError(t, err)
+		handler := OTLPHandler(overrides, cfg, nil, push)
 
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, req)
@@ -139,7 +355,7 @@ func generateOTLPWriteRequest(t *testing.T) pmetricotlp.ExportRequest {
 func verifyOTLPWriteRequestHandler(t *testing.T, expectSource cortexpb.WriteRequest_SourceEnum) func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {
 	t.Helper()
 	return func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {
-		assert.Len(t, request.Timeseries, 12) // 1 (counter) + 1 (gauge) + 7 (hist_bucket) + 2 (hist_sum, hist_count) + 1 (exponential histogram)
+		assert.Len(t, request.Timeseries, 13) // 1 (target_info) + 1 (counter) + 1 (gauge) + 7 (hist_bucket) + 2 (hist_sum, hist_count) + 1 (exponential histogram)
 		// TODO: test more things
 		assert.Equal(t, expectSource, request.Source)
 		assert.False(t, request.SkipLabelNameValidation)

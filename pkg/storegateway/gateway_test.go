@@ -589,7 +589,8 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 			defer os.Remove(tokensFile.Name()) //nolint:errcheck
 
 			// Store some tokens to the file.
-			require.NoError(t, testData.storedTokens.StoreToFile(tokensFile.Name()))
+			tokenFile := ring.TokenFile{Tokens: testData.storedTokens}
+			require.NoError(t, tokenFile.StoreToFile(tokensFile.Name()))
 
 			ctx := context.Background()
 			gatewayCfg := mockGatewayConfig()

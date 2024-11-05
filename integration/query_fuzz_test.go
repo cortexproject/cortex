@@ -986,8 +986,8 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 }
 
 // TestResultsCacheBackwardCompatibilityQueryFuzz performs following steps:
-// 1. Run a range query with time [start, start + 30m] against a Cortex container with previous release image.
-// 2. Run the same range query with time [start, end] against a Cortex container with the latest image. It shares the same results cache with the previous container
+// 1. Run a range query with time [start, start + 30m] against a Cortex container with previous release image to fill results cache.
+// 2. Run the same range query with time [start, end] against a Cortex container with the latest image.
 // 3. Run the same range query with time [start, end] but with results cache bypassed and compare the query result got from last step.
 func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 	// TODO: expose the image tag to be passed from Makefile or Github Action Config.
@@ -1085,7 +1085,9 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 
 	c1, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex1.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
-	c2, err := e2ecortex.NewClientWithByPassResultsCache(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1", true)
+	c2, err := e2ecortex.NewClient(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+	c2ByPassCache, err := e2ecortex.NewClientWithByPassResultsCache(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1", true)
 	require.NoError(t, err)
 
 	waitUntilBothServersReady(t, context.Background(), c1, c2, `{job="test"}`, start, now)
@@ -1126,8 +1128,9 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 
 	for i := 0; i < run; i++ {
 		c := cases[i]
-		c.res1, c.err1 = c1.QueryRange(c.query, start, end, scrapeInterval)
-		c.res2, c.err2 = c2.QueryRange(c.query, start, end, scrapeInterval)
+		// If not bypassing cache, we expect this query to fetch part of the query results as well as reusing some existing cached result.
+		c.res1, c.err1 = c2.QueryRange(c.query, start, end, scrapeInterval)
+		c.res2, c.err2 = c2ByPassCache.QueryRange(c.query, start, end, scrapeInterval)
 	}
 
 	failures := 0

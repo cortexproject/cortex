@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/cache"
 )
 
 func Test_MultiLevelChunkCacheStore(t *testing.T) {
@@ -70,6 +72,43 @@ func Test_MultiLevelChunkCacheStore(t *testing.T) {
 			require.Equal(t, tc.expectedM2Data, m2.data)
 		})
 	}
+}
+
+func Test_MultiLevelChunkCacheFetchRace(t *testing.T) {
+	cfg := MultiLevelChunkCacheConfig{
+		MaxAsyncConcurrency: 10,
+		MaxAsyncBufferSize:  100000,
+		MaxBackfillItems:    10000,
+		BackFillTTL:         time.Hour * 24,
+	}
+	reg := prometheus.NewRegistry()
+
+	m1 := newMockChunkCache("m1", map[string][]byte{
+		"key1": []byte("value1"),
+		"key2": []byte("value2"),
+	})
+
+	inMemory, err := cache.NewInMemoryCacheWithConfig("test", log.NewNopLogger(), reg, cache.InMemoryCacheConfig{MaxSize: 10 * 1024, MaxItemSize: 1024})
+	require.NoError(t, err)
+
+	inMemory.Store(map[string][]byte{
+		"key2": []byte("value2"),
+		"key3": []byte("value3"),
+	}, time.Minute)
+
+	c := newMultiLevelChunkCache("chunk-cache", cfg, reg, inMemory, m1)
+
+	hits := c.Fetch(context.Background(), []string{"key1", "key2", "key3", "key4"})
+
+	require.Equal(t, 3, len(hits))
+
+	// We should be able to change the returned values without any race problem
+	delete(hits, "key1")
+
+	mlc := c.(*multiLevelChunkCache)
+	//Wait until async operation finishes.
+	mlc.backfillProcessor.Stop()
+
 }
 
 func Test_MultiLevelChunkCacheFetch(t *testing.T) {

@@ -60,10 +60,22 @@ func NewClient(
 	rulerAddress string,
 	orgID string,
 ) (*Client, error) {
+	return NewClientWithByPassResultsCache(distributorAddress, querierAddress, alertmanagerAddress, rulerAddress, orgID, false)
+}
+
+// NewClientWithByPassResultsCache makes a new Cortex client but allows to bypass query results cache if skipResultsCache set to true.
+func NewClientWithByPassResultsCache(
+	distributorAddress string,
+	querierAddress string,
+	alertmanagerAddress string,
+	rulerAddress string,
+	orgID string,
+	skipResultsCache bool,
+) (*Client, error) {
 	// Create querier API client
 	querierAPIClient, err := promapi.NewClient(promapi.Config{
 		Address:      "http://" + querierAddress + "/api/prom",
-		RoundTripper: &addOrgIDRoundTripper{orgID: orgID, next: http.DefaultTransport},
+		RoundTripper: &cacheControlRoundTripper{skipResultsCache: skipResultsCache, next: &addOrgIDRoundTripper{orgID: orgID, next: http.DefaultTransport}},
 	})
 	if err != nil {
 		return nil, err
@@ -583,6 +595,19 @@ type addOrgIDRoundTripper struct {
 
 func (r *addOrgIDRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Set("X-Scope-OrgID", r.orgID)
+
+	return r.next.RoundTrip(req)
+}
+
+type cacheControlRoundTripper struct {
+	skipResultsCache bool
+	next             http.RoundTripper
+}
+
+func (r *cacheControlRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if r.skipResultsCache {
+		req.Header.Set("Cache-Control", "no-store")
+	}
 
 	return r.next.RoundTrip(req)
 }

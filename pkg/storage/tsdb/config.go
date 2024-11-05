@@ -166,6 +166,9 @@ type TSDBConfig struct {
 
 	// Enable native histogram ingestion.
 	EnableNativeHistograms bool `yaml:"enable_native_histograms"`
+
+	// Posting Cache Configuration for TSDB
+	PostingsCache TSDBPostingsCacheConfig `yaml:"expanded_postings_cache" doc:"description=[EXPERIMENTAL] If enabled, ingesters will cache expanded postings when querying blocks. Caching can be configured separately for the head and compacted blocks."`
 }
 
 // RegisterFlags registers the TSDBConfig flags.
@@ -195,6 +198,8 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.MemorySnapshotOnShutdown, "blocks-storage.tsdb.memory-snapshot-on-shutdown", false, "True to enable snapshotting of in-memory TSDB data on disk when shutting down.")
 	f.Int64Var(&cfg.OutOfOrderCapMax, "blocks-storage.tsdb.out-of-order-cap-max", tsdb.DefaultOutOfOrderCapMax, "[EXPERIMENTAL] Configures the maximum number of samples per chunk that can be out-of-order.")
 	f.BoolVar(&cfg.EnableNativeHistograms, "blocks-storage.tsdb.enable-native-histograms", false, "[EXPERIMENTAL] True to enable native histogram.")
+
+	cfg.PostingsCache.RegisterFlagsWithPrefix("blocks-storage.", f)
 }
 
 // Validate the config.

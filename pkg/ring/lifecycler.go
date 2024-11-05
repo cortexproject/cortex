@@ -379,13 +379,15 @@ func (i *Lifecycler) setPreviousState(state InstanceState) {
 }
 
 func (i *Lifecycler) loadTokenFile() (*TokenFile, error) {
-	i.stateMtx.Lock()
-	defer i.stateMtx.Unlock()
 
 	t, err := LoadTokenFile(i.cfg.TokensFilePath)
 	if err != nil {
 		return nil, err
 	}
+
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+
 	i.tokenFile = t
 	level.Info(i.logger).Log("msg", "loaded token file", "state", i.tokenFile.PreviousState, "num_tokens", len(i.tokenFile.Tokens), "path", i.cfg.TokensFilePath)
 	return i.tokenFile, nil
@@ -719,8 +721,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		// If the ingester failed to clean its ring entry up in can leave its state in LEAVING
 		// OR unregister_on_shutdown=false
-		// if autoJoinOnStartup, move it into ACTIVE to ensure the ingester joins the ring.
-		// else set to PENDING
+		// if autoJoinOnStartup, move it into previous state based on token file (default: ACTIVE)
+		// to ensure the ingester joins the ring. else set to PENDING
 		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) != 0 {
 			if i.autoJoinOnStartup {
 				instanceDesc.State = i.getPreviousState()

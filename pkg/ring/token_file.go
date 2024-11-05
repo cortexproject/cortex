@@ -8,7 +8,7 @@ import (
 )
 
 type TokenFile struct {
-	PreviousState InstanceState `json:"previousState"`
+	PreviousState InstanceState `json:"previousState,omitempty"`
 	Tokens        Tokens        `json:"tokens"`
 }
 

@@ -36,24 +36,29 @@ const (
 )
 
 type ExpandedPostingsCacheMetrics struct {
-	CacheRequests *prometheus.CounterVec
-	CacheHits     *prometheus.CounterVec
-	CacheEvicts   *prometheus.CounterVec
+	CacheRequests       *prometheus.CounterVec
+	CacheHits           *prometheus.CounterVec
+	CacheEvicts         *prometheus.CounterVec
+	NonCacheableQueries *prometheus.CounterVec
 }
 
 func NewPostingCacheMetrics(r prometheus.Registerer) *ExpandedPostingsCacheMetrics {
 	return &ExpandedPostingsCacheMetrics{
 		CacheRequests: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_expanded_postings_cache_requests",
-			Help: "Count of cache adds in the ingester postings cache.",
+			Help: "Total number of requests to the cache.",
 		}, []string{"cache"}),
 		CacheHits: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_expanded_postings_cache_hits",
-			Help: "Count of cache hits in the ingester postings cache.",
+			Help: "Total number of hit requests to the cache.",
 		}, []string{"cache"}),
 		CacheEvicts: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_expanded_postings_cache_evicts",
-			Help: "Count of cache evictions in the ingester postings cache, excluding items that got evicted due to TTL.",
+			Help: "Total number of evictions in the cache, excluding items that got evicted due to TTL.",
+		}, []string{"cache"}),
+		NonCacheableQueries: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_expanded_postings_non_cacheable_queries",
+			Help: "Total number of non cacheable queries.",
 		}, []string{"cache"}),
 	}
 }
@@ -148,15 +153,18 @@ func (c *BlocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 	// invalidate the cache when new series are created for this metric name
 	if isHeadBlock(blockID) {
 		cache = c.headCache
-		metricName, ok := metricNameFromMatcher(ms)
-		// Lets not cache head if we don;t find an equal matcher for the label __name__
-		if !ok {
-			return func(ctx context.Context) (index.Postings, error) {
-				return tsdb.PostingsForMatchers(ctx, ix, ms...)
+		if cache.cfg.Enabled {
+			metricName, ok := metricNameFromMatcher(ms)
+			// Lets not cache head if we don;t find an equal matcher for the label __name__
+			if !ok {
+				c.metrics.NonCacheableQueries.WithLabelValues(cache.name).Inc()
+				return func(ctx context.Context) (index.Postings, error) {
+					return tsdb.PostingsForMatchers(ctx, ix, ms...)
+				}
 			}
-		}
 
-		seed = c.getSeedForMetricName(metricName)
+			seed = c.getSeedForMetricName(metricName)
+		}
 	}
 
 	// Let's bypass cache if not enabled

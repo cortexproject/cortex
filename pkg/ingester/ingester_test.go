@@ -5245,7 +5245,7 @@ func TestExpendedPostingsCache(t *testing.T) {
 
 			if c.expectedHeadPostingCall > 0 || c.expectedBlockPostingCall > 0 {
 				metric := `
-		# HELP cortex_ingester_expanded_postings_cache_requests Count of cache adds in the ingester postings cache.
+		# HELP cortex_ingester_expanded_postings_cache_requests Total number of requests to the cache.
 		# TYPE cortex_ingester_expanded_postings_cache_requests counter
 `
 				if c.expectedBlockPostingCall > 0 {
@@ -5275,7 +5275,7 @@ func TestExpendedPostingsCache(t *testing.T) {
 
 			if c.expectedHeadPostingCall > 0 || c.expectedBlockPostingCall > 0 {
 				metric := `
-		# HELP cortex_ingester_expanded_postings_cache_hits Count of cache hits in the ingester postings cache.
+		# HELP cortex_ingester_expanded_postings_cache_hits Total number of hit requests to the cache.
 		# TYPE cortex_ingester_expanded_postings_cache_hits counter
 `
 				if c.expectedBlockPostingCall > 0 {
@@ -5334,6 +5334,15 @@ func TestExpendedPostingsCache(t *testing.T) {
 			require.Len(t, runQuery(t, ctx, i, []*client.LabelMatcher{{Type: client.EQUAL, Name: "extra", Value: "1"}}), 1)
 			// Query block and head but bypass head
 			require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedBlockPostingCall))
+			if c.cacheConfig.Head.Enabled {
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(`
+		# HELP cortex_ingester_expanded_postings_non_cacheable_queries Total number of non cacheable queries.
+		# TYPE cortex_ingester_expanded_postings_non_cacheable_queries counter
+        cortex_ingester_expanded_postings_non_cacheable_queries{cache="head"} 1
+`), "cortex_ingester_expanded_postings_non_cacheable_queries")
+				require.NoError(t, err)
+			}
+
 			postingsForMatchersCalls.Store(0)
 			require.Len(t, runQuery(t, ctx, i, []*client.LabelMatcher{{Type: client.EQUAL, Name: "extra", Value: "1"}}), 1)
 			// Return cached value from block and bypass head

@@ -59,8 +59,8 @@ func NewPostingCacheMetrics(r prometheus.Registerer) *ExpandedPostingsCacheMetri
 }
 
 type TSDBPostingsCacheConfig struct {
-	Head   PostingsCacheConfig `yaml:"head"`
-	Blocks PostingsCacheConfig `yaml:"blocks"`
+	Head   PostingsCacheConfig `yaml:"head" doc:"description=If enabled, ingesters will cache expanded postings for the head block. Only queries with with an equal matcher for metric __name__ are cached."`
+	Blocks PostingsCacheConfig `yaml:"blocks" doc:"description=If enabled, ingesters will cache expanded postings for the compacted blocks. The cache is shared between all blocks."`
 
 	PostingsForMatchers func(ctx context.Context, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) `yaml:"-"`
 	timeNow             func() time.Time                                                                              `yaml:"-"`

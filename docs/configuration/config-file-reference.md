@@ -2086,6 +2086,8 @@ tsdb:
   # querying blocks. Caching can be configured separately for the head and
   # compacted blocks.
   expanded_postings_cache:
+    # If enabled, ingesters will cache expanded postings for the head block.
+    # Only queries with with an equal matcher for metric __name__ are cached.
     head:
       # Whether the postings cache is enabled or not
       # CLI flag: -blocks-storage.expanded_postings_cache.head.enabled
@@ -2099,6 +2101,8 @@ tsdb:
       # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
       [ttl: <duration> | default = 10m]
 
+    # If enabled, ingesters will cache expanded postings for the compacted
+    # blocks. The cache is shared between all blocks.
     blocks:
       # Whether the postings cache is enabled or not
       # CLI flag: -blocks-storage.expanded_postings_cache.block.enabled

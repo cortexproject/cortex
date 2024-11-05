@@ -114,7 +114,9 @@ func (m *multiLevelChunkCache) Fetch(ctx context.Context, keys []string) map[str
 			}
 
 			if i > 0 && len(hits) > 0 {
-				backfillItems[i-1] = hits
+				for k, b := range hits {
+					backfillItems[i-1][k] = b
+				}
 			}
 
 			if len(hits) == len(keys) {

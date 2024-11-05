@@ -120,12 +120,14 @@ func Test_MultiLevelChunkCacheFetch(t *testing.T) {
 	}
 
 	testCases := map[string]struct {
-		m1ExistingData      map[string][]byte
-		m2ExistingData      map[string][]byte
-		expectedM1Data      map[string][]byte
-		expectedM2Data      map[string][]byte
-		expectedFetchedData map[string][]byte
-		fetchKeys           []string
+		m1ExistingData        map[string][]byte
+		m2ExistingData        map[string][]byte
+		expectedM1Data        map[string][]byte
+		expectedM2Data        map[string][]byte
+		expectedFetchedData   map[string][]byte
+		expectedM1FetchedKeys []string
+		expectedM2FetchedKeys []string
+		fetchKeys             []string
 	}{
 		"fetched data should be union of m1, m2 and 'key2' and `key3' should be backfilled to m1": {
 			m1ExistingData: map[string][]byte{
@@ -135,6 +137,8 @@ func Test_MultiLevelChunkCacheFetch(t *testing.T) {
 				"key2": []byte("value2"),
 				"key3": []byte("value3"),
 			},
+			expectedM1FetchedKeys: []string{"key1", "key2", "key3"},
+			expectedM2FetchedKeys: []string{"key2", "key3"},
 			expectedM1Data: map[string][]byte{
 				"key1": []byte("value1"),
 				"key2": []byte("value2"),
@@ -158,6 +162,8 @@ func Test_MultiLevelChunkCacheFetch(t *testing.T) {
 			m2ExistingData: map[string][]byte{
 				"key2": []byte("value2"),
 			},
+			expectedM1FetchedKeys: []string{"key1", "key2", "key3"},
+			expectedM2FetchedKeys: []string{"key2", "key3"},
 			expectedM1Data: map[string][]byte{
 				"key1": []byte("value1"),
 				"key2": []byte("value2"),
@@ -196,6 +202,8 @@ type mockChunkCache struct {
 	mu   sync.Mutex
 	name string
 	data map[string][]byte
+
+	fetchedKeys []string
 }
 
 func newMockChunkCache(name string, data map[string][]byte) *mockChunkCache {
@@ -219,6 +227,7 @@ func (m *mockChunkCache) Fetch(_ context.Context, keys []string) map[string][]by
 	h := map[string][]byte{}
 
 	for _, k := range keys {
+		m.fetchedKeys = append(m.fetchedKeys, k)
 		if _, ok := m.data[k]; ok {
 			h[k] = m.data[k]
 		}

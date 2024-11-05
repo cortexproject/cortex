@@ -4512,9 +4512,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load()) // Flushing removed all series from memory.
 
 	// Verify that user has disappeared from metrics.
-	err = testutil.GatherAndCompare(r, strings.NewReader(""), userMetrics...)
-	require.ErrorContains(t, err, "expected metric name(s) not found")
-	require.ErrorContains(t, err, strings.Join(userMetrics, " "))
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(""), userMetrics...))
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_users The current number of users in memory.
@@ -5317,12 +5315,14 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 
 			require.Equal(t, testData.expectedResponse, response.Code)
 			require.Equal(t, testData.expectedState, i.lifecycler.GetState())
-
-			err = i.CheckReady(context.Background())
 			if testData.expectedIsReady {
-				require.NoError(t, err)
+				// Wait for instance to own tokens
+				test.Poll(t, 1*time.Second, nil, func() interface{} {
+					return i.CheckReady(context.Background())
+				})
+				require.NoError(t, i.CheckReady(context.Background()))
 			} else {
-				require.NotNil(t, err)
+				require.NotNil(t, i.CheckReady(context.Background()))
 			}
 		})
 	}

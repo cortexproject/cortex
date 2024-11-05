@@ -27,7 +27,7 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		return nil, err
 	}
 
-	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name)
+	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func NewBucketReaderClient(cfg Config, name string, logger log.Logger) (objstore
 		return nil, err
 	}
 
-	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name)
+	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name, nil)
 	if err != nil {
 		return nil, err
 	}

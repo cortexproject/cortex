@@ -137,6 +137,11 @@ type Config struct {
 	AdminLimitMessage string `yaml:"admin_limit_message"`
 
 	LabelsStringInterningEnabled bool `yaml:"labels_string_interning_enabled"`
+
+	// DisableChunkTrimming allows to disable trimming of matching series chunks based on query Start and End time.
+	// When disabled, the result may contain samples outside the queried time range but Select() performances
+	// may be improved.
+	DisableChunkTrimming bool `yaml:"disable_chunk_trimming"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -163,6 +168,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
 
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
+
+	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 }
 
 func (cfg *Config) Validate() error {
@@ -1985,7 +1992,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	hints := &storage.SelectHints{
 		Start:           from,
 		End:             through,
-		DisableTrimming: true,
+		DisableTrimming: i.cfg.DisableChunkTrimming,
 	}
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss := q.Select(ctx, false, hints, matchers...)

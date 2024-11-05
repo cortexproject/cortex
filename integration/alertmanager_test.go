@@ -156,7 +156,7 @@ func TestAlertmanagerClustering(t *testing.T) {
 		Bucket:    alertsBucketName,
 		AccessKey: e2edb.MinioAccessKey,
 		SecretKey: e2edb.MinioSecretKey,
-	}, "alertmanager-test")
+	}, "alertmanager-test", nil)
 	require.NoError(t, err)
 
 	// Create and upload an Alertmanager configuration.
@@ -219,7 +219,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				Bucket:    alertsBucketName,
 				AccessKey: e2edb.MinioAccessKey,
 				SecretKey: e2edb.MinioSecretKey,
-			}, "alertmanager-test")
+			}, "alertmanager-test", nil)
 			require.NoError(t, err)
 
 			// Create and upload Alertmanager configurations.
@@ -537,7 +537,7 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 				Bucket:    alertsBucketName,
 				AccessKey: e2edb.MinioAccessKey,
 				SecretKey: e2edb.MinioSecretKey,
-			}, "alertmanager-test")
+			}, "alertmanager-test", nil)
 			require.NoError(t, err)
 
 			// Create and upload Alertmanager configurations.

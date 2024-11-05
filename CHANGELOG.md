@@ -2,7 +2,8 @@
 
 ## master / unreleased
 
-* [CHANGE] Change default value of `-blocks-storage.bucket-store.index-cache.memcached.max-async-concurrency` from `50` to `3` #6265
+* [CHANGE] Change all max async concurrency default values `50` to `3` #6268
+* [CHANGE] Change default value of `-blocks-storage.bucket-store.index-cache.multilevel.max-async-concurrency` from `50` to `3` #6265
 * [CHANGE] Enable Compactor and Alertmanager in target all. #6204
 * [FEATURE] Query Frontend/Querier: Add protobuf codec `-api.querier-default-codec` and the option to choose response compression type `-querier.response-compression`. #5527
 * [FEATURE] Ruler: Experimental: Add `ruler.frontend-address` to allow query to query frontends instead of ingesters. #6151
@@ -12,7 +13,7 @@
 * [ENHANCEMENT] S3 Bucket Client: Add a list objects version configs to configure list api object version. #6280
 * [ENHANCEMENT] OpenStack Swift: Add application credential configs for Openstack swift object storage backend. #6255
 * [ENHANCEMENT] Query Frontend: Add new query stats metrics `cortex_query_samples_scanned_total` and `cortex_query_peak_samples` to track scannedSamples and peakSample per user. #6228
-* [ENHANCEMENT] Ingester: Disable chunk trimming. #6270
+* [ENHANCEMENT] Ingester: Add option `ingester.disable-chunk-trimming` to disable chunk trimming. #6300
 * [ENHANCEMENT] Ingester: Add `blocks-storage.tsdb.wal-compression-type` to support zstd wal compression type. #6232
 * [ENHANCEMENT] Query Frontend: Add info field to query response. #6207
 * [ENHANCEMENT] Query Frontend: Add peakSample in query stats response. #6188
@@ -26,6 +27,7 @@
 * [ENHANCEMENT] Ingester/Store Gateway Clients: Introduce an experimental HealthCheck handler to quickly fail requests directed to unhealthy targets. #6225 #6257
 * [ENHANCEMENT] Upgrade build image and Go version to 1.23.2. #6261 #6262
 * [ENHANCEMENT] Querier/Ruler: Expose `store_gateway_consistency_check_max_attempts` for max retries when querying store gateway in consistency check. #6276
+* [ENHANCEMENT] StoreGateway: Add new `cortex_bucket_store_chunk_pool_inuse_bytes` metric to track the usage in chunk pool. #6310
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 
 ## 1.18.1 2024-10-14

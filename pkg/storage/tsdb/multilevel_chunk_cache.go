@@ -98,6 +98,7 @@ func (m *multiLevelChunkCache) Fetch(ctx context.Context, keys []string) map[str
 	timer := prometheus.NewTimer(m.fetchLatency.WithLabelValues())
 	defer timer.ObserveDuration()
 
+	missingKeys := keys
 	hits := map[string][]byte{}
 	backfillItems := make([]map[string][]byte, len(m.caches)-1)
 
@@ -108,13 +109,25 @@ func (m *multiLevelChunkCache) Fetch(ctx context.Context, keys []string) map[str
 		if ctx.Err() != nil {
 			return nil
 		}
-		if data := c.Fetch(ctx, keys); len(data) > 0 {
+		if data := c.Fetch(ctx, missingKeys); len(data) > 0 {
 			for k, d := range data {
 				hits[k] = d
 			}
 
 			if i > 0 && len(hits) > 0 {
-				backfillItems[i-1] = hits
+				// lets fetch only the mising keys
+				m := missingKeys[:0]
+				for _, key := range missingKeys {
+					if _, ok := hits[key]; !ok {
+						m = append(m, key)
+					}
+				}
+
+				missingKeys = m
+
+				for k, b := range hits {
+					backfillItems[i-1][k] = b
+				}
 			}
 
 			if len(hits) == len(keys) {

@@ -24,7 +24,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -84,7 +83,7 @@ func createHTTPTransport() (transport *http.Transport) {
 		return nil
 	}
 
-	if mustParseBool(os.Getenv(skipCERTValidation)) {
+	if mustParseBool(os.Getenv(enableHTTPS)) && mustParseBool(os.Getenv(skipCERTValidation)) {
 		transport.TLSClientConfig.InsecureSkipVerify = true
 	}
 
@@ -166,7 +165,7 @@ func logError(testName, function string, args map[string]interface{}, startTime 
 	}
 }
 
-// log failed test runs
+// Log failed test runs, do not call this directly, use logError instead, as that correctly stops the test run
 func logFailure(testName, function string, args map[string]interface{}, startTime time.Time, alert, message string, err error) {
 	l := baseLogger(testName, function, args, startTime).With(
 		"status", "FAIL",
@@ -2199,22 +2198,15 @@ func testPutObjectWithChecksums() {
 
 	defer cleanupBucket(bucketName, c)
 	tests := []struct {
-		header string
-		hasher hash.Hash
-
-		// Checksum values
-		ChecksumCRC32  string
-		ChecksumCRC32C string
-		ChecksumSHA1   string
-		ChecksumSHA256 string
+		cs minio.ChecksumType
 	}{
-		{header: "x-amz-checksum-crc32", hasher: crc32.NewIEEE()},
-		{header: "x-amz-checksum-crc32c", hasher: crc32.New(crc32.MakeTable(crc32.Castagnoli))},
-		{header: "x-amz-checksum-sha1", hasher: sha1.New()},
-		{header: "x-amz-checksum-sha256", hasher: sha256.New()},
+		{cs: minio.ChecksumCRC32C},
+		{cs: minio.ChecksumCRC32},
+		{cs: minio.ChecksumSHA1},
+		{cs: minio.ChecksumSHA256},
 	}
 
-	for i, test := range tests {
+	for _, test := range tests {
 		bufSize := dataFileMap["datafile-10-kB"]
 
 		// Save the data
@@ -2235,29 +2227,27 @@ func testPutObjectWithChecksums() {
 			logError(testName, function, args, startTime, "", "Read failed", err)
 			return
 		}
-		h := test.hasher
+		h := test.cs.Hasher()
 		h.Reset()
-		// Wrong CRC.
-		meta[test.header] = base64.StdEncoding.EncodeToString(h.Sum(nil))
+
+		// Test with Wrong CRC.
+		meta[test.cs.Key()] = base64.StdEncoding.EncodeToString(h.Sum(nil))
 		args["metadata"] = meta
 		args["range"] = "false"
+		args["checksum"] = test.cs.String()
 
 		resp, err := c.PutObject(context.Background(), bucketName, objectName, bytes.NewReader(b), int64(bufSize), minio.PutObjectOptions{
 			DisableMultipart: true,
 			UserMetadata:     meta,
 		})
 		if err == nil {
-			if i == 0 && resp.ChecksumCRC32 == "" {
-				logIgnored(testName, function, args, startTime, "Checksums does not appear to be supported by backend")
-				return
-			}
-			logError(testName, function, args, startTime, "", "PutObject failed", err)
+			logError(testName, function, args, startTime, "", "PutObject did not fail on wrong CRC", err)
 			return
 		}
 
 		// Set correct CRC.
 		h.Write(b)
-		meta[test.header] = base64.StdEncoding.EncodeToString(h.Sum(nil))
+		meta[test.cs.Key()] = base64.StdEncoding.EncodeToString(h.Sum(nil))
 		reader.Close()
 
 		resp, err = c.PutObject(context.Background(), bucketName, objectName, bytes.NewReader(b), int64(bufSize), minio.PutObjectOptions{
@@ -2344,7 +2334,7 @@ func testPutObjectWithChecksums() {
 }
 
 // Test PutObject with custom checksums.
-func testPutMultipartObjectWithChecksums() {
+func testPutObjectWithTrailingChecksums() {
 	// initialize logging params
 	startTime := time.Now()
 	testName := getFuncName()
@@ -2352,7 +2342,7 @@ func testPutMultipartObjectWithChecksums() {
 	args := map[string]interface{}{
 		"bucketName": "",
 		"objectName": "",
-		"opts":       "minio.PutObjectOptions{UserMetadata: metadata, Progress: progress}",
+		"opts":       "minio.PutObjectOptions{UserMetadata: metadata, Progress: progress, TrailChecksum: xxx}",
 	}
 
 	if !isFullMode() {
@@ -2366,9 +2356,201 @@ func testPutMultipartObjectWithChecksums() {
 	// Instantiate new minio client object.
 	c, err := minio.New(os.Getenv(serverEndpoint),
 		&minio.Options{
-			Creds:     credentials.NewStaticV4(os.Getenv(accessKey), os.Getenv(secretKey), ""),
-			Transport: createHTTPTransport(),
-			Secure:    mustParseBool(os.Getenv(enableHTTPS)),
+			Creds:           credentials.NewStaticV4(os.Getenv(accessKey), os.Getenv(secretKey), ""),
+			Transport:       createHTTPTransport(),
+			Secure:          mustParseBool(os.Getenv(enableHTTPS)),
+			TrailingHeaders: true,
+		})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
+		return
+	}
+
+	// Enable tracing, write to stderr.
+	// c.TraceOn(os.Stderr)
+
+	// Set user agent.
+	c.SetAppInfo("MinIO-go-FunctionalTest", appVersion)
+
+	// Generate a new random bucket name.
+	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
+	args["bucketName"] = bucketName
+
+	// Make a new bucket.
+	err = c.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Make bucket failed", err)
+		return
+	}
+
+	defer cleanupBucket(bucketName, c)
+	tests := []struct {
+		cs minio.ChecksumType
+	}{
+		{cs: minio.ChecksumCRC32C},
+		{cs: minio.ChecksumCRC32},
+		{cs: minio.ChecksumSHA1},
+		{cs: minio.ChecksumSHA256},
+	}
+
+	for _, test := range tests {
+		function := "PutObject(bucketName, objectName, reader,size, opts)"
+		bufSize := dataFileMap["datafile-10-kB"]
+
+		// Save the data
+		objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
+		args["objectName"] = objectName
+
+		cmpChecksum := func(got, want string) {
+			if want != got {
+				logError(testName, function, args, startTime, "", "checksum mismatch", fmt.Errorf("want %s, got %s", want, got))
+				return
+			}
+		}
+
+		meta := map[string]string{}
+		reader := getDataReader("datafile-10-kB")
+		b, err := io.ReadAll(reader)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "Read failed", err)
+			return
+		}
+		h := test.cs.Hasher()
+		h.Reset()
+
+		// Test with Wrong CRC.
+		args["metadata"] = meta
+		args["range"] = "false"
+		args["checksum"] = test.cs.String()
+
+		resp, err := c.PutObject(context.Background(), bucketName, objectName, bytes.NewReader(b), int64(bufSize), minio.PutObjectOptions{
+			DisableMultipart:     true,
+			DisableContentSha256: true,
+			UserMetadata:         meta,
+			Checksum:             test.cs,
+		})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "PutObject failed", err)
+			return
+		}
+
+		h.Write(b)
+		meta[test.cs.Key()] = base64.StdEncoding.EncodeToString(h.Sum(nil))
+
+		cmpChecksum(resp.ChecksumSHA256, meta["x-amz-checksum-sha256"])
+		cmpChecksum(resp.ChecksumSHA1, meta["x-amz-checksum-sha1"])
+		cmpChecksum(resp.ChecksumCRC32, meta["x-amz-checksum-crc32"])
+		cmpChecksum(resp.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
+
+		// Read the data back
+		gopts := minio.GetObjectOptions{Checksum: true}
+
+		function = "GetObject(...)"
+		r, err := c.GetObject(context.Background(), bucketName, objectName, gopts)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "GetObject failed", err)
+			return
+		}
+
+		st, err := r.Stat()
+		if err != nil {
+			logError(testName, function, args, startTime, "", "Stat failed", err)
+			return
+		}
+		cmpChecksum(st.ChecksumSHA256, meta["x-amz-checksum-sha256"])
+		cmpChecksum(st.ChecksumSHA1, meta["x-amz-checksum-sha1"])
+		cmpChecksum(st.ChecksumCRC32, meta["x-amz-checksum-crc32"])
+		cmpChecksum(st.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
+
+		if st.Size != int64(bufSize) {
+			logError(testName, function, args, startTime, "", "Number of bytes returned by PutObject does not match GetObject, expected "+string(bufSize)+" got "+string(st.Size), err)
+			return
+		}
+
+		if err := r.Close(); err != nil {
+			logError(testName, function, args, startTime, "", "Object Close failed", err)
+			return
+		}
+		if err := r.Close(); err == nil {
+			logError(testName, function, args, startTime, "", "Object already closed, should respond with error", err)
+			return
+		}
+
+		function = "GetObject( Range...)"
+		args["range"] = "true"
+		err = gopts.SetRange(100, 1000)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "SetRange failed", err)
+			return
+		}
+		r, err = c.GetObject(context.Background(), bucketName, objectName, gopts)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "GetObject failed", err)
+			return
+		}
+
+		b, err = io.ReadAll(r)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "Read failed", err)
+			return
+		}
+		st, err = r.Stat()
+		if err != nil {
+			logError(testName, function, args, startTime, "", "Stat failed", err)
+			return
+		}
+
+		// Range requests should return empty checksums...
+		cmpChecksum(st.ChecksumSHA256, "")
+		cmpChecksum(st.ChecksumSHA1, "")
+		cmpChecksum(st.ChecksumCRC32, "")
+		cmpChecksum(st.ChecksumCRC32C, "")
+
+		function = "GetObjectAttributes(...)"
+		s, err := c.GetObjectAttributes(context.Background(), bucketName, objectName, minio.ObjectAttributesOptions{})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "GetObjectAttributes failed", err)
+			return
+		}
+		cmpChecksum(s.Checksum.ChecksumSHA256, meta["x-amz-checksum-sha256"])
+		cmpChecksum(s.Checksum.ChecksumSHA1, meta["x-amz-checksum-sha1"])
+		cmpChecksum(s.Checksum.ChecksumCRC32, meta["x-amz-checksum-crc32"])
+		cmpChecksum(s.Checksum.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
+
+		delete(args, "range")
+		delete(args, "metadata")
+	}
+
+	logSuccess(testName, function, args, startTime)
+}
+
+// Test PutObject with custom checksums.
+func testPutMultipartObjectWithChecksums(trailing bool) {
+	// initialize logging params
+	startTime := time.Now()
+	testName := getFuncName()
+	function := "PutObject(bucketName, objectName, reader,size, opts)"
+	args := map[string]interface{}{
+		"bucketName": "",
+		"objectName": "",
+		"opts":       fmt.Sprintf("minio.PutObjectOptions{UserMetadata: metadata, Progress: progress Checksum: %v}", trailing),
+	}
+
+	if !isFullMode() {
+		logIgnored(testName, function, args, startTime, "Skipping functional tests for short/quick runs")
+		return
+	}
+
+	// Seed random based on current time.
+	rand.Seed(time.Now().Unix())
+
+	// Instantiate new minio client object.
+	c, err := minio.New(os.Getenv(serverEndpoint),
+		&minio.Options{
+			Creds:           credentials.NewStaticV4(os.Getenv(accessKey), os.Getenv(secretKey), ""),
+			Transport:       createHTTPTransport(),
+			Secure:          mustParseBool(os.Getenv(enableHTTPS)),
+			TrailingHeaders: trailing,
 		})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
@@ -2419,17 +2601,12 @@ func testPutMultipartObjectWithChecksums() {
 	}
 	defer cleanupBucket(bucketName, c)
 	tests := []struct {
-		header string
-		hasher hash.Hash
-
-		// Checksum values
-		ChecksumCRC32  string
-		ChecksumCRC32C string
-		ChecksumSHA1   string
-		ChecksumSHA256 string
+		cs minio.ChecksumType
 	}{
-		// Currently there is no way to override the checksum type.
-		{header: "x-amz-checksum-crc32c", hasher: crc32.New(crc32.MakeTable(crc32.Castagnoli)), ChecksumCRC32C: "OpEx0Q==-13"},
+		{cs: minio.ChecksumCRC32C},
+		{cs: minio.ChecksumCRC32},
+		{cs: minio.ChecksumSHA1},
+		{cs: minio.ChecksumSHA256},
 	}
 
 	for _, test := range tests {
@@ -2438,11 +2615,12 @@ func testPutMultipartObjectWithChecksums() {
 		// Save the data
 		objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 		args["objectName"] = objectName
+		args["checksum"] = test.cs.String()
 
 		cmpChecksum := func(got, want string) {
 			if want != got {
-				// logError(testName, function, args, startTime, "", "checksum mismatch", fmt.Errorf("want %s, got %s", want, got))
-				fmt.Printf("want %s, got %s\n", want, got)
+				logError(testName, function, args, startTime, "", "checksum mismatch", fmt.Errorf("want %s, got %s", want, got))
+				//fmt.Printf("want %s, got %s\n", want, got)
 				return
 			}
 		}
@@ -2455,26 +2633,57 @@ func testPutMultipartObjectWithChecksums() {
 			return
 		}
 		reader.Close()
-		h := test.hasher
+		h := test.cs.Hasher()
 		h.Reset()
-		test.ChecksumCRC32C = hashMultiPart(b, partSize, test.hasher)
+		want := hashMultiPart(b, partSize, test.cs.Hasher())
 
+		var cs minio.ChecksumType
+		rd := io.Reader(io.NopCloser(bytes.NewReader(b)))
+		if trailing {
+			cs = test.cs
+			rd = bytes.NewReader(b)
+		}
 		// Set correct CRC.
-
-		resp, err := c.PutObject(context.Background(), bucketName, objectName, io.NopCloser(bytes.NewReader(b)), int64(bufSize), minio.PutObjectOptions{
+		resp, err := c.PutObject(context.Background(), bucketName, objectName, rd, int64(bufSize), minio.PutObjectOptions{
 			DisableContentSha256: true,
 			DisableMultipart:     false,
 			UserMetadata:         nil,
 			PartSize:             partSize,
+			AutoChecksum:         test.cs,
+			Checksum:             cs,
 		})
 		if err != nil {
 			logError(testName, function, args, startTime, "", "PutObject failed", err)
 			return
 		}
-		cmpChecksum(resp.ChecksumSHA256, test.ChecksumSHA256)
-		cmpChecksum(resp.ChecksumSHA1, test.ChecksumSHA1)
-		cmpChecksum(resp.ChecksumCRC32, test.ChecksumCRC32)
-		cmpChecksum(resp.ChecksumCRC32C, test.ChecksumCRC32C)
+
+		switch test.cs {
+		case minio.ChecksumCRC32C:
+			cmpChecksum(resp.ChecksumCRC32C, want)
+		case minio.ChecksumCRC32:
+			cmpChecksum(resp.ChecksumCRC32, want)
+		case minio.ChecksumSHA1:
+			cmpChecksum(resp.ChecksumSHA1, want)
+		case minio.ChecksumSHA256:
+			cmpChecksum(resp.ChecksumSHA256, want)
+		}
+
+		s, err := c.GetObjectAttributes(context.Background(), bucketName, objectName, minio.ObjectAttributesOptions{})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "GetObjectAttributes failed", err)
+			return
+		}
+		want = want[:strings.IndexByte(want, '-')]
+		switch test.cs {
+		case minio.ChecksumCRC32C:
+			cmpChecksum(s.Checksum.ChecksumCRC32C, want)
+		case minio.ChecksumCRC32:
+			cmpChecksum(s.Checksum.ChecksumCRC32, want)
+		case minio.ChecksumSHA1:
+			cmpChecksum(s.Checksum.ChecksumSHA1, want)
+		case minio.ChecksumSHA256:
+			cmpChecksum(s.Checksum.ChecksumSHA256, want)
+		}
 
 		// Read the data back
 		gopts := minio.GetObjectOptions{Checksum: true}
@@ -2496,18 +2705,17 @@ func testPutMultipartObjectWithChecksums() {
 		// Test part 2 checksum...
 		h.Reset()
 		h.Write(b[partSize : 2*partSize])
-		got := base64.StdEncoding.EncodeToString(h.Sum(nil))
-		if test.ChecksumSHA256 != "" {
-			cmpChecksum(st.ChecksumSHA256, got)
-		}
-		if test.ChecksumSHA1 != "" {
-			cmpChecksum(st.ChecksumSHA1, got)
-		}
-		if test.ChecksumCRC32 != "" {
-			cmpChecksum(st.ChecksumCRC32, got)
-		}
-		if test.ChecksumCRC32C != "" {
-			cmpChecksum(st.ChecksumCRC32C, got)
+		want = base64.StdEncoding.EncodeToString(h.Sum(nil))
+
+		switch test.cs {
+		case minio.ChecksumCRC32C:
+			cmpChecksum(st.ChecksumCRC32C, want)
+		case minio.ChecksumCRC32:
+			cmpChecksum(st.ChecksumCRC32, want)
+		case minio.ChecksumSHA1:
+			cmpChecksum(st.ChecksumSHA1, want)
+		case minio.ChecksumSHA256:
+			cmpChecksum(st.ChecksumSHA256, want)
 		}
 
 		delete(args, "metadata")
@@ -2972,6 +3180,7 @@ func testGetObjectAttributes() {
 		testFiles[i].UploadInfo, err = c.PutObject(context.Background(), v.Bucket, v.Object, reader, int64(bufSize), minio.PutObjectOptions{
 			ContentType:    v.ContentType,
 			SendContentMd5: v.SendContentMd5,
+			Checksum:       minio.ChecksumCRC32C,
 		})
 		if err != nil {
 			logError(testName, function, args, startTime, "", "PutObject failed", err)
@@ -3053,7 +3262,7 @@ func testGetObjectAttributes() {
 		test: objectAttributesTestOptions{
 			TestFileName:    "file1",
 			StorageClass:    "STANDARD",
-			HasFullChecksum: false,
+			HasFullChecksum: true,
 		},
 	}
 
@@ -3142,9 +3351,10 @@ func testGetObjectAttributesSSECEncryption() {
 
 	info, err := c.PutObject(context.Background(), bucketName, objectName, reader, int64(bufSize), minio.PutObjectOptions{
 		ContentType:          "content/custom",
-		SendContentMd5:       true,
+		SendContentMd5:       false,
 		ServerSideEncryption: sse,
 		PartSize:             uint64(bufSize) / 2,
+		Checksum:             minio.ChecksumCRC32C,
 	})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "PutObject failed", err)
@@ -3164,9 +3374,9 @@ func testGetObjectAttributesSSECEncryption() {
 		ETag:             info.ETag,
 		NumberOfParts:    2,
 		ObjectSize:       int(info.Size),
-		HasFullChecksum:  false,
+		HasFullChecksum:  true,
 		HasParts:         true,
-		HasPartChecksums: false,
+		HasPartChecksums: true,
 	})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Validating GetObjectsAttributes response failed", err)
@@ -3355,16 +3565,10 @@ func validateObjectAttributeRequest(OA *minio.ObjectAttributes, opts *minio.Obje
 		}
 	}
 
-	hasFullObjectChecksum := true
-	if OA.Checksum.ChecksumCRC32 == "" {
-		if OA.Checksum.ChecksumCRC32C == "" {
-			if OA.Checksum.ChecksumSHA1 == "" {
-				if OA.Checksum.ChecksumSHA256 == "" {
-					hasFullObjectChecksum = false
-				}
-			}
-		}
-	}
+	hasFullObjectChecksum := (OA.Checksum.ChecksumCRC32 != "" ||
+		OA.Checksum.ChecksumCRC32C != "" ||
+		OA.Checksum.ChecksumSHA1 != "" ||
+		OA.Checksum.ChecksumSHA256 != "")
 
 	if test.HasFullChecksum {
 		if !hasFullObjectChecksum {
@@ -5584,18 +5788,12 @@ func testPresignedPostPolicy() {
 	}
 	writer.Close()
 
-	transport, err := minio.DefaultTransport(mustParseBool(os.Getenv(enableHTTPS)))
-	if err != nil {
-		logError(testName, function, args, startTime, "", "DefaultTransport failed", err)
-		return
-	}
-
 	httpClient := &http.Client{
 		// Setting a sensible time out of 30secs to wait for response
 		// headers. Request is pro-actively canceled after 30secs
 		// with no response.
 		Timeout:   30 * time.Second,
-		Transport: transport,
+		Transport: createHTTPTransport(),
 	}
 	args["url"] = presignedPostPolicyURL.String()
 
@@ -7509,7 +7707,7 @@ func testFunctional() {
 		return
 	}
 
-	transport, err := minio.DefaultTransport(mustParseBool(os.Getenv(enableHTTPS)))
+	transport := createHTTPTransport()
 	if err != nil {
 		logError(testName, function, args, startTime, "", "DefaultTransport failed", err)
 		return
@@ -12440,18 +12638,12 @@ func testFunctionalV2() {
 		return
 	}
 
-	transport, err := minio.DefaultTransport(mustParseBool(os.Getenv(enableHTTPS)))
-	if err != nil {
-		logError(testName, function, args, startTime, "", "DefaultTransport failed", err)
-		return
-	}
-
 	httpClient := &http.Client{
 		// Setting a sensible time out of 30secs to wait for response
 		// headers. Request is pro-actively canceled after 30secs
 		// with no response.
 		Timeout:   30 * time.Second,
-		Transport: transport,
+		Transport: createHTTPTransport(),
 	}
 
 	req, err := http.NewRequest(http.MethodHead, presignedHeadURL.String(), nil)
@@ -13500,7 +13692,7 @@ func testCors() {
 			Secure:    mustParseBool(os.Getenv(enableHTTPS)),
 		})
 	if err != nil {
-		logFailure(testName, function, args, startTime, "", "MinIO client object creation failed", err)
+		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
 		return
 	}
 
@@ -13516,7 +13708,7 @@ func testCors() {
 		bucketName = randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
 		err = c.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
 		if err != nil {
-			logFailure(testName, function, args, startTime, "", "MakeBucket failed", err)
+			logError(testName, function, args, startTime, "", "MakeBucket failed", err)
 			return
 		}
 	}
@@ -13526,7 +13718,7 @@ func testCors() {
 	publicPolicy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:*"],"Resource":["arn:aws:s3:::` + bucketName + `", "arn:aws:s3:::` + bucketName + `/*"]}]}`
 	err = c.SetBucketPolicy(ctx, bucketName, publicPolicy)
 	if err != nil {
-		logFailure(testName, function, args, startTime, "", "SetBucketPolicy failed", err)
+		logError(testName, function, args, startTime, "", "SetBucketPolicy failed", err)
 		return
 	}
 
@@ -13540,20 +13732,15 @@ func testCors() {
 
 	_, err = c.PutObject(ctx, bucketName, objectName, reader, int64(bufSize), minio.PutObjectOptions{ContentType: "binary/octet-stream"})
 	if err != nil {
-		logFailure(testName, function, args, startTime, "", "PutObject call failed", err)
+		logError(testName, function, args, startTime, "", "PutObject call failed", err)
 		return
 	}
 	bucketURL := c.EndpointURL().String() + "/" + bucketName + "/"
 	objectURL := bucketURL + objectName
 
-	transport, err := minio.DefaultTransport(mustParseBool(os.Getenv(enableHTTPS)))
-	if err != nil {
-		logFailure(testName, function, args, startTime, "", "DefaultTransport failed", err)
-		return
-	}
 	httpClient := &http.Client{
 		Timeout:   30 * time.Second,
-		Transport: transport,
+		Transport: createHTTPTransport(),
 	}
 
 	errStrAccessForbidden := `<Error><Code>AccessForbidden</Code><Message>CORSResponse: This CORS request is not allowed. This is usually because the evalution of Origin, request method / Access-Control-Request-Method or Access-Control-Request-Headers are not whitelisted`
@@ -14156,7 +14343,7 @@ func testCors() {
 			}
 			err = c.SetBucketCors(ctx, bucketName, corsConfig)
 			if err != nil {
-				logFailure(testName, function, args, startTime, "", "SetBucketCors failed to apply", err)
+				logError(testName, function, args, startTime, "", "SetBucketCors failed to apply", err)
 				return
 			}
 		}
@@ -14165,7 +14352,7 @@ func testCors() {
 		if test.method != "" && test.url != "" {
 			req, err := http.NewRequestWithContext(ctx, test.method, test.url, nil)
 			if err != nil {
-				logFailure(testName, function, args, startTime, "", "HTTP request creation failed", err)
+				logError(testName, function, args, startTime, "", "HTTP request creation failed", err)
 				return
 			}
 			req.Header.Set("User-Agent", "MinIO-go-FunctionalTest/"+appVersion)
@@ -14175,7 +14362,7 @@ func testCors() {
 			}
 			resp, err := httpClient.Do(req)
 			if err != nil {
-				logFailure(testName, function, args, startTime, "", "HTTP request failed", err)
+				logError(testName, function, args, startTime, "", "HTTP request failed", err)
 				return
 			}
 			defer resp.Body.Close()
@@ -14183,7 +14370,7 @@ func testCors() {
 			// Check returned status code
 			if resp.StatusCode != test.wantStatus {
 				errStr := fmt.Sprintf(" incorrect status code in response, want: %d, got: %d", test.wantStatus, resp.StatusCode)
-				logFailure(testName, function, args, startTime, "", errStr, nil)
+				logError(testName, function, args, startTime, "", errStr, nil)
 				return
 			}
 
@@ -14191,12 +14378,12 @@ func testCors() {
 			if test.wantBodyContains != "" {
 				body, err := io.ReadAll(resp.Body)
 				if err != nil {
-					logFailure(testName, function, args, startTime, "", "Failed to read response body", err)
+					logError(testName, function, args, startTime, "", "Failed to read response body", err)
 					return
 				}
 				if !strings.Contains(string(body), test.wantBodyContains) {
 					errStr := fmt.Sprintf(" incorrect body in response, want: %s, in got: %s", test.wantBodyContains, string(body))
-					logFailure(testName, function, args, startTime, "", errStr, nil)
+					logError(testName, function, args, startTime, "", errStr, nil)
 					return
 				}
 			}
@@ -14213,7 +14400,7 @@ func testCors() {
 				gotVal = strings.ReplaceAll(gotVal, " ", "")
 				if gotVal != v {
 					errStr := fmt.Sprintf(" incorrect header in response, want: %s: '%s', got: '%s'", k, v, gotVal)
-					logFailure(testName, function, args, startTime, "", errStr, nil)
+					logError(testName, function, args, startTime, "", errStr, nil)
 					return
 				}
 			}
@@ -14241,7 +14428,7 @@ func testCorsSetGetDelete() {
 			Secure:    mustParseBool(os.Getenv(enableHTTPS)),
 		})
 	if err != nil {
-		logFailure(testName, function, args, startTime, "", "MinIO client object creation failed", err)
+		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
 		return
 	}
 
@@ -14258,7 +14445,7 @@ func testCorsSetGetDelete() {
 	// Make a new bucket.
 	err = c.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
 	if err != nil {
-		logFailure(testName, function, args, startTime, "", "MakeBucket failed", err)
+		logError(testName, function, args, startTime, "", "MakeBucket failed", err)
 		return
 	}
 	defer cleanupBucket(bucketName, c)
@@ -14284,37 +14471,37 @@ func testCorsSetGetDelete() {
 	corsConfig := cors.NewConfig(corsRules)
 	err = c.SetBucketCors(ctx, bucketName, corsConfig)
 	if err != nil {
-		logFailure(testName, function, args, startTime, "", "SetBucketCors failed to apply", err)
+		logError(testName, function, args, startTime, "", "SetBucketCors failed to apply", err)
 		return
 	}
 
 	// Get the rules and check they match what we set
 	gotCorsConfig, err := c.GetBucketCors(ctx, bucketName)
 	if err != nil {
-		logFailure(testName, function, args, startTime, "", "GetBucketCors failed", err)
+		logError(testName, function, args, startTime, "", "GetBucketCors failed", err)
 		return
 	}
 	if !reflect.DeepEqual(corsConfig, gotCorsConfig) {
 		msg := fmt.Sprintf("GetBucketCors returned unexpected rules, expected: %+v, got: %+v", corsConfig, gotCorsConfig)
-		logFailure(testName, function, args, startTime, "", msg, nil)
+		logError(testName, function, args, startTime, "", msg, nil)
 		return
 	}
 
 	// Delete the rules
 	err = c.SetBucketCors(ctx, bucketName, nil)
 	if err != nil {
-		logFailure(testName, function, args, startTime, "", "SetBucketCors failed to delete", err)
+		logError(testName, function, args, startTime, "", "SetBucketCors failed to delete", err)
 		return
 	}
 
 	// Get the rules and check they are now empty
 	gotCorsConfig, err = c.GetBucketCors(ctx, bucketName)
 	if err != nil {
-		logFailure(testName, function, args, startTime, "", "GetBucketCors failed", err)
+		logError(testName, function, args, startTime, "", "GetBucketCors failed", err)
 		return
 	}
 	if gotCorsConfig != nil {
-		logFailure(testName, function, args, startTime, "", "GetBucketCors returned unexpected rules", nil)
+		logError(testName, function, args, startTime, "", "GetBucketCors returned unexpected rules", nil)
 		return
 	}
 
@@ -14747,7 +14934,9 @@ func main() {
 		testCompose10KSourcesV2()
 		testUserMetadataCopyingV2()
 		testPutObjectWithChecksums()
-		testPutMultipartObjectWithChecksums()
+		testPutObjectWithTrailingChecksums()
+		testPutMultipartObjectWithChecksums(false)
+		testPutMultipartObjectWithChecksums(true)
 		testPutObject0ByteV2()
 		testPutObjectNoLengthV2()
 		testPutObjectsUnknownV2()

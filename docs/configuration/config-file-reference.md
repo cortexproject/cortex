@@ -1165,7 +1165,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-buffer-size
@@ -1270,7 +1270,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-buffer-size
@@ -1403,7 +1403,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-buffer-size
@@ -1503,7 +1503,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-buffer-size
@@ -1641,7 +1641,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-buffer-size
@@ -1741,7 +1741,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-buffer-size
@@ -3073,6 +3073,13 @@ instance_limits:
 # Experimental: Enable string interning for metrics labels.
 # CLI flag: -ingester.labels-string-interning-enabled
 [labels_string_interning_enabled: <boolean> | default = false]
+
+# Disable trimming of matching series chunks based on query Start and End time.
+# When disabled, the result may contain samples outside the queried time range
+# but select performances may be improved. Note that certain query results might
+# change by changing this option.
+# CLI flag: -ingester.disable-chunk-trimming
+[disable_chunk_trimming: <boolean> | default = false]
 ```
 
 ### `ingester_client_config`
@@ -4062,8 +4069,8 @@ The `query_range_config` configures the query splitting and caching in the Corte
 
 ```yaml
 # Split queries by an interval and execute in parallel, 0 disables it. You
-# should use an a multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks. This also
+# should use a multiple of 24 hours (same as the storage bucketing scheme), to
+# avoid queriers downloading and processing the same chunks. This also
 # determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]

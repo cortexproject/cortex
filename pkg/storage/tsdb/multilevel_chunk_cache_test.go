@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/cache"
 )
 
 func Test_MultiLevelChunkCacheStore(t *testing.T) {
@@ -72,6 +74,43 @@ func Test_MultiLevelChunkCacheStore(t *testing.T) {
 	}
 }
 
+func Test_MultiLevelChunkCacheFetchRace(t *testing.T) {
+	cfg := MultiLevelChunkCacheConfig{
+		MaxAsyncConcurrency: 10,
+		MaxAsyncBufferSize:  100000,
+		MaxBackfillItems:    10000,
+		BackFillTTL:         time.Hour * 24,
+	}
+	reg := prometheus.NewRegistry()
+
+	m1 := newMockChunkCache("m1", map[string][]byte{
+		"key1": []byte("value1"),
+		"key2": []byte("value2"),
+	})
+
+	inMemory, err := cache.NewInMemoryCacheWithConfig("test", log.NewNopLogger(), reg, cache.InMemoryCacheConfig{MaxSize: 10 * 1024, MaxItemSize: 1024})
+	require.NoError(t, err)
+
+	inMemory.Store(map[string][]byte{
+		"key2": []byte("value2"),
+		"key3": []byte("value3"),
+	}, time.Minute)
+
+	c := newMultiLevelChunkCache("chunk-cache", cfg, reg, inMemory, m1)
+
+	hits := c.Fetch(context.Background(), []string{"key1", "key2", "key3", "key4"})
+
+	require.Equal(t, 3, len(hits))
+
+	// We should be able to change the returned values without any race problem
+	delete(hits, "key1")
+
+	mlc := c.(*multiLevelChunkCache)
+	//Wait until async operation finishes.
+	mlc.backfillProcessor.Stop()
+
+}
+
 func Test_MultiLevelChunkCacheFetch(t *testing.T) {
 	cfg := MultiLevelChunkCacheConfig{
 		MaxAsyncConcurrency: 10,
@@ -81,12 +120,14 @@ func Test_MultiLevelChunkCacheFetch(t *testing.T) {
 	}
 
 	testCases := map[string]struct {
-		m1ExistingData      map[string][]byte
-		m2ExistingData      map[string][]byte
-		expectedM1Data      map[string][]byte
-		expectedM2Data      map[string][]byte
-		expectedFetchedData map[string][]byte
-		fetchKeys           []string
+		m1ExistingData        map[string][]byte
+		m2ExistingData        map[string][]byte
+		expectedM1Data        map[string][]byte
+		expectedM2Data        map[string][]byte
+		expectedFetchedData   map[string][]byte
+		expectedM1FetchedKeys []string
+		expectedM2FetchedKeys []string
+		fetchKeys             []string
 	}{
 		"fetched data should be union of m1, m2 and 'key2' and `key3' should be backfilled to m1": {
 			m1ExistingData: map[string][]byte{
@@ -96,6 +137,8 @@ func Test_MultiLevelChunkCacheFetch(t *testing.T) {
 				"key2": []byte("value2"),
 				"key3": []byte("value3"),
 			},
+			expectedM1FetchedKeys: []string{"key1", "key2", "key3"},
+			expectedM2FetchedKeys: []string{"key2", "key3"},
 			expectedM1Data: map[string][]byte{
 				"key1": []byte("value1"),
 				"key2": []byte("value2"),
@@ -119,6 +162,8 @@ func Test_MultiLevelChunkCacheFetch(t *testing.T) {
 			m2ExistingData: map[string][]byte{
 				"key2": []byte("value2"),
 			},
+			expectedM1FetchedKeys: []string{"key1", "key2", "key3"},
+			expectedM2FetchedKeys: []string{"key2", "key3"},
 			expectedM1Data: map[string][]byte{
 				"key1": []byte("value1"),
 				"key2": []byte("value2"),
@@ -157,6 +202,8 @@ type mockChunkCache struct {
 	mu   sync.Mutex
 	name string
 	data map[string][]byte
+
+	fetchedKeys []string
 }
 
 func newMockChunkCache(name string, data map[string][]byte) *mockChunkCache {
@@ -180,6 +227,7 @@ func (m *mockChunkCache) Fetch(_ context.Context, keys []string) map[string][]by
 	h := map[string][]byte{}
 
 	for _, k := range keys {
+		m.fetchedKeys = append(m.fetchedKeys, k)
 		if _, ok := m.data[k]; ok {
 			h[k] = m.data[k]
 		}

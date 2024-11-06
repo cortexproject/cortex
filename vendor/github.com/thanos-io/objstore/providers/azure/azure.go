@@ -146,7 +146,7 @@ type Bucket struct {
 }
 
 // NewBucket returns a new Bucket using the provided Azure config.
-func NewBucket(logger log.Logger, azureConfig []byte, component string, rt http.RoundTripper) (*Bucket, error) {
+func NewBucket(logger log.Logger, azureConfig []byte, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	level.Debug(logger).Log("msg", "creating new Azure bucket connection", "component", component)
 	conf, err := parseConfig(azureConfig)
 	if err != nil {
@@ -155,19 +155,16 @@ func NewBucket(logger log.Logger, azureConfig []byte, component string, rt http.
 	if conf.MSIResource != "" {
 		level.Warn(logger).Log("msg", "The field msi_resource has been deprecated and should no longer be set")
 	}
-	return NewBucketWithConfig(logger, conf, component, rt)
+	return NewBucketWithConfig(logger, conf, component, wrapRoundtripper)
 }
 
 // NewBucketWithConfig returns a new Bucket using the provided Azure config struct.
-func NewBucketWithConfig(logger log.Logger, conf Config, component string, rt http.RoundTripper) (*Bucket, error) {
-	if rt != nil {
-		conf.HTTPConfig.Transport = rt
-	}
+func NewBucketWithConfig(logger log.Logger, conf Config, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	if err := conf.validate(); err != nil {
 		return nil, err
 	}
 
-	containerClient, err := getContainerClient(conf)
+	containerClient, err := getContainerClient(conf, wrapRoundtripper)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +270,13 @@ func (b *Bucket) getBlobReader(ctx context.Context, name string, httpRange blob.
 		return nil, errors.Wrapf(err, "cannot download blob, address: %s", blobClient.URL())
 	}
 	retryOpts := azblob.RetryReaderOptions{MaxRetries: int32(b.readerMaxRetries)}
-	return resp.NewRetryReader(ctx, &retryOpts), nil
+
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: resp.NewRetryReader(ctx, &retryOpts),
+		Size: func() (int64, error) {
+			return *resp.ContentLength, nil
+		},
+	}, nil
 }
 
 // Get returns a reader for the given object name.

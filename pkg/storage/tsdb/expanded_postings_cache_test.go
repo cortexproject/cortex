@@ -4,12 +4,45 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 )
+
+func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
+	cfg := PostingsCacheConfig{
+		Enabled:  true,
+		Ttl:      time.Hour,
+		MaxBytes: 10 << 20,
+	}
+	m := NewPostingCacheMetrics(prometheus.DefaultRegisterer)
+	cache := newFifoCache[int](cfg, "test", m, time.Now)
+	calls := atomic.Int64{}
+	concurrency := 100
+	wg := sync.WaitGroup{}
+	wg.Add(concurrency)
+
+	fetchFunc := func() (int, int64, error) {
+		calls.Inc()
+		time.Sleep(100 * time.Millisecond)
+		return 0, 0, nil
+	}
+
+	for i := 0; i < 100; i++ {
+		go func() {
+			defer wg.Done()
+			cache.getPromiseForKey("key1", fetchFunc)
+		}()
+	}
+
+	wg.Wait()
+	require.Equal(t, int64(1), calls.Load())
+
+}
 
 func TestFifoCacheDisabled(t *testing.T) {
 	cfg := PostingsCacheConfig{}

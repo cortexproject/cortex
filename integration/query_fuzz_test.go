@@ -1042,7 +1042,7 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(minio))
 
 	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags1, previousCortexReleaseImage)
-	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags2, "")
+	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags2, "yeya24/cortex:disable-chunk-trimming-0663e40bc-arm64")
 	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2))
 
 	// Wait until Cortex replicas have updated the ring state.
@@ -1091,11 +1091,11 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
 	require.NoError(t, err)
 
-	c1, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex1.HTTPEndpoint(), "", "", "user-1")
+	c1, err := e2ecortex.NewClient("", cortex1.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
-	c2, err := e2ecortex.NewClient(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1")
+	c2, err := e2ecortex.NewClient("", cortex2.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
-	c2ByPassCache, err := e2ecortex.NewClientWithByPassResultsCache(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1", true)
+	c2ByPassCache, err := e2ecortex.NewClientWithByPassResultsCache("", cortex2.HTTPEndpoint(), "", "", "user-1", true)
 	require.NoError(t, err)
 
 	waitUntilBothServersReady(t, context.Background(), c1, c2, `{job="test"}`, start, now)
@@ -1108,9 +1108,9 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
 	type testCase struct {
-		query      string
-		res1, res2 model.Value
-		err1, err2 error
+		query            string
+		res1, res2, res3 model.Value
+		err1, err2, err3 error
 	}
 
 	run := 100
@@ -1129,17 +1129,16 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 			}
 		}
 		// We don't care the query results here. Just to fill the cache with partial result.
-		_, _ = c1.QueryRange(query, start, start.Add(time.Minute*30), step)
+		_, _ = c1.QueryRange(query, start.Add(-2*step), start.Add(time.Minute*30), step)
 		cases = append(cases, &testCase{
 			query: query,
 		})
 	}
 
 	for i := 0; i < run; i++ {
-		c := cases[i]
 		// If not bypassing cache, we expect this query to fetch part of the query results as well as reusing some existing cached result.
-		c.res1, c.err1 = c2.QueryRange(c.query, start, end, step)
-		c.res2, c.err2 = c2ByPassCache.QueryRange(c.query, start, end, step)
+		cases[i].res1, cases[i].err1 = c2.QueryRange(cases[i].query, start, end, step)
+		cases[i].res2, cases[i].err2 = c2ByPassCache.QueryRange(cases[i].query, start, end, step)
 	}
 
 	failures := 0

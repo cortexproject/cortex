@@ -360,13 +360,15 @@ func (c *fifoCache[V]) contains(k string) bool {
 }
 
 func (c *fifoCache[V]) shouldEvictHead() (string, bool) {
-	if c.cachedBytes > c.cfg.MaxBytes {
-		return "full", true
-	}
 	h := c.cached.Front()
 	if h == nil {
 		return "", false
 	}
+
+	if c.cachedBytes > c.cfg.MaxBytes {
+		return "full", true
+	}
+
 	key := h.Value.(string)
 
 	if l, ok := c.cachedValues.Load(key); ok {

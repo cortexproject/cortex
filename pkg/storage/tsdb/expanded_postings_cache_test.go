@@ -3,13 +3,13 @@ package tsdb
 import (
 	"bytes"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 )

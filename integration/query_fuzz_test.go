@@ -997,23 +997,24 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 	defer s.Close()
 
 	// Start dependencies.
-	consul := e2edb.NewConsulWithName("consul")
+	consul1 := e2edb.NewConsulWithName("consul-1")
+	consul2 := e2edb.NewConsulWithName("consul-2")
 	memcached := e2ecache.NewMemcached()
-	require.NoError(t, s.StartAndWaitReady(consul, memcached))
+	require.NoError(t, s.StartAndWaitReady(consul1, consul2, memcached))
 
+	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
 	flags := mergeFlags(
-		AlertmanagerLocalFlags(),
+		baseFlags,
 		map[string]string{
 			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
 			"-blocks-storage.tsdb.block-ranges-period":         "2h",
 			"-blocks-storage.tsdb.ship-interval":               "1h",
-			"-blocks-storage.bucket-store.sync-interval":       "15m",
-			"-blocks-storage.tsdb.retention-period":            "2h",
+			"-blocks-storage.bucket-store.sync-interval":       "1s",
+			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
 			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
-			"-ring.store":      "consul",
-			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			"-ring.store": "consul",
 			// Distributor.
 			"-distributor.replication-factor": "1",
 			// Store-gateway.
@@ -1028,14 +1029,20 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 			"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		},
 	)
+	flags1 := mergeFlags(flags, map[string]string{
+		"-consul.hostname": consul1.NetworkHTTPEndpoint(),
+	})
+	flags2 := mergeFlags(flags, map[string]string{
+		"-consul.hostname": consul2.NetworkHTTPEndpoint(),
+	})
 	// make alert manager config dir
 	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
 	require.NoError(t, s.StartAndWaitReady(minio))
 
-	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags, previousCortexReleaseImage)
-	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags, "")
+	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags1, previousCortexReleaseImage)
+	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags2, "")
 	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2))
 
 	// Wait until Cortex replicas have updated the ring state.

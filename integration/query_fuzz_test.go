@@ -1108,9 +1108,9 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
 	type testCase struct {
-		query            string
-		res1, res2, res3 model.Value
-		err1, err2, err3 error
+		query      string
+		res1, res2 model.Value
+		err1, err2 error
 	}
 
 	run := 100

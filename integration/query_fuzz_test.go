@@ -1023,8 +1023,9 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 			"-frontend.query-vertical-shard-size": "2",
 			"-frontend.max-cache-freshness":       "1m",
 			// Enable results cache.
-			"-querier.cache-results":        "true",
-			"-frontend.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+			"-querier.cache-results":             "true",
+			"-querier.split-queries-by-interval": "24h",
+			"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		},
 	)
 	// make alert manager config dir

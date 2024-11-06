@@ -778,7 +778,7 @@ func TestRulesPaginationAPIWithShardingAndNextToken(t *testing.T) {
 		}
 	}
 
-	sort.Sort(ruler.PaginedGroupStates(groupStateDescs))
+	sort.Sort(ruler.PaginatedGroupStates(groupStateDescs))
 
 	// Wait until rulers have loaded all rules.
 	require.NoError(t, rulers.WaitSumMetricsWithOptions(e2e.Equals(numRulesGroups), []string{"cortex_prometheus_rule_group_rules"}, e2e.WaitMissingMetrics))

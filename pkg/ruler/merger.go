@@ -46,7 +46,7 @@ func mergeGroupStateDesc(ruleResponses []*RulesResponse, maxRuleGroups int32, de
 
 	if maxRuleGroups > 0 {
 		//Need to sort here before we truncate
-		sort.Sort(PaginedGroupStates(groups))
+		sort.Sort(PaginatedGroupStates(groups))
 		result, nextToken := generatePage(groups, int(maxRuleGroups))
 		return &RulesResponse{
 			Groups:    result,

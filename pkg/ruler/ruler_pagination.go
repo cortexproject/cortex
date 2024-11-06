@@ -5,13 +5,13 @@ import (
 	"encoding/hex"
 )
 
-type PaginedGroupStates []*GroupStateDesc
+type PaginatedGroupStates []*GroupStateDesc
 
-func (gi PaginedGroupStates) Swap(i, j int) { gi[i], gi[j] = gi[j], gi[i] }
-func (gi PaginedGroupStates) Less(i, j int) bool {
+func (gi PaginatedGroupStates) Swap(i, j int) { gi[i], gi[j] = gi[j], gi[i] }
+func (gi PaginatedGroupStates) Less(i, j int) bool {
 	return GetRuleGroupNextToken(gi[i].Group.Namespace, gi[i].Group.Name) < GetRuleGroupNextToken(gi[j].Group.Namespace, gi[j].Group.Name)
 }
-func (gi PaginedGroupStates) Len() int { return len(gi) }
+func (gi PaginatedGroupStates) Len() int { return len(gi) }
 
 func GetRuleGroupNextToken(namespace string, group string) string {
 	h := sha1.New()

@@ -1179,7 +1179,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		}, nil
 	}
 
-	sort.Sort(PaginedGroupStates(combinedRuleStateDescs))
+	sort.Sort(PaginatedGroupStates(combinedRuleStateDescs))
 
 	resultingGroupDescs := make([]*GroupStateDesc, 0, len(combinedRuleStateDescs))
 	for _, group := range combinedRuleStateDescs {

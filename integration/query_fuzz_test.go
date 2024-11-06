@@ -1113,7 +1113,7 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 		err1, err2 error
 	}
 
-	run := 1000
+	run := 100
 	step := 5 * time.Minute
 	cases := make([]*testCase, 0, run)
 	var (

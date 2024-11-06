@@ -197,10 +197,17 @@ func (c *BlocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 	return c.result(promise)
 }
 
-func (c *BlocksPostingsForMatchersCache) result(promise *cacheEntryPromise[[]storage.SeriesRef]) func(ctx context.Context) (index.Postings, error) {
+func (c *BlocksPostingsForMatchersCache) result(ce *cacheEntryPromise[[]storage.SeriesRef]) func(ctx context.Context) (index.Postings, error) {
 	return func(ctx context.Context) (index.Postings, error) {
-		ids, err := promise.result(ctx)
-		return index.NewListPostings(ids), err
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ce.done:
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return index.NewListPostings(ce.v), ce.err
+		}
 	}
 }
 
@@ -327,9 +334,12 @@ func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)
 		c.expire()
 	}
 
-	// If is cached but is expired, lets try to replace the cache value
-	if ok && loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) {
-		if c.cachedValues.CompareAndSwap(k, loaded, r) {
+	if ok {
+		// If the promise is already in the cache, lets wait it to fetch the data.
+		<-loaded.(*cacheEntryPromise[V]).done
+
+		// If is cached but is expired, lets try to replace the cache value.
+		if loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) && c.cachedValues.CompareAndSwap(k, loaded, r) {
 			r.v, r.sizeBytes, r.err = fetch()
 			r.sizeBytes += int64(len(k))
 			c.updateSize(loaded.(*cacheEntryPromise[V]).sizeBytes, r.sizeBytes)
@@ -402,19 +412,6 @@ type cacheEntryPromise[V any] struct {
 	done chan struct{}
 	v    V
 	err  error
-}
-
-func (ce *cacheEntryPromise[V]) result(ctx context.Context) (V, error) {
-	select {
-	case <-ctx.Done():
-		return ce.v, ctx.Err()
-	case <-ce.done:
-		if ctx.Err() != nil {
-			return ce.v, ctx.Err()
-		}
-
-		return ce.v, ce.err
-	}
 }
 
 func (ce *cacheEntryPromise[V]) isExpired(ttl time.Duration, now time.Time) bool {

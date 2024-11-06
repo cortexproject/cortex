@@ -1179,11 +1179,14 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		}, nil
 	}
 
-	sort.Sort(GroupStateDescs(combinedRuleStateDescs))
+	sort.Sort(PaginedGroupStates(combinedRuleStateDescs))
 
 	resultingGroupDescs := make([]*GroupStateDesc, 0, len(combinedRuleStateDescs))
 	for _, group := range combinedRuleStateDescs {
 		groupID := GetRuleGroupNextToken(group.Group.Namespace, group.Group.Name)
+
+		// Only want groups whose groupID is greater than the token. This comparison works because
+		// we sort by that groupID
 		if len(rulesRequest.NextToken) > 0 && rulesRequest.NextToken >= groupID {
 			continue
 		}
@@ -1191,7 +1194,8 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 			resultingGroupDescs = append(resultingGroupDescs, group)
 		}
 	}
-	resultingGroupDescs, nextToken := TruncateGroups(resultingGroupDescs, int(rulesRequest.MaxRuleGroups))
+
+	resultingGroupDescs, nextToken := generatePage(resultingGroupDescs, int(rulesRequest.MaxRuleGroups))
 	return RulesResponse{
 		Groups:    resultingGroupDescs,
 		NextToken: nextToken,

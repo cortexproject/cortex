@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -34,6 +35,7 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
@@ -673,6 +675,166 @@ func testRulesPaginationAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				actualGroups, token, err := c.GetPrometheusRules(filter)
 				require.NoError(t, err)
 				tc.resultCheckFn(t, actualGroups, token, i)
+				filter.NextToken = token
+			}
+		})
+	}
+}
+
+func TestRulesPaginationAPIWithShardingAndNextToken(t *testing.T) {
+	const numRulesGroups = 100
+
+	random := rand.New(rand.NewSource(time.Now().UnixNano()))
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Generate multiple rule groups, with 1 rule each.
+	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
+	expectedNames := make([]string, numRulesGroups)
+	alertCount := 0
+	evalInterval, _ := model.ParseDuration("1s")
+	for i := 0; i < numRulesGroups; i++ {
+		num := random.Intn(100)
+		var ruleNode yaml.Node
+		var exprNode yaml.Node
+
+		ruleNode.SetString(fmt.Sprintf("rule_%d", i))
+		exprNode.SetString(strconv.Itoa(i))
+		ruleName := fmt.Sprintf("test_%d", i)
+
+		expectedNames[i] = ruleName
+		if num%2 == 0 {
+			alertCount++
+			ruleGroups[i] = rulefmt.RuleGroup{
+				Name:     ruleName,
+				Interval: evalInterval,
+				Rules: []rulefmt.RuleNode{{
+					Alert: ruleNode,
+					Expr:  exprNode,
+				}},
+			}
+		} else {
+			ruleGroups[i] = rulefmt.RuleGroup{
+				Name:     ruleName,
+				Interval: evalInterval,
+				Rules: []rulefmt.RuleNode{{
+					Record: ruleNode,
+					Expr:   exprNode,
+				}},
+			}
+		}
+	}
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Configure the ruler.
+	overrides := map[string]string{
+		// Since we're not going to run any rule, we don't need the
+		// store-gateway to be configured to a valid address.
+		"-querier.store-gateway-addresses": "localhost:12345",
+		// Enable the bucket index so we can skip the initial bucket scan.
+		"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+		"-ruler.poll-interval":                              "5s",
+	}
+	overrides["-ruler.ring.replication-factor"] = "2"
+
+	rulerFlags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		RulerShardingFlags(consul.NetworkHTTPEndpoint()),
+		overrides,
+	)
+
+	// Start rulers.
+	ruler1 := e2ecortex.NewRuler("ruler-1", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	ruler2 := e2ecortex.NewRuler("ruler-2", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	ruler3 := e2ecortex.NewRuler("ruler-3", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	rulers := e2ecortex.NewCompositeCortexService(ruler1, ruler2, ruler3)
+	require.NoError(t, s.StartAndWaitReady(ruler1, ruler2, ruler3))
+
+	// Upload rule groups to one of the rulers.
+	c, err := e2ecortex.NewClient("", "", "", ruler1.HTTPEndpoint(), "user-1")
+	require.NoError(t, err)
+
+	namespaceNames := []string{"test1", "test2", "test3", "test4", "test5"}
+	namespaceNameCount := make([]int, len(namespaceNames))
+	nsRand := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	groupStateDescs := make([]*ruler.GroupStateDesc, len(ruleGroups))
+
+	for i, ruleGroup := range ruleGroups {
+		index := nsRand.Intn(len(namespaceNames))
+		namespaceNameCount[index] = namespaceNameCount[index] + 1
+		require.NoError(t, c.SetRuleGroup(ruleGroup, namespaceNames[index]))
+		groupStateDescs[i] = &ruler.GroupStateDesc{
+			Group: &rulespb.RuleGroupDesc{
+				Name:      ruleGroup.Name,
+				Namespace: namespaceNames[index],
+			},
+		}
+	}
+
+	sort.Sort(ruler.PaginedGroupStates(groupStateDescs))
+
+	// Wait until rulers have loaded all rules.
+	require.NoError(t, rulers.WaitSumMetricsWithOptions(e2e.Equals(numRulesGroups), []string{"cortex_prometheus_rule_group_rules"}, e2e.WaitMissingMetrics))
+
+	// Since rulers have loaded all rules, we expect that rules have been sharded
+	// between the two rulers.
+	require.NoError(t, ruler1.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
+	require.NoError(t, ruler2.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
+
+	testCases := map[string]struct {
+		filter        e2ecortex.RuleFilter
+		resultCheckFn func(assert.TestingT, []*ruler.RuleGroup, string, int)
+		iterations    int
+		tokens        []string
+	}{
+		"List Rule Groups - Equal number of rule groups per page": {
+			filter: e2ecortex.RuleFilter{
+				MaxRuleGroup: 20,
+			},
+			resultCheckFn: func(t assert.TestingT, resultGroups []*ruler.RuleGroup, token string, iteration int) {
+				assert.Len(t, resultGroups, 20, "Expected %d rules but got %d", 20, len(resultGroups))
+			},
+			iterations: 5,
+			tokens: []string{
+				ruler.GetRuleGroupNextToken(groupStateDescs[19].Group.Namespace, groupStateDescs[19].Group.Name),
+				ruler.GetRuleGroupNextToken(groupStateDescs[39].Group.Namespace, groupStateDescs[39].Group.Name),
+				ruler.GetRuleGroupNextToken(groupStateDescs[59].Group.Namespace, groupStateDescs[59].Group.Name),
+				ruler.GetRuleGroupNextToken(groupStateDescs[79].Group.Namespace, groupStateDescs[79].Group.Name),
+				"",
+			},
+		},
+		"List Rule Groups - Retrieve page 2 and 3": {
+			filter: e2ecortex.RuleFilter{
+				MaxRuleGroup: 20,
+				NextToken:    ruler.GetRuleGroupNextToken(groupStateDescs[19].Group.Namespace, groupStateDescs[19].Group.Name),
+			},
+			resultCheckFn: func(t assert.TestingT, resultGroups []*ruler.RuleGroup, token string, iteration int) {
+				assert.Len(t, resultGroups, 20, "Expected %d rules but got %d", 20, len(resultGroups))
+			},
+			iterations: 2,
+			tokens: []string{
+				ruler.GetRuleGroupNextToken(groupStateDescs[39].Group.Namespace, groupStateDescs[39].Group.Name),
+				ruler.GetRuleGroupNextToken(groupStateDescs[59].Group.Namespace, groupStateDescs[59].Group.Name),
+			},
+		},
+	}
+
+	// For each test case, fetch the rules with configured filters, and ensure the results match.
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			filter := tc.filter
+			for i := 0; i < tc.iterations; i++ {
+				actualGroups, token, err := c.GetPrometheusRules(filter)
+				require.NoError(t, err)
+				tc.resultCheckFn(t, actualGroups, token, i)
+				require.Equal(t, tc.tokens[i], token)
 				filter.NextToken = token
 			}
 		})

@@ -69,44 +69,142 @@ func TestMergeGroupStateDesc(t *testing.T) {
 	}
 
 	type testCase struct {
-		input          []*GroupStateDesc
-		expectedOutput []*GroupStateDesc
+		input          []*RulesResponse
+		expectedOutput *RulesResponse
+		maxRuleGroups  int32
 	}
 
 	testCases := map[string]testCase{
 		"No duplicate": {
-			input:          []*GroupStateDesc{&gs1, &gs2},
-			expectedOutput: []*GroupStateDesc{&gs1, &gs2},
+			input: []*RulesResponse{
+				{
+					Groups:    []*GroupStateDesc{&gs1, &gs2},
+					NextToken: "",
+				},
+			},
+			expectedOutput: &RulesResponse{
+				Groups:    []*GroupStateDesc{&gs1, &gs2},
+				NextToken: "",
+			},
+			maxRuleGroups: 2,
 		},
 		"No duplicate but not evaluated": {
-			input:          []*GroupStateDesc{&gs1NotRun, &gs2NotRun},
-			expectedOutput: []*GroupStateDesc{&gs1NotRun, &gs2NotRun},
+			input: []*RulesResponse{
+				{
+					Groups:    []*GroupStateDesc{&gs1NotRun, &gs2NotRun},
+					NextToken: "",
+				},
+			},
+			expectedOutput: &RulesResponse{
+				Groups:    []*GroupStateDesc{&gs1NotRun, &gs2NotRun},
+				NextToken: "",
+			},
+			maxRuleGroups: 2,
 		},
 		"With exact duplicate": {
-			input:          []*GroupStateDesc{&gs1, &gs2NotRun, &gs1, &gs2NotRun},
-			expectedOutput: []*GroupStateDesc{&gs1, &gs2NotRun},
+			input: []*RulesResponse{
+				{
+					Groups:    []*GroupStateDesc{&gs1, &gs2NotRun},
+					NextToken: "",
+				},
+				{
+					Groups:    []*GroupStateDesc{&gs1, &gs2NotRun},
+					NextToken: "",
+				},
+			},
+			expectedOutput: &RulesResponse{
+				Groups:    []*GroupStateDesc{&gs1, &gs2NotRun},
+				NextToken: "",
+			},
+			maxRuleGroups: 2,
 		},
 		"With duplicates that are not evaluated": {
-			input:          []*GroupStateDesc{&gs1, &gs2, &gs1NotRun, &gs2NotRun},
-			expectedOutput: []*GroupStateDesc{&gs1, &gs2},
+			input: []*RulesResponse{
+				{
+					Groups:    []*GroupStateDesc{&gs1, &gs2},
+					NextToken: "",
+				},
+				{
+					Groups:    []*GroupStateDesc{&gs1NotRun},
+					NextToken: "",
+				},
+				{
+					Groups:    []*GroupStateDesc{&gs2NotRun},
+					NextToken: "",
+				},
+			},
+			expectedOutput: &RulesResponse{
+				Groups:    []*GroupStateDesc{&gs1, &gs2},
+				NextToken: "",
+			},
+			maxRuleGroups: 2,
 		},
 		"With duplicate with a new newer rule evaluation": {
-			input:          []*GroupStateDesc{&gs3, &gs1, &gs2, &gs1NotRun},
-			expectedOutput: []*GroupStateDesc{&gs1, &gs3},
+			input: []*RulesResponse{
+				{
+					Groups:    []*GroupStateDesc{&gs3},
+					NextToken: GetRuleGroupNextToken(gs3.Group.Name, gs3.Group.Name),
+				},
+				{
+					Groups:    []*GroupStateDesc{&gs1},
+					NextToken: "",
+				},
+				{
+					Groups:    []*GroupStateDesc{&gs2},
+					NextToken: "",
+				},
+				{
+					Groups:    []*GroupStateDesc{&gs1NotRun},
+					NextToken: "",
+				},
+			},
+			expectedOutput: &RulesResponse{
+				Groups:    []*GroupStateDesc{&gs1, &gs3},
+				NextToken: "",
+			},
+			maxRuleGroups: 2,
+		},
+		"With duplicate with a new newer rule evaluation - pagination": {
+			input: []*RulesResponse{
+				{
+					Groups:    []*GroupStateDesc{&gs3},
+					NextToken: GetRuleGroupNextToken(gs3.Group.Namespace, gs3.Group.Name),
+				},
+				{
+					Groups:    []*GroupStateDesc{&gs1},
+					NextToken: GetRuleGroupNextToken(gs1.Group.Namespace, gs1.Group.Name),
+				},
+				{
+					Groups:    []*GroupStateDesc{&gs2},
+					NextToken: GetRuleGroupNextToken(gs2.Group.Namespace, gs2.Group.Name),
+				},
+				{
+					Groups:    []*GroupStateDesc{&gs1NotRun},
+					NextToken: GetRuleGroupNextToken(gs1NotRun.Group.Namespace, gs1NotRun.Group.Name),
+				},
+			},
+			expectedOutput: &RulesResponse{
+				Groups:    []*GroupStateDesc{&gs1},
+				NextToken: GetRuleGroupNextToken(gs1.Group.Namespace, gs1.Group.Name),
+			},
+			maxRuleGroups: 1,
 		},
 	}
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			out := mergeGroupStateDesc(tc.input)
-			slices.SortFunc(out, func(a, b *GroupStateDesc) int {
+
+			out := mergeGroupStateDesc(tc.input, tc.maxRuleGroups, true)
+			slices.SortFunc(out.Groups, func(a, b *GroupStateDesc) int {
 				fileCompare := strings.Compare(a.Group.Namespace, b.Group.Namespace)
 				if fileCompare != 0 {
 					return fileCompare
 				}
 				return strings.Compare(a.Group.Name, b.Group.Name)
 			})
-			require.Equal(t, len(tc.expectedOutput), len(out))
+			require.Equal(t, int(tc.maxRuleGroups), len(out.Groups))
+			t.Log(tc.expectedOutput)
+			t.Log(out)
 			require.True(t, reflect.DeepEqual(tc.expectedOutput, out))
 		})
 	}

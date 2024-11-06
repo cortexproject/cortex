@@ -331,7 +331,9 @@ func TestRuler_Rules(t *testing.T) {
 
 	// test user1
 	ctx := user.InjectOrgID(context.Background(), "user1")
-	rls, err := r.Rules(ctx, &RulesRequest{})
+	rls, err := r.Rules(ctx, &RulesRequest{
+		MaxRuleGroups: -1,
+	})
 	require.NoError(t, err)
 	require.Len(t, rls.Groups, 1)
 	rg := rls.Groups[0]
@@ -340,7 +342,9 @@ func TestRuler_Rules(t *testing.T) {
 
 	// test user2
 	ctx = user.InjectOrgID(context.Background(), "user2")
-	rls, err = r.Rules(ctx, &RulesRequest{})
+	rls, err = r.Rules(ctx, &RulesRequest{
+		MaxRuleGroups: -1,
+	})
 	require.NoError(t, err)
 	require.Len(t, rls.Groups, 1)
 	rg = rls.Groups[0]
@@ -591,7 +595,8 @@ func TestGetRules(t *testing.T) {
 		"No Sharding with Rule Type Filter": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				Type: alertingRuleFilter,
+				Type:          alertingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -604,7 +609,8 @@ func TestGetRules(t *testing.T) {
 		"No Sharding with Alert state filter for firing alerts": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				State: firingStateFilter,
+				State:         firingStateFilter,
+				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -616,7 +622,8 @@ func TestGetRules(t *testing.T) {
 		"No Sharding with Alert state filter for inactive alerts": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				State: inactiveStateFilter,
+				State:         inactiveStateFilter,
+				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -628,7 +635,8 @@ func TestGetRules(t *testing.T) {
 		"No Sharding with health filter for OK alerts": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				Health: okHealthFilter,
+				Health:        okHealthFilter,
+				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -640,7 +648,8 @@ func TestGetRules(t *testing.T) {
 		"No Sharding with health filter for unknown alerts": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				Health: unknownHealthFilter,
+				Health:        unknownHealthFilter,
+				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -652,7 +661,8 @@ func TestGetRules(t *testing.T) {
 		"No Sharding with Rule label matcher filter - match 1 rule": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`},
+				Matchers:      []string{`{alertname="atest_user1_group1_rule_1"}`},
+				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -664,7 +674,8 @@ func TestGetRules(t *testing.T) {
 		"No Sharding with Rule label matcher filter - label match all alerting rule": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				Matchers: []string{`{alertname=~"atest_.*"}`},
+				Matchers:      []string{`{alertname=~"atest_.*"}`},
+				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -677,6 +688,7 @@ func TestGetRules(t *testing.T) {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 			rulerStateMap:    rulerStateMapAllActive,
+			rulesRequest:     RulesRequest{MaxRuleGroups: -1},
 			expectedCount: map[string]int{
 				"user1": 5,
 				"user2": 9,
@@ -688,6 +700,7 @@ func TestGetRules(t *testing.T) {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 			rulerStateMap:    rulerStateMapAllActive,
+			rulesRequest:     RulesRequest{MaxRuleGroups: -1},
 			expectedCount: map[string]int{
 				"user1": 5,
 				"user2": 9,
@@ -702,7 +715,8 @@ func TestGetRules(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulerStateMap:    rulerStateMapAllActive,
 			rulesRequest: RulesRequest{
-				Type: recordingRuleFilter,
+				Type:          recordingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			expectedCount: map[string]int{
 				"user1": 3,
@@ -717,6 +731,7 @@ func TestGetRules(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulesRequest: RulesRequest{
 				RuleGroupNames: []string{"third"},
+				MaxRuleGroups:  -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -734,6 +749,7 @@ func TestGetRules(t *testing.T) {
 			rulesRequest: RulesRequest{
 				RuleGroupNames: []string{"second", "third"},
 				Type:           recordingRuleFilter,
+				MaxRuleGroups:  -1,
 			},
 			expectedCount: map[string]int{
 				"user1": 2,
@@ -748,8 +764,9 @@ func TestGetRules(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulerStateMap:    rulerStateMapAllActive,
 			rulesRequest: RulesRequest{
-				Type:  alertingRuleFilter,
-				Files: []string{"latency-test"},
+				Type:          alertingRuleFilter,
+				Files:         []string{"latency-test"},
+				MaxRuleGroups: -1,
 			},
 			expectedCount: map[string]int{
 				"user1": 0,
@@ -764,7 +781,8 @@ func TestGetRules(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulerStateMap:    rulerStateMapOneLeaving,
 			rulesRequest: RulesRequest{
-				Type: recordingRuleFilter,
+				Type:          recordingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			expectedCount: map[string]int{
 				"user1": 3,
@@ -779,7 +797,8 @@ func TestGetRules(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulerStateMap:    rulerStateMapOnePending,
 			rulesRequest: RulesRequest{
-				Type: recordingRuleFilter,
+				Type:          recordingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			expectedError:           ring.ErrTooManyUnhealthyInstances,
 			expectedClientCallCount: 0,
@@ -789,7 +808,8 @@ func TestGetRules(t *testing.T) {
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulesRequest: RulesRequest{
-				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`},
+				Matchers:      []string{`{alertname="atest_user1_group1_rule_1"}`},
+				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -804,7 +824,8 @@ func TestGetRules(t *testing.T) {
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulesRequest: RulesRequest{
-				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`, `{alertname="atest_user2_group1_rule_1"}`},
+				Matchers:      []string{`{alertname="atest_user1_group1_rule_1"}`, `{alertname="atest_user2_group1_rule_1"}`},
+				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -819,7 +840,8 @@ func TestGetRules(t *testing.T) {
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulesRequest: RulesRequest{
-				Matchers: []string{`{templatedlabel="{{ $externalURL }}"}`},
+				Matchers:      []string{`{templatedlabel="{{ $externalURL }}"}`},
+				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
@@ -836,7 +858,8 @@ func TestGetRules(t *testing.T) {
 			rulerStateMap:     rulerStateMapAllActive,
 			replicationFactor: 3,
 			rulesRequest: RulesRequest{
-				Matchers: []string{`{alertname="atest_user1_group1_rule_1"}`, `{alertname="atest_user2_group1_rule_1"}`},
+				Matchers:      []string{`{alertname="atest_user1_group1_rule_1"}`, `{alertname="atest_user2_group1_rule_1"}`},
+				MaxRuleGroups: -1,
 			},
 			expectedCount: map[string]int{
 				"user1": 1,
@@ -852,7 +875,8 @@ func TestGetRules(t *testing.T) {
 			rulerStateMap:     rulerStateMapAllActive,
 			replicationFactor: 3,
 			rulesRequest: RulesRequest{
-				Type: recordingRuleFilter,
+				Type:          recordingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			expectedCount: map[string]int{
 				"user1": 3,
@@ -868,7 +892,8 @@ func TestGetRules(t *testing.T) {
 			rulerStateMap:     rulerStateMapOnePending,
 			replicationFactor: 3,
 			rulesRequest: RulesRequest{
-				Type: recordingRuleFilter,
+				Type:          recordingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			expectedCount: map[string]int{
 				"user1": 3,
@@ -884,7 +909,8 @@ func TestGetRules(t *testing.T) {
 			rulerStateMap:     rulerStateMapTwoPending,
 			replicationFactor: 3,
 			rulesRequest: RulesRequest{
-				Type: recordingRuleFilter,
+				Type:          recordingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			expectedError: ring.ErrTooManyUnhealthyInstances,
 		},
@@ -897,7 +923,8 @@ func TestGetRules(t *testing.T) {
 			rulerAZMap:                 rulerAZEvenSpread,
 			replicationFactor:          3,
 			rulesRequest: RulesRequest{
-				Type: recordingRuleFilter,
+				Type:          recordingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			expectedCount: map[string]int{
 				"user1": 3,
@@ -915,7 +942,8 @@ func TestGetRules(t *testing.T) {
 			rulerAZMap:                 rulerAZEvenSpread,
 			replicationFactor:          3,
 			rulesRequest: RulesRequest{
-				Type: recordingRuleFilter,
+				Type:          recordingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			expectedCount: map[string]int{
 				"user1": 3,
@@ -933,7 +961,8 @@ func TestGetRules(t *testing.T) {
 			rulerAZMap:                 rulerAZSingleZone,
 			replicationFactor:          3,
 			rulesRequest: RulesRequest{
-				Type: recordingRuleFilter,
+				Type:          recordingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			expectedCount: map[string]int{
 				"user1": 3,
@@ -951,7 +980,8 @@ func TestGetRules(t *testing.T) {
 			rulerAZMap:                 rulerAZEvenSpread,
 			replicationFactor:          3,
 			rulesRequest: RulesRequest{
-				Type: recordingRuleFilter,
+				Type:          recordingRuleFilter,
+				MaxRuleGroups: -1,
 			},
 			expectedError: ring.ErrTooManyUnhealthyInstances,
 		},
@@ -1063,7 +1093,7 @@ func TestGetRules(t *testing.T) {
 						require.NoError(t, err)
 					}
 					rct := 0
-					for _, ruleStateDesc := range ruleStateDescriptions {
+					for _, ruleStateDesc := range ruleStateDescriptions.Groups {
 						rct += len(ruleStateDesc.ActiveRules)
 					}
 					require.Equal(t, tc.expectedCount[u], rct)
@@ -1313,11 +1343,11 @@ func TestGetRulesFromBackup(t *testing.T) {
 		}
 	}
 	ctx := user.InjectOrgID(context.Background(), tenantId)
-	ruleStateDescriptions, err := rulerAddrMap["ruler1"].GetRules(ctx, RulesRequest{})
+	ruleStateDescriptions, err := rulerAddrMap["ruler1"].GetRules(ctx, RulesRequest{MaxRuleGroups: -1})
 	require.NoError(t, err)
-	require.Equal(t, 5, len(ruleStateDescriptions))
+	require.Equal(t, 5, len(ruleStateDescriptions.Groups))
 	stateByKey := map[string]*GroupStateDesc{}
-	for _, state := range ruleStateDescriptions {
+	for _, state := range ruleStateDescriptions.Groups {
 		stateByKey[state.Group.Namespace+";"+state.Group.Name] = state
 	}
 	// Rule Group Name that starts will b are from the backup and those that start with l are evaluating, the details of
@@ -1333,12 +1363,13 @@ func TestGetRulesFromBackup(t *testing.T) {
 		Files:          []string{"namespace"},
 		RuleGroupNames: []string{"b1"},
 		Type:           recordingRuleFilter,
+		MaxRuleGroups:  -1,
 	})
 	require.NoError(t, err)
-	require.Equal(t, 1, len(ruleStateDescriptions))
-	require.Equal(t, "b1", ruleStateDescriptions[0].Group.Name)
-	require.Equal(t, 1, len(ruleStateDescriptions[0].ActiveRules))
-	require.Equal(t, "rtest_user1_1", ruleStateDescriptions[0].ActiveRules[0].Rule.Record)
+	require.Equal(t, 1, len(ruleStateDescriptions.Groups))
+	require.Equal(t, "b1", ruleStateDescriptions.Groups[0].Group.Name)
+	require.Equal(t, 1, len(ruleStateDescriptions.Groups[0].ActiveRules))
+	require.Equal(t, "rtest_user1_1", ruleStateDescriptions.Groups[0].ActiveRules[0].Rule.Record)
 }
 
 func TestGetRules_HA(t *testing.T) {
@@ -1538,11 +1569,11 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 
 		getRules := func(ruler string) {
 			ctx := user.InjectOrgID(context.Background(), tenantId)
-			ruleStateDescriptions, err := rulerAddrMap[ruler].GetRules(ctx, RulesRequest{})
+			ruleStateDescriptions, err := rulerAddrMap[ruler].GetRules(ctx, RulesRequest{MaxRuleGroups: -1})
 			require.NoError(t, err)
-			require.Equal(t, 5, len(ruleStateDescriptions))
+			require.Equal(t, 5, len(ruleStateDescriptions.Groups))
 			stateByKey := map[string]*GroupStateDesc{}
-			for _, state := range ruleStateDescriptions {
+			for _, state := range ruleStateDescriptions.Groups {
 				stateByKey[state.Group.Namespace+";"+state.Group.Name] = state
 			}
 			// Rule Group Name that starts will b are from the backup and those that start with l are evaluating, the details of
@@ -1558,11 +1589,11 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 
 		ctx := user.InjectOrgID(context.Background(), tenantId)
 
-		ruleResponse, err := rulerAddrMap["ruler2"].Rules(ctx, &RulesRequest{})
+		ruleResponse, err := rulerAddrMap["ruler2"].Rules(ctx, &RulesRequest{MaxRuleGroups: -1})
 		require.NoError(t, err)
 		require.Equal(t, 5, len(ruleResponse.Groups))
 
-		ruleResponse, err = rulerAddrMap["ruler3"].Rules(ctx, &RulesRequest{})
+		ruleResponse, err = rulerAddrMap["ruler3"].Rules(ctx, &RulesRequest{MaxRuleGroups: -1})
 		require.NoError(t, err)
 		require.Equal(t, 5, len(ruleResponse.Groups))
 	}
@@ -2794,7 +2825,7 @@ func TestRuler_QueryOffset(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	ctx := user.InjectOrgID(context.Background(), "user1")
-	rls, err := r.Rules(ctx, &RulesRequest{})
+	rls, err := r.Rules(ctx, &RulesRequest{MaxRuleGroups: -1})
 	require.NoError(t, err)
 	require.Len(t, rls.Groups, 1)
 	rg := rls.Groups[0]
@@ -2806,7 +2837,7 @@ func TestRuler_QueryOffset(t *testing.T) {
 	require.Equal(t, time.Duration(0), *gotOffset)
 
 	ctx = user.InjectOrgID(context.Background(), "user2")
-	rls, err = r.Rules(ctx, &RulesRequest{})
+	rls, err = r.Rules(ctx, &RulesRequest{MaxRuleGroups: -1})
 	require.NoError(t, err)
 	require.Len(t, rls.Groups, 1)
 	rg = rls.Groups[0]

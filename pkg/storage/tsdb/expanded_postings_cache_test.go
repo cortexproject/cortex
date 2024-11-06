@@ -1,7 +1,6 @@
 package tsdb
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -54,9 +53,7 @@ func TestFifoCacheDisabled(t *testing.T) {
 		return 1, 0, nil
 	})
 	require.False(t, loaded)
-	v, err := old.result(context.Background())
-	require.NoError(t, err)
-	require.Equal(t, 1, v)
+	require.Equal(t, 1, old.v)
 	require.False(t, cache.contains("key1"))
 }
 
@@ -101,17 +98,13 @@ func TestFifoCacheExpire(t *testing.T) {
 					return 1, 8, nil
 				})
 				require.False(t, loaded)
-				v, err := p.result(context.Background())
-				require.NoError(t, err)
-				require.Equal(t, 1, v)
+				require.Equal(t, 1, p.v)
 				require.True(t, cache.contains(key))
 				p, loaded = cache.getPromiseForKey(key, func() (int, int64, error) {
 					return 1, 0, nil
 				})
 				require.True(t, loaded)
-				v, err = p.result(context.Background())
-				require.NoError(t, err)
-				require.Equal(t, 1, v)
+				require.Equal(t, 1, p.v)
 			}
 
 			totalCacheSize := 0
@@ -137,10 +130,8 @@ func TestFifoCacheExpire(t *testing.T) {
 						return 2, 18, nil
 					})
 					require.False(t, loaded)
-					v, err := p.result(context.Background())
-					require.NoError(t, err)
 					// New value
-					require.Equal(t, 2, v)
+					require.Equal(t, 2, p.v)
 					// Total Size Updated
 					require.Equal(t, originalSize+10, cache.cachedBytes)
 				}

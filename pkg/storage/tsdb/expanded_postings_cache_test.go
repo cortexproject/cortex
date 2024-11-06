@@ -18,7 +18,7 @@ func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
 		Ttl:      time.Hour,
 		MaxBytes: 10 << 20,
 	}
-	m := NewPostingCacheMetrics(prometheus.DefaultRegisterer)
+	m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
 	cache := newFifoCache[int](cfg, "test", m, time.Now)
 	calls := atomic.Int64{}
 	concurrency := 100
@@ -46,7 +46,7 @@ func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
 func TestFifoCacheDisabled(t *testing.T) {
 	cfg := PostingsCacheConfig{}
 	cfg.Enabled = false
-	m := NewPostingCacheMetrics(prometheus.DefaultRegisterer)
+	m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
 	timeNow := time.Now
 	cache := newFifoCache[int](cfg, "test", m, timeNow)
 	old, loaded := cache.getPromiseForKey("key1", func() (int, int64, error) {

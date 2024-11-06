@@ -1114,6 +1114,7 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 	}
 
 	run := 1000
+	step := 5 * time.Minute
 	cases := make([]*testCase, 0, run)
 	var (
 		expr  parser.Expr
@@ -1128,7 +1129,7 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 			}
 		}
 		// We don't care the query results here. Just to fill the cache with partial result.
-		_, _ = c1.QueryRange(query, start, start.Add(time.Minute*30), scrapeInterval)
+		_, _ = c1.QueryRange(query, start, start.Add(time.Minute*30), step)
 		cases = append(cases, &testCase{
 			query: query,
 		})
@@ -1137,8 +1138,8 @@ func TestResultsCacheBackwardCompatibilityQueryFuzz(t *testing.T) {
 	for i := 0; i < run; i++ {
 		c := cases[i]
 		// If not bypassing cache, we expect this query to fetch part of the query results as well as reusing some existing cached result.
-		c.res1, c.err1 = c2.QueryRange(c.query, start, end, scrapeInterval)
-		c.res2, c.err2 = c2ByPassCache.QueryRange(c.query, start, end, scrapeInterval)
+		c.res1, c.err1 = c2.QueryRange(c.query, start, end, step)
+		c.res2, c.err2 = c2ByPassCache.QueryRange(c.query, start, end, step)
 	}
 
 	failures := 0

@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/distributor/distributorpb"
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
@@ -45,6 +46,9 @@ import (
 
 // DistributorPushWrapper wraps around a push. It is similar to middleware.Interface.
 type DistributorPushWrapper func(next push.Func) push.Func
+
+// DistributorPushWrapperV2 wraps around a push. It is similar to middleware.Interface.
+type DistributorPushWrapperV2 func(next push.FuncV2) push.FuncV2
 type ConfigHandler func(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc
 
 type Config struct {
@@ -60,7 +64,8 @@ type Config struct {
 
 	// This allows downstream projects to wrap the distributor push function
 	// and access the deserialized write requests before/after they are pushed.
-	DistributorPushWrapper DistributorPushWrapper `yaml:"-"`
+	DistributorPushWrapper   DistributorPushWrapper   `yaml:"-"`
+	DistributorPushWrapperV2 DistributorPushWrapperV2 `yaml:"-"`
 
 	// The CustomConfigHandler allows for providing a different handler for the
 	// `/config` endpoint. If this field is set _before_ the API module is
@@ -105,6 +110,15 @@ func (cfg *Config) Validate() error {
 		return errUnsupportedDefaultCodec
 	}
 	return nil
+}
+
+// Push either wraps the distributor push function as configured or returns the distributor push directly.
+func (cfg *Config) wrapDistributorPushV2(d *distributor.Distributor) push.FuncV2 {
+	if cfg.DistributorPushWrapperV2 != nil {
+		return cfg.DistributorPushWrapperV2(d.PushV2)
+	}
+
+	return d.PushV2
 }
 
 // Push either wraps the distributor push function as configured or returns the distributor push directly.
@@ -277,7 +291,7 @@ func (a *API) RegisterRuntimeConfig(runtimeConfigHandler http.HandlerFunc) {
 func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config, overrides *validation.Overrides) {
 	distributorpb.RegisterDistributorServer(a.server.GRPC, d)
 
-	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, a.cfg.wrapDistributorPush(d)), true, "POST")
+	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, a.cfg.wrapDistributorPush(d), a.cfg.wrapDistributorPushV2(d)), true, "POST")
 	a.RegisterRoute("/api/v1/otlp/v1/metrics", push.OTLPHandler(overrides, pushConfig.OTLPConfig, a.sourceIPs, a.cfg.wrapDistributorPush(d)), true, "POST")
 
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/ring", "Distributor Ring Status")
@@ -289,7 +303,7 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false, "GET")
 
 	// Legacy Routes
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/push"), push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, a.cfg.wrapDistributorPush(d)), true, "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/push"), push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, a.cfg.wrapDistributorPush(d), a.cfg.wrapDistributorPushV2(d)), true, "POST")
 	a.RegisterRoute("/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false, "GET")
 	a.RegisterRoute("/ha-tracker", d.HATracker, false, "GET")
 }
@@ -304,6 +318,7 @@ type Ingester interface {
 	AllUserStatsHandler(http.ResponseWriter, *http.Request)
 	ModeHandler(http.ResponseWriter, *http.Request)
 	Push(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
+	PushV2(context.Context, *cortexpbv2.WriteRequest) (*cortexpbv2.WriteResponse, error)
 }
 
 // RegisterIngester registers the ingesters HTTP and GRPC service
@@ -322,12 +337,12 @@ func (a *API) RegisterIngester(i Ingester, pushConfig distributor.Config) {
 	a.RegisterRoute("/ingester/renewTokens", http.HandlerFunc(i.RenewTokenHandler), false, "GET", "POST")
 	a.RegisterRoute("/ingester/all_user_stats", http.HandlerFunc(i.AllUserStatsHandler), false, "GET")
 	a.RegisterRoute("/ingester/mode", http.HandlerFunc(i.ModeHandler), false, "GET", "POST")
-	a.RegisterRoute("/ingester/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, i.Push), true, "POST") // For testing and debugging.
+	a.RegisterRoute("/ingester/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, i.Push, i.PushV2), true, "POST") // For testing and debugging.
 
 	// Legacy Routes
 	a.RegisterRoute("/flush", http.HandlerFunc(i.FlushHandler), false, "GET", "POST")
 	a.RegisterRoute("/shutdown", http.HandlerFunc(i.ShutdownHandler), false, "GET", "POST")
-	a.RegisterRoute("/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, i.Push), true, "POST") // For testing and debugging.
+	a.RegisterRoute("/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, i.Push, i.PushV2), true, "POST") // For testing and debugging.
 }
 
 func (a *API) RegisterTenantDeletion(api *purger.TenantDeletionAPI) {

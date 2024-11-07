@@ -573,7 +573,7 @@ func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, err
 		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
-		b.metrics.opsDuration.WithLabelValues(op).Observe(float64(time.Since(start)))
+		b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 		return nil, err
 	}
 	return newTimingReader(
@@ -600,7 +600,7 @@ func (b *metricBucket) GetRange(ctx context.Context, name string, off, length in
 		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
-		b.metrics.opsDuration.WithLabelValues(op).Observe(float64(time.Since(start)))
+		b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 		return nil, err
 	}
 	return newTimingReader(
@@ -828,4 +828,18 @@ func (t *timingReaderWriterTo) WriteTo(w io.Writer) (n int64, err error) {
 	n, err = (t.Reader).(io.WriterTo).WriteTo(w)
 	t.timingReader.updateMetrics(int(n), err)
 	return n, err
+}
+
+type ObjectSizerReadCloser struct {
+	io.ReadCloser
+	Size func() (int64, error)
+}
+
+// ObjectSize implement ObjectSizer.
+func (o ObjectSizerReadCloser) ObjectSize() (int64, error) {
+	if o.Size == nil {
+		return 0, errors.New("unknown size")
+	}
+
+	return o.Size()
 }

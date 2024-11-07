@@ -1201,8 +1201,11 @@ func waitUntilReady(t *testing.T, ctx context.Context, c1, c2 *e2ecortex.Client,
 		labelSet2, err = c2.Series([]string{query}, start, end)
 		require.NoError(t, err)
 
-		if cmp.Equal(labelSet1, labelSet2, labelSetsComparer) {
-			break
+		// Make sure series can be queried.
+		if len(labelSet1) > 0 {
+			if cmp.Equal(labelSet1, labelSet2, labelSetsComparer) {
+				break
+			}
 		}
 
 		retries.Wait()

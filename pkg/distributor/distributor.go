@@ -164,11 +164,19 @@ type Config struct {
 
 	// Limits for distributor
 	InstanceLimits InstanceLimits `yaml:"instance_limits"`
+
+	// OTLPConfig
+	OTLPConfig OTLPConfig `yaml:"otlp"`
 }
 
 type InstanceLimits struct {
 	MaxIngestionRate        float64 `yaml:"max_ingestion_rate"`
 	MaxInflightPushRequests int     `yaml:"max_inflight_push_requests"`
+}
+
+type OTLPConfig struct {
+	ConvertAllAttributes bool `yaml:"convert_all_attributes"`
+	DisableTargetInfo    bool `yaml:"disable_target_info"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -188,6 +196,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
+
+	f.BoolVar(&cfg.OTLPConfig.ConvertAllAttributes, "distributor.otlp.convert-all-attributes", false, "If true, all resource attributes are converted to labels.")
+	f.BoolVar(&cfg.OTLPConfig.DisableTargetInfo, "distributor.otlp.disable-target-info", false, "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)")
 }
 
 // Validate config and returns error on failure

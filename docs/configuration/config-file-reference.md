@@ -2081,6 +2081,40 @@ tsdb:
   # [EXPERIMENTAL] True to enable native histogram.
   # CLI flag: -blocks-storage.tsdb.enable-native-histograms
   [enable_native_histograms: <boolean> | default = false]
+
+  # [EXPERIMENTAL] If enabled, ingesters will cache expanded postings when
+  # querying blocks. Caching can be configured separately for the head and
+  # compacted blocks.
+  expanded_postings_cache:
+    # If enabled, ingesters will cache expanded postings for the head block.
+    # Only queries with with an equal matcher for metric __name__ are cached.
+    head:
+      # Whether the postings cache is enabled or not
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.enabled
+      [enabled: <boolean> | default = false]
+
+      # Max bytes for postings cache
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.max-bytes
+      [max_bytes: <int> | default = 10485760]
+
+      # TTL for postings cache
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
+      [ttl: <duration> | default = 10m]
+
+    # If enabled, ingesters will cache expanded postings for the compacted
+    # blocks. The cache is shared between all blocks.
+    blocks:
+      # Whether the postings cache is enabled or not
+      # CLI flag: -blocks-storage.expanded_postings_cache.block.enabled
+      [enabled: <boolean> | default = false]
+
+      # Max bytes for postings cache
+      # CLI flag: -blocks-storage.expanded_postings_cache.block.max-bytes
+      [max_bytes: <int> | default = 10485760]
+
+      # TTL for postings cache
+      # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl
+      [ttl: <duration> | default = 10m]
 ```
 
 ### `compactor_config`
@@ -2640,6 +2674,16 @@ instance_limits:
   # unlimited.
   # CLI flag: -distributor.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
+
+otlp:
+  # If true, all resource attributes are converted to labels.
+  # CLI flag: -distributor.otlp.convert-all-attributes
+  [convert_all_attributes: <boolean> | default = false]
+
+  # If true, a target_info metric is not ingested. (refer to:
+  # https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)
+  # CLI flag: -distributor.otlp.disable-target-info
+  [disable_target_info: <boolean> | default = false]
 ```
 
 ### `etcd_config`
@@ -3284,6 +3328,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Distributor.
 # CLI flag: -validation.max-native-histogram-buckets
 [max_native_histogram_buckets: <int> | default = 0]
+
+# Comma separated list of resource attributes that should be converted to
+# labels.
+# CLI flag: -distributor.promote-resource-attributes
+[promote_resource_attributes: <list of string> | default = ]
 
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user

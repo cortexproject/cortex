@@ -34,7 +34,8 @@ func TestIngesterMetrics(t *testing.T) {
 		},
 		ingestionRate,
 		inflightPushRequests,
-		&maxInflightQueryRequests)
+		&maxInflightQueryRequests,
+		false)
 
 	require.NotNil(t, m)
 

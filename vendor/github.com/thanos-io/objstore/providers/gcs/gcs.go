@@ -77,22 +77,20 @@ func parseConfig(conf []byte) (Config, error) {
 }
 
 // NewBucket returns a new Bucket against the given bucket handle.
-func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component string, rt http.RoundTripper) (*Bucket, error) {
+func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	config, err := parseConfig(conf)
 	if err != nil {
 		return nil, err
 	}
-	return NewBucketWithConfig(ctx, logger, config, component, rt)
+	return NewBucketWithConfig(ctx, logger, config, component, wrapRoundtripper)
 }
 
 // NewBucketWithConfig returns a new Bucket with gcs Config struct.
-func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, component string, rt http.RoundTripper) (*Bucket, error) {
+func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	if gc.Bucket == "" {
 		return nil, errors.New("missing Google Cloud Storage bucket name for stored blocks")
 	}
-	if rt != nil {
-		gc.HTTPConfig.Transport = rt
-	}
+
 	var opts []option.ClientOption
 
 	// If ServiceAccount is provided, use them in GCS client, otherwise fallback to Google default logic.
@@ -112,7 +110,7 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 
 	if !gc.UseGRPC {
 		var err error
-		opts, err = appendHttpOptions(gc, opts)
+		opts, err = appendHttpOptions(gc, opts, wrapRoundtripper)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +119,7 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 	return newBucket(ctx, logger, gc, opts)
 }
 
-func appendHttpOptions(gc Config, opts []option.ClientOption) ([]option.ClientOption, error) {
+func appendHttpOptions(gc Config, opts []option.ClientOption, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) ([]option.ClientOption, error) {
 	// Check if a roundtripper has been set in the config
 	// otherwise build the default transport.
 	var rt http.RoundTripper
@@ -131,6 +129,9 @@ func appendHttpOptions(gc Config, opts []option.ClientOption) ([]option.ClientOp
 	}
 	if gc.HTTPConfig.Transport != nil {
 		rt = gc.HTTPConfig.Transport
+	}
+	if wrapRoundtripper != nil {
+		rt = wrapRoundtripper(rt)
 	}
 
 	// GCS uses some defaults when "options.WithHTTPClient" is not used that are important when we call
@@ -226,12 +227,33 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 
 // Get returns a reader for the given object name.
 func (b *Bucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	return b.bkt.Object(name).NewReader(ctx)
+	r, err := b.bkt.Object(name).NewReader(ctx)
+	if err != nil {
+		return r, err
+	}
+
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: r,
+		Size: func() (int64, error) {
+			return r.Attrs.Size, nil
+		},
+	}, nil
 }
 
 // GetRange returns a new range reader for the given object name and range.
 func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	return b.bkt.Object(name).NewRangeReader(ctx, off, length)
+	r, err := b.bkt.Object(name).NewRangeReader(ctx, off, length)
+	if err != nil {
+		return r, err
+	}
+
+	sz := r.Remain()
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: r,
+		Size: func() (int64, error) {
+			return sz, nil
+		},
+	}, nil
 }
 
 // Attributes returns information about the specified object.

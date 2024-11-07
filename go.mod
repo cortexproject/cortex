@@ -46,12 +46,12 @@ require (
 	github.com/prometheus/client_model v0.6.1
 	github.com/prometheus/common v0.60.1
 	// Prometheus maps version 2.x.y to tags v0.x.y.
-	github.com/prometheus/prometheus v0.55.1-0.20241102120812-a6fd22b9d2c8
+	github.com/prometheus/prometheus v0.55.1
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/afero v1.11.0
 	github.com/stretchr/testify v1.9.0
-	github.com/thanos-io/objstore v0.0.0-20241010161353-f90c89a0ef90
+	github.com/thanos-io/objstore v0.0.0-20241028150459-cfdd0e50390d
 	github.com/thanos-io/promql-engine v0.0.0-20240921092401-37747eddbd31
 	github.com/thanos-io/thanos v0.35.2-0.20241029125830-62038110b1bc
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
@@ -81,7 +81,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/google/go-cmp v0.6.0
 	github.com/sercand/kuberesolver/v4 v4.0.0
-	go.opentelemetry.io/collector/pdata v1.18.0
+	go.opentelemetry.io/collector/pdata v1.19.0
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
 	google.golang.org/protobuf v1.35.1
 )

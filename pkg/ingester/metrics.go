@@ -5,6 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 )
@@ -54,6 +55,9 @@ type ingesterMetrics struct {
 	maxInflightPushRequests prometheus.GaugeFunc
 	inflightRequests        prometheus.GaugeFunc
 	inflightQueryRequests   prometheus.GaugeFunc
+
+	// Posting Cache Metrics
+	expandedPostingsCacheMetrics *tsdb.ExpandedPostingsCacheMetrics
 }
 
 func newIngesterMetrics(r prometheus.Registerer,
@@ -63,6 +67,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 	ingestionRate *util_math.EwmaRate,
 	inflightPushRequests *atomic.Int64,
 	maxInflightQueryRequests *util_math.MaxTracker,
+	postingsCacheEnabled bool,
 ) *ingesterMetrics {
 	const (
 		instanceLimits     = "cortex_ingester_instance_limits"
@@ -233,6 +238,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_active_series",
 			Help: "Number of currently active series per user.",
 		}, []string{"user"}),
+	}
+
+	if postingsCacheEnabled && r != nil {
+		m.expandedPostingsCacheMetrics = tsdb.NewPostingCacheMetrics(r)
 	}
 
 	if activeSeriesEnabled && r != nil {

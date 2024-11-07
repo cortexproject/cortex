@@ -12,7 +12,7 @@ The supported backends for the blocks storage are:
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
 * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
-* [OpenStack Swift](https://wiki.openstack.org/wiki/Swift) (experimental)
+* [OpenStack Swift](https://wiki.openstack.org/wiki/Swift)
 * [Local Filesystem](https://thanos.io/tip/thanos/storage.md/#filesystem) (single node only)
 
 _Internally, some components are based on [Thanos](https://thanos.io), but no Thanos knowledge is required in order to run it._

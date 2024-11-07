@@ -837,7 +837,7 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.55.1-0.20241102120812-a6fd22b9d2c8
+# github.com/prometheus/prometheus v0.55.1
 ## explicit; go 1.22.0
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -1144,7 +1144,7 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
-# go.opentelemetry.io/collector/pdata v1.18.0
+# go.opentelemetry.io/collector/pdata v1.19.0
 ## explicit; go 1.22.0
 go.opentelemetry.io/collector/pdata/internal
 go.opentelemetry.io/collector/pdata/internal/data

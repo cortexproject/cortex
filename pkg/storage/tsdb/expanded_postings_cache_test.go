@@ -1,6 +1,7 @@
 package tsdb
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"sync"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 )
@@ -88,7 +90,8 @@ func TestFifoCacheExpire(t *testing.T) {
 
 	for name, c := range tc {
 		t.Run(name, func(t *testing.T) {
-			m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
+			r := prometheus.NewPedanticRegistry()
+			m := NewPostingCacheMetrics(r)
 			timeNow := time.Now
 			cache := newFifoCache[int](c.cfg, "test", m, timeNow)
 
@@ -118,6 +121,16 @@ func TestFifoCacheExpire(t *testing.T) {
 
 			require.Equal(t, c.expectedFinalItems, totalCacheSize)
 
+			if c.expectedFinalItems != numberOfKeys {
+				err := testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
+		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
+		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
+        cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="full"} %v
+`, numberOfKeys-c.expectedFinalItems)), "cortex_ingester_expanded_postings_cache_evicts")
+				require.NoError(t, err)
+
+			}
+
 			if c.ttlExpire {
 				cache.timeNow = func() time.Time {
 					return timeNow().Add(2 * c.cfg.Ttl)
@@ -135,6 +148,29 @@ func TestFifoCacheExpire(t *testing.T) {
 					// Total Size Updated
 					require.Equal(t, originalSize+10, cache.cachedBytes)
 				}
+
+				err := testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
+		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
+		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
+        cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="expired"} %v
+`, numberOfKeys)), "cortex_ingester_expanded_postings_cache_evicts")
+				require.NoError(t, err)
+
+				cache.timeNow = func() time.Time {
+					return timeNow().Add(5 * c.cfg.Ttl)
+				}
+
+				cache.getPromiseForKey("newKwy", func() (int, int64, error) {
+					return 2, 18, nil
+				})
+
+				// Should expire all keys again as ttl is expired
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
+		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
+		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
+        cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="expired"} %v
+`, numberOfKeys*2)), "cortex_ingester_expanded_postings_cache_evicts")
+				require.NoError(t, err)
 			}
 		})
 	}

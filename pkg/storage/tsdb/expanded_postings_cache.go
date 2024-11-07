@@ -55,7 +55,7 @@ func NewPostingCacheMetrics(r prometheus.Registerer) *ExpandedPostingsCacheMetri
 		CacheEvicts: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_expanded_postings_cache_evicts",
 			Help: "Total number of evictions in the cache, excluding items that got evicted due to TTL.",
-		}, []string{"cache"}),
+		}, []string{"cache", "reason"}),
 		NonCacheableQueries: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_expanded_postings_non_cacheable_queries",
 			Help: "Total number of non cacheable queries.",
@@ -301,14 +301,15 @@ func (c *fifoCache[V]) expire() {
 		return
 	}
 	c.cachedMtx.RLock()
-	if !c.shouldEvictHead() {
+	if _, r := c.shouldEvictHead(); !r {
 		c.cachedMtx.RUnlock()
 		return
 	}
 	c.cachedMtx.RUnlock()
 	c.cachedMtx.Lock()
 	defer c.cachedMtx.Unlock()
-	for c.shouldEvictHead() {
+	for reason, r := c.shouldEvictHead(); r; reason, r = c.shouldEvictHead() {
+		c.metrics.CacheEvicts.WithLabelValues(c.name, reason).Inc()
 		c.evictHead()
 	}
 }
@@ -340,6 +341,7 @@ func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)
 
 		// If is cached but is expired, lets try to replace the cache value.
 		if loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) && c.cachedValues.CompareAndSwap(k, loaded, r) {
+			c.metrics.CacheEvicts.WithLabelValues(c.name, "expired").Inc()
 			r.v, r.sizeBytes, r.err = fetch()
 			r.sizeBytes += int64(len(k))
 			c.updateSize(loaded.(*cacheEntryPromise[V]).sizeBytes, r.sizeBytes)
@@ -357,22 +359,25 @@ func (c *fifoCache[V]) contains(k string) bool {
 	return ok
 }
 
-func (c *fifoCache[V]) shouldEvictHead() bool {
-	if c.cachedBytes > c.cfg.MaxBytes {
-		c.metrics.CacheEvicts.WithLabelValues(c.name).Inc()
-		return true
-	}
+func (c *fifoCache[V]) shouldEvictHead() (string, bool) {
 	h := c.cached.Front()
 	if h == nil {
-		return false
+		return "", false
 	}
+
+	if c.cachedBytes > c.cfg.MaxBytes {
+		return "full", true
+	}
+
 	key := h.Value.(string)
 
 	if l, ok := c.cachedValues.Load(key); ok {
-		return l.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow())
+		if l.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) {
+			return "expired", true
+		}
 	}
 
-	return false
+	return "", false
 }
 
 func (c *fifoCache[V]) evictHead() {

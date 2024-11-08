@@ -20,7 +20,7 @@ services:
     ports:
       - "9009:9009"
     healthcheck:
-        test: wget -qO- http://localhost:9009/ready
+        test: wget -qO- http://127.0.0.1:9009/ready
         interval: 10s
         timeout: 10s
         retries: 3
@@ -58,7 +58,7 @@ services:
     volumes:
       - ./seaweedfs-config.json:/workspace/seaweedfs-config.json:ro
     healthcheck:
-      test: wget -qO- http://localhost:8333/status
+      test: wget -qO- http://127.0.0.1:8333/status
       interval: 10s
       timeout: 10s
       retries: 3

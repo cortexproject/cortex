@@ -22,6 +22,10 @@
       ],
       "panels": [
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
             "fieldConfig": {
                "defaults": {
@@ -51,6 +55,7 @@
                   "unit": "percentunit"
                }
             },
+            "fill": 1,
             "gridPos": {
                "h": 8,
                "w": 10,
@@ -58,7 +63,19 @@
                "y": 0
             },
             "id": 1,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
             "links": [ ],
+            "nullPointMode": "null as zero",
             "options": {
                "displayMode": "basic",
                "orientation": "horizontal",
@@ -70,6 +87,15 @@
                   "values": false
                }
             },
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "(\n  sum by(cortex_service) (\n    label_replace(\n      kube_statefulset_status_replicas_updated{job=~\"$job\",statefulset=~\"cortex-gw|distributor|ingester.*|query-frontend.*|query-scheduler.*|querier.*|compactor|store-gateway|ruler|alertmanager\"},\n      \"cortex_service\", \"$1\", \"statefulset\", \"(.*?)(?:-zone-[a-z])?\"\n    )\n  )\n  /\n  sum by(cortex_service) (\n    label_replace(\n      kube_statefulset_replicas{job=~\"$job\"},\n      \"cortex_service\", \"$1\", \"statefulset\", \"(.*?)(?:-zone-[a-z])?\"\n    )\n  )\n) and (\n  sum by(cortex_service) (\n    label_replace(\n      kube_statefulset_replicas{job=~\"$job\"},\n      \"cortex_service\", \"$1\", \"statefulset\", \"(.*?)(?:-zone-[a-z])?\"\n    )\n  )\n  > 0\n)\n",
@@ -88,10 +114,47 @@
                   "step": null
                }
             ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
             "title": "Rollout progress",
-            "type": "bargauge"
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "bargauge",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": 0,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ]
          },
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
             "fieldConfig": {
                "defaults": {
@@ -113,6 +176,7 @@
                },
                "overrides": [ ]
             },
+            "fill": 1,
             "gridPos": {
                "h": 4,
                "w": 2,
@@ -120,16 +184,28 @@
                "y": 0
             },
             "id": 2,
-            "links": [ ],
-            "options": {
-               "legend": {
-                  "showLegend": true
-               },
-               "tooltip": {
-                  "mode": "single",
-                  "sort": "none"
-               }
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
             },
+            "lines": true,
+            "linewidth": 1,
+            "links": [ ],
+            "nullPointMode": "null as zero",
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "sum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"api_(v1|prom)_push\",status_code=~\"2.+\"}[$__rate_interval])) /\nsum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"api_(v1|prom)_push\"}[$__rate_interval]))\n",
@@ -142,10 +218,47 @@
                   "step": null
                }
             ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
             "title": "Writes - 2xx",
-            "type": "stat"
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "stat",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": 0,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ]
          },
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
             "fieldConfig": {
                "defaults": {
@@ -175,6 +288,7 @@
                },
                "overrides": [ ]
             },
+            "fill": 1,
             "gridPos": {
                "h": 4,
                "w": 2,
@@ -182,16 +296,28 @@
                "y": 0
             },
             "id": 3,
-            "links": [ ],
-            "options": {
-               "legend": {
-                  "showLegend": true
-               },
-               "tooltip": {
-                  "mode": "single",
-                  "sort": "none"
-               }
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
             },
+            "lines": true,
+            "linewidth": 1,
+            "links": [ ],
+            "nullPointMode": "null as zero",
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "sum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"api_(v1|prom)_push\",status_code=~\"4.+\"}[$__rate_interval])) /\nsum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"api_(v1|prom)_push\"}[$__rate_interval]))\n",
@@ -204,10 +330,47 @@
                   "step": null
                }
             ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
             "title": "Writes - 4xx",
-            "type": "stat"
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "stat",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": 0,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ]
          },
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
             "fieldConfig": {
                "defaults": {
@@ -233,6 +396,7 @@
                },
                "overrides": [ ]
             },
+            "fill": 1,
             "gridPos": {
                "h": 4,
                "w": 2,
@@ -240,16 +404,28 @@
                "y": 0
             },
             "id": 4,
-            "links": [ ],
-            "options": {
-               "legend": {
-                  "showLegend": true
-               },
-               "tooltip": {
-                  "mode": "single",
-                  "sort": "none"
-               }
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
             },
+            "lines": true,
+            "linewidth": 1,
+            "links": [ ],
+            "nullPointMode": "null as zero",
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "sum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"api_(v1|prom)_push\",status_code=~\"5.+\"}[$__rate_interval])) /\nsum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"api_(v1|prom)_push\"}[$__rate_interval]))\n",
@@ -262,10 +438,47 @@
                   "step": null
                }
             ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
             "title": "Writes - 5xx",
-            "type": "stat"
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "stat",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": 0,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ]
          },
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
             "fieldConfig": {
                "defaults": {
@@ -295,6 +508,7 @@
                },
                "overrides": [ ]
             },
+            "fill": 1,
             "gridPos": {
                "h": 4,
                "w": 8,
@@ -302,16 +516,28 @@
                "y": 0
             },
             "id": 5,
-            "links": [ ],
-            "options": {
-               "legend": {
-                  "showLegend": true
-               },
-               "tooltip": {
-                  "mode": "single",
-                  "sort": "none"
-               }
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
             },
+            "lines": true,
+            "linewidth": 1,
+            "links": [ ],
+            "nullPointMode": "null as zero",
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "histogram_quantile(0.99, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~\"$job\", route=~\"api_(v1|prom)_push\"}))\n",
@@ -324,10 +550,47 @@
                   "step": null
                }
             ],
-            "title": "Writes 99th latency",
-            "type": "stat"
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
+            "title": "Writes 99th Latency",
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "stat",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": 0,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ]
          },
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
             "fieldConfig": {
                "defaults": {
@@ -349,6 +612,7 @@
                },
                "overrides": [ ]
             },
+            "fill": 1,
             "gridPos": {
                "h": 4,
                "w": 2,
@@ -356,16 +620,28 @@
                "y": 4
             },
             "id": 6,
-            "links": [ ],
-            "options": {
-               "legend": {
-                  "showLegend": true
-               },
-               "tooltip": {
-                  "mode": "single",
-                  "sort": "none"
-               }
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
             },
+            "lines": true,
+            "linewidth": 1,
+            "links": [ ],
+            "nullPointMode": "null as zero",
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "sum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"(prometheus|api_prom)_api_v1_.+\",status_code=~\"2.+\"}[$__rate_interval])) /\nsum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"(prometheus|api_prom)_api_v1_.+\"}[$__rate_interval]))\n",
@@ -378,10 +654,47 @@
                   "step": null
                }
             ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
             "title": "Reads - 2xx",
-            "type": "stat"
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "stat",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": 0,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ]
          },
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
             "fieldConfig": {
                "defaults": {
@@ -411,6 +724,7 @@
                },
                "overrides": [ ]
             },
+            "fill": 1,
             "gridPos": {
                "h": 4,
                "w": 2,
@@ -418,16 +732,28 @@
                "y": 4
             },
             "id": 7,
-            "links": [ ],
-            "options": {
-               "legend": {
-                  "showLegend": true
-               },
-               "tooltip": {
-                  "mode": "single",
-                  "sort": "none"
-               }
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
             },
+            "lines": true,
+            "linewidth": 1,
+            "links": [ ],
+            "nullPointMode": "null as zero",
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "sum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"(prometheus|api_prom)_api_v1_.+\",status_code=~\"4.+\"}[$__rate_interval])) /\nsum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"(prometheus|api_prom)_api_v1_.+\"}[$__rate_interval]))\n",
@@ -440,10 +766,47 @@
                   "step": null
                }
             ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
             "title": "Reads - 4xx",
-            "type": "stat"
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "stat",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": 0,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ]
          },
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
             "fieldConfig": {
                "defaults": {
@@ -469,6 +832,7 @@
                },
                "overrides": [ ]
             },
+            "fill": 1,
             "gridPos": {
                "h": 4,
                "w": 2,
@@ -476,16 +840,28 @@
                "y": 4
             },
             "id": 8,
-            "links": [ ],
-            "options": {
-               "legend": {
-                  "showLegend": true
-               },
-               "tooltip": {
-                  "mode": "single",
-                  "sort": "none"
-               }
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
             },
+            "lines": true,
+            "linewidth": 1,
+            "links": [ ],
+            "nullPointMode": "null as zero",
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "sum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"(prometheus|api_prom)_api_v1_.+\",status_code=~\"5.+\"}[$__rate_interval])) /\nsum(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"(prometheus|api_prom)_api_v1_.+\"}[$__rate_interval]))\n",
@@ -498,10 +874,47 @@
                   "step": null
                }
             ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
             "title": "Reads - 5xx",
-            "type": "stat"
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "stat",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": 0,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ]
          },
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
             "fieldConfig": {
                "defaults": {
@@ -531,6 +944,7 @@
                },
                "overrides": [ ]
             },
+            "fill": 1,
             "gridPos": {
                "h": 4,
                "w": 8,
@@ -538,16 +952,28 @@
                "y": 4
             },
             "id": 9,
-            "links": [ ],
-            "options": {
-               "legend": {
-                  "showLegend": true
-               },
-               "tooltip": {
-                  "mode": "single",
-                  "sort": "none"
-               }
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
             },
+            "lines": true,
+            "linewidth": 1,
+            "links": [ ],
+            "nullPointMode": "null as zero",
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "histogram_quantile(0.99, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~\"$job\", route=~\"(prometheus|api_prom)_api_v1_.+\"}))\n",
@@ -560,10 +986,47 @@
                   "step": null
                }
             ],
-            "title": "Reads 99th latency",
-            "type": "stat"
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
+            "title": "Reads 99th Latency",
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "stat",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": 0,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ]
          },
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
             "fieldConfig": {
                "defaults": {
@@ -593,6 +1056,7 @@
                },
                "overrides": [ ]
             },
+            "fill": 1,
             "gridPos": {
                "h": 8,
                "w": 10,
@@ -600,13 +1064,34 @@
                "y": 8
             },
             "id": 10,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
             "links": [ ],
+            "nullPointMode": "null as zero",
             "options": {
                "text": {
                   "titleSize": 14,
                   "valueSize": 14
                }
             },
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "kube_deployment_status_replicas_unavailable{job=~\"$job\", deployment=~\"cortex-gw|distributor|ingester.*|query-frontend.*|query-scheduler.*|querier.*|compactor|store-gateway|ruler|alertmanager\"}\n> 0\n",
@@ -629,8 +1114,41 @@
                   "step": null
                }
             ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
             "title": "Unhealthy pods",
-            "type": "stat"
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "stat",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": 0,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ]
          },
          {
             "datasource": "$datasource",
@@ -696,29 +1214,12 @@
             "type": "table"
          },
          {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
             "datasource": "$datasource",
-            "fieldConfig": {
-               "defaults": {
-                  "custom": {
-                     "drawStyle": "line",
-                     "fillOpacity": 1,
-                     "lineWidth": 1,
-                     "pointSize": 5,
-                     "showPoints": "never",
-                     "spanNulls": false,
-                     "stacking": {
-                        "group": "A",
-                        "mode": "none"
-                     }
-                  },
-                  "thresholds": {
-                     "mode": "absolute",
-                     "steps": [ ]
-                  },
-                  "unit": "short"
-               },
-               "overrides": [ ]
-            },
+            "fill": 1,
             "gridPos": {
                "h": 8,
                "w": 8,
@@ -726,34 +1227,65 @@
                "y": 8
             },
             "id": 12,
-            "links": [ ],
-            "options": {
-               "legend": {
-                  "showLegend": true
-               },
-               "tooltip": {
-                  "mode": "single",
-                  "sort": "none"
-               }
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": true,
+               "total": false,
+               "values": false
             },
+            "lines": true,
+            "linewidth": 1,
+            "links": [ ],
+            "nullPointMode": "null as zero",
+            "percentage": false,
+            "pointradius": 5,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "span": 6,
+            "stack": false,
+            "steppedLine": false,
             "targets": [
                {
                   "expr": "1 - (\n  avg_over_time(histogram_quantile(0.99, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~\"$job\", route=~\"api_(v1|prom)_push\"} offset 24h))[1h:])\n  /\n  avg_over_time(histogram_quantile(0.99, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~\"$job\", route=~\"api_(v1|prom)_push\"}))[1h:])\n)\n",
                   "format": "time_series",
                   "interval": "15s",
+                  "intervalFactor": 2,
                   "legendFormat": "writes",
-                  "legendLink": null
+                  "legendLink": null,
+                  "step": 10
                },
                {
                   "expr": "1 - (\n  avg_over_time(histogram_quantile(0.99, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~\"$job\", route=~\"(prometheus|api_prom)_api_v1_.+\"} offset 24h))[1h:])\n  /\n  avg_over_time(histogram_quantile(0.99, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~\"$job\", route=~\"(prometheus|api_prom)_api_v1_.+\"}))[1h:])\n)\n",
                   "format": "time_series",
                   "interval": "15s",
+                  "intervalFactor": 2,
                   "legendFormat": "reads",
-                  "legendLink": null
+                  "legendLink": null,
+                  "step": 10
                }
             ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeShift": null,
             "title": "Latency vs 24h ago",
-            "type": "timeseries",
+            "tooltip": {
+               "shared": false,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "graph",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
             "yaxes": [
                {
                   "format": "percentunit",
@@ -789,7 +1321,7 @@
                   "value": "Cortex"
                },
                "hide": 0,
-               "label": "Data source",
+               "label": null,
                "name": "datasource",
                "options": [ ],
                "query": "prometheus",

@@ -515,7 +515,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 100)
+	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000)
 }
 
 // comparer should be used to compare promql results between engines.
@@ -1065,7 +1065,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 100)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
 }
 
 // TestPrometheusCompatibilityQueryFuzz compares Cortex with latest Prometheus release.
@@ -1178,7 +1178,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 100)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
 }
 
 // waitUntilReady is a helper function to wait and check if both servers to test load the expected data.
@@ -1201,8 +1201,11 @@ func waitUntilReady(t *testing.T, ctx context.Context, c1, c2 *e2ecortex.Client,
 		labelSet2, err = c2.Series([]string{query}, start, end)
 		require.NoError(t, err)
 
-		if cmp.Equal(labelSet1, labelSet2, labelSetsComparer) {
-			break
+		// Make sure series can be queried.
+		if len(labelSet1) > 0 {
+			if cmp.Equal(labelSet1, labelSet2, labelSetsComparer) {
+				break
+			}
 		}
 
 		retries.Wait()

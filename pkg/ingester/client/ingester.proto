@@ -7,12 +7,15 @@ option go_package = "client";
 
 import "gogoproto/gogo.proto";
 import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpbv2/cortexv2.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 service Ingester {
   rpc Push(cortexpb.WriteRequest) returns (cortexpb.WriteResponse) {};
+  rpc PushV2(cortexpbv2.WriteRequest) returns (cortexpbv2.WriteResponse) {};
+  
   rpc QueryStream(QueryRequest) returns (stream QueryStreamResponse) {};
   rpc QueryExemplars(ExemplarQueryRequest) returns (ExemplarQueryResponse) {};
 

@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/httpgrpc"
@@ -28,6 +29,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -44,7 +46,8 @@ import (
 )
 
 var (
-	emptyPreallocSeries = cortexpb.PreallocTimeseries{}
+	emptyPreallocSeriesV2 = cortexpbv2.PreallocTimeseriesV2{}
+	emptyPreallocSeries   = cortexpb.PreallocTimeseries{}
 
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 
@@ -514,6 +517,17 @@ func shardByAllLabels(userID string, labels []cortexpb.LabelAdapter) uint32 {
 }
 
 // Remove the label labelname from a slice of LabelPairs if it exists.
+func removeLabelV2(labelName string, labels *labels.Labels) {
+	for i := 0; i < len(*labels); i++ {
+		pair := (*labels)[i]
+		if pair.Name == labelName {
+			*labels = append((*labels)[:i], (*labels)[i+1:]...)
+			return
+		}
+	}
+}
+
+// Remove the label labelname from a slice of LabelPairs if it exists.
 func removeLabel(labelName string, labels *[]cortexpb.LabelAdapter) {
 	for i := 0; i < len(*labels); i++ {
 		pair := (*labels)[i]
@@ -615,6 +629,432 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 			},
 		},
 		nil
+}
+
+func (d *Distributor) prepareSeriesKeysV2(ctx context.Context, req *cortexpbv2.WriteRequest, userID string, limits *validation.Limits, b labels.ScratchBuilder, st *writev2.SymbolsTable, removeReplica bool) ([]uint32, []cortexpbv2.PreallocTimeseriesV2, int64, int64, int64, int64, error, error) {
+	pSpan, _ := opentracing.StartSpanFromContext(ctx, "prepareSeriesKeysV2")
+	defer pSpan.Finish()
+	// For each timeseries or samples, we compute a hash to distribute across ingesters;
+	// check each sample/metadata and discard if outside limits.
+	validatedTimeseries := make([]cortexpbv2.PreallocTimeseriesV2, 0, len(req.Timeseries))
+	seriesKeys := make([]uint32, 0, len(req.Timeseries))
+	validatedFloatSamples := 0
+	validatedHistogramSamples := 0
+	validatedExemplars := 0
+	validatedMetadata := 0
+
+	var firstPartialErr error
+
+	latestSampleTimestampMs := int64(0)
+	defer func() {
+		// Update this metric even in case of errors.
+		if latestSampleTimestampMs > 0 {
+			d.latestSeenSampleTimestampPerUser.WithLabelValues(userID).Set(float64(latestSampleTimestampMs) / 1000)
+		}
+	}()
+
+	// For each timeseries, compute a hash to distribute across ingesters;
+	// check each sample and discard if outside limits.
+	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
+	for _, ts := range req.Timeseries {
+		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
+		if len(ts.Samples) > 0 {
+			latestSampleTimestampMs = max(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].Timestamp)
+		}
+		if len(ts.Histograms) > 0 {
+			latestSampleTimestampMs = max(latestSampleTimestampMs, ts.Histograms[len(ts.Histograms)-1].Timestamp)
+		}
+
+		lbs := ts.ToLabels(&b, req.Symbols)
+
+		if mrc := limits.MetricRelabelConfigs; len(mrc) > 0 {
+			l, _ := relabel.Process(lbs, mrc...)
+			if len(l) == 0 {
+				// all labels are gone, samples will be discarded
+				d.validateMetrics.DiscardedSamples.WithLabelValues(
+					validation.DroppedByRelabelConfiguration,
+					userID,
+				).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+
+				// all labels are gone, exemplars will be discarded
+				d.validateMetrics.DiscardedExemplars.WithLabelValues(
+					validation.DroppedByRelabelConfiguration,
+					userID,
+				).Add(float64(len(ts.Exemplars)))
+				continue
+			}
+			lbs = l
+		}
+
+		// If we found both the cluster and replica labels, we only want to include the cluster label when
+		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
+		// series we're trying to dedupe when HA tracking moves over to a different replica.
+		if removeReplica {
+			removeLabelV2(limits.HAReplicaLabel, &lbs)
+		}
+
+		for _, labelName := range limits.DropLabels {
+			removeLabelV2(labelName, &lbs)
+		}
+		if len(lbs) == 0 {
+			d.validateMetrics.DiscardedSamples.WithLabelValues(
+				validation.DroppedByUserConfigurationOverride,
+				userID,
+			).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+
+			d.validateMetrics.DiscardedExemplars.WithLabelValues(
+				validation.DroppedByUserConfigurationOverride,
+				userID,
+			).Add(float64(len(ts.Exemplars)))
+			continue
+		}
+
+		// update label refs
+		ts.LabelsRefs = st.SymbolizeLabels(lbs, nil)
+		las := cortexpb.FromLabelsToLabelAdapters(lbs)
+
+		// We rely on sorted labels in different places:
+		// 1) When computing token for labels, and sharding by all labels. Here different order of labels returns
+		// different tokens, which is bad.
+		// 2) In validation code, when checking for duplicate label names. As duplicate label names are rejected
+		// later in the validation phase, we ignore them here.
+		sortLabelsIfNeeded(las)
+
+		// Generate the sharding token based on the series labels without the HA replica
+		// label and dropped labels (if any)
+		seriesKey, err := d.tokenForLabels(userID, las)
+		if err != nil {
+			return nil, nil, 0, 0, 0, 0, nil, err
+		}
+
+		validatedSeries, validationErr := d.validateSeriesV2(ts, las, req.Symbols, userID, skipLabelNameValidation, limits, b, st)
+
+		// Errors in validation are considered non-fatal, as one series in a request may contain
+		// invalid data but all the remaining series could be perfectly valid.
+		if validationErr != nil && firstPartialErr == nil {
+			// The series labels may be retained by validationErr but that's not a problem for this
+			// use case because we format it calling Error() and then we discard it.
+			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
+		}
+
+		if ts.Metadata.Type != cortexpbv2.METRIC_TYPE_UNSPECIFIED {
+			// since metadata is attached, count only metadata that is not METRIC_TYPE_UNSPECIFIED.
+			validatedMetadata++
+		}
+
+		// validateSeriesV2 would have returned an emptyPreallocSeriesV2 if there were no valid samples.
+		if validatedSeries == emptyPreallocSeriesV2 {
+			continue
+		}
+
+		seriesKeys = append(seriesKeys, seriesKey)
+		validatedTimeseries = append(validatedTimeseries, validatedSeries)
+		validatedFloatSamples += len(ts.Samples)
+		validatedHistogramSamples += len(ts.Histograms)
+		validatedExemplars += len(ts.Exemplars)
+	}
+
+	return seriesKeys, validatedTimeseries, int64(validatedMetadata), int64(validatedFloatSamples), int64(validatedHistogramSamples), int64(validatedExemplars), firstPartialErr, nil
+}
+
+func (d *Distributor) doBatchV2(ctx context.Context, req *cortexpbv2.WriteRequest, subRing ring.ReadRing, keys []uint32, validatedTimeseries []cortexpbv2.PreallocTimeseriesV2, userID string, stats *WriteStats) error {
+	span, _ := opentracing.StartSpanFromContext(ctx, "doBatchV2")
+	defer span.Finish()
+
+	// Use a background context to make sure all ingesters get samples even if we return early
+	localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+	localCtx = user.InjectOrgID(localCtx, userID)
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		localCtx = opentracing.ContextWithSpan(localCtx, sp)
+	}
+	// Get any HTTP headers that are supposed to be added to logs and add to localCtx for later use
+	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
+		localCtx = util_log.ContextWithHeaderMap(localCtx, headerMap)
+	}
+	// Get clientIP(s) from Context and add it to localCtx
+	source := util.GetSourceIPsFromOutgoingCtx(ctx)
+	localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
+
+	op := ring.WriteNoExtend
+	if d.cfg.ExtendWrites {
+		op = ring.Write
+	}
+
+	return ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.InstanceDesc, indexes []int) error {
+		timeseries := make([]cortexpbv2.PreallocTimeseriesV2, 0, len(indexes))
+
+		for _, i := range indexes {
+			timeseries = append(timeseries, validatedTimeseries[i])
+		}
+
+		return d.sendV2(localCtx, req.Symbols, ingester, timeseries, req.Source, stats)
+	}, func() {
+		cortexpbv2.ReuseSlice(req.Timeseries)
+		cancel()
+	})
+}
+
+func (d *Distributor) sendV2(ctx context.Context, symbols []string, ingester ring.InstanceDesc, timeseries []cortexpbv2.PreallocTimeseriesV2, source cortexpbv2.WriteRequest_SourceEnum, stats *WriteStats) error {
+	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
+	if err != nil {
+		return err
+	}
+
+	id, err := d.ingestersRing.GetInstanceIdByAddr(ingester.Addr)
+	if err != nil {
+		level.Warn(d.log).Log("msg", "instance not found in the ring", "addr", ingester.Addr, "err", err)
+	}
+
+	c := h.(ingester_client.HealthAndIngesterClient)
+
+	req := cortexpbv2.PreallocWriteRequestV2FromPool()
+	req.Symbols = symbols
+	req.Timeseries = timeseries
+	req.Source = source
+
+	resp, err := c.PushPreAllocV2(ctx, req)
+	if err == nil {
+		cortexpbv2.ReuseWriteRequestV2(req)
+	}
+
+	if len(timeseries) > 0 {
+		d.ingesterAppends.WithLabelValues(id, typeSamples).Inc()
+		if err != nil {
+			d.ingesterAppendFailures.WithLabelValues(id, typeSamples, getErrorStatus(err)).Inc()
+		}
+
+		metadataAppend := false
+		for _, ts := range timeseries {
+			if ts.Metadata.Type != cortexpbv2.METRIC_TYPE_UNSPECIFIED {
+				metadataAppend = true
+				break
+			}
+		}
+		if metadataAppend {
+			d.ingesterAppends.WithLabelValues(id, typeMetadata).Inc()
+			if err != nil {
+				d.ingesterAppendFailures.WithLabelValues(id, typeMetadata, getErrorStatus(err)).Inc()
+			}
+		}
+	}
+
+	if resp != nil {
+		// track stats
+		stats.SetSamples(resp.Samples)
+		stats.SetHistograms(resp.Histograms)
+		stats.SetExemplars(resp.Exemplars)
+	}
+
+	return err
+}
+
+// Validates a single series from a write request. Will remove labels if
+// any are configured to be dropped for the user ID.
+// Returns the validated series with it's labels/samples, and any error.
+// The returned error may retain the series labels.
+func (d *Distributor) validateSeriesV2(ts cortexpbv2.PreallocTimeseriesV2, seriesLabels []cortexpb.LabelAdapter, symbols []string, userID string, skipLabelNameValidation bool, limits *validation.Limits, b labels.ScratchBuilder, st *writev2.SymbolsTable) (cortexpbv2.PreallocTimeseriesV2, validation.ValidationError) {
+	d.labelsHistogram.Observe(float64(len(ts.LabelsRefs)))
+
+	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, seriesLabels, skipLabelNameValidation); err != nil {
+		return emptyPreallocSeriesV2, err
+	}
+
+	var samples []cortexpbv2.Sample
+	if len(ts.Samples) > 0 {
+		// Only alloc when data present
+		samples = make([]cortexpbv2.Sample, 0, len(ts.Samples))
+		for _, s := range ts.Samples {
+			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, seriesLabels, s.Timestamp); err != nil {
+				return emptyPreallocSeriesV2, err
+			}
+			samples = append(samples, s)
+		}
+	}
+
+	var exemplars []cortexpbv2.Exemplar
+	if len(ts.Exemplars) > 0 {
+		// Only alloc when data present
+		exemplars = make([]cortexpbv2.Exemplar, 0, len(ts.Exemplars))
+		for _, e := range ts.Exemplars {
+			if err := validation.ValidateExemplarV2(d.validateMetrics, symbols, userID, seriesLabels, &e, b, st); err != nil {
+				// An exemplar validation error prevents ingesting samples
+				// in the same series object. However, because the current Prometheus
+				// remote write implementation only populates one or the other,
+				// there never will be any.
+				return emptyPreallocSeriesV2, err
+			}
+			exemplars = append(exemplars, e)
+		}
+	}
+
+	var histograms []cortexpbv2.Histogram
+	if len(ts.Histograms) > 0 {
+		// Only alloc when data present
+		histograms = make([]cortexpbv2.Histogram, 0, len(ts.Histograms))
+		for i, h := range ts.Histograms {
+			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, seriesLabels, h.Timestamp); err != nil {
+				return emptyPreallocSeriesV2, err
+			}
+			convertedHistogram, err := validation.ValidateNativeHistogramV2(d.validateMetrics, limits, userID, seriesLabels, h)
+			if err != nil {
+				return emptyPreallocSeriesV2, err
+			}
+			ts.Histograms[i] = convertedHistogram
+		}
+		histograms = append(histograms, ts.Histograms...)
+	}
+
+	// validate metadata
+	err := validation.ValidateMetadataV2(d.validateMetrics, limits, userID, symbols, &ts.Metadata, st)
+	if err != nil {
+		return emptyPreallocSeriesV2, err
+	}
+
+	return cortexpbv2.PreallocTimeseriesV2{
+		TimeSeries: &cortexpbv2.TimeSeries{
+			LabelsRefs: ts.LabelsRefs,
+			Samples:    samples,
+			Exemplars:  exemplars,
+			Histograms: histograms,
+			Metadata:   ts.Metadata,
+		},
+	}, nil
+}
+
+func (d *Distributor) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*cortexpbv2.WriteResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.PushV2")
+	defer span.Finish()
+
+	// We will report *this* request in the error too.
+	inflight := d.inflightPushRequests.Inc()
+	defer d.inflightPushRequests.Dec()
+
+	now := time.Now()
+	d.activeUsers.UpdateUserTimestamp(userID, now)
+
+	numFloatSamples := 0
+	numHistogramSamples := 0
+	numExemplars := 0
+	for _, ts := range req.Timeseries {
+		numFloatSamples += len(ts.Samples)
+		numHistogramSamples += len(ts.Histograms)
+		numExemplars += len(ts.Exemplars)
+	}
+
+	// Count the total samples, exemplars in, prior to validation or deduplication, for comparison with other metrics.
+	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeFloat).Add(float64(numFloatSamples))
+	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeHistogram).Add(float64(numHistogramSamples))
+	d.incomingExemplars.WithLabelValues(userID).Add(float64(numExemplars))
+	// Metadata is attached to each series.
+	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Timeseries)))
+
+	if d.cfg.InstanceLimits.MaxInflightPushRequests > 0 && inflight > int64(d.cfg.InstanceLimits.MaxInflightPushRequests) {
+		return nil, errTooManyInflightPushRequests
+	}
+
+	if d.cfg.InstanceLimits.MaxIngestionRate > 0 {
+		if rate := d.ingestionRate.Rate(); rate >= d.cfg.InstanceLimits.MaxIngestionRate {
+			return nil, errMaxSamplesPushRateLimitReached
+		}
+	}
+
+	b := labels.NewScratchBuilder(0)
+	removeReplica := false
+	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
+	limits := d.limits.GetOverridesForUser(userID)
+
+	if limits.AcceptHASamples && len(req.Timeseries) > 0 {
+		cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, cortexpb.FromLabelsToLabelAdapters(req.Timeseries[0].ToLabels(&b, req.Symbols)))
+		removeReplica, err = d.checkSample(ctx, userID, cluster, replica, limits)
+		if err != nil {
+			// Ensure the request slice is reused if the series get deduped.
+			cortexpbv2.ReuseSlice(req.Timeseries)
+
+			if errors.Is(err, ha.ReplicasNotMatchError{}) {
+				// These samples have been deduped.
+				d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numFloatSamples + numHistogramSamples))
+				return nil, httpgrpc.Errorf(http.StatusAccepted, err.Error())
+			}
+
+			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
+				d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numFloatSamples + numHistogramSamples))
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			}
+
+			return nil, err
+		}
+		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
+		if !removeReplica { // False, Nil
+			d.nonHASamples.WithLabelValues(userID).Add(float64(numFloatSamples + numHistogramSamples))
+		}
+	}
+
+	st := writev2.NewSymbolTable()
+	seriesKeys, validatedTimeseries, validatedMetadatas, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeysV2(ctx, req, userID, limits, b, &st, removeReplica)
+	if err != nil {
+		return nil, err
+	}
+	req.Symbols = st.Symbols()
+
+	d.receivedSamples.WithLabelValues(userID, sampleMetricTypeFloat).Add(float64(validatedFloatSamples))
+	d.receivedSamples.WithLabelValues(userID, sampleMetricTypeHistogram).Add(float64(validatedHistogramSamples))
+	d.receivedExemplars.WithLabelValues(userID).Add(float64(validatedExemplars))
+	// Metadata is attached to each series
+	d.receivedMetadata.WithLabelValues(userID).Add(float64(validatedMetadatas))
+
+	if len(seriesKeys) == 0 {
+		// Ensure the request slice is reused if there's no series or metadata passing the validation.
+		cortexpbv2.ReuseSlice(req.Timeseries)
+
+		return &cortexpbv2.WriteResponse{}, firstPartialErr
+	}
+
+	totalSamples := validatedFloatSamples + validatedHistogramSamples
+	totalN := totalSamples + validatedExemplars + validatedMetadatas
+	if !d.ingestionRateLimiter.AllowN(now, userID, int(totalN)) {
+		// Ensure the request slice is reused if the request is rate limited.
+		cortexpbv2.ReuseSlice(req.Timeseries)
+
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(totalSamples))
+		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
+		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedMetadatas))
+		// Return a 429 here to tell the client it is going too fast.
+		// Client may discard the data or slow down and re-send.
+		// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), totalSamples, validatedMetadatas)
+	}
+
+	// totalN included samples and metadata. Ingester follows this pattern when computing its ingestion rate.
+	d.ingestionRate.Add(totalN)
+
+	subRing := d.ingestersRing
+
+	// Obtain a subring if required.
+	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize)
+	}
+
+	keys := seriesKeys
+
+	s := WriteStats{}
+
+	err = d.doBatchV2(ctx, req, subRing, keys, validatedTimeseries, userID, &s)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &cortexpbv2.WriteResponse{
+		Samples:    s.LoadSamples(),
+		Histograms: s.LoadHistogram(),
+		Exemplars:  s.LoadExemplars(),
+	}
+
+	return resp, firstPartialErr
 }
 
 // Push implements client.IngesterServer

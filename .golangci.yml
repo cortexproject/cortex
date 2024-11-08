@@ -49,3 +49,4 @@ run:
     - integration_querier
     - integration_ruler
     - integration_query_fuzz
+    - integration_remote_write_v2

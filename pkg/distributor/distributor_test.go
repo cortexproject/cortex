@@ -35,6 +35,7 @@ import (
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -3069,6 +3070,77 @@ func (i *mockIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWr
 	return i.Push(ctx, &in.WriteRequest, opts...)
 }
 
+func (i *mockIngester) PushPreAllocV2(ctx context.Context, in *cortexpbv2.PreallocWriteRequestV2, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error) {
+	return i.PushV2(ctx, &in.WriteRequest, opts...)
+}
+
+func (i *mockIngester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error) {
+	i.Lock()
+	defer i.Unlock()
+
+	i.trackCall("PushV2")
+
+	if !i.happy.Load() {
+		return nil, i.failResp.Load()
+	}
+
+	if i.timeseries == nil {
+		i.timeseries = map[uint32]*cortexpb.PreallocTimeseries{}
+	}
+
+	if i.metadata == nil {
+		i.metadata = map[uint32]map[cortexpb.MetricMetadata]struct{}{}
+	}
+
+	orgid, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	b := labels.NewScratchBuilder(0)
+
+	for _, series := range req.Timeseries {
+		tsLabels := series.ToLabels(&b, req.Symbols)
+		labels := cortexpb.FromLabelsToLabelAdapters(tsLabels)
+		hash := shardByAllLabels(orgid, labels)
+		existing, ok := i.timeseries[hash]
+		var v1Sample []cortexpb.Sample
+		for _, s := range series.Samples {
+			v1Sample = append(v1Sample, cortexpb.Sample{
+				Value:       s.Value,
+				TimestampMs: s.Timestamp,
+			})
+		}
+		if !ok {
+			// Make a copy because the request Timeseries are reused
+			item := cortexpb.TimeSeries{
+				Labels:  make([]cortexpb.LabelAdapter, len(labels)),
+				Samples: make([]cortexpb.Sample, len(v1Sample)),
+			}
+
+			copy(item.Labels, labels)
+			copy(item.Samples, v1Sample)
+
+			i.timeseries[hash] = &cortexpb.PreallocTimeseries{TimeSeries: &item}
+		} else {
+			existing.Samples = append(existing.Samples, v1Sample...)
+		}
+
+		if series.Metadata.Type != cortexpbv2.METRIC_TYPE_UNSPECIFIED {
+			m := series.Metadata.ToV1Metadata(tsLabels.Get(model.MetricNameLabel), req.Symbols)
+			hash = shardByMetricName(orgid, m.MetricFamilyName)
+			set, ok := i.metadata[hash]
+			if !ok {
+				set = map[cortexpb.MetricMetadata]struct{}{}
+				i.metadata[hash] = set
+			}
+			set[*m] = struct{}{}
+		}
+	}
+
+	return &cortexpbv2.WriteResponse{}, nil
+}
+
 func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
 	i.Lock()
 	defer i.Unlock()
@@ -3316,6 +3388,10 @@ func (i *noopIngester) Close() error {
 }
 
 func (i *noopIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return nil, nil
+}
+
+func (i *noopIngester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error) {
 	return nil, nil
 }
 

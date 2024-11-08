@@ -12,9 +12,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
+	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 )
@@ -24,6 +27,7 @@ const (
 
 	errMetadataMissingMetricName = "metadata missing metric name"
 	errMetadataTooLong           = "metadata '%s' value too long: %.200q metric %.200q"
+	errMetadataV2TooLong         = "metadata '%s' value too long: %.200q"
 
 	typeMetricName = "METRIC_NAME"
 	typeHelp       = "HELP"
@@ -148,6 +152,48 @@ func ValidateSampleTimestamp(validateMetrics *ValidateMetrics, limits *Limits, u
 	return nil
 }
 
+// ValidateExemplarV2 returns an error if the exemplar is invalid.
+// The returned error may retain the provided series labels.
+func ValidateExemplarV2(validateMetrics *ValidateMetrics, symbols []string, userID string, seriesLabels []cortexpb.LabelAdapter, e *cortexpbv2.Exemplar, b labels.ScratchBuilder, st *writev2.SymbolsTable) ValidationError {
+	lbs := e.ToLabels(&b, symbols)
+	// symbolize examplar labels
+	e.LabelsRefs = st.SymbolizeLabels(lbs, nil)
+	exemplarLabels := cortexpb.FromLabelsToLabelAdapters(lbs)
+
+	if len(exemplarLabels) <= 0 {
+		validateMetrics.DiscardedExemplars.WithLabelValues(exemplarLabelsMissing, userID).Inc()
+		return newExemplarEmtpyLabelsError(seriesLabels, []cortexpb.LabelAdapter{}, e.Timestamp)
+	}
+
+	if e.Timestamp == 0 {
+		validateMetrics.DiscardedExemplars.WithLabelValues(exemplarTimestampInvalid, userID).Inc()
+		return newExemplarMissingTimestampError(
+			seriesLabels,
+			exemplarLabels,
+			e.Timestamp,
+		)
+	}
+
+	// Exemplar label length does not include chars involved in text
+	// rendering such as quotes, commas, etc.  See spec and const definition.
+	labelSetLen := 0
+	for _, l := range exemplarLabels {
+		labelSetLen += utf8.RuneCountInString(l.Name)
+		labelSetLen += utf8.RuneCountInString(l.Value)
+	}
+
+	if labelSetLen > ExemplarMaxLabelSetLength {
+		validateMetrics.DiscardedExemplars.WithLabelValues(exemplarLabelsTooLong, userID).Inc()
+		return newExemplarLabelLengthError(
+			seriesLabels,
+			exemplarLabels,
+			e.Timestamp,
+		)
+	}
+
+	return nil
+}
+
 // ValidateExemplar returns an error if the exemplar is invalid.
 // The returned error may retain the provided series labels.
 func ValidateExemplar(validateMetrics *ValidateMetrics, userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exemplar) ValidationError {
@@ -244,6 +290,37 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 }
 
 // ValidateMetadata returns an err if a metric metadata is invalid.
+func ValidateMetadataV2(validateMetrics *ValidateMetrics, cfg *Limits, userID string, symbols []string, metadata *cortexpbv2.Metadata, st *writev2.SymbolsTable) error {
+	help := symbols[metadata.HelpRef]
+	unit := symbols[metadata.UnitRef]
+
+	// symbolize help and unit
+	metadata.HelpRef = st.Symbolize(help)
+	metadata.UnitRef = st.Symbolize(unit)
+
+	maxMetadataValueLength := cfg.MaxMetadataLength
+	var reason string
+	var cause string
+	var metadataType string
+	if len(help) > maxMetadataValueLength {
+		metadataType = typeHelp
+		reason = helpTooLong
+		cause = help
+	} else if len(unit) > maxMetadataValueLength {
+		metadataType = typeUnit
+		reason = unitTooLong
+		cause = unit
+	}
+
+	if reason != "" {
+		validateMetrics.DiscardedMetadata.WithLabelValues(reason, userID).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataV2TooLong, metadataType, cause)
+	}
+
+	return nil
+}
+
+// ValidateMetadata returns an err if a metric metadata is invalid.
 func ValidateMetadata(validateMetrics *ValidateMetrics, cfg *Limits, userID string, metadata *cortexpb.MetricMetadata) error {
 	if cfg.EnforceMetadataMetricName && metadata.GetMetricFamilyName() == "" {
 		validateMetrics.DiscardedMetadata.WithLabelValues(missingMetricName, userID).Inc()
@@ -274,6 +351,67 @@ func ValidateMetadata(validateMetrics *ValidateMetrics, cfg *Limits, userID stri
 	}
 
 	return nil
+}
+
+func ValidateNativeHistogramV2(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, histogramSample cortexpbv2.Histogram) (cortexpbv2.Histogram, error) {
+	if limits.MaxNativeHistogramBuckets == 0 {
+		return histogramSample, nil
+	}
+
+	var (
+		exceedLimit bool
+	)
+	if histogramSample.IsFloatHistogram() {
+		// Initial check to see if the bucket limit is exceeded or not. If not, we can avoid type casting.
+		exceedLimit = len(histogramSample.PositiveCounts)+len(histogramSample.NegativeCounts) > limits.MaxNativeHistogramBuckets
+		if !exceedLimit {
+			return histogramSample, nil
+		}
+		// Exceed limit.
+		if histogramSample.Schema <= histogram.ExponentialSchemaMin {
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
+			return cortexpbv2.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
+		}
+		fh := cortexpbv2.FloatHistogramProtoToFloatHistogram(histogramSample)
+		oBuckets := len(fh.PositiveBuckets) + len(fh.NegativeBuckets)
+		for len(fh.PositiveBuckets)+len(fh.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
+			if fh.Schema <= histogram.ExponentialSchemaMin {
+				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
+				return cortexpbv2.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
+			}
+			fh = fh.ReduceResolution(fh.Schema - 1)
+		}
+		if oBuckets != len(fh.PositiveBuckets)+len(fh.NegativeBuckets) {
+			validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID).Inc()
+		}
+		// If resolution reduced, convert new float histogram to protobuf type again.
+		return cortexpbv2.FloatHistogramToHistogramProto(histogramSample.Timestamp, fh), nil
+	}
+
+	// Initial check to see if bucket limit is exceeded or not. If not, we can avoid type casting.
+	exceedLimit = len(histogramSample.PositiveDeltas)+len(histogramSample.NegativeDeltas) > limits.MaxNativeHistogramBuckets
+	if !exceedLimit {
+		return histogramSample, nil
+	}
+	// Exceed limit.
+	if histogramSample.Schema <= histogram.ExponentialSchemaMin {
+		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
+		return cortexpbv2.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
+	}
+	h := cortexpbv2.HistogramProtoToHistogram(histogramSample)
+	oBuckets := len(h.PositiveBuckets) + len(h.NegativeBuckets)
+	for len(h.PositiveBuckets)+len(h.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
+		if h.Schema <= histogram.ExponentialSchemaMin {
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
+			return cortexpbv2.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
+		}
+		h = h.ReduceResolution(h.Schema - 1)
+	}
+	if oBuckets != len(h.PositiveBuckets)+len(h.NegativeBuckets) {
+		validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID).Inc()
+	}
+	// If resolution reduced, convert new histogram to protobuf type again.
+	return cortexpbv2.HistogramToHistogramProto(histogramSample.Timestamp, h), nil
 }
 
 func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, histogramSample cortexpb.Histogram) (cortexpb.Histogram, error) {

@@ -5,6 +5,7 @@ import (
 	"flag"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
 
@@ -43,6 +44,7 @@ type HealthAndIngesterClient interface {
 	grpc_health_v1.HealthClient
 	Close() error
 	PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error)
+	PushPreAllocV2(ctx context.Context, in *cortexpbv2.PreallocWriteRequestV2, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error)
 }
 
 type closableHealthAndIngesterClient struct {
@@ -53,6 +55,17 @@ type closableHealthAndIngesterClient struct {
 	maxInflightPushRequests int64
 	inflightRequests        atomic.Int64
 	inflightPushRequests    *prometheus.GaugeVec
+}
+
+func (c *closableHealthAndIngesterClient) PushPreAllocV2(ctx context.Context, in *cortexpbv2.PreallocWriteRequestV2, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error) {
+	return c.handlePushRequestV2(func() (*cortexpbv2.WriteResponse, error) {
+		out := new(cortexpbv2.WriteResponse)
+		err := c.conn.Invoke(ctx, "/cortex.Ingester/PushV2", in, out, opts...)
+		if err != nil {
+			return nil, err
+		}
+		return out, nil
+	})
 }
 
 func (c *closableHealthAndIngesterClient) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
@@ -70,6 +83,24 @@ func (c *closableHealthAndIngesterClient) Push(ctx context.Context, in *cortexpb
 	return c.handlePushRequest(func() (*cortexpb.WriteResponse, error) {
 		return c.IngesterClient.Push(ctx, in, opts...)
 	})
+}
+
+func (c *closableHealthAndIngesterClient) PushV2(ctx context.Context, in *cortexpbv2.WriteRequest, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error) {
+	return c.handlePushRequestV2(func() (*cortexpbv2.WriteResponse, error) {
+		return c.IngesterClient.PushV2(ctx, in, opts...)
+	})
+}
+
+func (c *closableHealthAndIngesterClient) handlePushRequestV2(mainFunc func() (*cortexpbv2.WriteResponse, error)) (*cortexpbv2.WriteResponse, error) {
+	currentInflight := c.inflightRequests.Inc()
+	c.inflightPushRequests.WithLabelValues(c.addr).Set(float64(currentInflight))
+	defer func() {
+		c.inflightPushRequests.WithLabelValues(c.addr).Set(float64(c.inflightRequests.Dec()))
+	}()
+	if c.maxInflightPushRequests > 0 && currentInflight > c.maxInflightPushRequests {
+		return nil, errTooManyInflightPushRequests
+	}
+	return mainFunc()
 }
 
 func (c *closableHealthAndIngesterClient) handlePushRequest(mainFunc func() (*cortexpb.WriteResponse, error)) (*cortexpb.WriteResponse, error) {

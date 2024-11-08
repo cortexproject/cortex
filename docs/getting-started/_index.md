@@ -8,10 +8,22 @@ slug: "getting-started"
 
 Cortex is a powerful platform software that can be run in two modes: as a single binary or as multiple
 independent [microservices](../architecture.md).
+
+There are two guides in this section:
+
+1. [Single Binary Mode with Docker Compose](#single-binary-mode)
+2. [Microservice Mode with KIND](#microservice-mode)
+
+The single binary mode is useful for testing and development, while the microservice mode is useful for production.
+
+Both guides will help you get started with Cortex using [blocks storage](../blocks-storage/_index.md).
+
+## Single Binary Mode
+
 This guide will help you get started with Cortex in single-binary mode using
 [blocks storage](../blocks-storage/_index.md).
 
-## Prerequisites
+### Prerequisites
 
 Cortex can be configured to use local storage or cloud storage (S3, GCS, and Azure). It can also utilize external
 Memcached and Redis instances for caching. This guide will focus on running Cortex as a single process with no
@@ -19,7 +31,7 @@ dependencies.
 
 * [Docker Compose](https://docs.docker.com/compose/install/)
 
-## Running Cortex as a Single Instance
+### Running Cortex as a Single Instance
 
 For simplicity, we'll start by running Cortex as a single process with no dependencies. This mode is not recommended or
 intended for production environments or production use.
@@ -27,16 +39,26 @@ intended for production environments or production use.
 This example uses [Docker Compose](https://docs.docker.com/compose/) to set up:
 
 1. An instance of [SeaweedFS](https://github.com/seaweedfs/seaweedfs/) for S3-compatible object storage
-1. An instance of [Cortex](https://cortexmetrics.io/) to receive metrics
-1. An instance of [Prometheus](https://prometheus.io/) to send metrics to Cortex
-1. An instance of [Grafana](https://grafana.com/) to visualize the metrics
+1. An instance of [Cortex](https://cortexmetrics.io/) to receive metrics.
+1. An instance of [Prometheus](https://prometheus.io/) to send metrics to Cortex.
+1. An instance of [Grafana](https://grafana.com/) to visualize the metrics.
 
-### Instructions
-
-#### Start the services
+#### Instructions
 
 ```sh
 $ cd docs/getting-started
+```
+
+##### Start the services
+
+```sh
+# Start SeaweedFS to emulate S3 storage for Cortex.
+$ docker-compose up seaweedfs -d --wait
+# Create buckets in SeaweedFS.
+$ for bucket in cortex-blocks cortex-ruler cortex-alertmanager; do
+  curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/$bucket
+done
+# Start the remaining services.
 $ docker-compose up -d --wait
 ```
 
@@ -51,22 +73,13 @@ If everything is working correctly, Prometheus should be sending metrics that it
 configured to send metrics to Cortex via `remote_write`. Check out the `prometheus-config.yaml` file to see
 how this is configured.
 
-#### Configure SeaweedFS (S3)
-
-```sh
-# Create buckets in SeaweedFS
-$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-blocks
-$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-ruler
-$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-alertmanager
-```
-
 #### Configure Cortex Recording Rules and Alerting Rules
 
 We can configure Cortex with [cortextool](https://github.com/cortexproject/cortex-tools/) to load [recording rules](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/) and [alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/). This is optional, but it is helpful to see how Cortex can be configured to manage rules and alerts.
 
 ```sh
-# Configure recording rules for the cortex tenant (optional)
-$ docker run --network host -v $(pwd):/workspace -w /workspace quay.io/cortexproject/cortex-tools:v0.17.0 rules sync rules.yaml alerts.yaml --id cortex --address http://localhost:9009
+# Configure recording rules for the Cortex tenant (optional)
+$ docker run --network host -v "$(pwd):/workspace" -w /workspace quay.io/cortexproject/cortex-tools:v0.17.0 rules sync rules.yaml alerts.yaml --id cortex --address http://localhost:9009
 ```
 
 #### Configure Cortex Alertmanager
@@ -74,8 +87,8 @@ $ docker run --network host -v $(pwd):/workspace -w /workspace quay.io/cortexpro
 Cortex also comes with a multi-tenant Alertmanager. Let's load configuration for it to be able to view them in Grafana.
 
 ```sh
-# Configure alertmanager for the cortex tenant
-$ docker run --network host -v $(pwd):/workspace -w /workspace quay.io/cortexproject/cortex-tools:v0.17.0 alertmanager load alertmanager-config.yaml --id cortex --address http://localhost:9009
+# Configure alertmanager for the Cortex tenant
+$ docker run --network host -v "$(pwd):/workspace" -w /workspace quay.io/cortexproject/cortex-tools:v0.17.0 alertmanager load alertmanager-config.yaml --id cortex --address http://localhost:9009
 ```
 
 You can configure Alertmanager in [Grafana as well](http://localhost:3000/alerting/notifications?search=&alertmanager=Cortex%20Alertmanager).
@@ -97,14 +110,14 @@ via `remote_write`!
 Other things to explore:
 
 - [Cortex](http://localhost:9009) - Administrative interface for Cortex
-   - Try shutting down the ingester, and see how it affects metric ingestion.
-   - Restart Cortex to bring the ingester back online, and see how Prometheus catches up.
-   - Does it affect the querying of metrics in Grafana?
+  - Try shutting down the ingester, and see how it affects metric ingestion.
+  - Restart Cortex to bring the ingester back online, and see how Prometheus catches up.
+  - Does it affect the querying of metrics in Grafana?
 - [Prometheus](http://localhost:9090) - Prometheus instance that is sending metrics to Cortex
-   - Try querying the metrics in Prometheus.
-   - Are they the same as what you see in Cortex?
+  - Try querying the metrics in Prometheus.
+  - Are they the same as what you see in Cortex?
 - [Grafana](http://localhost:3000) - Grafana instance that is visualizing the metrics.
-   - Try creating a new dashboard and adding a new panel with a query to Cortex.
+  - Try creating a new dashboard and adding a new panel with a query to Cortex.
 
 ### Clean up
 
@@ -112,7 +125,7 @@ Other things to explore:
 $ docker-compose down
 ```
 
-## Running Cortex in microservice mode
+## Microservice Mode
 
 Now that you have Cortex running as a single instance, let's explore how to run Cortex in microservice mode.
 
@@ -159,24 +172,25 @@ $ kubectl create namespace cortex
 
 ```sh
 # We can emulate S3 with SeaweedFS
-$ kubectl -n cortex apply -f seaweedfs.yaml
+$ kubectl --namespace cortex apply -f seaweedfs.yaml --wait --timeout=5m
 ```
 
 ```sh
 # Wait for SeaweedFS to be ready
-$ kubectl -n cortex wait --for=condition=ready pod -l app=seaweedfs
+$ sleep 5
+$ kubectl --namespace cortex wait --for=condition=ready pod -l app=seaweedfs --timeout=5m
 ```
 
 ```sh
 # Port-forward to SeaweedFS to create a bucket
-$ kubectl -n cortex port-forward svc/seaweedfs 8333
+$ kubectl --namespace cortex port-forward svc/seaweedfs 8333 &
 ```
 
 ```sh
 # Create buckets in SeaweedFS
-$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-blocks
-$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-ruler
-$ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/cortex-alertmanager
+$ for bucket in cortex-blocks cortex-ruler cortex-alertmanager; do
+  curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/$bucket
+done
 ```
 
 #### Setup Cortex
@@ -184,14 +198,14 @@ $ curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://loca
 ```sh
 # Deploy Cortex using the provided values file which configures
 # - blocks storage to use the seaweedfs service
-$ helm upgrade --install --version=2.4.0  --namespace cortex cortex cortex-helm/cortex -f cortex-values.yaml
+$ helm upgrade --install --version=2.4.0  --namespace cortex cortex cortex-helm/cortex -f cortex-values.yaml --wait
 ```
 
 #### Setup Prometheus
 
 ```sh
 # Deploy Prometheus to scrape metrics in the cluster and send them, via remote_write, to Cortex.
-$ helm upgrade --install --version=25.20.1 --namespace cortex prometheus prometheus-community/prometheus -f prometheus-values.yaml
+$ helm upgrade --install --version=25.20.1 --namespace cortex prometheus prometheus-community/prometheus -f prometheus-values.yaml --wait
 ```
 
 If everything is working correctly, Prometheus should be sending metrics that it is scraping to Cortex. Prometheus is
@@ -202,7 +216,7 @@ how this is configured.
 
 ```sh
 # Deploy Grafana to visualize the metrics that were sent to Cortex.
-$ helm upgrade --install --version=7.3.9 --namespace cortex grafana grafana/grafana -f grafana-values.yaml
+$ helm upgrade --install --version=7.3.9 --namespace cortex grafana grafana/grafana -f grafana-values.yaml --wait
 ```
 
 ```sh
@@ -210,16 +224,18 @@ $ helm upgrade --install --version=7.3.9 --namespace cortex grafana grafana/graf
 $ for dashboard in $(ls dashboards); do
   basename=$(basename -s .json $dashboard)
   cmname=grafana-dashboard-$basename
-  kubectl create -n cortex cm $cmname --from-file=$dashboard=dashboards/$dashboard --save-config=true -o yaml --dry-run=client | kubectl apply -f -
-  kubectl patch -n cortex cm $cmname -p '{"metadata":{"labels":{"grafana_dashboard":""}}}'
+  kubectl create --namespace cortex configmap $cmname --from-file=$dashboard=dashboards/$dashboard --save-config=true -o yaml --dry-run=client | kubectl apply -f -
+  kubectl patch --namespace cortex configmap $cmname -p '{"metadata":{"labels":{"grafana_dashboard":""}}}'
 done
 
 ```
 
 ```sh
 # Port-forward to Grafana to visualize
-kubectl --namespace cortex port-forward deploy/grafana 3000
+$ kubectl --namespace cortex port-forward deploy/grafana 3000 &
 ```
+
+View the dashboards in [Grafana](http://localhost:3000/dashboards?tag=cortex).
 
 #### Configure Cortex Recording Rules and Alerting Rules (Optional)
 
@@ -227,7 +243,7 @@ We can configure Cortex with [cortextool](https://github.com/cortexproject/corte
 
 ```sh
 # Port forward to the alertmanager to configure recording rules and alerts
-$ kubectl --namespace cortex port-forward svc/cortex-nginx 8080:80
+$ kubectl --namespace cortex port-forward svc/cortex-nginx 8080:80 &
 ```
 
 ```sh
@@ -266,7 +282,7 @@ Other things to explore:
 
 ```sh
 # Port forward to the ingester to see the administrative interface for Cortex
-$ kubectl --namespace cortex port-forward deploy/cortex-ingester 9009:8080
+$ kubectl --namespace cortex port-forward deploy/cortex-ingester 9009:8080 &
 ```
 
 - Try shutting down the ingester, and see how it affects metric ingestion.
@@ -277,7 +293,7 @@ $ kubectl --namespace cortex port-forward deploy/cortex-ingester 9009:8080
 
 ```sh
 # Port forward to Prometheus to see the metrics that are being scraped
-$ kubectl --namespace cortex port-forward deploy/prometheus-server 9090
+$ kubectl --namespace cortex port-forward deploy/prometheus-server 9090 &
 ```
 - Try querying the metrics in Prometheus.
 - Are they the same as what you see in Cortex?
@@ -286,7 +302,7 @@ $ kubectl --namespace cortex port-forward deploy/prometheus-server 9090
 
 ```sh
 # Port forward to Grafana to visualize
-$ kubectl --namespace cortex port-forward deploy/grafana 3000
+$ kubectl --namespace cortex port-forward deploy/grafana 3000 &
 ```
 
 - Try creating a new dashboard and adding a new panel with a query to Cortex.
@@ -294,5 +310,11 @@ $ kubectl --namespace cortex port-forward deploy/grafana 3000
 ### Clean up
 
 ```sh
+# Remove the port-forwards
+$ killall kubectl
+```
+
+```sh
 $ kind delete cluster
 ```
+

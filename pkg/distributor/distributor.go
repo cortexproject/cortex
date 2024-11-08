@@ -64,6 +64,8 @@ const (
 
 	clearStaleIngesterMetricsInterval = time.Minute
 
+	labelSetMetricsTickInterval = 30 * time.Second
+
 	// mergeSlicesParallelism is a constant of how much go routines we should use to merge slices, and
 	// it was based on empirical observation: See BenchmarkMergeSlicesParallel
 	mergeSlicesParallelism = 8
@@ -107,6 +109,7 @@ type Distributor struct {
 	// Metrics
 	queryDuration                    *instrument.HistogramCollector
 	receivedSamples                  *prometheus.CounterVec
+	receivedSamplesPerLabelSet       *prometheus.CounterVec
 	receivedExemplars                *prometheus.CounterVec
 	receivedMetadata                 *prometheus.CounterVec
 	incomingSamples                  *prometheus.CounterVec
@@ -125,6 +128,9 @@ type Distributor struct {
 	validateMetrics *validation.ValidateMetrics
 
 	asyncExecutor util.AsyncExecutor
+
+	// Counter to track metrics per label set.
+	labelSetCounter *labelSetCounter
 }
 
 // Config contains the configuration required to
@@ -290,6 +296,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		HATracker:              haTracker,
 		ingestionRate:          util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		labelSetCounter:        newLabelSetCounter(),
 
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -302,6 +309,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name:      "distributor_received_samples_total",
 			Help:      "The total number of received samples, excluding rejected and deduped samples.",
 		}, []string{"user", "type"}),
+		receivedSamplesPerLabelSet: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "distributor_received_samples_per_labelset_total",
+			Help:      "The total number of received samples per label set, excluding rejected and deduped samples.",
+		}, []string{"user", "type", "labelset"}),
 		receivedExemplars: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Name:      "distributor_received_exemplars_total",
@@ -449,6 +461,9 @@ func (d *Distributor) running(ctx context.Context) error {
 	staleIngesterMetricTicker := time.NewTicker(clearStaleIngesterMetricsInterval)
 	defer staleIngesterMetricTicker.Stop()
 
+	labelSetMetricsTicker := time.NewTicker(labelSetMetricsTickInterval)
+	defer labelSetMetricsTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -459,6 +474,9 @@ func (d *Distributor) running(ctx context.Context) error {
 
 		case <-staleIngesterMetricTicker.C:
 			d.cleanStaleIngesterMetrics()
+
+		case <-labelSetMetricsTicker.C:
+			d.updateLabelSetMetrics()
 
 		case err := <-d.subservicesWatcher.Chan():
 			return errors.Wrap(err, "distributor subservice failed")
@@ -484,6 +502,10 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 
 	if err := util.DeleteMatchingLabels(d.dedupedSamples, map[string]string{"user": userID}); err != nil {
 		level.Warn(d.log).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
+	}
+
+	if err := util.DeleteMatchingLabels(d.receivedSamplesPerLabelSet, map[string]string{"user": userID}); err != nil {
+		level.Warn(d.log).Log("msg", "failed to remove cortex_distributor_received_samples_per_labelset_total metric for user", "user", userID, "err", err)
 	}
 
 	validation.DeletePerUserValidationMetrics(d.validateMetrics, userID, d.log)
@@ -777,6 +799,19 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	return &cortexpb.WriteResponse{}, firstPartialErr
 }
 
+func (d *Distributor) updateLabelSetMetrics() {
+	activeUserSet := make(map[string]map[uint64]struct{})
+	for _, user := range d.activeUsers.ActiveUsers() {
+		limits := d.limits.LimitsPerLabelSet(user)
+		activeUserSet[user] = make(map[uint64]struct{}, len(limits))
+		for _, l := range limits {
+			activeUserSet[user][l.Hash] = struct{}{}
+		}
+	}
+
+	d.labelSetCounter.updateMetrics(activeUserSet, d.receivedSamplesPerLabelSet)
+}
+
 func (d *Distributor) cleanStaleIngesterMetrics() {
 	healthy, unhealthy, err := d.ingestersRing.GetAllInstanceDescs(ring.WriteNoExtend)
 	if err != nil {
@@ -888,7 +923,9 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	validatedFloatSamples := 0
 	validatedHistogramSamples := 0
 	validatedExemplars := 0
+	limitsPerLabelSet := d.limits.LimitsPerLabelSet(userID)
 
+	labelSetCounters := make(map[uint64]*samplesLabelSetEntry)
 	var firstPartialErr error
 
 	latestSampleTimestampMs := int64(0)
@@ -1005,11 +1042,27 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			continue
 		}
 
+		for _, l := range validation.LimitsPerLabelSetsForSeries(limitsPerLabelSet, cortexpb.FromLabelAdaptersToLabels(validatedSeries.Labels)) {
+			if c, exists := labelSetCounters[l.Hash]; exists {
+				c.floatSamples += int64(len(ts.Samples))
+				c.histogramSamples += int64(len(ts.Histograms))
+			} else {
+				labelSetCounters[l.Hash] = &samplesLabelSetEntry{
+					floatSamples:     int64(len(ts.Samples)),
+					histogramSamples: int64(len(ts.Histograms)),
+					labels:           l.LabelSet,
+				}
+			}
+		}
+
 		seriesKeys = append(seriesKeys, key)
 		validatedTimeseries = append(validatedTimeseries, validatedSeries)
 		validatedFloatSamples += len(ts.Samples)
 		validatedHistogramSamples += len(ts.Histograms)
 		validatedExemplars += len(ts.Exemplars)
+	}
+	for h, counter := range labelSetCounters {
+		d.labelSetCounter.increaseSamplesLabelSet(userID, h, counter.labels, counter.floatSamples, counter.histogramSamples)
 	}
 	return seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
 }

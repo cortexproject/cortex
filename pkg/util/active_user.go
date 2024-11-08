@@ -94,6 +94,21 @@ func (m *ActiveUsers) PurgeInactiveUsers(deadline int64) []string {
 	return inactive
 }
 
+func (m *ActiveUsers) ActiveUsers(deadline int64) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	m.mu.RLock()
+	active := make([]string, 0, len(m.timestamps))
+
+	for userID, ts := range m.timestamps {
+		if ts.Load() > deadline {
+			active = append(active, userID)
+		}
+	}
+	m.mu.RUnlock()
+	return active
+}
+
 // ActiveUsersCleanupService tracks active users, and periodically purges inactive ones while running.
 type ActiveUsersCleanupService struct {
 	services.Service
@@ -128,4 +143,8 @@ func (s *ActiveUsersCleanupService) iteration(_ context.Context) error {
 		s.cleanupFunc(userID)
 	}
 	return nil
+}
+
+func (s *ActiveUsersCleanupService) ActiveUsers() []string {
+	return s.activeUsers.ActiveUsers(time.Now().Add(-s.inactiveTimeout).UnixNano())
 }

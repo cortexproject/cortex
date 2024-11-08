@@ -19,7 +19,7 @@ type mockRuleStore struct {
 
 var (
 	delim               = "/"
-	interval, _         = time.ParseDuration("1m")
+	interval, _         = time.ParseDuration("10s")
 	mockRulesNamespaces = map[string]rulespb.RuleGroupList{
 		"user1": {
 			&rulespb.RuleGroupDesc{

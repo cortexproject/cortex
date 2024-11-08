@@ -208,10 +208,15 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
 	tracker := promql.NewActiveQueryTracker(t.TempDir(), 20, log.NewNopLogger())
 
+	timeout := time.Minute * 2
+
+	if querierTestConfig != nil && querierTestConfig.Cfg.Timeout != 0 {
+		timeout = querierTestConfig.Cfg.Timeout
+	}
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples:         1e6,
 		ActiveQueryTracker: tracker,
-		Timeout:            2 * time.Minute,
+		Timeout:            timeout,
 	})
 
 	// Mock the pusher
@@ -436,6 +441,7 @@ func TestRuler_TestShutdown(t *testing.T) {
 				Stores: []querier.QueryableWithFilter{
 					querier.UseAlwaysQueryable(sleepQueriable),
 				},
+				Cfg: querier.Config{Timeout: time.Second * 1},
 			})
 
 			test.shutdownFn(mockQuerier, r)

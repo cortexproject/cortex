@@ -47,7 +47,7 @@ var (
 			}
 		},
 	}
-	bytePool = newSlicePool(20)
+	bytePool = NewSlicePool(20)
 )
 
 // PreallocConfig configures how structures will be preallocated to optimise
@@ -86,7 +86,7 @@ func (p *PreallocTimeseries) Unmarshal(dAtA []byte) error {
 
 func (p *PreallocWriteRequest) Marshal() (dAtA []byte, err error) {
 	size := p.Size()
-	p.data = bytePool.getSlice(size)
+	p.data = bytePool.GetSlice(size)
 	dAtA = *p.data
 	n, err := p.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
@@ -97,7 +97,7 @@ func (p *PreallocWriteRequest) Marshal() (dAtA []byte, err error) {
 
 func ReuseWriteRequest(req *PreallocWriteRequest) {
 	if req.data != nil {
-		bytePool.reuseSlice(req.data)
+		bytePool.ReuseSlice(req.data)
 		req.data = nil
 	}
 	req.Source = 0

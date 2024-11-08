@@ -145,10 +145,10 @@ func fixedQueryable(querier storage.Querier) storage.Queryable {
 }
 
 type blockingQuerier struct {
-	queryStarted    chan struct{}
-	queryFinished   chan struct{}
-	queryBlocker    chan struct{}
-	successfulQuery bool
+	queryStarted      chan struct{}
+	queryFinished     chan struct{}
+	queryBlocker      chan struct{}
+	successfulQueries *atomic.Int64
 }
 
 func (s *blockingQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -172,10 +172,9 @@ func (s *blockingQuerier) Select(ctx context.Context, sortSeries bool, hints *st
 
 	select {
 	case <-ctx.Done():
-		s.successfulQuery = false
 		returnSeries = storage.ErrSeriesSet(ctx.Err())
 	case <-s.queryBlocker:
-		s.successfulQuery = true
+		s.successfulQueries.Add(1)
 		returnSeries = storage.EmptySeriesSet()
 	}
 
@@ -397,7 +396,7 @@ func TestRuler_TestShutdown(t *testing.T) {
 				// Wait query to finish
 				<-querier.queryFinished
 
-				require.True(t, querier.successfulQuery, "query failed to complete successfully failed to complete")
+				require.GreaterOrEqual(t, querier.successfulQueries.Load(), int64(1), "query failed to complete successfully failed to complete")
 			},
 		},
 		{
@@ -412,7 +411,7 @@ func TestRuler_TestShutdown(t *testing.T) {
 				// Wait query to finish
 				<-querier.queryFinished
 
-				require.False(t, querier.successfulQuery, "query should not be succesfull")
+				require.Equal(t, querier.successfulQueries.Load(), int64(0), "query should not be succesfull")
 			},
 		},
 	}
@@ -422,9 +421,10 @@ func TestRuler_TestShutdown(t *testing.T) {
 			store := newMockRuleStore(mockRules, nil)
 			cfg := defaultRulerConfig(t)
 			mockQuerier := &blockingQuerier{
-				queryBlocker:  make(chan struct{}),
-				queryStarted:  make(chan struct{}),
-				queryFinished: make(chan struct{}),
+				queryBlocker:      make(chan struct{}),
+				queryStarted:      make(chan struct{}),
+				queryFinished:     make(chan struct{}),
+				successfulQueries: atomic.NewInt64(0),
 			}
 			sleepQueriable := fixedQueryable(mockQuerier)
 

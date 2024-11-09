@@ -35,6 +35,7 @@
 * [ENHANCEMENT] Querier/Ruler: Expose `store_gateway_consistency_check_max_attempts` for max retries when querying store gateway in consistency check. #6276
 * [ENHANCEMENT] StoreGateway: Add new `cortex_bucket_store_chunk_pool_inuse_bytes` metric to track the usage in chunk pool. #6310
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
+* [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
 
 ## 1.18.1 2024-10-14
 

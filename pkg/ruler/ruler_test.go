@@ -138,6 +138,55 @@ func (e emptyQuerier) Select(ctx context.Context, sortSeries bool, hints *storag
 	return storage.EmptySeriesSet()
 }
 
+func fixedQueryable(querier storage.Querier) storage.Queryable {
+	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
+		return querier, nil
+	})
+}
+
+type blockingQuerier struct {
+	queryStarted      chan struct{}
+	queryFinished     chan struct{}
+	queryBlocker      chan struct{}
+	successfulQueries *atomic.Int64
+}
+
+func (s *blockingQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	return nil, nil, nil
+}
+
+func (s *blockingQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	return nil, nil, nil
+}
+
+func (s *blockingQuerier) Close() error {
+	return nil
+}
+
+func (s *blockingQuerier) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) (returnSeries storage.SeriesSet) {
+	select {
+	case <-s.queryStarted:
+	default:
+		close(s.queryStarted)
+	}
+
+	select {
+	case <-ctx.Done():
+		returnSeries = storage.ErrSeriesSet(ctx.Err())
+	case <-s.queryBlocker:
+		s.successfulQueries.Add(1)
+		returnSeries = storage.EmptySeriesSet()
+	}
+
+	select {
+	case <-s.queryFinished:
+	default:
+		close(s.queryFinished)
+	}
+
+	return returnSeries
+}
+
 func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Registerer, logger log.Logger) storage.QueryableFunc {
 	if querierTestConfig != nil {
 		// disable active query tracking for test
@@ -158,10 +207,15 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
 	tracker := promql.NewActiveQueryTracker(t.TempDir(), 20, log.NewNopLogger())
 
+	timeout := time.Minute * 2
+
+	if querierTestConfig != nil && querierTestConfig.Cfg.Timeout != 0 {
+		timeout = querierTestConfig.Cfg.Timeout
+	}
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples:         1e6,
 		ActiveQueryTracker: tracker,
-		Timeout:            2 * time.Minute,
+		Timeout:            timeout,
 	})
 
 	// Mock the pusher
@@ -320,6 +374,86 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 		# TYPE prometheus_notifications_dropped_total counter
 		prometheus_notifications_dropped_total 0
 	`), "prometheus_notifications_dropped_total"))
+}
+
+func TestRuler_TestShutdown(t *testing.T) {
+	tests := []struct {
+		name       string
+		shutdownFn func(*blockingQuerier, *Ruler)
+	}{
+		{
+			name: "successful query after shutdown",
+			shutdownFn: func(querier *blockingQuerier, ruler *Ruler) {
+				// Wait query to start
+				<-querier.queryStarted
+
+				// The following cancel the context of the ruler service.
+				ruler.StopAsync()
+
+				// Simulate the completion of the query
+				close(querier.queryBlocker)
+
+				// Wait query to finish
+				<-querier.queryFinished
+
+				require.GreaterOrEqual(t, querier.successfulQueries.Load(), int64(1), "query failed to complete successfully failed to complete")
+			},
+		},
+		{
+			name: "query timeout while shutdown",
+			shutdownFn: func(querier *blockingQuerier, ruler *Ruler) {
+				// Wait query to start
+				<-querier.queryStarted
+
+				// The following cancel the context of the ruler service.
+				ruler.StopAsync()
+
+				// Wait query to finish
+				<-querier.queryFinished
+
+				require.Equal(t, querier.successfulQueries.Load(), int64(0), "query should not be succesfull")
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := newMockRuleStore(mockRules, nil)
+			cfg := defaultRulerConfig(t)
+			mockQuerier := &blockingQuerier{
+				queryBlocker:      make(chan struct{}),
+				queryStarted:      make(chan struct{}),
+				queryFinished:     make(chan struct{}),
+				successfulQueries: atomic.NewInt64(0),
+			}
+			sleepQueriable := fixedQueryable(mockQuerier)
+
+			d := &querier.MockDistributor{}
+
+			d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+				&client.QueryStreamResponse{
+					Chunkseries: []client.TimeSeriesChunk{},
+				}, nil)
+			d.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Panic("This should not be called for the ruler use-cases.")
+
+			r := newTestRuler(t, cfg, store, &querier.TestConfig{
+				Distributor: d,
+				Stores: []querier.QueryableWithFilter{
+					querier.UseAlwaysQueryable(sleepQueriable),
+				},
+				Cfg: querier.Config{Timeout: time.Second * 1},
+			})
+
+			test.shutdownFn(mockQuerier, r)
+
+			err := r.AwaitTerminated(context.Background())
+			require.NoError(t, err)
+
+			e := r.FailureCase()
+			require.NoError(t, e)
+		})
+	}
+
 }
 
 func TestRuler_Rules(t *testing.T) {

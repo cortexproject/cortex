@@ -502,7 +502,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryRangeMiddlewares,
 		instantQueryMiddlewares,
 		prometheusCodec,
-		instantquery.NewInstantQueryCodec(t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec),
+		instantQueryCodec,
 		t.Overrides,
 		queryAnalyzer,
 		t.Cfg.Querier.DefaultEvaluationInterval,

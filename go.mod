@@ -37,7 +37,7 @@ require (
 	github.com/minio/minio-go/v7 v7.0.80
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/oklog/ulid v1.3.1
-	github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e
+	github.com/opentracing-contrib/go-grpc v0.1.0
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
@@ -68,9 +68,9 @@ require (
 	go.opentelemetry.io/otel/trace v1.31.0
 	go.uber.org/atomic v1.11.0
 	golang.org/x/net v0.30.0
-	golang.org/x/sync v0.8.0
-	golang.org/x/time v0.7.0
-	google.golang.org/grpc v1.67.1
+	golang.org/x/sync v0.9.0
+	golang.org/x/time v0.8.0
+	google.golang.org/grpc v1.68.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 )

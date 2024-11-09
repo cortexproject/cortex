@@ -12,12 +12,13 @@ import (
 func Middlewares(
 	log log.Logger,
 	limits tripperware.Limits,
+	codec tripperware.Codec,
 	queryAnalyzer querysharding.Analyzer,
 	lookbackDelta time.Duration,
 ) ([]tripperware.Middleware, error) {
 	m := []tripperware.Middleware{
 		NewLimitsMiddleware(limits, lookbackDelta),
-		tripperware.ShardByMiddleware(log, limits, InstantQueryCodec, queryAnalyzer),
+		tripperware.ShardByMiddleware(log, limits, codec, queryAnalyzer),
 	}
 	return m, nil
 }

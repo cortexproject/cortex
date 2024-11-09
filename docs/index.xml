@@ -7900,7 +7900,7 @@ Blocks: B1, B3, B5, B7&lt;/li>
 &lt;li>&lt;a href="https://aws.amazon.com/s3">Amazon S3&lt;/a>&lt;/li>
 &lt;li>&lt;a href="https://cloud.google.com/storage/">Google Cloud Storage&lt;/a>&lt;/li>
 &lt;li>&lt;a href="https://azure.microsoft.com/en-us/services/storage/">Microsoft Azure Storage&lt;/a>&lt;/li>
-&lt;li>&lt;a href="https://wiki.openstack.org/wiki/Swift">OpenStack Swift&lt;/a> (experimental)&lt;/li>
+&lt;li>&lt;a href="https://wiki.openstack.org/wiki/Swift">OpenStack Swift&lt;/a>&lt;/li>
 &lt;li>&lt;a href="https://thanos.io/storage.md/#filesystem">Local Filesystem&lt;/a> (single node only)&lt;/li>
 &lt;/ul>
 &lt;p>For more information, please check out the &lt;a href="/docs/blocks-storage/">Blocks storage&lt;/a> documentation.&lt;/p>

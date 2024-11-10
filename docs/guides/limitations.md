@@ -7,7 +7,7 @@ slug: limitations
 
 ## Tenant ID naming
 
-The tenant ID (also called "user ID" or "org ID") is the unique identifier of a tenant within a Cortex cluster. The tenant ID is an opaque information to Cortex, which doesn't make any assumption on its format/content, but its naming has two limitations:
+The tenant ID (also called "user ID" or "org ID") is the unique identifier of a tenant within a Cortex cluster. The tenant ID is opaque information to Cortex, which doesn't make any assumptions on its format/content, but its naming has two limitations:
 
 1. Supported characters
 2. Length
@@ -24,7 +24,7 @@ The following character sets are generally **safe for use in the tenant ID**:
   - Exclamation point (`!`)
   - Hyphen (`-`)
   - Underscore (`_`)
-  - Single Period (`.`), but the tenant IDs `.` and `..` is considered invalid
+  - Single Period (`.`), but the tenant IDs `.` and `..` are considered invalid
   - Asterisk (`*`)
   - Single quote (`'`)
   - Open parenthesis (`(`)
@@ -35,3 +35,4 @@ All other characters are not safe to use. In particular, slashes `/` and whitesp
 ### Length
 
 The tenant ID length should not exceed 150 bytes/characters.
+

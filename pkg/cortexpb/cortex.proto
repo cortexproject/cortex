@@ -28,7 +28,7 @@ enum MetricType {
 // https://github.com/prometheus/prometheus/blob/main/prompb/io/prometheus/write/v2/types.proto
 message WriteRequestV2 {
   reserved 1 to 2;
-  cortexpb.SourceEnum Source = 3;
+  SourceEnum Source = 3;
   repeated string symbols = 4;
   repeated TimeSeriesV2 timeseries = 5 [(gogoproto.nullable) = false, (gogoproto.customtype) = "PreallocTimeseriesV2"];
 

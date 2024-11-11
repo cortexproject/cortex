@@ -34,7 +34,7 @@ var (
 			}
 		},
 	}
-	bytePoolV2 = NewSlicePool(20)
+	bytePoolV2 = newSlicePool(20)
 )
 
 // PreallocWriteRequestV2 is a WriteRequest which preallocs slices on Unmarshal.
@@ -51,7 +51,7 @@ func (p *PreallocWriteRequestV2) Unmarshal(dAtA []byte) error {
 
 func (p *PreallocWriteRequestV2) Marshal() (dAtA []byte, err error) {
 	size := p.Size()
-	p.data = bytePool.GetSlice(size)
+	p.data = bytePool.getSlice(size)
 	dAtA = *p.data
 	n, err := p.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
@@ -73,7 +73,7 @@ func (p *PreallocTimeseriesV2) Unmarshal(dAtA []byte) error {
 
 func ReuseWriteRequestV2(req *PreallocWriteRequestV2) {
 	if req.data != nil {
-		bytePoolV2.ReuseSlice(req.data)
+		bytePoolV2.reuseSlice(req.data)
 		req.data = nil
 	}
 	req.Source = 0

@@ -13,7 +13,6 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 )
 
 func changeTargetConfig(c *Config) {
@@ -161,7 +160,7 @@ func TestCortex_InitRulerStorage(t *testing.T) {
 
 type myPusher struct{}
 
-func (p *myPusher) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*cortexpbv2.WriteResponse, error) {
+func (p *myPusher) PushV2(ctx context.Context, req *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error) {
 	return nil, nil
 }
 

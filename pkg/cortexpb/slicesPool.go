@@ -13,7 +13,7 @@ type byteSlicePools struct {
 	pools []sync.Pool
 }
 
-func NewSlicePool(pools int) *byteSlicePools {
+func newSlicePool(pools int) *byteSlicePools {
 	sp := byteSlicePools{}
 	sp.init(pools)
 	return &sp
@@ -32,7 +32,7 @@ func (sp *byteSlicePools) init(pools int) {
 	}
 }
 
-func (sp *byteSlicePools) GetSlice(size int) *[]byte {
+func (sp *byteSlicePools) getSlice(size int) *[]byte {
 	index := int(math.Ceil(math.Log2(float64(size)))) - minPoolSizePower
 
 	if index >= len(sp.pools) {
@@ -50,7 +50,7 @@ func (sp *byteSlicePools) GetSlice(size int) *[]byte {
 	return s
 }
 
-func (sp *byteSlicePools) ReuseSlice(s *[]byte) {
+func (sp *byteSlicePools) reuseSlice(s *[]byte) {
 	index := int(math.Floor(math.Log2(float64(cap(*s))))) - minPoolSizePower
 
 	if index >= len(sp.pools) || index < 0 {

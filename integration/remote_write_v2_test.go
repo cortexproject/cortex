@@ -23,6 +23,112 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
+func TestIngesterRollingUpdate(t *testing.T) {
+
+	const blockRangePeriod = 5 * time.Second
+	nonPushV2SupportImage := "quay.io/cortexproject/cortex:v1.18.1"
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                     blocksStorageEngine,
+			"-blocks-storage.backend":                           "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
+			"-blocks-storage.bucket-store.sync-interval":        "15m",
+			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+			"-querier.query-store-for-labels-enabled":           "true",
+			"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":                "1s",
+			"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
+			"-blocks-storage.tsdb.enable-native-histograms":     "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor": "1",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path := path.Join(s.SharedDir(), "cortex-1")
+
+	flags = mergeFlags(flags, map[string]string{"-blocks-storage.filesystem.dir": path})
+	// Start Cortex replicas.
+	// Start all other services.
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, nonPushV2SupportImage)
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.store-gateway-addresses": storeGateway.NetworkGRPCEndpoint()}), "")
+
+	require.NoError(t, s.StartAndWaitReady(querier, ingester, distributor, storeGateway))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	// series push
+	symbols1, series, expectedVector := e2e.GenerateSeriesV2("test_series", now, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "foo", Value: "bar"})
+	res, err := c.PushV2(symbols1, series)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// sample
+	result, err := c.Query("test_series", now)
+	require.NoError(t, err)
+	assert.Equal(t, expectedVector, result.(model.Vector))
+
+	// metadata
+	metadata, err := c.Metadata("test_series", "")
+	require.NoError(t, err)
+	require.Equal(t, 1, len(metadata["test_series"]))
+
+	// histogram
+	histogramIdx := rand.Uint32()
+	symbols2, histogramSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
+	res, err = c.PushV2(symbols2, histogramSeries)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	res, err = c.PushV2(symbols3, histogramFloatSeries)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	testHistogramTimestamp := now.Add(blockRangePeriod * 2)
+	expectedHistogram := tsdbutil.GenerateTestHistogram(int(histogramIdx))
+	result, err = c.Query(`test_histogram`, testHistogramTimestamp)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+	v := result.(model.Vector)
+	require.Equal(t, 2, v.Len())
+	for _, s := range v {
+		require.NotNil(t, s.Histogram)
+		require.Equal(t, float64(expectedHistogram.Count), float64(s.Histogram.Count))
+		require.Equal(t, float64(expectedHistogram.Sum), float64(s.Histogram.Sum))
+	}
+}
+
 func TestIngest(t *testing.T) {
 	const blockRangePeriod = 5 * time.Second
 

@@ -23,20 +23,19 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 type fakePusher struct {
 	request    *cortexpb.WriteRequest
-	requestV2  *cortexpbv2.WriteRequest
+	requestV2  *cortexpb.WriteRequestV2
 	response   *cortexpb.WriteResponse
-	responseV2 *cortexpbv2.WriteResponse
+	responseV2 *cortexpb.WriteResponseV2
 	err        error
 }
 
-func (p *fakePusher) PushV2(ctx context.Context, r *cortexpbv2.WriteRequest) (*cortexpbv2.WriteResponse, error) {
+func (p *fakePusher) PushV2(ctx context.Context, r *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error) {
 	p.requestV2 = r
 	return p.responseV2, p.err
 }

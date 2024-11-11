@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 )
 
 type pusherMock struct {
@@ -17,9 +16,9 @@ func newPusherMock() *pusherMock {
 	return &pusherMock{}
 }
 
-func (m *pusherMock) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*cortexpbv2.WriteResponse, error) {
+func (m *pusherMock) PushV2(ctx context.Context, req *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error) {
 	args := m.Called(ctx, req)
-	return args.Get(0).(*cortexpbv2.WriteResponse), args.Error(1)
+	return args.Get(0).(*cortexpb.WriteResponseV2), args.Error(1)
 }
 
 func (m *pusherMock) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {

@@ -1,14 +1,12 @@
-package cortexpbv2
+package cortexpb
 
 import (
 	"github.com/prometheus/prometheus/model/labels"
 	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
-
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 // ToWriteRequestV2 converts matched slices of Labels, Samples, and Histograms into a WriteRequest proto.
-func ToWriteRequestV2(lbls []labels.Labels, samples []Sample, histograms []Histogram, metadata []Metadata, source WriteRequest_SourceEnum, help ...string) *WriteRequest {
+func ToWriteRequestV2(lbls []labels.Labels, samples []Sample, histograms []Histogram, metadata []MetadataV2, source SourceEnum, help ...string) *WriteRequestV2 {
 	st := writev2.NewSymbolTable()
 	labelRefs := make([][]uint32, 0, len(lbls))
 	for _, lbl := range lbls {
@@ -21,7 +19,7 @@ func ToWriteRequestV2(lbls []labels.Labels, samples []Sample, histograms []Histo
 
 	symbols := st.Symbols()
 
-	req := &WriteRequest{
+	req := &WriteRequestV2{
 		Timeseries: PreallocTimeseriesV2SliceFromPool(),
 		Symbols:    symbols,
 		Source:     source,
@@ -41,13 +39,13 @@ func ToWriteRequestV2(lbls []labels.Labels, samples []Sample, histograms []Histo
 			ts.Metadata = metadata[i]
 		}
 		i++
-		req.Timeseries = append(req.Timeseries, PreallocTimeseriesV2{TimeSeries: ts})
+		req.Timeseries = append(req.Timeseries, PreallocTimeseriesV2{TimeSeriesV2: ts})
 	}
 
 	return req
 }
 
-func GetLabelRefsFromLabelAdapters(symbols []string, las []cortexpb.LabelAdapter) []uint32 {
+func GetLabelRefsFromLabelAdapters(symbols []string, las []LabelAdapter) []uint32 {
 	var ret []uint32
 
 	symbolMap := map[string]uint32{}

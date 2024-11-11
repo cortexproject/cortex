@@ -5,7 +5,6 @@ import (
 	"flag"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
 
@@ -44,7 +43,7 @@ type HealthAndIngesterClient interface {
 	grpc_health_v1.HealthClient
 	Close() error
 	PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error)
-	PushPreAllocV2(ctx context.Context, in *cortexpbv2.PreallocWriteRequestV2, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error)
+	PushPreAllocV2(ctx context.Context, in *cortexpb.PreallocWriteRequestV2, opts ...grpc.CallOption) (*cortexpb.WriteResponseV2, error)
 }
 
 type closableHealthAndIngesterClient struct {
@@ -57,9 +56,9 @@ type closableHealthAndIngesterClient struct {
 	inflightPushRequests    *prometheus.GaugeVec
 }
 
-func (c *closableHealthAndIngesterClient) PushPreAllocV2(ctx context.Context, in *cortexpbv2.PreallocWriteRequestV2, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error) {
-	return c.handlePushRequestV2(func() (*cortexpbv2.WriteResponse, error) {
-		out := new(cortexpbv2.WriteResponse)
+func (c *closableHealthAndIngesterClient) PushPreAllocV2(ctx context.Context, in *cortexpb.PreallocWriteRequestV2, opts ...grpc.CallOption) (*cortexpb.WriteResponseV2, error) {
+	return c.handlePushRequestV2(func() (*cortexpb.WriteResponseV2, error) {
+		out := new(cortexpb.WriteResponseV2)
 		err := c.conn.Invoke(ctx, "/cortex.Ingester/PushV2", in, out, opts...)
 		if err != nil {
 			return nil, err
@@ -85,13 +84,13 @@ func (c *closableHealthAndIngesterClient) Push(ctx context.Context, in *cortexpb
 	})
 }
 
-func (c *closableHealthAndIngesterClient) PushV2(ctx context.Context, in *cortexpbv2.WriteRequest, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error) {
-	return c.handlePushRequestV2(func() (*cortexpbv2.WriteResponse, error) {
+func (c *closableHealthAndIngesterClient) PushV2(ctx context.Context, in *cortexpb.WriteRequestV2, opts ...grpc.CallOption) (*cortexpb.WriteResponseV2, error) {
+	return c.handlePushRequestV2(func() (*cortexpb.WriteResponseV2, error) {
 		return c.IngesterClient.PushV2(ctx, in, opts...)
 	})
 }
 
-func (c *closableHealthAndIngesterClient) handlePushRequestV2(mainFunc func() (*cortexpbv2.WriteResponse, error)) (*cortexpbv2.WriteResponse, error) {
+func (c *closableHealthAndIngesterClient) handlePushRequestV2(mainFunc func() (*cortexpb.WriteResponseV2, error)) (*cortexpb.WriteResponseV2, error) {
 	currentInflight := c.inflightRequests.Inc()
 	c.inflightPushRequests.WithLabelValues(c.addr).Set(float64(currentInflight))
 	defer func() {

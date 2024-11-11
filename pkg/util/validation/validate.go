@@ -17,7 +17,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 )
@@ -154,7 +153,7 @@ func ValidateSampleTimestamp(validateMetrics *ValidateMetrics, limits *Limits, u
 
 // ValidateExemplarV2 returns an error if the exemplar is invalid.
 // The returned error may retain the provided series labels.
-func ValidateExemplarV2(validateMetrics *ValidateMetrics, symbols []string, userID string, seriesLabels []cortexpb.LabelAdapter, e *cortexpbv2.Exemplar, b labels.ScratchBuilder, st *writev2.SymbolsTable) ValidationError {
+func ValidateExemplarV2(validateMetrics *ValidateMetrics, symbols []string, userID string, seriesLabels []cortexpb.LabelAdapter, e *cortexpb.ExemplarV2, b labels.ScratchBuilder, st *writev2.SymbolsTable) ValidationError {
 	lbs := e.ToLabels(&b, symbols)
 	// symbolize examplar labels
 	e.LabelsRefs = st.SymbolizeLabels(lbs, nil)
@@ -290,7 +289,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 }
 
 // ValidateMetadata returns an err if a metric metadata is invalid.
-func ValidateMetadataV2(validateMetrics *ValidateMetrics, cfg *Limits, userID string, symbols []string, metadata *cortexpbv2.Metadata, st *writev2.SymbolsTable) error {
+func ValidateMetadataV2(validateMetrics *ValidateMetrics, cfg *Limits, userID string, symbols []string, metadata *cortexpb.MetadataV2, st *writev2.SymbolsTable) error {
 	help := symbols[metadata.HelpRef]
 	unit := symbols[metadata.UnitRef]
 
@@ -351,67 +350,6 @@ func ValidateMetadata(validateMetrics *ValidateMetrics, cfg *Limits, userID stri
 	}
 
 	return nil
-}
-
-func ValidateNativeHistogramV2(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, histogramSample cortexpbv2.Histogram) (cortexpbv2.Histogram, error) {
-	if limits.MaxNativeHistogramBuckets == 0 {
-		return histogramSample, nil
-	}
-
-	var (
-		exceedLimit bool
-	)
-	if histogramSample.IsFloatHistogram() {
-		// Initial check to see if the bucket limit is exceeded or not. If not, we can avoid type casting.
-		exceedLimit = len(histogramSample.PositiveCounts)+len(histogramSample.NegativeCounts) > limits.MaxNativeHistogramBuckets
-		if !exceedLimit {
-			return histogramSample, nil
-		}
-		// Exceed limit.
-		if histogramSample.Schema <= histogram.ExponentialSchemaMin {
-			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
-			return cortexpbv2.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
-		}
-		fh := cortexpbv2.FloatHistogramProtoToFloatHistogram(histogramSample)
-		oBuckets := len(fh.PositiveBuckets) + len(fh.NegativeBuckets)
-		for len(fh.PositiveBuckets)+len(fh.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
-			if fh.Schema <= histogram.ExponentialSchemaMin {
-				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
-				return cortexpbv2.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
-			}
-			fh = fh.ReduceResolution(fh.Schema - 1)
-		}
-		if oBuckets != len(fh.PositiveBuckets)+len(fh.NegativeBuckets) {
-			validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID).Inc()
-		}
-		// If resolution reduced, convert new float histogram to protobuf type again.
-		return cortexpbv2.FloatHistogramToHistogramProto(histogramSample.Timestamp, fh), nil
-	}
-
-	// Initial check to see if bucket limit is exceeded or not. If not, we can avoid type casting.
-	exceedLimit = len(histogramSample.PositiveDeltas)+len(histogramSample.NegativeDeltas) > limits.MaxNativeHistogramBuckets
-	if !exceedLimit {
-		return histogramSample, nil
-	}
-	// Exceed limit.
-	if histogramSample.Schema <= histogram.ExponentialSchemaMin {
-		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
-		return cortexpbv2.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
-	}
-	h := cortexpbv2.HistogramProtoToHistogram(histogramSample)
-	oBuckets := len(h.PositiveBuckets) + len(h.NegativeBuckets)
-	for len(h.PositiveBuckets)+len(h.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
-		if h.Schema <= histogram.ExponentialSchemaMin {
-			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
-			return cortexpbv2.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
-		}
-		h = h.ReduceResolution(h.Schema - 1)
-	}
-	if oBuckets != len(h.PositiveBuckets)+len(h.NegativeBuckets) {
-		validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID).Inc()
-	}
-	// If resolution reduced, convert new histogram to protobuf type again.
-	return cortexpbv2.HistogramToHistogramProto(histogramSample.Timestamp, h), nil
 }
 
 func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, histogramSample cortexpb.Histogram) (cortexpb.Histogram, error) {

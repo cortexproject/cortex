@@ -1,4 +1,4 @@
-package cortexpbv2
+package cortexpb
 
 import (
 	"fmt"
@@ -19,8 +19,8 @@ func TestPreallocTimeseriesV2SliceFromPool(t *testing.T) {
 
 	t.Run("instance is cleaned before reusing", func(t *testing.T) {
 		slice := PreallocTimeseriesV2SliceFromPool()
-		slice = append(slice, PreallocTimeseriesV2{TimeSeries: &TimeSeries{}})
-		ReuseSlice(slice)
+		slice = append(slice, PreallocTimeseriesV2{TimeSeriesV2: &TimeSeriesV2{}})
+		ReuseSliceV2(slice)
 
 		reused := PreallocTimeseriesV2SliceFromPool()
 		assert.Len(t, reused, 0)
@@ -38,11 +38,11 @@ func TestTimeseriesV2FromPool(t *testing.T) {
 	t.Run("instance is cleaned before reusing", func(t *testing.T) {
 		ts := TimeseriesV2FromPool()
 		ts.LabelsRefs = []uint32{1, 2}
-		ts.Samples = []Sample{{Value: 1, Timestamp: 2}}
-		ts.Exemplars = []Exemplar{{LabelsRefs: []uint32{1, 2}, Value: 1, Timestamp: 2}}
+		ts.Samples = []Sample{{Value: 1, TimestampMs: 2}}
+		ts.Exemplars = []ExemplarV2{{LabelsRefs: []uint32{1, 2}, Value: 1, Timestamp: 2}}
 		ts.Histograms = []Histogram{{}}
 		fmt.Println("ts.Histograms", len(ts.Histograms))
-		ReuseTimeseries(ts)
+		ReuseTimeseriesV2(ts)
 
 		reused := TimeseriesV2FromPool()
 		assert.Len(t, reused.LabelsRefs, 0)
@@ -52,13 +52,13 @@ func TestTimeseriesV2FromPool(t *testing.T) {
 	})
 }
 
-func BenchmarkMarshallWriteRequest(b *testing.B) {
+func BenchmarkMarshallWriteRequestV2(b *testing.B) {
 	ts := PreallocTimeseriesV2SliceFromPool()
 
 	for i := 0; i < 100; i++ {
-		ts = append(ts, PreallocTimeseriesV2{TimeSeries: TimeseriesV2FromPool()})
+		ts = append(ts, PreallocTimeseriesV2{TimeSeriesV2: TimeseriesV2FromPool()})
 		ts[i].LabelsRefs = []uint32{1, 2, 3, 4, 5, 6, 7, 8}
-		ts[i].Samples = []Sample{{Value: 1, Timestamp: 2}}
+		ts[i].Samples = []Sample{{Value: 1, TimestampMs: 2}}
 	}
 
 	tests := []struct {
@@ -69,7 +69,7 @@ func BenchmarkMarshallWriteRequest(b *testing.B) {
 		{
 			name: "no-pool",
 			writeRequestFactory: func() proto.Marshaler {
-				return &WriteRequest{Timeseries: ts}
+				return &WriteRequestV2{Timeseries: ts}
 			},
 			clean: func(in interface{}) {},
 		},

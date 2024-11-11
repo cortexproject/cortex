@@ -14,7 +14,6 @@ import (
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
@@ -36,7 +35,7 @@ const (
 type Func func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
 
 // FuncV2 defines the type of the pushV2. It is similar to http.HandlerFunc.
-type FuncV2 func(ctx context.Context, request *cortexpbv2.WriteRequest) (*cortexpbv2.WriteResponse, error)
+type FuncV2 func(ctx context.Context, request *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error)
 
 // Handler is a http.Handler which accepts WriteRequests.
 func Handler(maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push Func, pushV2 FuncV2) http.Handler {
@@ -107,7 +106,7 @@ func Handler(maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push F
 				http.Error(w, string(resp.Body), int(resp.Code))
 			}
 		case config.RemoteWriteProtoMsgV2:
-			var req cortexpbv2.WriteRequest
+			var req cortexpb.WriteRequestV2
 			err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
 			if err != nil {
 				fmt.Println("err", err)
@@ -118,7 +117,7 @@ func Handler(maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push F
 
 			req.SkipLabelNameValidation = false
 			if req.Source == 0 {
-				req.Source = cortexpbv2.API
+				req.Source = cortexpb.API
 			}
 
 			if resp, err := pushV2(ctx, &req); err != nil {

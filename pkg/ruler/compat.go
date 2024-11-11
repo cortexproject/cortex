@@ -22,7 +22,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring/client"
@@ -34,7 +33,7 @@ import (
 // Pusher is an ingester server that accepts pushes.
 type Pusher interface {
 	Push(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
-	PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*cortexpbv2.WriteResponse, error)
+	PushV2(ctx context.Context, req *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error)
 }
 
 type PusherAppender struct {

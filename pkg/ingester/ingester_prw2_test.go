@@ -42,10 +42,8 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -68,12 +66,10 @@ func TestIngesterPRW2_Push(t *testing.T) {
 	}
 	userID := "test"
 
-	testHistogramV2 := cortexpbv2.HistogramToHistogramProto(10, tsdbutil.GenerateTestHistogram(1))
 	testHistogram := cortexpb.HistogramToHistogramProto(10, tsdbutil.GenerateTestHistogram(1))
-	testFloatHistogramV2 := cortexpbv2.FloatHistogramToHistogramProto(11, tsdbutil.GenerateTestFloatHistogram(1))
 	testFloatHistogram := cortexpb.FloatHistogramToHistogramProto(11, tsdbutil.GenerateTestFloatHistogram(1))
 	tests := map[string]struct {
-		reqs                      []*cortexpbv2.WriteRequest
+		reqs                      []*cortexpb.WriteRequestV2
 		expectedErr               error
 		expectedIngested          []cortexpb.TimeSeries
 		expectedMetadataIngested  []*cortexpb.MetricMetadata
@@ -86,13 +82,13 @@ func TestIngesterPRW2_Push(t *testing.T) {
 		disableNativeHistogram    bool
 	}{
 		"should record native histogram discarded": {
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 2, Timestamp: 10}},
-					[]cortexpbv2.Histogram{{Timestamp: 10}},
-					[]cortexpbv2.Metadata{{Type: cortexpbv2.METRIC_TYPE_GAUGE, HelpRef: 3}},
-					cortexpbv2.API,
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
+					[]cortexpb.Histogram{{TimestampMs: 10}},
+					[]cortexpb.MetadataV2{{Type: cortexpb.GAUGE, HelpRef: 3}},
+					cortexpb.API,
 					"a help for metric_name_2"),
 			},
 			expectedErr: nil,
@@ -132,20 +128,20 @@ func TestIngesterPRW2_Push(t *testing.T) {
 			`,
 		},
 		"should succeed on valid series and metadata": {
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: 9}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
-					[]cortexpbv2.Metadata{{HelpRef: 3, Type: cortexpbv2.METRIC_TYPE_COUNTER}},
-					cortexpbv2.API,
+					[]cortexpb.MetadataV2{{HelpRef: 3, Type: cortexpb.COUNTER}},
+					cortexpb.API,
 					"a help for metric_name_1"),
-				cortexpbv2.ToWriteRequestV2(
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 2, Timestamp: 10}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 					nil,
-					[]cortexpbv2.Metadata{{HelpRef: 3, Type: cortexpbv2.METRIC_TYPE_GAUGE}},
-					cortexpbv2.API,
+					[]cortexpb.MetadataV2{{HelpRef: 3, Type: cortexpb.GAUGE}},
+					cortexpb.API,
 					"a help for metric_name_2"),
 			},
 			expectedErr: nil,
@@ -202,21 +198,21 @@ func TestIngesterPRW2_Push(t *testing.T) {
 		},
 		"should succeed on valid series with exemplars": {
 			maxExemplars: 2,
-			reqs: []*cortexpbv2.WriteRequest{
+			reqs: []*cortexpb.WriteRequestV2{
 				// Ingesting an exemplar requires a sample to create the series first
-				cortexpbv2.ToWriteRequestV2(
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: 9}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
 					nil,
-					cortexpbv2.API),
+					cortexpb.API),
 				{
 					Symbols: []string{"", "__name__", "test", "traceID", "123", "456"},
-					Timeseries: []cortexpbv2.PreallocTimeseriesV2{
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
 						{
-							TimeSeries: &cortexpbv2.TimeSeries{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
 								LabelsRefs: []uint32{1, 2},
-								Exemplars: []cortexpbv2.Exemplar{
+								Exemplars: []cortexpb.ExemplarV2{
 									{
 										LabelsRefs: []uint32{3, 4},
 										Timestamp:  1000,
@@ -309,19 +305,19 @@ func TestIngesterPRW2_Push(t *testing.T) {
 		},
 		"successful push, active series disabled": {
 			disableActiveSeries: true,
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: 9}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
 					nil,
-					cortexpbv2.API),
-				cortexpbv2.ToWriteRequestV2(
+					cortexpb.API),
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 2, Timestamp: 10}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 					nil,
 					nil,
-					cortexpbv2.API),
+					cortexpb.API),
 			},
 			expectedErr: nil,
 			expectedIngested: []cortexpb.TimeSeries{
@@ -349,21 +345,21 @@ func TestIngesterPRW2_Push(t *testing.T) {
 			`,
 		},
 		"ooo disabled, should soft fail on sample out of order": {
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 2, Timestamp: 10}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 					nil,
 					nil,
-					cortexpbv2.API),
-				cortexpbv2.ToWriteRequestV2(
+					cortexpb.API),
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: 9}},
-					[]cortexpbv2.Histogram{
-						cortexpbv2.HistogramToHistogramProto(9, tsdbutil.GenerateTestHistogram(1)),
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
+					[]cortexpb.Histogram{
+						cortexpb.HistogramToHistogramProto(9, tsdbutil.GenerateTestHistogram(1)),
 					},
 					nil,
-					cortexpbv2.API),
+					cortexpb.API),
 			},
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfOrderSample, model.Time(9), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
@@ -410,21 +406,21 @@ func TestIngesterPRW2_Push(t *testing.T) {
 			`,
 		},
 		"ooo disabled, should soft fail on sample out of bound": {
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 2, Timestamp: 1575043969}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
 					nil,
 					nil,
-					cortexpbv2.API),
-				cortexpbv2.ToWriteRequestV2(
+					cortexpb.API),
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: 1575043969 - (86400 * 1000)}},
-					[]cortexpbv2.Histogram{
-						cortexpbv2.HistogramToHistogramProto(1575043969-(86400*1000), tsdbutil.GenerateTestHistogram(1)),
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
+					[]cortexpb.Histogram{
+						cortexpb.HistogramToHistogramProto(1575043969-(86400*1000), tsdbutil.GenerateTestHistogram(1)),
 					},
 					nil,
-					cortexpbv2.API),
+					cortexpb.API),
 			},
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
@@ -459,19 +455,19 @@ func TestIngesterPRW2_Push(t *testing.T) {
 			`,
 		},
 		"ooo enabled, should soft fail on sample too old": {
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 2, Timestamp: 1575043969}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
 					nil,
 					nil,
-					cortexpbv2.API),
-				cortexpbv2.ToWriteRequestV2(
+					cortexpb.API),
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: 1575043969 - (600 * 1000)}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (600 * 1000)}},
 					nil,
 					nil,
-					cortexpbv2.API),
+					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
 			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
@@ -510,19 +506,19 @@ func TestIngesterPRW2_Push(t *testing.T) {
 			`,
 		},
 		"ooo enabled, should succeed": {
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 2, Timestamp: 1575043969}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
 					nil,
 					nil,
-					cortexpbv2.API),
-				cortexpbv2.ToWriteRequestV2(
+					cortexpb.API),
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: 1575043969 - (60 * 1000)}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (60 * 1000)}},
 					nil,
 					nil,
-					cortexpbv2.API),
+					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
 			expectedIngested: []cortexpb.TimeSeries{
@@ -554,19 +550,19 @@ func TestIngesterPRW2_Push(t *testing.T) {
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 2, Timestamp: 1575043969}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
 					nil,
 					nil,
-					cortexpbv2.API),
-				cortexpbv2.ToWriteRequestV2(
+					cortexpb.API),
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: 1575043969}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969}},
 					nil,
 					nil,
-					cortexpbv2.API),
+					cortexpb.API),
 			},
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.NewDuplicateFloatErr(1575043969, 2, 1), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
@@ -602,16 +598,16 @@ func TestIngesterPRW2_Push(t *testing.T) {
 		},
 		"should soft fail on exemplar with unknown series": {
 			maxExemplars: 1,
-			reqs: []*cortexpbv2.WriteRequest{
+			reqs: []*cortexpb.WriteRequestV2{
 				// Ingesting an exemplar requires a sample to create the series first
 				// This is not done here.
 				{
 					Symbols: []string{"", "__name__", "test", "traceID", "123"},
-					Timeseries: []cortexpbv2.PreallocTimeseriesV2{
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
 						{
-							TimeSeries: &cortexpbv2.TimeSeries{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
 								LabelsRefs: []uint32{1, 2},
-								Exemplars: []cortexpbv2.Exemplar{
+								Exemplars: []cortexpb.ExemplarV2{
 									{
 										LabelsRefs: []uint32{3, 4},
 										Timestamp:  1000,
@@ -679,13 +675,13 @@ func TestIngesterPRW2_Push(t *testing.T) {
 			`,
 		},
 		"should succeed when only native histogram present if enabled": {
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
 					nil,
-					[]cortexpbv2.Histogram{testHistogramV2},
+					[]cortexpb.Histogram{testHistogram},
 					nil,
-					cortexpbv2.API),
+					cortexpb.API),
 			},
 			expectedErr: nil,
 			expectedIngested: []cortexpb.TimeSeries{
@@ -729,13 +725,13 @@ func TestIngesterPRW2_Push(t *testing.T) {
 			`,
 		},
 		"should succeed when only float native histogram present if enabled": {
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
 					nil,
-					[]cortexpbv2.Histogram{testFloatHistogramV2},
+					[]cortexpb.Histogram{testFloatHistogram},
 					nil,
-					cortexpbv2.API),
+					cortexpb.API),
 			},
 			expectedErr: nil,
 			expectedIngested: []cortexpb.TimeSeries{
@@ -779,13 +775,13 @@ func TestIngesterPRW2_Push(t *testing.T) {
 			`,
 		},
 		"should fail to ingest histogram due to OOO native histogram. Sample and histogram has same timestamp but sample got ingested first": {
-			reqs: []*cortexpbv2.WriteRequest{
-				cortexpbv2.ToWriteRequestV2(
+			reqs: []*cortexpb.WriteRequestV2{
+				cortexpb.ToWriteRequestV2(
 					[]labels.Labels{metricLabels},
-					[]cortexpbv2.Sample{{Value: 2, Timestamp: 10}},
-					[]cortexpbv2.Histogram{testHistogramV2},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
+					[]cortexpb.Histogram{testHistogram},
 					nil,
-					cortexpbv2.API),
+					cortexpb.API),
 			},
 			expectedErr: nil,
 			expectedIngested: []cortexpb.TimeSeries{
@@ -953,35 +949,35 @@ func TestIngesterPRW2_MetricLimitExceeded(t *testing.T) {
 
 			userID := "1"
 			labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
-			sample1 := cortexpbv2.Sample{
-				Timestamp: 0,
-				Value:     1,
+			sample1 := cortexpb.Sample{
+				TimestampMs: 0,
+				Value:       1,
 			}
-			sample2 := cortexpbv2.Sample{
-				Timestamp: 1,
-				Value:     2,
+			sample2 := cortexpb.Sample{
+				TimestampMs: 1,
+				Value:       2,
 			}
 			labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
-			sample3 := cortexpbv2.Sample{
-				Timestamp: 1,
-				Value:     3,
+			sample3 := cortexpb.Sample{
+				TimestampMs: 1,
+				Value:       3,
 			}
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err := ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2([]labels.Labels{labels1}, []cortexpbv2.Sample{sample1}, nil, []cortexpbv2.Metadata{{HelpRef: 5, Type: cortexpbv2.METRIC_TYPE_COUNTER}}, cortexpbv2.API, "a help for testmetric"))
+			_, err := ing.PushV2(ctx, cortexpb.ToWriteRequestV2([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, nil, []cortexpb.MetadataV2{{HelpRef: 5, Type: cortexpb.COUNTER}}, cortexpb.API, "a help for testmetric"))
 			require.NoError(t, err)
 
 			testLimits := func() {
 				// Append two series, expect series-exceeded error.
-				_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2([]labels.Labels{labels1, labels3}, []cortexpbv2.Sample{sample2, sample3}, nil, nil, cortexpbv2.API))
+				_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, nil, cortexpb.API))
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
 				assert.Equal(t, wrapWithUser(makeMetricLimitError(perMetricSeriesLimit, labels3, ing.limiter.FormatError(userID, errMaxSeriesPerMetricLimitExceeded)), userID).Error(), string(httpResp.Body))
 
 				// Append two metadata for the same metric. Drop the second one, and expect no error since metadata is a best effort approach.
-				_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2([]labels.Labels{labels1, labels3}, nil, nil, []cortexpbv2.Metadata{{HelpRef: 6, Type: cortexpbv2.METRIC_TYPE_COUNTER}, {HelpRef: 7, Type: cortexpbv2.METRIC_TYPE_COUNTER}}, cortexpbv2.API, "a help for testmetric", "a help for testmetric2"))
+				_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2([]labels.Labels{labels1, labels3}, nil, nil, []cortexpb.MetadataV2{{HelpRef: 6, Type: cortexpb.COUNTER}, {HelpRef: 7, Type: cortexpb.COUNTER}}, cortexpb.API, "a help for testmetric", "a help for testmetric2"))
 				require.NoError(t, err)
 
 				// Read samples back via ingester queries.
@@ -994,11 +990,11 @@ func TestIngesterPRW2_MetricLimitExceeded(t *testing.T) {
 						Metric: cortexpb.FromLabelAdaptersToMetric(cortexpb.FromLabelsToLabelAdapters(labels1)),
 						Values: []model.SamplePair{
 							{
-								Timestamp: model.Time(sample1.Timestamp),
+								Timestamp: model.Time(sample1.TimestampMs),
 								Value:     model.SampleValue(sample1.Value),
 							},
 							{
-								Timestamp: model.Time(sample2.Timestamp),
+								Timestamp: model.Time(sample2.TimestampMs),
 								Value:     model.SampleValue(sample2.Value),
 							},
 						},
@@ -1058,35 +1054,35 @@ func TestIngesterPRW2_UserLimitExceeded(t *testing.T) {
 			userID := "1"
 			// Series
 			labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
-			sample1 := cortexpbv2.Sample{
-				Timestamp: 0,
-				Value:     1,
+			sample1 := cortexpb.Sample{
+				TimestampMs: 0,
+				Value:       1,
 			}
-			sample2 := cortexpbv2.Sample{
-				Timestamp: 1,
-				Value:     2,
+			sample2 := cortexpb.Sample{
+				TimestampMs: 1,
+				Value:       2,
 			}
 			labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric2"}, {Name: "foo", Value: "biz"}}
-			sample3 := cortexpbv2.Sample{
-				Timestamp: 1,
-				Value:     3,
+			sample3 := cortexpb.Sample{
+				TimestampMs: 1,
+				Value:       3,
 			}
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err := ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2([]labels.Labels{labels1}, []cortexpbv2.Sample{sample1}, nil, []cortexpbv2.Metadata{{HelpRef: 5, Type: cortexpbv2.METRIC_TYPE_COUNTER}}, cortexpbv2.API, "a help for testmetric"))
+			_, err := ing.PushV2(ctx, cortexpb.ToWriteRequestV2([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, nil, []cortexpb.MetadataV2{{HelpRef: 5, Type: cortexpb.COUNTER}}, cortexpb.API, "a help for testmetric"))
 			require.NoError(t, err)
 
 			testLimits := func() {
 				// Append to two series, expect series-exceeded error.
-				_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2([]labels.Labels{labels1, labels3}, []cortexpbv2.Sample{sample2, sample3}, nil, nil, cortexpbv2.API))
+				_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, nil, cortexpb.API))
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
 				assert.Equal(t, wrapWithUser(makeLimitError(perUserSeriesLimit, ing.limiter.FormatError(userID, errMaxSeriesPerUserLimitExceeded)), userID).Error(), string(httpResp.Body))
 
 				// Append two metadata, expect no error since metadata is a best effort approach.
-				_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2([]labels.Labels{labels1, labels3}, nil, nil, []cortexpbv2.Metadata{{HelpRef: 7, Type: cortexpbv2.METRIC_TYPE_COUNTER}, {HelpRef: 8, Type: cortexpbv2.METRIC_TYPE_COUNTER}}, cortexpbv2.API, "a help for testmetric", "a help for testmetric2"))
+				_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2([]labels.Labels{labels1, labels3}, nil, nil, []cortexpb.MetadataV2{{HelpRef: 7, Type: cortexpb.COUNTER}, {HelpRef: 8, Type: cortexpb.COUNTER}}, cortexpb.API, "a help for testmetric", "a help for testmetric2"))
 				require.NoError(t, err)
 
 				// Read samples back via ingester queries.
@@ -1098,11 +1094,11 @@ func TestIngesterPRW2_UserLimitExceeded(t *testing.T) {
 						Metric: cortexpb.FromLabelAdaptersToMetric(cortexpb.FromLabelsToLabelAdapters(labels1)),
 						Values: []model.SamplePair{
 							{
-								Timestamp: model.Time(sample1.Timestamp),
+								Timestamp: model.Time(sample1.TimestampMs),
 								Value:     model.SampleValue(sample1.Value),
 							},
 							{
-								Timestamp: model.Time(sample2.Timestamp),
+								Timestamp: model.Time(sample2.TimestampMs),
 								Value:     model.SampleValue(sample2.Value),
 							},
 						},
@@ -1176,7 +1172,7 @@ func TestIngesterPRW2_PerLabelsetLimitExceeded(t *testing.T) {
 	})
 
 	ctx := user.InjectOrgID(context.Background(), userID)
-	samples := []cortexpbv2.Sample{{Value: 2, Timestamp: 10}}
+	samples := []cortexpb.Sample{{Value: 2, TimestampMs: 10}}
 
 	// Create first series within the limits
 	for _, set := range limits.LimitsPerLabelSet {
@@ -1185,8 +1181,8 @@ func TestIngesterPRW2_PerLabelsetLimitExceeded(t *testing.T) {
 			lbls = append(lbls, lbl.Name, lbl.Value)
 		}
 		for i := 0; i < set.Limits.MaxSeries; i++ {
-			_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2(
-				[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", fmt.Sprintf("extraValue%v", i))...)}, samples, nil, nil, cortexpbv2.API))
+			_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2(
+				[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", fmt.Sprintf("extraValue%v", i))...)}, samples, nil, nil, cortexpb.API))
 			require.NoError(t, err)
 		}
 	}
@@ -1209,8 +1205,8 @@ func TestIngesterPRW2_PerLabelsetLimitExceeded(t *testing.T) {
 		for _, lbl := range set.LabelSet {
 			lbls = append(lbls, lbl.Name, lbl.Value)
 		}
-		_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2(
-			[]labels.Labels{labels.FromStrings(append(lbls, "newLabel", "newValue")...)}, samples, nil, nil, cortexpbv2.API))
+		_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2(
+			[]labels.Labels{labels.FromStrings(append(lbls, "newLabel", "newValue")...)}, samples, nil, nil, cortexpb.API))
 		httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 		require.True(t, ok, "returned error is not an httpgrpc response")
 		assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
@@ -1288,22 +1284,22 @@ func TestIngesterPRW2_PerLabelsetLimitExceeded(t *testing.T) {
 	// Adding 5 metrics with only 1 label
 	for i := 0; i < 5; i++ {
 		lbls := []string{labels.MetricName, "metric_name", "comp1", "compValue1"}
-		_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2(
-			[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", fmt.Sprintf("extraValue%v", i))...)}, samples, nil, nil, cortexpbv2.API))
+		_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2(
+			[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", fmt.Sprintf("extraValue%v", i))...)}, samples, nil, nil, cortexpb.API))
 		require.NoError(t, err)
 	}
 
 	// Adding 2 metrics with both labels (still below the limit)
 	lbls := []string{labels.MetricName, "metric_name", "comp1", "compValue1", "comp2", "compValue2"}
 	for i := 0; i < 2; i++ {
-		_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2(
-			[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", fmt.Sprintf("extraValue%v", i))...)}, samples, nil, nil, cortexpbv2.API))
+		_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2(
+			[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", fmt.Sprintf("extraValue%v", i))...)}, samples, nil, nil, cortexpb.API))
 		require.NoError(t, err)
 	}
 
 	// Now we should hit the limit as we already have 2 metrics with comp1=compValue1, comp2=compValue2
-	_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2(
-		[]labels.Labels{labels.FromStrings(append(lbls, "newLabel", "newValue")...)}, samples, nil, nil, cortexpbv2.API))
+	_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2(
+		[]labels.Labels{labels.FromStrings(append(lbls, "newLabel", "newValue")...)}, samples, nil, nil, cortexpb.API))
 	httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok, "returned error is not an httpgrpc response")
 	assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
@@ -1348,12 +1344,12 @@ func TestIngesterPRW2_PerLabelsetLimitExceeded(t *testing.T) {
 	tenantLimits.setLimits(userID, &limits)
 
 	lbls = []string{labels.MetricName, "metric_name", "comp2", "compValue2"}
-	_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2(
-		[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", "extraValueUpdate")...)}, samples, nil, nil, cortexpbv2.API))
+	_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2(
+		[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", "extraValueUpdate")...)}, samples, nil, nil, cortexpb.API))
 	require.NoError(t, err)
 
-	_, err = ing.PushV2(ctx, cortexpbv2.ToWriteRequestV2(
-		[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", "extraValueUpdate2")...)}, samples, nil, nil, cortexpbv2.API))
+	_, err = ing.PushV2(ctx, cortexpb.ToWriteRequestV2(
+		[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", "extraValueUpdate2")...)}, samples, nil, nil, cortexpb.API))
 	httpResp, ok = httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok, "returned error is not an httpgrpc response")
 	assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
@@ -1424,13 +1420,13 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	for _, tc := range []struct {
 		name        string
-		histograms  []cortexpbv2.Histogram
+		histograms  []cortexpb.Histogram
 		expectedErr error
 	}{
 		{
 			name: "rejects histogram with NaN observations that has its Count (2) lower than the actual total of buckets (2 + 1)",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					ZeroCount:       2,
 					Count:           2,
 					Sum:             math.NaN(),
@@ -1442,8 +1438,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects histogram without NaN observations that has its Count (4) higher than the actual total of buckets (2 + 1)",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					ZeroCount:       2,
 					Count:           4,
 					Sum:             333,
@@ -1455,8 +1451,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects histogram that has too few negative buckets",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					NegativeBuckets: []int64{},
 				}),
@@ -1465,8 +1461,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects histogram that has too few positive buckets",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					PositiveBuckets: []int64{},
 				}),
@@ -1475,8 +1471,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects histogram that has too many negative buckets",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					NegativeBuckets: []int64{1, 2},
 				}),
@@ -1485,8 +1481,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects histogram that has too many positive buckets",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					PositiveBuckets: []int64{1, 2},
 				}),
@@ -1495,8 +1491,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects a histogram that has a negative span with a negative offset",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}, {Offset: -1, Length: 1}},
 					NegativeBuckets: []int64{1, 2},
 				}),
@@ -1505,8 +1501,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects a histogram that has a positive span with a negative offset",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}, {Offset: -1, Length: 1}},
 					PositiveBuckets: []int64{1, 2},
 				}),
@@ -1515,8 +1511,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects a histogram that has a negative span with a negative count",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					NegativeBuckets: []int64{-1},
 				}),
@@ -1525,8 +1521,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects a histogram that has a positive span with a negative count",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					PositiveBuckets: []int64{-1},
 				}),
@@ -1535,8 +1531,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects a histogram that has a lower count than count in buckets",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:           0,
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
@@ -1548,8 +1544,8 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 		},
 		{
 			name: "rejects a histogram that doesn't count the zero bucket in its count",
-			histograms: []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:           2,
 					ZeroCount:       1,
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
@@ -1581,7 +1577,7 @@ func TestIngesterPRW2_PushNativeHistogramErrors(t *testing.T) {
 				return i.lifecycler.GetState()
 			})
 
-			req := cortexpbv2.ToWriteRequestV2([]labels.Labels{metricLabels}, nil, tc.histograms, nil, cortexpbv2.API)
+			req := cortexpb.ToWriteRequestV2([]labels.Labels{metricLabels}, nil, tc.histograms, nil, cortexpb.API)
 			// Push timeseries
 			_, err = i.PushV2(ctx, req)
 			assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(tc.expectedErr, model.Time(10), metricLabelAdapters), userID).Error()), err)
@@ -1622,19 +1618,19 @@ func TestIngesterPRW2_Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *t
 
 	// Push timeseries for each user
 	for _, userID := range []string{"test-1", "test-2"} {
-		reqs := []*cortexpbv2.WriteRequest{
-			cortexpbv2.ToWriteRequestV2(
+		reqs := []*cortexpb.WriteRequestV2{
+			cortexpb.ToWriteRequestV2(
 				[]labels.Labels{metricLabels},
-				[]cortexpbv2.Sample{{Value: 1, Timestamp: 9}},
+				[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 				nil,
 				nil,
-				cortexpbv2.API),
-			cortexpbv2.ToWriteRequestV2(
+				cortexpb.API),
+			cortexpb.ToWriteRequestV2(
 				[]labels.Labels{metricLabels},
-				[]cortexpbv2.Sample{{Value: 2, Timestamp: 10}},
+				[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 				nil,
 				nil,
-				cortexpbv2.API),
+				cortexpb.API),
 		}
 
 		for _, req := range reqs {
@@ -1706,19 +1702,19 @@ func TestIngesterPRW2_Push_DecreaseInactiveSeries(t *testing.T) {
 
 	// Push timeseries for each user
 	for _, userID := range []string{"test-1", "test-2"} {
-		reqs := []*cortexpbv2.WriteRequest{
-			cortexpbv2.ToWriteRequestV2(
+		reqs := []*cortexpb.WriteRequestV2{
+			cortexpb.ToWriteRequestV2(
 				[]labels.Labels{metricLabels},
-				[]cortexpbv2.Sample{{Value: 1, Timestamp: 9}},
+				[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 				nil,
 				nil,
-				cortexpbv2.API),
-			cortexpbv2.ToWriteRequestV2(
+				cortexpb.API),
+			cortexpb.ToWriteRequestV2(
 				[]labels.Labels{metricLabels},
-				[]cortexpbv2.Sample{{Value: 2, Timestamp: 10}},
+				[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 				nil,
 				nil,
-				cortexpbv2.API),
+				cortexpb.API),
 		}
 
 		for _, req := range reqs {
@@ -1781,12 +1777,12 @@ func benchmarkIngesterPRW2Push(b *testing.B, limits validation.Limits, errorsExp
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	startTime := util.TimeToMillis(time.Now())
 
-	currTimeReq := cortexpbv2.ToWriteRequestV2(
+	currTimeReq := cortexpb.ToWriteRequestV2(
 		[]labels.Labels{metricLabels},
-		[]cortexpbv2.Sample{{Value: 1, Timestamp: startTime}},
+		[]cortexpb.Sample{{Value: 1, TimestampMs: startTime}},
 		nil,
 		nil,
-		cortexpbv2.API)
+		cortexpb.API)
 	_, err = ingester.PushV2(ctx, currTimeReq)
 	require.NoError(b, err)
 
@@ -1795,16 +1791,16 @@ func benchmarkIngesterPRW2Push(b *testing.B, limits validation.Limits, errorsExp
 		samples = 10
 	)
 
-	allLabels, allSamples := benchmarkDataV2(series)
+	allLabels, allSamples := benchmarkData(series)
 
 	b.ResetTimer()
 	for iter := 0; iter < b.N; iter++ {
 		// Bump the timestamp on each of our test samples each time round the loop
 		for j := 0; j < samples; j++ {
 			for i := range allSamples {
-				allSamples[i].Timestamp = startTime + int64(iter*samples+j+1)
+				allSamples[i].TimestampMs = startTime + int64(iter*samples+j+1)
 			}
-			_, err := ingester.PushV2(ctx, cortexpbv2.ToWriteRequestV2(allLabels, allSamples, nil, nil, cortexpbv2.API))
+			_, err := ingester.PushV2(ctx, cortexpb.ToWriteRequestV2(allLabels, allSamples, nil, nil, cortexpb.API))
 			if !errorsExpected {
 				require.NoError(b, err)
 			}
@@ -1846,26 +1842,26 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 		// If this returns false, test is skipped.
 		prepareConfig   func(limits *validation.Limits, instanceLimits *InstanceLimits) bool
 		beforeBenchmark func(b *testing.B, ingester *Ingester, numSeriesPerRequest int)
-		runBenchmark    func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpbv2.Sample)
+		runBenchmark    func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample)
 	}{
 		"out of bound samples": {
 			prepareConfig: func(limits *validation.Limits, instanceLimits *InstanceLimits) bool { return true },
 			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
 				// Push a single time series to set the TSDB min time.
-				currTimeReq := cortexpbv2.ToWriteRequestV2(
+				currTimeReq := cortexpb.ToWriteRequestV2(
 					[]labels.Labels{{{Name: labels.MetricName, Value: metricName}}},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: util.TimeToMillis(time.Now())}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: util.TimeToMillis(time.Now())}},
 					nil,
 					nil,
-					cortexpbv2.API)
+					cortexpb.API)
 				_, err := ingester.PushV2(ctx, currTimeReq)
 				require.NoError(b, err)
 			},
-			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpbv2.Sample) {
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				expectedErr := storage.ErrOutOfBounds.Error()
 				// Push out of bound samples.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.PushV2(ctx, cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API)) // nolint:errcheck
+					_, err := ingester.PushV2(ctx, cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 
 					verifyErrorString(b, err, expectedErr)
 				}
@@ -1876,18 +1872,18 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
 				// For each series, push a single sample with a timestamp greater than next pushes.
 				for i := 0; i < numSeriesPerRequest; i++ {
-					currTimeReq := cortexpbv2.ToWriteRequestV2(
+					currTimeReq := cortexpb.ToWriteRequestV2(
 						[]labels.Labels{{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}}},
-						[]cortexpbv2.Sample{{Value: 1, Timestamp: sampleTimestamp + 1}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
 						nil,
 						nil,
-						cortexpbv2.API)
+						cortexpb.API)
 
 					_, err := ingester.PushV2(ctx, currTimeReq)
 					require.NoError(b, err)
 				}
 			},
-			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpbv2.Sample) {
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				expectedErr := storage.ErrOutOfOrderSample.Error()
 
 				st := writev2.NewSymbolTable()
@@ -1896,7 +1892,7 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 				}
 				// Push out of order samples.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.PushV2(ctx, cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API)) // nolint:errcheck
+					_, err := ingester.PushV2(ctx, cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 
 					verifyErrorString(b, err, expectedErr)
 				}
@@ -1909,16 +1905,16 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 			},
 			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
 				// Push a series with a metric name different than the one used during the benchmark.
-				currTimeReq := cortexpbv2.ToWriteRequestV2(
+				currTimeReq := cortexpb.ToWriteRequestV2(
 					[]labels.Labels{labels.FromStrings(labels.MetricName, "another")},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: sampleTimestamp + 1}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
 					nil,
 					nil,
-					cortexpbv2.API)
+					cortexpb.API)
 				_, err := ingester.PushV2(ctx, currTimeReq)
 				require.NoError(b, err)
 			},
-			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpbv2.Sample) {
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				// Push series with a different name than the one already pushed.
 
 				st := writev2.NewSymbolTable()
@@ -1926,7 +1922,7 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 					st.SymbolizeLabels(lbs, nil)
 				}
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.PushV2(ctx, cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API)) // nolint:errcheck
+					_, err := ingester.PushV2(ctx, cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 					verifyErrorString(b, err, "per-user series limit")
 				}
 			},
@@ -1938,23 +1934,23 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 			},
 			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
 				// Push a series with the same metric name but different labels than the one used during the benchmark.
-				currTimeReq := cortexpbv2.ToWriteRequestV2(
+				currTimeReq := cortexpb.ToWriteRequestV2(
 					[]labels.Labels{labels.FromStrings(labels.MetricName, metricName, "cardinality", "another")},
-					[]cortexpbv2.Sample{{Value: 1, Timestamp: sampleTimestamp + 1}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
 					nil,
 					nil,
-					cortexpbv2.API)
+					cortexpb.API)
 				_, err := ingester.PushV2(ctx, currTimeReq)
 				require.NoError(b, err)
 			},
-			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpbv2.Sample) {
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				st := writev2.NewSymbolTable()
 				for _, lbs := range metrics {
 					st.SymbolizeLabels(lbs, nil)
 				}
 				// Push series with different labels than the one already pushed.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.PushV2(ctx, cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API)) // nolint:errcheck
+					_, err := ingester.PushV2(ctx, cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 					verifyErrorString(b, err, "per-metric series limit")
 				}
 			},
@@ -1974,14 +1970,14 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 
 				ingester.ingestionRate.Tick()
 			},
-			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpbv2.Sample) {
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				st := writev2.NewSymbolTable()
 				for _, lbs := range metrics {
 					st.SymbolizeLabels(lbs, nil)
 				}
 				// Push series with different labels than the one already pushed.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.PushV2(ctx, cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API))
+					_, err := ingester.PushV2(ctx, cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "push rate reached")
 				}
 			},
@@ -2000,14 +1996,14 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 				_, err := ingester.PushV2(ctx, generateSamplesForLabelV2(labels.FromStrings(labels.MetricName, "test"), 10000))
 				require.NoError(b, err)
 			},
-			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpbv2.Sample) {
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				st := writev2.NewSymbolTable()
 				for _, lbs := range metrics {
 					st.SymbolizeLabels(lbs, nil)
 				}
 				// Push series with different labels than the one already pushed.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.PushV2(ctx, cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API))
+					_, err := ingester.PushV2(ctx, cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "max tenants limit reached")
 				}
 			},
@@ -2024,13 +2020,13 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 				_, err := ingester.PushV2(ctx, generateSamplesForLabelV2(labels.FromStrings(labels.MetricName, "test"), 10000))
 				require.NoError(b, err)
 			},
-			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpbv2.Sample) {
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				st := writev2.NewSymbolTable()
 				for _, lbs := range metrics {
 					st.SymbolizeLabels(lbs, nil)
 				}
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.PushV2(ctx, cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API))
+					_, err := ingester.PushV2(ctx, cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "max series limit reached")
 				}
 			},
@@ -2046,13 +2042,13 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
 				ingester.inflightPushRequests.Inc()
 			},
-			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpbv2.Sample) {
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				st := writev2.NewSymbolTable()
 				for _, lbs := range metrics {
 					st.SymbolizeLabels(lbs, nil)
 				}
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.PushV2(ctx, cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API))
+					_, err := ingester.PushV2(ctx, cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "too many inflight push requests")
 				}
 			},
@@ -2100,10 +2096,10 @@ func Benchmark_IngesterPRW2_PushOnError(b *testing.B) {
 
 					// Prepare the request.
 					metrics := make([]labels.Labels, 0, scenario.numSeriesPerRequest)
-					samples := make([]cortexpbv2.Sample, 0, scenario.numSeriesPerRequest)
+					samples := make([]cortexpb.Sample, 0, scenario.numSeriesPerRequest)
 					for i := 0; i < scenario.numSeriesPerRequest; i++ {
 						metrics = append(metrics, labels.Labels{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}})
-						samples = append(samples, cortexpbv2.Sample{Value: float64(i), Timestamp: sampleTimestamp})
+						samples = append(samples, cortexpb.Sample{Value: float64(i), TimestampMs: sampleTimestamp})
 					}
 
 					// Run the benchmark.
@@ -2459,7 +2455,7 @@ func TestIngesterPRW2_Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
 	// Mock request
 	userID := "test"
 	ctx := user.InjectOrgID(context.Background(), userID)
-	req := &cortexpbv2.WriteRequest{}
+	req := &cortexpb.WriteRequestV2{}
 
 	res, err := i.PushV2(ctx, req)
 	assert.Equal(t, wrapWithUser(fmt.Errorf(errTSDBCreateIncompatibleState, "PENDING"), userID).Error(), err.Error())
@@ -2739,7 +2735,7 @@ func TestIngesterPRW2_QueryStream(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), userID)
 			lbls := labels.Labels{{Name: labels.MetricName, Value: "foo"}}
 			var (
-				req                    *cortexpbv2.WriteRequest
+				req                    *cortexpb.WriteRequestV2
 				expectedResponseChunks *client.QueryStreamResponse
 			)
 			switch enc {
@@ -2822,12 +2818,12 @@ func TestIngesterPRW2_QueryStreamManySamplesChunks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 
 	const samplesCount = 1000000
-	samples := make([]cortexpbv2.Sample, 0, samplesCount)
+	samples := make([]cortexpb.Sample, 0, samplesCount)
 
 	for i := 0; i < samplesCount; i++ {
-		samples = append(samples, cortexpbv2.Sample{
-			Value:     float64(i),
-			Timestamp: int64(i),
+		samples = append(samples, cortexpb.Sample{
+			Value:       float64(i),
+			TimestampMs: int64(i),
 		})
 	}
 
@@ -2928,12 +2924,12 @@ func benchmarkQueryStreamV2(b *testing.B) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 
 	const samplesCount = 1000
-	samples := make([]cortexpbv2.Sample, 0, samplesCount)
+	samples := make([]cortexpb.Sample, 0, samplesCount)
 
 	for i := 0; i < samplesCount; i++ {
-		samples = append(samples, cortexpbv2.Sample{
-			Value:     float64(i),
-			Timestamp: int64(i),
+		samples = append(samples, cortexpb.Sample{
+			Value:       float64(i),
+			TimestampMs: int64(i),
 		})
 	}
 
@@ -3995,22 +3991,22 @@ func TestIngesterPRW2_NoFlushWithInFlightRequest(t *testing.T) {
 func TestIngesterPRW2_PushInstanceLimits(t *testing.T) {
 	tests := map[string]struct {
 		limits          InstanceLimits
-		reqs            map[string][]*cortexpbv2.WriteRequest
+		reqs            map[string][]*cortexpb.WriteRequestV2
 		expectedErr     error
 		expectedErrType interface{}
 	}{
 		"should succeed creating one user and series": {
 			limits: InstanceLimits{MaxInMemorySeries: 1, MaxInMemoryTenants: 1},
-			reqs: map[string][]*cortexpbv2.WriteRequest{
+			reqs: map[string][]*cortexpb.WriteRequestV2{
 				"test": {
-					cortexpbv2.ToWriteRequestV2(
+					cortexpb.ToWriteRequestV2(
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}})},
-						[]cortexpbv2.Sample{{Value: 1, Timestamp: 9}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						nil,
-						[]cortexpbv2.Metadata{
-							{Type: cortexpbv2.METRIC_TYPE_COUNTER, HelpRef: 3},
+						[]cortexpb.MetadataV2{
+							{Type: cortexpb.COUNTER, HelpRef: 3},
 						},
-						cortexpbv2.API,
+						cortexpb.API,
 						"a help for metric_name_1"),
 				},
 			},
@@ -4019,21 +4015,21 @@ func TestIngesterPRW2_PushInstanceLimits(t *testing.T) {
 
 		"should fail creating two series": {
 			limits: InstanceLimits{MaxInMemorySeries: 1, MaxInMemoryTenants: 1},
-			reqs: map[string][]*cortexpbv2.WriteRequest{
+			reqs: map[string][]*cortexpb.WriteRequestV2{
 				"test": {
-					cortexpbv2.ToWriteRequestV2(
+					cortexpb.ToWriteRequestV2(
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
-						[]cortexpbv2.Sample{{Value: 1, Timestamp: 9}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						nil,
 						nil,
-						cortexpbv2.API),
+						cortexpb.API),
 
-					cortexpbv2.ToWriteRequestV2(
+					cortexpb.ToWriteRequestV2(
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test2"}})}, // another series
-						[]cortexpbv2.Sample{{Value: 1, Timestamp: 10}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
 						nil,
 						nil,
-						cortexpbv2.API),
+						cortexpb.API),
 				},
 			},
 
@@ -4042,23 +4038,23 @@ func TestIngesterPRW2_PushInstanceLimits(t *testing.T) {
 
 		"should fail creating two users": {
 			limits: InstanceLimits{MaxInMemorySeries: 1, MaxInMemoryTenants: 1},
-			reqs: map[string][]*cortexpbv2.WriteRequest{
+			reqs: map[string][]*cortexpb.WriteRequestV2{
 				"user1": {
-					cortexpbv2.ToWriteRequestV2(
+					cortexpb.ToWriteRequestV2(
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
-						[]cortexpbv2.Sample{{Value: 1, Timestamp: 9}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						nil,
 						nil,
-						cortexpbv2.API),
+						cortexpb.API),
 				},
 
 				"user2": {
-					cortexpbv2.ToWriteRequestV2(
+					cortexpb.ToWriteRequestV2(
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test2"}})}, // another series
-						[]cortexpbv2.Sample{{Value: 1, Timestamp: 10}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
 						nil,
 						nil,
-						cortexpbv2.API),
+						cortexpb.API),
 				},
 			},
 			expectedErr: wrapWithUser(errMaxUsersLimitReached, "user2"),
@@ -4066,21 +4062,21 @@ func TestIngesterPRW2_PushInstanceLimits(t *testing.T) {
 
 		"should fail pushing samples in two requests due to rate limit": {
 			limits: InstanceLimits{MaxInMemorySeries: 1, MaxInMemoryTenants: 1, MaxIngestionRate: 0.001},
-			reqs: map[string][]*cortexpbv2.WriteRequest{
+			reqs: map[string][]*cortexpb.WriteRequestV2{
 				"user1": {
-					cortexpbv2.ToWriteRequestV2(
+					cortexpb.ToWriteRequestV2(
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
-						[]cortexpbv2.Sample{{Value: 1, Timestamp: 9}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						nil,
 						nil,
-						cortexpbv2.API),
+						cortexpb.API),
 
-					cortexpbv2.ToWriteRequestV2(
+					cortexpb.ToWriteRequestV2(
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
-						[]cortexpbv2.Sample{{Value: 1, Timestamp: 10}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
 						nil,
 						nil,
-						cortexpbv2.API),
+						cortexpb.API),
 				},
 			},
 			expectedErr: errMaxSamplesPushRateLimitReached,
@@ -4229,30 +4225,30 @@ func TestIngesterPRW2_QueryExemplar_MaxInflightQueryRequest(t *testing.T) {
 	require.Equal(t, err, errTooManyInflightQueryRequests)
 }
 
-func generateSamplesForLabelV2(lbs labels.Labels, count int) *cortexpbv2.WriteRequest {
+func generateSamplesForLabelV2(lbs labels.Labels, count int) *cortexpb.WriteRequestV2 {
 	var lbls = make([]labels.Labels, 0, count)
-	var samples = make([]cortexpbv2.Sample, 0, count)
+	var samples = make([]cortexpb.Sample, 0, count)
 
 	for i := 0; i < count; i++ {
-		samples = append(samples, cortexpbv2.Sample{
-			Value:     float64(i),
-			Timestamp: int64(i),
+		samples = append(samples, cortexpb.Sample{
+			Value:       float64(i),
+			TimestampMs: int64(i),
 		})
 		lbls = append(lbls, lbs)
 	}
 
-	return cortexpbv2.ToWriteRequestV2(lbls, samples, nil, nil, cortexpbv2.API)
+	return cortexpb.ToWriteRequestV2(lbls, samples, nil, nil, cortexpb.API)
 }
 
-func mockWriteRequestWithMetadataV2(t *testing.T, lbls labels.Labels, value float64, timestamp int64, metadata cortexpbv2.Metadata, additionalSymbols ...string) (*cortexpbv2.WriteRequest, *client.QueryStreamResponse) {
-	samples := []cortexpbv2.Sample{
+func mockWriteRequestWithMetadataV2(t *testing.T, lbls labels.Labels, value float64, timestamp int64, metadata cortexpb.MetadataV2, additionalSymbols ...string) (*cortexpb.WriteRequestV2, *client.QueryStreamResponse) {
+	samples := []cortexpb.Sample{
 		{
-			Timestamp: timestamp,
-			Value:     value,
+			TimestampMs: timestamp,
+			Value:       value,
 		},
 	}
 
-	req := cortexpbv2.ToWriteRequestV2([]labels.Labels{lbls}, samples, nil, []cortexpbv2.Metadata{metadata}, cortexpbv2.API, additionalSymbols...)
+	req := cortexpb.ToWriteRequestV2([]labels.Labels{lbls}, samples, nil, []cortexpb.MetadataV2{metadata}, cortexpb.API, additionalSymbols...)
 
 	chunk := chunkenc.NewXORChunk()
 	app, err := chunk.Appender()
@@ -4279,23 +4275,23 @@ func mockWriteRequestWithMetadataV2(t *testing.T, lbls labels.Labels, value floa
 	return req, expectedQueryStreamResChunks
 }
 
-func mockHistogramWriteRequestV2(t *testing.T, lbls labels.Labels, value int, timestampMs int64, float bool) (*cortexpbv2.WriteRequest, *client.QueryStreamResponse) {
+func mockHistogramWriteRequestV2(t *testing.T, lbls labels.Labels, value int, timestampMs int64, float bool) (*cortexpb.WriteRequestV2, *client.QueryStreamResponse) {
 	var (
-		histograms []cortexpbv2.Histogram
+		histograms []cortexpb.Histogram
 		h          *histogram.Histogram
 		fh         *histogram.FloatHistogram
 		c          chunkenc.Chunk
 	)
 	if float {
 		fh = tsdbutil.GenerateTestFloatHistogram(value)
-		histograms = []cortexpbv2.Histogram{
-			cortexpbv2.FloatHistogramToHistogramProto(timestampMs, fh),
+		histograms = []cortexpb.Histogram{
+			cortexpb.FloatHistogramToHistogramProto(timestampMs, fh),
 		}
 		c = chunkenc.NewFloatHistogramChunk()
 	} else {
 		h = tsdbutil.GenerateTestHistogram(value)
-		histograms = []cortexpbv2.Histogram{
-			cortexpbv2.HistogramToHistogramProto(timestampMs, h),
+		histograms = []cortexpb.Histogram{
+			cortexpb.HistogramToHistogramProto(timestampMs, h),
 		}
 		c = chunkenc.NewHistogramChunk()
 	}
@@ -4310,7 +4306,7 @@ func mockHistogramWriteRequestV2(t *testing.T, lbls labels.Labels, value int, ti
 	require.NoError(t, err)
 	c.Compact()
 
-	req := cortexpbv2.ToWriteRequestV2([]labels.Labels{lbls}, nil, histograms, nil, cortexpbv2.API)
+	req := cortexpb.ToWriteRequestV2([]labels.Labels{lbls}, nil, histograms, nil, cortexpb.API)
 	enc := int32(encoding.PrometheusHistogramChunk)
 	if float {
 		enc = int32(encoding.PrometheusFloatHistogramChunk)
@@ -4334,15 +4330,15 @@ func mockHistogramWriteRequestV2(t *testing.T, lbls labels.Labels, value int, ti
 	return req, expectedQueryStreamResChunks
 }
 
-func mockWriteRequestV2(t *testing.T, lbls labels.Labels, value float64, timestamp int64) (*cortexpbv2.WriteRequest, *client.QueryStreamResponse) {
-	samples := []cortexpbv2.Sample{
+func mockWriteRequestV2(t *testing.T, lbls labels.Labels, value float64, timestamp int64) (*cortexpb.WriteRequestV2, *client.QueryStreamResponse) {
+	samples := []cortexpb.Sample{
 		{
-			Timestamp: timestamp,
-			Value:     value,
+			TimestampMs: timestamp,
+			Value:       value,
 		},
 	}
 
-	req := cortexpbv2.ToWriteRequestV2([]labels.Labels{lbls}, samples, nil, nil, cortexpbv2.API)
+	req := cortexpb.ToWriteRequestV2([]labels.Labels{lbls}, samples, nil, nil, cortexpb.API)
 
 	chunk := chunkenc.NewXORChunk()
 	app, err := chunk.Appender()
@@ -4371,8 +4367,8 @@ func mockWriteRequestV2(t *testing.T, lbls labels.Labels, value float64, timesta
 
 func pushSingleSampleWithMetadataV2(t *testing.T, i *Ingester) {
 	ctx := user.InjectOrgID(context.Background(), userID)
-	metadata := cortexpbv2.Metadata{
-		Type:    cortexpbv2.METRIC_TYPE_COUNTER,
+	metadata := cortexpb.MetadataV2{
+		Type:    cortexpb.COUNTER,
 		HelpRef: 3,
 		UnitRef: 0,
 	}
@@ -4389,16 +4385,16 @@ func pushSingleSampleAtTimeV2(t *testing.T, i *Ingester, ts int64) {
 	require.NoError(t, err)
 }
 
-func writeRequestSingleSeriesV2(lbls labels.Labels, samples []cortexpbv2.Sample) *cortexpbv2.WriteRequest {
-	req := &cortexpbv2.WriteRequest{
-		Source: cortexpbv2.API,
+func writeRequestSingleSeriesV2(lbls labels.Labels, samples []cortexpb.Sample) *cortexpb.WriteRequestV2 {
+	req := &cortexpb.WriteRequestV2{
+		Source: cortexpb.API,
 	}
 
 	st := writev2.NewSymbolTable()
-	ts := cortexpbv2.TimeSeries{}
+	ts := cortexpb.TimeSeriesV2{}
 	ts.Samples = samples
 	ts.LabelsRefs = st.SymbolizeLabels(lbls, nil)
-	req.Timeseries = append(req.Timeseries, cortexpbv2.PreallocTimeseriesV2{TimeSeries: &ts})
+	req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseriesV2{TimeSeriesV2: &ts})
 	req.Symbols = st.Symbols()
 
 	return req
@@ -4430,39 +4426,25 @@ func createIngesterWithSeriesV2(t testing.TB, userID string, numSeries, numSampl
 
 			// Generate metrics and samples (1 for each series).
 			metrics := make([]labels.Labels, 0, batchSize)
-			samples := make([]cortexpbv2.Sample, 0, batchSize)
+			samples := make([]cortexpb.Sample, 0, batchSize)
 
 			for s := 0; s < batchSize; s++ {
 				metrics = append(metrics, labels.Labels{
 					{Name: labels.MetricName, Value: fmt.Sprintf("test_%d", o+s)},
 				})
 
-				samples = append(samples, cortexpbv2.Sample{
-					Timestamp: ts,
-					Value:     1,
+				samples = append(samples, cortexpb.Sample{
+					TimestampMs: ts,
+					Value:       1,
 				})
 			}
 
 			// Send metrics to the ingester.
-			req := cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API)
+			req := cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API)
 			_, err := i.PushV2(ctx, req)
 			require.NoError(t, err)
 		}
 	}
 
 	return i
-}
-
-func benchmarkDataV2(nSeries int) (allLabels []labels.Labels, allSamples []cortexpbv2.Sample) {
-	for j := 0; j < nSeries; j++ {
-		labels := chunk.BenchmarkLabels.Copy()
-		for i := range labels {
-			if labels[i].Name == "cpu" {
-				labels[i].Value = fmt.Sprintf("cpu%02d", j)
-			}
-		}
-		allLabels = append(allLabels, labels)
-		allSamples = append(allSamples, cortexpbv2.Sample{Timestamp: 0, Value: float64(j)})
-	}
-	return
 }

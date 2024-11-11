@@ -16,11 +16,10 @@ import (
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 )
 
 func TestHandler_remoteWrite(t *testing.T) {
-	handler := Handler(100000, nil, verifyWriteRequestHandler(t, cortexpb.API), verifyWriteRequestV2Handler(t, cortexpbv2.API))
+	handler := Handler(100000, nil, verifyWriteRequestHandler(t, cortexpb.API), verifyWriteRequestV2Handler(t, cortexpb.API))
 
 	t.Run("remote write v1", func(t *testing.T) {
 		req := createRequest(t, createPrometheusRemoteWriteProtobuf(t), false)
@@ -45,7 +44,7 @@ func TestHandler_remoteWrite(t *testing.T) {
 
 func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(100000, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), verifyWriteRequestV2Handler(t, cortexpbv2.API))
+	handler := Handler(100000, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), verifyWriteRequestV2Handler(t, cortexpb.API))
 
 	tests := []struct {
 		description  string
@@ -149,7 +148,7 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
 			if test.isV2 {
-				req := createRequestWithHeaders(t, test.reqHeaders, createCortexRemoteWriteV2Protobuf(t, false, cortexpbv2.API))
+				req := createRequestWithHeaders(t, test.reqHeaders, createCortexRemoteWriteV2Protobuf(t, false, cortexpb.API))
 				resp := httptest.NewRecorder()
 				handler.ServeHTTP(resp, req)
 				assert.Equal(t, test.expectedCode, resp.Code)
@@ -165,7 +164,7 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 
 func TestHandler_cortexWriteRequest(t *testing.T) {
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(100000, sourceIPs, verifyWriteRequestHandler(t, cortexpb.RULE), verifyWriteRequestV2Handler(t, cortexpbv2.RULE))
+	handler := Handler(100000, sourceIPs, verifyWriteRequestHandler(t, cortexpb.RULE), verifyWriteRequestV2Handler(t, cortexpb.RULE))
 
 	t.Run("remote write v1", func(t *testing.T) {
 		req := createRequest(t, createCortexWriteRequestProtobuf(t, false, cortexpb.RULE), false)
@@ -174,7 +173,7 @@ func TestHandler_cortexWriteRequest(t *testing.T) {
 		assert.Equal(t, 200, resp.Code)
 	})
 	t.Run("remote write v2", func(t *testing.T) {
-		req := createRequest(t, createCortexRemoteWriteV2Protobuf(t, false, cortexpbv2.RULE), true)
+		req := createRequest(t, createCortexRemoteWriteV2Protobuf(t, false, cortexpb.RULE), true)
 		resp := httptest.NewRecorder()
 		handler.ServeHTTP(resp, req)
 		assert.Equal(t, 200, resp.Code)
@@ -185,25 +184,25 @@ func TestHandler_ignoresSkipLabelNameValidationIfSet(t *testing.T) {
 	for _, req := range []*http.Request{
 		createRequest(t, createCortexWriteRequestProtobuf(t, true, cortexpb.RULE), false),
 		createRequest(t, createCortexWriteRequestProtobuf(t, false, cortexpb.RULE), false),
-		createRequest(t, createCortexRemoteWriteV2Protobuf(t, true, cortexpbv2.RULE), true),
-		createRequest(t, createCortexRemoteWriteV2Protobuf(t, false, cortexpbv2.RULE), true),
+		createRequest(t, createCortexRemoteWriteV2Protobuf(t, true, cortexpb.RULE), true),
+		createRequest(t, createCortexRemoteWriteV2Protobuf(t, false, cortexpb.RULE), true),
 	} {
 		resp := httptest.NewRecorder()
-		handler := Handler(100000, nil, verifyWriteRequestHandler(t, cortexpb.RULE), verifyWriteRequestV2Handler(t, cortexpbv2.RULE))
+		handler := Handler(100000, nil, verifyWriteRequestHandler(t, cortexpb.RULE), verifyWriteRequestV2Handler(t, cortexpb.RULE))
 		handler.ServeHTTP(resp, req)
 		assert.Equal(t, 200, resp.Code)
 	}
 }
 
-func verifyWriteRequestV2Handler(t *testing.T, expectSource cortexpbv2.WriteRequest_SourceEnum) func(ctx context.Context, request *cortexpbv2.WriteRequest) (response *cortexpbv2.WriteResponse, err error) {
+func verifyWriteRequestV2Handler(t *testing.T, expectSource cortexpb.SourceEnum) func(ctx context.Context, request *cortexpb.WriteRequestV2) (response *cortexpb.WriteResponseV2, err error) {
 	t.Helper()
-	return func(ctx context.Context, request *cortexpbv2.WriteRequest) (response *cortexpbv2.WriteResponse, err error) {
+	return func(ctx context.Context, request *cortexpb.WriteRequestV2) (response *cortexpb.WriteResponseV2, err error) {
 		assert.Len(t, request.Timeseries, 1)
 		assert.Equal(t, "__name__", request.Symbols[1])
 		assert.Equal(t, "foo", request.Symbols[2])
 		assert.Equal(t, expectSource, request.Source)
 		assert.False(t, request.SkipLabelNameValidation)
-		resp := &cortexpbv2.WriteResponse{
+		resp := &cortexpb.WriteResponseV2{
 			Samples:    1,
 			Histograms: 1,
 			Exemplars:  1,
@@ -212,7 +211,7 @@ func verifyWriteRequestV2Handler(t *testing.T, expectSource cortexpbv2.WriteRequ
 	}
 }
 
-func verifyWriteRequestHandler(t *testing.T, expectSource cortexpb.WriteRequest_SourceEnum) func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {
+func verifyWriteRequestHandler(t *testing.T, expectSource cortexpb.SourceEnum) func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {
 	t.Helper()
 	return func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {
 		assert.Len(t, request.Timeseries, 1)
@@ -255,16 +254,16 @@ func createRequest(t *testing.T, protobuf []byte, isV2 bool) *http.Request {
 	return req
 }
 
-func createCortexRemoteWriteV2Protobuf(t *testing.T, skipLabelNameValidation bool, source cortexpbv2.WriteRequest_SourceEnum) []byte {
+func createCortexRemoteWriteV2Protobuf(t *testing.T, skipLabelNameValidation bool, source cortexpb.SourceEnum) []byte {
 	t.Helper()
-	input := cortexpbv2.WriteRequest{
+	input := cortexpb.WriteRequestV2{
 		Symbols: []string{"", "__name__", "foo"},
-		Timeseries: []cortexpbv2.PreallocTimeseriesV2{
+		Timeseries: []cortexpb.PreallocTimeseriesV2{
 			{
-				TimeSeries: &cortexpbv2.TimeSeries{
+				TimeSeriesV2: &cortexpb.TimeSeriesV2{
 					LabelsRefs: []uint32{1, 2},
-					Samples: []cortexpbv2.Sample{
-						{Value: 1, Timestamp: time.Date(2020, 4, 1, 0, 0, 0, 0, time.UTC).UnixNano()},
+					Samples: []cortexpb.Sample{
+						{Value: 1, TimestampMs: time.Date(2020, 4, 1, 0, 0, 0, 0, time.UTC).UnixNano()},
 					},
 				},
 			},
@@ -315,7 +314,7 @@ func createPrometheusRemoteWriteProtobuf(t *testing.T) []byte {
 	require.NoError(t, err)
 	return inoutBytes
 }
-func createCortexWriteRequestProtobuf(t *testing.T, skipLabelNameValidation bool, source cortexpb.WriteRequest_SourceEnum) []byte {
+func createCortexWriteRequestProtobuf(t *testing.T, skipLabelNameValidation bool, source cortexpb.SourceEnum) []byte {
 	t.Helper()
 	ts := cortexpb.PreallocTimeseries{
 		TimeSeries: &cortexpb.TimeSeries{

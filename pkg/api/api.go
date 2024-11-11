@@ -23,7 +23,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/distributor/distributorpb"
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
@@ -318,7 +317,7 @@ type Ingester interface {
 	AllUserStatsHandler(http.ResponseWriter, *http.Request)
 	ModeHandler(http.ResponseWriter, *http.Request)
 	Push(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
-	PushV2(context.Context, *cortexpbv2.WriteRequest) (*cortexpbv2.WriteResponse, error)
+	PushV2(context.Context, *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error)
 }
 
 // RegisterIngester registers the ingesters HTTP and GRPC service

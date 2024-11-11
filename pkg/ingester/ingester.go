@@ -44,7 +44,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -1057,7 +1056,7 @@ type extendedAppender interface {
 	storage.GetRef
 }
 
-func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*cortexpbv2.WriteResponse, error) {
+func (i *Ingester) PushV2(ctx context.Context, req *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error) {
 	if err := i.checkRunning(); err != nil {
 		return nil, err
 	}
@@ -1080,7 +1079,7 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not
 	// retain anything from `req` past the call to ReuseSlice
-	defer cortexpbv2.ReuseSlice(req.Timeseries)
+	defer cortexpb.ReuseSliceV2(req.Timeseries)
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -1108,7 +1107,7 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 	i.stoppedMtx.RUnlock()
 
 	if err := db.acquireAppendLock(); err != nil {
-		return &cortexpbv2.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
+		return &cortexpb.WriteResponseV2{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
 	}
 	defer db.releaseAppendLock()
 
@@ -1220,7 +1219,7 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 
 			// If the cached reference exists, we try to use it.
 			if ref != 0 {
-				if _, err = app.Append(ref, copiedLabels, s.Timestamp, s.Value); err == nil {
+				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					succeededSamplesCount++
 					continue
 				}
@@ -1230,7 +1229,7 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(seriesLabels)
 
 				// Retain the reference in case there are multiple samples for the series.
-				if ref, err = app.Append(0, copiedLabels, s.Timestamp, s.Value); err == nil {
+				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					succeededSamplesCount++
 					continue
 				}
@@ -1238,7 +1237,7 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 
 			failedSamplesCount++
 
-			if rollback := handleAppendFailure(err, s.Timestamp, seriesLabels, copiedLabels); !rollback {
+			if rollback := handleAppendFailure(err, s.TimestampMs, seriesLabels, copiedLabels); !rollback {
 				continue
 			}
 			// The error looks an issue on our side, so we should rollback
@@ -1258,13 +1257,13 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 				)
 
 				if hp.GetCountFloat() > 0 {
-					fh = cortexpbv2.FloatHistogramProtoToFloatHistogram(hp)
+					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp)
 				} else {
-					h = cortexpbv2.HistogramProtoToHistogram(hp)
+					h = cortexpb.HistogramProtoToHistogram(hp)
 				}
 
 				if ref != 0 {
-					if _, err = app.AppendHistogram(ref, copiedLabels, hp.Timestamp, h, fh); err == nil {
+					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
 						succeededHistogramCount++
 						succeededSamplesCount++
 						continue
@@ -1272,7 +1271,7 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 				} else {
 					// Copy the label set because both TSDB and the active series tracker may retain it.
 					copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(seriesLabels)
-					if ref, err = app.AppendHistogram(0, copiedLabels, hp.Timestamp, h, fh); err == nil {
+					if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
 						succeededHistogramCount++
 						succeededSamplesCount++
 						continue
@@ -1281,7 +1280,7 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 
 				failedSamplesCount++
 
-				if rollback := handleAppendFailure(err, hp.Timestamp, seriesLabels, copiedLabels); !rollback {
+				if rollback := handleAppendFailure(err, hp.TimestampMs, seriesLabels, copiedLabels); !rollback {
 					continue
 				}
 				// The error looks an issue on our side, so we should rollback
@@ -1335,7 +1334,7 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 			}
 		}
 
-		if ts.Metadata.Type != cortexpbv2.METRIC_TYPE_UNSPECIFIED {
+		if ts.Metadata.Type != cortexpb.UNKNOWN {
 			metaData := ts.Metadata.ToV1Metadata(tsLabels.Get(model.MetricNameLabel), req.Symbols)
 			if err := i.appendMetadata(userID, metaData); err == nil {
 				succeededMetadataCount++
@@ -1399,9 +1398,9 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 	i.ingestionRate.Add(int64(succeededSamplesCount + succeededMetadataCount))
 
 	switch req.Source {
-	case cortexpbv2.RULE:
+	case cortexpb.RULE:
 		db.ingestedRuleSamples.Add(int64(succeededSamplesCount))
-	case cortexpbv2.API:
+	case cortexpb.API:
 		fallthrough
 	default:
 		db.ingestedAPISamples.Add(int64(succeededSamplesCount))
@@ -1414,10 +1413,10 @@ func (i *Ingester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*c
 			code = ve.code
 		}
 		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "firstPartialErr", firstPartialErr)
-		return &cortexpbv2.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
+		return &cortexpb.WriteResponseV2{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
 	}
 
-	writeResponse := &cortexpbv2.WriteResponse{
+	writeResponse := &cortexpb.WriteResponseV2{
 		Samples:    int64(succeededSamplesCount),
 		Histograms: int64(succeededHistogramCount),
 		Exemplars:  int64(succeededExemplarsCount),

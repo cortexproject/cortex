@@ -25,7 +25,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -43,7 +42,7 @@ import (
 )
 
 var (
-	emptyResponseV2 = &cortexpbv2.WriteResponse{}
+	emptyResponseV2 = &cortexpb.WriteResponseV2{}
 )
 
 func TestDistributorPRW2_Push_LabelRemoval_RemovingNameLabelWillError(t *testing.T) {
@@ -97,7 +96,7 @@ func TestDistributorPRW2_Push_LabelRemoval(t *testing.T) {
 		expectedSeries labels.Labels
 		removeReplica  bool
 		removeLabels   []string
-		exemplars      []cortexpbv2.Exemplar
+		exemplars      []cortexpb.ExemplarV2
 	}
 
 	cases := []testcase{
@@ -153,7 +152,7 @@ func TestDistributorPRW2_Push_LabelRemoval(t *testing.T) {
 				{Name: "__replica__", Value: "two"},
 			},
 			expectedSeries: labels.Labels{},
-			exemplars: []cortexpbv2.Exemplar{
+			exemplars: []cortexpb.ExemplarV2{
 				{LabelsRefs: []uint32{1, 2}, Value: 1, Timestamp: 0},
 				{LabelsRefs: []uint32{1, 2}, Value: 1, Timestamp: 0},
 			},
@@ -223,7 +222,7 @@ func TestDistributorPRW2_PushHAInstances(t *testing.T) {
 		testReplica      string
 		cluster          string
 		samples          int
-		expectedResponse *cortexpbv2.WriteResponse
+		expectedResponse *cortexpb.WriteResponseV2
 		expectedCode     int32
 	}{
 		{
@@ -315,14 +314,14 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 
 	tests := map[string]struct {
 		prepareConfig func(limits *validation.Limits)
-		prepareSeries func() ([]labels.Labels, []cortexpbv2.Sample)
+		prepareSeries func() ([]labels.Labels, []cortexpb.Sample)
 		expectedErr   string
 	}{
 		"all samples successfully pushed": {
 			prepareConfig: func(limits *validation.Limits) {},
-			prepareSeries: func() ([]labels.Labels, []cortexpbv2.Sample) {
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
-				samples := make([]cortexpbv2.Sample, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
 					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
@@ -331,9 +330,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 					}
 
 					metrics[i] = lbls.Labels()
-					samples[i] = cortexpbv2.Sample{
-						Value:     float64(i),
-						Timestamp: time.Now().UnixNano() / int64(time.Millisecond),
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
 					}
 				}
 
@@ -346,9 +345,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 				limits.IngestionRate = 1
 				limits.IngestionBurstSize = 1
 			},
-			prepareSeries: func() ([]labels.Labels, []cortexpbv2.Sample) {
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
-				samples := make([]cortexpbv2.Sample, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
 					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
@@ -357,9 +356,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 					}
 
 					metrics[i] = lbls.Labels()
-					samples[i] = cortexpbv2.Sample{
-						Value:     float64(i),
-						Timestamp: time.Now().UnixNano() / int64(time.Millisecond),
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
 					}
 				}
 
@@ -371,9 +370,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 			prepareConfig: func(limits *validation.Limits) {
 				limits.MaxLabelNamesPerSeries = 30
 			},
-			prepareSeries: func() ([]labels.Labels, []cortexpbv2.Sample) {
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
-				samples := make([]cortexpbv2.Sample, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
 					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
@@ -382,9 +381,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 					}
 
 					metrics[i] = lbls.Labels()
-					samples[i] = cortexpbv2.Sample{
-						Value:     float64(i),
-						Timestamp: time.Now().UnixNano() / int64(time.Millisecond),
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
 					}
 				}
 
@@ -396,9 +395,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 			prepareConfig: func(limits *validation.Limits) {
 				limits.MaxLabelNameLength = 1024
 			},
-			prepareSeries: func() ([]labels.Labels, []cortexpbv2.Sample) {
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
-				samples := make([]cortexpbv2.Sample, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
 					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
@@ -410,9 +409,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 					lbls.Set(fmt.Sprintf("xxx_%0.2000d", 1), "xxx")
 
 					metrics[i] = lbls.Labels()
-					samples[i] = cortexpbv2.Sample{
-						Value:     float64(i),
-						Timestamp: time.Now().UnixNano() / int64(time.Millisecond),
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
 					}
 				}
 
@@ -424,9 +423,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 			prepareConfig: func(limits *validation.Limits) {
 				limits.MaxLabelValueLength = 1024
 			},
-			prepareSeries: func() ([]labels.Labels, []cortexpbv2.Sample) {
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
-				samples := make([]cortexpbv2.Sample, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
 					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
@@ -438,9 +437,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
 
 					metrics[i] = lbls.Labels()
-					samples[i] = cortexpbv2.Sample{
-						Value:     float64(i),
-						Timestamp: time.Now().UnixNano() / int64(time.Millisecond),
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
 					}
 				}
 
@@ -452,9 +451,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 			prepareConfig: func(limits *validation.Limits) {
 				limits.MaxLabelsSizeBytes = 1024
 			},
-			prepareSeries: func() ([]labels.Labels, []cortexpbv2.Sample) {
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
-				samples := make([]cortexpbv2.Sample, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
 					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
@@ -466,9 +465,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
 
 					metrics[i] = lbls.Labels()
-					samples[i] = cortexpbv2.Sample{
-						Value:     float64(i),
-						Timestamp: time.Now().UnixNano() / int64(time.Millisecond),
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
 					}
 				}
 
@@ -481,9 +480,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 				limits.RejectOldSamples = true
 				limits.RejectOldSamplesMaxAge = model.Duration(time.Hour)
 			},
-			prepareSeries: func() ([]labels.Labels, []cortexpbv2.Sample) {
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
-				samples := make([]cortexpbv2.Sample, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
 					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
@@ -492,9 +491,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 					}
 
 					metrics[i] = lbls.Labels()
-					samples[i] = cortexpbv2.Sample{
-						Value:     float64(i),
-						Timestamp: time.Now().Add(-2*time.Hour).UnixNano() / int64(time.Millisecond),
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().Add(-2*time.Hour).UnixNano() / int64(time.Millisecond),
 					}
 				}
 
@@ -506,9 +505,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 			prepareConfig: func(limits *validation.Limits) {
 				limits.CreationGracePeriod = model.Duration(time.Minute)
 			},
-			prepareSeries: func() ([]labels.Labels, []cortexpbv2.Sample) {
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
-				samples := make([]cortexpbv2.Sample, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
 					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
@@ -517,9 +516,9 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 					}
 
 					metrics[i] = lbls.Labels()
-					samples[i] = cortexpbv2.Sample{
-						Value:     float64(i),
-						Timestamp: time.Now().Add(time.Hour).UnixNano() / int64(time.Millisecond),
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().Add(time.Hour).UnixNano() / int64(time.Millisecond),
 					}
 				}
 
@@ -596,7 +595,7 @@ func BenchmarkDistributorPRW2_Push(b *testing.B) {
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				_, err := distributor.PushV2(ctx, cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API))
+				_, err := distributor.PushV2(ctx, cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API))
 				if testData.expectedErr == "" && err != nil {
 					b.Fatalf("no error expected but got %v", err)
 				}
@@ -628,7 +627,7 @@ func TestDistributorPRW2_Push(t *testing.T) {
 		samples          samplesIn
 		histogramSamples bool
 		metadata         int
-		expectedResponse *cortexpbv2.WriteResponse
+		expectedResponse *cortexpb.WriteResponseV2
 		expectedError    error
 		expectedMetrics  string
 		ingesterError    error
@@ -857,7 +856,7 @@ func TestDistributorPRW2_Push(t *testing.T) {
 					errFail:          tc.ingesterError,
 				})
 
-				var request *cortexpbv2.WriteRequest
+				var request *cortexpb.WriteRequestV2
 				if !tc.histogramSamples {
 					request = makeWriteRequestV2WithSamples(tc.samples.startTimestampMs, tc.samples.num, tc.metadata)
 				} else {
@@ -966,7 +965,7 @@ func TestDistributorPRW2_PushIngestionRateLimiter(t *testing.T) {
 
 				// Push samples in multiple requests to the first distributor
 				for _, push := range testData.pushes {
-					var request *cortexpbv2.WriteRequest
+					var request *cortexpb.WriteRequestV2
 					if !enableHistogram {
 						request = makeWriteRequestV2WithSamples(0, push.samples, push.metadata)
 					} else {
@@ -1229,7 +1228,7 @@ func TestDistributorPRW2_PushInstanceLimits(t *testing.T) {
 				d.ingestionRate.Tick()
 
 				for _, push := range testData.pushes {
-					var request *cortexpbv2.WriteRequest
+					var request *cortexpb.WriteRequestV2
 					if enableHistogram {
 						request = makeWriteRequestV2WithHistogram(0, push.samples, push.metadata)
 					} else {
@@ -1401,7 +1400,7 @@ func TestDistributorPRW2_PushQuery(t *testing.T) {
 
 			request := makeWriteRequestV2WithSamples(0, tc.samples, tc.metadata)
 			writeResponse, err := ds[0].PushV2(ctx, request)
-			assert.Equal(t, &cortexpbv2.WriteResponse{}, writeResponse)
+			assert.Equal(t, &cortexpb.WriteResponseV2{}, writeResponse)
 			assert.Nil(t, err)
 
 			var response model.Matrix
@@ -1451,7 +1450,7 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIs
 		// Push a number of series below the max chunks limit. Each series has 1 sample,
 		// so expect 1 chunk per series when querying back.
 		initialSeries := maxChunksLimit / 3
-		var writeReqV2 *cortexpbv2.WriteRequest
+		var writeReqV2 *cortexpb.WriteRequestV2
 		if histogram {
 			writeReqV2 = makeWriteRequestV2WithHistogram(0, initialSeries, 0)
 		} else {
@@ -1459,7 +1458,7 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIs
 		}
 
 		writeRes, err := ds[0].PushV2(ctx, writeReqV2)
-		assert.Equal(t, &cortexpbv2.WriteResponse{}, writeRes)
+		assert.Equal(t, &cortexpb.WriteResponseV2{}, writeRes)
 		assert.Nil(t, err)
 
 		allSeriesMatchers := []*labels.Matcher{
@@ -1475,13 +1474,13 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIs
 		// Push more series to exceed the limit once we'll query back all series.
 
 		for i := 0; i < maxChunksLimit; i++ {
-			writeReq := &cortexpbv2.WriteRequest{}
+			writeReq := &cortexpb.WriteRequestV2{}
 			writeReq.Symbols = []string{"", "__name__", fmt.Sprintf("another_series_%d", i)}
 			writeReq.Timeseries = append(writeReq.Timeseries,
 				makeWriteRequestV2Timeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: fmt.Sprintf("another_series_%d", i)}}, 0, 0, histogram, false),
 			)
 			writeRes, err := ds[0].PushV2(ctx, writeReq)
-			assert.Equal(t, &cortexpbv2.WriteResponse{}, writeRes)
+			assert.Equal(t, &cortexpb.WriteResponseV2{}, writeRes)
 			assert.Nil(t, err)
 		}
 
@@ -1514,7 +1513,7 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIs
 
 		// Push a number of series below the max series limit.
 		initialSeries := maxSeriesLimit
-		var writeReqV2 *cortexpbv2.WriteRequest
+		var writeReqV2 *cortexpb.WriteRequestV2
 		if histogram {
 			writeReqV2 = makeWriteRequestV2WithHistogram(0, initialSeries, 0)
 		} else {
@@ -1522,7 +1521,7 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIs
 		}
 
 		writeRes, err := ds[0].PushV2(ctx, writeReqV2)
-		assert.Equal(t, &cortexpbv2.WriteResponse{}, writeRes)
+		assert.Equal(t, &cortexpb.WriteResponseV2{}, writeRes)
 		assert.Nil(t, err)
 
 		allSeriesMatchers := []*labels.Matcher{
@@ -1536,14 +1535,14 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIs
 		assert.Len(t, queryRes.Chunkseries, initialSeries)
 
 		// Push more series to exceed the limit once we'll query back all series.
-		writeReq := &cortexpbv2.WriteRequest{}
+		writeReq := &cortexpb.WriteRequestV2{}
 		writeReq.Symbols = []string{"", "__name__", "another_series"}
 		writeReq.Timeseries = append(writeReq.Timeseries,
 			makeWriteRequestV2Timeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0, histogram, false),
 		)
 
 		writeRes, err = ds[0].PushV2(ctx, writeReq)
-		assert.Equal(t, &cortexpbv2.WriteResponse{}, writeRes)
+		assert.Equal(t, &cortexpb.WriteResponseV2{}, writeRes)
 		assert.Nil(t, err)
 
 		// Since the number of series is exceeding the limit, we expect
@@ -1579,13 +1578,13 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLim
 			labels.MustNewMatcher(labels.MatchRegexp, model.MetricNameLabel, ".+"),
 		}
 		// Push a single series to allow us to calculate the chunk size to calculate the limit for the test.
-		writeReq := &cortexpbv2.WriteRequest{}
+		writeReq := &cortexpb.WriteRequestV2{}
 		writeReq.Symbols = []string{"", "__name__", "another_series"}
 		writeReq.Timeseries = append(writeReq.Timeseries,
 			makeWriteRequestV2Timeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0, histogram, false),
 		)
 		writeRes, err := ds[0].PushV2(ctx, writeReq)
-		assert.Equal(t, &cortexpbv2.WriteResponse{}, writeRes)
+		assert.Equal(t, &cortexpb.WriteResponseV2{}, writeRes)
 		assert.Nil(t, err)
 		chunkSizeResponse, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
 		require.NoError(t, err)
@@ -1598,7 +1597,7 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLim
 		ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, maxBytesLimit, 0, 0))
 
 		// Push a number of series below the max chunk bytes limit. Subtract one for the series added above.
-		var writeReqV2 *cortexpbv2.WriteRequest
+		var writeReqV2 *cortexpb.WriteRequestV2
 		if histogram {
 			writeReqV2 = makeWriteRequestV2WithHistogram(0, seriesToAdd-1, 0)
 		} else {
@@ -1606,7 +1605,7 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLim
 		}
 
 		writeRes, err = ds[0].PushV2(ctx, writeReqV2)
-		assert.Equal(t, &cortexpbv2.WriteResponse{}, writeRes)
+		assert.Equal(t, &cortexpb.WriteResponseV2{}, writeRes)
 		assert.Nil(t, err)
 
 		// Since the number of chunk bytes is equal to the limit (but doesn't
@@ -1616,14 +1615,14 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLim
 		assert.Len(t, queryRes.Chunkseries, seriesToAdd)
 
 		// Push another series to exceed the chunk bytes limit once we'll query back all series.
-		writeReq = &cortexpbv2.WriteRequest{}
+		writeReq = &cortexpb.WriteRequestV2{}
 		writeReq.Symbols = []string{"", "__name__", "another_series_1"}
 		writeReq.Timeseries = append(writeReq.Timeseries,
 			makeWriteRequestV2Timeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series_1"}}, 0, 0, histogram, false),
 		)
 
 		writeRes, err = ds[0].PushV2(ctx, writeReq)
-		assert.Equal(t, &cortexpbv2.WriteResponse{}, writeRes)
+		assert.Equal(t, &cortexpb.WriteResponseV2{}, writeRes)
 		assert.Nil(t, err)
 
 		// Since the aggregated chunk size is exceeding the limit, we expect
@@ -1659,14 +1658,14 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimi
 			labels.MustNewMatcher(labels.MatchRegexp, model.MetricNameLabel, ".+"),
 		}
 		// Push a single series to allow us to calculate the label size to calculate the limit for the test.
-		writeReq := &cortexpbv2.WriteRequest{}
+		writeReq := &cortexpb.WriteRequestV2{}
 		writeReq.Symbols = []string{"", "__name__", "another_series"}
 		writeReq.Timeseries = append(writeReq.Timeseries,
 			makeWriteRequestV2Timeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0, histogram, false),
 		)
 
 		writeRes, err := ds[0].PushV2(ctx, writeReq)
-		assert.Equal(t, &cortexpbv2.WriteResponse{}, writeRes)
+		assert.Equal(t, &cortexpb.WriteResponseV2{}, writeRes)
 		assert.Nil(t, err)
 		dataSizeResponse, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
 		require.NoError(t, err)
@@ -1679,7 +1678,7 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimi
 		ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, 0, 0, maxBytesLimit))
 
 		// Push a number of series below the max chunk bytes limit. Subtract one for the series added above.
-		var writeReqV2 *cortexpbv2.WriteRequest
+		var writeReqV2 *cortexpb.WriteRequestV2
 		if histogram {
 			writeReqV2 = makeWriteRequestV2WithHistogram(0, seriesToAdd-1, 0)
 		} else {
@@ -1687,7 +1686,7 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimi
 		}
 
 		writeRes, err = ds[0].PushV2(ctx, writeReqV2)
-		assert.Equal(t, &cortexpbv2.WriteResponse{}, writeRes)
+		assert.Equal(t, &cortexpb.WriteResponseV2{}, writeRes)
 		assert.Nil(t, err)
 
 		// Since the number of chunk bytes is equal to the limit (but doesn't
@@ -1697,14 +1696,14 @@ func TestDistributorPRW2_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimi
 		assert.Len(t, queryRes.Chunkseries, seriesToAdd)
 
 		// Push another series to exceed the chunk bytes limit once we'll query back all series.
-		writeReq = &cortexpbv2.WriteRequest{}
+		writeReq = &cortexpb.WriteRequestV2{}
 		writeReq.Symbols = []string{"", "__name__", "another_series_1"}
 		writeReq.Timeseries = append(writeReq.Timeseries,
 			makeWriteRequestV2Timeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series_1"}}, 0, 0, histogram, false),
 		)
 
 		writeRes, err = ds[0].PushV2(ctx, writeReq)
-		assert.Equal(t, &cortexpbv2.WriteResponse{}, writeRes)
+		assert.Equal(t, &cortexpb.WriteResponseV2{}, writeRes)
 		assert.Nil(t, err)
 
 		// Since the aggregated chunk size is exceeding the limit, we expect
@@ -1824,8 +1823,8 @@ func TestDistributorPRW2_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime
 	}
 }
 
-func makeWriteRequestV2WithSamples(startTimestampMs int64, samples int, metadata int) *cortexpbv2.WriteRequest {
-	request := &cortexpbv2.WriteRequest{}
+func makeWriteRequestV2WithSamples(startTimestampMs int64, samples int, metadata int) *cortexpb.WriteRequestV2 {
+	request := &cortexpb.WriteRequestV2{}
 	st := writev2.NewSymbolTable()
 	st.SymbolizeLabels(labels.Labels{{Name: "__name__", Value: "foo"}, {Name: "bar", Value: "baz"}}, nil)
 
@@ -1916,7 +1915,7 @@ func TestDistributorPRW2_Push_ExemplarValidation(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		req    *cortexpbv2.WriteRequest
+		req    *cortexpb.WriteRequestV2
 		errMsg string
 	}{
 		"valid exemplar": {
@@ -2207,16 +2206,16 @@ func BenchmarkDistributorPRW2_MetricsForLabelMatchers(b *testing.B) {
 
 	tests := map[string]struct {
 		prepareConfig func(limits *validation.Limits)
-		prepareSeries func() ([]labels.Labels, []cortexpbv2.Sample)
+		prepareSeries func() ([]labels.Labels, []cortexpb.Sample)
 		matchers      []*labels.Matcher
 		queryLimiter  *limiter.QueryLimiter
 		expectedErr   error
 	}{
 		"get series within limits": {
 			prepareConfig: func(limits *validation.Limits) {},
-			prepareSeries: func() ([]labels.Labels, []cortexpbv2.Sample) {
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
-				samples := make([]cortexpbv2.Sample, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
 					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: fmt.Sprintf("foo_%d", i)}})
@@ -2225,9 +2224,9 @@ func BenchmarkDistributorPRW2_MetricsForLabelMatchers(b *testing.B) {
 					}
 
 					metrics[i] = lbls.Labels()
-					samples[i] = cortexpbv2.Sample{
-						Value:     float64(i),
-						Timestamp: time.Now().UnixNano() / int64(time.Millisecond),
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
 					}
 				}
 
@@ -2260,7 +2259,7 @@ func BenchmarkDistributorPRW2_MetricsForLabelMatchers(b *testing.B) {
 			// Prepare the series to remote write before starting the benchmark.
 			metrics, samples := testData.prepareSeries()
 
-			if _, err := ds[0].PushV2(ctx, cortexpbv2.ToWriteRequestV2(metrics, samples, nil, nil, cortexpbv2.API)); err != nil {
+			if _, err := ds[0].PushV2(ctx, cortexpb.ToWriteRequestV2(metrics, samples, nil, nil, cortexpb.API)); err != nil {
 				b.Fatalf("error pushing to distributor %v", err)
 			}
 
@@ -2351,8 +2350,8 @@ func TestDistributorPRW2_MetricsMetadata(t *testing.T) {
 	}
 }
 
-func makeWriteRequestV2WithHistogram(startTimestampMs int64, histogram int, metadata int) *cortexpbv2.WriteRequest {
-	request := &cortexpbv2.WriteRequest{}
+func makeWriteRequestV2WithHistogram(startTimestampMs int64, histogram int, metadata int) *cortexpb.WriteRequestV2 {
+	request := &cortexpb.WriteRequestV2{}
 	st := writev2.NewSymbolTable()
 	st.SymbolizeLabels(labels.Labels{{Name: "__name__", Value: "foo"}, {Name: "bar", Value: "baz"}}, nil)
 
@@ -2375,48 +2374,48 @@ func makeWriteRequestV2WithHistogram(startTimestampMs int64, histogram int, meta
 	return request
 }
 
-func makeMetadataV2FromST(value int, st *writev2.SymbolsTable) cortexpbv2.PreallocTimeseriesV2 {
-	t := cortexpbv2.PreallocTimeseriesV2{
-		TimeSeries: &cortexpbv2.TimeSeries{
+func makeMetadataV2FromST(value int, st *writev2.SymbolsTable) cortexpb.PreallocTimeseriesV2 {
+	t := cortexpb.PreallocTimeseriesV2{
+		TimeSeriesV2: &cortexpb.TimeSeriesV2{
 			LabelsRefs: []uint32{1, 2},
 		},
 	}
 	helpRef := st.Symbolize(fmt.Sprintf("a help for metric_%d", value))
-	t.Metadata.Type = cortexpbv2.METRIC_TYPE_COUNTER
+	t.Metadata.Type = cortexpb.COUNTER
 	t.Metadata.HelpRef = helpRef
 
 	return t
 }
 
-func makeTimeseriesV2FromST(labels []cortexpb.LabelAdapter, st *writev2.SymbolsTable, ts int64, value int, histogram bool, metadata bool) cortexpbv2.PreallocTimeseriesV2 {
+func makeTimeseriesV2FromST(labels []cortexpb.LabelAdapter, st *writev2.SymbolsTable, ts int64, value int, histogram bool, metadata bool) cortexpb.PreallocTimeseriesV2 {
 	var helpRef uint32
 	if metadata {
 		helpRef = st.Symbolize(fmt.Sprintf("a help for metric_%d", value))
 	}
 
-	t := cortexpbv2.PreallocTimeseriesV2{
-		TimeSeries: &cortexpbv2.TimeSeries{
+	t := cortexpb.PreallocTimeseriesV2{
+		TimeSeriesV2: &cortexpb.TimeSeriesV2{
 			LabelsRefs: st.SymbolizeLabels(cortexpb.FromLabelAdaptersToLabels(labels), nil),
 		},
 	}
 	if metadata {
-		t.Metadata.Type = cortexpbv2.METRIC_TYPE_COUNTER
+		t.Metadata.Type = cortexpb.COUNTER
 		t.Metadata.HelpRef = helpRef
 	}
 
 	if histogram {
-		t.Histograms = append(t.Histograms, cortexpbv2.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value)))
+		t.Histograms = append(t.Histograms, cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value)))
 	} else {
-		t.Samples = append(t.Samples, cortexpbv2.Sample{
-			Timestamp: ts,
-			Value:     float64(value),
+		t.Samples = append(t.Samples, cortexpb.Sample{
+			TimestampMs: ts,
+			Value:       float64(value),
 		})
 	}
 
 	return t
 }
 
-func makeWriteRequestV2Timeseries(labels []cortexpb.LabelAdapter, ts int64, value int, histogram bool, metadata bool) cortexpbv2.PreallocTimeseriesV2 {
+func makeWriteRequestV2Timeseries(labels []cortexpb.LabelAdapter, ts int64, value int, histogram bool, metadata bool) cortexpb.PreallocTimeseriesV2 {
 	st := writev2.NewSymbolTable()
 	st.SymbolizeLabels(cortexpb.FromLabelAdaptersToLabels(labels), nil)
 
@@ -2425,29 +2424,29 @@ func makeWriteRequestV2Timeseries(labels []cortexpb.LabelAdapter, ts int64, valu
 		helpRef = st.Symbolize(fmt.Sprintf("a help for metric_%d", value))
 	}
 
-	t := cortexpbv2.PreallocTimeseriesV2{
-		TimeSeries: &cortexpbv2.TimeSeries{
+	t := cortexpb.PreallocTimeseriesV2{
+		TimeSeriesV2: &cortexpb.TimeSeriesV2{
 			LabelsRefs: st.SymbolizeLabels(cortexpb.FromLabelAdaptersToLabels(labels), nil),
 		},
 	}
 	if metadata {
-		t.Metadata.Type = cortexpbv2.METRIC_TYPE_COUNTER
+		t.Metadata.Type = cortexpb.COUNTER
 		t.Metadata.HelpRef = helpRef
 	}
 
 	if histogram {
-		t.Histograms = append(t.Histograms, cortexpbv2.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value)))
+		t.Histograms = append(t.Histograms, cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value)))
 	} else {
-		t.Samples = append(t.Samples, cortexpbv2.Sample{
-			Timestamp: ts,
-			Value:     float64(value),
+		t.Samples = append(t.Samples, cortexpb.Sample{
+			TimestampMs: ts,
+			Value:       float64(value),
 		})
 	}
 
 	return t
 }
 
-func makeWriteRequestV2Exemplar(seriesLabels []string, timestamp int64, exemplarLabels []string) *cortexpbv2.WriteRequest {
+func makeWriteRequestV2Exemplar(seriesLabels []string, timestamp int64, exemplarLabels []string) *cortexpb.WriteRequestV2 {
 	st := writev2.NewSymbolTable()
 	for _, l := range seriesLabels {
 		st.Symbolize(l)
@@ -2456,15 +2455,15 @@ func makeWriteRequestV2Exemplar(seriesLabels []string, timestamp int64, exemplar
 		st.Symbolize(l)
 	}
 
-	return &cortexpbv2.WriteRequest{
+	return &cortexpb.WriteRequestV2{
 		Symbols: st.Symbols(),
-		Timeseries: []cortexpbv2.PreallocTimeseriesV2{
+		Timeseries: []cortexpb.PreallocTimeseriesV2{
 			{
-				TimeSeries: &cortexpbv2.TimeSeries{
-					LabelsRefs: cortexpbv2.GetLabelRefsFromLabelAdapters(st.Symbols(), cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(seriesLabels...))),
-					Exemplars: []cortexpbv2.Exemplar{
+				TimeSeriesV2: &cortexpb.TimeSeriesV2{
+					LabelsRefs: cortexpb.GetLabelRefsFromLabelAdapters(st.Symbols(), cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(seriesLabels...))),
+					Exemplars: []cortexpb.ExemplarV2{
 						{
-							LabelsRefs: cortexpbv2.GetLabelRefsFromLabelAdapters(st.Symbols(), cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(exemplarLabels...))),
+							LabelsRefs: cortexpb.GetLabelRefsFromLabelAdapters(st.Symbols(), cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(exemplarLabels...))),
 							Timestamp:  timestamp,
 						},
 					},
@@ -2474,47 +2473,47 @@ func makeWriteRequestV2Exemplar(seriesLabels []string, timestamp int64, exemplar
 	}
 }
 
-func mockWriteRequestV2(lbls []labels.Labels, value int64, timestamp int64, histogram bool) *cortexpbv2.WriteRequest {
+func mockWriteRequestV2(lbls []labels.Labels, value int64, timestamp int64, histogram bool) *cortexpb.WriteRequestV2 {
 	var (
-		samples    []cortexpbv2.Sample
-		histograms []cortexpbv2.Histogram
+		samples    []cortexpb.Sample
+		histograms []cortexpb.Histogram
 	)
 	if histogram {
-		histograms = make([]cortexpbv2.Histogram, len(lbls))
+		histograms = make([]cortexpb.Histogram, len(lbls))
 		for i := range lbls {
-			histograms[i] = cortexpbv2.HistogramToHistogramProto(timestamp, tsdbutil.GenerateTestHistogram(int(value)))
+			histograms[i] = cortexpb.HistogramToHistogramProto(timestamp, tsdbutil.GenerateTestHistogram(int(value)))
 		}
 	} else {
-		samples = make([]cortexpbv2.Sample, len(lbls))
+		samples = make([]cortexpb.Sample, len(lbls))
 		for i := range lbls {
-			samples[i] = cortexpbv2.Sample{
-				Timestamp: timestamp,
-				Value:     float64(value),
+			samples[i] = cortexpb.Sample{
+				TimestampMs: timestamp,
+				Value:       float64(value),
 			}
 		}
 	}
 
-	return cortexpbv2.ToWriteRequestV2(lbls, samples, histograms, nil, cortexpbv2.API)
+	return cortexpb.ToWriteRequestV2(lbls, samples, histograms, nil, cortexpb.API)
 }
 
-func makeWriteRequestHAV2(samples int, replica, cluster string, histogram bool) *cortexpbv2.WriteRequest {
-	request := &cortexpbv2.WriteRequest{}
+func makeWriteRequestHAV2(samples int, replica, cluster string, histogram bool) *cortexpb.WriteRequestV2 {
+	request := &cortexpb.WriteRequestV2{}
 	st := writev2.NewSymbolTable()
 	for i := 0; i < samples; i++ {
-		ts := cortexpbv2.PreallocTimeseriesV2{
-			TimeSeries: &cortexpbv2.TimeSeries{
+		ts := cortexpb.PreallocTimeseriesV2{
+			TimeSeriesV2: &cortexpb.TimeSeriesV2{
 				LabelsRefs: st.SymbolizeLabels(labels.Labels{{Name: "__name__", Value: "foo"}, {Name: "__replica__", Value: replica}, {Name: "bar", Value: "baz"}, {Name: "cluster", Value: cluster}, {Name: "sample", Value: fmt.Sprintf("%d", i)}}, nil),
 			},
 		}
 		if histogram {
-			ts.Histograms = []cortexpbv2.Histogram{
-				cortexpbv2.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(i)),
+			ts.Histograms = []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(i)),
 			}
 		} else {
-			ts.Samples = []cortexpbv2.Sample{
+			ts.Samples = []cortexpb.Sample{
 				{
-					Value:     float64(i),
-					Timestamp: int64(i),
+					Value:       float64(i),
+					TimestampMs: int64(i),
 				},
 			}
 		}

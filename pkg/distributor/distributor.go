@@ -29,7 +29,6 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -46,7 +45,7 @@ import (
 )
 
 var (
-	emptyPreallocSeriesV2 = cortexpbv2.PreallocTimeseriesV2{}
+	emptyPreallocSeriesV2 = cortexpb.PreallocTimeseriesV2{}
 	emptyPreallocSeries   = cortexpb.PreallocTimeseries{}
 
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
@@ -631,12 +630,12 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		nil
 }
 
-func (d *Distributor) prepareSeriesKeysV2(ctx context.Context, req *cortexpbv2.WriteRequest, userID string, limits *validation.Limits, b labels.ScratchBuilder, st *writev2.SymbolsTable, removeReplica bool) ([]uint32, []cortexpbv2.PreallocTimeseriesV2, int64, int64, int64, int64, error, error) {
+func (d *Distributor) prepareSeriesKeysV2(ctx context.Context, req *cortexpb.WriteRequestV2, userID string, limits *validation.Limits, b labels.ScratchBuilder, st *writev2.SymbolsTable, removeReplica bool) ([]uint32, []cortexpb.PreallocTimeseriesV2, int64, int64, int64, int64, error, error) {
 	pSpan, _ := opentracing.StartSpanFromContext(ctx, "prepareSeriesKeysV2")
 	defer pSpan.Finish()
 	// For each timeseries or samples, we compute a hash to distribute across ingesters;
 	// check each sample/metadata and discard if outside limits.
-	validatedTimeseries := make([]cortexpbv2.PreallocTimeseriesV2, 0, len(req.Timeseries))
+	validatedTimeseries := make([]cortexpb.PreallocTimeseriesV2, 0, len(req.Timeseries))
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedFloatSamples := 0
 	validatedHistogramSamples := 0
@@ -659,10 +658,10 @@ func (d *Distributor) prepareSeriesKeysV2(ctx context.Context, req *cortexpbv2.W
 	for _, ts := range req.Timeseries {
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
 		if len(ts.Samples) > 0 {
-			latestSampleTimestampMs = max(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].Timestamp)
+			latestSampleTimestampMs = max(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
 		}
 		if len(ts.Histograms) > 0 {
-			latestSampleTimestampMs = max(latestSampleTimestampMs, ts.Histograms[len(ts.Histograms)-1].Timestamp)
+			latestSampleTimestampMs = max(latestSampleTimestampMs, ts.Histograms[len(ts.Histograms)-1].TimestampMs)
 		}
 
 		lbs := ts.ToLabels(&b, req.Symbols)
@@ -737,7 +736,7 @@ func (d *Distributor) prepareSeriesKeysV2(ctx context.Context, req *cortexpbv2.W
 			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
 		}
 
-		if ts.Metadata.Type != cortexpbv2.METRIC_TYPE_UNSPECIFIED {
+		if ts.Metadata.Type != cortexpb.UNKNOWN {
 			// since metadata is attached, count only metadata that is not METRIC_TYPE_UNSPECIFIED.
 			validatedMetadata++
 		}
@@ -757,7 +756,7 @@ func (d *Distributor) prepareSeriesKeysV2(ctx context.Context, req *cortexpbv2.W
 	return seriesKeys, validatedTimeseries, int64(validatedMetadata), int64(validatedFloatSamples), int64(validatedHistogramSamples), int64(validatedExemplars), firstPartialErr, nil
 }
 
-func (d *Distributor) doBatchV2(ctx context.Context, req *cortexpbv2.WriteRequest, subRing ring.ReadRing, keys []uint32, validatedTimeseries []cortexpbv2.PreallocTimeseriesV2, userID string, stats *WriteStats) error {
+func (d *Distributor) doBatchV2(ctx context.Context, req *cortexpb.WriteRequestV2, subRing ring.ReadRing, keys []uint32, validatedTimeseries []cortexpb.PreallocTimeseriesV2, userID string, stats *WriteStats) error {
 	span, _ := opentracing.StartSpanFromContext(ctx, "doBatchV2")
 	defer span.Finish()
 
@@ -781,7 +780,7 @@ func (d *Distributor) doBatchV2(ctx context.Context, req *cortexpbv2.WriteReques
 	}
 
 	return ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.InstanceDesc, indexes []int) error {
-		timeseries := make([]cortexpbv2.PreallocTimeseriesV2, 0, len(indexes))
+		timeseries := make([]cortexpb.PreallocTimeseriesV2, 0, len(indexes))
 
 		for _, i := range indexes {
 			timeseries = append(timeseries, validatedTimeseries[i])
@@ -789,12 +788,12 @@ func (d *Distributor) doBatchV2(ctx context.Context, req *cortexpbv2.WriteReques
 
 		return d.sendV2(localCtx, req.Symbols, ingester, timeseries, req.Source, stats)
 	}, func() {
-		cortexpbv2.ReuseSlice(req.Timeseries)
+		cortexpb.ReuseSliceV2(req.Timeseries)
 		cancel()
 	})
 }
 
-func (d *Distributor) sendV2(ctx context.Context, symbols []string, ingester ring.InstanceDesc, timeseries []cortexpbv2.PreallocTimeseriesV2, source cortexpbv2.WriteRequest_SourceEnum, stats *WriteStats) error {
+func (d *Distributor) sendV2(ctx context.Context, symbols []string, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseriesV2, source cortexpb.SourceEnum, stats *WriteStats) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -807,14 +806,24 @@ func (d *Distributor) sendV2(ctx context.Context, symbols []string, ingester rin
 
 	c := h.(ingester_client.HealthAndIngesterClient)
 
-	req := cortexpbv2.PreallocWriteRequestV2FromPool()
+	req := cortexpb.PreallocWriteRequestV2FromPool()
 	req.Symbols = symbols
 	req.Timeseries = timeseries
 	req.Source = source
 
 	resp, err := c.PushPreAllocV2(ctx, req)
 	if err == nil {
-		cortexpbv2.ReuseWriteRequestV2(req)
+		cortexpb.ReuseWriteRequestV2(req)
+	}
+
+	if err != nil && strings.Contains(err.Error(), "unknown method PushV2") {
+		// To handle rolling update where distributor can handle PRW2.0 but Ingesters are not.
+		// Convert V2 timeseries to V1 timesereis and metadata and then send PRW1.0 request to Ingester
+		v1Ts, v1Metadata, err := d.convertV2ToV1(symbols, timeseries)
+		if err != nil {
+			return err
+		}
+		return d.send(ctx, ingester, v1Ts, v1Metadata, source)
 	}
 
 	if len(timeseries) > 0 {
@@ -825,7 +834,7 @@ func (d *Distributor) sendV2(ctx context.Context, symbols []string, ingester rin
 
 		metadataAppend := false
 		for _, ts := range timeseries {
-			if ts.Metadata.Type != cortexpbv2.METRIC_TYPE_UNSPECIFIED {
+			if ts.Metadata.Type != cortexpb.UNKNOWN {
 				metadataAppend = true
 				break
 			}
@@ -848,33 +857,70 @@ func (d *Distributor) sendV2(ctx context.Context, symbols []string, ingester rin
 	return err
 }
 
+func (d *Distributor) convertV2ToV1(symbols []string, timeseries []cortexpb.PreallocTimeseriesV2) ([]cortexpb.PreallocTimeseries, []*cortexpb.MetricMetadata, error) {
+	var v1Timeseries []cortexpb.PreallocTimeseries
+	var v1Metadata []*cortexpb.MetricMetadata
+
+	b := labels.NewScratchBuilder(0)
+	for _, v2Ts := range timeseries {
+		las := cortexpb.FromLabelsToLabelAdapters(v2Ts.ToLabels(&b, symbols))
+		v1Timeseries = append(v1Timeseries, cortexpb.PreallocTimeseries{
+			TimeSeries: &cortexpb.TimeSeries{
+				Labels:     las,
+				Samples:    v2Ts.Samples,
+				Exemplars:  d.convertV1ToV2Exemplars(b, symbols, v2Ts.Exemplars),
+				Histograms: v2Ts.Histograms,
+			},
+		})
+		metricName, err := extract.MetricNameFromLabelAdapters(las)
+		if err != nil {
+			return nil, nil, err
+		}
+		v1Metadata = append(v1Metadata, v2Ts.Metadata.ToV1Metadata(metricName, symbols))
+	}
+
+	return v1Timeseries, v1Metadata, nil
+}
+
+func (d *Distributor) convertV1ToV2Exemplars(b labels.ScratchBuilder, symbols []string, v2Exemplars []cortexpb.ExemplarV2) []cortexpb.Exemplar {
+	v1Exemplars := make([]cortexpb.Exemplar, 0, len(v2Exemplars))
+	for _, e := range v2Exemplars {
+		v1Exemplars = append(v1Exemplars, cortexpb.Exemplar{
+			Labels:      cortexpb.FromLabelsToLabelAdapters(e.ToLabels(&b, symbols)),
+			Value:       e.Value,
+			TimestampMs: e.Timestamp,
+		})
+	}
+	return v1Exemplars
+}
+
 // Validates a single series from a write request. Will remove labels if
 // any are configured to be dropped for the user ID.
 // Returns the validated series with it's labels/samples, and any error.
 // The returned error may retain the series labels.
-func (d *Distributor) validateSeriesV2(ts cortexpbv2.PreallocTimeseriesV2, seriesLabels []cortexpb.LabelAdapter, symbols []string, userID string, skipLabelNameValidation bool, limits *validation.Limits, b labels.ScratchBuilder, st *writev2.SymbolsTable) (cortexpbv2.PreallocTimeseriesV2, validation.ValidationError) {
+func (d *Distributor) validateSeriesV2(ts cortexpb.PreallocTimeseriesV2, seriesLabels []cortexpb.LabelAdapter, symbols []string, userID string, skipLabelNameValidation bool, limits *validation.Limits, b labels.ScratchBuilder, st *writev2.SymbolsTable) (cortexpb.PreallocTimeseriesV2, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.LabelsRefs)))
 
 	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, seriesLabels, skipLabelNameValidation); err != nil {
 		return emptyPreallocSeriesV2, err
 	}
 
-	var samples []cortexpbv2.Sample
+	var samples []cortexpb.Sample
 	if len(ts.Samples) > 0 {
 		// Only alloc when data present
-		samples = make([]cortexpbv2.Sample, 0, len(ts.Samples))
+		samples = make([]cortexpb.Sample, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
-			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, seriesLabels, s.Timestamp); err != nil {
+			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, seriesLabels, s.TimestampMs); err != nil {
 				return emptyPreallocSeriesV2, err
 			}
 			samples = append(samples, s)
 		}
 	}
 
-	var exemplars []cortexpbv2.Exemplar
+	var exemplars []cortexpb.ExemplarV2
 	if len(ts.Exemplars) > 0 {
 		// Only alloc when data present
-		exemplars = make([]cortexpbv2.Exemplar, 0, len(ts.Exemplars))
+		exemplars = make([]cortexpb.ExemplarV2, 0, len(ts.Exemplars))
 		for _, e := range ts.Exemplars {
 			if err := validation.ValidateExemplarV2(d.validateMetrics, symbols, userID, seriesLabels, &e, b, st); err != nil {
 				// An exemplar validation error prevents ingesting samples
@@ -887,15 +933,15 @@ func (d *Distributor) validateSeriesV2(ts cortexpbv2.PreallocTimeseriesV2, serie
 		}
 	}
 
-	var histograms []cortexpbv2.Histogram
+	var histograms []cortexpb.Histogram
 	if len(ts.Histograms) > 0 {
 		// Only alloc when data present
-		histograms = make([]cortexpbv2.Histogram, 0, len(ts.Histograms))
+		histograms = make([]cortexpb.Histogram, 0, len(ts.Histograms))
 		for i, h := range ts.Histograms {
-			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, seriesLabels, h.Timestamp); err != nil {
+			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, seriesLabels, h.TimestampMs); err != nil {
 				return emptyPreallocSeriesV2, err
 			}
-			convertedHistogram, err := validation.ValidateNativeHistogramV2(d.validateMetrics, limits, userID, seriesLabels, h)
+			convertedHistogram, err := validation.ValidateNativeHistogram(d.validateMetrics, limits, userID, seriesLabels, h)
 			if err != nil {
 				return emptyPreallocSeriesV2, err
 			}
@@ -910,8 +956,8 @@ func (d *Distributor) validateSeriesV2(ts cortexpbv2.PreallocTimeseriesV2, serie
 		return emptyPreallocSeriesV2, err
 	}
 
-	return cortexpbv2.PreallocTimeseriesV2{
-		TimeSeries: &cortexpbv2.TimeSeries{
+	return cortexpb.PreallocTimeseriesV2{
+		TimeSeriesV2: &cortexpb.TimeSeriesV2{
 			LabelsRefs: ts.LabelsRefs,
 			Samples:    samples,
 			Exemplars:  exemplars,
@@ -921,7 +967,7 @@ func (d *Distributor) validateSeriesV2(ts cortexpbv2.PreallocTimeseriesV2, serie
 	}, nil
 }
 
-func (d *Distributor) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) (*cortexpbv2.WriteResponse, error) {
+func (d *Distributor) PushV2(ctx context.Context, req *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -973,7 +1019,7 @@ func (d *Distributor) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) 
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica, limits)
 		if err != nil {
 			// Ensure the request slice is reused if the series get deduped.
-			cortexpbv2.ReuseSlice(req.Timeseries)
+			cortexpb.ReuseSliceV2(req.Timeseries)
 
 			if errors.Is(err, ha.ReplicasNotMatchError{}) {
 				// These samples have been deduped.
@@ -1009,16 +1055,16 @@ func (d *Distributor) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) 
 
 	if len(seriesKeys) == 0 {
 		// Ensure the request slice is reused if there's no series or metadata passing the validation.
-		cortexpbv2.ReuseSlice(req.Timeseries)
+		cortexpb.ReuseSliceV2(req.Timeseries)
 
-		return &cortexpbv2.WriteResponse{}, firstPartialErr
+		return &cortexpb.WriteResponseV2{}, firstPartialErr
 	}
 
 	totalSamples := validatedFloatSamples + validatedHistogramSamples
 	totalN := totalSamples + validatedExemplars + validatedMetadatas
 	if !d.ingestionRateLimiter.AllowN(now, userID, int(totalN)) {
 		// Ensure the request slice is reused if the request is rate limited.
-		cortexpbv2.ReuseSlice(req.Timeseries)
+		cortexpb.ReuseSliceV2(req.Timeseries)
 
 		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(totalSamples))
 		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
@@ -1048,7 +1094,7 @@ func (d *Distributor) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest) 
 		return nil, err
 	}
 
-	resp := &cortexpbv2.WriteResponse{
+	resp := &cortexpb.WriteResponseV2{
 		Samples:    s.LoadSamples(),
 		Histograms: s.LoadHistogram(),
 		Exemplars:  s.LoadExemplars(),
@@ -1420,7 +1466,7 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.SourceEnum) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err

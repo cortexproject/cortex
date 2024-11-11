@@ -35,7 +35,6 @@ import (
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/cortexpbv2"
 	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -3070,11 +3069,11 @@ func (i *mockIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWr
 	return i.Push(ctx, &in.WriteRequest, opts...)
 }
 
-func (i *mockIngester) PushPreAllocV2(ctx context.Context, in *cortexpbv2.PreallocWriteRequestV2, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error) {
-	return i.PushV2(ctx, &in.WriteRequest, opts...)
+func (i *mockIngester) PushPreAllocV2(ctx context.Context, in *cortexpb.PreallocWriteRequestV2, opts ...grpc.CallOption) (*cortexpb.WriteResponseV2, error) {
+	return i.PushV2(ctx, &in.WriteRequestV2, opts...)
 }
 
-func (i *mockIngester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error) {
+func (i *mockIngester) PushV2(ctx context.Context, req *cortexpb.WriteRequestV2, opts ...grpc.CallOption) (*cortexpb.WriteResponseV2, error) {
 	i.Lock()
 	defer i.Unlock()
 
@@ -3108,7 +3107,7 @@ func (i *mockIngester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest,
 		for _, s := range series.Samples {
 			v1Sample = append(v1Sample, cortexpb.Sample{
 				Value:       s.Value,
-				TimestampMs: s.Timestamp,
+				TimestampMs: s.TimestampMs,
 			})
 		}
 		if !ok {
@@ -3126,7 +3125,7 @@ func (i *mockIngester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest,
 			existing.Samples = append(existing.Samples, v1Sample...)
 		}
 
-		if series.Metadata.Type != cortexpbv2.METRIC_TYPE_UNSPECIFIED {
+		if series.Metadata.Type != cortexpb.UNKNOWN {
 			m := series.Metadata.ToV1Metadata(tsLabels.Get(model.MetricNameLabel), req.Symbols)
 			hash = shardByMetricName(orgid, m.MetricFamilyName)
 			set, ok := i.metadata[hash]
@@ -3138,7 +3137,7 @@ func (i *mockIngester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest,
 		}
 	}
 
-	return &cortexpbv2.WriteResponse{}, nil
+	return &cortexpb.WriteResponseV2{}, nil
 }
 
 func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
@@ -3391,7 +3390,7 @@ func (i *noopIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWr
 	return nil, nil
 }
 
-func (i *noopIngester) PushV2(ctx context.Context, req *cortexpbv2.WriteRequest, opts ...grpc.CallOption) (*cortexpbv2.WriteResponse, error) {
+func (i *noopIngester) PushV2(ctx context.Context, req *cortexpb.WriteRequestV2, opts ...grpc.CallOption) (*cortexpb.WriteResponseV2, error) {
 	return nil, nil
 }
 

@@ -1,33 +1,31 @@
-package cortexpbv2
+package cortexpb
 
 import (
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func Test_GetLabelRefsFromLabelAdapters(t *testing.T) {
 	tests := []struct {
 		symbols            []string
-		lbs                []cortexpb.LabelAdapter
+		lbs                []LabelAdapter
 		expectedSeriesRefs []uint32
 	}{
 		{
 			symbols:            []string{"", "__name__", "test_metric", "foo", "bar", "baz", "qux"},
-			lbs:                []cortexpb.LabelAdapter{{Name: "__name__", Value: "test_metric"}, {Name: "foo", Value: "bar"}},
+			lbs:                []LabelAdapter{{Name: "__name__", Value: "test_metric"}, {Name: "foo", Value: "bar"}},
 			expectedSeriesRefs: []uint32{1, 2, 3, 4},
 		},
 		{
 			symbols:            []string{"", "__name__", "test_metric", "foo", "bar", "baz", "qux"},
-			lbs:                []cortexpb.LabelAdapter{{Name: "__name__", Value: "test_metric"}, {Name: "baz", Value: "qux"}},
+			lbs:                []LabelAdapter{{Name: "__name__", Value: "test_metric"}, {Name: "baz", Value: "qux"}},
 			expectedSeriesRefs: []uint32{1, 2, 5, 6},
 		},
 		{
 			symbols:            []string{"", "__name__", "test_metric", "foo", "bar", "baz", "qux", "1"},
-			lbs:                []cortexpb.LabelAdapter{{Name: "__name__", Value: "test_metric"}, {Name: "baz", Value: "qux"}, {Name: "qux", Value: "1"}},
+			lbs:                []LabelAdapter{{Name: "__name__", Value: "test_metric"}, {Name: "baz", Value: "qux"}, {Name: "qux", Value: "1"}},
 			expectedSeriesRefs: []uint32{1, 2, 5, 6, 6, 7},
 		},
 	}

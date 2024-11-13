@@ -13,10 +13,10 @@ components. This guide describes the process of setting up TLS.
 
 The first step to securing inter-service communication in Cortex with TLS is
 generating certificates. A Certifying Authority (CA) will be used for this
-purpose which should be private to the organization, as any certificates signed
+purpose, which should be private to the organization, as any certificates signed
 by this CA will have permissions to communicate with the cluster.
 
-We will use the following script to generate self signed certs for the cluster:
+We will use the following script to generate self-signed certs for the cluster:
 
 ```
 # keys
@@ -36,7 +36,7 @@ openssl x509 -req -in client.csr -CA root.crt -CAkey root.key -CAcreateserial -o
 openssl x509 -req -in server.csr -CA root.crt -CAkey root.key -CAcreateserial -out server.crt -days 100000 -sha256
 ```
 
-Note that the above script generates certificates that are valid for 100000 days.
+Note that the above script generates certificates that are valid for 100,000 days.
 This can be changed by adjusting the `-days` option in the above commands.
 It is recommended that the certs be replaced at least once every 2 years.
 
@@ -79,7 +79,7 @@ through the following config parameters:
 
 #### Client flags
 
-Client flags are component specific.
+Client flags are component-specific.
 
 For an HTTP client in the Alertmanager:
 ```

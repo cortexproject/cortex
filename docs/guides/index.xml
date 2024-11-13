@@ -7,17 +7,17 @@ this, but this is not mandatory.&lt;/p>
 &lt;h3 id="resource-requests">Resource requests&lt;/h3>
 &lt;p>If using Kubernetes, each container should specify resource requests
 so that the scheduler can place them on a node with sufficient capacity.&lt;/p>
-&lt;p>For example an ingester might request:&lt;/p>
+&lt;p>For example, an ingester might request:&lt;/p>
 &lt;pre tabindex="0">&lt;code> resources:
 requests:
 cpu: 4
 memory: 10Gi
 &lt;/code>&lt;/pre>&lt;p>The specific values here should be adjusted based on your own
-experiences running Cortex - they are very dependent on rate of data
+experiences running Cortex - they are very dependent on the rate of data
 arriving and other factors such as series churn.&lt;/p>
 &lt;h3 id="take-extra-care-with-ingesters">Take extra care with ingesters&lt;/h3>
 &lt;p>Ingesters hold hours of timeseries data in memory; you can configure
-Cortex to replicate the data but you should take steps to avoid losing
+Cortex to replicate the data, but you should take steps to avoid losing
 all replicas at once:&lt;/p>
 &lt;ul>
 &lt;li>Don&amp;rsquo;t run multiple ingesters on the same node.&lt;/li>
@@ -39,9 +39,9 @@ values:
 - ingester
 topologyKey: &amp;#34;kubernetes.io/hostname&amp;#34;
 &lt;/code>&lt;/pre>&lt;p>Give plenty of time for an ingester to hand over or flush data to
-store when shutting down; for Kubernetes this looks like:&lt;/p>
+store when shutting down; for Kubernetes, this looks like:&lt;/p>
 &lt;pre tabindex="0">&lt;code> terminationGracePeriodSeconds: 2400
-&lt;/code>&lt;/pre>&lt;p>Ask Kubernetes to limit rolling updates to one ingester at a time, and
+&lt;/code>&lt;/pre>&lt;p>Ask Kubernetes to limit rolling updates to one ingester at a time and
 signal the old one to stop before the new one is ready:&lt;/p>
 &lt;pre tabindex="0">&lt;code> strategy:
 rollingUpdate:
@@ -56,13 +56,13 @@ path: /ready
 port: 80
 &lt;/code>&lt;/pre>&lt;p>We do not recommend configuring a liveness probe on ingesters -
 killing them is a last resort and should not be left to a machine.&lt;/p></description></item><item><title>Docs: Getting started with gossiped ring</title><link>/docs/guides/getting-started-with-gossiped-ring/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/getting-started-with-gossiped-ring/</guid><description>
-&lt;p>Cortex requires Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
-but it can also build its own KV store on top of memberlist library using a gossip algorithm.&lt;/p>
-&lt;p>This short guide shows how to start Cortex in &lt;a href="/docs/architecture/">single-binary mode&lt;/a> with memberlist-based ring.
-To reduce number of required dependencies in this guide, it will use &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> with no shipping to external stores.
-Storage engine and external storage configuration are not dependent on the ring configuration.&lt;/p>
+&lt;p>Cortex requires a Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
+but it can also build its own KV store on top of the memberlist library using a gossip algorithm.&lt;/p>
+&lt;p>This short guide shows how to start Cortex in &lt;a href="/docs/architecture/">single-binary mode&lt;/a> with a memberlist-based ring.
+To reduce the number of required dependencies in this guide, it will use &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> with no shipping to external stores.
+The storage engine and external storage configuration are not dependent on the ring configuration.&lt;/p>
 &lt;h2 id="single-binary-two-cortex-instances">Single-binary, two Cortex instances&lt;/h2>
-&lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as two instances of Cortex on local computer.
+&lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as two instances of Cortex on the local computer.
 We will use prepared configuration files (&lt;a href="../../configuration/single-process-config-blocks-gossip-1.yaml">file 1&lt;/a>, &lt;a href="../../configuration/single-process-config-blocks-gossip-2.yaml">file 2&lt;/a>), with no external
 dependencies.&lt;/p>
 &lt;p>Build Cortex first:&lt;/p>
@@ -73,7 +73,7 @@ $ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-2
 &lt;/code>&lt;/pre>&lt;p>Download Prometheus and configure it to use our first Cortex instance for remote writes.&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">http://localhost:9109/api/v1/push&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>After starting Prometheus, it will now start pushing data to Cortex. Distributor component in Cortex will
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>After starting Prometheus, it will now start pushing data to Cortex. The Distributor component in Cortex will
 distribute incoming samples between the two instances.&lt;/p>
 &lt;p>To query that data, you can configure your Grafana instance to use http://localhost:9109/prometheus (first Cortex) as a Prometheus data source.&lt;/p>
 &lt;h2 id="how-it-works">How it works&lt;/h2>
@@ -87,23 +87,23 @@ distribute incoming samples between the two instances.&lt;/p>
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">abort_if_cluster_join_fails&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>This tells memberlist to listen on port 7946, and connect to localhost:7947, which is the second instance.
 Port numbers are reversed in the second configuration file.
-We also need to configure &lt;code>node_name&lt;/code> and also ingester ID (&lt;code>ingester.lifecycler.id&lt;/code> field), because default to hostname,
+We also need to configure &lt;code>node_name&lt;/code> and also ingester ID (&lt;code>ingester.lifecycler.id&lt;/code> field), because it defaults to hostname,
 but we are running both Cortex instances on the same host.&lt;/p>
 &lt;p>To make sure that both ingesters generate unique tokens, we configure &lt;code>join_after&lt;/code> and &lt;code>observe_period&lt;/code> to 10 seconds.
-First option tells Cortex to wait 10 seconds before joining the ring. This option is normally used to tell Cortex ingester
-how long to wait for a potential tokens and data transfer from leaving ingester, but we also use it here to increase
+The first option tells Cortex to wait 10 seconds before joining the ring. This option is normally used to tell Cortex ingester
+how long to wait for a potential token and data transfer from leaving ingester, but we also use it here to increase
 the chance of finding other gossip peers. When Cortex joins the ring, it generates tokens and writes them to the ring.
 If multiple Cortex instances do this at the same time, they can generate conflicting tokens. This can be a problem
-when using gossiped ring (instances may simply not see each other yet), so we use &lt;code>observe_period&lt;/code> to watch the ring for token conflicts.
-If conflict is detected, new tokens are generated instead of conflicting tokens, and observe period is restarted.
-If no conflict is detected within the observe period, ingester switches to ACTIVE state.&lt;/p>
+when using a gossiped ring (instances may simply not see each other yet), so we use &lt;code>observe_period&lt;/code> to watch the ring for token conflicts.
+If conflict is detected, new tokens are generated instead of conflicting tokens, and the observe period is restarted.
+If no conflict is detected within the observe period, the ingester switches to the ACTIVE state.&lt;/p>
 &lt;p>We are able to observe ring state on &lt;a href="http://localhost:9109/ring">http://localhost:9109/ring&lt;/a> and &lt;a href="http://localhost:9209/ring">http://localhost:9209/ring&lt;/a>.
-The two instances may see slightly different views (eg. different timestamps), but should converge to a common state soon, with both instances
+The two instances may see slightly different views (eg. different timestamps), but they should converge to a common state soon, with both instances
 being ACTIVE and ready to receive samples.&lt;/p>
 &lt;h2 id="how-to-add-another-instance">How to add another instance?&lt;/h2>
 &lt;p>To add another Cortex to the small cluster, copy &lt;code>docs/configuration/single-process-config-blocks-gossip-1.yaml&lt;/code> to a new file,
-and make following modifications. We assume that third Cortex will run on the same machine again, so we change node name and ingester ID as well. Here
-is annotated diff:&lt;/p>
+and make the following modifications. We assume that the third Cortex will run on the same machine again, so we change the node name and ingester ID as well. Here
+is the annotated diff:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-diff" data-lang="diff">&lt;span style="display:flex;">&lt;span>...
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> server:
@@ -146,26 +146,26 @@ is annotated diff:&lt;/p>
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>...
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>We don&amp;rsquo;t need to change or add &lt;code>memberlist.join_members&lt;/code> list. This new instance will simply join to the second one (listening on port 7947), and
-will discover other peers through it. When using kubernetes, suggested setup is to have a headless service pointing to all pods
-that want to be part of gossip cluster, and then point &lt;code>join_members&lt;/code> to this headless service.&lt;/p>
-&lt;p>We also don&amp;rsquo;t need to change &lt;code>/tmp/cortex/storage&lt;/code> directory in &lt;code>blocks_storage.filesystem.dir&lt;/code> field. This is directory where all ingesters will
-&amp;ldquo;upload&amp;rdquo; finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use local filesystem in this example.&lt;/p>
+will discover other peers through it. When using Kubernetes, the suggested setup is to have a headless service pointing to all pods
+that want to be part of the gossip cluster, and then point &lt;code>join_members&lt;/code> to this headless service.&lt;/p>
+&lt;p>We also don&amp;rsquo;t need to change &lt;code>/tmp/cortex/storage&lt;/code> directory in the &lt;code>blocks_storage.filesystem.dir&lt;/code> field. This is the directory where all ingesters will
+&amp;ldquo;upload&amp;rdquo; finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use the local filesystem in this example.&lt;/p>
 &lt;p>After these changes, we can start another Cortex instance using the modified configuration file. This instance will join the ring
-and will start receiving samples after it enters into ACTIVE state.&lt;/p></description></item><item><title>Docs: Configuring Notification using Cortex Alertmanager</title><link>/docs/guides/alertmanager-configuration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/alertmanager-configuration/</guid><description>
+and will start receiving samples after it enters the ACTIVE state.&lt;/p></description></item><item><title>Docs: Configuring Notification using Cortex Alertmanager</title><link>/docs/guides/alertmanager-configuration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/alertmanager-configuration/</guid><description>
 &lt;h2 id="context">Context&lt;/h2>
-&lt;p>Cortex Alertmanager notification setup follow mostly the syntax of Prometheus Alertmanager since it is based on the same codebase. The following is a description on how to load the configuration setup so that Alertmanager can use for notification when an alert event happened.&lt;/p>
+&lt;p>Cortex Alertmanager notification setup follows mostly the syntax of Prometheus Alertmanager since it is based on the same codebase. The following is a description on how to load the configuration setup so that Alertmanager can use it for notification when an alert event happens.&lt;/p>
 &lt;h3 id="configuring-the-cortex-alertmanager-storage-backend">Configuring the Cortex Alertmanager storage backend&lt;/h3>
-&lt;p>With the introduction of Cortex 1.8 the storage backend config option shifted to the new pattern &lt;a href="https://github.com/cortexproject/cortex/pull/3888">#3888&lt;/a>. You can find the new configuration &lt;a href="/docs/configuration/configuration-file/#alertmanager_storage_config">here&lt;/a>&lt;/p>
+&lt;p>With the introduction of Cortex 1.8, the storage backend config option shifted to the new pattern &lt;a href="https://github.com/cortexproject/cortex/pull/3888">#3888&lt;/a>. You can find the new configuration &lt;a href="/docs/configuration/configuration-file/#alertmanager_storage_config">here&lt;/a>&lt;/p>
 &lt;p>Note that when using &lt;code>-alertmanager.sharding-enabled=true&lt;/code>, the following storage backends are not supported: &lt;code>local&lt;/code>, &lt;code>configdb&lt;/code>.&lt;/p>
-&lt;p>When using the new configuration pattern it is important that any of the old configuration pattern flags are unset (&lt;code>-alertmanager.storage&lt;/code>), as well as &lt;code>-&amp;lt;prefix&amp;gt;.configs.url&lt;/code>. This is because the old pattern still takes precedence over the new one. The old configuration pattern (&lt;code>-alertmanager.storage&lt;/code>) is marked as deprecated and will be removed by Cortex version 1.11. However this change doesn&amp;rsquo;t apply to &lt;code>-alertmanager.storage.path&lt;/code> and &lt;code>-alertmanager.storage.retention&lt;/code>.&lt;/p>
+&lt;p>When using the new configuration pattern, it is important that any of the old configuration pattern flags are unset (&lt;code>-alertmanager.storage&lt;/code>), as well as &lt;code>-&amp;lt;prefix&amp;gt;.configs.url&lt;/code>. This is because the old pattern still takes precedence over the new one. The old configuration pattern (&lt;code>-alertmanager.storage&lt;/code>) is marked as deprecated and will be removed by Cortex version 1.11. However, this change doesn&amp;rsquo;t apply to &lt;code>-alertmanager.storage.path&lt;/code> and &lt;code>-alertmanager.storage.retention&lt;/code>.&lt;/p>
 &lt;h3 id="cortex-alertmanager-configuration">Cortex Alertmanager configuration&lt;/h3>
 &lt;p>Cortex Alertmanager can be uploaded via Cortex &lt;a href="/docs/api/#set-alertmanager-configuration">Set Alertmanager configuration API&lt;/a> or using &lt;a href="https://github.com/cortexproject/cortex-tools">Cortex Tools&lt;/a>.&lt;/p>
-&lt;p>Follow the instruction at the &lt;code>cortextool&lt;/code> link above to download or update to the latest version of the tool.&lt;/p>
+&lt;p>Follow the instructions at the &lt;code>cortextool&lt;/code> link above to download or update to the latest version of the tool.&lt;/p>
 &lt;p>To obtain the full help of how to use &lt;code>cortextool&lt;/code> for all commands and flags, use
 &lt;code>cortextool --help-long&lt;/code>.&lt;/p>
 &lt;p>The following example shows the steps to upload the configuration to Cortex &lt;code>Alertmanager&lt;/code> using &lt;code>cortextool&lt;/code>.&lt;/p>
-&lt;h4 id="1-create-the-alertmanager-configuration-yml-file">1. Create the Alertmanager configuration &lt;code>yml&lt;/code> file.&lt;/h4>
-&lt;p>The following is &lt;code>amconfig.yml&lt;/code>, an example of a configuration for Cortex &lt;code>Alertmanager&lt;/code> to send notification via email:&lt;/p>
+&lt;h4 id="1-create-the-alertmanager-configuration-yaml-file">1. Create the Alertmanager configuration YAML file.&lt;/h4>
+&lt;p>The following is &lt;code>amconfig.yml&lt;/code>, an example of a configuration for Cortex &lt;code>Alertmanager&lt;/code> to send notifications via email:&lt;/p>
 &lt;pre tabindex="0">&lt;code>global:
 # The smarthost and SMTP sender used for mail notifications.
 smtp_smarthost: &amp;#39;localhost:25&amp;#39;
@@ -179,7 +179,7 @@ receivers:
 - name: send-email
 email_configs:
 - to: &amp;#39;someone@localhost&amp;#39;
-&lt;/code>&lt;/pre>&lt;p>&lt;a href="https://grafana.com/blog/2020/02/25/step-by-step-guide-to-setting-up-prometheus-alertmanager-with-slack-pagerduty-and-gmail/#:~:text=To%20set%20up%20alerting%20in,to%20receive%20notifications%20from%20Alertmanager.">Example on how to setup Slack&lt;/a> to support receiving Alertmanager notification.&lt;/p>
+&lt;/code>&lt;/pre>&lt;p>&lt;a href="https://grafana.com/blog/2020/02/25/step-by-step-guide-to-setting-up-prometheus-alertmanager-with-slack-pagerduty-and-gmail/#:~:text=To%20set%20up%20alerting%20in,to%20receive%20notifications%20from%20Alertmanager.">Example on how to set up Slack&lt;/a> to support receiving Alertmanager notifications.&lt;/p>
 &lt;h4 id="2-upload-the-alertmanager-configuration">2. Upload the Alertmanager configuration&lt;/h4>
 &lt;p>In this example, Cortex &lt;code>Alertmanager&lt;/code> is set to be available via localhost on port 8095 with user/org = 100.&lt;/p>
 &lt;p>To upload the above configuration &lt;code>.yml&lt;/code> file with &lt;code>--key&lt;/code> to be your Basic Authentication or API key:&lt;/p>
@@ -199,13 +199,13 @@ email_configs:
 on each request. A tenant (also called &amp;ldquo;user&amp;rdquo; or &amp;ldquo;org&amp;rdquo;) is the owner of
 a set of series written to and queried from Cortex. All Cortex components
 trust this value completely: if you need to protect your Cortex installation
-from accidental or malicious calls then you must add an additional layer
+from accidental or malicious calls, then you must add an additional layer
 of protection.&lt;/p>
-&lt;p>Typically this means you run Cortex behind a reverse proxy, and you must
+&lt;p>Typically, this means you run Cortex behind a reverse proxy, and you must
 ensure that all callers, both machines sending data over the &lt;code>remote_write&lt;/code>
 interface and humans sending queries from GUIs, supply credentials
 which identify them and confirm they are authorised. When configuring the
-&lt;code>remote_write&lt;/code> API in Prometheus, the user and password fields of http Basic
+&lt;code>remote_write&lt;/code> API in Prometheus, the user and password fields of HTTP Basic
 auth, or Bearer token, can be used to convey the tenant ID and/or credentials.
 See the &lt;a href="#cortex-tenant">Cortex-Tenant&lt;/a> section below for one way to solve this.&lt;/p>
 &lt;p>In trusted environments, Prometheus can send the &lt;code>X-Scope-OrgID&lt;/code> header itself
@@ -218,7 +218,7 @@ X-Scope-OrgID: &amp;lt;org&amp;gt;
 &lt;code>-auth.enabled=false&lt;/code> to every Cortex component, which will set the OrgID
 to the string &lt;code>fake&lt;/code> for every request.&lt;/p>
 &lt;p>Note that the tenant ID that is used to write the series to the datastore
-should be the same as the one you use to query the data. If they don&amp;rsquo;t match
+should be the same as the one you use to query the data. If they don&amp;rsquo;t match,
 you won&amp;rsquo;t see any data. As of now, you can&amp;rsquo;t see series from other tenants.&lt;/p>
 &lt;p>For more information regarding the tenant ID limits, refer to: &lt;a href="/docs/guides/limitations/#tenant-id-naming">Tenant ID limitations&lt;/a>&lt;/p>
 &lt;h3 id="cortex-tenant">Cortex-Tenant&lt;/h3>
@@ -227,8 +227,8 @@ proxy which is able to extract the tenant ID from Prometheus labels.&lt;/p>
 &lt;p>It can be placed between Prometheus and Cortex and will search for a predefined
 label and use its value as &lt;code>X-Scope-OrgID&lt;/code> header when proxying the timeseries to Cortex.&lt;/p>
 &lt;p>This can help to run Cortex in a trusted environment where you want to separate your metrics
-into distinct namespaces by some criteria (e.g. teams, applications, etc).&lt;/p>
-&lt;p>Be advised that &lt;strong>cortex-tenant&lt;/strong> is a third-party community project and it&amp;rsquo;s not maintained by Cortex team.&lt;/p></description></item><item><title>Docs: Capacity Planning</title><link>/docs/guides/capacity-planning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/capacity-planning/</guid><description>
+into distinct namespaces by some criteria (e.g. teams, applications, etc.).&lt;/p>
+&lt;p>Be advised that &lt;strong>cortex-tenant&lt;/strong> is a third-party community project and it&amp;rsquo;s not maintained by the Cortex team.&lt;/p></description></item><item><title>Docs: Capacity Planning</title><link>/docs/guides/capacity-planning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/capacity-planning/</guid><description>
 &lt;p>&lt;em>This doc is likely out of date. It should be updated for blocks storage.&lt;/em>&lt;/p>
 &lt;p>You will want to estimate how many nodes are required, how many of
 each component to run, and how much storage space will be required.
@@ -236,21 +236,21 @@ In practice, these will vary greatly depending on the metrics being
 sent to Cortex.&lt;/p>
 &lt;p>Some key parameters are:&lt;/p>
 &lt;ol>
-&lt;li>The number of active series. If you have Prometheus already you
+&lt;li>The number of active series. If you have Prometheus already, you
 can query &lt;code>prometheus_tsdb_head_series&lt;/code> to see this number.&lt;/li>
 &lt;li>Sampling rate, e.g. a new sample for each series every minute
 (the default Prometheus &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/configuration/">scrape_interval&lt;/a>).
 Multiply this by the number of active series to get the
 total rate at which samples will arrive at Cortex.&lt;/li>
 &lt;li>The rate at which series are added and removed. This can be very
-high if you monitor objects that come and go - for example if you run
+high if you monitor objects that come and go - for example, if you run
 thousands of batch jobs lasting a minute or so and capture metrics
 with a unique ID for each one. &lt;a href="https://www.robustperception.io/using-tsdb-analyze-to-investigate-churn-and-cardinality">Read how to analyse this on
 Prometheus&lt;/a>.&lt;/li>
 &lt;li>How compressible the time-series data are. If a metric stays at
 the same value constantly, then Cortex can compress it very well, so
 12 hours of data sampled every 15 seconds would be around 2KB. On
-the other hand if the value jumps around a lot it might take 10KB.
+the other hand, if the value jumps around a lot, it might take 10KB.
 There are not currently any tools available to analyse this.&lt;/li>
 &lt;li>How long you want to retain data for, e.g. 1 month or 2 years.&lt;/li>
 &lt;/ol>
@@ -263,73 +263,73 @@ high values:&lt;/p>
 &lt;/ol>
 &lt;p>Now, some rules of thumb:&lt;/p>
 &lt;ol>
-&lt;li>Each million series in an ingester takes 15GB of RAM. Total number
-of series in ingesters is number of active series times the
+&lt;li>Each million series in an ingester takes 15GB of RAM. The total number
+of series in ingesters is the number of active series times the
 replication factor. This is with the default of 12-hour chunks - RAM
 required will reduce if you set &lt;code>-ingester.max-chunk-age&lt;/code> lower
-(trading off more back-end database IO).
+(trading off more back-end database I/O).
 There are some additional considerations for planning for ingester memory usage.
 &lt;ol>
-&lt;li>Memory increases during write ahead log (WAL) replay, &lt;a href="https://github.com/prometheus/prometheus/issues/6934#issuecomment-726039115">See Prometheus issue #6934&lt;/a>. If you do not have enough memory for WAL replay, the ingester will not be able to restart successfully without intervention.&lt;/li>
+&lt;li>Memory increases during write-ahead log (WAL) replay, &lt;a href="https://github.com/prometheus/prometheus/issues/6934#issuecomment-726039115">See Prometheus issue #6934&lt;/a>. If you do not have enough memory for WAL replay, the ingester will not be able to restart successfully without intervention.&lt;/li>
 &lt;li>Memory temporarily increases during resharding since timeseries are temporarily on both the new and old ingesters. This means you should scale up the number of ingesters before memory utilization is too high, otherwise you will not have the headroom to account for the temporary increase.&lt;/li>
 &lt;/ol>
 &lt;/li>
 &lt;li>Each million series (including churn) consumes 15GB of chunk
 storage and 4GB of index, per day (so multiply by the retention
 period).&lt;/li>
-&lt;li>The distributors CPU utilization depends on the specific Cortex cluster
+&lt;li>The distributors’ CPU utilization depends on the specific Cortex cluster
 setup, while they don&amp;rsquo;t need much RAM. Typically, distributors are capable
-to process between 20,000 and 100,000 samples/sec with 1 CPU core. It&amp;rsquo;s also
+of processing between 20,000 and 100,000 samples/sec with 1 CPU core. It&amp;rsquo;s also
 highly recommended to configure Prometheus &lt;code>max_samples_per_send&lt;/code> to 1,000
-samples, in order to reduce the distributors CPU utilization given the same
+samples, in order to reduce the distributors’ CPU utilization given the same
 total samples/sec throughput.&lt;/li>
 &lt;/ol>
 &lt;p>If you turn on compression between distributors and ingesters (for
-example to save on inter-zone bandwidth charges at AWS/GCP) they will use
-significantly more CPU (approx 100% more for distributor and 50% more
+example, to save on inter-zone bandwidth charges at AWS/GCP), they will use
+significantly more CPU (approx. 100% more for distributor and 50% more
 for ingester).&lt;/p></description></item><item><title>Docs: Config for horizontally scaling the Ruler</title><link>/docs/guides/ruler-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ruler-sharding/</guid><description>
 &lt;h2 id="context">Context&lt;/h2>
-&lt;p>One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.&lt;/p>
+&lt;p>One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running, they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.&lt;/p>
 &lt;h2 id="config">Config&lt;/h2>
-&lt;p>In order to enable sharding in the ruler the following flag needs to be set:&lt;/p>
+&lt;p>In order to enable sharding in the ruler, the following flag needs to be set:&lt;/p>
 &lt;pre tabindex="0">&lt;code> -ruler.enable-sharding=true
-&lt;/code>&lt;/pre>&lt;p>In addition the ruler requires it&amp;rsquo;s own ring to be configured, for instance:&lt;/p>
+&lt;/code>&lt;/pre>&lt;p>In addition, the ruler requires its own ring to be configured, for instance:&lt;/p>
 &lt;pre tabindex="0">&lt;code> -ruler.ring.consul.hostname=consul.dev.svc.cluster.local:8500
-&lt;/code>&lt;/pre>&lt;p>The only configuration that is required is to enable sharding and configure a key value store. From there the rulers will shard and handle the division of rules automatically.&lt;/p>
+&lt;/code>&lt;/pre>&lt;p>The only configuration that is required is to enable sharding and configure a key-value store. From there, the rulers will shard and handle the division of rules automatically.&lt;/p>
 &lt;p>Unlike ingesters, rulers do not hand over responsibility: all rules are re-sharded randomly every time a ruler is added to or removed from the ring.&lt;/p>
 &lt;h2 id="ruler-storage">Ruler Storage&lt;/h2>
-&lt;p>The ruler supports six kinds of storage (configdb, azure, gcs, s3, swift, local). Most kinds of storage work with the sharded ruler configuration in an obvious way. i.e. configure all rulers to use the same backend.&lt;/p>
-&lt;p>The local implementation reads &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/">Prometheus recording rules&lt;/a> off of the local filesystem. This is a read only backend that does not support the creation and deletion of rules through &lt;a href="/docs/api/#ruler">the API&lt;/a>. Despite the fact that it reads the local filesystem this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler. For instance this could be accomplished by mounting a &lt;a href="https://kubernetes.io/docs/concepts/configuration/configmap/">Kubernetes ConfigMap&lt;/a> onto every ruler pod.&lt;/p>
+&lt;p>The ruler supports six kinds of storage (configdb, Azure, GCS, S3, Swift, local). Most kinds of storage work with the sharded ruler configuration in an obvious way, i.e. configure all rulers to use the same backend.&lt;/p>
+&lt;p>The local implementation reads &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/">Prometheus recording rules&lt;/a> off the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through &lt;a href="/docs/api/#ruler">the API&lt;/a>. Despite the fact that it reads the local filesystem, this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler. For instance, this could be accomplished by mounting a &lt;a href="https://kubernetes.io/docs/concepts/configuration/configmap/">Kubernetes ConfigMap&lt;/a> onto every ruler pod.&lt;/p>
 &lt;p>A typical local config may look something like:&lt;/p>
 &lt;pre tabindex="0">&lt;code> -ruler-storage.backend=local
 -ruler-storage.local.directory=/tmp/cortex/rules
-&lt;/code>&lt;/pre>&lt;p>With the above configuration the ruler would expect the following layout:&lt;/p>
+&lt;/code>&lt;/pre>&lt;p>With the above configuration, the ruler would expect the following layout:&lt;/p>
 &lt;pre tabindex="0">&lt;code>/tmp/cortex/rules/&amp;lt;tenant id&amp;gt;/rules1.yaml
 /rules2.yaml
 &lt;/code>&lt;/pre>&lt;p>Yaml files are expected to be in the &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules">Prometheus format&lt;/a>.&lt;/p></description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling/</guid><description>
 &lt;h2 id="context">Context&lt;/h2>
-&lt;p>You can have more than a single Prometheus monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy and it doesn&amp;rsquo;t make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:&lt;/p>
-&lt;p>Assume that there are two teams, each running their own Prometheus, monitoring different services. Let&amp;rsquo;s call the Prometheis T1 and T2. Now, if the teams are running HA pairs, let&amp;rsquo;s call the individual Prometheis, T1.a, T1.b and T2.a and T2.b.&lt;/p>
-&lt;p>In Cortex we make sure we only ingest from one of T1.a and T1.b, and only from one of T2.a and T2.b. We do this by electing a leader replica for each cluster of Prometheus. For example, in the case of T1, let it be T1.a. As long as T1.a is the leader, we drop the samples sent by T1.b. And if Cortex sees no new samples from T1.a for a short period (30s by default), it&amp;rsquo;ll switch the leader to be T1.b.&lt;/p>
-&lt;p>This means if T1.a goes down for a few minutes Cortex&amp;rsquo;s HA sample handling will have switched and elected T1.b as the leader. This failover timeout is what enables us to only accept samples from a single replica at a time, but ensure we don&amp;rsquo;t drop too much data in case of issues. Note that with the default scrape period of 15s, and the default timeouts in Cortex, in most cases you&amp;rsquo;ll only lose a single scrape of data in the case of a leader election failover. For any rate queries the rate window should be at least 4x the scrape period to account for any of these failover scenarios, for example with the default scrape period of 15s then you should calculate rates over at least 1m periods.&lt;/p>
-&lt;p>Now we do the same leader election process T2.&lt;/p>
+&lt;p>You can have more than a single Prometheus monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy, and it doesn&amp;rsquo;t make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:&lt;/p>
+&lt;p>Assume that there are two teams, each running their own Prometheus, monitoring different services. Let&amp;rsquo;s call the Promethei T1 and T2. Now, if the teams are running HA pairs, let&amp;rsquo;s call the individual Promethei, T1.a, T1.b, and T2.a and T2.b.&lt;/p>
+&lt;p>In Cortex, we make sure we only ingest from one of T1.a and T1.b, and only from one of T2.a and T2.b. We do this by electing a leader replica for each cluster of Prometheus. For example, in the case of T1, let it be T1.a. As long as T1.a is the leader, we drop the samples sent by T1.b. And if Cortex sees no new samples from T1.a for a short period (30s by default), it&amp;rsquo;ll switch the leader to be T1.b.&lt;/p>
+&lt;p>This means if T1.a goes down for a few minutes, Cortex&amp;rsquo;s HA sample handling will have switched and elected T1.b as the leader. This failover timeout is what enables us to only accept samples from a single replica at a time, but ensure we don&amp;rsquo;t drop too much data in case of issues. Note that with the default scrape period of 15s, and the default timeouts in Cortex, in most cases, you&amp;rsquo;ll only lose a single scrape of data in the case of a leader election failover. For any rate queries, the rate window should be at least 4x the scrape period to account for any of these failover scenarios, for example, with the default scrape period of 15s, then you should calculate rates over at least 1m periods.&lt;/p>
+&lt;p>Now we do the same leader election process for T2.&lt;/p>
 &lt;h2 id="config">Config&lt;/h2>
 &lt;h3 id="client-side">Client Side&lt;/h3>
-&lt;p>So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b). The easiest way to do with is by setting external labels, the default labels are &lt;code>cluster&lt;/code> and &lt;code>__replica__&lt;/code>. For example:&lt;/p>
+&lt;p>So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc.) and one identifier to identify the replica in the cluster (a or b). The easiest way to do this is by setting external labels; the default labels are &lt;code>cluster&lt;/code> and &lt;code>__replica__&lt;/code>. For example:&lt;/p>
 &lt;pre tabindex="0">&lt;code>cluster: prom-team1
 __replica__: replica1 (or pod-name)
 &lt;/code>&lt;/pre>&lt;p>and&lt;/p>
 &lt;pre tabindex="0">&lt;code>cluster: prom-team1
 __replica__: replica2
 &lt;/code>&lt;/pre>&lt;p>Note: These are external labels and have nothing to do with remote_write config.&lt;/p>
-&lt;p>These two label names are configurable per-tenant within Cortex, and should be set to something sensible. For example, cluster label is already used by some workloads, and you should set the label to be something else but uniquely identifies the cluster. Good examples for this label-name would be &lt;code>team&lt;/code>, &lt;code>cluster&lt;/code>, &lt;code>prometheus&lt;/code>, etc.&lt;/p>
-&lt;p>The replica label should be set so that the value for each prometheus is unique in that cluster. Note: Cortex drops this label when ingesting data, but preserves the cluster label. This way, your timeseries won&amp;rsquo;t change when replicas change.&lt;/p>
+&lt;p>These two label names are configurable per-tenant within Cortex and should be set to something sensible. For example, the cluster label is already used by some workloads, and you should set the label to be something else that uniquely identifies the cluster. Good examples for this label-name would be &lt;code>team&lt;/code>, &lt;code>cluster&lt;/code>, &lt;code>prometheus&lt;/code>, etc.&lt;/p>
+&lt;p>The replica label should be set so that the value for each prometheus is unique in that cluster. Note: Cortex drops this label when ingesting data but preserves the cluster label. This way, your timeseries won&amp;rsquo;t change when replicas change.&lt;/p>
 &lt;h3 id="server-side">Server Side&lt;/h3>
 &lt;p>The minimal configuration requires:&lt;/p>
 &lt;ul>
 &lt;li>Enabling the HA tracker via &lt;code>-distributor.ha-tracker.enable=true&lt;/code> CLI flag (or its YAML config option)&lt;/li>
 &lt;li>Configuring the KV store for the ring (See: &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>). Only Consul and etcd are currently supported. Multi should be used for migration purposes only.&lt;/li>
-&lt;li>Setting the limits configuration to accept samples via &lt;code>-distributor.ha-tracker.enable-for-all-users&lt;/code> (or its YAML config option)&lt;/li>
+&lt;li>Setting the limits configuration to accept samples via &lt;code>-distributor.ha-tracker.enable-for-all-users&lt;/code> (or its YAML config option).&lt;/li>
 &lt;/ul>
 &lt;p>The following configuration snippet shows an example of the HA tracker config via YAML config file:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -402,8 +402,8 @@ Cortex will not return any data.&lt;/p>
 &lt;h3 id="alertmanager">Alertmanager&lt;/h3>
 &lt;p>The alertmanager S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the &lt;code>-alertmanager-storage.&lt;/code> flag prefix (or their respective YAML config options).&lt;/p>
 &lt;h3 id="per-tenant-config-overrides">Per-tenant config overrides&lt;/h3>
-&lt;p>The S3 client used by the blocks storage, ruler and alertmanager supports S3 SSE config overrides on a per-tenant basis, using the &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime configuration file&lt;/a>.
-The following settings can ben overridden for each tenant:&lt;/p>
+&lt;p>The S3 client used by the blocks storage, ruler, and alertmanager supports S3 SSE config overrides on a per-tenant basis, using the &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime configuration file&lt;/a>.
+The following settings can be overridden for each tenant:&lt;/p>
 &lt;ul>
 &lt;li>&lt;strong>&lt;code>s3_sse_type&lt;/code>&lt;/strong>&lt;br />
 S3 server-side encryption type. It must be set to enable the SSE config override for a given tenant.&lt;/li>
@@ -413,24 +413,24 @@ S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not se
 S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set or the type is not &lt;code>SSE-KMS&lt;/code>.&lt;/li>
 &lt;/ul>
 &lt;h2 id="other-storages">Other storages&lt;/h2>
-&lt;p>Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p></description></item><item><title>Docs: Ingesters rolling updates</title><link>/docs/guides/ingesters-rolling-updates/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-rolling-updates/</guid><description>
+&lt;p>Other storage backends may support encryption at rest, configuring it directly at the storage level.&lt;/p></description></item><item><title>Docs: Ingesters rolling updates</title><link>/docs/guides/ingesters-rolling-updates/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-rolling-updates/</guid><description>
 &lt;p>Cortex &lt;a href="/docs/architecture/#ingester">ingesters&lt;/a> are semi-stateful.
-A running ingester holds several hours of time series data in memory, before they&amp;rsquo;re flushed to the long-term storage.
-When an ingester shutdowns, because of a rolling update or maintenance, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
+A running ingester holds several hours of time series data in memory before they&amp;rsquo;re flushed to the long-term storage.
+When an ingester shuts down because of a rolling update or maintenance, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
 &lt;p>The Cortex &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> requires ingesters to run with a persistent disk where the TSDB WAL and blocks are stored (eg. a StatefulSet when deployed on Kubernetes).&lt;/p>
-&lt;p>During a rolling update, the leaving ingester closes the open TSDBs, synchronize the data to disk (&lt;code>fsync&lt;/code>) and releases the disk resources.
-The new ingester, which is expected to reuse the same disk of the leaving one, will replay the TSDB WAL on startup in order to load back in memory the time series that have not been compacted into a block yet.&lt;/p></description></item><item><title>Docs: Ingesters scaling up and down</title><link>/docs/guides/ingesters-scaling-up-and-down/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-scaling-up-and-down/</guid><description>
+&lt;p>During a rolling update, the leaving ingester closes the open TSDBs, synchronizes the data to disk (&lt;code>fsync&lt;/code>), and releases the disk resources.
+The new ingester, which is expected to reuse the same disk as the leaving one, will replay the TSDB WAL on startup to load back into memory the time series that have not been compacted into a block yet.&lt;/p></description></item><item><title>Docs: Ingesters scaling up and down</title><link>/docs/guides/ingesters-scaling-up-and-down/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-scaling-up-and-down/</guid><description>
 &lt;p>This guide explains how to scale up and down ingesters.&lt;/p>
-&lt;p>&lt;em>If you&amp;rsquo;re looking how to run ingesters rolling updates, please refer to the &lt;a href="/docs/guides/ingesters-rolling-updates/">dedicated guide&lt;/a>.&lt;/em>&lt;/p>
+&lt;p>If you&amp;rsquo;re looking for how to run ingesters rolling updates, please refer to the &lt;a href="/docs/guides/ingesters-rolling-updates/">dedicated guide&lt;/a>._&lt;/p>
 &lt;h2 id="scaling-up">Scaling up&lt;/h2>
 &lt;p>Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a> and the distributors will reshard received series accordingly.
 Ingesters that were previously receiving those series will see data stop arriving and will consider those series &amp;ldquo;idle&amp;rdquo;.&lt;/p>
-&lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=false&lt;/code> (the default), before adding a second ingester you have to wait until data has migrated from idle series to the back-end store, otherwise you will see gaps in queries. This will happen after the next &amp;ldquo;head compaction&amp;rdquo; (typically every 2 hours).
-If you have set &lt;code>-querier.query-store-after&lt;/code> then that is also a minimum time you have to wait before adding a second ingester.&lt;/p>
+&lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=false&lt;/code> (the default), before adding a second ingester, you have to wait until data has migrated from idle series to the back-end store; otherwise, you will see gaps in queries. This will happen after the next &amp;ldquo;head compaction&amp;rdquo; (typically every 2 hours).
+If you have set &lt;code>-querier.query-store-after&lt;/code>, then that is also a minimum time you have to wait before adding a second ingester.&lt;/p>
 &lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=true&lt;/code>,
 no special care is required to take when scaling up ingesters.&lt;/p>
 &lt;h2 id="scaling-down">Scaling down&lt;/h2>
-&lt;p>A running ingester holds several hours of time series data in memory, before they&amp;rsquo;re flushed to the long-term storage. When an ingester shuts down, because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
+&lt;p>A running ingester holds several hours of time series data in memory before they&amp;rsquo;re flushed to the long-term storage. When an ingester shuts down because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
 &lt;p>Ingesters don&amp;rsquo;t flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint &lt;a href="/docs/api/#shutdown">&lt;code>/shutdown&lt;/code>&lt;/a> that can be called to flush series to blocks and upload blocks to the long-term storage before the ingester terminates.&lt;/p>
 &lt;p>Even if ingester blocks are compacted and shipped to the storage at shutdown, it takes some time for queriers and store-gateways to discover the newly uploaded blocks. This is due to the fact that the blocks storage runs a periodic scanning of the storage bucket to discover blocks. If two or more ingesters are scaled down in a short period of time, queriers may miss some data at query time due to series that were stored in the terminated ingesters but their blocks haven&amp;rsquo;t been discovered yet.&lt;/p>
 &lt;p>The ingesters scale down is deemed an infrequent operation and no automation is currently provided. However, if you need to scale down ingesters, please be aware of the following:&lt;/p>
@@ -469,12 +469,12 @@ to their limits tenants are, the &lt;code>overrides-exporter&lt;/code> module ca
 &lt;p>To update configuration without restarting, Cortex allows operators to supply a &lt;code>runtime_config&lt;/code>
 file that will be periodically reloaded. This file can be specified under the &lt;code>runtime_config&lt;/code> section
 of the main &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">configuration file&lt;/a> or using the &lt;code>-runtime-config.file&lt;/code>
-command line flag. This file is used to apply tenant-specific limits.&lt;/p>
+command-line flag. This file is used to apply tenant-specific limits.&lt;/p>
 &lt;h2 id="example">Example&lt;/h2>
-&lt;p>The &lt;code>overrides-exporter&lt;/code> is not enabled by default, it must be explicitly enabled. We recommend
+&lt;p>The &lt;code>overrides-exporter&lt;/code> is not enabled by default; it must be explicitly enabled. We recommend
 only running a single instance of it in your cluster due to the cardinality of the metrics
 emitted.&lt;/p>
-&lt;p>With a &lt;code>runtime.yaml&lt;/code> file given below&lt;/p>
+&lt;p>With a &lt;code>runtime.yaml&lt;/code> file given below:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic"># file: runtime.yaml&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># In this example, we&amp;#39;re overriding ingestion limits for a single tenant.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">overrides&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -487,9 +487,9 @@ emitted.&lt;/p>
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_user&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_samples_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">100000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">100000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>overrides-exporter&lt;/code> is configured to run as follows&lt;/p>
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>overrides-exporter&lt;/code> is configured to run as follows:&lt;/p>
 &lt;pre tabindex="0">&lt;code>cortex -target overrides-exporter -runtime-config.file runtime.yaml -server.http-listen-port=8080
-&lt;/code>&lt;/pre>&lt;p>After the &lt;code>overrides-exporter&lt;/code> starts, you can to use &lt;code>curl&lt;/code> to inspect the tenant overrides.&lt;/p>
+&lt;/code>&lt;/pre>&lt;p>After the &lt;code>overrides-exporter&lt;/code> starts, you can use &lt;code>curl&lt;/code> to inspect the tenant overrides.&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-text" data-lang="text">&lt;span style="display:flex;">&lt;span>curl -s http://localhost:8080/metrics | grep cortex_overrides
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span># HELP cortex_overrides Resource limit overrides applied to tenants
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span># TYPE cortex_overrides gauge
@@ -509,9 +509,9 @@ components. This guide describes the process of setting up TLS.&lt;/p>
 &lt;h3 id="generation-of-certs-to-configure-tls">Generation of certs to configure TLS&lt;/h3>
 &lt;p>The first step to securing inter-service communication in Cortex with TLS is
 generating certificates. A Certifying Authority (CA) will be used for this
-purpose which should be private to the organization, as any certificates signed
+purpose, which should be private to the organization, as any certificates signed
 by this CA will have permissions to communicate with the cluster.&lt;/p>
-&lt;p>We will use the following script to generate self signed certs for the cluster:&lt;/p>
+&lt;p>We will use the following script to generate self-signed certs for the cluster:&lt;/p>
 &lt;pre tabindex="0">&lt;code># keys
 openssl genrsa -out root.key
 openssl genrsa -out client.key
@@ -524,7 +524,7 @@ openssl req -new -sha256 -key server.key -subj &amp;#34;/C=US/ST=KY/O=Org/CN=loc
 # certificates
 openssl x509 -req -in client.csr -CA root.crt -CAkey root.key -CAcreateserial -out client.crt -days 100000 -sha256
 openssl x509 -req -in server.csr -CA root.crt -CAkey root.key -CAcreateserial -out server.crt -days 100000 -sha256
-&lt;/code>&lt;/pre>&lt;p>Note that the above script generates certificates that are valid for 100000 days.
+&lt;/code>&lt;/pre>&lt;p>Note that the above script generates certificates that are valid for 100,000 days.
 This can be changed by adjusting the &lt;code>-days&lt;/code> option in the above commands.
 It is recommended that the certs be replaced at least once every 2 years.&lt;/p>
 &lt;p>The above script generates keys &lt;code>client.key, server.key&lt;/code> and certs
@@ -551,7 +551,7 @@ through the following config parameters:&lt;/p>
 # Path to the Client CA Cert for the GRPC Server
 -server.grpc-tls-ca-path=/path/to/root.crt
 &lt;/code>&lt;/pre>&lt;h4 id="client-flags">Client flags&lt;/h4>
-&lt;p>Client flags are component specific.&lt;/p>
+&lt;p>Client flags are component-specific.&lt;/p>
 &lt;p>For an HTTP client in the Alertmanager:&lt;/p>
 &lt;pre tabindex="0">&lt;code> # Path to the TLS Cert for the HTTP Client
 -alertmanager.configs.tls-cert-path=/path/to/client.crt
@@ -577,27 +577,28 @@ through the following config parameters:&lt;/p>
 &lt;p>Cortex must be deployed with due care over system configuration, using principles such as &amp;ldquo;least privilege&amp;rdquo; to limit any exposure due to flaws in the source code.&lt;/p>
 &lt;p>You must configure authorisation and authentication externally to Cortex; see &lt;a href="/docs/guides/auth/">this guide&lt;/a>&lt;/p>
 &lt;p>Information about security disclosures and mailing lists is &lt;a href="https://github.com/cortexproject/cortex/blob/master/SECURITY.md">in the main repo&lt;/a>&lt;/p></description></item><item><title>Docs: Shuffle Sharding</title><link>/docs/guides/shuffle-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/shuffle-sharding/</guid><description>
-&lt;p>Cortex leverages on sharding techniques to horizontally scale both single and multi-tenant clusters beyond the capacity of a single node.&lt;/p>
+&lt;p>Cortex leverages sharding techniques to horizontally scale both single and multi-tenant clusters beyond the capacity of a single node.&lt;/p>
 &lt;h2 id="background">Background&lt;/h2>
-&lt;p>The &lt;strong>default sharding strategy&lt;/strong> employed by Cortex distributes the workload across the entire pool of instances running a given service (eg. ingesters). For example, on the write path each tenant&amp;rsquo;s series are sharded across all ingesters, regardless how many active series the tenant has or how many different tenants are in the cluster.&lt;/p>
-&lt;p>The default strategy allows to have a fair balance on the resources consumed by each instance (ie. CPU and memory) and to maximise these resources across the cluster.&lt;/p>
-&lt;p>However, in a &lt;strong>multi-tenant&lt;/strong> cluster this approach also introduces some &lt;strong>downsides&lt;/strong>:&lt;/p>
+&lt;p>The &lt;strong>default sharding strategy&lt;/strong> employed by Cortex distributes the workload across the entire pool of instances running a given service (eg. ingesters). For example, on the write path, each tenant&amp;rsquo;s series are sharded across all ingesters, regardless of how many active series the tenant has or how many different tenants are in the cluster.&lt;/p>
+&lt;p>The default strategy allows for a fair balance on the resources consumed by each instance (ie. CPU and memory) and to maximise these resources across the cluster.&lt;/p>
+&lt;p>However, in a &lt;strong>multi-tenant&lt;/strong> cluster, this approach also introduces some &lt;strong>downsides&lt;/strong>:&lt;/p>
 &lt;ol>
 &lt;li>An outage affects all tenants&lt;/li>
-&lt;li>A misbehaving tenant (eg. causing out of memory) could affect all other tenants&lt;/li>
+&lt;li>&lt;/li>
+&lt;li>A misbehaving tenant (eg. causing out-of-memory) could affect all other tenants.&lt;/li>
 &lt;/ol>
 &lt;p>The goal of &lt;strong>shuffle sharding&lt;/strong> is to provide an alternative sharding strategy to reduce the blast radius of an outage and better isolate tenants.&lt;/p>
-&lt;h2 id="what-is-shuffle-sharding">What is shuffle sharding&lt;/h2>
-&lt;p>Shuffle sharding is a technique used to isolate different tenant&amp;rsquo;s workloads and to give each tenant a single-tenant experience even if they&amp;rsquo;re running in a shared cluster. This technique has been publicly shared and clearly explained by AWS in their &lt;a href="https://aws.amazon.com/builders-library/workload-isolation-using-shuffle-sharding/">builders&amp;rsquo; library&lt;/a> and a reference implementation has been shown in the &lt;a href="https://github.com/awslabs/route53-infima/blob/master/src/main/java/com/amazonaws/services/route53/infima/SimpleSignatureShuffleSharder.java">Route53 Infima library&lt;/a>.&lt;/p>
-&lt;p>The idea is to assign each tenant a shard composed by a subset of the Cortex service instances, aiming to minimize the overlapping instances between two different tenants. Shuffle sharding brings the following &lt;strong>benefits&lt;/strong> over the default sharding strategy:&lt;/p>
+&lt;h2 id="what-is-shuffle-sharding">What is shuffle sharding?&lt;/h2>
+&lt;p>Shuffle sharding is a technique used to isolate different tenants’ workloads and to give each tenant a single-tenant experience even if they&amp;rsquo;re running in a shared cluster. This technique has been publicly shared and clearly explained by AWS in their &lt;a href="https://aws.amazon.com/builders-library/workload-isolation-using-shuffle-sharding/">builders&amp;rsquo; library&lt;/a> and a reference implementation has been shown in the &lt;a href="https://github.com/awslabs/route53-infima/blob/master/src/main/java/com/amazonaws/services/route53/infima/SimpleSignatureShuffleSharder.java">Route53 Infima library&lt;/a>.&lt;/p>
+&lt;p>The idea is to assign each tenant a shard composed of a subset of the Cortex service instances, aiming to minimize the overlapping instances between two different tenants. Shuffle sharding brings the following &lt;strong>benefits&lt;/strong> over the default sharding strategy:&lt;/p>
 &lt;ul>
 &lt;li>An outage on some Cortex cluster instances/nodes will only affect a subset of tenants.&lt;/li>
 &lt;li>A misbehaving tenant will affect only its shard instances. Due to the low overlap of instances between different tenants, it&amp;rsquo;s statistically quite likely that any other tenant will run on different instances or only a subset of instances will match the affected ones.&lt;/li>
 &lt;/ul>
-&lt;p>Shuffle sharding requires no more resources than the default sharding strategy but instances may be less evenly balanced from time to time.&lt;/p>
+&lt;p>Shuffle sharding requires no more resources than the default sharding strategy, but instances may be less evenly balanced from time to time.&lt;/p>
 &lt;h3 id="low-overlapping-instances-probability">Low overlapping instances probability&lt;/h3>
 &lt;p>For example, given a Cortex cluster running &lt;strong>50 ingesters&lt;/strong> and assigning &lt;strong>each tenant 4&lt;/strong> out of 50 ingesters, shuffling instances between each tenant, we get &lt;strong>230K possible combinations&lt;/strong>.&lt;/p>
-&lt;p>Randomly picking two different tenants we have the:&lt;/p>
+&lt;p>Randomly picking two different tenants, we have the:&lt;/p>
 &lt;ul>
 &lt;li>71% chance that they will not share any instance&lt;/li>
 &lt;li>26% chance that they will share only 1 instance&lt;/li>
@@ -630,33 +631,33 @@ Probabilistically and for a large enough cluster, it ensures that every tenant g
 When &lt;a href="/docs/guides/zone-aware-replication/">zone-aware replication&lt;/a> is enabled, the subset of instances selected for each tenant contains a balanced number of instances for each availability zone.&lt;/li>
 &lt;/ul>
 &lt;h3 id="ingesters-shuffle-sharding">Ingesters shuffle sharding&lt;/h3>
-&lt;p>By default the Cortex distributor spreads the received series across all running ingesters.&lt;/p>
-&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> for the ingesters, the distributor and ruler on the &lt;strong>write path&lt;/strong> spread each tenant series across &lt;code>-distributor.ingestion-tenant-shard-size&lt;/code> number of ingesters, while on the &lt;strong>read path&lt;/strong> the querier and ruler queries only the subset of ingesters holding the series for a given tenant.&lt;/p>
+&lt;p>By default, the Cortex distributor spreads the received series across all running ingesters.&lt;/p>
+&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> for the ingesters, the distributor and ruler on the &lt;strong>write path&lt;/strong> spread each tenant series across &lt;code>-distributor.ingestion-tenant-shard-size&lt;/code> number of ingesters, while on the &lt;strong>read path&lt;/strong>, the querier and ruler queries only the subset of ingesters holding the series for a given tenant.&lt;/p>
 &lt;p>&lt;em>The shard size can be overridden on a per-tenant basis in the limits overrides configuration.&lt;/em>&lt;/p>
 &lt;h4 id="ingesters-write-path">Ingesters write path&lt;/h4>
-&lt;p>To enable shuffle-sharding for ingesters on the write path you need to configure the following CLI flags (or their respective YAML config options) to &lt;strong>distributor&lt;/strong>, &lt;strong>ingester&lt;/strong> and &lt;strong>ruler&lt;/strong>:&lt;/p>
+&lt;p>To enable shuffle-sharding for ingesters on the write path, you need to configure the following CLI flags (or their respective YAML config options) to &lt;strong>distributor&lt;/strong>, &lt;strong>ingester&lt;/strong>, and &lt;strong>ruler&lt;/strong>:&lt;/p>
 &lt;ul>
 &lt;li>&lt;code>-distributor.sharding-strategy=shuffle-sharding&lt;/code>&lt;/li>
 &lt;li>&lt;code>-distributor.ingestion-tenant-shard-size=&amp;lt;size&amp;gt;&lt;/code>&lt;br />
-&lt;code>&amp;lt;size&amp;gt;&lt;/code> set to the number of ingesters each tenant series should be sharded to. If &lt;code>&amp;lt;size&amp;gt;&lt;/code> is greater than the number of available ingesters in the Cortex cluster, the tenant series are sharded across all ingesters.&lt;/li>
+&lt;code>&amp;lt;size&amp;gt;&lt;/code> should be set to the number of ingesters each tenant series should be sharded to. If &lt;code>&amp;lt;size&amp;gt;&lt;/code> is greater than the number of available ingesters in the Cortex cluster, the tenant series are sharded across all ingesters.&lt;/li>
 &lt;/ul>
 &lt;h4 id="ingesters-read-path">Ingesters read path&lt;/h4>
-&lt;p>Assuming shuffle-sharding has been enabled for the write path, to enable shuffle-sharding for ingesters on the read path too you need to configure the following CLI flags (or their respective YAML config options) to &lt;strong>querier&lt;/strong> and &lt;strong>ruler&lt;/strong>:&lt;/p>
+&lt;p>Assuming shuffle-sharding has been enabled for the write path, to enable shuffle-sharding for ingesters on the read path too, you need to configure the following CLI flags (or their respective YAML config options) to &lt;strong>querier&lt;/strong> and &lt;strong>ruler&lt;/strong>:&lt;/p>
 &lt;ul>
 &lt;li>&lt;code>-distributor.sharding-strategy=shuffle-sharding&lt;/code>&lt;/li>
 &lt;li>&lt;code>-distributor.ingestion-tenant-shard-size=&amp;lt;size&amp;gt;&lt;/code>&lt;/li>
 &lt;li>&lt;code>-querier.shuffle-sharding-ingesters-lookback-period=&amp;lt;period&amp;gt;&lt;/code>&lt;br />
-Queriers and rulers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since &amp;rsquo;now - lookback period&amp;rsquo;. The configured lookback &lt;code>&amp;lt;period&amp;gt;&lt;/code> should be greater or equal than &lt;code>-querier.query-store-after&lt;/code> and &lt;code>-querier.query-ingesters-within&lt;/code> if set, and greater than the estimated minimum time it takes for the oldest samples stored in a block uploaded by ingester to be discovered and available for querying (3h with the default configuration).&lt;/li>
+Queriers and rulers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since &amp;rsquo;now - lookback period&amp;rsquo;. The configured lookback &lt;code>&amp;lt;period&amp;gt;&lt;/code> should be greater than or equal to &lt;code>-querier.query-store-after&lt;/code> and &lt;code>-querier.query-ingesters-within&lt;/code> if set, and greater than the estimated minimum time it takes for the oldest samples stored in a block uploaded by ingester to be discovered and available for querying (3h with the default configuration).&lt;/li>
 &lt;/ul>
 &lt;h4 id="rollout-strategy">Rollout strategy&lt;/h4>
-&lt;p>If you&amp;rsquo;re running a Cortex cluster with shuffle-sharding disabled and you want to enable it for ingesters, the following rollout strategy should be used to avoid missing querying any time-series in the ingesters memory:&lt;/p>
+&lt;p>If you&amp;rsquo;re running a Cortex cluster with shuffle-sharding disabled and you want to enable it for ingesters, the following rollout strategy should be used to avoid missing querying any time-series in the ingesters’ memory:&lt;/p>
 &lt;ol>
 &lt;li>Enable ingesters shuffle-sharding on the &lt;strong>write path&lt;/strong>&lt;/li>
 &lt;li>&lt;strong>Wait&lt;/strong> at least &lt;code>-querier.shuffle-sharding-ingesters-lookback-period&lt;/code> time&lt;/li>
 &lt;li>Enable ingesters shuffle-sharding on the &lt;strong>read path&lt;/strong>&lt;/li>
 &lt;/ol>
 &lt;h4 id="limitation-decreasing-the-tenant-shard-size">Limitation: decreasing the tenant shard size&lt;/h4>
-&lt;p>The current shuffle-sharding implementation in Cortex has a limitation which prevents to safely decrease the tenant shard size if the ingesters shuffle-sharding is enabled on the read path.&lt;/p>
+&lt;p>The current shuffle-sharding implementation in Cortex has a limitation which prevents safely decreasing the tenant shard size if the ingesters shuffle-sharding is enabled on the read path.&lt;/p>
 &lt;p>The problem is that if a tenant’s subring decreases in size, there is currently no way for the queriers and rulers to know how big the tenant subring was previously, and hence they will potentially miss an ingester with data for that tenant. In other words, the lookback mechanism to select the ingesters which may have received series since &amp;rsquo;now - lookback period&amp;rsquo; doesn&amp;rsquo;t work correctly if the tenant shard size is decreased.&lt;/p>
 &lt;p>This is deemed an infrequent operation that we considered banning, but a workaround still exists:&lt;/p>
 &lt;ol>
@@ -666,35 +667,35 @@ Queriers and rulers fetch in-memory series from the minimum set of required inge
 &lt;li>&lt;strong>Re-enable&lt;/strong> shuffle-sharding on the read path&lt;/li>
 &lt;/ol>
 &lt;h3 id="query-frontend-and-query-scheduler-shuffle-sharding">Query-frontend and Query-scheduler shuffle sharding&lt;/h3>
-&lt;p>By default all Cortex queriers can execute received queries for given tenant.&lt;/p>
-&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> by setting &lt;code>-frontend.max-queriers-per-tenant&lt;/code> (or its respective YAML config option) to a value higher than 0 and lower than the number of available queriers, only specified number of queriers will execute queries for single tenant.&lt;/p>
-&lt;p>Note that this distribution happens in query-frontend, or query-scheduler if used. When using query-scheduler, &lt;code>-frontend.max-queriers-per-tenant&lt;/code> option must be set for query-scheduler component. When not using query-frontend (with or without scheduler), this option is not available.&lt;/p>
+&lt;p>By default, all Cortex queriers can execute received queries for a given tenant.&lt;/p>
+&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> by setting &lt;code>-frontend.max-queriers-per-tenant&lt;/code> (or its respective YAML config option) to a value higher than 0 and lower than the number of available queriers, only the specified number of queriers will execute queries for a single tenant.&lt;/p>
+&lt;p>Note that this distribution happens in the query-frontend, or query-scheduler if used. When using query-scheduler, the &lt;code>-frontend.max-queriers-per-tenant&lt;/code> option must be set for the query-scheduler component. When not using query-frontend (with or without scheduler), this option is not available.&lt;/p>
 &lt;p>&lt;em>The maximum number of queriers can be overridden on a per-tenant basis in the limits overrides configuration.&lt;/em>&lt;/p>
 &lt;h4 id="the-impact-of-query-of-death">The impact of &amp;ldquo;query of death&amp;rdquo;&lt;/h4>
-&lt;p>In the event a tenant is repeatedly sending a &amp;ldquo;query of death&amp;rdquo; which leads the querier to crash or getting killed because of out-of-memory, the crashed querier will get disconnected from the query-frontend or query-scheduler and a new querier will be immediately assigned to the tenant&amp;rsquo;s shard. This practically invalidates the assumption that shuffle-sharding can be used to contain the blast radius in case of a query of death.&lt;/p>
-&lt;p>To mitigate it, Cortex allows to configure a delay between when a querier disconnects because of a crash and when the crashed querier is actually removed from the tenant&amp;rsquo;s shard (and another healthy querier is added as replacement). A delay of 1 minute may be a reasonable trade-off:&lt;/p>
+&lt;p>In the event a tenant is repeatedly sending a &amp;ldquo;query of death&amp;rdquo; which leads the querier to crash or get killed because of out-of-memory, the crashed querier will get disconnected from the query-frontend or query-scheduler and a new querier will be immediately assigned to the tenant&amp;rsquo;s shard. This practically invalidates the assumption that shuffle-sharding can be used to contain the blast radius in case of a query of death.&lt;/p>
+&lt;p>To mitigate it, Cortex allows you to configure a delay between when a querier disconnects because of a crash and when the crashed querier is actually removed from the tenant&amp;rsquo;s shard (and another healthy querier is added as a replacement). A delay of 1 minute may be a reasonable trade-off:&lt;/p>
 &lt;ul>
 &lt;li>Query-frontend: &lt;code>-query-frontend.querier-forget-delay=1m&lt;/code>&lt;/li>
 &lt;li>Query-scheduler: &lt;code>-query-scheduler.querier-forget-delay=1m&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;h3 id="store-gateway-shuffle-sharding">Store-gateway shuffle sharding&lt;/h3>
 &lt;p>The Cortex store-gateway &amp;ndash; used by the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> &amp;ndash; by default spreads each tenant&amp;rsquo;s blocks across all running store-gateways.&lt;/p>
-&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> via &lt;code>-store-gateway.sharding-strategy=shuffle-sharding&lt;/code> (or its respective YAML config option), each tenant blocks will be sharded across a subset of &lt;code>-store-gateway.tenant-shard-size&lt;/code> store-gateway instances. This configuration needs to be set to &lt;strong>store-gateway&lt;/strong>, &lt;strong>querier&lt;/strong> and &lt;strong>ruler&lt;/strong>.&lt;/p>
+&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> via &lt;code>-store-gateway.sharding-strategy=shuffle-sharding&lt;/code> (or its respective YAML config option), each tenant’s blocks will be sharded across a subset of &lt;code>-store-gateway.tenant-shard-size&lt;/code> store-gateway instances. This configuration needs to be set to &lt;strong>store-gateway&lt;/strong>, &lt;strong>querier&lt;/strong>, and &lt;strong>ruler&lt;/strong>.&lt;/p>
 &lt;p>&lt;em>The shard size can be overridden on a per-tenant basis setting &lt;code>store_gateway_tenant_shard_size&lt;/code> in the limits overrides configuration.&lt;/em>&lt;/p>
 &lt;p>&lt;em>Please check out the &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway documentation&lt;/a> for more information about how it works.&lt;/em>&lt;/p>
 &lt;h3 id="ruler-shuffle-sharding">Ruler shuffle sharding&lt;/h3>
 &lt;p>Cortex ruler can run in three modes:&lt;/p>
 &lt;ol>
-&lt;li>&lt;strong>No sharding at all.&lt;/strong> This is the most basic mode of the ruler. It is activated by using &lt;code>-ruler.enable-sharding=false&lt;/code> (default) and works correctly only if single ruler is running. In this mode the Ruler loads all rules for all tenants.&lt;/li>
-&lt;li>&lt;strong>Default sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=default&lt;/code> (default). In this mode rulers register themselves into the ring. Each ruler will then select and evaluate only those rules that it &amp;ldquo;owns&amp;rdquo;.&lt;/li>
-&lt;li>&lt;strong>Shuffle sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=shuffle-sharding&lt;/code>. Similarly to default sharding, rulers use the ring to distribute workload, but rule groups for each tenant can only be evaluated on limited number of rulers (&lt;code>-ruler.tenant-shard-size&lt;/code>, can also be set per tenant as &lt;code>ruler_tenant_shard_size&lt;/code> in overrides).&lt;/li>
+&lt;li>&lt;strong>No sharding at all.&lt;/strong> This is the most basic mode of the ruler. It is activated by using &lt;code>-ruler.enable-sharding=false&lt;/code> (default) and works correctly only if a single ruler is running. In this mode, the Ruler loads all rules for all tenants.&lt;/li>
+&lt;li>&lt;strong>Default sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=default&lt;/code> (default). In this mode, rulers register themselves into the ring. Each ruler will then select and evaluate only those rules that it &amp;ldquo;owns&amp;rdquo;.&lt;/li>
+&lt;li>&lt;strong>Shuffle sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=shuffle-sharding&lt;/code>. Similarly to default sharding, rulers use the ring to distribute workload, but rule groups for each tenant can only be evaluated on a limited number of rulers (&lt;code>-ruler.tenant-shard-size&lt;/code>, can also be set per tenant as &lt;code>ruler_tenant_shard_size&lt;/code> in overrides).&lt;/li>
 &lt;/ol>
-&lt;p>Note that when using sharding strategy, each rule group is evaluated by single ruler only, there is no replication.&lt;/p>
+&lt;p>Note that when using sharding strategy, each rule group is evaluated by a single ruler only; there is no replication.&lt;/p>
 &lt;h3 id="compactor-shuffle-sharding">Compactor shuffle sharding&lt;/h3>
 &lt;p>Cortex compactor can run in three modes:&lt;/p>
 &lt;ol>
-&lt;li>&lt;strong>No sharding at all.&lt;/strong> This is the most basic mode of the compactor. It is activated by using &lt;code>-compactor.sharding-enabled=false&lt;/code> (default). In this mode every compactor will run every compaction.&lt;/li>
-&lt;li>&lt;strong>Default sharding&lt;/strong>, activated by using &lt;code>-compactor.sharding-enabled=true&lt;/code> and &lt;code>-compactor.sharding-strategy=default&lt;/code> (default). In this mode compactors register themselves into the ring. One single tenant will belong to only 1 compactor.&lt;/li>
+&lt;li>&lt;strong>No sharding at all.&lt;/strong> This is the most basic mode of the compactor. It is activated by using &lt;code>-compactor.sharding-enabled=false&lt;/code> (default). In this mode, every compactor will run every compaction.&lt;/li>
+&lt;li>&lt;strong>Default sharding&lt;/strong>, activated by using &lt;code>-compactor.sharding-enabled=true&lt;/code> and &lt;code>-compactor.sharding-strategy=default&lt;/code> (default). In this mode, compactors register themselves into the ring. One single tenant will belong to only 1 compactor.&lt;/li>
 &lt;li>&lt;strong>Shuffle sharding&lt;/strong>, activated by using &lt;code>-compactor.sharding-enabled=true&lt;/code> and &lt;code>-compactor.sharding-strategy=shuffle-sharding&lt;/code>. Similarly to default sharding, but compactions for each tenant can be carried out on multiple compactors (&lt;code>-compactor.tenant-shard-size&lt;/code>, can also be set per tenant as &lt;code>compactor_tenant_shard_size&lt;/code> in overrides).&lt;/li>
 &lt;/ol>
 &lt;p>With shuffle sharding selected as the sharding strategy, a subset of the compactors will be used to handle a user based on the shard size.&lt;/p>
@@ -702,19 +703,19 @@ Queriers and rulers fetch in-memory series from the minimum set of required inge
 &lt;h2 id="faq">FAQ&lt;/h2>
 &lt;h3 id="does-shuffle-sharding-add-additional-overhead-to-the-kv-store">Does shuffle sharding add additional overhead to the KV store?&lt;/h3>
 &lt;p>No, shuffle sharding subrings are computed client-side and are not stored in the ring. KV store sizing still depends primarily on the number of replicas (of any component that uses the ring, e.g. ingesters) and tokens per replica.&lt;/p>
-&lt;p>However, each tenant&amp;rsquo;s subring is cached in memory on the client-side which may slightly increase the memory footprint of certain components (mostly the distributor).&lt;/p></description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
+&lt;p>However, each tenant&amp;rsquo;s subring is cached in memory on the client-side, which may slightly increase the memory footprint of certain components (mostly the distributor).&lt;/p></description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
 &lt;p>Cortex uses &lt;a href="https://www.jaegertracing.io/">Jaeger&lt;/a> or &lt;a href="https://opentelemetry.io/">OpenTelemetry&lt;/a> to implement distributed
 tracing. We have found tracing invaluable for troubleshooting the behavior of
 Cortex in production.&lt;/p>
 &lt;h2 id="jaeger">Jaeger&lt;/h2>
 &lt;h3 id="dependencies">Dependencies&lt;/h3>
-&lt;p>In order to send traces you will need to set up a Jaeger deployment. A
-deployment includes either the jaeger all-in-one binary, or else a distributed
+&lt;p>In order to send traces, you will need to set up a Jaeger deployment. A
+deployment includes either the Jaeger all-in-one binary or else a distributed
 system of agents, collectors, and queriers. If running on Kubernetes, &lt;a href="https://github.com/jaegertracing/jaeger-kubernetes">Jaeger
 Kubernetes&lt;/a> is an excellent
 resource.&lt;/p>
 &lt;h3 id="configuration">Configuration&lt;/h3>
-&lt;p>In order to configure Cortex to send traces you must do two things:&lt;/p>
+&lt;p>In order to configure Cortex to send traces, you must do two things:&lt;/p>
 &lt;ol>
 &lt;li>Set the &lt;code>JAEGER_AGENT_HOST&lt;/code> environment variable in all components to point
 to your Jaeger agent. This defaults to &lt;code>localhost&lt;/code>.&lt;/li>
@@ -723,12 +724,12 @@ to your Jaeger agent. This defaults to &lt;code>localhost&lt;/code>.&lt;/li>
 &lt;li>The Ingester and Ruler self-initiate traces and should have sampling
 explicitly enabled.&lt;/li>
 &lt;li>Sampling for the Distributor and Query Frontend can be enabled in Cortex
-or in an upstream service such as your frontdoor.&lt;/li>
+or in an upstream service such as your front door.&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;/ol>
-&lt;p>To enable sampling in Cortex components you can specify either
-&lt;code>JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code> for remote sampling, or
+&lt;p>To enable sampling in Cortex components, you can specify either
+&lt;code>JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code> for remote sampling or
 &lt;code>JAEGER_SAMPLER_TYPE&lt;/code> and &lt;code>JAEGER_SAMPLER_PARAM&lt;/code> to manually set sampling
 configuration. See the &lt;a href="https://github.com/jaegertracing/jaeger-client-go#environment-variables">Jaeger Client Go
 documentation&lt;/a>
@@ -738,21 +739,21 @@ for the full list of environment variables you can configure.&lt;/p>
 even if you plan to use the default values.&lt;/p>
 &lt;h2 id="opentelemetry">OpenTelemetry&lt;/h2>
 &lt;h3 id="dependencies-1">Dependencies&lt;/h3>
-&lt;p>In order to send traces you will need to set up an OpenTelemetry Collector. The collector will be able to send traces to
-multiple destinations such &lt;a href="https://aws-otel.github.io/docs/getting-started/x-ray">AWS X-Ray&lt;/a>,
+&lt;p>In order to send traces, you will need to set up an OpenTelemetry Collector. The collector will be able to send traces to
+multiple destinations such as &lt;a href="https://aws-otel.github.io/docs/getting-started/x-ray">AWS X-Ray&lt;/a>,
 &lt;a href="https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/googlecloudexporter">Google Cloud&lt;/a>,
 &lt;a href="https://docs.datadoghq.com/tracing/trace_collection/open_standards/otel_collector_datadog_exporter/">DataDog&lt;/a> and
-&lt;a href="https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter">others&lt;/a>. OpenTelemetry Collector
+[others(https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter). OpenTelemetry Collector
 provides a &lt;a href="https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-collector/examples/deployment-otlp-traces">helm chart&lt;/a>
 to set up the environment.&lt;/p>
 &lt;h3 id="configuration-1">Configuration&lt;/h3>
-&lt;p>See document on the tracing section in &lt;a href="https://cortexmetrics.io/docs/configuration/configuration-file/">Configuration file&lt;/a>.&lt;/p>
+&lt;p>See the document on the tracing section in the &lt;a href="https://cortexmetrics.io/docs/configuration/configuration-file/">Configuration file&lt;/a>.&lt;/p>
 &lt;h3 id="current-state">Current State&lt;/h3>
-&lt;p>Cortex is maintaining backward compatibility with Jaeger support, Cortex has not fully migrated from OpenTracing to OpenTelemetry and is currently using the
+&lt;p>Cortex is maintaining backward compatibility with Jaeger support. Cortex has not fully migrated from OpenTracing to OpenTelemetry and is currently using the
 &lt;a href="https://opentelemetry.io/docs/migration/opentracing/">OpenTracing bridge&lt;/a>.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
 &lt;p>Cortex supports data replication for different services. By default, data is transparently replicated across the whole pool of service instances, regardless of whether these instances are all running within the same availability zone (or data center, or rack) or in different ones.&lt;/p>
 &lt;p>It is completely possible that all the replicas for the given data are held within the same availability zone, even if the Cortex cluster spans multiple zones. Storing multiple replicas for a given data within the same availability zone poses a risk for data loss if there is an outage affecting various nodes within a zone or a full zone outage.&lt;/p>
-&lt;p>For this reason, Cortex optionally supports zone-aware replication. When zone-aware replication is &lt;strong>enabled&lt;/strong>, replicas for the given data are guaranteed to span across different availability zones. This requires Cortex cluster to run at least in a number of zones equal to the configured replication factor.&lt;/p>
+&lt;p>For this reason, Cortex optionally supports zone-aware replication. When zone-aware replication is &lt;strong>enabled&lt;/strong>, replicas for the given data are guaranteed to span across different availability zones. This requires the Cortex cluster to run at least in a number of zones equal to the configured replication factor.&lt;/p>
 &lt;p>Reads from a zone-aware replication enabled Cortex Cluster can withstand zone failures as long as there are no more than &lt;code>floor(replication factor / 2)&lt;/code> zones with failing instances.&lt;/p>
 &lt;p>The Cortex services supporting &lt;strong>zone-aware replication&lt;/strong> are:&lt;/p>
 &lt;ul>
@@ -765,23 +766,23 @@ to set up the environment.&lt;/p>
 &lt;ol>
 &lt;li>Configure the availability zone for each ingester via the &lt;code>-ingester.availability-zone&lt;/code> CLI flag (or its respective YAML config option)&lt;/li>
 &lt;li>Rollout ingesters to apply the configured zone&lt;/li>
-&lt;li>Enable time-series zone-aware replication via the &lt;code>-distributor.zone-awareness-enabled&lt;/code> CLI flag (or its respective YAML config option). Please be aware this configuration option should be set to distributors, queriers and rulers.&lt;/li>
+&lt;li>Enable time-series zone-aware replication via the &lt;code>-distributor.zone-awareness-enabled&lt;/code> CLI flag (or its respective YAML config option). Please be aware that this configuration option should be set to distributors, queriers, and rulers.&lt;/li>
 &lt;/ol>
-&lt;p>The &lt;code>-distributor.shard-by-all-labels&lt;/code> setting has an impact on read availability. When enabled, a metric is sharded across all ingesters and querier needs to fetch series from all ingesters while, when disabled, a metric is sharded only across &lt;code>&amp;lt;replication factor&amp;gt;&lt;/code> ingesters.&lt;/p>
-&lt;p>In the event of a large outage impacting ingesters in more than 1 zone, when &lt;code>-distributor.shard-by-all-labels=true&lt;/code> all queries will fail, while when disabled some queries may still succeed if the ingesters holding the required metric are not impacted by the outage. To learn more about this flag, please refer to &lt;a href="/docs/configuration/arguments/#distributor">distributor arguments&lt;/a>.&lt;/p>
+&lt;p>The &lt;code>-distributor.shard-by-all-labels&lt;/code> setting has an impact on read availability. When enabled, a metric is sharded across all ingesters, and the querier needs to fetch series from all ingesters. While, when disabled, a metric is sharded only across &lt;code>&amp;lt;replication factor&amp;gt;&lt;/code> ingesters.&lt;/p>
+&lt;p>In the event of a large outage impacting ingesters in more than 1 zone, when &lt;code>-distributor.shard-by-all-labels=true&lt;/code>, all queries will fail, while when disabled, some queries may still succeed if the ingesters holding the required metric are not impacted by the outage. To learn more about this flag, please refer to &lt;a href="/docs/configuration/arguments/#distributor">distributor arguments&lt;/a>.&lt;/p>
 &lt;h2 id="store-gateways-blocks-replication">Store-gateways: blocks replication&lt;/h2>
 &lt;p>The Cortex &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway&lt;/a> (used only when Cortex is running with the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>) supports blocks sharding, used to horizontally scale blocks in a large cluster without hitting any vertical scalability limit.&lt;/p>
 &lt;p>To enable the zone-aware replication for the store-gateways, please refer to the &lt;a href="/docs/blocks-storage/store-gateway/#zone-awareness">store-gateway&lt;/a> documentation.&lt;/p>
 &lt;h2 id="minimum-number-of-zones">Minimum number of zones&lt;/h2>
 &lt;p>For Cortex to function correctly, there must be at least the same number of availability zones as the replication factor. For example, if the replication factor is configured to 3 (default for time-series replication), the Cortex cluster should be spread at least over 3 availability zones.&lt;/p>
-&lt;p>It is safe to have more zones than the replication factor, but it cannot be less. Having fewer availability zones than replication factor causes a replica write to be missed, and in some cases, the write fails if the availability zones count is too low.&lt;/p>
+&lt;p>It is safe to have more zones than the replication factor, but it cannot be less. Having fewer availability zones than the replication factor causes a replica write to be missed, and in some cases, the write fails if the availability zones count is too low.&lt;/p>
 &lt;h2 id="impact-on-unbalanced-zones">Impact on unbalanced zones&lt;/h2>
 &lt;p>&lt;strong>Cortex requires that each zone runs the same number of instances&lt;/strong> of a given service for which the zone-aware replication is enabled. This guarantees a fair split of the workload across zones.&lt;/p>
-&lt;p>On the contrary, if zones are unbalanced, the zones with a lower number of instances would have an higher pressure on resources utilization (eg. CPU and memory) compared to zones with an higher number of instances.&lt;/p>
+&lt;p>On the contrary, if zones are unbalanced, the zones with a lower number of instances would have a higher pressure on resources utilization (eg. CPU and memory) compared to zones with a higher number of instances.&lt;/p>
 &lt;h2 id="impact-on-costs">Impact on costs&lt;/h2>
-&lt;p>Depending on the underlying infrastructure being used, deploying Cortex across multiple availability zones may cause an increase in running costs as most cloud providers charge for inter availability zone networking. The most significant change would be for a Cortex cluster currently running in a single zone.&lt;/p></description></item><item><title>Docs: Limitations</title><link>/docs/guides/limitations/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/limitations/</guid><description>
+&lt;p>Depending on the underlying infrastructure being used, deploying Cortex across multiple availability zones may cause an increase in running costs as most cloud providers charge for inter-availability zone networking. The most significant change would be for a Cortex cluster currently running in a single zone.&lt;/p></description></item><item><title>Docs: Limitations</title><link>/docs/guides/limitations/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/limitations/</guid><description>
 &lt;h2 id="tenant-id-naming">Tenant ID naming&lt;/h2>
-&lt;p>The tenant ID (also called &amp;ldquo;user ID&amp;rdquo; or &amp;ldquo;org ID&amp;rdquo;) is the unique identifier of a tenant within a Cortex cluster. The tenant ID is an opaque information to Cortex, which doesn&amp;rsquo;t make any assumption on its format/content, but its naming has two limitations:&lt;/p>
+&lt;p>The tenant ID (also called &amp;ldquo;user ID&amp;rdquo; or &amp;ldquo;org ID&amp;rdquo;) is the unique identifier of a tenant within a Cortex cluster. The tenant ID is opaque information to Cortex, which doesn&amp;rsquo;t make any assumptions on its format/content, but its naming has two limitations:&lt;/p>
 &lt;ol>
 &lt;li>Supported characters&lt;/li>
 &lt;li>Length&lt;/li>
@@ -801,7 +802,7 @@ to set up the environment.&lt;/p>
 &lt;li>Exclamation point (&lt;code>!&lt;/code>)&lt;/li>
 &lt;li>Hyphen (&lt;code>-&lt;/code>)&lt;/li>
 &lt;li>Underscore (&lt;code>_&lt;/code>)&lt;/li>
-&lt;li>Single Period (&lt;code>.&lt;/code>), but the tenant IDs &lt;code>.&lt;/code> and &lt;code>..&lt;/code> is considered invalid&lt;/li>
+&lt;li>Single Period (&lt;code>.&lt;/code>), but the tenant IDs &lt;code>.&lt;/code> and &lt;code>..&lt;/code> are considered invalid&lt;/li>
 &lt;li>Asterisk (&lt;code>*&lt;/code>)&lt;/li>
 &lt;li>Single quote (&lt;code>'&lt;/code>)&lt;/li>
 &lt;li>Open parenthesis (&lt;code>(&lt;/code>)&lt;/li>
@@ -820,14 +821,14 @@ to set up the environment.&lt;/p>
 &lt;p>A single chunk contains timestamp-value pairs for several series.&lt;/p>
 &lt;h3 id="churn">Churn&lt;/h3>
 &lt;p>Churn is the frequency at which series become idle.&lt;/p>
-&lt;p>A series become idle once it&amp;rsquo;s not exported anymore by the monitored targets. Typically, series become idle when the monitored target itself disappear (eg. the process or node gets terminated).&lt;/p>
+&lt;p>A series becomes idle once it&amp;rsquo;s not exported anymore by the monitored targets. Typically, series become idle when the monitored target itself disappears (eg. the process or node gets terminated).&lt;/p>
 &lt;h3 id="flushing">Flushing&lt;/h3>
 &lt;p>Series flushing is the operation run by ingesters to offload time series from memory and store them in the long-term storage.&lt;/p>
 &lt;h3 id="ha-tracker">HA Tracker&lt;/h3>
 &lt;p>The HA Tracker is a feature of Cortex distributor which is used to deduplicate received series coming from two (or more) Prometheus servers configured in HA pairs.&lt;/p>
 &lt;p>For more information, please refer to the guide &amp;ldquo;&lt;a href="/docs/guides/ha-pair-handling/">Config for sending HA Pairs data to Cortex&lt;/a>&amp;rdquo;.&lt;/p>
 &lt;h3 id="hash-ring">Hash ring&lt;/h3>
-&lt;p>The hash ring is a distributed data structure used by Cortex for sharding, replication and service discovery. The hash ring data structure gets shared across Cortex replicas via gossip or a key-value store.&lt;/p>
+&lt;p>The hash ring is a distributed data structure used by Cortex for sharding, replication, and service discovery. The hash ring data structure gets shared across Cortex replicas via gossip or a key-value store.&lt;/p>
 &lt;p>For more information, please refer to the &lt;a href="/docs/architecture/#the-hash-ring">Architecture&lt;/a> documentation.&lt;/p>
 &lt;h3 id="org">Org&lt;/h3>
 &lt;p>&lt;em>See &lt;a href="#tenant">Tenant&lt;/a>.&lt;/em>&lt;/p>
@@ -861,5 +862,5 @@ node_cpu_seconds_total{instance=&amp;#34;10.0.0.2&amp;#34;,mode=&amp;#34;user&am
 &lt;h3 id="user">User&lt;/h3>
 &lt;p>&lt;em>See &lt;a href="#tenant">Tenant&lt;/a>.&lt;/em>&lt;/p>
 &lt;h3 id="wal">WAL&lt;/h3>
-&lt;p>The Write-Ahead Log (WAL) is an append only log stored on disk used by ingesters to recover their in-memory state after the process gets restarted, either after a clear shutdown or an abruptly termination.&lt;/p>
+&lt;p>The Write-Ahead Log (WAL) is an append-only log stored on disk used by ingesters to recover their in-memory state after the process gets restarted, either after a clear shutdown or an abrupt termination.&lt;/p>
 &lt;p>For more information, please refer to &lt;a href="/docs/blocks-storage/#the-write-path">Ingesters with WAL&lt;/a>.&lt;/p></description></item></channel></rss>

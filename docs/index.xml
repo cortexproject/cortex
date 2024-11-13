@@ -10459,17 +10459,17 @@ this, but this is not mandatory.&lt;/p>
 &lt;h3 id="resource-requests">Resource requests&lt;/h3>
 &lt;p>If using Kubernetes, each container should specify resource requests
 so that the scheduler can place them on a node with sufficient capacity.&lt;/p>
-&lt;p>For example an ingester might request:&lt;/p>
+&lt;p>For example, an ingester might request:&lt;/p>
 &lt;pre tabindex="0">&lt;code> resources:
 requests:
 cpu: 4
 memory: 10Gi
 &lt;/code>&lt;/pre>&lt;p>The specific values here should be adjusted based on your own
-experiences running Cortex - they are very dependent on rate of data
+experiences running Cortex - they are very dependent on the rate of data
 arriving and other factors such as series churn.&lt;/p>
 &lt;h3 id="take-extra-care-with-ingesters">Take extra care with ingesters&lt;/h3>
 &lt;p>Ingesters hold hours of timeseries data in memory; you can configure
-Cortex to replicate the data but you should take steps to avoid losing
+Cortex to replicate the data, but you should take steps to avoid losing
 all replicas at once:&lt;/p>
 &lt;ul>
 &lt;li>Don&amp;rsquo;t run multiple ingesters on the same node.&lt;/li>
@@ -10491,9 +10491,9 @@ values:
 - ingester
 topologyKey: &amp;#34;kubernetes.io/hostname&amp;#34;
 &lt;/code>&lt;/pre>&lt;p>Give plenty of time for an ingester to hand over or flush data to
-store when shutting down; for Kubernetes this looks like:&lt;/p>
+store when shutting down; for Kubernetes, this looks like:&lt;/p>
 &lt;pre tabindex="0">&lt;code> terminationGracePeriodSeconds: 2400
-&lt;/code>&lt;/pre>&lt;p>Ask Kubernetes to limit rolling updates to one ingester at a time, and
+&lt;/code>&lt;/pre>&lt;p>Ask Kubernetes to limit rolling updates to one ingester at a time and
 signal the old one to stop before the new one is ready:&lt;/p>
 &lt;pre tabindex="0">&lt;code> strategy:
 rollingUpdate:
@@ -12383,13 +12383,13 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.caching-bucket-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[caching_bucket_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Getting started with gossiped ring</title><link>/docs/guides/getting-started-with-gossiped-ring/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/getting-started-with-gossiped-ring/</guid><description>
-&lt;p>Cortex requires Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
-but it can also build its own KV store on top of memberlist library using a gossip algorithm.&lt;/p>
-&lt;p>This short guide shows how to start Cortex in &lt;a href="/docs/architecture/">single-binary mode&lt;/a> with memberlist-based ring.
-To reduce number of required dependencies in this guide, it will use &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> with no shipping to external stores.
-Storage engine and external storage configuration are not dependent on the ring configuration.&lt;/p>
+&lt;p>Cortex requires a Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
+but it can also build its own KV store on top of the memberlist library using a gossip algorithm.&lt;/p>
+&lt;p>This short guide shows how to start Cortex in &lt;a href="/docs/architecture/">single-binary mode&lt;/a> with a memberlist-based ring.
+To reduce the number of required dependencies in this guide, it will use &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> with no shipping to external stores.
+The storage engine and external storage configuration are not dependent on the ring configuration.&lt;/p>
 &lt;h2 id="single-binary-two-cortex-instances">Single-binary, two Cortex instances&lt;/h2>
-&lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as two instances of Cortex on local computer.
+&lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as two instances of Cortex on the local computer.
 We will use prepared configuration files (&lt;a href="../../configuration/single-process-config-blocks-gossip-1.yaml">file 1&lt;/a>, &lt;a href="../../configuration/single-process-config-blocks-gossip-2.yaml">file 2&lt;/a>), with no external
 dependencies.&lt;/p>
 &lt;p>Build Cortex first:&lt;/p>
@@ -12400,7 +12400,7 @@ $ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-2
 &lt;/code>&lt;/pre>&lt;p>Download Prometheus and configure it to use our first Cortex instance for remote writes.&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">http://localhost:9109/api/v1/push&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>After starting Prometheus, it will now start pushing data to Cortex. Distributor component in Cortex will
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>After starting Prometheus, it will now start pushing data to Cortex. The Distributor component in Cortex will
 distribute incoming samples between the two instances.&lt;/p>
 &lt;p>To query that data, you can configure your Grafana instance to use http://localhost:9109/prometheus (first Cortex) as a Prometheus data source.&lt;/p>
 &lt;h2 id="how-it-works">How it works&lt;/h2>
@@ -12414,23 +12414,23 @@ distribute incoming samples between the two instances.&lt;/p>
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">abort_if_cluster_join_fails&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>This tells memberlist to listen on port 7946, and connect to localhost:7947, which is the second instance.
 Port numbers are reversed in the second configuration file.
-We also need to configure &lt;code>node_name&lt;/code> and also ingester ID (&lt;code>ingester.lifecycler.id&lt;/code> field), because default to hostname,
+We also need to configure &lt;code>node_name&lt;/code> and also ingester ID (&lt;code>ingester.lifecycler.id&lt;/code> field), because it defaults to hostname,
 but we are running both Cortex instances on the same host.&lt;/p>
 &lt;p>To make sure that both ingesters generate unique tokens, we configure &lt;code>join_after&lt;/code> and &lt;code>observe_period&lt;/code> to 10 seconds.
-First option tells Cortex to wait 10 seconds before joining the ring. This option is normally used to tell Cortex ingester
-how long to wait for a potential tokens and data transfer from leaving ingester, but we also use it here to increase
+The first option tells Cortex to wait 10 seconds before joining the ring. This option is normally used to tell Cortex ingester
+how long to wait for a potential token and data transfer from leaving ingester, but we also use it here to increase
 the chance of finding other gossip peers. When Cortex joins the ring, it generates tokens and writes them to the ring.
 If multiple Cortex instances do this at the same time, they can generate conflicting tokens. This can be a problem
-when using gossiped ring (instances may simply not see each other yet), so we use &lt;code>observe_period&lt;/code> to watch the ring for token conflicts.
-If conflict is detected, new tokens are generated instead of conflicting tokens, and observe period is restarted.
-If no conflict is detected within the observe period, ingester switches to ACTIVE state.&lt;/p>
+when using a gossiped ring (instances may simply not see each other yet), so we use &lt;code>observe_period&lt;/code> to watch the ring for token conflicts.
+If conflict is detected, new tokens are generated instead of conflicting tokens, and the observe period is restarted.
+If no conflict is detected within the observe period, the ingester switches to the ACTIVE state.&lt;/p>
 &lt;p>We are able to observe ring state on &lt;a href="http://localhost:9109/ring">http://localhost:9109/ring&lt;/a> and &lt;a href="http://localhost:9209/ring">http://localhost:9209/ring&lt;/a>.
-The two instances may see slightly different views (eg. different timestamps), but should converge to a common state soon, with both instances
+The two instances may see slightly different views (eg. different timestamps), but they should converge to a common state soon, with both instances
 being ACTIVE and ready to receive samples.&lt;/p>
 &lt;h2 id="how-to-add-another-instance">How to add another instance?&lt;/h2>
 &lt;p>To add another Cortex to the small cluster, copy &lt;code>docs/configuration/single-process-config-blocks-gossip-1.yaml&lt;/code> to a new file,
-and make following modifications. We assume that third Cortex will run on the same machine again, so we change node name and ingester ID as well. Here
-is annotated diff:&lt;/p>
+and make the following modifications. We assume that the third Cortex will run on the same machine again, so we change the node name and ingester ID as well. Here
+is the annotated diff:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-diff" data-lang="diff">&lt;span style="display:flex;">&lt;span>...
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> server:
@@ -12473,12 +12473,12 @@ is annotated diff:&lt;/p>
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>...
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>We don&amp;rsquo;t need to change or add &lt;code>memberlist.join_members&lt;/code> list. This new instance will simply join to the second one (listening on port 7947), and
-will discover other peers through it. When using kubernetes, suggested setup is to have a headless service pointing to all pods
-that want to be part of gossip cluster, and then point &lt;code>join_members&lt;/code> to this headless service.&lt;/p>
-&lt;p>We also don&amp;rsquo;t need to change &lt;code>/tmp/cortex/storage&lt;/code> directory in &lt;code>blocks_storage.filesystem.dir&lt;/code> field. This is directory where all ingesters will
-&amp;ldquo;upload&amp;rdquo; finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use local filesystem in this example.&lt;/p>
+will discover other peers through it. When using Kubernetes, the suggested setup is to have a headless service pointing to all pods
+that want to be part of the gossip cluster, and then point &lt;code>join_members&lt;/code> to this headless service.&lt;/p>
+&lt;p>We also don&amp;rsquo;t need to change &lt;code>/tmp/cortex/storage&lt;/code> directory in the &lt;code>blocks_storage.filesystem.dir&lt;/code> field. This is the directory where all ingesters will
+&amp;ldquo;upload&amp;rdquo; finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use the local filesystem in this example.&lt;/p>
 &lt;p>After these changes, we can start another Cortex instance using the modified configuration file. This instance will join the ring
-and will start receiving samples after it enters into ACTIVE state.&lt;/p></description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
+and will start receiving samples after it enters the ACTIVE state.&lt;/p></description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
 &lt;p>To upgrade the Go&amp;rsquo;s runtime version:&lt;/p>
 &lt;ol>
 &lt;li>Upgrade build image version with golang version as describe &lt;a href="/docs/contributing/how-to-update-the-build-image/">here&lt;/a>&lt;/li>

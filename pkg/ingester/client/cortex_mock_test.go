@@ -12,6 +12,11 @@ type IngesterServerMock struct {
 	mock.Mock
 }
 
+func (m *IngesterServerMock) PushV2(ctx context.Context, r *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error) {
+	args := m.Called(ctx, r)
+	return args.Get(0).(*cortexpb.WriteResponseV2), args.Error(1)
+}
+
 func (m *IngesterServerMock) Push(ctx context.Context, r *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	args := m.Called(ctx, r)
 	return args.Get(0).(*cortexpb.WriteResponse), args.Error(1)

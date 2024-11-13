@@ -28,9 +28,16 @@ import (
 )
 
 type fakePusher struct {
-	request  *cortexpb.WriteRequest
-	response *cortexpb.WriteResponse
-	err      error
+	request    *cortexpb.WriteRequest
+	requestV2  *cortexpb.WriteRequestV2
+	response   *cortexpb.WriteResponse
+	responseV2 *cortexpb.WriteResponseV2
+	err        error
+}
+
+func (p *fakePusher) PushV2(ctx context.Context, r *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error) {
+	p.requestV2 = r
+	return p.responseV2, p.err
 }
 
 func (p *fakePusher) Push(ctx context.Context, r *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {

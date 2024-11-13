@@ -20,7 +20,7 @@ import (
 
 // ToWriteRequest converts matched slices of Labels, Samples, Metadata and Histograms into a WriteRequest proto.
 // It gets timeseries from the pool, so ReuseSlice() should be called when done.
-func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMetadata, histograms []Histogram, source WriteRequest_SourceEnum) *WriteRequest {
+func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMetadata, histograms []Histogram, source SourceEnum) *WriteRequest {
 	req := &WriteRequest{
 		Timeseries: PreallocTimeseriesSliceFromPool(),
 		Metadata:   metadata,
@@ -170,7 +170,7 @@ func (s byLabel) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // MetricMetadataMetricTypeToMetricType converts a metric type from our internal client
 // to a Prometheus one.
-func MetricMetadataMetricTypeToMetricType(mt MetricMetadata_MetricType) model.MetricType {
+func MetricMetadataMetricTypeToMetricType(mt MetricType) model.MetricType {
 	switch mt {
 	case UNKNOWN:
 		return model.MetricTypeUnknown

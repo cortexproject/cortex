@@ -12,4 +12,5 @@ option (gogoproto.unmarshaler_all) = true;
 
 service Distributor {
   rpc Push(cortexpb.WriteRequest) returns (cortexpb.WriteResponse) {};
+  rpc PushV2(cortexpb.WriteRequestV2) returns (cortexpb.WriteResponseV2) {};
 }

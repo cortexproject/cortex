@@ -74,7 +74,7 @@ func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v interface{}
 func TestMetricMetadataToMetricTypeToMetricType(t *testing.T) {
 	tc := []struct {
 		desc     string
-		input    MetricMetadata_MetricType
+		input    MetricType
 		expected model.MetricType
 	}{
 		{
@@ -89,7 +89,7 @@ func TestMetricMetadataToMetricTypeToMetricType(t *testing.T) {
 		},
 		{
 			desc:     "with an unknown metric",
-			input:    MetricMetadata_MetricType(100),
+			input:    MetricType(100),
 			expected: model.MetricTypeUnknown,
 		},
 	}

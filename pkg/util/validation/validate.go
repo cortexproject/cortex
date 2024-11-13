@@ -12,6 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
+	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -24,6 +26,7 @@ const (
 
 	errMetadataMissingMetricName = "metadata missing metric name"
 	errMetadataTooLong           = "metadata '%s' value too long: %.200q metric %.200q"
+	errMetadataV2TooLong         = "metadata '%s' value too long: %.200q"
 
 	typeMetricName = "METRIC_NAME"
 	typeHelp       = "HELP"
@@ -148,6 +151,48 @@ func ValidateSampleTimestamp(validateMetrics *ValidateMetrics, limits *Limits, u
 	return nil
 }
 
+// ValidateExemplarV2 returns an error if the exemplar is invalid.
+// The returned error may retain the provided series labels.
+func ValidateExemplarV2(validateMetrics *ValidateMetrics, symbols []string, userID string, seriesLabels []cortexpb.LabelAdapter, e *cortexpb.ExemplarV2, b labels.ScratchBuilder, st *writev2.SymbolsTable) ValidationError {
+	lbs := e.ToLabels(&b, symbols)
+	// symbolize examplar labels
+	e.LabelsRefs = st.SymbolizeLabels(lbs, nil)
+	exemplarLabels := cortexpb.FromLabelsToLabelAdapters(lbs)
+
+	if len(exemplarLabels) <= 0 {
+		validateMetrics.DiscardedExemplars.WithLabelValues(exemplarLabelsMissing, userID).Inc()
+		return newExemplarEmtpyLabelsError(seriesLabels, []cortexpb.LabelAdapter{}, e.Timestamp)
+	}
+
+	if e.Timestamp == 0 {
+		validateMetrics.DiscardedExemplars.WithLabelValues(exemplarTimestampInvalid, userID).Inc()
+		return newExemplarMissingTimestampError(
+			seriesLabels,
+			exemplarLabels,
+			e.Timestamp,
+		)
+	}
+
+	// Exemplar label length does not include chars involved in text
+	// rendering such as quotes, commas, etc.  See spec and const definition.
+	labelSetLen := 0
+	for _, l := range exemplarLabels {
+		labelSetLen += utf8.RuneCountInString(l.Name)
+		labelSetLen += utf8.RuneCountInString(l.Value)
+	}
+
+	if labelSetLen > ExemplarMaxLabelSetLength {
+		validateMetrics.DiscardedExemplars.WithLabelValues(exemplarLabelsTooLong, userID).Inc()
+		return newExemplarLabelLengthError(
+			seriesLabels,
+			exemplarLabels,
+			e.Timestamp,
+		)
+	}
+
+	return nil
+}
+
 // ValidateExemplar returns an error if the exemplar is invalid.
 // The returned error may retain the provided series labels.
 func ValidateExemplar(validateMetrics *ValidateMetrics, userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exemplar) ValidationError {
@@ -240,6 +285,37 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 		validateMetrics.DiscardedSamples.WithLabelValues(labelsSizeBytesExceeded, userID).Inc()
 		return labelSizeBytesExceededError(ls, labelsSizeBytes, maxLabelsSizeBytes)
 	}
+	return nil
+}
+
+// ValidateMetadata returns an err if a metric metadata is invalid.
+func ValidateMetadataV2(validateMetrics *ValidateMetrics, cfg *Limits, userID string, symbols []string, metadata *cortexpb.MetadataV2, st *writev2.SymbolsTable) error {
+	help := symbols[metadata.HelpRef]
+	unit := symbols[metadata.UnitRef]
+
+	// symbolize help and unit
+	metadata.HelpRef = st.Symbolize(help)
+	metadata.UnitRef = st.Symbolize(unit)
+
+	maxMetadataValueLength := cfg.MaxMetadataLength
+	var reason string
+	var cause string
+	var metadataType string
+	if len(help) > maxMetadataValueLength {
+		metadataType = typeHelp
+		reason = helpTooLong
+		cause = help
+	} else if len(unit) > maxMetadataValueLength {
+		metadataType = typeUnit
+		reason = unitTooLong
+		cause = unit
+	}
+
+	if reason != "" {
+		validateMetrics.DiscardedMetadata.WithLabelValues(reason, userID).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataV2TooLong, metadataType, cause)
+	}
+
 	return nil
 }
 

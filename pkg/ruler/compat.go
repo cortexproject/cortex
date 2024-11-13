@@ -33,6 +33,7 @@ import (
 // Pusher is an ingester server that accepts pushes.
 type Pusher interface {
 	Push(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
+	PushV2(ctx context.Context, req *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error)
 }
 
 type PusherAppender struct {

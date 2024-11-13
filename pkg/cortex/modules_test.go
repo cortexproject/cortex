@@ -160,6 +160,10 @@ func TestCortex_InitRulerStorage(t *testing.T) {
 
 type myPusher struct{}
 
+func (p *myPusher) PushV2(ctx context.Context, req *cortexpb.WriteRequestV2) (*cortexpb.WriteResponseV2, error) {
+	return nil, nil
+}
+
 func (p *myPusher) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	return nil, nil
 }

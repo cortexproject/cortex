@@ -2562,6 +2562,10 @@ ha_tracker:
 # CLI flag: -distributor.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 104857600]
 
+# Maximum OTLP request size in bytes that the Distributor can accept.
+# CLI flag: -distributor.otlp-max-recv-msg-size
+[otlp_max_recv_msg_size: <int> | default = 104857600]
+
 # Timeout for downstream ingesters.
 # CLI flag: -distributor.remote-timeout
 [remote_timeout: <duration> | default = 2s]

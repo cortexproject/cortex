@@ -9,5 +9,5 @@ import (
 
 func Test_shardQuery(t *testing.T) {
 	t.Parallel()
-	tripperware.TestQueryShardQuery(t, InstantQueryCodec, queryrange.NewPrometheusCodec(true, "", "protobuf"))
+	tripperware.TestQueryShardQuery(t, testInstantQueryCodec, queryrange.NewPrometheusCodec(true, "", "protobuf"))
 }

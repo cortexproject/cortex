@@ -137,6 +137,11 @@ type Config struct {
 	AdminLimitMessage string `yaml:"admin_limit_message"`
 
 	LabelsStringInterningEnabled bool `yaml:"labels_string_interning_enabled"`
+
+	// DisableChunkTrimming allows to disable trimming of matching series chunks based on query Start and End time.
+	// When disabled, the result may contain samples outside the queried time range but Select() performances
+	// may be improved.
+	DisableChunkTrimming bool `yaml:"disable_chunk_trimming"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -163,6 +168,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
 
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
+
+	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 }
 
 func (cfg *Config) Validate() error {
@@ -311,6 +318,8 @@ type userTSDB struct {
 	interner                     util.Interner
 
 	blockRetentionPeriod int64
+
+	postingCache cortex_tsdb.ExpandedPostingsCache
 }
 
 // Explicitly wrapping the tsdb.DB functions that we use.
@@ -446,6 +455,10 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	if u.labelsStringInterningEnabled {
 		metric.InternStrings(u.interner.Intern)
 	}
+
+	if u.postingCache != nil {
+		u.postingCache.ExpireSeries(metric)
+	}
 }
 
 // PostDeletion implements SeriesLifecycleCallback interface.
@@ -462,6 +475,9 @@ func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) 
 		u.labelSetCounter.decreaseSeriesLabelSet(u, metric)
 		if u.labelsStringInterningEnabled {
 			metric.ReleaseStrings(u.interner.Release)
+		}
+		if u.postingCache != nil {
+			u.postingCache.ExpireSeries(metric)
 		}
 	}
 }
@@ -694,7 +710,8 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		i.getInstanceLimits,
 		i.ingestionRate,
 		&i.inflightPushRequests,
-		&i.maxInflightQueryRequests)
+		&i.maxInflightQueryRequests,
+		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled)
 	i.validateMetrics = validation.NewValidateMetrics(registerer)
 
 	// Replace specific metrics which we can't directly track but we need to read
@@ -776,6 +793,7 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		nil,
 		&i.inflightPushRequests,
 		&i.maxInflightQueryRequests,
+		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled,
 	)
 
 	i.TSDBState.shipperIngesterID = "flusher"
@@ -1982,8 +2000,13 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	if err != nil {
 		return 0, 0, 0, err
 	}
+	hints := &storage.SelectHints{
+		Start:           from,
+		End:             through,
+		DisableTrimming: i.cfg.DisableChunkTrimming,
+	}
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss := q.Select(ctx, false, nil, matchers...)
+	ss := q.Select(ctx, false, hints, matchers...)
 	c()
 	if ss.Err() != nil {
 		return 0, 0, 0, ss.Err()
@@ -2150,6 +2173,12 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	blockRanges := i.cfg.BlocksStorageConfig.TSDB.BlockRanges.ToMilliseconds()
 
+	var postingCache cortex_tsdb.ExpandedPostingsCache
+	if i.cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled || i.cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled {
+		logutil.WarnExperimentalUse("expanded postings cache")
+		postingCache = cortex_tsdb.NewBlocksPostingsForMatchersCache(i.cfg.BlocksStorageConfig.TSDB.PostingsCache, i.metrics.expandedPostingsCacheMetrics)
+	}
+
 	userDB := &userTSDB{
 		userID:              userID,
 		activeSeries:        NewActiveSeries(),
@@ -2164,6 +2193,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		labelsStringInterningEnabled: i.cfg.LabelsStringInterningEnabled,
 
 		blockRetentionPeriod: i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
+		postingCache:         postingCache,
 	}
 
 	enableExemplars := false
@@ -2199,6 +2229,12 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
+		BlockChunkQuerierFunc: func(b tsdb.BlockReader, mint, maxt int64) (storage.ChunkQuerier, error) {
+			if postingCache != nil {
+				return cortex_tsdb.NewCachedBlockChunkQuerier(postingCache, b, mint, maxt)
+			}
+			return tsdb.NewBlockChunkQuerier(b, mint, maxt)
+		},
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

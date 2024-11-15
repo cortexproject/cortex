@@ -50,7 +50,8 @@ type Alert struct {
 
 // RuleDiscovery has info for all rules
 type RuleDiscovery struct {
-	RuleGroups []*RuleGroup `json:"groups"`
+	RuleGroups     []*RuleGroup `json:"groups"`
+	GroupNextToken string       `json:"groupNextToken,omitempty"`
 }
 
 // RuleGroup has info for rules which are part of a group
@@ -95,6 +96,11 @@ type recordingRule struct {
 	Type           v1.RuleType   `json:"type"`
 	LastEvaluation time.Time     `json:"lastEvaluation"`
 	EvaluationTime float64       `json:"evaluationTime"`
+}
+
+type listRulesPaginationRequest struct {
+	MaxRuleGroups int32
+	NextToken     string
 }
 
 // API is used to handle HTTP requests for the ruler service
@@ -160,6 +166,12 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	paginationRequest, err := parseListRulesPaginationRequest(req)
+	if err != nil {
+		util_api.RespondError(logger, w, v1.ErrBadData, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	rulesRequest := RulesRequest{
 		RuleNames:      req.Form["rule_name[]"],
 		RuleGroupNames: req.Form["rule_group[]"],
@@ -169,19 +181,25 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		Health:         health,
 		Matchers:       req.Form["match[]"],
 		ExcludeAlerts:  excludeAlerts,
+		MaxRuleGroups:  paginationRequest.MaxRuleGroups,
+		NextToken:      paginationRequest.NextToken,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
+	response, err := a.ruler.GetRules(req.Context(), rulesRequest)
 
 	if err != nil {
 		util_api.RespondError(logger, w, v1.ErrServer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	groups := make([]*RuleGroup, 0, len(rgs))
+	if response.Groups == nil {
+		response.Groups = make([]*GroupStateDesc, 0)
+	}
 
-	for _, g := range rgs {
+	groups := make([]*RuleGroup, 0, len(response.Groups))
+
+	for _, g := range response.Groups {
 		grp := RuleGroup{
 			Name:           g.Group.Name,
 			File:           g.Group.Namespace,
@@ -239,7 +257,6 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		groups = append(groups, &grp)
 	}
 
-	// keep data.groups are in order
 	sort.Slice(groups, func(i, j int) bool {
 		if groups[i].File == groups[j].File {
 			return groups[i].Name < groups[j].Name
@@ -249,7 +266,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 
 	b, err := json.Marshal(&util_api.Response{
 		Status: "success",
-		Data:   &RuleDiscovery{RuleGroups: groups},
+		Data:   &RuleDiscovery{RuleGroups: groups, GroupNextToken: response.NextToken},
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
@@ -261,6 +278,44 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	if n, err := w.Write(b); err != nil {
 		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
 	}
+}
+
+func parseListRulesPaginationRequest(req *http.Request) (listRulesPaginationRequest, error) {
+	var (
+		returnMaxRuleGroups = int32(-1)
+	)
+
+	maxGroups := req.URL.Query().Get("group_limit")
+	nextToken := req.URL.Query().Get("group_next_token")
+
+	if nextToken != "" && maxGroups == "" {
+		return listRulesPaginationRequest{
+			MaxRuleGroups: -1,
+			NextToken:     "",
+		}, errors.New("group_limit needs to be present in order to paginate over the groups")
+	}
+
+	if maxGroups != "" {
+		parsedMaxGroups, err := strconv.ParseInt(maxGroups, 10, 32)
+		if err != nil {
+			return listRulesPaginationRequest{
+				MaxRuleGroups: -1,
+				NextToken:     "",
+			}, errors.New("group_limit needs to be a valid number")
+		}
+		if parsedMaxGroups <= 0 {
+			return listRulesPaginationRequest{
+				MaxRuleGroups: -1,
+				NextToken:     "",
+			}, errors.New("group_limit needs to be greater than 0")
+		}
+		returnMaxRuleGroups = int32(parsedMaxGroups)
+	}
+
+	return listRulesPaginationRequest{
+		MaxRuleGroups: returnMaxRuleGroups,
+		NextToken:     nextToken,
+	}, nil
 }
 
 func parseExcludeAlerts(r *http.Request) (bool, error) {
@@ -288,14 +343,17 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	rulesRequest := RulesRequest{
-		Type: alertingRuleFilter,
+		Type:          alertingRuleFilter,
+		MaxRuleGroups: -1,
 	}
-	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
+	rulesResponse, err := a.ruler.GetRules(req.Context(), rulesRequest)
 
 	if err != nil {
 		util_api.RespondError(logger, w, v1.ErrServer, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	rgs := rulesResponse.Groups
 
 	alerts := []*Alert{}
 

@@ -23,8 +23,6 @@ import (
 )
 
 var (
-	InstantQueryCodec tripperware.Codec = NewInstantQueryCodec("", "protobuf")
-
 	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,

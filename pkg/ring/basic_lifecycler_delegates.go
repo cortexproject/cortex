@@ -70,7 +70,7 @@ func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLife
 		return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
 	}
 
-	tokensFromFile, err := LoadTokensFromFile(d.tokensPath)
+	tokenFile, err := LoadTokenFile(d.tokensPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			level.Error(d.logger).Log("msg", "error loading tokens from file", "err", err)
@@ -78,6 +78,7 @@ func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLife
 
 		return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
 	}
+	tokensFromFile := tokenFile.Tokens
 
 	// Signal the next delegate that the tokens have been loaded, miming the
 	// case the instance exist in the ring (which is OK because the lifecycler
@@ -94,7 +95,8 @@ func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLife
 
 func (d *TokensPersistencyDelegate) OnRingInstanceTokens(lifecycler *BasicLifecycler, tokens Tokens) {
 	if d.tokensPath != "" {
-		if err := tokens.StoreToFile(d.tokensPath); err != nil {
+		tokenFile := TokenFile{Tokens: tokens}
+		if err := tokenFile.StoreToFile(d.tokensPath); err != nil {
 			level.Error(d.logger).Log("msg", "error storing tokens to disk", "path", d.tokensPath, "err", err)
 		}
 	}

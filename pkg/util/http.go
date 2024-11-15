@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"flag"
@@ -143,6 +144,7 @@ type CompressionType int
 const (
 	NoCompression CompressionType = iota
 	RawSnappy
+	Gzip
 )
 
 // ParseProtoReader parses a compressed proto from an io.Reader.
@@ -215,6 +217,13 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 			return nil, err
 		}
 		body, err = decompressFromBuffer(&buf, maxSize, RawSnappy, sp)
+	case Gzip:
+		reader, err = gzip.NewReader(reader)
+		if err != nil {
+			return nil, err
+		}
+		_, err = buf.ReadFrom(reader)
+		body = buf.Bytes()
 	}
 	return body, err
 }

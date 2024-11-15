@@ -563,6 +563,10 @@ s3:
   # CLI flag: -alertmanager-storage.s3.send-content-md5
   [send_content_md5: <boolean> | default = true]
 
+  # The list api version. Supported values are: v1, v2, and ''.
+  # CLI flag: -alertmanager-storage.s3.list-objects-version
+  [list_objects_version: <string> | default = ""]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: alertmanager-storage
   [sse: <s3_sse_config>]
@@ -701,6 +705,18 @@ swift:
   # OpenStack Swift authentication URL
   # CLI flag: -alertmanager-storage.swift.auth-url
   [auth_url: <string> | default = ""]
+
+  # OpenStack Swift application credential ID.
+  # CLI flag: -alertmanager-storage.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -alertmanager-storage.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -alertmanager-storage.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
 
   # OpenStack Swift username.
   # CLI flag: -alertmanager-storage.swift.username
@@ -842,6 +858,10 @@ s3:
   # CLI flag: -blocks-storage.s3.send-content-md5
   [send_content_md5: <boolean> | default = true]
 
+  # The list api version. Supported values are: v1, v2, and ''.
+  # CLI flag: -blocks-storage.s3.list-objects-version
+  [list_objects_version: <string> | default = ""]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: blocks-storage
   [sse: <s3_sse_config>]
@@ -980,6 +1000,18 @@ swift:
   # OpenStack Swift authentication URL
   # CLI flag: -blocks-storage.swift.auth-url
   [auth_url: <string> | default = ""]
+
+  # OpenStack Swift application credential ID.
+  # CLI flag: -blocks-storage.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -blocks-storage.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -blocks-storage.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
 
   # OpenStack Swift username.
   # CLI flag: -blocks-storage.swift.username
@@ -1133,7 +1165,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-buffer-size
@@ -1238,7 +1270,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-buffer-size
@@ -1371,7 +1403,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-buffer-size
@@ -1471,7 +1503,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-buffer-size
@@ -1609,7 +1641,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-buffer-size
@@ -1709,7 +1741,7 @@ bucket_store:
 
       # The maximum number of concurrent asynchronous operations can occur.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
+      [max_async_concurrency: <int> | default = 3]
 
       # The maximum number of enqueued asynchronous operations allowed.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-buffer-size
@@ -2049,6 +2081,40 @@ tsdb:
   # [EXPERIMENTAL] True to enable native histogram.
   # CLI flag: -blocks-storage.tsdb.enable-native-histograms
   [enable_native_histograms: <boolean> | default = false]
+
+  # [EXPERIMENTAL] If enabled, ingesters will cache expanded postings when
+  # querying blocks. Caching can be configured separately for the head and
+  # compacted blocks.
+  expanded_postings_cache:
+    # If enabled, ingesters will cache expanded postings for the head block.
+    # Only queries with with an equal matcher for metric __name__ are cached.
+    head:
+      # Whether the postings cache is enabled or not
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.enabled
+      [enabled: <boolean> | default = false]
+
+      # Max bytes for postings cache
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.max-bytes
+      [max_bytes: <int> | default = 10485760]
+
+      # TTL for postings cache
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
+      [ttl: <duration> | default = 10m]
+
+    # If enabled, ingesters will cache expanded postings for the compacted
+    # blocks. The cache is shared between all blocks.
+    blocks:
+      # Whether the postings cache is enabled or not
+      # CLI flag: -blocks-storage.expanded_postings_cache.block.enabled
+      [enabled: <boolean> | default = false]
+
+      # Max bytes for postings cache
+      # CLI flag: -blocks-storage.expanded_postings_cache.block.max-bytes
+      [max_bytes: <int> | default = 10485760]
+
+      # TTL for postings cache
+      # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl
+      [ttl: <duration> | default = 10m]
 ```
 
 ### `compactor_config`
@@ -2496,6 +2562,10 @@ ha_tracker:
 # CLI flag: -distributor.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 104857600]
 
+# Maximum OTLP request size in bytes that the Distributor can accept.
+# CLI flag: -distributor.otlp-max-recv-msg-size
+[otlp_max_recv_msg_size: <int> | default = 104857600]
+
 # Timeout for downstream ingesters.
 # CLI flag: -distributor.remote-timeout
 [remote_timeout: <duration> | default = 2s]
@@ -2608,6 +2678,16 @@ instance_limits:
   # unlimited.
   # CLI flag: -distributor.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
+
+otlp:
+  # If true, all resource attributes are converted to labels.
+  # CLI flag: -distributor.otlp.convert-all-attributes
+  [convert_all_attributes: <boolean> | default = false]
+
+  # If true, a target_info metric is not ingested. (refer to:
+  # https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)
+  # CLI flag: -distributor.otlp.disable-target-info
+  [disable_target_info: <boolean> | default = false]
 ```
 
 ### `etcd_config`
@@ -3041,6 +3121,13 @@ instance_limits:
 # Experimental: Enable string interning for metrics labels.
 # CLI flag: -ingester.labels-string-interning-enabled
 [labels_string_interning_enabled: <boolean> | default = false]
+
+# Disable trimming of matching series chunks based on query Start and End time.
+# When disabled, the result may contain samples outside the queried time range
+# but select performances may be improved. Note that certain query results might
+# change by changing this option.
+# CLI flag: -ingester.disable-chunk-trimming
+[disable_chunk_trimming: <boolean> | default = false]
 ```
 
 ### `ingester_client_config`
@@ -3251,6 +3338,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Distributor.
 # CLI flag: -validation.max-native-histogram-buckets
 [max_native_histogram_buckets: <int> | default = 0]
+
+# Comma separated list of resource attributes that should be converted to
+# labels.
+# CLI flag: -distributor.promote-resource-attributes
+[promote_resource_attributes: <list of string> | default = ]
 
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user
@@ -4036,8 +4128,8 @@ The `query_range_config` configures the query splitting and caching in the Corte
 
 ```yaml
 # Split queries by an interval and execute in parallel, 0 disables it. You
-# should use an a multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks. This also
+# should use a multiple of 24 hours (same as the storage bucketing scheme), to
+# avoid queriers downloading and processing the same chunks. This also
 # determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
@@ -4617,6 +4709,10 @@ s3:
   # CLI flag: -ruler-storage.s3.send-content-md5
   [send_content_md5: <boolean> | default = true]
 
+  # The list api version. Supported values are: v1, v2, and ''.
+  # CLI flag: -ruler-storage.s3.list-objects-version
+  [list_objects_version: <string> | default = ""]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: ruler-storage
   [sse: <s3_sse_config>]
@@ -4755,6 +4851,18 @@ swift:
   # OpenStack Swift authentication URL
   # CLI flag: -ruler-storage.swift.auth-url
   [auth_url: <string> | default = ""]
+
+  # OpenStack Swift application credential ID.
+  # CLI flag: -ruler-storage.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -ruler-storage.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -ruler-storage.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
 
   # OpenStack Swift username.
   # CLI flag: -ruler-storage.swift.username
@@ -4904,6 +5012,10 @@ s3:
   # CLI flag: -runtime-config.s3.send-content-md5
   [send_content_md5: <boolean> | default = true]
 
+  # The list api version. Supported values are: v1, v2, and ''.
+  # CLI flag: -runtime-config.s3.list-objects-version
+  [list_objects_version: <string> | default = ""]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: runtime-config
   [sse: <s3_sse_config>]
@@ -5042,6 +5154,18 @@ swift:
   # OpenStack Swift authentication URL
   # CLI flag: -runtime-config.swift.auth-url
   [auth_url: <string> | default = ""]
+
+  # OpenStack Swift application credential ID.
+  # CLI flag: -runtime-config.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name.
+  # CLI flag: -runtime-config.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret.
+  # CLI flag: -runtime-config.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
 
   # OpenStack Swift username.
   # CLI flag: -runtime-config.swift.username

@@ -51,7 +51,7 @@ type Alert struct {
 // RuleDiscovery has info for all rules
 type RuleDiscovery struct {
 	RuleGroups     []*RuleGroup `json:"groups"`
-	GroupNextToken string       `json:"groupNextToken:omitempty"`
+	GroupNextToken string       `json:"groupNextToken,omitempty"`
 }
 
 // RuleGroup has info for rules which are part of a group

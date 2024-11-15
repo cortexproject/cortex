@@ -58,7 +58,11 @@ func (l *runtimeConfigTenantLimits) AllByUserID() map[string]*validation.Limits 
 	return nil
 }
 
-func loadRuntimeConfig(r io.Reader) (interface{}, error) {
+type runtimeConfigLoader struct {
+	cfg Config
+}
+
+func (l runtimeConfigLoader) load(r io.Reader) (interface{}, error) {
 	var overrides = &RuntimeConfigValues{}
 
 	decoder := yaml.NewDecoder(r)
@@ -72,6 +76,12 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 	// Ensure the provided YAML config is not composed of multiple documents,
 	if err := decoder.Decode(&RuntimeConfigValues{}); !errors.Is(err, io.EOF) {
 		return nil, errMultipleDocuments
+	}
+
+	for _, ul := range overrides.TenantLimits {
+		if err := ul.Validate(l.cfg.Distributor.ShardByAllLabels); err != nil {
+			return nil, err
+		}
 	}
 
 	return overrides, nil

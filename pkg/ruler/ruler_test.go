@@ -89,6 +89,7 @@ type ruleLimits struct {
 	disabledRuleGroups   validation.DisabledRuleGroups
 	maxQueryLength       time.Duration
 	queryOffset          time.Duration
+	externalLabels       labels.Labels
 }
 
 func (r ruleLimits) RulerTenantShardSize(_ string) int {
@@ -111,6 +112,10 @@ func (r ruleLimits) MaxQueryLength(_ string) time.Duration { return r.maxQueryLe
 
 func (r ruleLimits) RulerQueryOffset(_ string) time.Duration {
 	return r.queryOffset
+}
+
+func (r ruleLimits) ExternalLabels(_ string) labels.Labels {
+	return r.externalLabels
 }
 
 func newEmptyQueryable() storage.Queryable {
@@ -235,7 +240,7 @@ func newManager(t *testing.T, cfg Config) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, nil)
 	metrics := NewRuleEvalMetrics(cfg, nil)
 	managerFactory := DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, metrics, nil)
-	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, metrics, reg, logger)
+	manager, err := NewDefaultMultiTenantManager(cfg, ruleLimits{}, managerFactory, metrics, reg, logger)
 	require.NoError(t, err)
 
 	return manager
@@ -293,7 +298,7 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.Tes
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, querierTestConfig)
 	metrics := NewRuleEvalMetrics(rulerConfig, reg)
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, metrics, reg)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, metrics, reg, log.NewNopLogger())
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, ruleLimits{}, managerFactory, metrics, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	ruler, err := newRuler(

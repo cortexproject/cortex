@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
@@ -26,6 +27,8 @@ var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-se
 var errDuplicateQueryPriorities = errors.New("duplicate entry of priorities found. Make sure they are all unique, including the default priority")
 var errCompilingQueryPriorityRegex = errors.New("error compiling query priority regex")
 var errDuplicatePerLabelSetLimit = errors.New("duplicate per labelSet limits found. Make sure they are all unique")
+var errInvalidLabelName = errors.New("invalid label name")
+var errInvalidLabelValue = errors.New("invalid label value")
 
 // Supported values for enum limits
 const (
@@ -211,6 +214,8 @@ type Limits struct {
 	AlertmanagerMaxAlertsCount                 int                `yaml:"alertmanager_max_alerts_count" json:"alertmanager_max_alerts_count"`
 	AlertmanagerMaxAlertsSizeBytes             int                `yaml:"alertmanager_max_alerts_size_bytes" json:"alertmanager_max_alerts_size_bytes"`
 	DisabledRuleGroups                         DisabledRuleGroups `yaml:"disabled_rule_groups" json:"disabled_rule_groups" doc:"nocli|description=list of rule groups to disable"`
+
+	ExternalLabels labels.Labels `yaml:"external_labels" json:"external_labels" doc:"nocli|description=external labels for alerting rules"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -308,6 +313,18 @@ func (l *Limits) Validate(shardByAllLabels bool) error {
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
 		return errMaxGlobalSeriesPerUserValidation
+	}
+
+	if err := l.ExternalLabels.Validate(func(l labels.Label) error {
+		if !model.LabelName(l.Name).IsValid() {
+			return fmt.Errorf("%w: %q", errInvalidLabelName, l.Name)
+		}
+		if !model.LabelValue(l.Value).IsValid() {
+			return fmt.Errorf("%w: %q", errInvalidLabelValue, l.Value)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	return nil
@@ -946,6 +963,10 @@ func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 		}
 	}
 	return DisabledRuleGroups{}
+}
+
+func (o *Overrides) ExternalLabels(userID string) labels.Labels {
+	return o.GetOverridesForUser(userID).ExternalLabels
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

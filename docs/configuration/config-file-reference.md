@@ -3620,6 +3620,9 @@ query_rejection:
 
 # list of rule groups to disable
 [disabled_rule_groups: <list of DisabledRuleGroup> | default = []]
+
+# external labels for alerting rules
+[external_labels: <map of string (labelName) to string (labelValue)> | default = []]
 ```
 
 ### `memberlist_config`

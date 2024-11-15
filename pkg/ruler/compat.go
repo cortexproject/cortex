@@ -153,6 +153,7 @@ type RulesLimits interface {
 	RulerMaxRulesPerRuleGroup(userID string) int
 	RulerQueryOffset(userID string) time.Duration
 	DisabledRuleGroups(userID string) validation.DisabledRuleGroups
+	ExternalLabels(userID string) labels.Labels
 }
 
 // EngineQueryFunc returns a new engine query function validating max queryLength.

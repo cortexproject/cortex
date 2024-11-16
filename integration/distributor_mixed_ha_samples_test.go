@@ -4,7 +4,6 @@
 package integration
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -17,10 +16,10 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
-func TestDistriubtorAcceptMixedHASamplesRunningInMicroservicesMode(t *testing.T) {
+func TestDistributorAcceptMixedHASamplesRunningInMicroservicesMode(t *testing.T) {
 	const blockRangePeriod = 5 * time.Minute
 
-	t.Run(fmt.Sprintf("%s", "Distriubtor accept mixed HA samples in the same request"), func(t *testing.T) {
+	t.Run("Distriubtor accept mixed HA samples in the same request", func(t *testing.T) {
 		s, err := e2e.NewScenario(networkName)
 		require.NoError(t, err)
 		defer s.Close()

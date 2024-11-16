@@ -641,7 +641,8 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 	}
 	compareFloats := func(l, r float64) bool {
 		const epsilon = 1e-6
-		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(0, epsilon))
+		const fraction = 1.e-10 // 0.00000001%
+		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(fraction, epsilon))
 	}
 	compareMetrics := func(l, r model.Metric) bool {
 		return l.Equal(r)

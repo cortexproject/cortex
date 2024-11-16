@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -74,7 +75,7 @@ func NewClient(
 		querierAddress:      querierAddress,
 		alertmanagerAddress: alertmanagerAddress,
 		rulerAddress:        rulerAddress,
-		timeout:             5 * time.Second,
+		timeout:             30 * time.Second,
 		httpClient:          &http.Client{},
 		querierClient:       promv1.NewAPI(querierAPIClient),
 		orgID:               orgID,
@@ -105,7 +106,7 @@ func NewPromQueryClient(address string) (*Client, error) {
 	}
 
 	c := &Client{
-		timeout:       5 * time.Second,
+		timeout:       30 * time.Second,
 		httpClient:    &http.Client{},
 		querierClient: promv1.NewAPI(querierAPIClient),
 	}
@@ -231,7 +232,7 @@ func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics 
 	return metrics
 }
 
-func otlpWriteRequest(name string) pmetricotlp.ExportRequest {
+func otlpWriteRequest(name string, labels ...prompb.Label) pmetricotlp.ExportRequest {
 	d := pmetric.NewMetrics()
 
 	// Generate One Counter, One Gauge, One Histogram, One Exponential-Histogram
@@ -244,6 +245,9 @@ func otlpWriteRequest(name string) pmetricotlp.ExportRequest {
 	resourceMetric.Resource().Attributes().PutStr("service.name", "test-service")
 	resourceMetric.Resource().Attributes().PutStr("service.instance.id", "test-instance")
 	resourceMetric.Resource().Attributes().PutStr("host.name", "test-host")
+	for _, label := range labels {
+		resourceMetric.Resource().Attributes().PutStr(label.Name, label.Value)
+	}
 
 	scopeMetric := resourceMetric.ScopeMetrics().AppendEmpty()
 
@@ -258,7 +262,6 @@ func otlpWriteRequest(name string) pmetricotlp.ExportRequest {
 	counterDataPoint := counterMetric.Sum().DataPoints().AppendEmpty()
 	counterDataPoint.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
 	counterDataPoint.SetDoubleValue(10.0)
-	counterDataPoint.Attributes().PutStr("foo.bar", "baz")
 
 	counterExemplar := counterDataPoint.Exemplars().AppendEmpty()
 	counterExemplar.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
@@ -269,8 +272,8 @@ func otlpWriteRequest(name string) pmetricotlp.ExportRequest {
 	return pmetricotlp.NewExportRequestFromMetrics(d)
 }
 
-func (c *Client) OTLPPushExemplar(name string) (*http.Response, error) {
-	data, err := otlpWriteRequest(name).MarshalProto()
+func (c *Client) OTLPPushExemplar(name string, labels ...prompb.Label) (*http.Response, error) {
+	data, err := otlpWriteRequest(name, labels...).MarshalProto()
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +333,26 @@ func (c *Client) OTLP(timeseries []prompb.TimeSeries) (*http.Response, error) {
 
 // Query runs an instant query.
 func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
-	value, _, err := c.querierClient.Query(context.Background(), query, ts)
+	ctx := context.Background()
+	retries := backoff.New(ctx, backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 3 * time.Second,
+		MaxRetries: 5,
+	})
+	var (
+		value model.Value
+		err   error
+	)
+	for retries.Ongoing() {
+		value, _, err = c.querierClient.Query(context.Background(), query, ts)
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "EOF") {
+			break
+		}
+		retries.Wait()
+	}
 	return value, err
 }
 
@@ -343,11 +365,31 @@ func (c *Client) QueryExemplars(query string, start, end time.Time) ([]promv1.Ex
 
 // QueryRange runs a query range.
 func (c *Client) QueryRange(query string, start, end time.Time, step time.Duration) (model.Value, error) {
-	value, _, err := c.querierClient.QueryRange(context.Background(), query, promv1.Range{
-		Start: start,
-		End:   end,
-		Step:  step,
+	ctx := context.Background()
+	retries := backoff.New(ctx, backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 3 * time.Second,
+		MaxRetries: 5,
 	})
+	var (
+		value model.Value
+		err   error
+	)
+	for retries.Ongoing() {
+		value, _, err = c.querierClient.QueryRange(context.Background(), query, promv1.Range{
+			Start: start,
+			End:   end,
+			Step:  step,
+		})
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "EOF") {
+			break
+		}
+		retries.Wait()
+	}
+
 	return value, err
 }
 
@@ -601,6 +643,8 @@ type RuleFilter struct {
 	RuleNames      []string
 	RuleType       string
 	ExcludeAlerts  string
+	MaxRuleGroup   int
+	NextToken      string
 }
 
 func addQueryParams(urlValues url.Values, paramName string, params ...string) {
@@ -612,12 +656,12 @@ func addQueryParams(urlValues url.Values, paramName string, params ...string) {
 }
 
 // GetPrometheusRules fetches the rules from the Prometheus endpoint /api/v1/rules.
-func (c *Client) GetPrometheusRules(filter RuleFilter) ([]*ruler.RuleGroup, error) {
+func (c *Client) GetPrometheusRules(filter RuleFilter) ([]*ruler.RuleGroup, string, error) {
 	// Create HTTP request
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/api/v1/rules", c.rulerAddress), nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	req.Header.Set("X-Scope-OrgID", c.orgID)
 
@@ -627,6 +671,12 @@ func (c *Client) GetPrometheusRules(filter RuleFilter) ([]*ruler.RuleGroup, erro
 	addQueryParams(urlValues, "rule_group[]", filter.RuleGroupNames...)
 	addQueryParams(urlValues, "type", filter.RuleType)
 	addQueryParams(urlValues, "exclude_alerts", filter.ExcludeAlerts)
+	if filter.MaxRuleGroup > 0 {
+		addQueryParams(urlValues, "group_limit", strconv.Itoa(filter.MaxRuleGroup))
+	}
+	if filter.NextToken != "" {
+		addQueryParams(urlValues, "group_next_token", filter.NextToken)
+	}
 	req.URL.RawQuery = urlValues.Encode()
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
@@ -635,13 +685,13 @@ func (c *Client) GetPrometheusRules(filter RuleFilter) ([]*ruler.RuleGroup, erro
 	// Execute HTTP request
 	res, err := c.httpClient.Do(req.WithContext(ctx))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Decode the response.
@@ -652,14 +702,14 @@ func (c *Client) GetPrometheusRules(filter RuleFilter) ([]*ruler.RuleGroup, erro
 
 	decoded := &response{}
 	if err := json.Unmarshal(body, decoded); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if decoded.Status != "success" {
-		return nil, fmt.Errorf("unexpected response status '%s'", decoded.Status)
+		return nil, "", fmt.Errorf("unexpected response status '%s'", decoded.Status)
 	}
 
-	return decoded.Data.RuleGroups, nil
+	return decoded.Data.RuleGroups, decoded.Data.GroupNextToken, nil
 }
 
 // GetRuleGroups gets the configured rule groups from the ruler.

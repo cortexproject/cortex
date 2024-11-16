@@ -1,55 +1,59 @@
 package push
 
 import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"fmt"
+	"io"
 	"net/http"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+const (
+	pbContentType   = "application/x-protobuf"
+	jsonContentType = "application/json"
 )
 
 // OTLPHandler is a http.Handler which accepts OTLP metrics.
-func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
+func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distributor.OTLPConfig, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		logger := log.WithContext(ctx, log.Logger)
+		logger := util_log.WithContext(ctx, util_log.Logger)
 		if sourceIPs != nil {
 			source := sourceIPs.Get(r)
 			if source != "" {
 				ctx = util.AddSourceIPsToOutgoingContext(ctx, source)
-				logger = log.WithSourceIPs(source, logger)
+				logger = util_log.WithSourceIPs(source, logger)
 			}
 		}
-		req, err := remote.DecodeOTLPWriteRequest(r)
+
+		userID, err := tenant.TenantID(ctx)
 		if err != nil {
-			level.Error(logger).Log("err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		promConverter := prometheusremotewrite.NewPrometheusConverter()
-		setting := prometheusremotewrite.Settings{
-			AddMetricSuffixes: true,
-			DisableTargetInfo: true,
-		}
-		annots, err := promConverter.FromMetrics(ctx, convertToMetricsAttributes(req.Metrics()), setting)
-		ws, _ := annots.AsStrings("", 0, 0)
-		if len(ws) > 0 {
-			level.Warn(logger).Log("msg", "Warnings translating OTLP metrics to Prometheus write request", "warnings", ws)
-		}
-
+		req, err := decodeOTLPWriteRequest(ctx, r, maxRecvMsgSize)
 		if err != nil {
-			level.Error(logger).Log("msg", "Error translating OTLP metrics to Prometheus write request", "err", err)
+			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -60,8 +64,16 @@ func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handle
 			SkipLabelNameValidation: false,
 		}
 
+		// otlp to prompb TimeSeries
+		promTsList, err := convertToPromTS(r.Context(), req.Metrics(), cfg, overrides, userID, logger)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// convert prompb to cortexpb TimeSeries
 		tsList := []cortexpb.PreallocTimeseries(nil)
-		for _, v := range promConverter.TimeSeries() {
+		for _, v := range promTsList {
 			tsList = append(tsList, cortexpb.PreallocTimeseries{TimeSeries: &cortexpb.TimeSeries{
 				Labels:     makeLabels(v.Labels),
 				Samples:    makeSamples(v.Samples),
@@ -85,6 +97,93 @@ func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handle
 			http.Error(w, string(resp.Body), int(resp.Code))
 		}
 	})
+}
+
+func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (pmetricotlp.ExportRequest, error) {
+	expectedSize := int(r.ContentLength)
+	if expectedSize > maxSize {
+		return pmetricotlp.NewExportRequest(), fmt.Errorf("received message larger than max (%d vs %d)", expectedSize, maxSize)
+	}
+
+	contentType := r.Header.Get("Content-Type")
+	contentEncoding := r.Header.Get("Content-Encoding")
+
+	var compressionType util.CompressionType
+	switch contentEncoding {
+	case "gzip":
+		compressionType = util.Gzip
+	case "":
+		compressionType = util.NoCompression
+	default:
+		return pmetricotlp.NewExportRequest(), fmt.Errorf("unsupported compression: %s, Supported compression types are \"gzip\" or '' (no compression)", contentEncoding)
+	}
+
+	var decoderFunc func(reader io.Reader) (pmetricotlp.ExportRequest, error)
+	switch contentType {
+	case pbContentType:
+		decoderFunc = func(reader io.Reader) (pmetricotlp.ExportRequest, error) {
+			req := pmetricotlp.NewExportRequest()
+			otlpReqProto := otlpProtoMessage{req: &req}
+			return req, util.ParseProtoReader(ctx, reader, expectedSize, maxSize, otlpReqProto, compressionType)
+		}
+	case jsonContentType:
+		decoderFunc = func(reader io.Reader) (pmetricotlp.ExportRequest, error) {
+			req := pmetricotlp.NewExportRequest()
+
+			reader = io.LimitReader(reader, int64(maxSize)+1)
+			if compressionType == util.Gzip {
+				var err error
+				reader, err = gzip.NewReader(reader)
+				if err != nil {
+					return req, err
+				}
+			}
+
+			var buf bytes.Buffer
+			if expectedSize > 0 {
+				buf.Grow(expectedSize + bytes.MinRead) // extra space guarantees no reallocation
+			}
+			_, err := buf.ReadFrom(reader)
+			if err != nil {
+				return req, err
+			}
+
+			return req, req.UnmarshalJSON(buf.Bytes())
+		}
+	default:
+		return pmetricotlp.NewExportRequest(), fmt.Errorf("unsupported content type: %s, supported: [%s, %s]", contentType, jsonContentType, pbContentType)
+	}
+
+	return decoderFunc(r.Body)
+}
+
+func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) ([]prompb.TimeSeries, error) {
+	promConverter := prometheusremotewrite.NewPrometheusConverter()
+	settings := prometheusremotewrite.Settings{
+		AddMetricSuffixes: true,
+		DisableTargetInfo: cfg.DisableTargetInfo,
+	}
+
+	var annots annotations.Annotations
+	var err error
+
+	if cfg.ConvertAllAttributes {
+		annots, err = promConverter.FromMetrics(ctx, convertToMetricsAttributes(pmetrics), settings)
+	} else {
+		settings.PromoteResourceAttributes = overrides.PromoteResourceAttributes(userID)
+		annots, err = promConverter.FromMetrics(ctx, pmetrics, settings)
+	}
+
+	ws, _ := annots.AsStrings("", 0, 0)
+	if len(ws) > 0 {
+		level.Warn(logger).Log("msg", "Warnings translating OTLP metrics to Prometheus write request", "warnings", ws)
+	}
+
+	if err != nil {
+		level.Error(logger).Log("msg", "Error translating OTLP metrics to Prometheus write request", "err", err)
+		return nil, err
+	}
+	return promConverter.TimeSeries(), nil
 }
 
 func makeLabels(in []prompb.Label) []cortexpb.LabelAdapter {
@@ -191,3 +290,16 @@ func joinAttributeMaps(from, to pcommon.Map) {
 		return true
 	})
 }
+
+// otlpProtoMessage Implements proto.Meesage, proto.Unmarshaler
+type otlpProtoMessage struct {
+	req *pmetricotlp.ExportRequest
+}
+
+func (otlpProtoMessage) ProtoMessage() {}
+
+func (otlpProtoMessage) Reset() {}
+
+func (otlpProtoMessage) String() string { return "" }
+
+func (o otlpProtoMessage) Unmarshal(data []byte) error { return o.req.UnmarshalProto(data) }

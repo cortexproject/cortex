@@ -716,7 +716,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
 }
 
-func TestTokensOnDisk(t *testing.T) {
+func TestTokenFileOnDisk(t *testing.T) {
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -756,6 +756,18 @@ func TestTokensOnDisk(t *testing.T) {
 			len(desc.Ingesters["ing1"].Tokens) == 512
 	})
 
+	// Change state from ACTIVE to READONLY
+	err = l1.ChangeState(context.Background(), READONLY)
+	require.NoError(t, err)
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		return ok &&
+			desc.Ingesters["ing1"].State == READONLY
+	})
+
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l1))
 
 	// Start new ingester at same token directory.
@@ -776,7 +788,7 @@ func TestTokensOnDisk(t *testing.T) {
 		}
 		return ok &&
 			len(desc.Ingesters) == 1 &&
-			desc.Ingesters["ing2"].State == ACTIVE &&
+			desc.Ingesters["ing2"].State == READONLY &&
 			len(desc.Ingesters["ing2"].Tokens) == 512
 	})
 

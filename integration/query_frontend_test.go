@@ -641,7 +641,7 @@ func TestQueryFrontendQueryRejection(t *testing.T) {
 		Bucket:    bucketName,
 		AccessKey: e2edb.MinioAccessKey,
 		SecretKey: e2edb.MinioSecretKey,
-	}, "runtime-config-test")
+	}, "runtime-config-test", nil)
 
 	require.NoError(t, err)
 

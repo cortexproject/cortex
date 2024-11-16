@@ -245,7 +245,7 @@ groups:
       message: |
         The number of in-memory series per ingester in {{ $labels.cluster }}/{{ $labels.namespace }} is too high.
     expr: |
-      avg by (cluster, namespace) (cortex_ingester_memory_series) > 1.6e6
+      avg by (cluster, namespace) (cortex_ingester_memory_series) > 3.2e6
     for: 2h
     labels:
       severity: warning
@@ -254,7 +254,7 @@ groups:
       message: |
         Ingesters in {{ $labels.cluster }}/{{ $labels.namespace }} ingest too many samples per second.
     expr: |
-      avg by (cluster, namespace) (rate(cortex_ingester_ingested_samples_total[1m])) > 80e3
+      avg by (cluster, namespace) (rate(cortex_ingester_ingested_samples_total[1m])) > 160e3
     for: 15m
     labels:
       severity: warning

@@ -246,7 +246,7 @@ func (t *Cortex) initGrpcClientServices() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initDistributor() (serv services.Service, err error) {
-	t.API.RegisterDistributor(t.Distributor, t.Cfg.Distributor)
+	t.API.RegisterDistributor(t.Distributor, t.Cfg.Distributor, t.Overrides)
 
 	return nil, nil
 }
@@ -474,6 +474,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 	prometheusCodec := queryrange.NewPrometheusCodec(false, t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
 	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
+	instantQueryCodec := instantquery.NewInstantQueryCodec(t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
@@ -490,7 +491,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		return nil, err
 	}
 
-	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides, queryAnalyzer, t.Cfg.Querier.LookbackDelta)
+	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides, instantQueryCodec, queryAnalyzer, t.Cfg.Querier.LookbackDelta)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +502,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryRangeMiddlewares,
 		instantQueryMiddlewares,
 		prometheusCodec,
-		instantquery.NewInstantQueryCodec(t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec),
+		instantQueryCodec,
 		t.Overrides,
 		queryAnalyzer,
 		t.Cfg.Querier.DefaultEvaluationInterval,

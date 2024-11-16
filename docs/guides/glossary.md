@@ -21,7 +21,7 @@ A single chunk contains timestamp-value pairs for several series.
 
 Churn is the frequency at which series become idle.
 
-A series become idle once it's not exported anymore by the monitored targets. Typically, series become idle when the monitored target itself disappear (eg. the process or node gets terminated).
+A series becomes idle once it's not exported anymore by the monitored targets. Typically, series become idle when the monitored target itself disappears (eg. the process or node gets terminated).
 
 ### Flushing
 
@@ -35,7 +35,7 @@ For more information, please refer to the guide "[Config for sending HA Pairs da
 
 ### Hash ring
 
-The hash ring is a distributed data structure used by Cortex for sharding, replication and service discovery. The hash ring data structure gets shared across Cortex replicas via gossip or a key-value store.
+The hash ring is a distributed data structure used by Cortex for sharding, replication, and service discovery. The hash ring data structure gets shared across Cortex replicas via gossip or a key-value store.
 
 For more information, please refer to the [Architecture](../architecture.md#the-hash-ring) documentation.
 
@@ -94,6 +94,6 @@ _See [Tenant](#tenant)._
 
 ### WAL
 
-The Write-Ahead Log (WAL) is an append only log stored on disk used by ingesters to recover their in-memory state after the process gets restarted, either after a clear shutdown or an abruptly termination.
+The Write-Ahead Log (WAL) is an append-only log stored on disk used by ingesters to recover their in-memory state after the process gets restarted, either after a clear shutdown or an abrupt termination.
 
 For more information, please refer to [Ingesters with WAL](../blocks-storage/_index.md#the-write-path).

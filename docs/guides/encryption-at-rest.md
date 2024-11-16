@@ -48,8 +48,8 @@ The alertmanager S3 server-side encryption can be configured similarly to the bl
 
 ### Per-tenant config overrides
 
-The S3 client used by the blocks storage, ruler and alertmanager supports S3 SSE config overrides on a per-tenant basis, using the [runtime configuration file](../configuration/arguments.md#runtime-configuration-file).
-The following settings can ben overridden for each tenant:
+The S3 client used by the blocks storage, ruler, and alertmanager supports S3 SSE config overrides on a per-tenant basis, using the [runtime configuration file](../configuration/arguments.md#runtime-configuration-file).
+The following settings can be overridden for each tenant:
 
 - **`s3_sse_type`**<br />
   S3 server-side encryption type. It must be set to enable the SSE config override for a given tenant.
@@ -60,4 +60,5 @@ The following settings can ben overridden for each tenant:
 
 ## Other storages
 
-Other storage backends may support encryption at rest configuring it directly at the storage level.
+Other storage backends may support encryption at rest, configuring it directly at the storage level.
+

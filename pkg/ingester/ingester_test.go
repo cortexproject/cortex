@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -41,6 +42,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
@@ -2060,7 +2062,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			},
 			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
 				// Send a lot of samples
-				_, err := ingester.Push(ctx, generateSamplesForLabel(labels.FromStrings(labels.MetricName, "test"), 10000))
+				_, err := ingester.Push(ctx, generateSamplesForLabel(labels.FromStrings(labels.MetricName, "test"), 10000, 1))
 				require.NoError(b, err)
 
 				ingester.ingestionRate.Tick()
@@ -2084,7 +2086,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
 				// Send some samples for one tenant (not the same that is used during the test)
 				ctx := user.InjectOrgID(context.Background(), "different_tenant")
-				_, err := ingester.Push(ctx, generateSamplesForLabel(labels.FromStrings(labels.MetricName, "test"), 10000))
+				_, err := ingester.Push(ctx, generateSamplesForLabel(labels.FromStrings(labels.MetricName, "test"), 10000, 1))
 				require.NoError(b, err)
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
@@ -2104,7 +2106,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 				return true
 			},
 			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
-				_, err := ingester.Push(ctx, generateSamplesForLabel(labels.FromStrings(labels.MetricName, "test"), 10000))
+				_, err := ingester.Push(ctx, generateSamplesForLabel(labels.FromStrings(labels.MetricName, "test"), 10000, 1))
 				require.NoError(b, err)
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
@@ -4512,9 +4514,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load()) // Flushing removed all series from memory.
 
 	// Verify that user has disappeared from metrics.
-	err = testutil.GatherAndCompare(r, strings.NewReader(""), userMetrics...)
-	require.ErrorContains(t, err, "expected metric name(s) not found")
-	require.ErrorContains(t, err, strings.Join(userMetrics, " "))
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(""), userMetrics...))
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_users The current number of users in memory.
@@ -5080,6 +5080,277 @@ func TestIngester_instanceLimitsMetrics(t *testing.T) {
 	`), "cortex_ingester_instance_limits"))
 }
 
+func TestExpendedPostingsCache(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
+
+	runQuery := func(t *testing.T, ctx context.Context, i *Ingester, matchers []*client.LabelMatcher) []client.TimeSeriesChunk {
+		s := &mockQueryStreamServer{ctx: ctx}
+
+		err := i.QueryStream(&client.QueryRequest{
+			StartTimestampMs: 0,
+			EndTimestampMs:   math.MaxInt64,
+			Matchers:         matchers,
+		}, s)
+		require.NoError(t, err)
+		return s.series
+	}
+
+	tc := map[string]struct {
+		cacheConfig              cortex_tsdb.TSDBPostingsCacheConfig
+		expectedBlockPostingCall int
+		expectedHeadPostingCall  int
+	}{
+		"cacheDisabled": {
+			expectedBlockPostingCall: 0,
+			expectedHeadPostingCall:  0,
+			cacheConfig: cortex_tsdb.TSDBPostingsCacheConfig{
+				Head: cortex_tsdb.PostingsCacheConfig{
+					Enabled: false,
+				},
+				Blocks: cortex_tsdb.PostingsCacheConfig{
+					Enabled: false,
+				},
+			},
+		},
+		"enabled cache on compacted blocks": {
+			expectedBlockPostingCall: 1,
+			expectedHeadPostingCall:  0,
+			cacheConfig: cortex_tsdb.TSDBPostingsCacheConfig{
+				Blocks: cortex_tsdb.PostingsCacheConfig{
+					Ttl:      time.Hour,
+					MaxBytes: 1024 * 1024 * 1024,
+					Enabled:  true,
+				},
+			},
+		},
+		"enabled cache on head": {
+			expectedBlockPostingCall: 0,
+			expectedHeadPostingCall:  1,
+			cacheConfig: cortex_tsdb.TSDBPostingsCacheConfig{
+				Head: cortex_tsdb.PostingsCacheConfig{
+					Ttl:      time.Hour,
+					MaxBytes: 1024 * 1024 * 1024,
+					Enabled:  true,
+				},
+			},
+		},
+		"enabled cache on compacted blocks and head": {
+			expectedBlockPostingCall: 1,
+			expectedHeadPostingCall:  1,
+			cacheConfig: cortex_tsdb.TSDBPostingsCacheConfig{
+				Blocks: cortex_tsdb.PostingsCacheConfig{
+					Ttl:      time.Hour,
+					MaxBytes: 1024 * 1024 * 1024,
+					Enabled:  true,
+				},
+				Head: cortex_tsdb.PostingsCacheConfig{
+					Ttl:      time.Hour,
+					MaxBytes: 1024 * 1024 * 1024,
+					Enabled:  true,
+				},
+			},
+		},
+	}
+
+	for name, c := range tc {
+		t.Run(name, func(t *testing.T) {
+			postingsForMatchersCalls := atomic.Int64{}
+			cfg.BlocksStorageConfig.TSDB.PostingsCache = c.cacheConfig
+
+			cfg.BlocksStorageConfig.TSDB.PostingsCache.PostingsForMatchers = func(ctx context.Context, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) {
+				postingsForMatchersCalls.Add(1)
+				return tsdb.PostingsForMatchers(ctx, ix, ms...)
+			}
+			cfg.LifecyclerConfig.JoinAfter = 0
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+
+			r := prometheus.NewRegistry()
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, r)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			// Wait until the ingester is ACTIVE
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			metricNames := []string{"metric1", "metric2"}
+
+			// Generate 4 hours of data so we have 1 block + head
+			totalSamples := 4 * 60
+			var samples = make([]cortexpb.Sample, 0, totalSamples)
+
+			for i := 0; i < totalSamples; i++ {
+				samples = append(samples, cortexpb.Sample{
+					Value:       float64(i),
+					TimestampMs: int64(i * 60 * 1000),
+				})
+			}
+
+			lbls := make([]labels.Labels, 0, len(samples))
+			for j := 0; j < 10; j++ {
+				for i := 0; i < len(samples); i++ {
+					lbls = append(lbls, labels.FromStrings(labels.MetricName, metricNames[i%len(metricNames)], "a", fmt.Sprintf("aaa%v", j)))
+				}
+			}
+
+			for i := len(samples); i < len(lbls); i++ {
+				samples = append(samples, samples[i%len(samples)])
+			}
+
+			req := cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
+			_, err = i.Push(ctx, req)
+			require.NoError(t, err)
+
+			i.compactBlocks(ctx, false, nil)
+
+			extraMatcher := []struct {
+				matchers       []*client.LabelMatcher
+				expectedLenght int
+			}{
+				{
+					expectedLenght: 10,
+					matchers: []*client.LabelMatcher{
+						{
+							Type:  client.REGEX_MATCH,
+							Name:  "a",
+							Value: "aaa.*",
+						},
+					},
+				},
+				{
+					expectedLenght: 1,
+					matchers: []*client.LabelMatcher{
+						{
+							Type:  client.EQUAL,
+							Name:  "a",
+							Value: "aaa1",
+						},
+					},
+				},
+			}
+
+			// Run queries with no cache
+			for _, name := range metricNames {
+				for _, m := range extraMatcher {
+					postingsForMatchersCalls.Store(0)
+					require.Len(t, runQuery(t, ctx, i, append(m.matchers, &client.LabelMatcher{Type: client.EQUAL, Name: labels.MetricName, Value: name})), m.expectedLenght)
+					// Query block and Head
+					require.Equal(t, int64(c.expectedBlockPostingCall+c.expectedHeadPostingCall), postingsForMatchersCalls.Load())
+				}
+			}
+
+			if c.expectedHeadPostingCall > 0 || c.expectedBlockPostingCall > 0 {
+				metric := `
+		# HELP cortex_ingester_expanded_postings_cache_requests Total number of requests to the cache.
+		# TYPE cortex_ingester_expanded_postings_cache_requests counter
+`
+				if c.expectedBlockPostingCall > 0 {
+					metric += `
+		cortex_ingester_expanded_postings_cache_requests{cache="block"} 4
+`
+				}
+
+				if c.expectedHeadPostingCall > 0 {
+					metric += `
+		cortex_ingester_expanded_postings_cache_requests{cache="head"} 4
+`
+				}
+
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_requests")
+				require.NoError(t, err)
+			}
+
+			// Calling again and it should hit the cache
+			for _, name := range metricNames {
+				for _, m := range extraMatcher {
+					postingsForMatchersCalls.Store(0)
+					require.Len(t, runQuery(t, ctx, i, append(m.matchers, &client.LabelMatcher{Type: client.EQUAL, Name: labels.MetricName, Value: name})), m.expectedLenght)
+					require.Equal(t, int64(0), postingsForMatchersCalls.Load())
+				}
+			}
+
+			if c.expectedHeadPostingCall > 0 || c.expectedBlockPostingCall > 0 {
+				metric := `
+		# HELP cortex_ingester_expanded_postings_cache_hits Total number of hit requests to the cache.
+		# TYPE cortex_ingester_expanded_postings_cache_hits counter
+`
+				if c.expectedBlockPostingCall > 0 {
+					metric += `
+		cortex_ingester_expanded_postings_cache_hits{cache="block"} 4
+`
+				}
+
+				if c.expectedHeadPostingCall > 0 {
+					metric += `
+		cortex_ingester_expanded_postings_cache_hits{cache="head"} 4
+`
+				}
+
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_hits")
+				require.NoError(t, err)
+			}
+
+			// Check the number total of series with the first metric name
+			require.Len(t, runQuery(t, ctx, i, []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: metricNames[0]}}), 10)
+			// Query block and head
+			require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedBlockPostingCall+c.expectedHeadPostingCall))
+
+			// Adding a metric for the first metric name so we expire all caches for that metric name
+			_, err = i.Push(ctx, cortexpb.ToWriteRequest(
+				[]labels.Labels{labels.FromStrings(labels.MetricName, metricNames[0], "extra", "1")}, []cortexpb.Sample{{Value: 2, TimestampMs: 4 * 60 * 60 * 1000}}, nil, nil, cortexpb.API))
+			require.NoError(t, err)
+
+			for in, name := range metricNames {
+				for _, m := range extraMatcher {
+					postingsForMatchersCalls.Store(0)
+
+					require.Len(t, runQuery(t, ctx, i, append(m.matchers, &client.LabelMatcher{Type: client.EQUAL, Name: labels.MetricName, Value: name})), m.expectedLenght)
+
+					// first metric name should be expired
+					if in == 0 {
+						// Query only head as the block is already cached and the head was expired
+						require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedHeadPostingCall))
+					} else {
+						require.Equal(t, postingsForMatchersCalls.Load(), int64(0))
+					}
+				}
+			}
+
+			// Check if the new metric name was added
+			require.Len(t, runQuery(t, ctx, i, []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: metricNames[0]}}), 11)
+			// Query only head as the block is already cached and the head was expired
+			require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedHeadPostingCall))
+			postingsForMatchersCalls.Store(0)
+			require.Len(t, runQuery(t, ctx, i, []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: metricNames[0]}}), 11)
+			// Return all from the caches
+			require.Equal(t, postingsForMatchersCalls.Load(), int64(0))
+
+			// Should never cache head postings there is not matcher for the metric name
+			postingsForMatchersCalls.Store(0)
+			require.Len(t, runQuery(t, ctx, i, []*client.LabelMatcher{{Type: client.EQUAL, Name: "extra", Value: "1"}}), 1)
+			// Query block and head but bypass head
+			require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedBlockPostingCall))
+			if c.cacheConfig.Head.Enabled {
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(`
+		# HELP cortex_ingester_expanded_postings_non_cacheable_queries Total number of non cacheable queries.
+		# TYPE cortex_ingester_expanded_postings_non_cacheable_queries counter
+        cortex_ingester_expanded_postings_non_cacheable_queries{cache="head"} 1
+`), "cortex_ingester_expanded_postings_non_cacheable_queries")
+				require.NoError(t, err)
+			}
+
+			postingsForMatchersCalls.Store(0)
+			require.Len(t, runQuery(t, ctx, i, []*client.LabelMatcher{{Type: client.EQUAL, Name: "extra", Value: "1"}}), 1)
+			// Return cached value from block and bypass head
+			require.Equal(t, int64(0), postingsForMatchersCalls.Load())
+		})
+	}
+}
+
 func TestIngester_inflightPushRequests(t *testing.T) {
 	limits := InstanceLimits{MaxInflightPushRequests: 1}
 
@@ -5105,7 +5376,7 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		count := 3500000
-		req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, fmt.Sprintf("real-%d", count)), count)
+		req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, fmt.Sprintf("real-%d", count)), count, 1)
 		// Signal that we're going to do the real push now.
 		close(startCh)
 
@@ -5122,7 +5393,7 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 		}
 
 		time.Sleep(10 * time.Millisecond) // Give first goroutine a chance to start pushing...
-		req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, "testcase"), 1024)
+		req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, "testcase"), 1024, 1)
 
 		_, err := i.Push(ctx, req)
 		require.Equal(t, errTooManyInflightPushRequests, err)
@@ -5184,14 +5455,14 @@ func Test_Ingester_QueryExemplar_MaxInflightQueryRequest(t *testing.T) {
 	require.Equal(t, err, errTooManyInflightQueryRequests)
 }
 
-func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest {
+func generateSamplesForLabel(l labels.Labels, count int, sampleIntervalInMs int) *cortexpb.WriteRequest {
 	var lbls = make([]labels.Labels, 0, count)
 	var samples = make([]cortexpb.Sample, 0, count)
 
 	for i := 0; i < count; i++ {
 		samples = append(samples, cortexpb.Sample{
 			Value:       float64(i),
-			TimestampMs: int64(i),
+			TimestampMs: int64(i * sampleIntervalInMs),
 		})
 		lbls = append(lbls, l)
 	}
@@ -5317,12 +5588,14 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 
 			require.Equal(t, testData.expectedResponse, response.Code)
 			require.Equal(t, testData.expectedState, i.lifecycler.GetState())
-
-			err = i.CheckReady(context.Background())
 			if testData.expectedIsReady {
-				require.NoError(t, err)
+				// Wait for instance to own tokens
+				test.Poll(t, 1*time.Second, nil, func() interface{} {
+					return i.CheckReady(context.Background())
+				})
+				require.NoError(t, i.CheckReady(context.Background()))
 			} else {
-				require.NotNil(t, err)
+				require.NotNil(t, i.CheckReady(context.Background()))
 			}
 		})
 	}

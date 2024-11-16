@@ -27,308 +27,200 @@
             "height": "100px",
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
+                  },
                   "format": "short",
                   "id": 1,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
-                  "linewidth": 1,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum(cortex_ruler_managers_total{job=~\"$job\"})",
                         "format": "time_series",
                         "instant": true,
-                        "intervalFactor": 2,
                         "refId": "A"
                      }
                   ],
                   "thresholds": "70,80",
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Active Configurations",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "singlestat",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "singlestat"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
+                  },
                   "format": "short",
                   "id": 2,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
-                  "linewidth": 1,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum(cortex_prometheus_rule_group_rules{job=~\"$job\"})",
                         "format": "time_series",
                         "instant": true,
-                        "intervalFactor": 2,
                         "refId": "A"
                      }
                   ],
                   "thresholds": "70,80",
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Total Rules",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "singlestat",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "singlestat"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
+                  },
                   "format": "reqps",
                   "id": 3,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
-                  "linewidth": 1,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum(rate(cortex_ingester_client_request_duration_seconds_count{job=~\"$job\", operation=\"/cortex.Ingester/QueryStream\"}[5m]))",
                         "format": "time_series",
                         "instant": true,
-                        "intervalFactor": 2,
                         "refId": "A"
                      }
                   ],
                   "thresholds": "70,80",
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Read from Ingesters - QPS",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "singlestat",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "singlestat"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
+                  },
                   "format": "reqps",
                   "id": 4,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
-                  "linewidth": 1,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum(rate(cortex_ingester_client_request_duration_seconds_count{job=~\"$job\", operation=\"/cortex.Ingester/Push\"}[5m]))",
                         "format": "time_series",
                         "instant": true,
-                        "intervalFactor": 2,
                         "refId": "A"
                      }
                   ],
                   "thresholds": "70,80",
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Write to Ingesters - QPS",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "singlestat",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "singlestat"
                }
             ],
             "repeat": null,
@@ -343,167 +235,107 @@
             "height": "250px",
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 5,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 5,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 6,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum(rate(cortex_prometheus_rule_evaluations_total{job=~\"$job\"}[$__rate_interval]))\n-\nsum(rate(cortex_prometheus_rule_evaluation_failures_total{job=~\"$job\"}[$__rate_interval]))\n",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "success",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      },
                      {
                         "expr": "sum(rate(cortex_prometheus_rule_evaluation_failures_total{job=~\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "failed",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "EPS",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 6,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "s"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 6,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 6,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum (rate(cortex_prometheus_rule_evaluation_duration_seconds_sum{job=~\"$job\"}[$__rate_interval]))\n  /\nsum (rate(cortex_prometheus_rule_evaluation_duration_seconds_count{job=~\"$job\"}[$__rate_interval]))\n",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "average",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                }
             ],
             "repeat": null,
@@ -524,157 +356,257 @@
                      "3xx": "#6ED0E0",
                      "4xx": "#EF843C",
                      "5xx": "#E24D42",
+                     "OK": "#7EB26D",
+                     "cancel": "#A9A9A9",
                      "error": "#E24D42",
                      "success": "#7EB26D"
                   },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 100,
+                           "lineWidth": 0,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "normal"
+                           }
+                        },
+                        "min": 0,
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "reqps"
+                     },
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "1xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#EAB839",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "2xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#7EB26D",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "3xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#6ED0E0",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "4xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#EF843C",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "5xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#E24D42",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "OK"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#7EB26D",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "cancel"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#A9A9A9",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "error"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#E24D42",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "success"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#7EB26D",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        }
+                     ]
+                  },
                   "fill": 10,
                   "id": 7,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
                   "linewidth": 0,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
                   "stack": true,
-                  "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"api_prom_rules.*|api_prom_api_v1_(rules|alerts)\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(cortex_request_duration_seconds_count{job=~\"$job\", route=~\"api_prom_rules.*|api_prom_api_v1_(rules|alerts)\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{status}}",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "QPS",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 8,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "ms"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 8,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~\"$job\", route=~\"api_prom_rules.*|api_prom_api_v1_(rules|alerts)\"})) * 1e3",
                         "format": "time_series",
-                        "intervalFactor": 2,
-                        "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "legendFormat": "99th percentile",
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~\"$job\", route=~\"api_prom_rules.*|api_prom_api_v1_(rules|alerts)\"})) * 1e3",
                         "format": "time_series",
-                        "intervalFactor": 2,
-                        "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "legendFormat": "50th percentile",
+                        "refId": "B"
                      },
                      {
                         "expr": "1e3 * sum(cluster_job_route:cortex_request_duration_seconds_sum:sum_rate{job=~\"$job\", route=~\"api_prom_rules.*|api_prom_api_v1_(rules|alerts)\"}) / sum(cluster_job_route:cortex_request_duration_seconds_count:sum_rate{job=~\"$job\", route=~\"api_prom_rules.*|api_prom_api_v1_(rules|alerts)\"})",
                         "format": "time_series",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "ms",
@@ -695,81 +627,52 @@
                   ]
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 9,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "s"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 9,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum by (route, le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~\"$job\", route=~\"api_prom_rules.*|api_prom_api_v1_(rules|alerts)\"}))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{ route }}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
-                  "title": "Per route p99 Latency",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "s",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "title": "Per route p99 latency",
+                  "type": "timeseries"
                }
             ],
             "repeat": null,
@@ -790,160 +693,260 @@
                      "3xx": "#6ED0E0",
                      "4xx": "#EF843C",
                      "5xx": "#E24D42",
+                     "OK": "#7EB26D",
+                     "cancel": "#A9A9A9",
                      "error": "#E24D42",
                      "success": "#7EB26D"
                   },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 100,
+                           "lineWidth": 0,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "normal"
+                           }
+                        },
+                        "min": 0,
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "reqps"
+                     },
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "1xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#EAB839",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "2xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#7EB26D",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "3xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#6ED0E0",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "4xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#EF843C",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "5xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#E24D42",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "OK"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#7EB26D",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "cancel"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#A9A9A9",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "error"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#E24D42",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "success"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#7EB26D",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        }
+                     ]
+                  },
                   "fill": 10,
                   "id": 10,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
                   "linewidth": 0,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 6,
                   "stack": true,
-                  "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(cortex_ingester_client_request_duration_seconds_count{job=~\"$job\", operation=\"/cortex.Ingester/Push\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(cortex_ingester_client_request_duration_seconds_count{job=~\"$job\", operation=\"/cortex.Ingester/Push\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{status}}",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "QPS",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 11,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "ms"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 11,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 6,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum(rate(cortex_ingester_client_request_duration_seconds_bucket{job=~\"$job\", operation=\"/cortex.Ingester/Push\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum(rate(cortex_ingester_client_request_duration_seconds_bucket{job=~\"$job\", operation=\"/cortex.Ingester/Push\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "refId": "B"
                      },
                      {
                         "expr": "sum(rate(cortex_ingester_client_request_duration_seconds_sum{job=~\"$job\", operation=\"/cortex.Ingester/Push\"}[$__rate_interval])) * 1e3 / sum(rate(cortex_ingester_client_request_duration_seconds_count{job=~\"$job\", operation=\"/cortex.Ingester/Push\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "ms",
@@ -982,160 +985,260 @@
                      "3xx": "#6ED0E0",
                      "4xx": "#EF843C",
                      "5xx": "#E24D42",
+                     "OK": "#7EB26D",
+                     "cancel": "#A9A9A9",
                      "error": "#E24D42",
                      "success": "#7EB26D"
                   },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 100,
+                           "lineWidth": 0,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "normal"
+                           }
+                        },
+                        "min": 0,
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "reqps"
+                     },
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "1xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#EAB839",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "2xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#7EB26D",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "3xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#6ED0E0",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "4xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#EF843C",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "5xx"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#E24D42",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "OK"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#7EB26D",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "cancel"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#A9A9A9",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "error"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#E24D42",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "success"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#7EB26D",
+                                    "mode": "fixed"
+                                 }
+                              }
+                           ]
+                        }
+                     ]
+                  },
                   "fill": 10,
                   "id": 12,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
                   "linewidth": 0,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 6,
                   "stack": true,
-                  "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(cortex_ingester_client_request_duration_seconds_count{job=~\"$job\", operation=\"/cortex.Ingester/QueryStream\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(cortex_ingester_client_request_duration_seconds_count{job=~\"$job\", operation=\"/cortex.Ingester/QueryStream\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{status}}",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "QPS",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 13,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "ms"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 13,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 6,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum(rate(cortex_ingester_client_request_duration_seconds_bucket{job=~\"$job\", operation=\"/cortex.Ingester/QueryStream\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum(rate(cortex_ingester_client_request_duration_seconds_bucket{job=~\"$job\", operation=\"/cortex.Ingester/QueryStream\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "refId": "B"
                      },
                      {
                         "expr": "sum(rate(cortex_ingester_client_request_duration_seconds_sum{job=~\"$job\", operation=\"/cortex.Ingester/QueryStream\"}[$__rate_interval])) * 1e3 / sum(rate(cortex_ingester_client_request_duration_seconds_count{job=~\"$job\", operation=\"/cortex.Ingester/QueryStream\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "ms",
@@ -1168,84 +1271,70 @@
             "height": "250px",
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 14,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 14,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum(rate(cortex_querier_storegateway_instances_hit_per_query_bucket{job=~\"$job\"}[$__rate_interval])) by (le)) * 1",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum(rate(cortex_querier_storegateway_instances_hit_per_query_bucket{job=~\"$job\"}[$__rate_interval])) by (le)) * 1",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "refId": "B"
                      },
                      {
                         "expr": "sum(rate(cortex_querier_storegateway_instances_hit_per_query_sum{job=~\"$job\"}[$__rate_interval])) * 1 / sum(rate(cortex_querier_storegateway_instances_hit_per_query_count{job=~\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Number of store-gateways hit per Query",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
-                        "format": "short",
+                        "format": "ms",
                         "label": null,
                         "logBase": 1,
                         "max": null,
@@ -1263,84 +1352,70 @@
                   ]
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 15,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 15,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum(rate(cortex_querier_storegateway_refetches_per_query_bucket{job=~\"$job\"}[$__rate_interval])) by (le)) * 1",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum(rate(cortex_querier_storegateway_refetches_per_query_bucket{job=~\"$job\"}[$__rate_interval])) by (le)) * 1",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "refId": "B"
                      },
                      {
                         "expr": "sum(rate(cortex_querier_storegateway_refetches_per_query_sum{job=~\"$job\"}[$__rate_interval])) * 1 / sum(rate(cortex_querier_storegateway_refetches_per_query_count{job=~\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Refetches of missing blocks per Query",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
-                        "format": "short",
+                        "format": "ms",
                         "label": null,
                         "logBase": 1,
                         "max": null,
@@ -1358,63 +1433,52 @@
                   ]
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 16,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 16,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum(rate(cortex_querier_blocks_consistency_checks_failed_total{job=~\"$job\"}[1m])) / sum(rate(cortex_querier_blocks_consistency_checks_total{job=~\"$job\"}[1m]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Failure Rate",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Consistency checks failed",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "percentunit",
@@ -1447,235 +1511,148 @@
             "height": "250px",
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 17,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 17,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum by(user) (rate(cortex_prometheus_notifications_errors_total{job=~\"$job\"}[$__rate_interval]))\n  /\nsum by(user) (rate(cortex_prometheus_notifications_sent_total{job=~\"$job\"}[$__rate_interval]))\n> 0\n",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{ user }}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Delivery Errors",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 18,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 18,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum by(user) (rate(cortex_prometheus_notifications_queue_length{job=~\"$job\"}[$__rate_interval]))\n  /\nsum by(user) (rate(cortex_prometheus_notifications_queue_capacity{job=~\"$job\"}[$__rate_interval])) > 0\n",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{ user }}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Queue Length",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 19,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 19,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum by (user) (increase(cortex_prometheus_notifications_dropped_total{job=~\"$job\"}[$__rate_interval])) > 0\n",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{ user }}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Dropped",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                }
             ],
             "repeat": null,
@@ -1690,235 +1667,148 @@
             "height": "250px",
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 20,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 20,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum by(user) (rate(cortex_prometheus_rule_group_iterations_missed_total{job=~\"$job\"}[$__rate_interval])) > 0",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{ user }}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Missed Iterations",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 21,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "s"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 21,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "rate(cortex_prometheus_rule_group_duration_seconds_sum{job=~\"$job\"}[$__rate_interval])\n  /\nrate(cortex_prometheus_rule_group_duration_seconds_count{job=~\"$job\"}[$__rate_interval])\n",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{ user }}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 22,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 22,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum by(rule_group) (rate(cortex_prometheus_rule_evaluation_failures_total{job=~\"$job\"}[$__rate_interval])) > 0",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{ rule_group }}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Failures",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                }
             ],
             "repeat": null,
@@ -1933,81 +1823,52 @@
             "height": "250px",
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 23,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "s"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 23,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 12,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum by(user) (rate(cortex_prometheus_rule_evaluation_duration_seconds_sum{job=~\"$job\"}[$__rate_interval]))\n  /\nsum by(user) (rate(cortex_prometheus_rule_evaluation_duration_seconds_count{job=~\"$job\"}[$__rate_interval]))\n",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{ user }}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                }
             ],
             "repeat": null,
@@ -2022,140 +1883,103 @@
             "height": "250px",
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "rps"
+                     },
+                     "overrides": [ ]
+                  },
                   "fill": 10,
                   "id": 24,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
                   "linewidth": 0,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
                   "stack": true,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum by(operation) (rate(thanos_objstore_bucket_operations_total{job=~\"$job\",component=\"ruler-storage\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{operation}}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Operations / sec",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "rps",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 25,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "percentunit"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 25,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "sum by(operation) (rate(thanos_objstore_bucket_operation_failures_total{job=~\"$job\",component=\"ruler-storage\"}[$__rate_interval])) / sum by(operation) (rate(thanos_objstore_bucket_operations_total{job=~\"$job\",component=\"ruler-storage\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "{{operation}}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Error rate",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "percentunit",
@@ -2176,81 +2000,67 @@
                   ]
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 26,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 26,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"attributes\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"attributes\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "refId": "B"
                      },
                      {
                         "expr": "sum(rate(thanos_objstore_bucket_operation_duration_seconds_sum{job=~\"$job\",component=\"ruler-storage\",operation=\"attributes\"}[$__rate_interval])) * 1e3 / sum(rate(thanos_objstore_bucket_operation_duration_seconds_count{job=~\"$job\",component=\"ruler-storage\",operation=\"attributes\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency of Op: Attributes",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "ms",
@@ -2271,81 +2081,67 @@
                   ]
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 27,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 27,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"exists\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"exists\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "refId": "B"
                      },
                      {
                         "expr": "sum(rate(thanos_objstore_bucket_operation_duration_seconds_sum{job=~\"$job\",component=\"ruler-storage\",operation=\"exists\"}[$__rate_interval])) * 1e3 / sum(rate(thanos_objstore_bucket_operation_duration_seconds_count{job=~\"$job\",component=\"ruler-storage\",operation=\"exists\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency of Op: Exists",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "ms",
@@ -2378,81 +2174,67 @@
             "height": "250px",
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 28,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 28,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"get\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"get\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "refId": "B"
                      },
                      {
                         "expr": "sum(rate(thanos_objstore_bucket_operation_duration_seconds_sum{job=~\"$job\",component=\"ruler-storage\",operation=\"get\"}[$__rate_interval])) * 1e3 / sum(rate(thanos_objstore_bucket_operation_duration_seconds_count{job=~\"$job\",component=\"ruler-storage\",operation=\"get\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency of Op: Get",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "ms",
@@ -2473,81 +2255,67 @@
                   ]
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 29,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 29,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"get_range\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"get_range\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "refId": "B"
                      },
                      {
                         "expr": "sum(rate(thanos_objstore_bucket_operation_duration_seconds_sum{job=~\"$job\",component=\"ruler-storage\",operation=\"get_range\"}[$__rate_interval])) * 1e3 / sum(rate(thanos_objstore_bucket_operation_duration_seconds_count{job=~\"$job\",component=\"ruler-storage\",operation=\"get_range\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency of Op: GetRange",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "ms",
@@ -2568,81 +2336,67 @@
                   ]
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 30,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 30,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"upload\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"upload\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "refId": "B"
                      },
                      {
                         "expr": "sum(rate(thanos_objstore_bucket_operation_duration_seconds_sum{job=~\"$job\",component=\"ruler-storage\",operation=\"upload\"}[$__rate_interval])) * 1e3 / sum(rate(thanos_objstore_bucket_operation_duration_seconds_count{job=~\"$job\",component=\"ruler-storage\",operation=\"upload\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency of Op: Upload",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "ms",
@@ -2663,81 +2417,67 @@
                   ]
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "id": 31,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
-                  "lines": true,
-                  "linewidth": 1,
+                  "id": 31,
                   "links": [ ],
                   "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 3,
-                  "stack": false,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "histogram_quantile(0.99, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"delete\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
-                        "refId": "A",
-                        "step": 10
+                        "refId": "A"
                      },
                      {
                         "expr": "histogram_quantile(0.50, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~\"$job\",component=\"ruler-storage\",operation=\"delete\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
-                        "refId": "B",
-                        "step": 10
+                        "refId": "B"
                      },
                      {
                         "expr": "sum(rate(thanos_objstore_bucket_operation_duration_seconds_sum{job=~\"$job\",component=\"ruler-storage\",operation=\"delete\"}[$__rate_interval])) * 1e3 / sum(rate(thanos_objstore_bucket_operation_duration_seconds_count{job=~\"$job\",component=\"ruler-storage\",operation=\"delete\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "Average",
-                        "refId": "C",
-                        "step": 10
+                        "refId": "C"
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Latency of Op: Delete",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
+                  "type": "timeseries",
                   "yaxes": [
                      {
                         "format": "ms",
@@ -2779,7 +2519,7 @@
                   "value": "Cortex"
                },
                "hide": 0,
-               "label": null,
+               "label": "Data source",
                "name": "datasource",
                "options": [ ],
                "query": "prometheus",

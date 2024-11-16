@@ -24,6 +24,9 @@ adopters:
   - name: GoJek
     url: https://www.gojek.io/
     logo: gojek.png
+  - name: KakaoEnterprise
+    url: https://kakaocloud.com/
+    logo: kakaocloud.svg
   - name: MayaData
     url: https://mayadata.io/
     logo: mayadata.svg

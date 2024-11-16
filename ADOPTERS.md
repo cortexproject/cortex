@@ -11,6 +11,7 @@ This is the list of organisations that are using Cortex in **production environm
 * [Etsy](https://www.etsy.com/)
 * [EverQuote](https://everquote.com/)
 * [GoJek](https://www.gojek.io/)
+* [KakaoEnterprise](https://kakaocloud.com/)
 * [MayaData](https://mayadata.io/)
 * [Northflank](https://northflank.com/)
 * [Opstrace](https://opstrace.com/)

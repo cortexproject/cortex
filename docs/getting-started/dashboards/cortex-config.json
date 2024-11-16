@@ -27,81 +27,55 @@
             "height": "250px",
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "instances"
+                     },
+                     "overrides": [ ]
+                  },
                   "fill": 10,
                   "id": 1,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
                   "linewidth": 0,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 12,
                   "stack": true,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "count(cortex_config_hash{job=~\"$job\"}) by (sha256)",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "sha256:{{sha256}}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Startup config file hashes",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "instances",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                }
             ],
             "repeat": null,
@@ -116,81 +90,55 @@
             "height": "250px",
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 1,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "instances"
+                     },
+                     "overrides": [ ]
+                  },
                   "fill": 10,
                   "id": 2,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
                   "linewidth": 0,
                   "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "span": 12,
                   "stack": true,
-                  "steppedLine": false,
                   "targets": [
                      {
                         "expr": "count(cortex_runtime_config_hash{job=~\"$job\"}) by (sha256)",
                         "format": "time_series",
                         "interval": "15s",
-                        "intervalFactor": 2,
                         "legendFormat": "sha256:{{sha256}}",
-                        "legendLink": null,
-                        "step": 10
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Runtime config file hashes",
-                  "tooltip": {
-                     "shared": false,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "instances",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                }
             ],
             "repeat": null,
@@ -214,7 +162,7 @@
                   "value": "Cortex"
                },
                "hide": 0,
-               "label": null,
+               "label": "Data source",
                "name": "datasource",
                "options": [ ],
                "query": "prometheus",

@@ -226,7 +226,7 @@ func NewQuerierHandler(
 		// This is used for the stats API which we should not support. Or find other ways to.
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 		reg,
-		nil,
+		querier.StatsRenderer,
 		false,
 		nil,
 		false,

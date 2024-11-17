@@ -3250,6 +3250,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -distributor.ha-tracker.enable-for-all-users
 [accept_ha_samples: <boolean> | default = false]
 
+# [Experimental] Flag to enable handling of samples with mixed external labels
+# identifying replicas in an HA Prometheus setup. Supported only if
+# -distributor.ha-tracker.enable-for-all-users is true.
+# CLI flag: -experimental.distributor.ha-tracker.mixed-ha-samples
+[accept_mixed_ha_samples: <boolean> | default = false]
+
 # Prometheus label to look for in samples to identify a Prometheus HA cluster.
 # CLI flag: -distributor.ha-tracker.cluster
 [ha_cluster_label: <string> | default = "cluster"]

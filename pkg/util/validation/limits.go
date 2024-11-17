@@ -551,7 +551,7 @@ func (o *Overrides) AcceptHASamples(userID string) bool {
 	return o.GetOverridesForUser(userID).AcceptHASamples
 }
 
-// AcceptMixedHASamples returns whether the distributor should track and accept mixed samples from HA replicas for this user.
+// AcceptMixedHASamples returns whether the distributor should track and accept samples from mixed HA replicas for this user.
 func (o *Overrides) AcceptMixedHASamples(userID string) bool {
 	return o.GetOverridesForUser(userID).AcceptMixedHASamples
 }

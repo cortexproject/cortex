@@ -323,7 +323,7 @@ func TestResponse(t *testing.T) {
 			promBody: &tripperware.PrometheusResponse{
 				Status: "success",
 				Data: tripperware.PrometheusData{
-					ResultType: model.ValString.String(),
+					ResultType: model.ValScalar.String(),
 					Result: tripperware.PrometheusQueryResult{
 						Result: &tripperware.PrometheusQueryResult_RawBytes{
 							RawBytes: []byte(`{"resultType":"scalar","result":[1,"13"]}`),

@@ -185,6 +185,7 @@ type Limits struct {
 	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
+	RulerExternalLabels         labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
@@ -214,8 +215,6 @@ type Limits struct {
 	AlertmanagerMaxAlertsCount                 int                `yaml:"alertmanager_max_alerts_count" json:"alertmanager_max_alerts_count"`
 	AlertmanagerMaxAlertsSizeBytes             int                `yaml:"alertmanager_max_alerts_size_bytes" json:"alertmanager_max_alerts_size_bytes"`
 	DisabledRuleGroups                         DisabledRuleGroups `yaml:"disabled_rule_groups" json:"disabled_rule_groups" doc:"nocli|description=list of rule groups to disable"`
-
-	ExternalLabels labels.Labels `yaml:"external_labels" json:"external_labels" doc:"nocli|description=external labels for alerting rules"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -315,7 +314,7 @@ func (l *Limits) Validate(shardByAllLabels bool) error {
 		return errMaxGlobalSeriesPerUserValidation
 	}
 
-	if err := l.ExternalLabels.Validate(func(l labels.Label) error {
+	if err := l.RulerExternalLabels.Validate(func(l labels.Label) error {
 		if !model.LabelName(l.Name).IsValid() {
 			return fmt.Errorf("%w: %q", errInvalidLabelName, l.Name)
 		}
@@ -965,8 +964,8 @@ func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 	return DisabledRuleGroups{}
 }
 
-func (o *Overrides) ExternalLabels(userID string) labels.Labels {
-	return o.GetOverridesForUser(userID).ExternalLabels
+func (o *Overrides) RulerExternalLabels(userID string) labels.Labels {
+	return o.GetOverridesForUser(userID).RulerExternalLabels
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

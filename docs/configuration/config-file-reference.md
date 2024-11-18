@@ -3519,6 +3519,9 @@ query_rejection:
 # CLI flag: -ruler.query-offset
 [ruler_query_offset: <duration> | default = 0s]
 
+# external labels for alerting rules
+[ruler_external_labels: <map of string (labelName) to string (labelValue)> | default = []]
+
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the
 # shuffle-sharding strategy. When this setting is specified in the per-tenant
@@ -3620,9 +3623,6 @@ query_rejection:
 
 # list of rule groups to disable
 [disabled_rule_groups: <list of DisabledRuleGroup> | default = []]
-
-# external labels for alerting rules
-[external_labels: <map of string (labelName) to string (labelValue)> | default = []]
 ```
 
 ### `memberlist_config`

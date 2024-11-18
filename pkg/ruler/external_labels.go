@@ -35,7 +35,7 @@ func (e *userExternalLabels) get(userID string) (labels.Labels, bool) {
 }
 
 func (e *userExternalLabels) update(userID string) (labels.Labels, bool) {
-	lset := e.limits.ExternalLabels(userID)
+	lset := e.limits.RulerExternalLabels(userID)
 
 	e.mtx.Lock()
 	defer e.mtx.Unlock()

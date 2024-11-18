@@ -454,7 +454,7 @@ func TestRuler_LimitsPerGroup(t *testing.T) {
 	r := newTestRuler(t, cfg, store, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	r.limits = ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
+	r.limits = &ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 
@@ -508,7 +508,7 @@ func TestRuler_RulerGroupLimits(t *testing.T) {
 	r := newTestRuler(t, cfg, store, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	r.limits = ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
+	r.limits = &ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 

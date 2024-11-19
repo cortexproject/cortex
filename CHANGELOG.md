@@ -15,6 +15,7 @@
 * [FEATURE] Ruler: Minimize chances of missed rule group evaluations that can occur due to OOM kills, bad underlying nodes, or due to an unhealthy ruler that appears in the ring as healthy. This feature is enabled via `-ruler.enable-ha-evaluation` flag. #6129
 * [FEATURE] Store Gateway: Add an in-memory chunk cache. #6245
 * [FEATURE] Chunk Cache: Support multi level cache and add metrics. #6249
+* [FEATURE] Distributor: Accept multiple HA Tracker pairs in the same request. #6256
 * [ENHANCEMENT] OTLP: Add `-distributor.otlp-max-recv-msg-size` flag to limit OTLP request size in bytes. #6333
 * [ENHANCEMENT] S3 Bucket Client: Add a list objects version configs to configure list api object version. #6280
 * [ENHANCEMENT] OpenStack Swift: Add application credential configs for Openstack swift object storage backend. #6255

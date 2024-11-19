@@ -665,7 +665,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
 	limits := d.limits.GetOverridesForUser(userID)
 
-	if limits.AcceptHASamples && len(req.Timeseries) > 0 {
+	if limits.AcceptHASamples && len(req.Timeseries) > 0 && !limits.AcceptMixedHASamples {
 		cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica, limits)
 		if err != nil {
@@ -872,6 +872,29 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	// check each sample and discard if outside limits.
 	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
 	for _, ts := range req.Timeseries {
+		if limits.AcceptHASamples && limits.AcceptMixedHASamples {
+			cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, ts.Labels)
+			if cluster != "" && replica != "" {
+				_, err := d.checkSample(ctx, userID, cluster, replica, limits)
+				if err != nil {
+					// discard sample
+					if errors.Is(err, ha.ReplicasNotMatchError{}) {
+						// These samples have been deduped.
+						d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+					}
+					if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
+						d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+					}
+
+					continue
+				}
+				removeReplica = true // valid HA sample
+			} else {
+				removeReplica = false // non HA sample
+				d.nonHASamples.WithLabelValues(userID).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+			}
+		}
+
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
 		if len(ts.Samples) > 0 {
 			latestSampleTimestampMs = max(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)

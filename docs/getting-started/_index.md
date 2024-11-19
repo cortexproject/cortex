@@ -46,7 +46,8 @@ This example uses [Docker Compose](https://docs.docker.com/compose/) to set up:
 #### Instructions
 
 ```sh
-$ cd docs/getting-started
+$ git clone https://github.com/cortexproject/cortex.git
+$ cd cortex/docs/getting-started
 ```
 
 ##### Start the services
@@ -160,7 +161,8 @@ $ helm repo add prometheus-community https://prometheus-community.github.io/helm
 ### Instructions
 
 ```sh
-$ cd docs/getting-started
+$ git clone https://github.com/cortexproject/cortex.git
+$ cd cortex/docs/getting-started
 ```
 
 #### Configure SeaweedFS (S3)

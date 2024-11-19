@@ -54,7 +54,7 @@ func (s *blocksStoreBalancedSet) starting(ctx context.Context) error {
 }
 
 func (s *blocksStoreBalancedSet) resolve(ctx context.Context) error {
-	if err := s.dnsProvider.Resolve(ctx, s.serviceAddresses); err != nil {
+	if err := s.dnsProvider.Resolve(ctx, s.serviceAddresses, true); err != nil {
 		level.Error(s.logger).Log("msg", "failed to resolve store-gateway addresses", "err", err, "addresses", s.serviceAddresses)
 	}
 	return nil

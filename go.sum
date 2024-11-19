@@ -1687,8 +1687,8 @@ github.com/thanos-io/objstore v0.0.0-20241028150459-cfdd0e50390d h1:k+SLTP1mjNqX
 github.com/thanos-io/objstore v0.0.0-20241028150459-cfdd0e50390d/go.mod h1:/ZMUxFcp/nT6oYV5WslH9k07NU/+86+aibgZRmMMr/4=
 github.com/thanos-io/promql-engine v0.0.0-20240921092401-37747eddbd31 h1:xPaP58g+3EPohdw4cv+6jv5+LcX6LynhHvQcYwTAMxQ=
 github.com/thanos-io/promql-engine v0.0.0-20240921092401-37747eddbd31/go.mod h1:wx0JlRZtsB2S10JYUgeg5GqLfMxw31SzArP+28yyE00=
-github.com/thanos-io/thanos v0.35.2-0.20241029125830-62038110b1bc h1:AoIDFFb3xjED+mmf5g6bnULDgNJWeXtKyjAQ1CKtqfk=
-github.com/thanos-io/thanos v0.35.2-0.20241029125830-62038110b1bc/go.mod h1:6Q6xfe4mUYCYbrixod2dNZqKCK4J9pGRKqF29/cUr/A=
+github.com/thanos-io/thanos v0.35.2-0.20241118113652-f998fc59c171 h1:khQQmo9VMMphKm10NS22iI8bAIf4DNRFvLoP4IR7kK4=
+github.com/thanos-io/thanos v0.35.2-0.20241118113652-f998fc59c171/go.mod h1:v2AUVRd44iuv/PY0iwzKzgosLusUg7/dnnw5KEe1Has=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
 github.com/uber/jaeger-client-go v2.28.0+incompatible/go.mod h1:WVhlPFC8FDjOFMMWRy2pZqQJSXxYSwNYOkTr/Z6d3Kk=
 github.com/uber/jaeger-client-go v2.30.0+incompatible h1:D6wyKGCecFaSRUpo8lCVbaOOb6ThwMmTEbhRwtKR97o=

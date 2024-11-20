@@ -559,9 +559,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		cortex_distributor_ingester_query_failures_total{ingester="ingester-1"} 1
 		`), permanentMetrics...))
 
-	err = testutil.GatherAndCompare(reg, strings.NewReader(""), removedMetrics...)
-	require.ErrorContains(t, err, "expected metric name(s) not found")
-	require.ErrorContains(t, err, strings.Join(removedMetrics, " "))
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(""), removedMetrics...))
 }
 
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
@@ -1024,6 +1022,102 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 						assert.Equal(t, tc.expectedCode, httpResp.Code)
 					} else if tc.expectedCode != 0 {
 						assert.Fail(t, "expected HTTP status code", tc.expectedCode)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestDistributor_PushMixedHAInstances(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	for i, tc := range []struct {
+		enableTracker        bool
+		acceptMixedHASamples bool
+		samples              int
+		expectedResponse     *cortexpb.WriteResponse
+		expectedCode         int32
+	}{
+		{
+			enableTracker:        true,
+			acceptMixedHASamples: true,
+			samples:              5,
+			expectedResponse:     emptyResponse,
+			expectedCode:         202,
+		},
+	} {
+		for _, shardByAllLabels := range []bool{true} {
+			tc := tc
+			shardByAllLabels := shardByAllLabels
+			for _, enableHistogram := range []bool{false} {
+				enableHistogram := enableHistogram
+				t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v, histogram=%v)", i, shardByAllLabels, enableHistogram), func(t *testing.T) {
+					t.Parallel()
+					var limits validation.Limits
+					flagext.DefaultValues(&limits)
+					limits.AcceptHASamples = true
+					limits.AcceptMixedHASamples = tc.acceptMixedHASamples
+					limits.MaxLabelValueLength = 25
+
+					ds, ingesters, _, _ := prepare(t, prepConfig{
+						numIngesters:      2,
+						happyIngesters:    2,
+						numDistributors:   1,
+						replicationFactor: 2,
+						shardByAllLabels:  shardByAllLabels,
+						limits:            &limits,
+						enableTracker:     tc.enableTracker,
+					})
+
+					d := ds[0]
+
+					request := makeWriteRequestHAMixedSamples(tc.samples, enableHistogram)
+					response, _ := d.Push(ctx, request)
+					assert.Equal(t, tc.expectedResponse, response)
+
+					for i := range ingesters {
+						timeseries := ingesters[i].series()
+						assert.Equal(t, 5, len(timeseries))
+						clusters := make(map[string]int)
+						replicas := make(map[string]int)
+						for _, v := range timeseries {
+							replicaLabel := ""
+							clusterLabel := ""
+							for _, label := range v.Labels {
+								if label.Name == "__replica__" {
+									replicaLabel = label.Value
+									_, ok := replicas[label.Value]
+									if !ok {
+										replicas[label.Value] = 1
+									} else {
+										assert.Fail(t, fmt.Sprintf("Two timeseries with same replica label, %s, were found, but only one should be present", label.Value))
+									}
+								}
+								if label.Name == "cluster" {
+									clusterLabel = label.Value
+									_, ok := clusters[label.Value]
+									if !ok {
+										clusters[label.Value] = 1
+									} else {
+										assert.Fail(t, fmt.Sprintf("Two timeseries with same cluster label, %s, were found, but only one should be present", label.Value))
+									}
+								}
+							}
+							if clusterLabel == "" && replicaLabel != "" {
+								assert.Equal(t, "replicaNoCluster", replicaLabel)
+							}
+							assert.Equal(t, tc.samples, len(v.Samples))
+						}
+						assert.Equal(t, 3, len(clusters))
+						for _, nr := range clusters {
+							assert.Equal(t, true, nr == 1)
+						}
+						assert.Equal(t, 1, len(replicas))
+						for _, nr := range clusters {
+							assert.Equal(t, true, nr == 1)
+						}
 					}
 				})
 			}
@@ -2211,7 +2305,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			require.NoError(b, err)
 
 			// Start the distributor.
-			distributor, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil, log.NewNopLogger())
+			distributor, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, prometheus.NewRegistry(), log.NewNopLogger())
 			require.NoError(b, err)
 			require.NoError(b, services.StartAndAwaitRunning(context.Background(), distributor))
 
@@ -2831,7 +2925,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 				EnableHATracker: true,
 				KVStore:         kv.Config{Mock: mock},
 				UpdateTimeout:   100 * time.Millisecond,
-				FailoverTimeout: time.Second,
+				FailoverTimeout: time.Hour,
 			}
 			cfg.limits.HAMaxClusters = 100
 		}
@@ -2944,6 +3038,106 @@ func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *c
 					TimestampMs: int64(i),
 				},
 			}
+		}
+		request.Timeseries = append(request.Timeseries, ts)
+	}
+	return request
+}
+
+func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.WriteRequest {
+	request := &cortexpb.WriteRequest{}
+
+	for _, haPair := range []struct {
+		cluster string
+		replica string
+	}{
+		{
+			cluster: "cluster0",
+			replica: "replica0",
+		},
+		{
+			cluster: "cluster0",
+			replica: "replica1",
+		},
+		{
+			cluster: "cluster1",
+			replica: "replica0",
+		},
+		{
+			cluster: "cluster1",
+			replica: "replica1",
+		},
+		{
+			cluster: "",
+			replica: "replicaNoCluster",
+		},
+		{
+			cluster: "clusterNoReplica",
+			replica: "",
+		},
+		{
+			cluster: "",
+			replica: "",
+		},
+	} {
+		cluster := haPair.cluster
+		replica := haPair.replica
+		var ts cortexpb.PreallocTimeseries
+		if cluster == "" && replica == "" {
+			ts = cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: "__name__", Value: "foo"},
+						{Name: "bar", Value: "baz"},
+					},
+				},
+			}
+		} else if cluster == "" && replica != "" {
+			ts = cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: "__name__", Value: "foo"},
+						{Name: "__replica__", Value: replica},
+						{Name: "bar", Value: "baz"},
+					},
+				},
+			}
+		} else if cluster != "" && replica == "" {
+			ts = cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: "__name__", Value: "foo"},
+						{Name: "bar", Value: "baz"},
+						{Name: "cluster", Value: cluster},
+					},
+				},
+			}
+		} else {
+			ts = cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: "__name__", Value: "foo"},
+						{Name: "__replica__", Value: replica},
+						{Name: "bar", Value: "baz"},
+						{Name: "cluster", Value: cluster},
+					},
+				},
+			}
+		}
+		if histogram {
+			ts.Histograms = []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(int64(samples), tsdbutil.GenerateTestHistogram(samples)),
+			}
+		} else {
+			var s = make([]cortexpb.Sample, 0)
+			for i := 0; i < samples; i++ {
+				sample := cortexpb.Sample{
+					Value:       float64(i),
+					TimestampMs: int64(i),
+				}
+				s = append(s, sample)
+			}
+			ts.Samples = s
 		}
 		request.Timeseries = append(request.Timeseries, ts)
 	}
@@ -3315,6 +3509,10 @@ type noopIngester struct {
 
 func (i *noopIngester) Close() error {
 	return nil
+}
+
+func (i *noopIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return nil, nil
 }
 
 func (i *noopIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {

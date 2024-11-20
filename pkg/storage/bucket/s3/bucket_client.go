@@ -27,7 +27,7 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		return nil, err
 	}
 
-	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name)
+	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func NewBucketReaderClient(cfg Config, name string, logger log.Logger) (objstore
 		return nil, err
 	}
 
-	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name)
+	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -102,9 +102,10 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			Transport:             cfg.HTTP.Transport,
 		},
 		// Enforce signature version 2 if CLI flag is set
-		SignatureV2:      cfg.SignatureVersion == SignatureVersionV2,
-		BucketLookupType: bucketLookupType,
-		AWSSDKAuth:       cfg.AccessKeyID == "",
+		ListObjectsVersion: cfg.ListObjectsVersion,
+		SignatureV2:        cfg.SignatureVersion == SignatureVersionV2,
+		BucketLookupType:   bucketLookupType,
+		AWSSDKAuth:         cfg.AccessKeyID == "",
 	}, nil
 }
 

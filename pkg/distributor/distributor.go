@@ -135,9 +135,10 @@ type Config struct {
 
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
 
-	MaxRecvMsgSize  int           `yaml:"max_recv_msg_size"`
-	RemoteTimeout   time.Duration `yaml:"remote_timeout"`
-	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay"`
+	MaxRecvMsgSize     int           `yaml:"max_recv_msg_size"`
+	OTLPMaxRecvMsgSize int           `yaml:"otlp_max_recv_msg_size"`
+	RemoteTimeout      time.Duration `yaml:"remote_timeout"`
+	ExtraQueryDelay    time.Duration `yaml:"extra_queue_delay"`
 
 	ShardingStrategy         string `yaml:"sharding_strategy"`
 	ShardByAllLabels         bool   `yaml:"shard_by_all_labels"`
@@ -164,11 +165,19 @@ type Config struct {
 
 	// Limits for distributor
 	InstanceLimits InstanceLimits `yaml:"instance_limits"`
+
+	// OTLPConfig
+	OTLPConfig OTLPConfig `yaml:"otlp"`
 }
 
 type InstanceLimits struct {
 	MaxIngestionRate        float64 `yaml:"max_ingestion_rate"`
 	MaxInflightPushRequests int     `yaml:"max_inflight_push_requests"`
+}
+
+type OTLPConfig struct {
+	ConvertAllAttributes bool `yaml:"convert_all_attributes"`
+	DisableTargetInfo    bool `yaml:"disable_target_info"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -178,6 +187,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
+	f.IntVar(&cfg.OTLPMaxRecvMsgSize, "distributor.otlp-max-recv-msg-size", 100<<20, "Maximum OTLP request size in bytes that the Distributor can accept.")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
@@ -188,6 +198,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
+
+	f.BoolVar(&cfg.OTLPConfig.ConvertAllAttributes, "distributor.otlp.convert-all-attributes", false, "If true, all resource attributes are converted to labels.")
+	f.BoolVar(&cfg.OTLPConfig.DisableTargetInfo, "distributor.otlp.disable-target-info", false, "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)")
 }
 
 // Validate config and returns error on failure
@@ -652,7 +665,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
 	limits := d.limits.GetOverridesForUser(userID)
 
-	if limits.AcceptHASamples && len(req.Timeseries) > 0 {
+	if limits.AcceptHASamples && len(req.Timeseries) > 0 && !limits.AcceptMixedHASamples {
 		cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica, limits)
 		if err != nil {
@@ -859,6 +872,29 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	// check each sample and discard if outside limits.
 	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
 	for _, ts := range req.Timeseries {
+		if limits.AcceptHASamples && limits.AcceptMixedHASamples {
+			cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, ts.Labels)
+			if cluster != "" && replica != "" {
+				_, err := d.checkSample(ctx, userID, cluster, replica, limits)
+				if err != nil {
+					// discard sample
+					if errors.Is(err, ha.ReplicasNotMatchError{}) {
+						// These samples have been deduped.
+						d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+					}
+					if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
+						d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+					}
+
+					continue
+				}
+				removeReplica = true // valid HA sample
+			} else {
+				removeReplica = false // non HA sample
+				d.nonHASamples.WithLabelValues(userID).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+			}
+		}
+
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
 		if len(ts.Samples) > 0 {
 			latestSampleTimestampMs = max(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)

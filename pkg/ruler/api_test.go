@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
@@ -19,6 +21,90 @@ import (
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
+
+func TestAPIResponseSerialization(t *testing.T) {
+	lastEvalTime := time.Now()
+	responseTime := lastEvalTime.Format(time.RFC3339Nano)
+	testCases := map[string]struct {
+		rules        RuleDiscovery
+		expectedJSON string
+	}{
+		"No rules": {
+			rules: RuleDiscovery{
+				RuleGroups: make([]*RuleGroup, 0),
+			},
+			expectedJSON: `{
+				"groups":[]
+			}`,
+		},
+		"Rules with no next token": {
+			rules: RuleDiscovery{
+				RuleGroups: []*RuleGroup{
+					{
+						Name:           "Test",
+						File:           "/rules/Test",
+						Rules:          make([]rule, 0),
+						Interval:       60,
+						LastEvaluation: lastEvalTime,
+						EvaluationTime: 10,
+						Limit:          0,
+					},
+				},
+			},
+			expectedJSON: fmt.Sprintf(`{
+				"groups": [
+					{
+						"evaluationTime": 10,
+						"limit": 0,
+						"name": "Test",
+						"file": "/rules/Test",
+						"interval": 60,
+						"rules": [],
+						"lastEvaluation": "%s"
+					}
+				]
+			}`, responseTime),
+		},
+		"Rules with next token": {
+			rules: RuleDiscovery{
+				RuleGroups: []*RuleGroup{
+					{
+						Name:           "Test",
+						File:           "/rules/Test",
+						Rules:          make([]rule, 0),
+						Interval:       60,
+						LastEvaluation: lastEvalTime,
+						EvaluationTime: 10,
+						Limit:          0,
+					},
+				},
+				GroupNextToken: "abcdef",
+			},
+			expectedJSON: fmt.Sprintf(`{
+				"groups": [
+					{
+						"evaluationTime": 10,
+						"limit": 0,
+						"name": "Test",
+						"file": "/rules/Test",
+						"interval": 60,
+						"rules": [],
+						"lastEvaluation": "%s"
+					}
+				],
+				"groupNextToken": "abcdef"
+			}`, responseTime),
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			data, err := json.Marshal(&tc.rules)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expectedJSON, string(data))
+		})
+	}
+}
 
 func TestRuler_rules(t *testing.T) {
 	store := newMockRuleStore(mockRules, nil)
@@ -67,7 +153,7 @@ func TestRuler_rules(t *testing.T) {
 							Alerts: []*Alert{},
 						},
 					},
-					Interval: 60,
+					Interval: 10,
 				},
 			},
 		},
@@ -123,7 +209,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 							Alerts: []*Alert{},
 						},
 					},
-					Interval: 60,
+					Interval: 10,
 				},
 			},
 		},
@@ -178,7 +264,7 @@ func TestRuler_rules_limit(t *testing.T) {
 							Alerts: []*Alert{},
 						},
 					},
-					Interval: 60,
+					Interval: 10,
 				},
 			},
 		},
@@ -342,7 +428,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, "name: group1\ninterval: 1m\nrules:\n    - record: UP_RULE\n      expr: up\n    - alert: UP_ALERT\n      expr: up < 1\n", w.Body.String())
+	require.Equal(t, "name: group1\ninterval: 10s\nrules:\n    - record: UP_RULE\n      expr: up\n    - alert: UP_ALERT\n      expr: up < 1\n", w.Body.String())
 
 	// Delete namespace1
 	req = requestFor(t, http.MethodDelete, "https://localhost:8080/api/v1/rules/namespace1", nil, "user1")

@@ -7,22 +7,22 @@ slug: ingesters-scaling-up-and-down
 
 This guide explains how to scale up and down ingesters.
 
-_If you're looking how to run ingesters rolling updates, please refer to the [dedicated guide](./ingesters-rolling-updates.md)._
+If you're looking for how to run ingesters rolling updates, please refer to the [dedicated guide](./ingesters-rolling-updates.md)._
 
 ## Scaling up
 
 Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the [hash ring](../architecture.md#the-hash-ring) and the distributors will reshard received series accordingly.
 Ingesters that were previously receiving those series will see data stop arriving and will consider those series "idle".
 
-If you run with `-distributor.shard-by-all-labels=false` (the default), before adding a second ingester you have to wait until data has migrated from idle series to the back-end store, otherwise you will see gaps in queries. This will happen after the next "head compaction" (typically every 2 hours).
-If you have set `-querier.query-store-after` then that is also a minimum time you have to wait before adding a second ingester.
+If you run with `-distributor.shard-by-all-labels=false` (the default), before adding a second ingester, you have to wait until data has migrated from idle series to the back-end store; otherwise, you will see gaps in queries. This will happen after the next "head compaction" (typically every 2 hours).
+If you have set `-querier.query-store-after`, then that is also a minimum time you have to wait before adding a second ingester.
 
 If you run with `-distributor.shard-by-all-labels=true`,
 no special care is required to take when scaling up ingesters.
 
 ## Scaling down
 
-A running ingester holds several hours of time series data in memory, before they're flushed to the long-term storage.  When an ingester shuts down, because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.
+A running ingester holds several hours of time series data in memory before they're flushed to the long-term storage.  When an ingester shuts down because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.
 
 Ingesters don't flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint [`/shutdown`](../api/_index.md#shutdown) that can be called to flush series to blocks and upload blocks to the long-term storage before the ingester terminates.
 
@@ -44,3 +44,4 @@ The ingesters scale down is deemed an infrequent operation and no automation is 
   2. Wait until the HTTP call returns successfully or "finished flushing and shipping TSDB blocks" is logged
   3. Terminate the ingester process (the `/shutdown` will not do it)
   4. Before proceeding to the next ingester, wait 2x the maximum between `-blocks-storage.bucket-store.sync-interval` and `-compactor.cleanup-interval`
+

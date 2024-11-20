@@ -11,8 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 
 	utillog "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -136,7 +138,8 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 	require.False(t, hMock.open.Load())
 
 	cortex_testutil.Poll(t, time.Second, true, func() interface{} {
-		return errors.Is(ui(context.Background(), "", struct{}{}, struct{}{}, ccUnhealthy, invoker), unhealthyErr)
+		err := ui(context.Background(), "", struct{}{}, struct{}{}, ccUnhealthy, invoker)
+		return errors.Is(err, unhealthyErr) || status.Code(err) == codes.Unavailable
 	})
 
 	// Other instances should remain healthy

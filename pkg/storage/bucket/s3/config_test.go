@@ -168,6 +168,61 @@ func TestSSEConfig_Validate(t *testing.T) {
 	}
 }
 
+func TestS3Config_Validate(t *testing.T) {
+	tests := map[string]struct {
+		cfg         *Config
+		expectedErr error
+	}{
+		"should pass with valid config": {
+			cfg: &Config{
+				SignatureVersion:   SignatureVersionV4,
+				BucketLookupType:   BucketAutoLookup,
+				ListObjectsVersion: ListObjectsVersionV2,
+			},
+			expectedErr: nil,
+		},
+		"should fail with invalid signature version": {
+			cfg: &Config{
+				SignatureVersion:   "v3",
+				BucketLookupType:   BucketAutoLookup,
+				ListObjectsVersion: ListObjectsVersionV2,
+			},
+			expectedErr: errUnsupportedSignatureVersion,
+		},
+		"should fail with invalid bucket lookup type": {
+			cfg: &Config{
+				SignatureVersion:   SignatureVersionV4,
+				BucketLookupType:   "dummy",
+				ListObjectsVersion: ListObjectsVersionV2,
+			},
+			expectedErr: errInvalidBucketLookupType,
+		},
+		"should fail with invalid list objects version": {
+			cfg: &Config{
+				SignatureVersion:   SignatureVersionV4,
+				BucketLookupType:   BucketAutoLookup,
+				ListObjectsVersion: "v3",
+			},
+			expectedErr: errInvalidListObjectsVersion,
+		},
+		"should pass with empty list objects version": {
+			cfg: &Config{
+				SignatureVersion:   SignatureVersionV4,
+				BucketLookupType:   BucketAutoLookup,
+				ListObjectsVersion: "",
+			},
+			expectedErr: nil,
+		},
+	}
+
+	for testName, test := range tests {
+		t.Run(testName, func(t *testing.T) {
+			err := test.cfg.Validate()
+			require.Equal(t, test.expectedErr, err)
+		})
+	}
+}
+
 func TestSSEConfig_BuildMinioConfig(t *testing.T) {
 	tests := map[string]struct {
 		cfg             *SSEConfig

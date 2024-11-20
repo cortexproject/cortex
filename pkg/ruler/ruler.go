@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -988,20 +989,28 @@ func (r *Ruler) filterBackupRuleGroups(userID string, ruleGroups []*rulespb.Rule
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) ([]*GroupStateDesc, error) {
+func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) (*RulesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID, rulesRequest)
+		resp, err := r.getShardedRules(ctx, userID, rulesRequest)
+		if resp == nil {
+			return &RulesResponse{
+				Groups:    make([]*GroupStateDesc, 0),
+				NextToken: "",
+			}, err
+		}
+		return resp, err
 	}
 
-	return r.getLocalRules(userID, rulesRequest, false)
+	response, err := r.getLocalRules(userID, rulesRequest, false)
+	return &response, err
 }
 
-func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeBackups bool) ([]*GroupStateDesc, error) {
+func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeBackups bool) (RulesResponse, error) {
 	groups := r.manager.GetRules(userID)
 
 	groupDescs := make([]*GroupStateDesc, 0, len(groups))
@@ -1023,7 +1032,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 	health := rulesRequest.Health
 	matcherSets, err := parseMatchersParam(rulesRequest.Matchers)
 	if err != nil {
-		return nil, errors.Wrap(err, "error parsing matcher values")
+		return RulesResponse{}, errors.Wrap(err, "error parsing matcher values")
 	}
 
 	returnAlerts := ruleType == "" || ruleType == alertingRuleFilter
@@ -1033,7 +1042,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		// The mapped filename is url path escaped encoded to make handling `/` characters easier
 		decodedNamespace, err := url.PathUnescape(strings.TrimPrefix(group.File(), prefix))
 		if err != nil {
-			return nil, errors.Wrap(err, "unable to decode rule filename")
+			return RulesResponse{}, errors.Wrap(err, "unable to decode rule filename")
 		}
 		if len(fileSet) > 0 {
 			if _, OK := fileSet[decodedNamespace]; !OK {
@@ -1137,7 +1146,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
 			default:
-				return nil, errors.Errorf("failed to assert type of rule '%v'", rule.Name())
+				return RulesResponse{}, errors.Errorf("failed to assert type of rule '%v'", rule.Name())
 			}
 			groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
 		}
@@ -1146,24 +1155,51 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		}
 	}
 
-	if !includeBackups {
-		return groupDescs, nil
+	combinedRuleStateDescs := groupDescs
+	if includeBackups {
+		backupGroups := r.manager.GetBackupRules(userID)
+		backupGroupDescs, err := r.ruleGroupListToGroupStateDesc(userID, backupGroups, groupListFilter{
+			ruleNameSet,
+			ruleGroupNameSet,
+			fileSet,
+			returnAlerts,
+			returnRecording,
+			matcherSets,
+		})
+		if err != nil {
+			return RulesResponse{}, err
+		}
+		combinedRuleStateDescs = append(combinedRuleStateDescs, backupGroupDescs...)
 	}
 
-	backupGroups := r.manager.GetBackupRules(userID)
-	backupGroupDescs, err := r.ruleGroupListToGroupStateDesc(userID, backupGroups, groupListFilter{
-		ruleNameSet,
-		ruleGroupNameSet,
-		fileSet,
-		returnAlerts,
-		returnRecording,
-		matcherSets,
-	})
-	if err != nil {
-		return nil, err
+	if rulesRequest.MaxRuleGroups <= 0 {
+		return RulesResponse{
+			Groups:    combinedRuleStateDescs,
+			NextToken: "",
+		}, nil
 	}
 
-	return append(groupDescs, backupGroupDescs...), nil
+	sort.Sort(PaginatedGroupStates(combinedRuleStateDescs))
+
+	resultingGroupDescs := make([]*GroupStateDesc, 0, len(combinedRuleStateDescs))
+	for _, group := range combinedRuleStateDescs {
+		groupID := GetRuleGroupNextToken(group.Group.Namespace, group.Group.Name)
+
+		// Only want groups whose groupID is greater than the token. This comparison works because
+		// we sort by that groupID
+		if len(rulesRequest.NextToken) > 0 && rulesRequest.NextToken >= groupID {
+			continue
+		}
+		if len(group.ActiveRules) > 0 {
+			resultingGroupDescs = append(resultingGroupDescs, group)
+		}
+	}
+
+	resultingGroupDescs, nextToken := generatePage(resultingGroupDescs, int(rulesRequest.MaxRuleGroups))
+	return RulesResponse{
+		Groups:    resultingGroupDescs,
+		NextToken: nextToken,
+	}, nil
 }
 
 type groupListFilter struct {
@@ -1272,7 +1308,7 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) ([]*GroupStateDesc, error) {
+func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -1291,7 +1327,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 
 	var (
 		mtx      sync.Mutex
-		merged   []*GroupStateDesc
+		merged   []*RulesResponse
 		errCount int
 	)
 
@@ -1318,8 +1354,12 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 			RuleGroupNames: rulesRequest.GetRuleGroupNames(),
 			Files:          rulesRequest.GetFiles(),
 			Type:           rulesRequest.GetType(),
-			ExcludeAlerts:  rulesRequest.GetExcludeAlerts(),
+			State:          rulesRequest.GetState(),
+			Health:         rulesRequest.GetHealth(),
 			Matchers:       rulesRequest.GetMatchers(),
+			ExcludeAlerts:  rulesRequest.GetExcludeAlerts(),
+			MaxRuleGroups:  rulesRequest.GetMaxRuleGroups(),
+			NextToken:      rulesRequest.GetNextToken(),
 		})
 
 		if err != nil {
@@ -1341,17 +1381,23 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		}
 
 		mtx.Lock()
-		merged = append(merged, newGrps.Groups...)
+		merged = append(merged, newGrps)
 		mtx.Unlock()
 
 		return nil
 	})
 
-	if err == nil && (r.cfg.RulesBackupEnabled() || r.cfg.APIDeduplicateRules) {
-		merged = mergeGroupStateDesc(merged)
+	if err == nil {
+		if r.cfg.RulesBackupEnabled() || r.cfg.APIDeduplicateRules {
+			return mergeGroupStateDesc(merged, rulesRequest.MaxRuleGroups, true), nil
+		}
+		return mergeGroupStateDesc(merged, rulesRequest.MaxRuleGroups, false), nil
 	}
 
-	return merged, err
+	return &RulesResponse{
+		Groups:    make([]*GroupStateDesc, 0),
+		NextToken: "",
+	}, err
 }
 
 // Rules implements the rules service
@@ -1362,12 +1408,12 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	groupDescs, err := r.getLocalRules(userID, *in, r.cfg.RulesBackupEnabled())
+	response, err := r.getLocalRules(userID, *in, r.cfg.RulesBackupEnabled())
 	if err != nil {
 		return nil, err
 	}
 
-	return &RulesResponse{Groups: groupDescs}, nil
+	return &response, nil
 }
 
 // HasMaxRuleGroupsLimit check if RulerMaxRuleGroupsPerTenant limit is set for the userID.

@@ -302,6 +302,46 @@ func (s *QueryStats) LoadStoreGatewayTouchedPostingBytes() uint64 {
 	return atomic.LoadUint64(&s.StoreGatewayTouchedPostingBytes)
 }
 
+func (s *QueryStats) AddScannedSamples(count uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddUint64(&s.ScannedSamples, count)
+}
+
+func (s *QueryStats) LoadScannedSamples() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.ScannedSamples)
+}
+
+func (s *QueryStats) AddPeakSamples(count uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddUint64(&s.PeakSamples, count)
+}
+
+func (s *QueryStats) SetPeakSamples(count uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.StoreUint64(&s.PeakSamples, count)
+}
+
+func (s *QueryStats) LoadPeakSamples() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.PeakSamples)
+}
+
 // Merge the provided Stats into this one.
 func (s *QueryStats) Merge(other *QueryStats) {
 	if s == nil || other == nil {
@@ -317,6 +357,8 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	s.AddFetchedChunks(other.LoadFetchedChunks())
 	s.AddStoreGatewayTouchedPostings(other.LoadStoreGatewayTouchedPostings())
 	s.AddStoreGatewayTouchedPostingBytes(other.LoadStoreGatewayTouchedPostingBytes())
+	s.AddScannedSamples(other.LoadScannedSamples())
+	s.SetPeakSamples(max(s.LoadPeakSamples(), other.LoadPeakSamples()))
 	s.AddExtraFields(other.LoadExtraFields()...)
 }
 

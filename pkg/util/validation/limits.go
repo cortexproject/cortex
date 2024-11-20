@@ -119,6 +119,7 @@ type Limits struct {
 	IngestionRateStrategy     string              `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
 	IngestionBurstSize        int                 `yaml:"ingestion_burst_size" json:"ingestion_burst_size"`
 	AcceptHASamples           bool                `yaml:"accept_ha_samples" json:"accept_ha_samples"`
+	AcceptMixedHASamples      bool                `yaml:"accept_mixed_ha_samples" json:"accept_mixed_ha_samples"`
 	HAClusterLabel            string              `yaml:"ha_cluster_label" json:"ha_cluster_label"`
 	HAReplicaLabel            string              `yaml:"ha_replica_label" json:"ha_replica_label"`
 	HAMaxClusters             int                 `yaml:"ha_max_clusters" json:"ha_max_clusters"`
@@ -136,6 +137,7 @@ type Limits struct {
 	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
 	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
 	MaxNativeHistogramBuckets int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
+	PromoteResourceAttributes []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
 
 	// Ingester enforced limits.
 	// Series
@@ -220,9 +222,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 	f.BoolVar(&l.AcceptHASamples, "distributor.ha-tracker.enable-for-all-users", false, "Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup.")
+	f.BoolVar(&l.AcceptMixedHASamples, "experimental.distributor.ha-tracker.mixed-ha-samples", false, "[Experimental] Flag to enable handling of samples with mixed external labels identifying replicas in an HA Prometheus setup. Supported only if -distributor.ha-tracker.enable-for-all-users is true.")
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
 	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
 	f.IntVar(&l.HAMaxClusters, "distributor.ha-tracker.max-clusters", 0, "Maximum number of clusters that HA tracker will keep track of for single user. 0 to disable the limit.")
+	f.Var((*flagext.StringSliceCSV)(&l.PromoteResourceAttributes), "distributor.promote-resource-attributes", "Comma separated list of resource attributes that should be converted to labels.")
 	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
@@ -547,6 +551,11 @@ func (o *Overrides) AcceptHASamples(userID string) bool {
 	return o.GetOverridesForUser(userID).AcceptHASamples
 }
 
+// AcceptMixedHASamples returns whether the distributor should track and accept samples from mixed HA replicas for this user.
+func (o *Overrides) AcceptMixedHASamples(userID string) bool {
+	return o.GetOverridesForUser(userID).AcceptMixedHASamples
+}
+
 // HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
 func (o *Overrides) HAClusterLabel(userID string) string {
 	return o.GetOverridesForUser(userID).HAClusterLabel
@@ -752,6 +761,11 @@ func (o *Overrides) MaxGlobalMetricsWithMetadataPerUser(userID string) int {
 // MaxGlobalMetadataPerMetric returns the maximum number of metadata allowed per metric across the cluster.
 func (o *Overrides) MaxGlobalMetadataPerMetric(userID string) int {
 	return o.GetOverridesForUser(userID).MaxGlobalMetadataPerMetric
+}
+
+// PromoteResourceAttributes returns the promote resource attributes for a given user.
+func (o *Overrides) PromoteResourceAttributes(userID string) []string {
+	return o.GetOverridesForUser(userID).PromoteResourceAttributes
 }
 
 // IngestionTenantShardSize returns the ingesters shard size for a given user.

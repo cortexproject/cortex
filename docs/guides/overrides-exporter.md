@@ -14,15 +14,15 @@ to their limits tenants are, the `overrides-exporter` module can expose limits a
 To update configuration without restarting, Cortex allows operators to supply a `runtime_config`
 file that will be periodically reloaded. This file can be specified under the `runtime_config` section
 of the main [configuration file](../configuration/arguments.md#runtime-configuration-file) or using the `-runtime-config.file`
-command line flag. This file is used to apply tenant-specific limits.
+command-line flag. This file is used to apply tenant-specific limits.
 
 ## Example
 
-The `overrides-exporter` is not enabled by default, it must be explicitly enabled. We recommend
+The `overrides-exporter` is not enabled by default; it must be explicitly enabled. We recommend
 only running a single instance of it in your cluster due to the cardinality of the metrics
 emitted.
 
-With a `runtime.yaml` file given below
+With a `runtime.yaml` file given below:
 
 [embedmd]:# (./overrides-exporter-runtime.yaml)
 ```yaml
@@ -40,13 +40,13 @@ overrides:
     max_series_per_query: 100000
 ```
 
-The `overrides-exporter` is configured to run as follows
+The `overrides-exporter` is configured to run as follows:
 
 ```
 cortex -target overrides-exporter -runtime-config.file runtime.yaml -server.http-listen-port=8080
 ```
 
-After the `overrides-exporter` starts, you can to use `curl` to inspect the tenant overrides.
+After the `overrides-exporter` starts, you can use `curl` to inspect the tenant overrides.
 
 ```text
 curl -s http://localhost:8080/metrics | grep cortex_overrides

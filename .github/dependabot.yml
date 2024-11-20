@@ -5,11 +5,26 @@
 
 version: 2
 updates:
-  - package-ecosystem: "gomod"
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
+    groups:
+      actions-dependencies:
+        dependency-type: "production"
+    labels:
+      - "infra"
   - package-ecosystem: "gomod"
-    directory: "/website"
+    directories:
+      - "/"
+      - "/website"
+    groups:
+      go-dependencies:
+        exclude-patterns:
+          - "github.com/thanos-io/thanos"
+    ignore:
+      - dependency-name: "github.com/prometheus/prometheus"
+        versions:
+          - ">=0.300.0-beta.0"
     schedule:
-      interval: "weekly" 
+      interval: "daily"

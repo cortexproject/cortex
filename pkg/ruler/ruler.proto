@@ -29,6 +29,8 @@ message RulesRequest {
   string health = 6;
   repeated string matchers = 7;
   bool excludeAlerts = 8;
+  int32 maxRuleGroups = 9;
+  string nextToken = 10;
 }
 
 message LivenessCheckRequest{}
@@ -39,6 +41,7 @@ message LivenessCheckResponse{
 
 message RulesResponse {
   repeated GroupStateDesc groups = 1;
+  string nextToken = 2;
 }
 
 // GroupStateDesc is a proto representation of a cortex rule group

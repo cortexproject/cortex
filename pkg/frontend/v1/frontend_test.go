@@ -216,7 +216,7 @@ func TestFrontendMetricsCleanup(t *testing.T) {
 
 			fr.cleanupInactiveUserMetrics("1")
 
-			require.ErrorContains(t, testutil.GatherAndCompare(reg, strings.NewReader(""), "cortex_query_frontend_queue_length"), "expected metric name(s) not found")
+			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(""), "cortex_query_frontend_queue_length"))
 		}
 
 		testFrontend(t, defaultFrontendConfig(), handler, test, matchMaxConcurrency, nil, reg)

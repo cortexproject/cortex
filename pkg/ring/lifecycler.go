@@ -686,19 +686,15 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		level.Info(i.logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
 
+		// Update the address if it has changed
+		instanceDesc.Addr = i.Addr
+
 		// Update the ring if the instance has been changed and the heartbeat is disabled.
 		// We dont need to update KV here when heartbeat is enabled as this info will eventually be update on KV
 		// on the next heartbeat
 		if i.cfg.HeartbeatPeriod == 0 && !instanceDesc.Equal(ringDesc.Ingesters[i.ID]) {
 			// Update timestamp to give gossiping client a chance register ring change.
 			instanceDesc.Timestamp = time.Now().Unix()
-			ringDesc.Ingesters[i.ID] = instanceDesc
-			return ringDesc, true, nil
-		}
-
-		if i.cfg.HeartbeatPeriod == 0 && i.Addr != instanceDesc.Addr {
-			// Update the address if it has changed
-			instanceDesc.Addr = i.Addr
 			ringDesc.Ingesters[i.ID] = instanceDesc
 			return ringDesc, true, nil
 		}

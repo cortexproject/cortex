@@ -918,6 +918,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		fetcher,
 		deduplicateBlocksFilter,
 		ignoreDeletionMarkFilter,
+		c.compactorCfg.CompactionInterval,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create syncer")

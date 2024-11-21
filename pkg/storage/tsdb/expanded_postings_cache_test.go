@@ -3,6 +3,7 @@ package tsdb
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"testing"
@@ -21,7 +22,7 @@ func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
 		MaxBytes: 10 << 20,
 	}
 	m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
-	cache := newFifoCache[int](cfg, "test", m, time.Now)
+	cache := newLruCache[int](cfg, "test", m, time.Now)
 	calls := atomic.Int64{}
 	concurrency := 100
 	wg := sync.WaitGroup{}
@@ -45,12 +46,12 @@ func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
 
 }
 
-func TestFifoCacheDisabled(t *testing.T) {
+func TestCacheDisabled(t *testing.T) {
 	cfg := PostingsCacheConfig{}
 	cfg.Enabled = false
 	m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
 	timeNow := time.Now
-	cache := newFifoCache[int](cfg, "test", m, timeNow)
+	cache := newLruCache[int](cfg, "test", m, timeNow)
 	old, loaded := cache.getPromiseForKey("key1", func() (int, int64, error) {
 		return 1, 0, nil
 	})
@@ -59,8 +60,66 @@ func TestFifoCacheDisabled(t *testing.T) {
 	require.False(t, cache.contains("key1"))
 }
 
-func TestFifoCacheExpire(t *testing.T) {
+func TestLru(t *testing.T) {
+	maxNumberOfCachedItems := 5
+	keySize := 20
 
+	cfg := PostingsCacheConfig{
+		Enabled:  true,
+		MaxBytes: int64(maxNumberOfCachedItems + keySize*maxNumberOfCachedItems), // for this test each element has size of 1, to it will be 'maxNumberOfCachedItems' elements
+		Ttl:      time.Hour,
+	}
+	r := prometheus.NewPedanticRegistry()
+	m := NewPostingCacheMetrics(r)
+	cache := newLruCache[int](cfg, "test", m, time.Now)
+
+	for i := 0; i < maxNumberOfCachedItems; i++ {
+		key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
+		_, hit := cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 1, nil })
+		require.False(t, hit)
+		require.Equal(t, key, cache.cached.Back().Value)
+		assertCacheItemsCount(t, cache, i+1)
+	}
+
+	for i := 0; i < maxNumberOfCachedItems; i++ {
+		key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
+		_, hit := cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 1, nil })
+		require.True(t, hit)
+		require.Equal(t, key, cache.cached.Back().Value)
+		assertCacheItemsCount(t, cache, maxNumberOfCachedItems)
+	}
+
+	// Lets now hit 2 random keys and make sure they will be the last to be expired
+	recentUsedKeys := make(map[string]struct{})
+	for i := 0; i < 2; i++ {
+		key := RepeatStringIfNeeded(fmt.Sprintf("key%d", rand.Int()%maxNumberOfCachedItems), keySize)
+		_, hit := cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 1, nil })
+		require.True(t, hit)
+		assertCacheItemsCount(t, cache, maxNumberOfCachedItems)
+		recentUsedKeys[key] = struct{}{}
+	}
+
+	// Create new keys and make sure the recentUsedKeys are still in the cache
+	for i := 0; i < maxNumberOfCachedItems-2; i++ {
+		key := RepeatStringIfNeeded(fmt.Sprintf("key_new%d", i), keySize)
+		_, hit := cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 1, nil })
+		require.False(t, hit)
+		require.Equal(t, maxNumberOfCachedItems, cache.cached.Len())
+	}
+
+	for i := 0; i < maxNumberOfCachedItems; i++ {
+		key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
+		if _, ok := recentUsedKeys[key]; ok {
+			_, hit := cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 1, nil })
+			require.True(t, hit)
+		} else {
+			require.False(t, cache.contains(key))
+		}
+	}
+
+}
+
+func TestCacheExpire(t *testing.T) {
 	keySize := 20
 	numberOfKeys := 100
 
@@ -93,7 +152,7 @@ func TestFifoCacheExpire(t *testing.T) {
 			r := prometheus.NewPedanticRegistry()
 			m := NewPostingCacheMetrics(r)
 			timeNow := time.Now
-			cache := newFifoCache[int](c.cfg, "test", m, timeNow)
+			cache := newLruCache[int](c.cfg, "test", m, timeNow)
 
 			for i := 0; i < numberOfKeys; i++ {
 				key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
@@ -182,4 +241,14 @@ func RepeatStringIfNeeded(seed string, length int) string {
 	}
 
 	return strings.Repeat(seed, 1+length/len(seed))[:max(length, len(seed))]
+}
+
+func assertCacheItemsCount[T any](t *testing.T, cache *lruCache[T], size int) {
+	require.Equal(t, size, cache.cached.Len())
+	count := 0
+	cache.cachedValues.Range(func(k, v any) bool {
+		count++
+		return true
+	})
+	require.Equal(t, size, count)
 }

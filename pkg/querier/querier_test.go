@@ -542,7 +542,6 @@ func TestLimits(t *testing.T) {
 }
 
 func TestQuerier(t *testing.T) {
-	t.Parallel()
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 	const chunks = 24
@@ -610,7 +609,6 @@ func TestQuerierMetric(t *testing.T) {
 }
 
 func TestNoHistoricalQueryToIngester(t *testing.T) {
-	t.Parallel()
 	testCases := []struct {
 		name                 string
 		mint, maxt           time.Time
@@ -711,7 +709,6 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
-	t.Parallel()
 	const engineLookbackDelta = 5 * time.Minute
 
 	now := time.Now()
@@ -929,7 +926,6 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Series(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Labels(t *testing.T) {
-	t.Parallel()
 	const maxQueryLength = 30 * 24 * time.Hour
 	tests := map[string]struct {
 		startTime            time.Time
@@ -1002,7 +998,6 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Labels(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
-	t.Parallel()
 	const (
 		engineLookbackDelta = 5 * time.Minute
 		thirtyDays          = 30 * 24 * time.Hour
@@ -1511,7 +1506,6 @@ func (q *mockStoreQuerier) Close() error {
 }
 
 func TestShortTermQueryToLTS(t *testing.T) {
-	t.Parallel()
 	testCases := []struct {
 		name                 string
 		mint, maxt           time.Time

@@ -3997,6 +3997,10 @@ store_gateway_client:
 # like at Query Frontend or Ruler.
 # CLI flag: -querier.ignore-max-query-length
 [ignore_max_query_length: <boolean> | default = false]
+
+# [Experimental] If true, experimental promQL functions are enabled.
+# CLI flag: -querier.enable-promql-experimental-functions
+[enable_promql_experimental_functions: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`

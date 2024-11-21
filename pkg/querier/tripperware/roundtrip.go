@@ -27,6 +27,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -104,7 +105,12 @@ func NewQueryTripperware(
 	defaultSubQueryInterval time.Duration,
 	maxSubQuerySteps int64,
 	lookbackDelta time.Duration,
+	enablePromQLExperimentalFunctions bool,
 ) Tripperware {
+
+	// set EnableExperimentalFunctions
+	parser.EnableExperimentalFunctions = enablePromQLExperimentalFunctions
+
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_query_frontend_queries_total",

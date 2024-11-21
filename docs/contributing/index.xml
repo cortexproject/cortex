@@ -4,7 +4,7 @@
 &lt;p>The Cortex project employs voting to ensure no single member can dominate the project. Any maintainer may cast a vote. To avoid having a single company dominate the project, at most two votes from maintainers working for the same company will count.&lt;/p>
 &lt;p>For formal votes, a specific statement of what is being voted on should be added to the relevant github issue or PR, and a link to that issue or PR added to the maintainers meeting agenda document.&lt;/p>
 &lt;p>Maintainers should indicate their yes/no vote on that issue or PR, and after a suitable period of time (minimum 2 business weeks), the votes will be tallied and the outcome noted. Maintainers who do not cast a vote, after a suitable period of time, are not included in the majority calculation.&lt;/p>
-&lt;h2 id="maintainer-duties">Maintainer duties&lt;/h2>
+&lt;h2 id="maintainer-role">Maintainer Role&lt;/h2>
 &lt;p>Maintainers are required to participate in the project, by joining discussions, submitting and reviewing pull requests, answering user questions, among others.&lt;/p>
 &lt;p>Besides that, we have one concrete activity in which maintainers have to engage from time to time: releasing new versions of Cortex. This process ideally takes only a couple of hours, but requires coordination on different fronts. Even though the process is well documented, it is not without eventual glitches, so, each release needs a &amp;ldquo;Release shepherd&amp;rdquo;. How it works is described in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/RELEASE.md">RELEASE.md&lt;/a> file.&lt;/p>
 &lt;h2 id="changes-in-maintainership">Changes in Maintainership&lt;/h2>
@@ -22,6 +22,8 @@ of maintainers via one of the following ways:&lt;/p>
 listed in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/README.md">README&lt;/a> as a form of gratitude for their contributions.&lt;/p>
 &lt;h2 id="approving-prs">Approving PRs&lt;/h2>
 &lt;p>PRs may be merged after receiving at least two positive votes. If the PR author is a maintainer, this counts as a vote.&lt;/p>
+&lt;h2 id="triage-role">Triage Role&lt;/h2>
+&lt;p>Triagers are contributors who assist in managing and organizing issues and pull requests. See &lt;a href="https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization#repository-roles-for-organizations">here&lt;/a> for details about the role’s permission.&lt;/p>
 &lt;h2 id="github-project-administration">Github Project Administration&lt;/h2>
 &lt;p>Maintainers will be added to the collaborators list of the Cortex repository with &amp;ldquo;Write&amp;rdquo; access.&lt;/p>
 &lt;p>After 6 months a maintainer will be given &amp;ldquo;Admin&amp;rdquo; access to the Cortex repository.&lt;/p>

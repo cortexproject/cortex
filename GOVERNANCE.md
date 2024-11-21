@@ -11,7 +11,7 @@ For formal votes, a specific statement of what is being voted on should be added
 Maintainers should indicate their yes/no vote on that issue or PR, and after a suitable period of time (minimum 2 business weeks), the votes will be tallied and the outcome noted. Maintainers who do not cast a vote, after a suitable period of time, are not included in the majority calculation.
 
 
-## Maintainer duties
+## Maintainer Role
 
 Maintainers are required to participate in the project, by joining discussions, submitting and reviewing pull requests, answering user questions, among others.
 
@@ -35,6 +35,10 @@ listed in the [README](https://github.com/cortexproject/cortex/blob/master/READM
 ## Approving PRs
 
 PRs may be merged after receiving at least two positive votes. If the PR author is a maintainer, this counts as a vote.
+
+## Triage Role
+
+Triagers are contributors who assist in managing and organizing issues and pull requests. See [here](https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization#repository-roles-for-organizations) for details about the role’s permission.
 
 ## Github Project Administration
 

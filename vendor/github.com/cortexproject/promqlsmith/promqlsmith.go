@@ -40,10 +40,11 @@ var (
 type PromQLSmith struct {
 	rnd *rand.Rand
 
-	enableOffset           bool
-	enableAtModifier       bool
-	enableVectorMatching   bool
-	atModifierMaxTimestamp int64
+	enableOffset             bool
+	enableAtModifier         bool
+	enableVectorMatching     bool
+	enableExperimentalPromQL bool
+	atModifierMaxTimestamp   int64
 
 	seriesSet       []labels.Labels
 	labelNames      []string
@@ -65,17 +66,18 @@ func New(rnd *rand.Rand, seriesSet []labels.Labels, opts ...Option) *PromQLSmith
 	options.applyDefaults()
 
 	ps := &PromQLSmith{
-		rnd:                    rnd,
-		seriesSet:              filterEmptySeries(seriesSet),
-		supportedExprs:         options.enabledExprs,
-		supportedAggrs:         options.enabledAggrs,
-		supportedBinops:        options.enabledBinops,
-		supportedFuncs:         options.enabledFuncs,
-		enableOffset:           options.enableOffset,
-		enableAtModifier:       options.enableAtModifier,
-		atModifierMaxTimestamp: options.atModifierMaxTimestamp,
-		enableVectorMatching:   options.enableVectorMatching,
-		enforceMatchers:        options.enforceLabelMatchers,
+		rnd:                      rnd,
+		seriesSet:                filterEmptySeries(seriesSet),
+		supportedExprs:           options.enabledExprs,
+		supportedAggrs:           options.enabledAggrs,
+		supportedBinops:          options.enabledBinops,
+		supportedFuncs:           options.enabledFuncs,
+		enableOffset:             options.enableOffset,
+		enableAtModifier:         options.enableAtModifier,
+		atModifierMaxTimestamp:   options.atModifierMaxTimestamp,
+		enableVectorMatching:     options.enableVectorMatching,
+		enableExperimentalPromQL: options.enableExperimentalPromQLFunctions,
+		enforceMatchers:          options.enforceLabelMatchers,
 	}
 	ps.labelNames, ps.labelValues = labelNameAndValuesFromLabelSet(seriesSet)
 	return ps

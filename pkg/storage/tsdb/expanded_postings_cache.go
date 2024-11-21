@@ -280,15 +280,17 @@ type lruCache[V any] struct {
 	metrics      ExpandedPostingsCacheMetrics
 
 	// Fields from here should be locked
-	cachedMtx   sync.RWMutex
-	cached      *list.List
+	cachedMtx sync.RWMutex
+	// Keeps tracks of the last recent used keys.
+	// The most recent key used is placed in the back of the list while items should be evicted from the front of the list
+	lruList     *list.List
 	cachedBytes int64
 }
 
 func newLruCache[V any](cfg PostingsCacheConfig, name string, metrics *ExpandedPostingsCacheMetrics, timeNow func() time.Time) *lruCache[V] {
 	return &lruCache[V]{
 		cachedValues: new(sync.Map),
-		cached:       list.New(),
+		lruList:      list.New(),
 		cfg:          cfg,
 		timeNow:      timeNow,
 		name:         name,
@@ -361,7 +363,7 @@ func (c *lruCache[V]) contains(k string) bool {
 }
 
 func (c *lruCache[V]) shouldEvictHead() (string, bool) {
-	h := c.cached.Front()
+	h := c.lruList.Front()
 	if h == nil {
 		return "", false
 	}
@@ -382,8 +384,8 @@ func (c *lruCache[V]) shouldEvictHead() (string, bool) {
 }
 
 func (c *lruCache[V]) evictHead() {
-	front := c.cached.Front()
-	c.cached.Remove(front)
+	front := c.lruList.Front()
+	c.lruList.Remove(front)
 	oldestKey := front.Value.(string)
 	if oldest, loaded := c.cachedValues.LoadAndDelete(oldestKey); loaded {
 		c.cachedBytes -= oldest.(*cacheEntryPromise[V]).sizeBytes
@@ -398,13 +400,13 @@ func (c *lruCache[V]) created(key string, sizeBytes int64) *list.Element {
 	c.cachedMtx.Lock()
 	defer c.cachedMtx.Unlock()
 	c.cachedBytes += sizeBytes
-	return c.cached.PushBack(key)
+	return c.lruList.PushBack(key)
 }
 
 func (c *lruCache[V]) moveBack(ele *list.Element) {
 	c.cachedMtx.Lock()
 	defer c.cachedMtx.Unlock()
-	c.cached.MoveToBack(ele)
+	c.lruList.MoveToBack(ele)
 }
 
 func (c *lruCache[V]) updateSize(oldSize, newSizeBytes int64) {
@@ -425,6 +427,8 @@ type cacheEntryPromise[V any] struct {
 	v    V
 	err  error
 
+	// reference for the element in the LRU list
+	// This is used to push this cache entry to the back of the list as result as a cache hit
 	lElement *list.Element
 }
 

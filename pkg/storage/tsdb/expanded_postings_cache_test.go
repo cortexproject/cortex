@@ -77,7 +77,7 @@ func TestLru(t *testing.T) {
 		key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
 		_, hit := cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 1, nil })
 		require.False(t, hit)
-		require.Equal(t, key, cache.cached.Back().Value)
+		require.Equal(t, key, cache.lruList.Back().Value)
 		assertCacheItemsCount(t, cache, i+1)
 	}
 
@@ -85,7 +85,7 @@ func TestLru(t *testing.T) {
 		key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
 		_, hit := cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 1, nil })
 		require.True(t, hit)
-		require.Equal(t, key, cache.cached.Back().Value)
+		require.Equal(t, key, cache.lruList.Back().Value)
 		assertCacheItemsCount(t, cache, maxNumberOfCachedItems)
 	}
 
@@ -104,7 +104,7 @@ func TestLru(t *testing.T) {
 		key := RepeatStringIfNeeded(fmt.Sprintf("key_new%d", i), keySize)
 		_, hit := cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 1, nil })
 		require.False(t, hit)
-		require.Equal(t, maxNumberOfCachedItems, cache.cached.Len())
+		require.Equal(t, maxNumberOfCachedItems, cache.lruList.Len())
 	}
 
 	for i := 0; i < maxNumberOfCachedItems; i++ {
@@ -244,7 +244,7 @@ func RepeatStringIfNeeded(seed string, length int) string {
 }
 
 func assertCacheItemsCount[T any](t *testing.T, cache *lruCache[T], size int) {
-	require.Equal(t, size, cache.cached.Len())
+	require.Equal(t, size, cache.lruList.Len())
 	count := 0
 	cache.cachedValues.Range(func(k, v any) bool {
 		count++

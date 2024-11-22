@@ -92,6 +92,11 @@ func (e *DisabledRuleGroupErr) Error() string {
 	return e.Message
 }
 
+type RemoteWriteConfig struct {
+	URL     string            `yaml:"url"`
+	Headers map[string]string `yaml:"headers"`
+}
+
 // Config is the configuration for the recording rules server.
 type Config struct {
 	// This is used for query to query frontend to evaluate rules
@@ -112,6 +117,10 @@ type Config struct {
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
+
+	// Configuration for remote_write. If this is configured then
+	// Ruler only writes to this address.
+	RemoteWriteConfig RemoteWriteConfig `yaml:"remote_write"`
 
 	// URL of the Alertmanager to send notifications to.
 	// If you are configuring the ruler to send to a Cortex Alertmanager,
@@ -217,6 +226,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing DNS resolutions of Alertmanager hosts.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
+	f.StringVar(&cfg.RemoteWriteConfig.URL, "ruler.remote-write-url", "", "URL of the remote write endpoint to send samples to.")
 
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")

@@ -5085,12 +5085,16 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.BlocksStorageConfig.TSDB.PostingsCache = cortex_tsdb.TSDBPostingsCacheConfig{
-		SeedSize: 1, // lets make sure all metric names collide
+		SeedSize: 3, // lets make sure all metric names collide
 		Head: cortex_tsdb.PostingsCacheConfig{
-			Enabled: true,
+			Enabled:  true,
+			Ttl:      time.Hour,
+			MaxBytes: 1024 * 1024 * 1024,
 		},
 		Blocks: cortex_tsdb.PostingsCacheConfig{
-			Enabled: true,
+			Enabled:  true,
+			Ttl:      time.Hour,
+			MaxBytes: 1024 * 1024 * 1024,
 		},
 	}
 
@@ -5102,20 +5106,21 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 
 	numberOfTenants := 100
 	wg := sync.WaitGroup{}
-	wg.Add(numberOfTenants)
 
-	for j := 0; j < numberOfTenants; j++ {
-		go func() {
-			defer wg.Done()
-			userId := fmt.Sprintf("user%v", j)
-			ctx := user.InjectOrgID(context.Background(), userId)
-			_, err = i.Push(ctx, cortexpb.ToWriteRequest(
-				[]labels.Labels{labels.FromStrings(labels.MetricName, "foo", "userId", userId)}, []cortexpb.Sample{{Value: 2, TimestampMs: 4 * 60 * 60 * 1000}}, nil, nil, cortexpb.API))
-			require.NoError(t, err)
-		}()
+	for k := 0; k < 10; k++ {
+		wg.Add(numberOfTenants)
+		for j := 0; j < numberOfTenants; j++ {
+			go func() {
+				defer wg.Done()
+				userId := fmt.Sprintf("user%v", j)
+				ctx := user.InjectOrgID(context.Background(), userId)
+				_, err := i.Push(ctx, cortexpb.ToWriteRequest(
+					[]labels.Labels{labels.FromStrings(labels.MetricName, "foo", "userId", userId, "k", strconv.Itoa(k))}, []cortexpb.Sample{{Value: 2, TimestampMs: 4 * 60 * 60 * 1000}}, nil, nil, cortexpb.API))
+				require.NoError(t, err)
+			}()
+		}
+		wg.Wait()
 	}
-
-	wg.Wait()
 
 	wg.Add(numberOfTenants)
 	for j := 0; j < numberOfTenants; j++ {
@@ -5131,8 +5136,8 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 				Matchers:         []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: "foo"}},
 			}, s)
 			require.NoError(t, err)
-			require.Len(t, s.series, 1)
-			require.Len(t, s.series[0].Labels, 2)
+			require.Len(t, s.series, 10)
+			require.Len(t, s.series[0].Labels, 3)
 			require.Equal(t, userId, cortexpb.FromLabelAdaptersToLabels(s.series[0].Labels).Get("userId"))
 		}()
 	}

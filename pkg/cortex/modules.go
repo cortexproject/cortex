@@ -613,11 +613,15 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, queryEngine, t.Overrides, metrics, prometheus.DefaultRegisterer)
 		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger)
 	} else {
+		var pusher ruler.Pusher = t.Distributor
+		if t.Cfg.Ruler.RemoteWriteConfig.URL != "" {
+			pusher = ruler.NewRemoteWritePusher(t.Cfg.Ruler.RemoteWriteConfig.URL, t.Cfg.Ruler.RemoteWriteConfig.Headers)
+		}
 		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 		// TODO: Consider wrapping logger to differentiate from querier module logger
 		queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger)
 
-		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides, metrics, prometheus.DefaultRegisterer)
+		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, pusher, queryable, engine, t.Overrides, metrics, prometheus.DefaultRegisterer)
 		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger)
 	}
 

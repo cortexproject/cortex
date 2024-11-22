@@ -9,7 +9,7 @@ slug: ha-pair-handling
 
 You can have more than a single Prometheus monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy, and it doesn't make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:
 
-Assume that there are two teams, each running their own Prometheus, monitoring different services. Let's call the Promethei T1 and T2. Now, if the teams are running HA pairs, let's call the individual Promethei, T1.a, T1.b, and T2.a and T2.b.
+Assume that there are two teams, each running their own Prometheus, monitoring different services. Let's call the Prometheus T1 and T2. Now, if the teams are running HA pairs, let's call the individual Prometheus, T1.a, T1.b, and T2.a and T2.b.
 
 In Cortex, we make sure we only ingest from one of T1.a and T1.b, and only from one of T2.a and T2.b. We do this by electing a leader replica for each cluster of Prometheus. For example, in the case of T1, let it be T1.a. As long as T1.a is the leader, we drop the samples sent by T1.b. And if Cortex sees no new samples from T1.a for a short period (30s by default), it'll switch the leader to be T1.b.
 

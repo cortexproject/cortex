@@ -5080,6 +5080,65 @@ func TestIngester_instanceLimitsMetrics(t *testing.T) {
 	`), "cortex_ingester_instance_limits"))
 }
 
+func TestExpendedPostingsCacheIsolation(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.BlocksStorageConfig.TSDB.PostingsCache = cortex_tsdb.TSDBPostingsCacheConfig{
+		SeedSize: 1, // lets make sure all metric names collide
+		Head: cortex_tsdb.PostingsCacheConfig{
+			Enabled: true,
+		},
+		Blocks: cortex_tsdb.PostingsCacheConfig{
+			Enabled: true,
+		},
+	}
+
+	r := prometheus.NewRegistry()
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, r)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	numberOfTenants := 100
+	wg := sync.WaitGroup{}
+	wg.Add(numberOfTenants)
+
+	for j := 0; j < numberOfTenants; j++ {
+		go func() {
+			defer wg.Done()
+			userId := fmt.Sprintf("user%v", j)
+			ctx := user.InjectOrgID(context.Background(), userId)
+			_, err = i.Push(ctx, cortexpb.ToWriteRequest(
+				[]labels.Labels{labels.FromStrings(labels.MetricName, "foo", "userId", userId)}, []cortexpb.Sample{{Value: 2, TimestampMs: 4 * 60 * 60 * 1000}}, nil, nil, cortexpb.API))
+			require.NoError(t, err)
+		}()
+	}
+
+	wg.Wait()
+
+	wg.Add(numberOfTenants)
+	for j := 0; j < numberOfTenants; j++ {
+		go func() {
+			defer wg.Done()
+			userId := fmt.Sprintf("user%v", j)
+			ctx := user.InjectOrgID(context.Background(), userId)
+			s := &mockQueryStreamServer{ctx: ctx}
+
+			err := i.QueryStream(&client.QueryRequest{
+				StartTimestampMs: 0,
+				EndTimestampMs:   math.MaxInt64,
+				Matchers:         []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: "foo"}},
+			}, s)
+			require.NoError(t, err)
+			require.Len(t, s.series, 1)
+			require.Len(t, s.series[0].Labels, 2)
+			require.Equal(t, userId, cortexpb.FromLabelAdaptersToLabels(s.series[0].Labels).Get("userId"))
+		}()
+	}
+	wg.Wait()
+}
+
 func TestExpendedPostingsCache(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}

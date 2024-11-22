@@ -238,6 +238,8 @@ type Ingester struct {
 
 	inflightQueryRequests    atomic.Int64
 	maxInflightQueryRequests util_math.MaxTracker
+
+	expandedPostingsCacheFactory *cortex_tsdb.ExpandedPostingsCacheFactory
 }
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -697,12 +699,13 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 	}
 
 	i := &Ingester{
-		cfg:           cfg,
-		limits:        limits,
-		usersMetadata: map[string]*userMetricsMetadata{},
-		TSDBState:     newTSDBState(bucketClient, registerer),
-		logger:        logger,
-		ingestionRate: util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		cfg:                          cfg,
+		limits:                       limits,
+		usersMetadata:                map[string]*userMetricsMetadata{},
+		TSDBState:                    newTSDBState(bucketClient, registerer),
+		logger:                       logger,
+		ingestionRate:                util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		expandedPostingsCacheFactory: cortex_tsdb.NewExpandedPostingsCacheFactory(cfg.BlocksStorageConfig.TSDB.PostingsCache),
 	}
 	i.metrics = newIngesterMetrics(registerer,
 		false,
@@ -2174,9 +2177,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	blockRanges := i.cfg.BlocksStorageConfig.TSDB.BlockRanges.ToMilliseconds()
 
 	var postingCache cortex_tsdb.ExpandedPostingsCache
-	if i.cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled || i.cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled {
-		logutil.WarnExperimentalUse("expanded postings cache")
-		postingCache = cortex_tsdb.NewBlocksPostingsForMatchersCache(i.cfg.BlocksStorageConfig.TSDB.PostingsCache, i.metrics.expandedPostingsCacheMetrics)
+	if i.expandedPostingsCacheFactory != nil {
+		postingCache = i.expandedPostingsCacheFactory.NewExpandedPostingsCache(userID, i.metrics.expandedPostingsCacheMetrics)
 	}
 
 	userDB := &userTSDB{

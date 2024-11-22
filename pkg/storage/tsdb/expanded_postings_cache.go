@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -18,8 +17,10 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/index"
+	"github.com/segmentio/fasthash/fnv1a"
 
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	logutil "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var (
@@ -29,8 +30,8 @@ var (
 
 const (
 	// size of the seed array. Each seed is a 64bits int (8 bytes)
-	// totaling 8mb
-	seedArraySize = 1024 * 1024
+	// totaling 16mb
+	seedArraySize = 2 * 1024 * 1024
 
 	numOfSeedsStripes = 512
 )
@@ -67,7 +68,9 @@ type TSDBPostingsCacheConfig struct {
 	Head   PostingsCacheConfig `yaml:"head" doc:"description=If enabled, ingesters will cache expanded postings for the head block. Only queries with with an equal matcher for metric __name__ are cached."`
 	Blocks PostingsCacheConfig `yaml:"blocks" doc:"description=If enabled, ingesters will cache expanded postings for the compacted blocks. The cache is shared between all blocks."`
 
+	// The configurations below are used only for testing purpose
 	PostingsForMatchers func(ctx context.Context, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) `yaml:"-"`
+	SeedSize            int                                                                                           `yaml:"-"`
 	timeNow             func() time.Time                                                                              `yaml:"-"`
 }
 
@@ -89,25 +92,48 @@ func (cfg *PostingsCacheConfig) RegisterFlagsWithPrefix(prefix, block string, f 
 	f.BoolVar(&cfg.Enabled, prefix+"expanded_postings_cache."+block+".enabled", false, "Whether the postings cache is enabled or not")
 }
 
+type ExpandedPostingsCacheFactory struct {
+	seedByHash *seedByHash
+	cfg        TSDBPostingsCacheConfig
+}
+
+func NewExpandedPostingsCacheFactory(cfg TSDBPostingsCacheConfig) *ExpandedPostingsCacheFactory {
+	if cfg.Head.Enabled || cfg.Blocks.Enabled {
+		if cfg.SeedSize == 0 {
+			cfg.SeedSize = seedArraySize
+		}
+		logutil.WarnExperimentalUse("expanded postings cache")
+		return &ExpandedPostingsCacheFactory{
+			cfg:        cfg,
+			seedByHash: newSeedByHash(cfg.SeedSize),
+		}
+	}
+
+	return nil
+}
+
+func (f *ExpandedPostingsCacheFactory) NewExpandedPostingsCache(userId string, metrics *ExpandedPostingsCacheMetrics) ExpandedPostingsCache {
+	return newBlocksPostingsForMatchersCache(userId, f.cfg, metrics, f.seedByHash)
+}
+
 type ExpandedPostingsCache interface {
 	PostingsForMatchers(ctx context.Context, blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error)
 	ExpireSeries(metric labels.Labels)
 }
 
-type BlocksPostingsForMatchersCache struct {
-	strippedLock []sync.RWMutex
+type blocksPostingsForMatchersCache struct {
+	userId string
 
-	headCache   *fifoCache[[]storage.SeriesRef]
-	blocksCache *fifoCache[[]storage.SeriesRef]
-
-	headSeedByMetricName    []int
+	headCache               *fifoCache[[]storage.SeriesRef]
+	blocksCache             *fifoCache[[]storage.SeriesRef]
 	postingsForMatchersFunc func(ctx context.Context, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error)
 	timeNow                 func() time.Time
 
-	metrics *ExpandedPostingsCacheMetrics
+	metrics    *ExpandedPostingsCacheMetrics
+	seedByHash *seedByHash
 }
 
-func NewBlocksPostingsForMatchersCache(cfg TSDBPostingsCacheConfig, metrics *ExpandedPostingsCacheMetrics) ExpandedPostingsCache {
+func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfig, metrics *ExpandedPostingsCacheMetrics, seedByHash *seedByHash) ExpandedPostingsCache {
 	if cfg.PostingsForMatchers == nil {
 		cfg.PostingsForMatchers = tsdb.PostingsForMatchers
 	}
@@ -116,36 +142,30 @@ func NewBlocksPostingsForMatchersCache(cfg TSDBPostingsCacheConfig, metrics *Exp
 		cfg.timeNow = time.Now
 	}
 
-	return &BlocksPostingsForMatchersCache{
+	return &blocksPostingsForMatchersCache{
 		headCache:               newFifoCache[[]storage.SeriesRef](cfg.Head, "head", metrics, cfg.timeNow),
 		blocksCache:             newFifoCache[[]storage.SeriesRef](cfg.Blocks, "block", metrics, cfg.timeNow),
-		headSeedByMetricName:    make([]int, seedArraySize),
-		strippedLock:            make([]sync.RWMutex, numOfSeedsStripes),
 		postingsForMatchersFunc: cfg.PostingsForMatchers,
 		timeNow:                 cfg.timeNow,
 		metrics:                 metrics,
+		seedByHash:              seedByHash,
+		userId:                  userId,
 	}
 }
 
-func (c *BlocksPostingsForMatchersCache) ExpireSeries(metric labels.Labels) {
+func (c *blocksPostingsForMatchersCache) ExpireSeries(metric labels.Labels) {
 	metricName, err := extract.MetricNameFromLabels(metric)
 	if err != nil {
 		return
 	}
-
-	h := MemHashString(metricName)
-	i := h % uint64(len(c.headSeedByMetricName))
-	l := h % uint64(len(c.strippedLock))
-	c.strippedLock[l].Lock()
-	defer c.strippedLock[l].Unlock()
-	c.headSeedByMetricName[i]++
+	c.seedByHash.incrementSeed(c.userId, metricName)
 }
 
-func (c *BlocksPostingsForMatchersCache) PostingsForMatchers(ctx context.Context, blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) {
+func (c *blocksPostingsForMatchersCache) PostingsForMatchers(ctx context.Context, blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) {
 	return c.fetchPostings(blockID, ix, ms...)(ctx)
 }
 
-func (c *BlocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) func(context.Context) (index.Postings, error) {
+func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) func(context.Context) (index.Postings, error) {
 	var seed string
 	cache := c.blocksCache
 
@@ -197,7 +217,7 @@ func (c *BlocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 	return c.result(promise)
 }
 
-func (c *BlocksPostingsForMatchersCache) result(ce *cacheEntryPromise[[]storage.SeriesRef]) func(ctx context.Context) (index.Postings, error) {
+func (c *blocksPostingsForMatchersCache) result(ce *cacheEntryPromise[[]storage.SeriesRef]) func(ctx context.Context) (index.Postings, error) {
 	return func(ctx context.Context) (index.Postings, error) {
 		select {
 		case <-ctx.Done():
@@ -211,16 +231,11 @@ func (c *BlocksPostingsForMatchersCache) result(ce *cacheEntryPromise[[]storage.
 	}
 }
 
-func (c *BlocksPostingsForMatchersCache) getSeedForMetricName(metricName string) string {
-	h := MemHashString(metricName)
-	i := h % uint64(len(c.headSeedByMetricName))
-	l := h % uint64(len(c.strippedLock))
-	c.strippedLock[l].RLock()
-	defer c.strippedLock[l].RUnlock()
-	return strconv.Itoa(c.headSeedByMetricName[i])
+func (c *blocksPostingsForMatchersCache) getSeedForMetricName(metricName string) string {
+	return c.seedByHash.getSeed(c.userId, metricName)
 }
 
-func (c *BlocksPostingsForMatchersCache) cacheKey(seed string, blockID ulid.ULID, ms ...*labels.Matcher) string {
+func (c *blocksPostingsForMatchersCache) cacheKey(seed string, blockID ulid.ULID, ms ...*labels.Matcher) string {
 	slices.SortFunc(ms, func(i, j *labels.Matcher) int {
 		if i.Type != j.Type {
 			return int(i.Type - j.Type)
@@ -270,6 +285,36 @@ func metricNameFromMatcher(ms []*labels.Matcher) (string, bool) {
 	}
 
 	return "", false
+}
+
+type seedByHash struct {
+	strippedLock []sync.RWMutex
+	seedByHash   []int
+}
+
+func newSeedByHash(size int) *seedByHash {
+	return &seedByHash{
+		seedByHash:   make([]int, size),
+		strippedLock: make([]sync.RWMutex, numOfSeedsStripes),
+	}
+}
+
+func (s *seedByHash) getSeed(userId string, v string) string {
+	h := memHashString(userId, v)
+	i := h % uint64(len(s.seedByHash))
+	l := h % uint64(len(s.strippedLock))
+	s.strippedLock[l].RLock()
+	defer s.strippedLock[l].RUnlock()
+	return strconv.Itoa(s.seedByHash[i])
+}
+
+func (s *seedByHash) incrementSeed(userId string, v string) {
+	h := memHashString(userId, v)
+	i := h % uint64(len(s.seedByHash))
+	l := h % uint64(len(s.strippedLock))
+	s.strippedLock[l].Lock()
+	defer s.strippedLock[l].Unlock()
+	s.seedByHash[i]++
 }
 
 type fifoCache[V any] struct {
@@ -425,6 +470,7 @@ func (ce *cacheEntryPromise[V]) isExpired(ttl time.Duration, now time.Time) bool
 	return r >= ttl
 }
 
-func MemHashString(str string) uint64 {
-	return xxhash.Sum64(yoloBuf(str))
+func memHashString(userId, v string) uint64 {
+	h := fnv1a.HashString64(userId)
+	return fnv1a.AddString64(h, v)
 }

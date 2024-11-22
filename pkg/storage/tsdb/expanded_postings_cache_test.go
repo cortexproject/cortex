@@ -176,6 +176,24 @@ func TestFifoCacheExpire(t *testing.T) {
 	}
 }
 
+func Test_memHashString(test *testing.T) {
+	numberOfTenants := 200
+	numberOfMetrics := 100
+	occurrences := map[uint64]int{}
+
+	for k := 0; k < 10; k++ {
+		for j := 0; j < numberOfMetrics; j++ {
+			metricName := fmt.Sprintf("metricName%v", j)
+			for i := 0; i < numberOfTenants; i++ {
+				userId := fmt.Sprintf("user%v", i)
+				occurrences[memHashString(userId, metricName)]++
+			}
+		}
+
+		require.Len(test, occurrences, numberOfMetrics*numberOfTenants)
+	}
+}
+
 func RepeatStringIfNeeded(seed string, length int) string {
 	if len(seed) > length {
 		return seed

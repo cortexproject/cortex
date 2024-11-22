@@ -42,13 +42,17 @@ Triagers are contributors who assist in managing and organizing issues and pull 
 
 ## Github Project Administration
 
-Maintainers will be added to the collaborators list of the Cortex repository with "Write" access.
+Maintainers will be added to the collaborators list of the Cortex repository with "Write" access while Triagers will be added to the collaborators list of the Cortex repository with "Triage" access.
 
 After 6 months a maintainer will be given "Admin" access to the Cortex repository.
 
 ## Changes in Governance
 
 All changes in Governance require a 2/3 majority vote.
+
+## Cortex Team
+
+${Maintainers}
 
 ## Other Changes
 

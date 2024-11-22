@@ -596,8 +596,9 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 	}
 
 	// We've not been able to query all expected blocks after all retries.
+	err = fmt.Errorf("consistency check failed because some blocks were not queried: %s", strings.Join(convertULIDsToString(remainingBlocks), " "))
 	level.Warn(util_log.WithContext(ctx, logger)).Log("msg", "failed consistency check", "err", err)
-	return fmt.Errorf("consistency check failed because some blocks were not queried: %s", strings.Join(convertULIDsToString(remainingBlocks), " "))
+	return err
 }
 
 func (q *blocksStoreQuerier) fetchSeriesFromStores(

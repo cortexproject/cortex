@@ -10,6 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/prometheus/prometheus/model/histogram"
 )
 
 type ProtobufCodec struct{}
@@ -108,7 +109,30 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 				}
 			}
 		}
-		sampleStreams[i] = tripperware.SampleStream{Labels: labels, Samples: samples}
+
+		histogramsLen := len(data.Result.(promql.Matrix)[i].Histograms)
+		var histograms []tripperware.SampleHistogramPair
+		if histogramsLen > 0 {
+			histograms = make([]tripperware.SampleHistogramPair, histogramsLen)
+			for j := 0; j < histogramsLen; j++ {
+				bucketsLen := len(data.Result.(promql.Matrix)[i].Histograms[j].H.NegativeBuckets) + len(data.Result.(promql.Matrix)[i].Histograms[j].H.PositiveBuckets)
+				if data.Result.(promql.Matrix)[i].Histograms[j].H.ZeroCount > 0 {
+					bucketsLen = len(data.Result.(promql.Matrix)[i].Histograms[j].H.NegativeBuckets) + len(data.Result.(promql.Matrix)[i].Histograms[j].H.PositiveBuckets) + 1
+				}
+				buckets := make([]*tripperware.HistogramBucket, bucketsLen)
+				it := data.Result.(promql.Matrix)[i].Histograms[j].H.AllBucketIterator()
+				getBuckets(buckets, it)
+				histograms[j] = tripperware.SampleHistogramPair{
+					TimestampMs: data.Result.(promql.Matrix)[i].Histograms[j].T,
+					Histogram: tripperware.SampleHistogram{
+						Count:   data.Result.(promql.Matrix)[i].Histograms[j].H.Count,
+						Sum:     data.Result.(promql.Matrix)[i].Histograms[j].H.Sum,
+						Buckets: buckets,
+					},
+				}
+			}
+		}
+		sampleStreams[i] = tripperware.SampleStream{Labels: labels, Samples: samples, Histograms: histograms}
 	}
 	return &sampleStreams
 }
@@ -129,16 +153,61 @@ func getVectorSamples(data *v1.QueryData) *[]tripperware.Sample {
 				}
 			}
 		}
-
-		vectorSamples[i] = tripperware.Sample{
-			Labels: labels,
-			Sample: &cortexpb.Sample{
+		vectorSamples[i].Labels = labels
+		
+		if data.Result.(promql.Vector)[i].H != nil {
+			bucketsLen := len(data.Result.(promql.Vector)[i].H.NegativeBuckets) + len(data.Result.(promql.Vector)[i].H.PositiveBuckets)
+			if data.Result.(promql.Vector)[i].H.ZeroCount > 0 {
+				bucketsLen = len(data.Result.(promql.Vector)[i].H.NegativeBuckets) + len(data.Result.(promql.Vector)[i].H.PositiveBuckets) + 1
+			}
+			buckets := make([]*tripperware.HistogramBucket, bucketsLen)
+			it := data.Result.(promql.Vector)[i].H.AllBucketIterator()
+			getBuckets(buckets, it)
+			vectorSamples[i].Histogram = &tripperware.SampleHistogramPair{
+				TimestampMs: data.Result.(promql.Vector)[i].T,
+				Histogram: tripperware.SampleHistogram{
+					Count:   data.Result.(promql.Vector)[i].H.Count,
+					Sum:     data.Result.(promql.Vector)[i].H.Sum,
+					Buckets: buckets,
+				},
+			}
+		} else {
+			vectorSamples[i].Sample = &cortexpb.Sample{
 				TimestampMs: data.Result.(promql.Vector)[i].T,
 				Value:       data.Result.(promql.Vector)[i].F,
-			},
+			}
 		}
 	}
 	return &vectorSamples
+}
+
+func getBuckets(bucketsList []*tripperware.HistogramBucket, it histogram.BucketIterator[float64]) {
+	bucketIdx := 0
+	for it.Next() {
+		bucket := it.At()
+		if bucket.Count == 0 {
+			continue
+		}
+		boundaries := 2 // Exclusive on both sides AKA open interval.
+		if bucket.LowerInclusive {
+			if bucket.UpperInclusive {
+				boundaries = 3 // Inclusive on both sides AKA closed interval.
+			} else {
+				boundaries = 1 // Inclusive only on lower end AKA right open.
+			}
+		} else {
+			if bucket.UpperInclusive {
+				boundaries = 0 // Inclusive only on upper end AKA left open.
+			}
+		}
+		bucketsList[bucketIdx] = &tripperware.HistogramBucket{
+			Boundaries: int32(boundaries),
+			Lower:      bucket.Lower,
+			Upper:      bucket.Upper,
+			Count:      bucket.Count,
+		}
+		bucketIdx += 1
+	}
 }
 
 func getStats(builtin *stats.BuiltinStats) *tripperware.PrometheusResponseSamplesStats {
@@ -156,6 +225,5 @@ func getStats(builtin *stats.BuiltinStats) *tripperware.PrometheusResponseSample
 		TotalQueryableSamplesPerStep: queryableSamplesStatsPerStep,
 		PeakSamples:                  int64(builtin.Samples.PeakSamples),
 	}
-
 	return &statSamples
 }

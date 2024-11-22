@@ -5133,6 +5133,7 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, s.series, 1)
 			require.Len(t, s.series[0].Labels, 2)
+			require.Equal(t, userId, cortexpb.FromLabelAdaptersToLabels(s.series[0].Labels).Get("userId"))
 		}()
 	}
 	wg.Wait()

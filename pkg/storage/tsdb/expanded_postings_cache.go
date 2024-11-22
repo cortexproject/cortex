@@ -68,7 +68,9 @@ type TSDBPostingsCacheConfig struct {
 	Head   PostingsCacheConfig `yaml:"head" doc:"description=If enabled, ingesters will cache expanded postings for the head block. Only queries with with an equal matcher for metric __name__ are cached."`
 	Blocks PostingsCacheConfig `yaml:"blocks" doc:"description=If enabled, ingesters will cache expanded postings for the compacted blocks. The cache is shared between all blocks."`
 
+	// The configurations below are used only for testing purpose
 	PostingsForMatchers func(ctx context.Context, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) `yaml:"-"`
+	SeedSize            int                                                                                           `yaml:"-"`
 	timeNow             func() time.Time                                                                              `yaml:"-"`
 }
 
@@ -97,10 +99,13 @@ type ExpandedPostingsCacheFactory struct {
 
 func NewExpandedPostingsCacheFactory(cfg TSDBPostingsCacheConfig) *ExpandedPostingsCacheFactory {
 	if cfg.Head.Enabled || cfg.Blocks.Enabled {
+		if cfg.SeedSize == 0 {
+			cfg.SeedSize = seedArraySize
+		}
 		logutil.WarnExperimentalUse("expanded postings cache")
 		return &ExpandedPostingsCacheFactory{
 			cfg:        cfg,
-			seedByHash: newSeedByHash(),
+			seedByHash: newSeedByHash(cfg.SeedSize),
 		}
 	}
 
@@ -287,9 +292,9 @@ type seedByHash struct {
 	seedByHash   []int
 }
 
-func newSeedByHash() *seedByHash {
+func newSeedByHash(size int) *seedByHash {
 	return &seedByHash{
-		seedByHash:   make([]int, seedArraySize),
+		seedByHash:   make([]int, size),
 		strippedLock: make([]sync.RWMutex, numOfSeedsStripes),
 	}
 }

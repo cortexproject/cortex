@@ -35,7 +35,7 @@ func (s *PromQLSmith) walkExpr(e ExprType, valueTypes ...parser.ValueType) (pars
 	case MatrixSelector:
 		return s.walkMatrixSelector(), nil
 	case VectorSelector:
-		return s.walkVectorSelector(), nil
+		return s.walkVectorSelector(s.enableAtModifier), nil
 	case CallExpr:
 		return s.walkCall(valueTypes...), nil
 	case NumberLiteral:
@@ -83,6 +83,8 @@ func (s *PromQLSmith) walkAggregateParam(op parser.ItemType) parser.Expr {
 		return s.Walk(parser.ValueTypeScalar)
 	case parser.COUNT_VALUES:
 		return &parser.StringLiteral{Val: "value"}
+	case parser.LIMITK, parser.LIMIT_RATIO:
+		return s.Walk(parser.ValueTypeScalar)
 	}
 	return nil
 }
@@ -214,7 +216,7 @@ func (s *PromQLSmith) walkSubQueryExpr() parser.Expr {
 	expr := &parser.SubqueryExpr{
 		Range: time.Hour,
 		Step:  time.Minute,
-		Expr:  s.walkVectorSelector(),
+		Expr:  s.walkVectorSelector(s.enableAtModifier),
 	}
 	if s.enableOffset && s.rnd.Int()%2 == 0 {
 		negativeOffset := s.rnd.Intn(2) == 0
@@ -256,6 +258,9 @@ func (s *PromQLSmith) walkFunctions(expr *parser.Call) {
 	case "label_join":
 		s.walkLabelJoin(expr)
 		return
+	case "sort_by_label", "sort_by_label_desc":
+		s.walkSortByLabel(expr)
+		return
 	default:
 	}
 
@@ -265,6 +270,9 @@ func (s *PromQLSmith) walkFunctions(expr *parser.Call) {
 		return
 	} else if expr.Func.Name == "label_replace" {
 		s.walkLabelReplace(expr)
+		return
+	} else if expr.Func.Name == "info" {
+		s.walkInfo(expr)
 		return
 	}
 	if expr.Func.Variadic != 0 {
@@ -280,6 +288,16 @@ func (s *PromQLSmith) walkHoltWinters(expr *parser.Call) {
 	expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
 	expr.Args[1] = &parser.NumberLiteral{Val: getNonZeroFloat64(s.rnd)}
 	expr.Args[2] = &parser.NumberLiteral{Val: getNonZeroFloat64(s.rnd)}
+}
+
+func (s *PromQLSmith) walkInfo(expr *parser.Call) {
+	expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
+	if s.rnd.Int()%2 == 0 {
+		// skip second parameter
+		expr.Args = expr.Args[:1]
+	} else {
+		expr.Args[1] = s.walkVectorSelector(false)
+	}
 }
 
 func (s *PromQLSmith) walkLabelReplace(expr *parser.Call) {
@@ -311,6 +329,38 @@ func (s *PromQLSmith) walkLabelReplace(expr *parser.Call) {
 	expr.Args[3] = &parser.StringLiteral{Val: srcLabel}
 	// Just copy the label we picked.
 	expr.Args[4] = &parser.StringLiteral{Val: "(.*)"}
+}
+
+func (s *PromQLSmith) walkSortByLabel(expr *parser.Call) {
+	expr.Args = make([]parser.Expr, 0, len(expr.Func.ArgTypes))
+	expr.Args = append(expr.Args, s.Walk(expr.Func.ArgTypes[0]))
+	seriesSet, _ := getOutputSeries(expr.Args[0])
+
+	// Let's try to not sort more than 1 label for simplicity.
+	cnt := 0
+	if len(seriesSet) > 0 {
+		seriesSet[0].Range(func(lbl labels.Label) {
+			if cnt < 2 {
+				if s.rnd.Int()%2 == 0 {
+					expr.Args = append(expr.Args, &parser.StringLiteral{Val: lbl.Name})
+					cnt++
+				}
+			}
+		})
+
+		return
+	}
+
+	// It is possible that the vector selector match nothing. In this case, it doesn't matter which label
+	// we pick. Just pick something from all series labels.
+	for _, name := range s.labelNames {
+		if cnt < 1 {
+			if s.rnd.Int()%2 == 0 {
+				expr.Args = append(expr.Args, &parser.StringLiteral{Val: name})
+				cnt++
+			}
+		}
+	}
 }
 
 func (s *PromQLSmith) walkLabelJoin(expr *parser.Call) {
@@ -364,7 +414,7 @@ func (s *PromQLSmith) walkVariadicFunctions(expr *parser.Call) {
 	}
 }
 
-func (s *PromQLSmith) walkVectorSelector() parser.Expr {
+func (s *PromQLSmith) walkVectorSelector(enableAtModifier bool) parser.Expr {
 	expr := &parser.VectorSelector{}
 	expr.LabelMatchers = s.walkLabelMatchers()
 	s.populateSeries(expr)
@@ -375,7 +425,7 @@ func (s *PromQLSmith) walkVectorSelector() parser.Expr {
 			expr.OriginalOffset = -expr.OriginalOffset
 		}
 	}
-	if s.enableAtModifier && s.rnd.Float64() > 0.7 {
+	if enableAtModifier && s.rnd.Float64() > 0.7 {
 		expr.Timestamp, expr.StartOrEnd = s.walkAtModifier()
 	}
 
@@ -571,7 +621,7 @@ func (s *PromQLSmith) walkMatrixSelector() parser.Expr {
 	return &parser.MatrixSelector{
 		// Make sure the time range is > 0s.
 		Range:          time.Duration(s.rnd.Intn(5)+1) * time.Minute,
-		VectorSelector: s.walkVectorSelector(),
+		VectorSelector: s.walkVectorSelector(s.enableAtModifier),
 	}
 }
 

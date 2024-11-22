@@ -221,6 +221,7 @@ func TestRoundTrip(t *testing.T) {
 				time.Minute,
 				tc.maxSubQuerySteps,
 				0,
+				false,
 			)
 			resp, err := tw(downstream).RoundTrip(req)
 			if tc.expectedErr == nil {

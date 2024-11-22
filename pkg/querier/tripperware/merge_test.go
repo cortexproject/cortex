@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
+	promqlparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -619,6 +620,16 @@ func Test_sortPlanForQuery(t *testing.T) {
 			err:          false,
 		},
 		{
+			query:        "limitk(10, up)",
+			expectedPlan: mergeOnly,
+			err:          false,
+		},
+		{
+			query:        "limit_ratio(0.1, up)",
+			expectedPlan: mergeOnly,
+			err:          false,
+		},
+		{
 			query:        "1 + topk(10, up)",
 			expectedPlan: sortByLabels,
 			err:          false,
@@ -630,6 +641,16 @@ func Test_sortPlanForQuery(t *testing.T) {
 		},
 		{
 			query:        "sort(topk by (job) (10, up))",
+			expectedPlan: sortByValuesAsc,
+			err:          false,
+		},
+		{
+			query:        "1 + sort_by_label_desc(sum by (job) (up) )",
+			expectedPlan: sortByValuesDesc,
+			err:          false,
+		},
+		{
+			query:        "sort_by_label(topk by (job) (10, up))",
 			expectedPlan: sortByValuesAsc,
 			err:          false,
 		},
@@ -652,6 +673,7 @@ func Test_sortPlanForQuery(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.query, func(t *testing.T) {
+			promqlparser.EnableExperimentalFunctions = true
 			p, err := sortPlanForQuery(tc.query)
 			if tc.err {
 				assert.Error(t, err)

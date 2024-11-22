@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
@@ -89,7 +90,8 @@ type Config struct {
 	ThanosEngine bool `yaml:"thanos_engine"`
 
 	// Ignore max query length check at Querier.
-	IgnoreMaxQueryLength bool `yaml:"ignore_max_query_length"`
+	IgnoreMaxQueryLength              bool `yaml:"ignore_max_query_length"`
+	EnablePromQLExperimentalFunctions bool `yaml:"enable_promql_experimental_functions"`
 }
 
 var (
@@ -132,6 +134,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ThanosEngine, "querier.thanos-engine", false, "Experimental. Use Thanos promql engine https://github.com/thanos-io/promql-engine rather than the Prometheus promql engine.")
 	f.Int64Var(&cfg.MaxSubQuerySteps, "querier.max-subquery-steps", 0, "Max number of steps allowed for every subquery expression in query. Number of steps is calculated using subquery range / step. A value > 0 enables it.")
 	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
+	f.BoolVar(&cfg.EnablePromQLExperimentalFunctions, "querier.enable-promql-experimental-functions", false, "[Experimental] If true, experimental promQL functions are enabled.")
 }
 
 // Validate the config
@@ -203,6 +206,9 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		Help:      "The maximum number of concurrent queries.",
 	})
 	maxConcurrentMetric.Set(float64(cfg.MaxConcurrent))
+
+	// set EnableExperimentalFunctions
+	parser.EnableExperimentalFunctions = cfg.EnablePromQLExperimentalFunctions
 
 	var queryEngine promql.QueryEngine
 	opts := promql.EngineOpts{

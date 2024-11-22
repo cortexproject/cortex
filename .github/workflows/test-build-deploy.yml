@@ -17,7 +17,7 @@ jobs:
   lint:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-ac7827fa9
+      image: quay.io/cortexproject/build-image:master-0ddced051
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -46,7 +46,7 @@ jobs:
   test:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-ac7827fa9
+      image: quay.io/cortexproject/build-image:master-0ddced051
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -89,7 +89,7 @@ jobs:
   build:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-ac7827fa9
+      image: quay.io/cortexproject/build-image:master-0ddced051
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -229,14 +229,14 @@ jobs:
         run: |
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
-          make BUILD_IMAGE=quay.io/cortexproject/build-image:master-ac7827fa9 TTY='' configs-integration-test
+          make BUILD_IMAGE=quay.io/cortexproject/build-image:master-0ddced051 TTY='' configs-integration-test
 
   deploy_website:
     needs: [build, test]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-ac7827fa9
+      image: quay.io/cortexproject/build-image:master-0ddced051
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -278,7 +278,7 @@ jobs:
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-ac7827fa9
+      image: quay.io/cortexproject/build-image:master-0ddced051
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

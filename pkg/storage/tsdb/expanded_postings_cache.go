@@ -302,7 +302,7 @@ func newSeedByHash(size int) *seedByHash {
 func (s *seedByHash) getSeed(userId string, v string) string {
 	h := memHashString(userId, v)
 	i := h % uint64(len(s.seedByHash))
-	l := h % uint64(len(s.strippedLock))
+	l := i % uint64(len(s.strippedLock))
 	s.strippedLock[l].RLock()
 	defer s.strippedLock[l].RUnlock()
 	return strconv.Itoa(s.seedByHash[i])
@@ -311,7 +311,7 @@ func (s *seedByHash) getSeed(userId string, v string) string {
 func (s *seedByHash) incrementSeed(userId string, v string) {
 	h := memHashString(userId, v)
 	i := h % uint64(len(s.seedByHash))
-	l := h % uint64(len(s.strippedLock))
+	l := i % uint64(len(s.strippedLock))
 	s.strippedLock[l].Lock()
 	defer s.strippedLock[l].Unlock()
 	s.seedByHash[i]++

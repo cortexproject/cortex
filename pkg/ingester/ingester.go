@@ -2178,7 +2178,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	var postingCache cortex_tsdb.ExpandedPostingsCache
 	if i.expandedPostingsCacheFactory != nil {
-		postingCache = i.expandedPostingsCacheFactory.NewExpandedPostingsCache(i.metrics.expandedPostingsCacheMetrics)
+		postingCache = i.expandedPostingsCacheFactory.NewExpandedPostingsCache(userID, i.metrics.expandedPostingsCacheMetrics)
 	}
 
 	userDB := &userTSDB{

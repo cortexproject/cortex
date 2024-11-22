@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -18,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/index"
+	"github.com/segmentio/fasthash/fnv1a"
 
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
@@ -107,8 +107,8 @@ func NewExpandedPostingsCacheFactory(cfg TSDBPostingsCacheConfig) *ExpandedPosti
 	return nil
 }
 
-func (f *ExpandedPostingsCacheFactory) NewExpandedPostingsCache(metrics *ExpandedPostingsCacheMetrics) ExpandedPostingsCache {
-	return newBlocksPostingsForMatchersCache(f.cfg, metrics, f.seedByHash)
+func (f *ExpandedPostingsCacheFactory) NewExpandedPostingsCache(userId string, metrics *ExpandedPostingsCacheMetrics) ExpandedPostingsCache {
+	return newBlocksPostingsForMatchersCache(userId, f.cfg, metrics, f.seedByHash)
 }
 
 type ExpandedPostingsCache interface {
@@ -117,6 +117,8 @@ type ExpandedPostingsCache interface {
 }
 
 type blocksPostingsForMatchersCache struct {
+	userId string
+
 	headCache               *fifoCache[[]storage.SeriesRef]
 	blocksCache             *fifoCache[[]storage.SeriesRef]
 	postingsForMatchersFunc func(ctx context.Context, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error)
@@ -126,7 +128,7 @@ type blocksPostingsForMatchersCache struct {
 	seedByHash *seedByHash
 }
 
-func newBlocksPostingsForMatchersCache(cfg TSDBPostingsCacheConfig, metrics *ExpandedPostingsCacheMetrics, seedByHash *seedByHash) ExpandedPostingsCache {
+func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfig, metrics *ExpandedPostingsCacheMetrics, seedByHash *seedByHash) ExpandedPostingsCache {
 	if cfg.PostingsForMatchers == nil {
 		cfg.PostingsForMatchers = tsdb.PostingsForMatchers
 	}
@@ -142,6 +144,7 @@ func newBlocksPostingsForMatchersCache(cfg TSDBPostingsCacheConfig, metrics *Exp
 		timeNow:                 cfg.timeNow,
 		metrics:                 metrics,
 		seedByHash:              seedByHash,
+		userId:                  userId,
 	}
 }
 
@@ -150,7 +153,7 @@ func (c *blocksPostingsForMatchersCache) ExpireSeries(metric labels.Labels) {
 	if err != nil {
 		return
 	}
-	c.seedByHash.incrementSeed(memHashString(metricName))
+	c.seedByHash.incrementSeed(c.userId, metricName)
 }
 
 func (c *blocksPostingsForMatchersCache) PostingsForMatchers(ctx context.Context, blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) {
@@ -224,7 +227,7 @@ func (c *blocksPostingsForMatchersCache) result(ce *cacheEntryPromise[[]storage.
 }
 
 func (c *blocksPostingsForMatchersCache) getSeedForMetricName(metricName string) string {
-	return c.seedByHash.getSeed(memHashString(metricName))
+	return c.seedByHash.getSeed(c.userId, metricName)
 }
 
 func (c *blocksPostingsForMatchersCache) cacheKey(seed string, blockID ulid.ULID, ms ...*labels.Matcher) string {
@@ -291,7 +294,8 @@ func newSeedByHash() *seedByHash {
 	}
 }
 
-func (s *seedByHash) getSeed(h uint64) string {
+func (s *seedByHash) getSeed(userId string, v string) string {
+	h := memHashString(userId, v)
 	i := h % uint64(len(s.seedByHash))
 	l := h % uint64(len(s.strippedLock))
 	s.strippedLock[l].RLock()
@@ -299,7 +303,8 @@ func (s *seedByHash) getSeed(h uint64) string {
 	return strconv.Itoa(s.seedByHash[i])
 }
 
-func (s *seedByHash) incrementSeed(h uint64) {
+func (s *seedByHash) incrementSeed(userId string, v string) {
+	h := memHashString(userId, v)
 	i := h % uint64(len(s.seedByHash))
 	l := h % uint64(len(s.strippedLock))
 	s.strippedLock[l].Lock()
@@ -460,6 +465,7 @@ func (ce *cacheEntryPromise[V]) isExpired(ttl time.Duration, now time.Time) bool
 	return r >= ttl
 }
 
-func memHashString(str string) uint64 {
-	return xxhash.Sum64(yoloBuf(str))
+func memHashString(userId, v string) uint64 {
+	h := fnv1a.HashString64(userId)
+	return fnv1a.AddString64(h, v)
 }

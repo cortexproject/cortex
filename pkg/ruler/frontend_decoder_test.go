@@ -193,7 +193,7 @@ func TestProtoDecode(t *testing.T) {
 			b, err := test.resp.Marshal()
 			require.NoError(t, err)
 
-			vector, _, err := protobufDecoder.Decode(b)
+			vector, _, err := protobufDecoder.DecodeVector(b)
 			require.Equal(t, test.expectedErr, err)
 			require.Equal(t, test.expectedVector, vector)
 			require.Equal(t, test.expectedWarning, test.resp.Warnings)
@@ -304,7 +304,7 @@ func TestJsonDecode(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			vector, warning, err := jsonDecoder.Decode([]byte(test.body))
+			vector, warning, err := jsonDecoder.DecodeVector([]byte(test.body))
 			require.Equal(t, test.expectedVector, vector)
 			require.Equal(t, test.expectedWarning, warning)
 			require.Equal(t, test.expectedErr, err)

@@ -27,12 +27,12 @@ type frontendPool struct {
 	frontendClientRequestDuration *prometheus.HistogramVec
 }
 
-func newFrontendPool(cfg Config, log log.Logger, reg prometheus.Registerer) *client.Pool {
+func NewFrontendPool(cfg Config, log log.Logger, reg prometheus.Registerer) *client.Pool {
 	p := &frontendPool{
 		timeout:              cfg.FrontendTimeout,
-		queryResponseFormat:  cfg.QueryResponseFormat,
 		prometheusHTTPPrefix: cfg.PrometheusHTTPPrefix,
 		grpcConfig:           cfg.GRPCClientConfig,
+		queryResponseFormat:  cfg.QueryResponseFormat,
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "cortex_ruler_query_frontend_request_duration_seconds",
 			Help:    "Time spend doing requests to frontend.",

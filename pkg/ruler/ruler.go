@@ -101,21 +101,32 @@ func (e *DisabledRuleGroupErr) Error() string {
 	return e.Message
 }
 
+type RemoteWriteConfig struct {
+	URL     string            `yaml:"url" doc:"nocli|description=Where to remote write samples."`
+	Headers map[string]string `yaml:"headers" doc:"nocli|description=Extra headers to set when writing through remote_write."`
+}
+
 // Config is the configuration for the recording rules server.
 type Config struct {
 	// This is used for query to query frontend to evaluate rules
 	FrontendAddress string `yaml:"frontend_address"`
+	// Which labels to ignore when restoring alert's state.
+	RestoreIgnoreLabels []string `yaml:"restore_ignore_labels,omitempty" doc:"nocli|description=Labels to ignore when restoring alert's state. This is only used if you are using the frontend address with some external system like Thanos."`
 	// Query response format of query frontend for evaluating rules
 	// It will only take effect FrontendAddress is configured.
 	QueryResponseFormat string `yaml:"query_response_format"`
 	// HTTP timeout duration when querying to query frontend to evaluate rules
 	FrontendTimeout time.Duration `yaml:"-"`
+	// Extra parameters to send to the frontend when evaluating rules.
+	FrontendExtraParams map[string]string `yaml:"frontend_extra_params" doc:"nocli|description=What extra headers to send when evaluating rules."`
 	// Query frontend GRPC Client configuration.
 	GRPCClientConfig grpcclient.Config `yaml:"frontend_client"`
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
 	// Labels to add to all alerts
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"nocli|description=Labels to add to all alerts."`
+	// Labels to drop from all alerts
+	DropLabels []string `yaml:"drop_labels,omitempty" doc:"nocli|description=Labels to drop from all alerts."`
 	// GRPC Client configuration.
 	ClientTLSConfig ClientConfig `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
@@ -124,6 +135,10 @@ type Config struct {
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
+
+	// Configuration for remote_write. If this is configured then
+	// Ruler only writes to this address.
+	RemoteWriteConfig RemoteWriteConfig `yaml:"remote_write"`
 
 	// URL of the Alertmanager to send notifications to.
 	// If you are configuring the ruler to send to a Cortex Alertmanager,
@@ -242,6 +257,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing DNS resolutions of Alertmanager hosts.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
+	f.StringVar(&cfg.RemoteWriteConfig.URL, "ruler.remote-write-url", "", "URL of the remote write endpoint to send samples to.")
 
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
@@ -497,14 +513,19 @@ type sender interface {
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n sender, externalURL string, dropLabels []string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
+			b := labels.NewBuilder(alert.Labels)
+			for _, k := range dropLabels {
+				b.Del(k)
+			}
+
 			a := &notifier.Alert{
 				StartsAt:     alert.FiredAt,
-				Labels:       alert.Labels,
+				Labels:       b.Labels(),
 				Annotations:  alert.Annotations,
 				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
 			}

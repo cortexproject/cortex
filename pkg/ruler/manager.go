@@ -68,7 +68,7 @@ type DefaultMultiTenantManager struct {
 	ruleGroupIterationFunc promRules.GroupEvalIterationFunc
 }
 
-func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory ManagerFactory, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
+func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory ManagerFactory, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer, logger log.Logger, frontendPool *client.Pool) (*DefaultMultiTenantManager, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -95,7 +95,7 @@ func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory
 		cfg:                       cfg,
 		notifierCfg:               ncfg,
 		managerFactory:            managerFactory,
-		frontendPool:              newFrontendPool(cfg, logger, reg),
+		frontendPool:              frontendPool,
 		ruleEvalMetrics:           evalMetrics,
 		notifiers:                 map[string]*rulerNotifier{},
 		userExternalLabels:        newUserExternalLabels(cfg.ExternalLabels, limits),
@@ -135,7 +135,9 @@ func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory
 }
 
 func NewDefaultMultiTenantManagerWithIterationFunc(iterFunc promRules.GroupEvalIterationFunc, cfg Config, limits RulesLimits, managerFactory ManagerFactory, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
-	manager, err := NewDefaultMultiTenantManager(cfg, limits, managerFactory, evalMetrics, reg, logger)
+	frontendPool := NewFrontendPool(cfg, logger, reg)
+
+	manager, err := NewDefaultMultiTenantManager(cfg, limits, managerFactory, evalMetrics, reg, logger, frontendPool)
 	if err != nil {
 		return nil, err
 	}

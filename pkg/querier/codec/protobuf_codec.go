@@ -4,13 +4,13 @@ import (
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/stats"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/prometheus/prometheus/model/histogram"
 )
 
 type ProtobufCodec struct{}
@@ -154,7 +154,7 @@ func getVectorSamples(data *v1.QueryData) *[]tripperware.Sample {
 			}
 		}
 		vectorSamples[i].Labels = labels
-		
+
 		if data.Result.(promql.Vector)[i].H != nil {
 			bucketsLen := len(data.Result.(promql.Vector)[i].H.NegativeBuckets) + len(data.Result.(promql.Vector)[i].H.PositiveBuckets)
 			if data.Result.(promql.Vector)[i].H.ZeroCount > 0 {

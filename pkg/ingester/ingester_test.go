@@ -976,7 +976,13 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_ingested_samples_total 1
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
-				cortex_ingester_ingested_samples_failures_total 2
+				cortex_ingester_ingested_samples_failures_total 1
+				# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
+				# TYPE cortex_ingester_ingested_native_histograms_total counter
+				cortex_ingester_ingested_native_histograms_total 0
+				# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
+				# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
+				cortex_ingester_ingested_native_histograms_failures_total 1
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
@@ -1032,7 +1038,13 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_ingested_samples_total 1
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
-				cortex_ingester_ingested_samples_failures_total 2
+				cortex_ingester_ingested_samples_failures_total 1
+				# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
+				# TYPE cortex_ingester_ingested_native_histograms_total counter
+				cortex_ingester_ingested_native_histograms_total 1
+				# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
+				# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
+				cortex_ingester_ingested_native_histograms_failures_total 0
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
@@ -1290,12 +1302,18 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
-				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
-				# TYPE cortex_ingester_ingested_samples_total counter
-				cortex_ingester_ingested_samples_total 1
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 0
+				# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
+				# TYPE cortex_ingester_ingested_native_histograms_total counter
+				cortex_ingester_ingested_native_histograms_total 1
+				# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
+				# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
+				cortex_ingester_ingested_native_histograms_failures_total 0
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
@@ -1342,10 +1360,16 @@ func TestIngester_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
-				cortex_ingester_ingested_samples_total 1
+				cortex_ingester_ingested_samples_total 0
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
+				# TYPE cortex_ingester_ingested_native_histograms_total counter
+				cortex_ingester_ingested_native_histograms_total 1
+				# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
+				# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
+				cortex_ingester_ingested_native_histograms_failures_total 0
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
@@ -1393,10 +1417,16 @@ func TestIngester_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
-				cortex_ingester_ingested_samples_total 2
+				cortex_ingester_ingested_samples_total 1
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
+				# TYPE cortex_ingester_ingested_native_histograms_total counter
+				cortex_ingester_ingested_native_histograms_total 1
+				# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
+				# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
+				cortex_ingester_ingested_native_histograms_failures_total 0
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
@@ -1684,7 +1714,7 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 			_, err = i.Push(ctx, req)
 			assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(tc.expectedErr, model.Time(10), metricLabelAdapters), userID).Error()), err)
 
-			require.Equal(t, testutil.ToFloat64(i.metrics.ingestedSamplesFail), float64(1))
+			require.Equal(t, testutil.ToFloat64(i.metrics.ingestedHistogramsFail), float64(1))
 		})
 	}
 }

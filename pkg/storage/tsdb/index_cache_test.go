@@ -64,6 +64,15 @@ func TestIndexCacheConfig_Validate(t *testing.T) {
 			},
 			expected: fmt.Errorf("unsupported item type foo"),
 		},
+		"invalid enabled items badger": {
+			cfg: IndexCacheConfig{
+				Backend: "badger",
+				Badger: BadgerIndexCacheConfig{
+					EnabledItems: []string{"foo", "bar"},
+				},
+			},
+			expected: fmt.Errorf("unsupported item type foo"),
+		},
 		"invalid enabled items redis": {
 			cfg: IndexCacheConfig{
 				Backend: "redis",

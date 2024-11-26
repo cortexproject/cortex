@@ -22,6 +22,9 @@ const (
 	// IndexCacheBackendInMemory is the value for the in-memory index cache backend.
 	IndexCacheBackendInMemory = "inmemory"
 
+	// IndexCacheBackendBadger is the value for the badger index cache backend.
+	IndexCacheBackendBadger = "badger"
+
 	// IndexCacheBackendMemcached is the value for the memcached index cache backend.
 	IndexCacheBackendMemcached = "memcached"
 
@@ -37,7 +40,7 @@ const (
 )
 
 var (
-	supportedIndexCacheBackends = []string{IndexCacheBackendInMemory, IndexCacheBackendMemcached, IndexCacheBackendRedis}
+	supportedIndexCacheBackends = []string{IndexCacheBackendInMemory, IndexCacheBackendBadger, IndexCacheBackendMemcached, IndexCacheBackendRedis}
 
 	errUnsupportedIndexCacheBackend = errors.New("unsupported index cache backend")
 	errDuplicatedIndexCacheBackend  = errors.New("duplicated index cache backend")
@@ -50,6 +53,7 @@ var (
 type IndexCacheConfig struct {
 	Backend    string                     `yaml:"backend"`
 	InMemory   InMemoryIndexCacheConfig   `yaml:"inmemory"`
+	Badger     BadgerIndexCacheConfig     `yaml:"badger"`
 	Memcached  MemcachedIndexCacheConfig  `yaml:"memcached"`
 	Redis      RedisIndexCacheConfig      `yaml:"redis"`
 	MultiLevel MultiLevelIndexCacheConfig `yaml:"multilevel"`
@@ -66,6 +70,7 @@ func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix str
 		strings.Join(supportedIndexCacheBackends, ", ")))
 
 	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.")
+	cfg.Badger.RegisterFlagsWithPrefix(f, prefix+"badger.")
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 	cfg.Redis.RegisterFlagsWithPrefix(f, prefix+"redis.")
 	cfg.MultiLevel.RegisterFlagsWithPrefix(f, prefix+"multilevel.")
@@ -98,6 +103,10 @@ func (cfg *IndexCacheConfig) Validate() error {
 			}
 		} else if backend == IndexCacheBackendRedis {
 			if err := cfg.Redis.Validate(); err != nil {
+				return err
+			}
+		} else if backend == IndexCacheBackendBadger {
+			if err := cfg.Badger.Validate(); err != nil {
 				return err
 			}
 		} else {
@@ -152,6 +161,27 @@ func (cfg *InMemoryIndexCacheConfig) Validate() error {
 func (cfg *InMemoryIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.Uint64Var(&cfg.MaxSizeBytes, prefix+"max-size-bytes", uint64(1*units.Gibibyte), "Maximum size in bytes of in-memory index cache used to speed up blocks index lookups (shared between all tenants).")
 	f.Var((*flagext.StringSlice)(&cfg.EnabledItems), prefix+"enabled-items", "Selectively cache index item types. Supported values are Postings, ExpandedPostings and Series")
+}
+
+type BadgerIndexCacheConfig struct {
+	DataDir      string        `yaml:"data_dir"`
+	EnabledItems []string      `yaml:"enabled_items"`
+	GCThreshold  uint64        `yaml:"gc_threshold"`
+	GCInterval   time.Duration `yaml:"gc_interval"`
+}
+
+func (cfg *BadgerIndexCacheConfig) Validate() error {
+	if err := storecache.ValidateEnabledItems(cfg.EnabledItems); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cfg *BadgerIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	f.StringVar(&cfg.DataDir, prefix+"data-dir", defaultDataDir, "[Experimental] Data directory in which to cache index data.")
+	f.Var((*flagext.StringSlice)(&cfg.EnabledItems), prefix+"enabled-items", "[Experimental] Selectively cache index item types. Supported values are Postings, ExpandedPostings and Series.")
+	f.Uint64Var(&cfg.GCThreshold, prefix+"gc-threshold", uint64(model.Bytes(128*units.MiB)), "[Experimental] Threshold to trigger value log GC of the Badger DB")
+	f.DurationVar(&cfg.GCInterval, prefix+"gc-interval", defaultGCInterval, "[Experimental] Badger DB garbage collection interval.")
 }
 
 type MemcachedIndexCacheConfig struct {
@@ -212,6 +242,13 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 			}
 			caches = append(caches, c)
 			enabledItems = append(enabledItems, cfg.InMemory.EnabledItems)
+		case IndexCacheBackendBadger:
+			c, err := newBadgerIndexCache(logger, nil, iReg, cfg.Badger, defaultTTL)
+			if err != nil {
+				return nil, err
+			}
+			caches = append(caches, c)
+			enabledItems = append(enabledItems, cfg.Badger.EnabledItems)
 		case IndexCacheBackendMemcached:
 			c, err := newMemcachedIndexCacheClient(cfg.Memcached.ClientConfig, logger, registerer)
 			if err != nil {

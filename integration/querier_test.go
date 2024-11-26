@@ -58,6 +58,28 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			indexCacheBackend:      fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendRedis),
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
 		},
+		"blocks default sharding, badger index cache": {
+			blocksShardingStrategy: "default",
+			indexCacheBackend:      tsdb.IndexCacheBackendBadger,
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
+		},
+		"blocks default sharding, multilevel index cache (inmemory, badger)": {
+			blocksShardingStrategy: "default",
+			indexCacheBackend:      fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendBadger),
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
+		},
+		"blocks shuffle sharding, badger index cache": {
+			blocksShardingStrategy: "default",
+			tenantShardSize:        1,
+			indexCacheBackend:      tsdb.IndexCacheBackendBadger,
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
+		},
+		"blocks shuffle sharding, multilevel index cache (inmemory, badger)": {
+			blocksShardingStrategy: "default",
+			tenantShardSize:        1,
+			indexCacheBackend:      fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendBadger),
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
+		},
 		"blocks default sharding, inmemory index cache": {
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendInMemory,

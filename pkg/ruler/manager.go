@@ -211,7 +211,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 	if !existing || rulesUpdated || externalLabelsUpdated {
 		level.Debug(r.logger).Log("msg", "updating rules", "user", user)
 		r.configUpdatesTotal.WithLabelValues(user).Inc()
-		if rulesUpdated && existing {
+		if (rulesUpdated || externalLabelsUpdated) && existing {
 			r.updateRuleCache(user, manager.RuleGroups())
 		}
 		err = manager.Update(r.cfg.EvaluationInterval, files, externalLabels, r.cfg.ExternalURL.String(), ruleGroupIterationFunc)

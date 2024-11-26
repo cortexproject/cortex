@@ -1122,19 +1122,21 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
-		succeededSamplesCount       = 0
-		failedSamplesCount          = 0
-		succeededExemplarsCount     = 0
-		failedExemplarsCount        = 0
-		startAppend                 = time.Now()
-		sampleOutOfBoundsCount      = 0
-		sampleOutOfOrderCount       = 0
-		sampleTooOldCount           = 0
-		newValueForTimestampCount   = 0
-		perUserSeriesLimitCount     = 0
-		perLabelSetSeriesLimitCount = 0
-		perMetricSeriesLimitCount   = 0
-		nativeHistogramCount        = 0
+		succeededSamplesCount         = 0
+		failedSamplesCount            = 0
+		succeededHistogramsCount      = 0
+		failedHistogramsCount         = 0
+		succeededExemplarsCount       = 0
+		failedExemplarsCount          = 0
+		startAppend                   = time.Now()
+		sampleOutOfBoundsCount        = 0
+		sampleOutOfOrderCount         = 0
+		sampleTooOldCount             = 0
+		newValueForTimestampCount     = 0
+		perUserSeriesLimitCount       = 0
+		perLabelSetSeriesLimitCount   = 0
+		perMetricSeriesLimitCount     = 0
+		discardedNativeHistogramCount = 0
 
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
@@ -1215,6 +1217,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
+		// To find out if any histogram was added to this series, we keep old value.
+		oldSucceededHistogramsCount := succeededHistogramsCount
 
 		for _, s := range ts.Samples {
 			var err error
@@ -1266,19 +1270,19 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 				if ref != 0 {
 					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						succeededSamplesCount++
+						succeededHistogramsCount++
 						continue
 					}
 				} else {
 					// Copy the label set because both TSDB and the active series tracker may retain it.
 					copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 					if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						succeededSamplesCount++
+						succeededHistogramsCount++
 						continue
 					}
 				}
 
-				failedSamplesCount++
+				failedHistogramsCount++
 
 				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels); !rollback {
 					continue
@@ -1290,12 +1294,12 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				return nil, wrapWithUser(err, userID)
 			}
 		} else {
-			nativeHistogramCount += len(ts.Histograms)
+			discardedNativeHistogramCount += len(ts.Histograms)
 		}
-
-		if i.cfg.ActiveSeriesMetricsEnabled && succeededSamplesCount > oldSucceededSamplesCount {
+		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || (succeededHistogramsCount > oldSucceededHistogramsCount)
+		if i.cfg.ActiveSeriesMetricsEnabled && shouldUpdateSeries {
 			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, func(l labels.Labels) labels.Labels {
-				// we must already have copied the labels if succeededSamplesCount has been incremented.
+				// we must already have copied the labels if succeededSamplesCount or succeededHistogramsCount has been incremented.
 				return copiedLabels
 			})
 		}
@@ -1343,8 +1347,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
 
-	// If only invalid samples are pushed, don't change "last update", as TSDB was not modified.
-	if succeededSamplesCount > 0 {
+	// If only invalid samples or histograms are pushed, don't change "last update", as TSDB was not modified.
+	if succeededSamplesCount > 0 || succeededHistogramsCount > 0 {
 		db.setLastUpdate(time.Now())
 	}
 
@@ -1353,6 +1357,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// which will be converted into an HTTP 5xx and the client should/will retry.
 	i.metrics.ingestedSamples.Add(float64(succeededSamplesCount))
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
+	i.metrics.ingestedHistograms.Add(float64(succeededHistogramsCount))
+	i.metrics.ingestedHistogramsFail.Add(float64(failedHistogramsCount))
 	i.metrics.ingestedExemplars.Add(float64(succeededExemplarsCount))
 	i.metrics.ingestedExemplarsFail.Add(float64(failedExemplarsCount))
 
@@ -1378,20 +1384,20 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
-	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && nativeHistogramCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(nativeHistogramCount))
+	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && discardedNativeHistogramCount > 0 {
+		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
 	}
 
 	// Distributor counts both samples, metadata and histograms, so for consistency ingester does the same.
-	i.ingestionRate.Add(int64(succeededSamplesCount + ingestedMetadata))
+	i.ingestionRate.Add(int64(succeededSamplesCount + succeededHistogramsCount + ingestedMetadata))
 
 	switch req.Source {
 	case cortexpb.RULE:
-		db.ingestedRuleSamples.Add(int64(succeededSamplesCount))
+		db.ingestedRuleSamples.Add(int64(succeededSamplesCount + succeededHistogramsCount))
 	case cortexpb.API:
 		fallthrough
 	default:
-		db.ingestedAPISamples.Add(int64(succeededSamplesCount))
+		db.ingestedAPISamples.Add(int64(succeededSamplesCount + succeededHistogramsCount))
 	}
 
 	if firstPartialErr != nil {
@@ -1400,7 +1406,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		if errors.As(firstPartialErr, &ve) {
 			code = ve.code
 		}
-		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "firstPartialErr", firstPartialErr)
+		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "totalHistograms", succeededHistogramsCount+failedHistogramsCount, "failedHistograms", failedHistogramsCount, "firstPartialErr", firstPartialErr)
 		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
 	}
 

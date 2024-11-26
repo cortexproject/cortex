@@ -16,6 +16,7 @@
 * [FEATURE] Store Gateway: Add an in-memory chunk cache. #6245
 * [FEATURE] Chunk Cache: Support multi level cache and add metrics. #6249
 * [FEATURE] Distributor: Accept multiple HA Tracker pairs in the same request. #6256
+* [ENHANCEMENT] Ingester: Add metrics to track succeed/failed native histograms. #6370
 * [ENHANCEMENT] Query Frontend/Querier: Add an experimental flag `-querier.enable-promql-experimental-functions` to enable experimental promQL functions. #6355
 * [ENHANCEMENT] OTLP: Add `-distributor.otlp-max-recv-msg-size` flag to limit OTLP request size in bytes. #6333
 * [ENHANCEMENT] S3 Bucket Client: Add a list objects version configs to configure list api object version. #6280

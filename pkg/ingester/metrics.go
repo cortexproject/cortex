@@ -25,9 +25,11 @@ const (
 
 type ingesterMetrics struct {
 	ingestedSamples         prometheus.Counter
+	ingestedHistograms      prometheus.Counter
 	ingestedExemplars       prometheus.Counter
 	ingestedMetadata        prometheus.Counter
 	ingestedSamplesFail     prometheus.Counter
+	ingestedHistogramsFail  prometheus.Counter
 	ingestedExemplarsFail   prometheus.Counter
 	ingestedMetadataFail    prometheus.Counter
 	queries                 prometheus.Counter
@@ -80,6 +82,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_ingested_samples_total",
 			Help: "The total number of samples ingested.",
 		}),
+		ingestedHistograms: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_ingested_native_histograms_total",
+			Help: "The total number of native histograms ingested.",
+		}),
 		ingestedExemplars: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_exemplars_total",
 			Help: "The total number of exemplars ingested.",
@@ -91,6 +97,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 		ingestedSamplesFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_failures_total",
 			Help: "The total number of samples that errored on ingestion.",
+		}),
+		ingestedHistogramsFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_ingested_native_histograms_failures_total",
+			Help: "The total number of native histograms that errored on ingestion.",
 		}),
 		ingestedExemplarsFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_exemplars_failures_total",

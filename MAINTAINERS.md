@@ -7,3 +7,10 @@
 | Charlie Le         | chtle4@gmail.com>     | @CharlieTLe   | Apple               |
 | Daniel Blando      | daniel@blando.com.br  | @danielblando | Amazon Web Services |
 | Friedrich Gonzalez | friedrichg@gmail.com  | @friedrichg   | Adobe               |
+
+### Triaggers
+
+
+| Name        | Email                | GitHub       | Company         |
+|-------------|----------------------|--------------|-----------------|
+| Sungjin Lee | tjdwls1201@gmail.com | @SungJin1212 | KakaoEnterprise |

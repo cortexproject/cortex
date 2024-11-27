@@ -50,8 +50,8 @@ For security issues see https://github.com/cortexproject/cortex/security/policy
 
 ## Engage with Our Community
 
-We invite you to participate in the bi-weekly Cortex Community Calls, an exciting opportunity to connect with fellow
-developers and enthusiasts. These meetings are held every alternate Thursday, alternating between 1200 UTC and 1700 UTC,
+We invite you to participate in the Cortex Community Calls, an exciting opportunity to connect with fellow
+developers and enthusiasts. These meetings are held every 4 weeks on Thursdays at 1700 UTC,
 providing a platform for open discussion, collaboration, and knowledge sharing.
 
 Our meeting notes are meticulously documented and can be

@@ -1,23 +1,50 @@
 package util
 
 import (
+	"strings"
+
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-// SplitFiltersAndMatchers splits empty matchers off, which are treated as filters, see #220
-func SplitFiltersAndMatchers(allMatchers []*labels.Matcher) (filters, matchers []*labels.Matcher) {
-	for _, matcher := range allMatchers {
-		// If a matcher matches "", we need to fetch possible chunks where
-		// there is no value and will therefore not be in our label index.
-		// e.g. {foo=""} and {foo!="bar"} both match "", so we need to return
-		// chunks which do not have a foo label set. When looking entries in
-		// the index, we should ignore this matcher to fetch all possible chunks
-		// and then filter on the matcher after the chunks have been fetched.
-		if matcher.Matches("") {
-			filters = append(filters, matcher)
-		} else {
-			matchers = append(matchers, matcher)
+type MatcherCache struct {
+	lru *lru.Cache[string, *labels.Matcher]
+}
+
+func NewMatcherCache(size int) (*MatcherCache, error) {
+	l, err := lru.New[string, *labels.Matcher](size)
+	return &MatcherCache{
+		lru: l,
+	}, err
+}
+
+func (c *MatcherCache) GetMatcher(t labels.MatchType, n, v string) (*labels.Matcher, error) {
+	switch t {
+	// let only cache regex matchers
+	case labels.MatchEqual, labels.MatchNotRegexp:
+		k := cacheKey(t, n, v)
+		if m, ok := c.lru.Get(k); ok {
+			return m, nil
 		}
+		m, err := labels.NewMatcher(t, n, v)
+		if err != nil {
+			c.lru.Add(k, m)
+		}
+		return m, err
+	default:
+		return labels.NewMatcher(t, n, v)
 	}
-	return
+}
+
+func cacheKey(t labels.MatchType, n, v string) string {
+	const (
+		typeLen = 2
+	)
+
+	sb := strings.Builder{}
+	sb.Grow(typeLen + len(n) + len(v))
+	sb.WriteString(n)
+	sb.WriteString(t.String())
+	sb.WriteString(v)
+	return sb.String()
 }

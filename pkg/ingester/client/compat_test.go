@@ -7,53 +7,74 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestQueryRequest(t *testing.T) {
-	from, to := model.Time(int64(0)), model.Time(int64(10))
-	matchers := []*labels.Matcher{}
-	matcher1, err := labels.NewMatcher(labels.MatchEqual, "foo", "1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	matchers = append(matchers, matcher1)
+	c, err := util.NewMatcherCache(1024)
+	require.NoError(t, err)
 
-	matcher2, err := labels.NewMatcher(labels.MatchNotEqual, "bar", "2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	matchers = append(matchers, matcher2)
-
-	matcher3, err := labels.NewMatcher(labels.MatchRegexp, "baz", "3")
-	if err != nil {
-		t.Fatal(err)
-	}
-	matchers = append(matchers, matcher3)
-
-	matcher4, err := labels.NewMatcher(labels.MatchNotRegexp, "bop", "4")
-	if err != nil {
-		t.Fatal(err)
-	}
-	matchers = append(matchers, matcher4)
-
-	req, err := ToQueryRequest(from, to, matchers)
-	if err != nil {
-		t.Fatal(err)
+	tc := map[string]struct {
+		newMatcherFunc func(t labels.MatchType, n, v string) (*labels.Matcher, error)
+	}{
+		"no cache": {
+			newMatcherFunc: labels.NewMatcher,
+		},
+		"cache": {
+			newMatcherFunc: c.GetMatcher,
+		},
 	}
 
-	haveFrom, haveTo, haveMatchers, err := FromQueryRequest(req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	for name, tc := range tc {
+		t.Run(name, func(t *testing.T) {
+			from, to := model.Time(int64(0)), model.Time(int64(10))
+			matchers := []*labels.Matcher{}
+			matcher1, err := labels.NewMatcher(labels.MatchEqual, "foo", "1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			matchers = append(matchers, matcher1)
 
-	if !reflect.DeepEqual(haveFrom, from) {
-		t.Fatalf("Bad from FromQueryRequest(ToQueryRequest) round trip")
-	}
-	if !reflect.DeepEqual(haveTo, to) {
-		t.Fatalf("Bad to FromQueryRequest(ToQueryRequest) round trip")
-	}
-	if !matchersEqual(haveMatchers, matchers) {
-		t.Fatalf("Bad have FromQueryRequest(ToQueryRequest) round trip - %v != %v", haveMatchers, matchers)
+			matcher2, err := labels.NewMatcher(labels.MatchNotEqual, "bar", "2")
+			if err != nil {
+				t.Fatal(err)
+			}
+			matchers = append(matchers, matcher2)
+
+			matcher3, err := labels.NewMatcher(labels.MatchRegexp, "baz", "3")
+			if err != nil {
+				t.Fatal(err)
+			}
+			matchers = append(matchers, matcher3)
+
+			matcher4, err := labels.NewMatcher(labels.MatchNotRegexp, "bop", "4")
+			if err != nil {
+				t.Fatal(err)
+			}
+			matchers = append(matchers, matcher4)
+
+			req, err := ToQueryRequest(from, to, matchers)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			haveFrom, haveTo, haveMatchers, err := FromQueryRequest(req, tc.newMatcherFunc)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !reflect.DeepEqual(haveFrom, from) {
+				t.Fatalf("Bad from FromQueryRequest(ToQueryRequest) round trip")
+			}
+			if !reflect.DeepEqual(haveTo, to) {
+				t.Fatalf("Bad to FromQueryRequest(ToQueryRequest) round trip")
+			}
+			if !matchersEqual(haveMatchers, matchers) {
+				t.Fatalf("Bad have FromQueryRequest(ToQueryRequest) round trip - %v != %v", haveMatchers, matchers)
+			}
+		})
 	}
 }
 

@@ -26,8 +26,8 @@ func ToQueryRequest(from, to model.Time, matchers []*labels.Matcher) (*QueryRequ
 }
 
 // FromQueryRequest unpacks a QueryRequest proto.
-func FromQueryRequest(req *QueryRequest) (model.Time, model.Time, []*labels.Matcher, error) {
-	matchers, err := FromLabelMatchers(req.Matchers)
+func FromQueryRequest(req *QueryRequest, newMatcher func(t labels.MatchType, n, v string) (*labels.Matcher, error)) (model.Time, model.Time, []*labels.Matcher, error) {
+	matchers, err := FromLabelMatchers(req.Matchers, newMatcher)
 	if err != nil {
 		return 0, 0, nil, err
 	}
@@ -55,10 +55,10 @@ func ToExemplarQueryRequest(from, to model.Time, matchers ...[]*labels.Matcher) 
 }
 
 // FromExemplarQueryRequest unpacks a ExemplarQueryRequest proto.
-func FromExemplarQueryRequest(req *ExemplarQueryRequest) (int64, int64, [][]*labels.Matcher, error) {
+func FromExemplarQueryRequest(req *ExemplarQueryRequest, newMatcher func(t labels.MatchType, n, v string) (*labels.Matcher, error)) (int64, int64, [][]*labels.Matcher, error) {
 	var result [][]*labels.Matcher
 	for _, m := range req.Matchers {
-		matchers, err := FromLabelMatchers(m.Matchers)
+		matchers, err := FromLabelMatchers(m.Matchers, newMatcher)
 		if err != nil {
 			return 0, 0, nil, err
 		}
@@ -175,10 +175,10 @@ func SeriesSetToQueryResponse(s storage.SeriesSet) (*QueryResponse, error) {
 }
 
 // FromMetricsForLabelMatchersRequest unpacks a MetricsForLabelMatchersRequest proto
-func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (model.Time, model.Time, int, [][]*labels.Matcher, error) {
+func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest, newMatcher func(t labels.MatchType, n, v string) (*labels.Matcher, error)) (model.Time, model.Time, int, [][]*labels.Matcher, error) {
 	matchersSet := make([][]*labels.Matcher, 0, len(req.MatchersSet))
 	for _, matchers := range req.MatchersSet {
-		matchers, err := FromLabelMatchers(matchers.Matchers)
+		matchers, err := FromLabelMatchers(matchers.Matchers, newMatcher)
 		if err != nil {
 			return 0, 0, 0, nil, err
 		}
@@ -206,12 +206,12 @@ func ToLabelValuesRequest(labelName model.LabelName, from, to model.Time, limit 
 }
 
 // FromLabelValuesRequest unpacks a LabelValuesRequest proto
-func FromLabelValuesRequest(req *LabelValuesRequest) (string, int64, int64, int, []*labels.Matcher, error) {
+func FromLabelValuesRequest(req *LabelValuesRequest, newMatcher func(t labels.MatchType, n, v string) (*labels.Matcher, error)) (string, int64, int64, int, []*labels.Matcher, error) {
 	var err error
 	var matchers []*labels.Matcher
 
 	if req.Matchers != nil {
-		matchers, err = FromLabelMatchers(req.Matchers.Matchers)
+		matchers, err = FromLabelMatchers(req.Matchers.Matchers, newMatcher)
 		if err != nil {
 			return "", 0, 0, 0, nil, err
 		}
@@ -236,12 +236,12 @@ func ToLabelNamesRequest(from, to model.Time, limit int, matchers []*labels.Matc
 }
 
 // FromLabelNamesRequest unpacks a LabelNamesRequest proto
-func FromLabelNamesRequest(req *LabelNamesRequest) (int64, int64, int, []*labels.Matcher, error) {
+func FromLabelNamesRequest(req *LabelNamesRequest, newMatcher func(t labels.MatchType, n, v string) (*labels.Matcher, error)) (int64, int64, int, []*labels.Matcher, error) {
 	var err error
 	var matchers []*labels.Matcher
 
 	if req.Matchers != nil {
-		matchers, err = FromLabelMatchers(req.Matchers.Matchers)
+		matchers, err = FromLabelMatchers(req.Matchers.Matchers, newMatcher)
 		if err != nil {
 			return 0, 0, 0, nil, err
 		}
@@ -275,7 +275,7 @@ func toLabelMatchers(matchers []*labels.Matcher) ([]*LabelMatcher, error) {
 	return result, nil
 }
 
-func FromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
+func FromLabelMatchers(matchers []*LabelMatcher, newMatcher func(t labels.MatchType, n, v string) (*labels.Matcher, error)) ([]*labels.Matcher, error) {
 	result := make([]*labels.Matcher, 0, len(matchers))
 	for _, matcher := range matchers {
 		var mtype labels.MatchType
@@ -291,7 +291,7 @@ func FromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
 		default:
 			return nil, fmt.Errorf("invalid matcher type")
 		}
-		matcher, err := labels.NewMatcher(mtype, matcher.Name, matcher.Value)
+		matcher, err := newMatcher(mtype, matcher.Name, matcher.Value)
 		if err != nil {
 			return nil, err
 		}

@@ -364,4 +364,7 @@ func DeletePerUserValidationMetrics(validateMetrics *ValidateMetrics, userID str
 	if err := util.DeleteMatchingLabels(validateMetrics.HistogramSamplesReducedResolution, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_reduced_resolution_histogram_samples_total metric for user", "user", userID, "err", err)
 	}
+	if err := util.DeleteMatchingLabels(validateMetrics.LabelSizeBytes, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_label_size_bytes metric for user", "user", userID, "err", err)
+	}
 }

@@ -55,6 +55,7 @@ var (
 	// Distributor instance limits errors.
 	errTooManyInflightPushRequests    = errors.New("too many inflight push requests in distributor")
 	errMaxSamplesPushRateLimitReached = errors.New("distributor's samples push rate limit reached")
+	errTooManyInflightClientRequests  = errors.New("too many inflight ingester client requests in distributor")
 )
 
 const (
@@ -104,8 +105,9 @@ type Distributor struct {
 
 	activeUsers *util.ActiveUsersCleanupService
 
-	ingestionRate        *util_math.EwmaRate
-	inflightPushRequests atomic.Int64
+	ingestionRate          *util_math.EwmaRate
+	inflightPushRequests   atomic.Int64
+	inflightClientRequests atomic.Int64
 
 	// Metrics
 	queryDuration                    *instrument.HistogramCollector
@@ -171,8 +173,9 @@ type Config struct {
 }
 
 type InstanceLimits struct {
-	MaxIngestionRate        float64 `yaml:"max_ingestion_rate"`
-	MaxInflightPushRequests int     `yaml:"max_inflight_push_requests"`
+	MaxIngestionRate          float64 `yaml:"max_ingestion_rate"`
+	MaxInflightPushRequests   int     `yaml:"max_inflight_push_requests"`
+	MaxInflightClientRequests int     `yaml:"max_inflight_client_requests"`
 }
 
 type OTLPConfig struct {
@@ -198,6 +201,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
+	f.IntVar(&cfg.InstanceLimits.MaxInflightClientRequests, "distributor.instance-limits.max-inflight-client-requests", 0, "Max inflight ingester client requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
 
 	f.BoolVar(&cfg.OTLPConfig.ConvertAllAttributes, "distributor.otlp.convert-all-attributes", false, "If true, all resource attributes are converted to labels.")
 	f.BoolVar(&cfg.OTLPConfig.DisableTargetInfo, "distributor.otlp.disable-target-info", false, "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)")
@@ -377,6 +381,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name:        instanceLimitsMetric,
 		Help:        instanceLimitsMetricHelp,
+		ConstLabels: map[string]string{limitLabel: "max_inflight_client_requests"},
+	}).Set(float64(cfg.InstanceLimits.MaxInflightClientRequests))
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
 		ConstLabels: map[string]string{limitLabel: "max_ingestion_rate"},
 	}).Set(cfg.InstanceLimits.MaxIngestionRate)
 
@@ -385,6 +394,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		Help: "Current number of inflight push requests in distributor.",
 	}, func() float64 {
 		return float64(d.inflightPushRequests.Load())
+	})
+
+	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cortex_distributor_inflight_client_requests",
+		Help: "Current number of inflight client requests in distributor.",
+	}, func() float64 {
+		return float64(d.inflightClientRequests.Load())
 	})
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_distributor_ingestion_rate_samples_per_second",
@@ -659,6 +675,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		if rate := d.ingestionRate.Rate(); rate >= d.cfg.InstanceLimits.MaxIngestionRate {
 			return nil, errMaxSamplesPushRateLimitReached
 		}
+	}
+
+	// only reject requests at this stage to allow distributor to finish sending the current batch request to all ingesters
+	// even if we've exceeded the MaxInflightClientRequests in the `doBatch`
+	if d.cfg.InstanceLimits.MaxInflightClientRequests > 0 && d.inflightClientRequests.Load() > int64(d.cfg.InstanceLimits.MaxInflightClientRequests) {
+		return nil, errTooManyInflightClientRequests
 	}
 
 	removeReplica := false
@@ -1022,6 +1044,9 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	req.Timeseries = timeseries
 	req.Metadata = metadata
 	req.Source = source
+
+	d.inflightClientRequests.Inc()
+	defer d.inflightClientRequests.Dec()
 
 	_, err = c.PushPreAlloc(ctx, req)
 

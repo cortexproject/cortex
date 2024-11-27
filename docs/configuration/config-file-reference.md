@@ -2679,6 +2679,12 @@ instance_limits:
   # CLI flag: -distributor.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
 
+  # Max inflight ingester client requests that this distributor can handle. This
+  # limit is per-distributor, not per-tenant. Additional requests will be
+  # rejected. 0 = unlimited.
+  # CLI flag: -distributor.instance-limits.max-inflight-client-requests
+  [max_inflight_client_requests: <int> | default = 0]
+
 otlp:
   # If true, all resource attributes are converted to labels.
   # CLI flag: -distributor.otlp.convert-all-attributes

@@ -786,13 +786,15 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "user")
 	tests := map[string]struct {
-		preInflight    int
-		preRateSamples int        // initial rate before first push
-		pushes         []testPush // rate is recomputed after each push
+		preInflight       int
+		preInflightClient int
+		preRateSamples    int        // initial rate before first push
+		pushes            []testPush // rate is recomputed after each push
 
 		// limits
-		inflightLimit      int
-		ingestionRateLimit float64
+		inflightLimit       int
+		inflightClientLimit int
+		ingestionRateLimit  float64
 
 		metricNames     []string
 		expectedMetrics string
@@ -809,6 +811,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
 				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_client_requests"} 0
 				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
 				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
 			`,
@@ -828,6 +831,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 
 				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
 				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_client_requests"} 0
 				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 101
 				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
 			`,
@@ -837,6 +841,29 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			inflightLimit: 101,
 			pushes: []testPush{
 				{samples: 100, expectedError: errTooManyInflightPushRequests},
+			},
+		},
+		"below inflight client limit": {
+			preInflightClient:   90,
+			inflightClientLimit: 101,
+			pushes: []testPush{
+				{samples: 100, expectedError: nil},
+			},
+
+			metricNames: []string{instanceLimitsMetric},
+			expectedMetrics: `
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_client_requests"} 101
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
+			`,
+		},
+		"hits inflight client limit": {
+			preInflightClient:   103,
+			inflightClientLimit: 101,
+			pushes: []testPush{
+				{samples: 100, expectedError: errTooManyInflightClientRequests},
 			},
 		},
 		"below ingestion rate limit": {
@@ -855,6 +882,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 
 				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
 				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_client_requests"} 0
 				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
 				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 1000
 			`,
@@ -894,17 +922,19 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 
 				// Start all expected distributors
 				distributors, _, regs, _ := prepare(t, prepConfig{
-					numIngesters:        3,
-					happyIngesters:      3,
-					numDistributors:     1,
-					shardByAllLabels:    true,
-					limits:              limits,
-					maxInflightRequests: testData.inflightLimit,
-					maxIngestionRate:    testData.ingestionRateLimit,
+					numIngesters:              3,
+					happyIngesters:            3,
+					numDistributors:           1,
+					shardByAllLabels:          true,
+					limits:                    limits,
+					maxInflightRequests:       testData.inflightLimit,
+					maxInflightClientRequests: testData.inflightClientLimit,
+					maxIngestionRate:          testData.ingestionRateLimit,
 				})
 
 				d := distributors[0]
 				d.inflightPushRequests.Add(int64(testData.preInflight))
+				d.inflightClientRequests.Add(int64(testData.preInflightClient))
 				d.ingestionRate.Add(int64(testData.preRateSamples))
 
 				d.ingestionRate.Tick()
@@ -2790,6 +2820,7 @@ type prepConfig struct {
 	numDistributors              int
 	skipLabelNameValidation      bool
 	maxInflightRequests          int
+	maxInflightClientRequests    int
 	maxIngestionRate             float64
 	replicationFactor            int
 	enableTracker                bool
@@ -2907,6 +2938,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		distributorCfg.DistributorRing.InstanceAddr = "127.0.0.1"
 		distributorCfg.SkipLabelNameValidation = cfg.skipLabelNameValidation
 		distributorCfg.InstanceLimits.MaxInflightPushRequests = cfg.maxInflightRequests
+		distributorCfg.InstanceLimits.MaxInflightClientRequests = cfg.maxInflightClientRequests
 		distributorCfg.InstanceLimits.MaxIngestionRate = cfg.maxIngestionRate
 
 		if cfg.shuffleShardEnabled {

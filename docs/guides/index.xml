@@ -372,7 +372,53 @@ replacement: replica2
 &lt;/code>&lt;/pre>&lt;p>When Prometheus is executing remote read queries, it will add the external
 labels to the query. In this case, if it asks for the &lt;code>__replica__&lt;/code> label,
 Cortex will not return any data.&lt;/p>
-&lt;p>Therefore, the &lt;code>__replica__&lt;/code> label should only be added for remote write.&lt;/p></description></item><item><title>Docs: Encryption at Rest</title><link>/docs/guides/encryption-at-rest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/encryption-at-rest/</guid><description>
+&lt;p>Therefore, the &lt;code>__replica__&lt;/code> label should only be added for remote write.&lt;/p>
+&lt;h2 id="accept-multiple-ha-pairs-in-single-request">Accept multiple HA pairs in single request&lt;/h2>
+&lt;p>Let&amp;rsquo;s assume there are two teams (T1 and T2), and each team operates two Prometheus for the HA (T1.a, T1.b for T1 and
+T2.a, T2.b for T2).
+They want to operate another Prometheus, receiving whole Prometheus requests and sending write request to the
+Distributor.&lt;/p>
+&lt;p>The write request flow is as follows: T1.a, T1.b, T2.a, T2.b -&amp;gt; Prometheus -&amp;gt; Distributor which means the Distributor&amp;rsquo;s
+incoming write request contains time series of T1.a, T1.b, T2.a, and T2.b.
+In other words, there are two HA pairs in a single write request, and the expected push result is to accept each
+Prometheus leader replicas (example: T1.a, T2.b for each team).&lt;/p>
+&lt;h2 id="config-1">Config&lt;/h2>
+&lt;h3 id="client-side-1">Client side&lt;/h3>
+&lt;p>The client setting is the same as a single HA pair.
+For example:&lt;/p>
+&lt;p>For T1.a&lt;/p>
+&lt;pre tabindex="0">&lt;code>cluster: prom-team1
+__replica__: replica1 (or pod-name)
+&lt;/code>&lt;/pre>&lt;p>For T1.b&lt;/p>
+&lt;pre tabindex="0">&lt;code>cluster: prom-team1
+__replica__: replica2 (or pod-name)
+&lt;/code>&lt;/pre>&lt;p>For T2.a&lt;/p>
+&lt;pre tabindex="0">&lt;code>cluster: prom-team2
+__replica__: replica1 (or pod-name)
+&lt;/code>&lt;/pre>&lt;p>For T2.b&lt;/p>
+&lt;pre tabindex="0">&lt;code>cluster: prom-team2
+__replica__: replica2 (or pod-name)
+&lt;/code>&lt;/pre>&lt;h3 id="server-side-1">Server side&lt;/h3>
+&lt;p>One additional setting is needed to accept multiple HA pairs; it is enabled via
+&lt;code>--experimental.distributor.ha-tracker.mixed-ha-samples=true&lt;/code> (or its YAML config option).&lt;/p>
+&lt;p>The following configuration snippet shows an example of accepting multiple HA pairs config via the YAML config file:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">accept_ha_samples&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">accept_mixed_ha_samples&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">distributor&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ha_tracker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_ha_tracker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">kvstore&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[ store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt; | default = &amp;#34;consul&amp;#34; ]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[ consul | etcd&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;config&amp;gt; ]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see
+the &lt;a href="/docs/configuration/configuration-file/#limits_config">limits section&lt;/a>.&lt;/p></description></item><item><title>Docs: Encryption at Rest</title><link>/docs/guides/encryption-at-rest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/encryption-at-rest/</guid><description>
 &lt;p>Cortex supports data encryption at rest for some storage backends.&lt;/p>
 &lt;h2 id="s3">S3&lt;/h2>
 &lt;p>The Cortex S3 client supports the following server-side encryption (SSE) modes:&lt;/p>

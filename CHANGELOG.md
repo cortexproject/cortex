@@ -33,6 +33,7 @@
 * [ENHANCEMENT] Distributor: Add new `cortex_reduced_resolution_histogram_samples_total` metric to track the number of histogram samples which resolution was reduced. #6182
 * [ENHANCEMENT] StoreGateway: Implement metadata API limit in queryable. #6195
 * [ENHANCEMENT] Ingester: Add matchers to ingester LabelNames() and LabelNamesStream() RPC. #6209
+* [ENHANCEMENT] KV: Add TLS configs to consul. #6374
 * [ENHANCEMENT] Ingester/Store Gateway Clients: Introduce an experimental HealthCheck handler to quickly fail requests directed to unhealthy targets. #6225 #6257
 * [ENHANCEMENT] Upgrade build image and Go version to 1.23.2. #6261 #6262
 * [ENHANCEMENT] Ingester: Introduce a new experimental feature for caching expanded postings on the ingester. #6296

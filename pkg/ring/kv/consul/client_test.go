@@ -2,7 +2,10 @@ package consul
 
 import (
 	"context"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -12,7 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/integration/ca"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 func writeValuesToKV(t *testing.T, client *Client, key string, start, end int, sleep time.Duration) <-chan struct{} {
@@ -28,6 +33,79 @@ func writeValuesToKV(t *testing.T, client *Client, key string, start, end int, s
 		}
 	}()
 	return ch
+}
+
+func TestGetConsulConfig(t *testing.T) {
+	testCADir := t.TempDir()
+
+	serverCA := ca.New("Consul Server CA")
+	caCertFile := filepath.Join(testCADir, "ca.crt")
+	require.NoError(t, serverCA.WriteCACertificate(caCertFile))
+
+	serverCertFile := filepath.Join(testCADir, "server.crt")
+	serverKeyFile := filepath.Join(testCADir, "server.key")
+	require.NoError(t, serverCA.WriteCertificate(
+		&x509.Certificate{
+			Subject:     pkix.Name{CommonName: "server"},
+			DNSNames:    []string{"localhost"},
+			ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		},
+		serverCertFile,
+		serverKeyFile,
+	))
+
+	clientCA := ca.New("Consul Client CA")
+	clientCACertFile := filepath.Join(testCADir, "client.crt")
+	require.NoError(t, clientCA.WriteCACertificate(clientCACertFile))
+
+	tests := []struct {
+		name string
+		cfg  Config
+	}{
+		{
+			name: "tls config validation should return no error (skip verify: true)",
+			cfg: Config{
+				Host:      "localhost:8501",
+				EnableTLS: true,
+				TLS: tls.ClientConfig{
+					CertPath:           serverCertFile,
+					KeyPath:            serverKeyFile,
+					CAPath:             clientCACertFile,
+					ServerName:         "testServer",
+					InsecureSkipVerify: true,
+				},
+			},
+		},
+		{
+			name: "tls config validation should return no error (skip verify: false)",
+			cfg: Config{
+				Host:      "localhost:8501",
+				EnableTLS: true,
+				TLS: tls.ClientConfig{
+					CertPath:           serverCertFile,
+					KeyPath:            serverKeyFile,
+					CAPath:             clientCACertFile,
+					ServerName:         "testServer",
+					InsecureSkipVerify: false,
+				},
+			},
+		},
+		{
+			name: "no tls config should return no error",
+			cfg: Config{
+				Host:      "localhost:8500",
+				EnableTLS: false,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := getConsulConfig(test.cfg)
+			require.NoError(t, err)
+		})
+	}
+
 }
 
 func TestWatchKeyWithRateLimit(t *testing.T) {

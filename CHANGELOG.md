@@ -11,6 +11,7 @@
 * [CHANGE] Enable Compactor and Alertmanager in target all. #6204
 * [CHANGE] Update the `cortex_ingester_inflight_push_requests` metric to represent the maximum number of inflight requests recorded in the last minute. #6437
 * [FEATURE] Ruler: Add an experimental flag `-ruler.query-response-format` to retrieve query response as a proto format. #6345
+* [FEATURE] Support Prometheus remote write 2.0. #6330
 * [FEATURE] Ruler: Pagination support for List Rules API. #6299
 * [FEATURE] Query Frontend/Querier: Add protobuf codec `-api.querier-default-codec` and the option to choose response compression type `-querier.response-compression`. #5527
 * [FEATURE] Ruler: Experimental: Add `ruler.frontend-address` to allow query to query frontends instead of ingesters. #6151

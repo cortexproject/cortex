@@ -78,6 +78,7 @@ type ValidateMetrics struct {
 	DiscardedExemplars                *prometheus.CounterVec
 	DiscardedMetadata                 *prometheus.CounterVec
 	HistogramSamplesReducedResolution *prometheus.CounterVec
+	LabelSizeBytes                    *prometheus.HistogramVec
 }
 
 func registerCollector(r prometheus.Registerer, c prometheus.Collector) {
@@ -120,11 +121,21 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		[]string{"user"},
 	)
 	registerCollector(r, histogramSamplesReducedResolution)
+	labelSizeBytes := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:                            "cortex_label_size_bytes",
+		Help:                            "The combined size in bytes of all labels and label values for a time series.",
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: 1 * time.Hour,
+	}, []string{"user"})
+	registerCollector(r, labelSizeBytes)
+
 	m := &ValidateMetrics{
 		DiscardedSamples:                  discardedSamples,
 		DiscardedExemplars:                discardedExemplars,
 		DiscardedMetadata:                 discardedMetadata,
 		HistogramSamplesReducedResolution: histogramSamplesReducedResolution,
+		LabelSizeBytes:                    labelSizeBytes,
 	}
 
 	return m
@@ -236,6 +247,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 		lastLabelName = l.Name
 		labelsSizeBytes += l.Size()
 	}
+	validateMetrics.LabelSizeBytes.WithLabelValues(userID).Observe(float64(labelsSizeBytes))
 	if maxLabelsSizeBytes > 0 && labelsSizeBytes > maxLabelsSizeBytes {
 		validateMetrics.DiscardedSamples.WithLabelValues(labelsSizeBytesExceeded, userID).Inc()
 		return labelSizeBytesExceededError(ls, labelsSizeBytes, maxLabelsSizeBytes)
@@ -351,5 +363,8 @@ func DeletePerUserValidationMetrics(validateMetrics *ValidateMetrics, userID str
 	}
 	if err := util.DeleteMatchingLabels(validateMetrics.HistogramSamplesReducedResolution, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_reduced_resolution_histogram_samples_total metric for user", "user", userID, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(validateMetrics.LabelSizeBytes, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_label_size_bytes metric for user", "user", userID, "err", err)
 	}
 }

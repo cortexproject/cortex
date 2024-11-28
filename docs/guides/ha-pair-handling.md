@@ -109,3 +109,73 @@ Cortex will not return any data.
 
 Therefore, the `__replica__` label should only be added for remote write.
 
+## Accept multiple HA pairs in single request
+Let's assume there are two teams (T1 and T2), and each team operates two Prometheus for the HA (T1.a, T1.b for T1 and
+T2.a, T2.b for T2).
+They want to operate another Prometheus, receiving whole Prometheus requests and sending write request to the
+Distributor.
+
+The write request flow is as follows: T1.a, T1.b, T2.a, T2.b -> Prometheus -> Distributor which means the Distributor's
+incoming write request contains time series of T1.a, T1.b, T2.a, and T2.b.
+In other words, there are two HA pairs in a single write request, and the expected push result is to accept each
+Prometheus leader replicas (example: T1.a, T2.b for each team).
+
+## Config
+### Client side
+The client setting is the same as a single HA pair.
+For example:
+
+For T1.a
+```
+cluster: prom-team1
+__replica__: replica1 (or pod-name)
+```
+
+For T1.b
+
+```
+cluster: prom-team1
+__replica__: replica2 (or pod-name)
+```
+
+For T2.a
+
+```
+cluster: prom-team2
+__replica__: replica1 (or pod-name)
+```
+
+For T2.b
+
+```
+cluster: prom-team2
+__replica__: replica2 (or pod-name)
+```
+
+### Server side
+
+One additional setting is needed to accept multiple HA pairs; it is enabled via
+`--experimental.distributor.ha-tracker.mixed-ha-samples=true` (or its YAML config option).
+
+The following configuration snippet shows an example of accepting multiple HA pairs config via the YAML config file:
+
+```yaml
+limits:
+  ...
+  accept_ha_samples: true
+  accept_mixed_ha_samples: true
+  ...
+distributor:
+  ...
+  ha_tracker:
+    enable_ha_tracker: true
+    ...
+    kvstore:
+      [ store: <string> | default = "consul" ]
+        [ consul | etcd: <config> ]
+        ...
+  ...
+```
+
+For further configuration file documentation, see
+the [limits section](../configuration/config-file-reference.md#limits_config).

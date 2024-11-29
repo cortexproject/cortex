@@ -5390,6 +5390,12 @@ grpc_tls_config:
 # CLI flag: -server.grpc-max-concurrent-streams
 [grpc_server_max_concurrent_streams: <int> | default = 100]
 
+# Number of worker goroutines that should be used to process incoming
+# streams.Setting this 0 (default) will disable workers and spawn a new
+# goroutine for each stream.
+# CLI flag: -server.grpc_server-num-stream-workers
+[grpc_server_num_stream_workers: <int> | default = 0]
+
 # The duration after which an idle connection should be closed. Default:
 # infinity
 # CLI flag: -server.grpc.keepalive.max-connection-idle

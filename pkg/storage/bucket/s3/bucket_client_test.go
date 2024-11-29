@@ -208,6 +208,16 @@ func (m *mockBucket) Name() string {
 	return "mock"
 }
 
+// IterWithAttributes mocks objstore.Bucket.IterWithAttributes()
+func (m *mockBucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	return nil
+}
+
+// SupportedIterOptions mocks objstore.Bucket.SupportedIterOptions()
+func (m *mockBucket) SupportedIterOptions() []objstore.IterOptionType {
+	return nil
+}
+
 // Iter mocks objstore.Bucket.Iter()
 func (m *mockBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	return nil

@@ -98,6 +98,14 @@ func (b *SSEBucketClient) getCustomS3SSEConfig() (encrypt.ServerSide, error) {
 	return sse, nil
 }
 
+func (b *SSEBucketClient) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	return b.bucket.IterWithAttributes(ctx, dir, f, options...)
+}
+
+func (b *SSEBucketClient) SupportedIterOptions() []objstore.IterOptionType {
+	return b.bucket.SupportedIterOptions()
+}
+
 // Iter implements objstore.Bucket.
 func (b *SSEBucketClient) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	return b.bucket.Iter(ctx, dir, f, options...)

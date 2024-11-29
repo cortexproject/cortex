@@ -194,7 +194,10 @@ func newScalarAccumulator(expr parser.ItemType) (accumulator, error) {
 		return newStdVarAcc(), nil
 	case "quantile":
 		return newQuantileAcc(), nil
+	case "histogram_avg":
+		return newHistogramAvg(), nil
 	}
+
 	msg := fmt.Sprintf("unknown aggregation function %s", t)
 	return nil, errors.Wrap(parse.ErrNotSupportedExpr, msg)
 }

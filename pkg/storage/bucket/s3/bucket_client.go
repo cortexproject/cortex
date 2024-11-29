@@ -149,6 +149,16 @@ func (b *BucketWithRetries) Name() string {
 	return b.bucket.Name()
 }
 
+func (b *BucketWithRetries) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	return b.retry(ctx, func() error {
+		return b.bucket.IterWithAttributes(ctx, dir, f, options...)
+	}, fmt.Sprintf("IterWithAttributes %s", dir))
+}
+
+func (b *BucketWithRetries) SupportedIterOptions() []objstore.IterOptionType {
+	return b.bucket.SupportedIterOptions()
+}
+
 func (b *BucketWithRetries) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	return b.retry(ctx, func() error {
 		return b.bucket.Iter(ctx, dir, f, options...)

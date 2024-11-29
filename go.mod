@@ -246,6 +246,9 @@ require (
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
 )
 
+// Using cortex fork of weaveworks/common
+replace github.com/weaveworks/common => github.com/cortexproject/weaveworks-common v0.0.0-20241016153309-bf16f5f1d5c8
+
 // Override since git.apache.org is down.  The docs say to fetch from github.
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
 

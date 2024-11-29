@@ -946,6 +946,8 @@ github.com/coreos/go-systemd/v22 v22.5.0 h1:RrqgGjYQKalulkV8NGVIfkXQf6YYmOyiJKk8
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
 github.com/cortexproject/promqlsmith v0.0.0-20241121054008-8b48fe2471ef h1:wR21ZiKkA+wN2KG43qrK33IkFduY9JUa6th6P2KEU0o=
 github.com/cortexproject/promqlsmith v0.0.0-20241121054008-8b48fe2471ef/go.mod h1:xbYQa0KX6Eh6YWbTBfZ9kK3N4hRxX+ZPIfVIY2U/y00=
+github.com/cortexproject/weaveworks-common v0.0.0-20241016153309-bf16f5f1d5c8 h1:yHzGN05xMhLxUoXGRYH1TzIFo+bYBftuhlPHcnFXM6s=
+github.com/cortexproject/weaveworks-common v0.0.0-20241016153309-bf16f5f1d5c8/go.mod h1:rgbeLfJUtEr+G74cwFPR1k/4N0kDeaeSv/qhUNE4hm8=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -1699,8 +1701,6 @@ github.com/uber/jaeger-lib v2.4.1+incompatible h1:td4jdvLcExb4cBISKIpHuGoVXh+dVK
 github.com/uber/jaeger-lib v2.4.1+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6+uUTzImX/AauajbLI56U=
 github.com/vultr/govultr/v2 v2.17.2 h1:gej/rwr91Puc/tgh+j33p/BLR16UrIPnSr+AIwYWZQs=
 github.com/vultr/govultr/v2 v2.17.2/go.mod h1:ZFOKGWmgjytfyjeyAdhQlSWwTjh2ig+X49cAp50dzXI=
-github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5 h1:nORobjToZAvi54wcuUXLq+XG2Rsr0XEizy5aHBHvqWQ=
-github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5/go.mod h1:rgbeLfJUtEr+G74cwFPR1k/4N0kDeaeSv/qhUNE4hm8=
 github.com/weaveworks/promrus v1.2.0 h1:jOLf6pe6/vss4qGHjXmGz4oDJQA+AOCqEL3FvvZGz7M=
 github.com/weaveworks/promrus v1.2.0/go.mod h1:SaE82+OJ91yqjrE1rsvBWVzNZKcHYFtMUyS1+Ogs/KA=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=

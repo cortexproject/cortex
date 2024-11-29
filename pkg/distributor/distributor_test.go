@@ -863,7 +863,8 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			preInflightClient:   103,
 			inflightClientLimit: 101,
 			pushes: []testPush{
-				{samples: 100, expectedError: errTooManyInflightClientRequests},
+				{samples: 100, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable,
+					"too many inflight ingester client requests in distributor")},
 			},
 		},
 		"below ingestion rate limit": {

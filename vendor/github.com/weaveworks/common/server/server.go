@@ -555,6 +555,9 @@ func (s *Server) Shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.ServerGracefulShutdownTimeout)
 	defer cancel() // releases resources if httpServer.Shutdown completes before timeout elapses
 
-	s.HTTPServer.Shutdown(ctx)
+	if err := s.HTTPServer.Shutdown(ctx); err != nil {
+		s.Log.Warnf("Failed to shit down server: %v", err)
+	}
+
 	s.GRPC.GracefulStop()
 }

@@ -62,31 +62,31 @@ func (s *sprint) String() string {
 }
 
 func (g gokit) Debugf(format string, args ...interface{}) {
-	level.Debug(g.Logger).Log("msg", &sprintf{format: format, args: args})
+	level.Debug(g.Logger).Log("msg", &sprintf{format: format, args: args}) //nolint:errcheck
 }
 func (g gokit) Debugln(args ...interface{}) {
-	level.Debug(g.Logger).Log("msg", &sprint{args: args})
+	level.Debug(g.Logger).Log("msg", &sprint{args: args}) //nolint:errcheck
 }
 
 func (g gokit) Infof(format string, args ...interface{}) {
-	level.Info(g.Logger).Log("msg", &sprintf{format: format, args: args})
+	level.Info(g.Logger).Log("msg", &sprintf{format: format, args: args}) //nolint:errcheck
 }
 func (g gokit) Infoln(args ...interface{}) {
-	level.Info(g.Logger).Log("msg", &sprint{args: args})
+	level.Info(g.Logger).Log("msg", &sprint{args: args}) //nolint:errcheck
 }
 
 func (g gokit) Warnf(format string, args ...interface{}) {
-	level.Warn(g.Logger).Log("msg", &sprintf{format: format, args: args})
+	level.Warn(g.Logger).Log("msg", &sprintf{format: format, args: args}) //nolint:errcheck
 }
 func (g gokit) Warnln(args ...interface{}) {
-	level.Warn(g.Logger).Log("msg", &sprint{args: args})
+	level.Warn(g.Logger).Log("msg", &sprint{args: args}) //nolint:errcheck
 }
 
 func (g gokit) Errorf(format string, args ...interface{}) {
-	level.Error(g.Logger).Log("msg", &sprintf{format: format, args: args})
+	level.Error(g.Logger).Log("msg", &sprintf{format: format, args: args}) //nolint:errcheck
 }
 func (g gokit) Errorln(args ...interface{}) {
-	level.Error(g.Logger).Log("msg", &sprint{args: args})
+	level.Error(g.Logger).Log("msg", &sprint{args: args}) //nolint:errcheck
 }
 
 func (g gokit) WithField(key string, value interface{}) Interface {

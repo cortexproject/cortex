@@ -225,6 +225,77 @@ func TestResponse(t *testing.T) {
 			jsonBody: testHistogramResponse,
 		},
 		{
+			jsonBody: testHistogramResponse,
+			promBody: &tripperware.PrometheusResponse{
+				Status: tripperware.StatusSuccess,
+				Data: tripperware.PrometheusData{
+					ResultType: model.ValVector.String(),
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Vector{
+							Vector: &tripperware.Vector{
+								Samples: []tripperware.Sample{
+									{
+										Labels: []cortexpb.LabelAdapter{
+											{Name: "__name__", Value: "prometheus_http_request_duration_seconds"},
+											{Name: "handler", Value: "/metrics"},
+											{Name: "instance", Value: "localhost:9090"},
+											{Name: "job", Value: "prometheus"},
+										},
+										Histogram: &tripperware.SampleHistogramPair{
+											TimestampMs: 1719528871898,
+											Histogram: tripperware.SampleHistogram{
+												Count: 6342,
+												Sum:   43.31319875499995,
+												Buckets: []*tripperware.HistogramBucket{
+													{Boundaries: 0, Upper: 0.0015060652591874421, Lower: 0.0013810679320049755, Count: 1},
+													{Boundaries: 0, Upper: 0.001642375811042411, Lower: 0.0015060652591874421, Count: 7},
+													{Boundaries: 0, Upper: 0.0017910235218841233, Lower: 0.001642375811042411, Count: 5},
+													{Boundaries: 0, Upper: 0.001953125, Lower: 0.0017910235218841233, Count: 13},
+													{Boundaries: 0, Upper: 0.0021298979153618314, Lower: 0.001953125, Count: 19},
+													{Boundaries: 0, Upper: 0.0023226701464896895, Lower: 0.0021298979153618314, Count: 13},
+													{Boundaries: 0, Upper: 0.002532889755177753, Lower: 0.0023226701464896895, Count: 13},
+													{Boundaries: 0, Upper: 0.002762135864009951, Lower: 0.002532889755177753, Count: 15},
+													{Boundaries: 0, Upper: 0.0030121305183748843, Lower: 0.002762135864009951, Count: 12},
+													{Boundaries: 0, Upper: 0.003284751622084822, Lower: 0.0030121305183748843, Count: 34},
+													{Boundaries: 0, Upper: 0.0035820470437682465, Lower: 0.003284751622084822, Count: 188},
+													{Boundaries: 0, Upper: 0.00390625, Lower: 0.0035820470437682465, Count: 372},
+													{Boundaries: 0, Upper: 0.004259795830723663, Lower: 0.00390625, Count: 400},
+													{Boundaries: 0, Upper: 0.004645340292979379, Lower: 0.004259795830723663, Count: 411},
+													{Boundaries: 0, Upper: 0.005065779510355506, Lower: 0.004645340292979379, Count: 425},
+													{Boundaries: 0, Upper: 0.005524271728019902, Lower: 0.005065779510355506, Count: 425},
+													{Boundaries: 0, Upper: 0.0060242610367497685, Lower: 0.005524271728019902, Count: 521},
+													{Boundaries: 0, Upper: 0.006569503244169644, Lower: 0.0060242610367497685, Count: 621},
+													{Boundaries: 0, Upper: 0.007164094087536493, Lower: 0.006569503244169644, Count: 593},
+													{Boundaries: 0, Upper: 0.0078125, Lower: 0.007164094087536493, Count: 506},
+													{Boundaries: 0, Upper: 0.008519591661447326, Lower: 0.0078125, Count: 458},
+													{Boundaries: 0, Upper: 0.009290680585958758, Lower: 0.008519591661447326, Count: 346},
+													{Boundaries: 0, Upper: 0.010131559020711013, Lower: 0.009290680585958758, Count: 285},
+													{Boundaries: 0, Upper: 0.011048543456039804, Lower: 0.010131559020711013, Count: 196},
+													{Boundaries: 0, Upper: 0.012048522073499537, Lower: 0.011048543456039804, Count: 129},
+													{Boundaries: 0, Upper: 0.013139006488339287, Lower: 0.012048522073499537, Count: 85},
+													{Boundaries: 0, Upper: 0.014328188175072986, Lower: 0.013139006488339287, Count: 65},
+													{Boundaries: 0, Upper: 0.015625, Lower: 0.014328188175072986, Count: 54},
+													{Boundaries: 0, Upper: 0.01703918332289465, Lower: 0.015625, Count: 53},
+													{Boundaries: 0, Upper: 0.018581361171917516, Lower: 0.01703918332289465, Count: 20},
+													{Boundaries: 0, Upper: 0.020263118041422026, Lower: 0.018581361171917516, Count: 21},
+													{Boundaries: 0, Upper: 0.022097086912079608, Lower: 0.020263118041422026, Count: 15},
+													{Boundaries: 0, Upper: 0.024097044146999074, Lower: 0.022097086912079608, Count: 11},
+													{Boundaries: 0, Upper: 0.026278012976678575, Lower: 0.024097044146999074, Count: 2},
+													{Boundaries: 0, Upper: 0.028656376350145972, Lower: 0.026278012976678575, Count: 3},
+													{Boundaries: 0, Upper: 0.03125, Lower: 0.028656376350145972, Count: 3},
+													{Boundaries: 0, Upper: 0.044194173824159216, Lower: 0.04052623608284405, Count: 2},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			jsonBody: `{"status":"success","data":{"resultType":"string","result":[1,"foo"]}}`,
 			promBody: &tripperware.PrometheusResponse{
 				Status: "success",
@@ -359,7 +430,6 @@ func TestResponse(t *testing.T) {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
-
 			var response *http.Response
 			if tc.promBody != nil {
 				protobuf, err := proto.Marshal(tc.promBody)

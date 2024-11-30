@@ -47,7 +47,7 @@ func NewFunctionOperator(funcExpr *logicalplan.FunctionCall, nextOps []model.Vec
 func newNoArgsFunctionOperator(funcExpr *logicalplan.FunctionCall, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
 	call, ok := noArgFuncs[funcExpr.Func.Name]
 	if !ok {
-		return nil, UnknownFunctionError(funcExpr.Func.Name)
+		return nil, parse.UnknownFunctionError(funcExpr.Func.Name)
 	}
 
 	interval := opts.Step.Milliseconds()
@@ -98,7 +98,7 @@ type functionOperator struct {
 func newInstantVectorFunctionOperator(funcExpr *logicalplan.FunctionCall, nextOps []model.VectorOperator, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
 	call, ok := instantVectorFuncs[funcExpr.Func.Name]
 	if !ok {
-		return nil, UnknownFunctionError(funcExpr.Func.Name)
+		return nil, parse.UnknownFunctionError(funcExpr.Func.Name)
 	}
 
 	scalarPoints := make([][]float64, stepsBatch)

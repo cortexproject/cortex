@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	cortextls "github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 const (
@@ -40,12 +41,14 @@ var (
 
 // Config to create a ConsulClient
 type Config struct {
-	Host              string         `yaml:"host"`
-	ACLToken          flagext.Secret `yaml:"acl_token"`
-	HTTPClientTimeout time.Duration  `yaml:"http_client_timeout"`
-	ConsistentReads   bool           `yaml:"consistent_reads"`
-	WatchKeyRateLimit float64        `yaml:"watch_rate_limit"` // Zero disables rate limit
-	WatchKeyBurstSize int            `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
+	Host              string                 `yaml:"host"`
+	ACLToken          flagext.Secret         `yaml:"acl_token"`
+	HTTPClientTimeout time.Duration          `yaml:"http_client_timeout"`
+	ConsistentReads   bool                   `yaml:"consistent_reads"`
+	WatchKeyRateLimit float64                `yaml:"watch_rate_limit"` // Zero disables rate limit
+	WatchKeyBurstSize int                    `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
+	EnableTLS         bool                   `yaml:"tls_enabled"`
+	TLS               cortextls.ClientConfig `yaml:",inline"`
 
 	// Used in tests only.
 	MaxCasRetries int           `yaml:"-"`
@@ -74,24 +77,62 @@ type Client struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
 	f.Var(&cfg.ACLToken, prefix+"consul.acl-token", "ACL Token used to interact with Consul.")
-	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to Consul")
+	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to Consul.")
 	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", false, "Enable consistent reads to Consul.")
 	f.Float64Var(&cfg.WatchKeyRateLimit, prefix+"consul.watch-rate-limit", 1, "Rate limit when watching key or prefix in Consul, in requests per second. 0 disables the rate limit.")
 	f.IntVar(&cfg.WatchKeyBurstSize, prefix+"consul.watch-burst-size", 1, "Burst size used in rate limit. Values less than 1 are treated as 1.")
+	f.BoolVar(&cfg.EnableTLS, prefix+"consul.tls-enabled", false, "Enable TLS.")
+	cfg.TLS.RegisterFlagsWithPrefix(prefix+"consul", f)
+}
+
+func (cfg *Config) GetTLS() *consul.TLSConfig {
+	return &consul.TLSConfig{
+		Address:            cfg.TLS.ServerName,
+		CertFile:           cfg.TLS.CertPath,
+		KeyFile:            cfg.TLS.KeyPath,
+		CAFile:             cfg.TLS.CAPath,
+		InsecureSkipVerify: cfg.TLS.InsecureSkipVerify,
+	}
+}
+
+func getConsulConfig(cfg Config) (*consul.Config, error) {
+	scheme := "http"
+	transport := cleanhttp.DefaultPooledTransport()
+
+	config := &consul.Config{
+		Address: cfg.Host,
+		Token:   cfg.ACLToken.Value,
+	}
+
+	if cfg.EnableTLS {
+		tlsConfig := cfg.GetTLS()
+		tlsClientConfig, err := consul.SetupTLSConfig(tlsConfig)
+		if err != nil {
+			return nil, err
+		}
+		transport.TLSClientConfig = tlsClientConfig
+		scheme = "https"
+		config.TLSConfig = *tlsConfig
+	}
+
+	config.Scheme = scheme
+	config.HttpClient = &http.Client{
+		Transport: transport,
+		// See https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
+		Timeout: cfg.HTTPClientTimeout,
+	}
+
+	return config, nil
 }
 
 // NewClient returns a new Client.
 func NewClient(cfg Config, codec codec.Codec, logger log.Logger, registerer prometheus.Registerer) (*Client, error) {
-	client, err := consul.NewClient(&consul.Config{
-		Address: cfg.Host,
-		Token:   cfg.ACLToken.Value,
-		Scheme:  "http",
-		HttpClient: &http.Client{
-			Transport: cleanhttp.DefaultPooledTransport(),
-			// See https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
-			Timeout: cfg.HTTPClientTimeout,
-		},
-	})
+	config, err := getConsulConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := consul.NewClient(config)
 	if err != nil {
 		return nil, err
 	}

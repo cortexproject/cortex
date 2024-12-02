@@ -5,6 +5,7 @@ package ringbuffer
 
 import (
 	"math"
+	"slices"
 
 	"github.com/prometheus/prometheus/model/histogram"
 
@@ -177,6 +178,7 @@ func (r *RateBuffer) Eval(_ float64, _ *int64) (float64, *histogram.FloatHistogr
 		r.resets...),
 		r.last,
 	)
+	r.rateBuffer = slices.CompactFunc(r.rateBuffer, func(s1 Sample, s2 Sample) bool { return s1.T == s2.T })
 	numSamples := r.stepRanges[0].numSamples
 	f, h, err := extrapolatedRate(r.rateBuffer, numSamples, r.isCounter, r.isRate, r.evalTs, r.selectRange, r.offset)
 	return f, h, true, err

@@ -2445,7 +2445,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 # CLI flag: -<prefix>.consul.acl-token
 [acl_token: <string> | default = ""]
 
-# HTTP timeout when talking to Consul
+# HTTP timeout when talking to Consul.
 # CLI flag: -<prefix>.consul.client-timeout
 [http_client_timeout: <duration> | default = 20s]
 
@@ -2461,6 +2461,33 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 # Burst size used in rate limit. Values less than 1 are treated as 1.
 # CLI flag: -<prefix>.consul.watch-burst-size
 [watch_burst_size: <int> | default = 1]
+
+# Enable TLS.
+# CLI flag: -<prefix>.consul.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
+# CLI flag: -<prefix>.consul.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
+# CLI flag: -<prefix>.consul.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
+# CLI flag: -<prefix>.consul.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -<prefix>.consul.tls-server-name
+[tls_server_name: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -<prefix>.consul.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `distributor_config`
@@ -5389,6 +5416,12 @@ grpc_tls_config:
 # Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
 # CLI flag: -server.grpc-max-concurrent-streams
 [grpc_server_max_concurrent_streams: <int> | default = 100]
+
+# Number of worker goroutines that should be used to process incoming
+# streams.Setting this 0 (default) will disable workers and spawn a new
+# goroutine for each stream.
+# CLI flag: -server.grpc_server-num-stream-workers
+[grpc_server_num_stream_workers: <int> | default = 0]
 
 # The duration after which an idle connection should be closed. Default:
 # infinity

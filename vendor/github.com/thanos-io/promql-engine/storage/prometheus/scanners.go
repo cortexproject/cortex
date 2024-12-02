@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -159,5 +160,5 @@ func newHistogramStatsSeries(series storage.Series) histogramStatsSeries {
 }
 
 func (h histogramStatsSeries) Iterator(it chunkenc.Iterator) chunkenc.Iterator {
-	return NewHistogramStatsIterator(h.Series.Iterator(it))
+	return promql.NewHistogramStatsIterator(h.Series.Iterator(it))
 }

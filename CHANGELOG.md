@@ -33,6 +33,7 @@
 * [ENHANCEMENT] Distributor: Add new `cortex_reduced_resolution_histogram_samples_total` metric to track the number of histogram samples which resolution was reduced. #6182
 * [ENHANCEMENT] StoreGateway: Implement metadata API limit in queryable. #6195
 * [ENHANCEMENT] Ingester: Add matchers to ingester LabelNames() and LabelNamesStream() RPC. #6209
+* [ENHANCEMENT] KV: Add TLS configs to consul. #6374
 * [ENHANCEMENT] Ingester/Store Gateway Clients: Introduce an experimental HealthCheck handler to quickly fail requests directed to unhealthy targets. #6225 #6257
 * [ENHANCEMENT] Upgrade build image and Go version to 1.23.2. #6261 #6262
 * [ENHANCEMENT] Ingester: Introduce a new experimental feature for caching expanded postings on the ingester. #6296
@@ -40,6 +41,7 @@
 * [ENHANCEMENT] StoreGateway: Add new `cortex_bucket_store_chunk_pool_inuse_bytes` metric to track the usage in chunk pool. #6310
 * [ENHANCEMENT] Distributor: Add new `cortex_distributor_inflight_client_requests` metric to track number of ingester client inflight requests. #6358
 * [ENHANCEMENT] Distributor: Expose `cortex_label_size_bytes` native histogram metric. #6372
+* [ENHANCEMENT] Add new option `-server.grpc_server-num-stream-workers` to configure the number of worker goroutines that should be used to process incoming streams. #6386
 * [ENHANCEMENT] Distributor: Return HTTP 5XX instead of HTTP 4XX when instance limits are hit. #6358
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 * [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326

@@ -916,9 +916,9 @@ github.com/segmentio/fasthash/fnv1a
 # github.com/seiflotfy/cuckoofilter v0.0.0-20240715131351-a2f2c23f1771
 ## explicit; go 1.15
 github.com/seiflotfy/cuckoofilter
-# github.com/sercand/kuberesolver/v4 v4.0.0 => github.com/sercand/kuberesolver/v5 v5.1.1
+# github.com/sercand/kuberesolver/v5 v5.1.1
 ## explicit; go 1.18
-github.com/sercand/kuberesolver/v4
+github.com/sercand/kuberesolver/v5
 # github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
 ## explicit; go 1.19
 github.com/shurcooL/httpfs/filter
@@ -950,8 +950,8 @@ github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20241028150459-cfdd0e50390d
-## explicit; go 1.21
+# github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97
+## explicit; go 1.22
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/exthttp
 github.com/thanos-io/objstore/providers/azure
@@ -960,7 +960,7 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing/opentracing
-# github.com/thanos-io/promql-engine v0.0.0-20240921092401-37747eddbd31
+# github.com/thanos-io/promql-engine v0.0.0-20241106100125-097e6e9f425a
 ## explicit; go 1.22.0
 github.com/thanos-io/promql-engine/api
 github.com/thanos-io/promql-engine/engine
@@ -983,7 +983,7 @@ github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
-# github.com/thanos-io/thanos v0.35.2-0.20241118113652-f998fc59c171
+# github.com/thanos-io/thanos v0.37.0
 ## explicit; go 1.23.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block
@@ -1070,8 +1070,8 @@ github.com/vimeo/galaxycache/http
 github.com/vimeo/galaxycache/lru
 github.com/vimeo/galaxycache/promoter
 github.com/vimeo/galaxycache/singleflight
-# github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
-## explicit; go 1.14
+# github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5 => github.com/cortexproject/weaveworks-common v0.0.0-20241129212437-96019edf21f1
+## explicit; go 1.22
 github.com/weaveworks/common/errors
 github.com/weaveworks/common/grpc
 github.com/weaveworks/common/httpgrpc
@@ -1553,6 +1553,7 @@ k8s.io/klog/v2/internal/sloghandler
 # k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 ## explicit; go 1.18
 k8s.io/utils/clock
+# github.com/weaveworks/common => github.com/cortexproject/weaveworks-common v0.0.0-20241129212437-96019edf21f1
 # git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
@@ -1561,5 +1562,4 @@ k8s.io/utils/clock
 # github.com/ionos-cloud/sdk-go/v6 => github.com/ionos-cloud/sdk-go/v6 v6.0.4
 # github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 # gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
-# github.com/sercand/kuberesolver/v4 => github.com/sercand/kuberesolver/v5 v5.1.1
 # google.golang.org/grpc => google.golang.org/grpc v1.65.0

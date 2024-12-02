@@ -51,9 +51,9 @@ require (
 	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/afero v1.11.0
 	github.com/stretchr/testify v1.10.0
-	github.com/thanos-io/objstore v0.0.0-20241028150459-cfdd0e50390d
-	github.com/thanos-io/promql-engine v0.0.0-20240921092401-37747eddbd31
-	github.com/thanos-io/thanos v0.35.2-0.20241118113652-f998fc59c171
+	github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97
+	github.com/thanos-io/promql-engine v0.0.0-20241106100125-097e6e9f425a
+	github.com/thanos-io/thanos v0.37.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 	go.etcd.io/etcd/api/v3 v3.5.17
@@ -80,7 +80,7 @@ require (
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/google/go-cmp v0.6.0
-	github.com/sercand/kuberesolver/v4 v4.0.0
+	github.com/sercand/kuberesolver/v5 v5.1.1
 	go.opentelemetry.io/collector/pdata v1.20.0
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
 	google.golang.org/protobuf v1.35.2
@@ -246,6 +246,9 @@ require (
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
 )
 
+// Using cortex fork of weaveworks/common
+replace github.com/weaveworks/common => github.com/cortexproject/weaveworks-common v0.0.0-20241129212437-96019edf21f1
+
 // Override since git.apache.org is down.  The docs say to fetch from github.
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
 
@@ -269,9 +272,6 @@ replace github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 // Same replace used by thanos: (may be removed in the future)
 // https://github.com/thanos-io/thanos/blob/fdeea3917591fc363a329cbe23af37c6fff0b5f0/go.mod#L265
 replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
-
-// Pin kuberesolver/v5 to support new grpc version. Need to upgrade kuberesolver version on weaveworks/common.
-replace github.com/sercand/kuberesolver/v4 => github.com/sercand/kuberesolver/v5 v5.1.1
 
 // gRPC 1.66 introduced memory pooling which breaks Cortex queries. Pin 1.65.0 until we have a fix.
 replace google.golang.org/grpc => google.golang.org/grpc v1.65.0

@@ -234,7 +234,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"method", r.Method,
 			"path", r.URL.Path,
 		}, formatQueryString(queryString)...)
-		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)	
+		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 	}
 
 	startTime := time.Now()

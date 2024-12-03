@@ -85,7 +85,7 @@ func newPrometheusLoggerFrom(logger log.Logger, logLevel logging.Level, keyvals 
 	// Ref: https://github.com/go-kit/log/issues/14#issuecomment-945038252
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 	logger = log.With(logger, keyvals...)
-	logger = level.NewFilter(logger, LevelFilter(logLevel.String()))
+	logger = level.NewFilter(logger, logLevel.Gokit)
 
 	// Initialise counters for all supported levels:
 	for _, level := range supportedLevels {

@@ -48,6 +48,7 @@
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 * [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
 * [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled  #6271
+* [BUGFIX] ingester: Fix regression on usage of cortex_ingester_queried_chunks #6398
 
 ## 1.18.1 2024-10-14
 

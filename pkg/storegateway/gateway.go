@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -62,6 +63,9 @@ type Config struct {
 
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
+
+	// Hedged Request
+	HedgedRequest bucket.HedgedRequestConfig `yaml:"hedged_request"`
 }
 
 // RegisterFlags registers the Config flags.
@@ -72,6 +76,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ShardingStrategy, "store-gateway.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.Var(&cfg.EnabledTenants, "store-gateway.enabled-tenants", "Comma separated list of tenants whose store metrics this storegateway can process. If specified, only these tenants will be handled by storegateway, otherwise this storegateway will be enabled for all the tenants in the store-gateway cluster.")
 	f.Var(&cfg.DisabledTenants, "store-gateway.disabled-tenants", "Comma separated list of tenants whose store metrics this storegateway cannot process. If specified, a storegateway that would normally pick the specified tenant(s) for processing will ignore them instead.")
+	cfg.HedgedRequest.RegisterFlagsWithPrefix(f, "store-gateway.")
 }
 
 // Validate the Config.
@@ -84,6 +89,10 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.StoreGatewayTenantShardSize <= 0 {
 			return errInvalidTenantShardSize
 		}
+	}
+
+	if err := cfg.HedgedRequest.Validate(); err != nil {
+		return err
 	}
 
 	return nil
@@ -114,7 +123,7 @@ type StoreGateway struct {
 func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*StoreGateway, error) {
 	var ringStore kv.Client
 
-	bucketClient, err := createBucketClient(storageCfg, logger, reg)
+	bucketClient, err := createBucketClient(storageCfg, gatewayCfg.HedgedRequest.GetHedgedRoundTripper(), logger, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -407,8 +416,8 @@ func (g *StoreGateway) OnRingInstanceStopping(_ *ring.BasicLifecycler)          
 func (g *StoreGateway) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.InstanceDesc) {
 }
 
-func createBucketClient(cfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
-	bucketClient, err := bucket.NewClient(context.Background(), cfg.Bucket, "store-gateway", logger, reg)
+func createBucketClient(cfg cortex_tsdb.BlocksStorageConfig, hedgedRoundTripper func(rt http.RoundTripper) http.RoundTripper, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
+	bucketClient, err := bucket.NewClient(context.Background(), cfg.Bucket, hedgedRoundTripper, "store-gateway", logger, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket client")
 	}

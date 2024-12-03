@@ -177,7 +177,7 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 				}
 			}
 		}
-		return bucket.NewClient(ctx, t.Cfg.RuntimeConfig.StorageConfig, "runtime-config", logger, registerer)
+		return bucket.NewClient(ctx, t.Cfg.RuntimeConfig.StorageConfig, nil, "runtime-config", logger, registerer)
 	}
 	serv, err := runtimeconfig.New(t.Cfg.RuntimeConfig, registerer, logger, bucketClientFactory)
 	if err == nil {

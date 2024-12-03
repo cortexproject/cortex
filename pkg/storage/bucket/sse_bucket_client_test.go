@@ -57,7 +57,7 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 				BucketLookupType: s3.BucketPathLookup,
 			}
 
-			s3Client, err := s3.NewBucketClient(s3Cfg, "test", log.NewNopLogger())
+			s3Client, err := s3.NewBucketClient(s3Cfg, nil, "test", log.NewNopLogger())
 			require.NoError(t, err)
 
 			// Configure the config provider with NO KMS key ID.

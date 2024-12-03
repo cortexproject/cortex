@@ -44,7 +44,7 @@ type Results map[string]PerUserResults
 
 // NewThanosBlockConverter creates a ThanosBlockConverter
 func NewThanosBlockConverter(ctx context.Context, cfg bucket.Config, dryRun bool, logger log.Logger) (*ThanosBlockConverter, error) {
-	bkt, err := bucket.NewClient(ctx, cfg, "thanosconvert", logger, nil)
+	bkt, err := bucket.NewClient(ctx, cfg, nil, "thanosconvert", logger, nil)
 	if err != nil {
 		return nil, err
 	}

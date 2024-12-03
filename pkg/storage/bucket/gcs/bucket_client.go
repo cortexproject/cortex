@@ -2,6 +2,7 @@ package gcs
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/go-kit/log"
 	"github.com/thanos-io/objstore"
@@ -10,7 +11,7 @@ import (
 )
 
 // NewBucketClient creates a new GCS bucket client
-func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
+func NewBucketClient(ctx context.Context, cfg Config, hedgedRoundTripper func(rt http.RoundTripper) http.RoundTripper, name string, logger log.Logger) (objstore.Bucket, error) {
 	bucketConfig := gcs.Config{
 		Bucket:         cfg.BucketName,
 		ServiceAccount: cfg.ServiceAccount.Value,
@@ -23,5 +24,5 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 		return nil, err
 	}
 
-	return gcs.NewBucket(ctx, logger, serialized, name, nil)
+	return gcs.NewBucket(ctx, logger, serialized, name, hedgedRoundTripper)
 }

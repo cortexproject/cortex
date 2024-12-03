@@ -1,18 +1,19 @@
 package codec
 
 import (
-	"github.com/gogo/protobuf/proto"
-	"github.com/stretchr/testify/require"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func TestProtobufCodec_Encode(t *testing.T) {

@@ -495,8 +495,6 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		return errors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
-	level.Info(i.logger).Log("msg", "finished init ring", "ring", i.RingName, "state", i.GetState())
-
 	// We do various period tasks
 	var autoJoinAfter <-chan time.Time
 	var observeChan <-chan time.Time
@@ -524,7 +522,6 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		select {
 		case <-i.autojoinChan:
 			autoJoinAfter = time.After(i.cfg.JoinAfter)
-			level.Info(i.logger).Log("msg", "will do auto-joining after timeout", "timeout", i.cfg.JoinAfter, "state", i.GetState())
 		case <-autoJoinAfter:
 			if joined {
 				continue
@@ -692,13 +689,16 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 			// We use the tokens from the file only if it does not exist in the ring yet.
 			if len(tokensFromFile) > 0 {
-				level.Info(i.logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
 				if len(tokensFromFile) >= i.cfg.NumTokens && i.autoJoinOnStartup {
+					level.Info(i.logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
 					i.setState(i.getPreviousState())
+					state := i.GetState()
+					ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, state, registeredAt)
+					level.Info(i.logger).Log("msg", "auto join on startup, adding with token and state", "ring", i.RingName, "state", state)
+					i.setTokens(tokensFromFile)
+					return ringDesc, true, nil
 				}
-				ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, i.GetState(), registeredAt)
-				i.setTokens(tokensFromFile)
-				return ringDesc, true, nil
+				level.Info(i.logger).Log("msg", "ignore tokens from file since autoJoinOnStartup set to false")
 			}
 
 			// Either we are a new ingester, or consul must have restarted
@@ -894,7 +894,9 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 
 		if needTokens == 0 && myTokens.Equals(i.getTokens()) {
 			// Tokens have been verified. No need to change them.
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
+			state := i.GetState()
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
+			level.Info(i.logger).Log("msg", "auto joined with existing tokens", "ring", i.RingName, "state", state)
 			return ringDesc, true, nil
 		}
 
@@ -908,7 +910,9 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 		sort.Sort(myTokens)
 		i.setTokens(myTokens)
 
-		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
+		state := i.GetState()
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
+		level.Info(i.logger).Log("msg", "auto joined with new tokens", "ring", i.RingName, "state", state)
 
 		return ringDesc, true, nil
 	})

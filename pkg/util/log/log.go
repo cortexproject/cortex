@@ -123,24 +123,6 @@ func CheckFatal(location string, err error) {
 	}
 }
 
-// TODO(dannyk): remove once weaveworks/common updates to go-kit/log
-//
-//	-> we can then revert to using Level.Gokit
-func LevelFilter(l string) level.Option {
-	switch l {
-	case "debug":
-		return level.AllowDebug()
-	case "info":
-		return level.AllowInfo()
-	case "warn":
-		return level.AllowWarn()
-	case "error":
-		return level.AllowError()
-	default:
-		return level.AllowAll()
-	}
-}
-
 func HeaderMapFromContext(ctx context.Context) map[string]string {
 	headerMap, ok := ctx.Value(headerMapContextKey).(map[string]string)
 	if !ok {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
@@ -26,6 +27,8 @@ var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-se
 var errDuplicateQueryPriorities = errors.New("duplicate entry of priorities found. Make sure they are all unique, including the default priority")
 var errCompilingQueryPriorityRegex = errors.New("error compiling query priority regex")
 var errDuplicatePerLabelSetLimit = errors.New("duplicate per labelSet limits found. Make sure they are all unique")
+var errInvalidLabelName = errors.New("invalid label name")
+var errInvalidLabelValue = errors.New("invalid label value")
 
 // Supported values for enum limits
 const (
@@ -182,6 +185,7 @@ type Limits struct {
 	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
+	RulerExternalLabels         labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
@@ -308,6 +312,18 @@ func (l *Limits) Validate(shardByAllLabels bool) error {
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
 		return errMaxGlobalSeriesPerUserValidation
+	}
+
+	if err := l.RulerExternalLabels.Validate(func(l labels.Label) error {
+		if !model.LabelName(l.Name).IsValid() {
+			return fmt.Errorf("%w: %q", errInvalidLabelName, l.Name)
+		}
+		if !model.LabelValue(l.Value).IsValid() {
+			return fmt.Errorf("%w: %q", errInvalidLabelValue, l.Value)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	return nil
@@ -946,6 +962,10 @@ func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 		}
 	}
 	return DisabledRuleGroups{}
+}
+
+func (o *Overrides) RulerExternalLabels(userID string) labels.Labels {
+	return o.GetOverridesForUser(userID).RulerExternalLabels
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

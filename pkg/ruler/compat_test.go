@@ -287,7 +287,7 @@ func TestPusherErrors(t *testing.T) {
 			writes := prometheus.NewCounter(prometheus.CounterOpts{})
 			failures := prometheus.NewCounter(prometheus.CounterOpts{})
 
-			pa := NewPusherAppendable(pusher, "user-1", ruleLimits{}, writes, failures)
+			pa := NewPusherAppendable(pusher, "user-1", &ruleLimits{}, writes, failures)
 
 			lbls, err := parser.ParseMetric("foo_bar")
 			require.NoError(t, err)

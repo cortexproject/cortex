@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
@@ -47,6 +48,9 @@ type DefaultMultiTenantManager struct {
 	notifiers                 map[string]*rulerNotifier
 	notifiersDiscoveryMetrics map[string]discovery.DiscovererMetrics
 
+	// Per-user externalLabels.
+	userExternalLabels *userExternalLabels
+
 	// rules backup
 	rulesBackupManager *rulesBackupManager
 
@@ -62,7 +66,7 @@ type DefaultMultiTenantManager struct {
 	syncRuleMtx  sync.Mutex
 }
 
-func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
+func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory ManagerFactory, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -92,6 +96,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, eva
 		frontendPool:              newFrontendPool(cfg, logger, reg),
 		ruleEvalMetrics:           evalMetrics,
 		notifiers:                 map[string]*rulerNotifier{},
+		userExternalLabels:        newUserExternalLabels(cfg.ExternalLabels, limits),
 		notifiersDiscoveryMetrics: notifiersDiscoveryMetrics,
 		mapper:                    newMapper(cfg.RulePath, logger),
 		userManagers:              map[string]RulesManager{},
@@ -146,6 +151,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 
 			r.removeNotifier(userID)
 			r.mapper.cleanupUser(userID)
+			r.userExternalLabels.remove(userID)
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
@@ -183,12 +189,13 @@ func (r *DefaultMultiTenantManager) BackUpRuleGroups(ctx context.Context, ruleGr
 func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user string, groups rulespb.RuleGroupList) {
 	// Map the files to disk and return the file names to be passed to the users manager if they
 	// have been updated
-	update, files, err := r.mapper.MapRules(user, groups.Formatted())
+	rulesUpdated, files, err := r.mapper.MapRules(user, groups.Formatted())
 	if err != nil {
 		r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 		level.Error(r.logger).Log("msg", "unable to map rule files", "user", user, "err", err)
 		return
 	}
+	externalLabels, externalLabelsUpdated := r.userExternalLabels.update(user)
 
 	existing := true
 	manager := r.getRulesManager(user, ctx)
@@ -201,18 +208,25 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		return
 	}
 
-	if !existing || update {
+	if !existing || rulesUpdated || externalLabelsUpdated {
 		level.Debug(r.logger).Log("msg", "updating rules", "user", user)
 		r.configUpdatesTotal.WithLabelValues(user).Inc()
-		if update && existing {
+		if (rulesUpdated || externalLabelsUpdated) && existing {
 			r.updateRuleCache(user, manager.RuleGroups())
 		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), ruleGroupIterationFunc)
+		err = manager.Update(r.cfg.EvaluationInterval, files, externalLabels, r.cfg.ExternalURL.String(), ruleGroupIterationFunc)
 		r.deleteRuleCache(user)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
 			return
+		}
+		if externalLabelsUpdated {
+			if err = r.notifierApplyExternalLabels(user, externalLabels); err != nil {
+				r.lastReloadSuccessful.WithLabelValues(user).Set(0)
+				level.Error(r.logger).Log("msg", "unable to update notifier", "user", user, "err", err)
+				return
+			}
 		}
 
 		r.lastReloadSuccessful.WithLabelValues(user).Set(1)
@@ -348,6 +362,19 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 	return n.notifier, nil
 }
 
+func (r *DefaultMultiTenantManager) notifierApplyExternalLabels(userID string, externalLabels labels.Labels) error {
+	r.notifiersMtx.Lock()
+	defer r.notifiersMtx.Unlock()
+
+	n, ok := r.notifiers[userID]
+	if !ok {
+		return fmt.Errorf("notifier not found")
+	}
+	cfg := *r.notifierCfg // Copy it
+	cfg.GlobalConfig.ExternalLabels = externalLabels
+	return n.applyConfig(&cfg)
+}
+
 func (r *DefaultMultiTenantManager) getCachedRules(userID string) ([]*promRules.Group, bool) {
 	r.ruleCacheMtx.RLock()
 	defer r.ruleCacheMtx.RUnlock()
@@ -402,6 +429,7 @@ func (r *DefaultMultiTenantManager) Stop() {
 
 	// cleanup user rules directories
 	r.mapper.cleanup()
+	r.userExternalLabels.cleanup()
 }
 
 func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error {

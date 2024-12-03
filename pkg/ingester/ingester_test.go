@@ -5134,6 +5134,11 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
 	numberOfTenants := 100
 	wg := sync.WaitGroup{}
 

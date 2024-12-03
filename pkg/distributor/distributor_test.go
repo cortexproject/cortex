@@ -840,7 +840,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			preInflight:   101,
 			inflightLimit: 101,
 			pushes: []testPush{
-				{samples: 100, expectedError: errTooManyInflightPushRequests},
+				{samples: 100, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable, "too many inflight push requests in distributor")},
 			},
 		},
 		"below inflight client limit": {
@@ -863,7 +863,8 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			preInflightClient:   103,
 			inflightClientLimit: 101,
 			pushes: []testPush{
-				{samples: 100, expectedError: errTooManyInflightClientRequests},
+				{samples: 100, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable,
+					"too many inflight ingester client requests in distributor")},
 			},
 		},
 		"below ingestion rate limit": {
@@ -892,7 +893,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			ingestionRateLimit: 1000,
 
 			pushes: []testPush{
-				{samples: 100, expectedError: errMaxSamplesPushRateLimitReached},
+				{samples: 100, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable, "distributor's samples push rate limit reached")},
 				{samples: 100, expectedError: nil},
 			},
 		},
@@ -902,10 +903,10 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			ingestionRateLimit: 1000,
 
 			pushes: []testPush{
-				{samples: 5000, expectedError: nil},                               // after push, rate = 500 + 0.2*(5000-500) = 1400
-				{samples: 5000, expectedError: errMaxSamplesPushRateLimitReached}, // after push, rate = 1400 + 0.2*(0 - 1400) = 1120
-				{samples: 5000, expectedError: errMaxSamplesPushRateLimitReached}, // after push, rate = 1120 + 0.2*(0 - 1120) = 896
-				{samples: 5000, expectedError: nil},                               // 896 is below 1000, so this push succeeds, new rate = 896 + 0.2*(5000-896) = 1716.8
+				{samples: 5000, expectedError: nil}, // after push, rate = 500 + 0.2*(5000-500) = 1400
+				{samples: 5000, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable, "distributor's samples push rate limit reached")}, // after push, rate = 1400 + 0.2*(0 - 1400) = 1120
+				{samples: 5000, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable, "distributor's samples push rate limit reached")}, // after push, rate = 1120 + 0.2*(0 - 1120) = 896
+				{samples: 5000, expectedError: nil}, // 896 is below 1000, so this push succeeds, new rate = 896 + 0.2*(5000-896) = 1716.8
 			},
 		},
 	}

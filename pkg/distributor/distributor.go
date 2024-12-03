@@ -51,11 +51,6 @@ var (
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
 	errInvalidTenantShardSize  = errors.New("invalid tenant shard size. The value must be greater than or equal to 0")
-
-	// Distributor instance limits errors.
-	errTooManyInflightPushRequests    = errors.New("too many inflight push requests in distributor")
-	errMaxSamplesPushRateLimitReached = errors.New("distributor's samples push rate limit reached")
-	errTooManyInflightClientRequests  = errors.New("too many inflight ingester client requests in distributor")
 )
 
 const (
@@ -668,19 +663,19 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
 
 	if d.cfg.InstanceLimits.MaxInflightPushRequests > 0 && inflight > int64(d.cfg.InstanceLimits.MaxInflightPushRequests) {
-		return nil, errTooManyInflightPushRequests
+		return nil, httpgrpc.Errorf(http.StatusServiceUnavailable, "too many inflight push requests in distributor")
 	}
 
 	if d.cfg.InstanceLimits.MaxIngestionRate > 0 {
 		if rate := d.ingestionRate.Rate(); rate >= d.cfg.InstanceLimits.MaxIngestionRate {
-			return nil, errMaxSamplesPushRateLimitReached
+			return nil, httpgrpc.Errorf(http.StatusServiceUnavailable, "distributor's samples push rate limit reached")
 		}
 	}
 
 	// only reject requests at this stage to allow distributor to finish sending the current batch request to all ingesters
 	// even if we've exceeded the MaxInflightClientRequests in the `doBatch`
 	if d.cfg.InstanceLimits.MaxInflightClientRequests > 0 && d.inflightClientRequests.Load() > int64(d.cfg.InstanceLimits.MaxInflightClientRequests) {
-		return nil, errTooManyInflightClientRequests
+		return nil, httpgrpc.Errorf(http.StatusServiceUnavailable, "too many inflight ingester client requests in distributor")
 	}
 
 	removeReplica := false

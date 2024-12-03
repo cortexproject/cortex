@@ -228,13 +228,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Log request
 	if f.cfg.QueryStatsEnabled {
 		queryString = f.parseRequestQueryString(r, buf)
-		logMessage := append([]interface{}{
-			"msg", "query request",
-			"component", "query-frontend",
-			"method", r.Method,
-			"path", r.URL.Path,
-		}, formatQueryString(queryString)...)
-		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+		f.logQueryRequest(r, queryString)
 	}
 
 	startTime := time.Now()
@@ -304,6 +298,23 @@ func formatGrafanaStatsFields(r *http.Request) []interface{} {
 		fields = append(fields, "X-Panel-Id", panelID)
 	}
 	return fields
+}
+
+// logQueryRequest logs query request before query execution.
+func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values) {
+	logMessage := []interface{}{
+		"msg", "query request",
+		"component", "query-frontend",
+		"method", r.Method,
+		"path", r.URL.Path,
+	}
+	grafanaFields := formatGrafanaStatsFields(r)
+	if len(grafanaFields) > 0 {
+		logMessage = append(logMessage, grafanaFields...)
+	}
+	logMessage = append(logMessage, formatQueryString(queryString)...)
+
+	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
 // reportSlowQuery reports slow queries.

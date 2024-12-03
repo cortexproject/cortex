@@ -26,7 +26,7 @@ func (p ProtobufCodec) ContentType() v1.MIMEType {
 		return v1.MIMEType{Type: "application", SubType: "x-protobuf"}
 	}
 	// TODO: switch to use constants.
-	return v1.MIMEType{Type: "application", SubType: "application/x-cortex-query+proto"}
+	return v1.MIMEType{Type: "application", SubType: "x-cortex-query+proto"}
 }
 
 func (p ProtobufCodec) CanEncode(resp *v1.Response) bool {

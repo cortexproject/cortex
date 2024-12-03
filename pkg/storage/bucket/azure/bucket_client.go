@@ -1,6 +1,8 @@
 package azure
 
 import (
+	"net/http"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
@@ -9,7 +11,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
+func NewBucketClient(cfg Config, hedgedRoundTripper func(rt http.RoundTripper) http.RoundTripper, name string, logger log.Logger) (objstore.Bucket, error) {
 	bucketConfig := azure.Config{
 		StorageAccountName:      cfg.StorageAccountName,
 		StorageAccountKey:       cfg.StorageAccountKey.Value,
@@ -37,5 +39,5 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		return nil, err
 	}
 
-	return azure.NewBucket(logger, serialized, name, nil)
+	return azure.NewBucket(logger, serialized, name, hedgedRoundTripper)
 }

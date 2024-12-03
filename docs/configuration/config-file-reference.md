@@ -5664,6 +5664,23 @@ sharding_ring:
 # tenant(s) for processing will ignore them instead.
 # CLI flag: -store-gateway.disabled-tenants
 [disabled_tenants: <string> | default = ""]
+
+hedged_request:
+  # If true, hedged requests are applied to object store calls. It can help with
+  # reducing tail latency.
+  # CLI flag: -store-gateway.hedged-request.enabled
+  [enabled: <boolean> | default = false]
+
+  # Maximum number of hedged requests allowed for each initial request. A high
+  # number can reduce latency but increase internal calls.
+  # CLI flag: -store-gateway.hedged-request.max-requests
+  [max_requests: <int> | default = 3]
+
+  # It is used to calculate a latency threshold to trigger hedged requests. For
+  # example, additional requests are triggered when the initial request response
+  # time exceeds the 90th percentile.
+  # CLI flag: -store-gateway.hedged-request.quantile
+  [quantile: <float> | default = 0.9]
 ```
 
 ### `tracing_config`

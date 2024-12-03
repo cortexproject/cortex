@@ -287,6 +287,9 @@ github.com/blang/semver/v4
 # github.com/bradfitz/gomemcache v0.0.0-20230905024940-24af94b03874
 ## explicit; go 1.18
 github.com/bradfitz/gomemcache/memcache
+# github.com/caio/go-tdigest v3.1.0+incompatible
+## explicit
+github.com/caio/go-tdigest
 # github.com/cenkalti/backoff/v4 v4.3.0
 ## explicit; go 1.18
 github.com/cenkalti/backoff/v4
@@ -306,6 +309,9 @@ github.com/coreos/go-systemd/v22/journal
 # github.com/cortexproject/promqlsmith v0.0.0-20241121054008-8b48fe2471ef
 ## explicit; go 1.22.0
 github.com/cortexproject/promqlsmith
+# github.com/cristalhq/hedgedhttp v0.9.1
+## explicit; go 1.16
+github.com/cristalhq/hedgedhttp
 # github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 ## explicit
 github.com/davecgh/go-spew/spew
@@ -1004,6 +1010,7 @@ github.com/thanos-io/thanos/pkg/discovery/memcache
 github.com/thanos-io/thanos/pkg/errutil
 github.com/thanos-io/thanos/pkg/exemplars/exemplarspb
 github.com/thanos-io/thanos/pkg/extgrpc/snappy
+github.com/thanos-io/thanos/pkg/exthttp
 github.com/thanos-io/thanos/pkg/extkingpin
 github.com/thanos-io/thanos/pkg/extprom
 github.com/thanos-io/thanos/pkg/extprom/http

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
@@ -21,13 +22,13 @@ var defaultRetryMinBackoff = 5 * time.Second
 var defaultRetryMaxBackoff = 1 * time.Minute
 
 // NewBucketClient creates a new S3 bucket client
-func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
+func NewBucketClient(cfg Config, hedgedRoundTripper func(rt http.RoundTripper) http.RoundTripper, name string, logger log.Logger) (objstore.Bucket, error) {
 	s3Cfg, err := newS3Config(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name, nil)
+	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name, hedgedRoundTripper)
 	if err != nil {
 		return nil, err
 	}

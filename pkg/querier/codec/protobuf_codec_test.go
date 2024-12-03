@@ -244,7 +244,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 										Labels: []cortexpb.LabelAdapter{
 											{Name: "__name__", Value: "foo"},
 										},
-										Histograms: []*tripperware.SampleHistogramPair{
+										Histograms: []tripperware.SampleHistogramPair{
 											{
 												TimestampMs: 1000,
 												Histogram: tripperware.SampleHistogram{

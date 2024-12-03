@@ -126,9 +126,9 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 		}
 
 		histogramsLen := len(sampleStream.Histograms)
-		var histograms []*tripperware.SampleHistogramPair
+		var histograms []tripperware.SampleHistogramPair
 		if histogramsLen > 0 {
-			histograms = make([]*tripperware.SampleHistogramPair, histogramsLen)
+			histograms = make([]tripperware.SampleHistogramPair, histogramsLen)
 			for j := 0; j < histogramsLen; j++ {
 				bucketsLen := len(sampleStream.Histograms[j].H.NegativeBuckets) + len(sampleStream.Histograms[j].H.PositiveBuckets)
 				if sampleStream.Histograms[j].H.ZeroCount > 0 {
@@ -137,7 +137,7 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 				buckets := make([]*tripperware.HistogramBucket, bucketsLen)
 				it := sampleStream.Histograms[j].H.AllBucketIterator()
 				getBuckets(buckets, it)
-				histograms[j] = &tripperware.SampleHistogramPair{
+				histograms[j] = tripperware.SampleHistogramPair{
 					TimestampMs: sampleStream.Histograms[j].T,
 					Histogram: tripperware.SampleHistogram{
 						Count:   sampleStream.Histograms[j].H.Count,

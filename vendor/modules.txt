@@ -730,7 +730,7 @@ github.com/oklog/ulid
 # github.com/opentracing-contrib/go-grpc v0.1.0
 ## explicit; go 1.22.7
 github.com/opentracing-contrib/go-grpc
-# github.com/opentracing-contrib/go-stdlib v1.0.0
+# github.com/opentracing-contrib/go-stdlib v1.1.0
 ## explicit; go 1.14
 github.com/opentracing-contrib/go-stdlib/nethttp
 # github.com/opentracing/opentracing-go v1.2.0

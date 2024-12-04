@@ -542,14 +542,14 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				if i.cfg.ObservePeriod > 0 {
 					// let's observe the ring. By using JOINING state, this ingester will be ignored by LEAVING
 					// ingesters, but we also signal that it is not fully functional yet.
-					if err := i.autoJoin(context.Background(), JOINING); err != nil {
+					if err := i.autoJoin(context.Background(), JOINING, addedInRing); err != nil {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 
 					level.Info(i.logger).Log("msg", "observing tokens before going ACTIVE", "ring", i.RingName)
 					observeChan = time.After(i.cfg.ObservePeriod)
 				} else {
-					if err := i.autoJoin(context.Background(), i.getPreviousState()); err != nil {
+					if err := i.autoJoin(context.Background(), i.getPreviousState(), addedInRing); err != nil {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s, state: %s", i.RingName, i.getPreviousState())
 					}
 				}
@@ -892,7 +892,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 }
 
 // autoJoin selects random tokens & moves state to targetState
-func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) error {
+func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, alreadyInRing bool) error {
 	var ringDesc *Desc
 
 	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
@@ -907,6 +907,9 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		// Need to make sure we didn't change the num of tokens configured
 		myTokens, _ := ringDesc.TokensFor(i.ID)
+		if !alreadyInRing {
+			myTokens = i.getTokens()
+		}
 		needTokens := i.cfg.NumTokens - len(myTokens)
 
 		if needTokens == 0 && myTokens.Equals(i.getTokens()) {

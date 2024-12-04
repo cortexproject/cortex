@@ -491,7 +491,8 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	joined := false
 	// First, see if we exist in the cluster, update our state to match if we do,
 	// and add ourselves (without tokens) if we don't.
-	if err := i.initRing(context.Background()); err != nil {
+	addedInRing, err := i.initRing(context.Background())
+	if err != nil {
 		return errors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
@@ -504,18 +505,23 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	}
 
 	var heartbeatTickerChan <-chan time.Time
-	if uint64(i.cfg.HeartbeatPeriod) > 0 {
-		heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
-		heartbeatTicker.Stop()
-		// We are jittering for at least half of the time and max the time of the heartbeat.
-		// If we jitter too soon, we can have problems of concurrency with autoJoin leaving the instance on ACTIVE without tokens
-		time.AfterFunc(time.Duration(uint64(i.cfg.HeartbeatPeriod/2)+uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod/2)), func() {
-			i.heartbeat(ctx)
-			heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
-		})
-		defer heartbeatTicker.Stop()
+	startHeartbeat := func() {
+		if uint64(i.cfg.HeartbeatPeriod) > 0 {
+			heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
+			heartbeatTicker.Stop()
+			// We are jittering for at least half of the time and max the time of the heartbeat.
+			// If we jitter too soon, we can have problems of concurrency with autoJoin leaving the instance on ACTIVE without tokens
+			time.AfterFunc(time.Duration(uint64(i.cfg.HeartbeatPeriod/2)+uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod/2)), func() {
+				i.heartbeat(ctx)
+				heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
+			})
+			defer heartbeatTicker.Stop()
 
-		heartbeatTickerChan = heartbeatTicker.C
+			heartbeatTickerChan = heartbeatTicker.C
+		}
+	}
+	if addedInRing {
+		startHeartbeat()
 	}
 
 	for {
@@ -547,6 +553,10 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s, state: %s", i.RingName, i.getPreviousState())
 					}
 				}
+
+				if !addedInRing {
+					startHeartbeat()
+				}
 			}
 
 		case <-observeChan:
@@ -564,6 +574,10 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				err := i.changeState(context.Background(), i.getPreviousState())
 				if err != nil {
 					level.Error(i.logger).Log("msg", "failed to set state", "ring", i.RingName, "state", i.getPreviousState(), "err", err)
+				}
+
+				if !addedInRing {
+					startHeartbeat()
 				}
 			} else {
 				level.Info(i.logger).Log("msg", "token verification failed, observing", "ring", i.RingName)
@@ -653,12 +667,13 @@ heartbeatLoop:
 // initRing is the first thing we do when we start. It:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
-func (i *Lifecycler) initRing(ctx context.Context) error {
+func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 	var (
 		ringDesc       *Desc
 		tokensFromFile Tokens
 		err            error
 	)
+	addedInRing := true
 
 	if i.cfg.TokensFilePath != "" {
 		tokenFile, err := i.loadTokenFile()
@@ -689,16 +704,18 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 			// We use the tokens from the file only if it does not exist in the ring yet.
 			if len(tokensFromFile) > 0 {
+				level.Info(i.logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
 				if len(tokensFromFile) >= i.cfg.NumTokens && i.autoJoinOnStartup {
-					level.Info(i.logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
 					i.setState(i.getPreviousState())
 					state := i.GetState()
 					ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, state, registeredAt)
 					level.Info(i.logger).Log("msg", "auto join on startup, adding with token and state", "ring", i.RingName, "state", state)
-					i.setTokens(tokensFromFile)
 					return ringDesc, true, nil
 				}
-				level.Info(i.logger).Log("msg", "ignore tokens from file since autoJoinOnStartup set to false")
+				i.setTokens(tokensFromFile)
+				// Do not return ring to CAS call since instance has not been added to ring yet.
+				addedInRing = false
+				return nil, true, nil
 			}
 
 			// Either we are a new ingester, or consul must have restarted
@@ -760,7 +777,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		i.updateCounters(ringDesc)
 	}
 
-	return err
+	return addedInRing, err
 }
 
 func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {

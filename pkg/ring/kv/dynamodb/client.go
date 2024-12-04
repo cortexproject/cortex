@@ -199,6 +199,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 
 		if len(putRequests) == 0 && len(deleteRequests) == 0 {
 			// no change detected, retry
+			level.Warn(c.logger).Log("msg", "no change detected in ring, retry CAS")
 			bo.Wait()
 			continue
 		}

@@ -3087,7 +3087,8 @@ func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
 	// Create ingester.
 	cfg := defaultIngesterTestConfig(t)
 
-	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+	reg := prometheus.NewRegistry()
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, reg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -3154,6 +3155,7 @@ func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
 	recvMsgs := 0
 	series := 0
 	totalSamples := 0
+	totalChunks := 0
 
 	for {
 		resp, err := s.Recv()
@@ -3174,6 +3176,7 @@ func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
 				require.NoError(t, err)
 				totalSamples += chk.NumSamples()
 			}
+			totalChunks += len(ts.Chunks)
 		}
 	}
 
@@ -3183,6 +3186,21 @@ func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
 	require.True(t, 2 <= recvMsgs && recvMsgs <= 3)
 	require.Equal(t, 3, series)
 	require.Equal(t, 100000+500000+samplesCount, totalSamples)
+	require.Equal(t, 13335, totalChunks)
+	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_ingester_queried_chunks The total number of chunks returned from queries.
+		# TYPE cortex_ingester_queried_chunks histogram
+		cortex_ingester_queried_chunks_bucket{le="10"} 0
+		cortex_ingester_queried_chunks_bucket{le="80"} 0
+		cortex_ingester_queried_chunks_bucket{le="640"} 0
+		cortex_ingester_queried_chunks_bucket{le="5120"} 0
+		cortex_ingester_queried_chunks_bucket{le="40960"} 1
+		cortex_ingester_queried_chunks_bucket{le="327680"} 1
+		cortex_ingester_queried_chunks_bucket{le="2.62144e+06"} 1
+		cortex_ingester_queried_chunks_bucket{le="+Inf"} 1
+		cortex_ingester_queried_chunks_sum 13335
+		cortex_ingester_queried_chunks_count 1
+	`), `cortex_ingester_queried_chunks`))
 }
 
 func writeRequestSingleSeries(lbls labels.Labels, samples []cortexpb.Sample) *cortexpb.WriteRequest {

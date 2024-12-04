@@ -400,7 +400,7 @@ func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
 	return samples[searchResult:]
 }
 
-// sliceHistogram assumes given histogram are sorted by timestamp in ascending order and
+// sliceHistograms assumes given histogram are sorted by timestamp in ascending order and
 // return a sub slice whose first element's is the smallest timestamp that is strictly
 // bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
 // timestamps in histogram.

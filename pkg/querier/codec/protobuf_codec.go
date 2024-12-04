@@ -13,10 +13,20 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
-type ProtobufCodec struct{}
+type ProtobufCodec struct {
+	// cortexInternal enables encoding the whole native histogram data fields in response instead of keeping
+	// only few sparse information like the default JSON/Protobuf codec does.
+	// This will be used by Cortex Ruler to get native histograms data from Cortex Query Frontend because
+	// rule evaluation requires the full native histogram data.
+	CortexInternal bool
+}
 
 func (p ProtobufCodec) ContentType() v1.MIMEType {
-	return v1.MIMEType{Type: "application", SubType: "x-protobuf"}
+	if !p.CortexInternal {
+		return v1.MIMEType{Type: "application", SubType: "x-protobuf"}
+	}
+	// TODO: switch to use constants.
+	return v1.MIMEType{Type: "application", SubType: "x-cortex-query+proto"}
 }
 
 func (p ProtobufCodec) CanEncode(resp *v1.Response) bool {
@@ -29,7 +39,7 @@ func (p ProtobufCodec) CanEncode(resp *v1.Response) bool {
 
 // ProtobufCodec implementation is derived from https://github.com/prometheus/prometheus/blob/main/web/api/v1/json_codec.go
 func (p ProtobufCodec) Encode(resp *v1.Response) ([]byte, error) {
-	prometheusQueryResponse, err := createPrometheusQueryResponse(resp)
+	prometheusQueryResponse, err := createPrometheusQueryResponse(resp, p.CortexInternal)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -37,7 +47,7 @@ func (p ProtobufCodec) Encode(resp *v1.Response) ([]byte, error) {
 	return b, err
 }
 
-func createPrometheusQueryResponse(resp *v1.Response) (*tripperware.PrometheusResponse, error) {
+func createPrometheusQueryResponse(resp *v1.Response, cortexInternal bool) (*tripperware.PrometheusResponse, error) {
 	var data = resp.Data.(*v1.QueryData)
 
 	var queryResult tripperware.PrometheusQueryResult
@@ -51,7 +61,10 @@ func createPrometheusQueryResponse(resp *v1.Response) (*tripperware.PrometheusRe
 	case model.ValVector.String():
 		queryResult.Result = &tripperware.PrometheusQueryResult_Vector{
 			Vector: &tripperware.Vector{
-				Samples: *getVectorSamples(data),
+				// cortexInternal tries to encode native histogram as dense format instead of sparse format.
+				// This is only used for vector response type since internal response is only available for Ruler
+				// client and Ruler only expects vector or scalar response type.
+				Samples: *getVectorSamples(data, cortexInternal),
 			},
 		}
 	default:
@@ -139,7 +152,7 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 	return &sampleStreams
 }
 
-func getVectorSamples(data *v1.QueryData) *[]tripperware.Sample {
+func getVectorSamples(data *v1.QueryData, cortexInternal bool) *[]tripperware.Sample {
 	vectorSamplesLen := len(data.Result.(promql.Vector))
 	vectorSamples := make([]tripperware.Sample, vectorSamplesLen)
 
@@ -158,27 +171,37 @@ func getVectorSamples(data *v1.QueryData) *[]tripperware.Sample {
 		}
 		vectorSamples[i].Labels = labels
 
-		if sample.H != nil {
-			bucketsLen := len(sample.H.NegativeBuckets) + len(sample.H.PositiveBuckets)
-			if sample.H.ZeroCount > 0 {
-				bucketsLen = len(sample.H.NegativeBuckets) + len(sample.H.PositiveBuckets) + 1
-			}
-			buckets := make([]*tripperware.HistogramBucket, bucketsLen)
-			it := sample.H.AllBucketIterator()
-			getBuckets(buckets, it)
-			vectorSamples[i].Histogram = &tripperware.SampleHistogramPair{
-				TimestampMs: sample.T,
-				Histogram: tripperware.SampleHistogram{
-					Count:   sample.H.Count,
-					Sum:     sample.H.Sum,
-					Buckets: buckets,
-				},
-			}
-		} else {
+		// Float samples only.
+		if sample.H == nil {
 			vectorSamples[i].Sample = &cortexpb.Sample{
 				TimestampMs: sample.T,
 				Value:       sample.F,
 			}
+			continue
+		}
+
+		// Cortex Internal request. Encode dense float native histograms.
+		if cortexInternal {
+			hp := cortexpb.FloatHistogramToHistogramProto(sample.T, sample.H)
+			vectorSamples[i].RawHistogram = &hp
+			continue
+		}
+
+		// Encode sparse native histograms.
+		bucketsLen := len(sample.H.NegativeBuckets) + len(sample.H.PositiveBuckets)
+		if sample.H.ZeroCount > 0 {
+			bucketsLen = len(sample.H.NegativeBuckets) + len(sample.H.PositiveBuckets) + 1
+		}
+		buckets := make([]*tripperware.HistogramBucket, bucketsLen)
+		it := sample.H.AllBucketIterator()
+		getBuckets(buckets, it)
+		vectorSamples[i].Histogram = &tripperware.SampleHistogramPair{
+			TimestampMs: sample.T,
+			Histogram: tripperware.SampleHistogram{
+				Count:   sample.H.Count,
+				Sum:     sample.H.Sum,
+				Buckets: buckets,
+			},
 		}
 	}
 	return &vectorSamples

@@ -104,6 +104,9 @@ message Sample {
   repeated cortexpb.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
   cortexpb.Sample sample = 2 [(gogoproto.nullable) = true, (gogoproto.jsontag) = "value"];
   SampleHistogramPair histogram = 3 [(gogoproto.nullable) = true, (gogoproto.jsontag) = "histogram"];
+  // Full representation of a native histogram and it should be always float histogram type.
+  // This field should be never deserialized into JSON and should only exist in protobuf format.
+  cortexpb.Histogram rawHistogram = 4 [(gogoproto.nullable) = true, (gogoproto.jsontag) = "-"];
 }
 
 message Matrix {

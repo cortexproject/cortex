@@ -188,7 +188,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			QueryStoreAfter:     cfg.QueryStoreAfter,
 		}
 	}
-	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, limits)
+	queryable := NewQueryable(distributorQueryable, ns, cfg, limits)
 	exemplarQueryable := newDistributorExemplarQueryable(distributor)
 
 	lazyQueryable := storage.QueryableFunc(func(mint int64, maxt int64) (storage.Querier, error) {
@@ -275,13 +275,12 @@ type limiterHolder struct {
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, limits *validation.Overrides) storage.Queryable {
+func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, cfg Config, limits *validation.Overrides) storage.Queryable {
 	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 		q := querier{
 			now:                  time.Now(),
 			mint:                 mint,
 			maxt:                 maxt,
-			chunkIterFn:          chunkIterFn,
 			limits:               limits,
 			maxQueryIntoFuture:   cfg.MaxQueryIntoFuture,
 			ignoreMaxQueryLength: cfg.IgnoreMaxQueryLength,
@@ -295,10 +294,8 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 }
 
 type querier struct {
-	chunkIterFn chunkIteratorFunc
-	now         time.Time
-	mint, maxt  int64
-
+	now                time.Time
+	mint, maxt         int64
 	limits             *validation.Overrides
 	maxQueryIntoFuture time.Duration
 	distributor        QueryableWithFilter
@@ -683,8 +680,8 @@ func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkI
 	for i := range chunksBySeries {
 		series = append(series, &storage.SeriesEntry{
 			Lset: chunksBySeries[i][0].Metric,
-			SampleIteratorFn: func(_ chunkenc.Iterator) chunkenc.Iterator {
-				return iteratorFunc(chunksBySeries[i], model.Time(mint), model.Time(maxt))
+			SampleIteratorFn: func(it chunkenc.Iterator) chunkenc.Iterator {
+				return iteratorFunc(it, chunksBySeries[i], model.Time(mint), model.Time(maxt))
 			},
 		})
 	}

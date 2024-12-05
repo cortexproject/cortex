@@ -7,4 +7,4 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-type chunkIteratorFunc func(chunks []chunk.Chunk, from, through model.Time) chunkenc.Iterator
+type chunkIteratorFunc func(it chunkenc.Iterator, chunks []chunk.Chunk, from, through model.Time) chunkenc.Iterator

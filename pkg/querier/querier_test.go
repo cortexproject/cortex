@@ -333,7 +333,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					for _, queryable := range tc.storeQueriables {
 						wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
 					}
-					queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
+					queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides)
 					opts := promql.EngineOpts{
 						Logger:     log.NewNopLogger(),
 						MaxSamples: 1e6,
@@ -521,7 +521,7 @@ func TestLimits(t *testing.T) {
 				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
 				require.NoError(t, err)
 
-				queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
+				queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides)
 				opts := promql.EngineOpts{
 					Logger:     log.NewNopLogger(),
 					MaxSamples: 1e6,

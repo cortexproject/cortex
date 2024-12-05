@@ -55,8 +55,9 @@ func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
 
+			var it chunkenc.Iterator
 			for n := 0; n < b.N; n++ {
-				it := NewChunkMergeIterator(chunks, 0, 0)
+				it = NewChunkMergeIterator(it, chunks, 0, 0)
 				for it.Next() != chunkenc.ValNone {
 					it.At()
 				}
@@ -108,9 +109,9 @@ func BenchmarkNewChunkMergeIterator_Seek(b *testing.B) {
 		b.ResetTimer()
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
-
+			var it chunkenc.Iterator
 			for n := 0; n < b.N; n++ {
-				it := NewChunkMergeIterator(chunks, 0, 0)
+				it = NewChunkMergeIterator(it, chunks, 0, 0)
 				i := int64(0)
 				for it.Seek(i*scenario.seekStep.Milliseconds()) != chunkenc.ValNone {
 					i++
@@ -132,7 +133,7 @@ func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
 		chunkTwo := util.GenerateChunk(t, step, model.Time(10*step/time.Millisecond), 1, enc)
 		chunks := []chunk.Chunk{chunkOne, chunkTwo}
 
-		sut := NewChunkMergeIterator(chunks, 0, 0)
+		sut := NewChunkMergeIterator(nil, chunks, 0, 0)
 
 		// Following calls mimics Prometheus's query engine behaviour for VectorSelector.
 		require.Equal(t, valType, sut.Next())

@@ -827,6 +827,108 @@ func TestTokenFileOnDisk(t *testing.T) {
 	}
 }
 
+func TestTokenFileOnDisk_WithoutAutoJoinOnStartup(t *testing.T) {
+	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = ringStore
+
+	r, err := New(ringConfig, "ingester", ringKey, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	tokenDir := t.TempDir()
+
+	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
+	lifecyclerConfig.NumTokens = 512
+	lifecyclerConfig.TokensFilePath = tokenDir + "/tokens"
+
+	// Start first ingester.
+	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", ringKey, false, true, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
+
+	// First ingester joins the ring
+	l1.Join()
+
+	// Check this ingester joined, is active, and has 512 token.
+	var expTokens []uint32
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		if ok {
+			expTokens = desc.Ingesters["ing1"].Tokens
+		}
+		return ok &&
+			len(desc.Ingesters) == 1 &&
+			desc.Ingesters["ing1"].State == ACTIVE &&
+			len(desc.Ingesters["ing1"].Tokens) == 512
+	})
+
+	// Change state from ACTIVE to READONLY
+	err = l1.ChangeState(context.Background(), READONLY)
+	require.NoError(t, err)
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		return ok &&
+			desc.Ingesters["ing1"].State == READONLY
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l1))
+
+	// Start new ingester at same token directory.
+	lifecyclerConfig.ID = "ing2"
+	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", ringKey, false, true, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2))
+	defer services.StopAndAwaitTerminated(context.Background(), l2) //nolint:errcheck
+
+	// Check this ingester should not in the ring before calling Join
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+		desc, ok := d.(*Desc)
+		if ok {
+			_, ingesterInRing := desc.Ingesters["ing2"]
+			return !ingesterInRing
+		}
+		return ok
+	})
+
+	// New ingester joins the ring
+	l2.Join()
+
+	// Check this ingester joined, is in readonly state, and has 512 token.
+	var actTokens []uint32
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+		desc, ok := d.(*Desc)
+		if ok {
+			actTokens = desc.Ingesters["ing2"].Tokens
+		}
+		return ok &&
+			len(desc.Ingesters) == 1 &&
+			desc.Ingesters["ing2"].State == READONLY &&
+			len(desc.Ingesters["ing2"].Tokens) == 512
+	})
+
+	// Check for same tokens.
+	sort.Slice(expTokens, func(i, j int) bool { return expTokens[i] < expTokens[j] })
+	sort.Slice(actTokens, func(i, j int) bool { return actTokens[i] < actTokens[j] })
+	for i := 0; i < 512; i++ {
+		require.Equal(t, expTokens, actTokens)
+	}
+}
+
 // JoinInLeavingState ensures that if the lifecycler starts up and the ring already has it in a LEAVING state that it still is able to auto join
 func TestJoinInLeavingState(t *testing.T) {
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)

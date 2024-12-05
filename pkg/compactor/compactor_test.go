@@ -1043,6 +1043,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 2)
 
 	assert.ElementsMatch(t, []string{
+		`level=info component=compactor msg="auto joined with new tokens" ring=compactor state=ACTIVE`,
 		`level=info component=compactor msg="waiting until compactor is ACTIVE in the ring"`,
 		`level=info component=compactor msg="compactor is ACTIVE in the ring"`,
 		`level=info component=compactor msg="compactor started"`,
@@ -1836,6 +1837,7 @@ func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
 	assert.Equal(t, context.DeadlineExceeded, err)
 
 	assert.ElementsMatch(t, []string{
+		`level=info component=compactor msg="auto joined with new tokens" ring=compactor state=JOINING`,
 		`level=info component=compactor msg="compactor started"`,
 		`level=info component=compactor msg="waiting until compactor is ACTIVE in the ring"`,
 		`level=error component=compactor msg="compactor failed to become ACTIVE in the ring" err="context deadline exceeded"`,

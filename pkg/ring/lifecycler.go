@@ -491,7 +491,8 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	joined := false
 	// First, see if we exist in the cluster, update our state to match if we do,
 	// and add ourselves (without tokens) if we don't.
-	if err := i.initRing(context.Background()); err != nil {
+	addedInRing, err := i.initRing(context.Background())
+	if err != nil {
 		return errors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
@@ -504,18 +505,23 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	}
 
 	var heartbeatTickerChan <-chan time.Time
-	if uint64(i.cfg.HeartbeatPeriod) > 0 {
-		heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
-		heartbeatTicker.Stop()
-		// We are jittering for at least half of the time and max the time of the heartbeat.
-		// If we jitter too soon, we can have problems of concurrency with autoJoin leaving the instance on ACTIVE without tokens
-		time.AfterFunc(time.Duration(uint64(i.cfg.HeartbeatPeriod/2)+uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod/2)), func() {
-			i.heartbeat(ctx)
-			heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
-		})
-		defer heartbeatTicker.Stop()
+	startHeartbeat := func() {
+		if uint64(i.cfg.HeartbeatPeriod) > 0 {
+			heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
+			heartbeatTicker.Stop()
+			// We are jittering for at least half of the time and max the time of the heartbeat.
+			// If we jitter too soon, we can have problems of concurrency with autoJoin leaving the instance on ACTIVE without tokens
+			time.AfterFunc(time.Duration(uint64(i.cfg.HeartbeatPeriod/2)+uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod/2)), func() {
+				i.heartbeat(ctx)
+				heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
+			})
+			defer heartbeatTicker.Stop()
 
-		heartbeatTickerChan = heartbeatTicker.C
+			heartbeatTickerChan = heartbeatTicker.C
+		}
+	}
+	if addedInRing {
+		startHeartbeat()
 	}
 
 	for {
@@ -536,16 +542,20 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				if i.cfg.ObservePeriod > 0 {
 					// let's observe the ring. By using JOINING state, this ingester will be ignored by LEAVING
 					// ingesters, but we also signal that it is not fully functional yet.
-					if err := i.autoJoin(context.Background(), JOINING); err != nil {
+					if err := i.autoJoin(context.Background(), JOINING, addedInRing); err != nil {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 
 					level.Info(i.logger).Log("msg", "observing tokens before going ACTIVE", "ring", i.RingName)
 					observeChan = time.After(i.cfg.ObservePeriod)
 				} else {
-					if err := i.autoJoin(context.Background(), i.getPreviousState()); err != nil {
+					if err := i.autoJoin(context.Background(), i.getPreviousState(), addedInRing); err != nil {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s, state: %s", i.RingName, i.getPreviousState())
 					}
+				}
+
+				if !addedInRing {
+					startHeartbeat()
 				}
 			}
 
@@ -564,6 +574,10 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				err := i.changeState(context.Background(), i.getPreviousState())
 				if err != nil {
 					level.Error(i.logger).Log("msg", "failed to set state", "ring", i.RingName, "state", i.getPreviousState(), "err", err)
+				}
+
+				if !addedInRing {
+					startHeartbeat()
 				}
 			} else {
 				level.Info(i.logger).Log("msg", "token verification failed, observing", "ring", i.RingName)
@@ -653,12 +667,13 @@ heartbeatLoop:
 // initRing is the first thing we do when we start. It:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
-func (i *Lifecycler) initRing(ctx context.Context) error {
+func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 	var (
 		ringDesc       *Desc
 		tokensFromFile Tokens
 		err            error
 	)
+	addedInRing := true
 
 	if i.cfg.TokensFilePath != "" {
 		tokenFile, err := i.loadTokenFile()
@@ -692,10 +707,15 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 				level.Info(i.logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
 				if len(tokensFromFile) >= i.cfg.NumTokens && i.autoJoinOnStartup {
 					i.setState(i.getPreviousState())
+					state := i.GetState()
+					ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, state, registeredAt)
+					level.Info(i.logger).Log("msg", "auto join on startup, adding with token and state", "ring", i.RingName, "state", state)
+					return ringDesc, true, nil
 				}
-				ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, i.GetState(), registeredAt)
 				i.setTokens(tokensFromFile)
-				return ringDesc, true, nil
+				// Do not return ring to CAS call since instance has not been added to ring yet.
+				addedInRing = false
+				return nil, true, nil
 			}
 
 			// Either we are a new ingester, or consul must have restarted
@@ -760,7 +780,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		i.updateCounters(ringDesc)
 	}
 
-	return err
+	return addedInRing, err
 }
 
 func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
@@ -875,7 +895,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 }
 
 // autoJoin selects random tokens & moves state to targetState
-func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) error {
+func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, alreadyInRing bool) error {
 	var ringDesc *Desc
 
 	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
@@ -890,11 +910,16 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		// Need to make sure we didn't change the num of tokens configured
 		myTokens, _ := ringDesc.TokensFor(i.ID)
+		if !alreadyInRing {
+			myTokens = i.getTokens()
+		}
 		needTokens := i.cfg.NumTokens - len(myTokens)
 
 		if needTokens == 0 && myTokens.Equals(i.getTokens()) {
 			// Tokens have been verified. No need to change them.
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
+			state := i.GetState()
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
+			level.Info(i.logger).Log("msg", "auto joined with existing tokens", "ring", i.RingName, "state", state)
 			return ringDesc, true, nil
 		}
 
@@ -908,7 +933,9 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 		sort.Sort(myTokens)
 		i.setTokens(myTokens)
 
-		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
+		state := i.GetState()
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
+		level.Info(i.logger).Log("msg", "auto joined with new tokens", "ring", i.RingName, "state", state)
 
 		return ringDesc, true, nil
 	})

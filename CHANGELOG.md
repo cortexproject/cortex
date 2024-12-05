@@ -45,6 +45,7 @@
 * [ENHANCEMENT] Distributor: Expose `cortex_label_size_bytes` native histogram metric. #6372
 * [ENHANCEMENT] Add new option `-server.grpc_server-num-stream-workers` to configure the number of worker goroutines that should be used to process incoming streams. #6386
 * [ENHANCEMENT] Distributor: Return HTTP 5XX instead of HTTP 4XX when instance limits are hit. #6358
+* [ENHANCEMENT] Ingester: Make sure unregistered ingester joining the ring after WAL replay #6277
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 * [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
 * [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled  #6271

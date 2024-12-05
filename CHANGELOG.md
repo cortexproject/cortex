@@ -34,6 +34,7 @@
 * [ENHANCEMENT] Ingester: Introduce a new experimental feature for caching expanded postings on the ingester. #6296
 * [ENHANCEMENT] Querier/Ruler: Expose `store_gateway_consistency_check_max_attempts` for max retries when querying store gateway in consistency check. #6276
 * [ENHANCEMENT] StoreGateway: Add new `cortex_bucket_store_chunk_pool_inuse_bytes` metric to track the usage in chunk pool. #6310
+* [ENHANCEMENT] Ingester: Make sure unregistered ingester joining the ring after WAL replay #6277
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 
 ## 1.18.1 2024-10-14

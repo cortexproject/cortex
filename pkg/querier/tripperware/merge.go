@@ -288,9 +288,9 @@ func sortPlanForQuery(q string) (sortPlan, error) {
 	if err != nil {
 		return 0, err
 	}
-	// Check if the root expression is topk or bottomk
+	// Check if the root expression is topk, bottomk, limitk, or limit_ratio
 	if aggr, ok := expr.(*promqlparser.AggregateExpr); ok {
-		if aggr.Op == promqlparser.TOPK || aggr.Op == promqlparser.BOTTOMK {
+		if aggr.Op == promqlparser.TOPK || aggr.Op == promqlparser.BOTTOMK || aggr.Op == promqlparser.LIMITK || aggr.Op == promqlparser.LIMIT_RATIO {
 			return mergeOnly, nil
 		}
 	}
@@ -301,6 +301,12 @@ func sortPlanForQuery(q string) (sortPlan, error) {
 					sortAsc = true
 				}
 				if n.Func.Name == "sort_desc" {
+					sortDesc = true
+				}
+				if n.Func.Name == "sort_by_label" {
+					sortAsc = true
+				}
+				if n.Func.Name == "sort_by_label_desc" {
 					sortDesc = true
 				}
 			}
@@ -394,7 +400,7 @@ func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
 	return samples[searchResult:]
 }
 
-// sliceHistogram assumes given histogram are sorted by timestamp in ascending order and
+// sliceHistograms assumes given histogram are sorted by timestamp in ascending order and
 // return a sub slice whose first element's is the smallest timestamp that is strictly
 // bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
 // timestamps in histogram.

@@ -4,6 +4,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/stats"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
@@ -12,10 +13,20 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
-type ProtobufCodec struct{}
+type ProtobufCodec struct {
+	// cortexInternal enables encoding the whole native histogram data fields in response instead of keeping
+	// only few sparse information like the default JSON/Protobuf codec does.
+	// This will be used by Cortex Ruler to get native histograms data from Cortex Query Frontend because
+	// rule evaluation requires the full native histogram data.
+	CortexInternal bool
+}
 
 func (p ProtobufCodec) ContentType() v1.MIMEType {
-	return v1.MIMEType{Type: "application", SubType: "x-protobuf"}
+	if !p.CortexInternal {
+		return v1.MIMEType{Type: "application", SubType: "x-protobuf"}
+	}
+	// TODO: switch to use constants.
+	return v1.MIMEType{Type: "application", SubType: "x-cortex-query+proto"}
 }
 
 func (p ProtobufCodec) CanEncode(resp *v1.Response) bool {
@@ -26,8 +37,9 @@ func (p ProtobufCodec) CanEncode(resp *v1.Response) bool {
 	return true
 }
 
+// ProtobufCodec implementation is derived from https://github.com/prometheus/prometheus/blob/main/web/api/v1/json_codec.go
 func (p ProtobufCodec) Encode(resp *v1.Response) ([]byte, error) {
-	prometheusQueryResponse, err := createPrometheusQueryResponse(resp)
+	prometheusQueryResponse, err := createPrometheusQueryResponse(resp, p.CortexInternal)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -35,7 +47,7 @@ func (p ProtobufCodec) Encode(resp *v1.Response) ([]byte, error) {
 	return b, err
 }
 
-func createPrometheusQueryResponse(resp *v1.Response) (*tripperware.PrometheusResponse, error) {
+func createPrometheusQueryResponse(resp *v1.Response, cortexInternal bool) (*tripperware.PrometheusResponse, error) {
 	var data = resp.Data.(*v1.QueryData)
 
 	var queryResult tripperware.PrometheusQueryResult
@@ -49,7 +61,10 @@ func createPrometheusQueryResponse(resp *v1.Response) (*tripperware.PrometheusRe
 	case model.ValVector.String():
 		queryResult.Result = &tripperware.PrometheusQueryResult_Vector{
 			Vector: &tripperware.Vector{
-				Samples: *getVectorSamples(data),
+				// cortexInternal tries to encode native histogram as dense format instead of sparse format.
+				// This is only used for vector response type since internal response is only available for Ruler
+				// client and Ruler only expects vector or scalar response type.
+				Samples: *getVectorSamples(data, cortexInternal),
 			},
 		}
 	default:
@@ -85,60 +100,140 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 	sampleStreams := make([]tripperware.SampleStream, sampleStreamsLen)
 
 	for i := 0; i < sampleStreamsLen; i++ {
-		labelsLen := len(data.Result.(promql.Matrix)[i].Metric)
+		sampleStream := data.Result.(promql.Matrix)[i]
+		labelsLen := len(sampleStream.Metric)
 		var labels []cortexpb.LabelAdapter
 		if labelsLen > 0 {
 			labels = make([]cortexpb.LabelAdapter, labelsLen)
 			for j := 0; j < labelsLen; j++ {
 				labels[j] = cortexpb.LabelAdapter{
-					Name:  data.Result.(promql.Matrix)[i].Metric[j].Name,
-					Value: data.Result.(promql.Matrix)[i].Metric[j].Value,
+					Name:  sampleStream.Metric[j].Name,
+					Value: sampleStream.Metric[j].Value,
 				}
 			}
 		}
 
-		samplesLen := len(data.Result.(promql.Matrix)[i].Floats)
+		samplesLen := len(sampleStream.Floats)
 		var samples []cortexpb.Sample
 		if samplesLen > 0 {
 			samples = make([]cortexpb.Sample, samplesLen)
 			for j := 0; j < samplesLen; j++ {
 				samples[j] = cortexpb.Sample{
-					Value:       data.Result.(promql.Matrix)[i].Floats[j].F,
-					TimestampMs: data.Result.(promql.Matrix)[i].Floats[j].T,
+					Value:       sampleStream.Floats[j].F,
+					TimestampMs: sampleStream.Floats[j].T,
 				}
 			}
 		}
-		sampleStreams[i] = tripperware.SampleStream{Labels: labels, Samples: samples}
+
+		histogramsLen := len(sampleStream.Histograms)
+		var histograms []tripperware.SampleHistogramPair
+		if histogramsLen > 0 {
+			histograms = make([]tripperware.SampleHistogramPair, histogramsLen)
+			for j := 0; j < histogramsLen; j++ {
+				bucketsLen := len(sampleStream.Histograms[j].H.NegativeBuckets) + len(sampleStream.Histograms[j].H.PositiveBuckets)
+				if sampleStream.Histograms[j].H.ZeroCount > 0 {
+					bucketsLen = len(sampleStream.Histograms[j].H.NegativeBuckets) + len(sampleStream.Histograms[j].H.PositiveBuckets) + 1
+				}
+				buckets := make([]*tripperware.HistogramBucket, bucketsLen)
+				it := sampleStream.Histograms[j].H.AllBucketIterator()
+				getBuckets(buckets, it)
+				histograms[j] = tripperware.SampleHistogramPair{
+					TimestampMs: sampleStream.Histograms[j].T,
+					Histogram: tripperware.SampleHistogram{
+						Count:   sampleStream.Histograms[j].H.Count,
+						Sum:     sampleStream.Histograms[j].H.Sum,
+						Buckets: buckets,
+					},
+				}
+			}
+		}
+		sampleStreams[i] = tripperware.SampleStream{Labels: labels, Samples: samples, Histograms: histograms}
 	}
 	return &sampleStreams
 }
 
-func getVectorSamples(data *v1.QueryData) *[]tripperware.Sample {
+func getVectorSamples(data *v1.QueryData, cortexInternal bool) *[]tripperware.Sample {
 	vectorSamplesLen := len(data.Result.(promql.Vector))
 	vectorSamples := make([]tripperware.Sample, vectorSamplesLen)
 
 	for i := 0; i < vectorSamplesLen; i++ {
-		labelsLen := len(data.Result.(promql.Vector)[i].Metric)
+		sample := data.Result.(promql.Vector)[i]
+		labelsLen := len(sample.Metric)
 		var labels []cortexpb.LabelAdapter
 		if labelsLen > 0 {
 			labels = make([]cortexpb.LabelAdapter, labelsLen)
 			for j := 0; j < labelsLen; j++ {
 				labels[j] = cortexpb.LabelAdapter{
-					Name:  data.Result.(promql.Vector)[i].Metric[j].Name,
-					Value: data.Result.(promql.Vector)[i].Metric[j].Value,
+					Name:  sample.Metric[j].Name,
+					Value: sample.Metric[j].Value,
 				}
 			}
 		}
+		vectorSamples[i].Labels = labels
 
-		vectorSamples[i] = tripperware.Sample{
-			Labels: labels,
-			Sample: &cortexpb.Sample{
-				TimestampMs: data.Result.(promql.Vector)[i].T,
-				Value:       data.Result.(promql.Vector)[i].F,
+		// Float samples only.
+		if sample.H == nil {
+			vectorSamples[i].Sample = &cortexpb.Sample{
+				TimestampMs: sample.T,
+				Value:       sample.F,
+			}
+			continue
+		}
+
+		// Cortex Internal request. Encode dense float native histograms.
+		if cortexInternal {
+			hp := cortexpb.FloatHistogramToHistogramProto(sample.T, sample.H)
+			vectorSamples[i].RawHistogram = &hp
+			continue
+		}
+
+		// Encode sparse native histograms.
+		bucketsLen := len(sample.H.NegativeBuckets) + len(sample.H.PositiveBuckets)
+		if sample.H.ZeroCount > 0 {
+			bucketsLen = len(sample.H.NegativeBuckets) + len(sample.H.PositiveBuckets) + 1
+		}
+		buckets := make([]*tripperware.HistogramBucket, bucketsLen)
+		it := sample.H.AllBucketIterator()
+		getBuckets(buckets, it)
+		vectorSamples[i].Histogram = &tripperware.SampleHistogramPair{
+			TimestampMs: sample.T,
+			Histogram: tripperware.SampleHistogram{
+				Count:   sample.H.Count,
+				Sum:     sample.H.Sum,
+				Buckets: buckets,
 			},
 		}
 	}
 	return &vectorSamples
+}
+
+func getBuckets(bucketsList []*tripperware.HistogramBucket, it histogram.BucketIterator[float64]) {
+	bucketIdx := 0
+	for it.Next() {
+		bucket := it.At()
+		if bucket.Count == 0 {
+			continue
+		}
+		boundaries := 2 // Exclusive on both sides AKA open interval.
+		if bucket.LowerInclusive {
+			if bucket.UpperInclusive {
+				boundaries = 3 // Inclusive on both sides AKA closed interval.
+			} else {
+				boundaries = 1 // Inclusive only on lower end AKA right open.
+			}
+		} else {
+			if bucket.UpperInclusive {
+				boundaries = 0 // Inclusive only on upper end AKA left open.
+			}
+		}
+		bucketsList[bucketIdx] = &tripperware.HistogramBucket{
+			Boundaries: int32(boundaries),
+			Lower:      bucket.Lower,
+			Upper:      bucket.Upper,
+			Count:      bucket.Count,
+		}
+		bucketIdx += 1
+	}
 }
 
 func getStats(builtin *stats.BuiltinStats) *tripperware.PrometheusResponseSamplesStats {
@@ -156,6 +251,5 @@ func getStats(builtin *stats.BuiltinStats) *tripperware.PrometheusResponseSample
 		TotalQueryableSamplesPerStep: queryableSamplesStatsPerStep,
 		PeakSamples:                  int64(builtin.Samples.PeakSamples),
 	}
-
 	return &statSamples
 }

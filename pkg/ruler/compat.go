@@ -153,6 +153,7 @@ type RulesLimits interface {
 	RulerMaxRulesPerRuleGroup(userID string) int
 	RulerQueryOffset(userID string) time.Duration
 	DisabledRuleGroups(userID string) validation.DisabledRuleGroups
+	RulerExternalLabels(userID string) labels.Labels
 }
 
 // EngineQueryFunc returns a new engine query function validating max queryLength.
@@ -341,11 +342,15 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			queryFunc = metricsQueryFunc
 		}
 
+		// We let the Prometheus rules manager control the context so that there is a chance
+		// for graceful shutdown of rules that are still in execution even in case the cortex context is canceled.
+		prometheusContext := user.InjectOrgID(context.WithoutCancel(ctx), userID)
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:             NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
 			Queryable:              q,
 			QueryFunc:              queryFunc,
-			Context:                user.InjectOrgID(ctx, userID),
+			Context:                prometheusContext,
 			ExternalURL:            cfg.ExternalURL.URL,
 			NotifyFunc:             SendAlerts(notifier, cfg.ExternalURL.URL.String()),
 			Logger:                 log.With(logger, "user", userID),

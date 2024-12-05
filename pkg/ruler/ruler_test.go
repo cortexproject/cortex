@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/alertmanager/api/v2/models"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
@@ -83,34 +85,62 @@ func defaultRulerConfig(t testing.TB) Config {
 }
 
 type ruleLimits struct {
+	mtx                  sync.RWMutex
 	tenantShard          int
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
 	disabledRuleGroups   validation.DisabledRuleGroups
 	maxQueryLength       time.Duration
 	queryOffset          time.Duration
+	externalLabels       labels.Labels
 }
 
-func (r ruleLimits) RulerTenantShardSize(_ string) int {
+func (r *ruleLimits) setRulerExternalLabels(lset labels.Labels) {
+	r.mtx.Lock()
+	r.externalLabels = lset
+	r.mtx.Unlock()
+}
+
+func (r *ruleLimits) RulerTenantShardSize(_ string) int {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
 	return r.tenantShard
 }
 
-func (r ruleLimits) RulerMaxRuleGroupsPerTenant(_ string) int {
+func (r *ruleLimits) RulerMaxRuleGroupsPerTenant(_ string) int {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
 	return r.maxRuleGroups
 }
 
-func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
+func (r *ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
 	return r.maxRulesPerRuleGroup
 }
 
-func (r ruleLimits) DisabledRuleGroups(userID string) validation.DisabledRuleGroups {
+func (r *ruleLimits) DisabledRuleGroups(userID string) validation.DisabledRuleGroups {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
 	return r.disabledRuleGroups
 }
 
-func (r ruleLimits) MaxQueryLength(_ string) time.Duration { return r.maxQueryLength }
+func (r *ruleLimits) MaxQueryLength(_ string) time.Duration {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return r.maxQueryLength
+}
 
-func (r ruleLimits) RulerQueryOffset(_ string) time.Duration {
+func (r *ruleLimits) RulerQueryOffset(_ string) time.Duration {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
 	return r.queryOffset
+}
+
+func (r *ruleLimits) RulerExternalLabels(_ string) labels.Labels {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return r.externalLabels
 }
 
 func newEmptyQueryable() storage.Queryable {
@@ -138,6 +168,55 @@ func (e emptyQuerier) Select(ctx context.Context, sortSeries bool, hints *storag
 	return storage.EmptySeriesSet()
 }
 
+func fixedQueryable(querier storage.Querier) storage.Queryable {
+	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
+		return querier, nil
+	})
+}
+
+type blockingQuerier struct {
+	queryStarted      chan struct{}
+	queryFinished     chan struct{}
+	queryBlocker      chan struct{}
+	successfulQueries *atomic.Int64
+}
+
+func (s *blockingQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	return nil, nil, nil
+}
+
+func (s *blockingQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	return nil, nil, nil
+}
+
+func (s *blockingQuerier) Close() error {
+	return nil
+}
+
+func (s *blockingQuerier) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) (returnSeries storage.SeriesSet) {
+	select {
+	case <-s.queryStarted:
+	default:
+		close(s.queryStarted)
+	}
+
+	select {
+	case <-ctx.Done():
+		returnSeries = storage.ErrSeriesSet(ctx.Err())
+	case <-s.queryBlocker:
+		s.successfulQueries.Add(1)
+		returnSeries = storage.EmptySeriesSet()
+	}
+
+	select {
+	case <-s.queryFinished:
+	default:
+		close(s.queryFinished)
+	}
+
+	return returnSeries
+}
+
 func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Registerer, logger log.Logger) storage.QueryableFunc {
 	if querierTestConfig != nil {
 		// disable active query tracking for test
@@ -158,10 +237,15 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
 	tracker := promql.NewActiveQueryTracker(t.TempDir(), 20, log.NewNopLogger())
 
+	timeout := time.Minute * 2
+
+	if querierTestConfig != nil && querierTestConfig.Cfg.Timeout != 0 {
+		timeout = querierTestConfig.Cfg.Timeout
+	}
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples:         1e6,
 		ActiveQueryTracker: tracker,
-		Timeout:            2 * time.Minute,
+		Timeout:            timeout,
 	})
 
 	// Mock the pusher
@@ -174,14 +258,14 @@ func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Eng
 	reg := prometheus.NewRegistry()
 	queryable := testQueryableFunc(querierTestConfig, reg, l)
 
-	return engine, queryable, pusher, l, ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
+	return engine, queryable, pusher, l, &ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
 }
 
 func newManager(t *testing.T, cfg Config) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, nil)
 	metrics := NewRuleEvalMetrics(cfg, nil)
 	managerFactory := DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, metrics, nil)
-	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, metrics, reg, logger)
+	manager, err := NewDefaultMultiTenantManager(cfg, overrides, managerFactory, metrics, reg, logger)
 	require.NoError(t, err)
 
 	return manager
@@ -239,7 +323,7 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.Tes
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, querierTestConfig)
 	metrics := NewRuleEvalMetrics(rulerConfig, reg)
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, metrics, reg)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, metrics, reg, log.NewNopLogger())
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, &ruleLimits{}, managerFactory, metrics, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
@@ -320,6 +404,181 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 		# TYPE prometheus_notifications_dropped_total counter
 		prometheus_notifications_dropped_total 0
 	`), "prometheus_notifications_dropped_total"))
+}
+
+func TestNotifierSendExternalLabels(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	receivedLabelsCh := make(chan models.LabelSet, 1)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		alerts := models.PostableAlerts{}
+		err := json.NewDecoder(r.Body).Decode(&alerts)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(alerts) == 1 {
+			select {
+			case <-ctx.Done():
+			case receivedLabelsCh <- alerts[0].Labels:
+			}
+		}
+	}))
+	t.Cleanup(ts.Close)
+
+	cfg := defaultRulerConfig(t)
+	cfg.AlertmanagerURL = ts.URL
+	cfg.AlertmanagerDiscovery = false
+	cfg.ExternalLabels = []labels.Label{{Name: "region", Value: "us-east-1"}}
+	limits := &ruleLimits{}
+	engine, queryable, pusher, logger, _, reg := testSetup(t, nil)
+	metrics := NewRuleEvalMetrics(cfg, nil)
+	managerFactory := DefaultTenantManagerFactory(cfg, pusher, queryable, engine, limits, metrics, nil)
+	manager, err := NewDefaultMultiTenantManager(cfg, limits, managerFactory, metrics, reg, logger)
+	require.NoError(t, err)
+	t.Cleanup(manager.Stop)
+
+	const userID = "n1"
+	manager.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{
+		userID: {&rulespb.RuleGroupDesc{Name: "group", Namespace: "ns", Interval: time.Minute, User: userID}},
+	})
+
+	manager.notifiersMtx.Lock()
+	n, ok := manager.notifiers[userID]
+	manager.notifiersMtx.Unlock()
+	require.True(t, ok)
+
+	tests := []struct {
+		name                   string
+		userExternalLabels     []labels.Label
+		expectedExternalLabels []labels.Label
+	}{
+		{
+			name:                   "global labels only",
+			userExternalLabels:     nil,
+			expectedExternalLabels: []labels.Label{{Name: "region", Value: "us-east-1"}},
+		},
+		{
+			name:                   "local labels without overriding",
+			userExternalLabels:     labels.FromStrings("mylabel", "local"),
+			expectedExternalLabels: []labels.Label{{Name: "region", Value: "us-east-1"}, {Name: "mylabel", Value: "local"}},
+		},
+		{
+			name:                   "local labels that override globals",
+			userExternalLabels:     labels.FromStrings("region", "cloud", "mylabel", "local"),
+			expectedExternalLabels: []labels.Label{{Name: "region", Value: "cloud"}, {Name: "mylabel", Value: "local"}},
+		},
+	}
+	for _, test := range tests {
+		test := test
+
+		t.Run(test.name, func(t *testing.T) {
+			limits.setRulerExternalLabels(test.userExternalLabels)
+			manager.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{
+				userID: {&rulespb.RuleGroupDesc{Name: "group", Namespace: "ns", Interval: time.Minute, User: userID}},
+			})
+
+			// FIXME: we need to wait for the discoverer to sync again after applying the configuration.
+			// Ref: https://github.com/prometheus/prometheus/pull/14987
+			require.Eventually(t, func() bool {
+				return len(n.notifier.Alertmanagers()) > 0
+			}, 10*time.Second, 10*time.Millisecond)
+
+			n.notifier.Send(&notifier.Alert{
+				Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},
+			})
+			select {
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for alert to be sent")
+			case receivedLabels := <-receivedLabelsCh:
+				for _, expectedLabel := range test.expectedExternalLabels {
+					value, ok := receivedLabels[expectedLabel.Name]
+					require.True(t, ok)
+					require.Equal(t, expectedLabel.Value, value)
+				}
+			}
+		})
+	}
+}
+
+func TestRuler_TestShutdown(t *testing.T) {
+	tests := []struct {
+		name       string
+		shutdownFn func(*blockingQuerier, *Ruler)
+	}{
+		{
+			name: "successful query after shutdown",
+			shutdownFn: func(querier *blockingQuerier, ruler *Ruler) {
+				// Wait query to start
+				<-querier.queryStarted
+
+				// The following cancel the context of the ruler service.
+				ruler.StopAsync()
+
+				// Simulate the completion of the query
+				close(querier.queryBlocker)
+
+				// Wait query to finish
+				<-querier.queryFinished
+
+				require.GreaterOrEqual(t, querier.successfulQueries.Load(), int64(1), "query failed to complete successfully failed to complete")
+			},
+		},
+		{
+			name: "query timeout while shutdown",
+			shutdownFn: func(querier *blockingQuerier, ruler *Ruler) {
+				// Wait query to start
+				<-querier.queryStarted
+
+				// The following cancel the context of the ruler service.
+				ruler.StopAsync()
+
+				// Wait query to finish
+				<-querier.queryFinished
+
+				require.Equal(t, querier.successfulQueries.Load(), int64(0), "query should not be succesfull")
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := newMockRuleStore(mockRules, nil)
+			cfg := defaultRulerConfig(t)
+			mockQuerier := &blockingQuerier{
+				queryBlocker:      make(chan struct{}),
+				queryStarted:      make(chan struct{}),
+				queryFinished:     make(chan struct{}),
+				successfulQueries: atomic.NewInt64(0),
+			}
+			sleepQueriable := fixedQueryable(mockQuerier)
+
+			d := &querier.MockDistributor{}
+
+			d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+				&client.QueryStreamResponse{
+					Chunkseries: []client.TimeSeriesChunk{},
+				}, nil)
+			d.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Panic("This should not be called for the ruler use-cases.")
+
+			r := newTestRuler(t, cfg, store, &querier.TestConfig{
+				Distributor: d,
+				Stores: []querier.QueryableWithFilter{
+					querier.UseAlwaysQueryable(sleepQueriable),
+				},
+				Cfg: querier.Config{Timeout: time.Second * 1},
+			})
+
+			test.shutdownFn(mockQuerier, r)
+
+			err := r.AwaitTerminated(context.Background())
+			require.NoError(t, err)
+
+			e := r.FailureCase()
+			require.NoError(t, e)
+		})
+	}
+
 }
 
 func TestRuler_Rules(t *testing.T) {
@@ -1020,7 +1279,7 @@ func TestGetRules(t *testing.T) {
 				}
 
 				r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
-				r.limits = ruleLimits{tenantShard: tc.shuffleShardSize}
+				r.limits = &ruleLimits{tenantShard: tc.shuffleShardSize}
 				rulerAddrMap[id] = r
 				if r.ring != nil {
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
@@ -1257,7 +1516,7 @@ func TestGetRulesFromBackup(t *testing.T) {
 		}
 
 		r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
-		r.limits = ruleLimits{tenantShard: 3}
+		r.limits = &ruleLimits{tenantShard: 3}
 		rulerAddrMap[id] = r
 		if r.ring != nil {
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
@@ -1473,7 +1732,7 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 			}
 
 			r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
-			r.limits = ruleLimits{tenantShard: 3}
+			r.limits = &ruleLimits{tenantShard: 3}
 			rulerAddrMap[id] = r
 			if r.ring != nil {
 				require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
@@ -2069,7 +2328,7 @@ func TestSharding(t *testing.T) {
 				}
 
 				r, _ := buildRuler(t, cfg, nil, store, nil)
-				r.limits = ruleLimits{tenantShard: tc.shuffleShardSize}
+				r.limits = &ruleLimits{tenantShard: tc.shuffleShardSize}
 
 				if forceRing != nil {
 					r.ring = forceRing
@@ -2219,7 +2478,7 @@ func Test_LoadPartialGroups(t *testing.T) {
 	}
 
 	r1, manager := buildRuler(t, cfg, nil, store, nil)
-	r1.limits = ruleLimits{tenantShard: 1}
+	r1.limits = &ruleLimits{tenantShard: 1}
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r1))
 	t.Cleanup(r1.StopAsync)
@@ -2743,7 +3002,7 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 				}
 
 				r, _ := buildRuler(t, cfg, nil, store, nil)
-				r.limits = ruleLimits{tenantShard: 3, disabledRuleGroups: tc.disabledRuleGroups}
+				r.limits = &ruleLimits{tenantShard: 3, disabledRuleGroups: tc.disabledRuleGroups}
 
 				if forceRing != nil {
 					r.ring = forceRing

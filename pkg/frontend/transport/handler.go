@@ -225,16 +225,21 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(&buf)
 	}
 
+	// Log request
+	if f.cfg.QueryStatsEnabled {
+		queryString = f.parseRequestQueryString(r, buf)
+		f.logQueryRequest(r, queryString)
+	}
+
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
-	// Check whether we should parse the query string.
+	// Check if we need to parse the query string to avoid parsing twice.
 	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
-	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
+	if shouldReportSlowQuery && !f.cfg.QueryStatsEnabled {
 		queryString = f.parseRequestQueryString(r, buf)
 	}
-
 	if shouldReportSlowQuery {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
 	}
@@ -293,6 +298,23 @@ func formatGrafanaStatsFields(r *http.Request) []interface{} {
 		fields = append(fields, "X-Panel-Id", panelID)
 	}
 	return fields
+}
+
+// logQueryRequest logs query request before query execution.
+func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values) {
+	logMessage := []interface{}{
+		"msg", "query request",
+		"component", "query-frontend",
+		"method", r.Method,
+		"path", r.URL.Path,
+	}
+	grafanaFields := formatGrafanaStatsFields(r)
+	if len(grafanaFields) > 0 {
+		logMessage = append(logMessage, grafanaFields...)
+	}
+	logMessage = append(logMessage, formatQueryString(queryString)...)
+
+	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
 // reportSlowQuery reports slow queries.

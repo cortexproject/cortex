@@ -238,6 +238,8 @@ type Ingester struct {
 
 	inflightQueryRequests    atomic.Int64
 	maxInflightQueryRequests util_math.MaxTracker
+
+	expandedPostingsCacheFactory *cortex_tsdb.ExpandedPostingsCacheFactory
 }
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -691,18 +693,19 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
-	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", logger, registerer)
+	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, nil, "ingester", logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
 	i := &Ingester{
-		cfg:           cfg,
-		limits:        limits,
-		usersMetadata: map[string]*userMetricsMetadata{},
-		TSDBState:     newTSDBState(bucketClient, registerer),
-		logger:        logger,
-		ingestionRate: util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		cfg:                          cfg,
+		limits:                       limits,
+		usersMetadata:                map[string]*userMetricsMetadata{},
+		TSDBState:                    newTSDBState(bucketClient, registerer),
+		logger:                       logger,
+		ingestionRate:                util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		expandedPostingsCacheFactory: cortex_tsdb.NewExpandedPostingsCacheFactory(cfg.BlocksStorageConfig.TSDB.PostingsCache),
 	}
 	i.metrics = newIngesterMetrics(registerer,
 		false,
@@ -766,7 +769,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 // this is a special version of ingester used by Flusher. This ingester is not ingesting anything, its only purpose is to react
 // on Flush method and flush all opened TSDBs when called.
 func NewForFlusher(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
-	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", logger, registerer)
+	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, nil, "ingester", logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -1119,19 +1122,21 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
-		succeededSamplesCount       = 0
-		failedSamplesCount          = 0
-		succeededExemplarsCount     = 0
-		failedExemplarsCount        = 0
-		startAppend                 = time.Now()
-		sampleOutOfBoundsCount      = 0
-		sampleOutOfOrderCount       = 0
-		sampleTooOldCount           = 0
-		newValueForTimestampCount   = 0
-		perUserSeriesLimitCount     = 0
-		perLabelSetSeriesLimitCount = 0
-		perMetricSeriesLimitCount   = 0
-		nativeHistogramCount        = 0
+		succeededSamplesCount         = 0
+		failedSamplesCount            = 0
+		succeededHistogramsCount      = 0
+		failedHistogramsCount         = 0
+		succeededExemplarsCount       = 0
+		failedExemplarsCount          = 0
+		startAppend                   = time.Now()
+		sampleOutOfBoundsCount        = 0
+		sampleOutOfOrderCount         = 0
+		sampleTooOldCount             = 0
+		newValueForTimestampCount     = 0
+		perUserSeriesLimitCount       = 0
+		perLabelSetSeriesLimitCount   = 0
+		perMetricSeriesLimitCount     = 0
+		discardedNativeHistogramCount = 0
 
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
@@ -1212,6 +1217,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
+		// To find out if any histogram was added to this series, we keep old value.
+		oldSucceededHistogramsCount := succeededHistogramsCount
 
 		for _, s := range ts.Samples {
 			var err error
@@ -1263,19 +1270,19 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 				if ref != 0 {
 					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						succeededSamplesCount++
+						succeededHistogramsCount++
 						continue
 					}
 				} else {
 					// Copy the label set because both TSDB and the active series tracker may retain it.
 					copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 					if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						succeededSamplesCount++
+						succeededHistogramsCount++
 						continue
 					}
 				}
 
-				failedSamplesCount++
+				failedHistogramsCount++
 
 				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels); !rollback {
 					continue
@@ -1287,12 +1294,12 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				return nil, wrapWithUser(err, userID)
 			}
 		} else {
-			nativeHistogramCount += len(ts.Histograms)
+			discardedNativeHistogramCount += len(ts.Histograms)
 		}
-
-		if i.cfg.ActiveSeriesMetricsEnabled && succeededSamplesCount > oldSucceededSamplesCount {
+		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || (succeededHistogramsCount > oldSucceededHistogramsCount)
+		if i.cfg.ActiveSeriesMetricsEnabled && shouldUpdateSeries {
 			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, func(l labels.Labels) labels.Labels {
-				// we must already have copied the labels if succeededSamplesCount has been incremented.
+				// we must already have copied the labels if succeededSamplesCount or succeededHistogramsCount has been incremented.
 				return copiedLabels
 			})
 		}
@@ -1340,8 +1347,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
 
-	// If only invalid samples are pushed, don't change "last update", as TSDB was not modified.
-	if succeededSamplesCount > 0 {
+	// If only invalid samples or histograms are pushed, don't change "last update", as TSDB was not modified.
+	if succeededSamplesCount > 0 || succeededHistogramsCount > 0 {
 		db.setLastUpdate(time.Now())
 	}
 
@@ -1350,6 +1357,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// which will be converted into an HTTP 5xx and the client should/will retry.
 	i.metrics.ingestedSamples.Add(float64(succeededSamplesCount))
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
+	i.metrics.ingestedHistograms.Add(float64(succeededHistogramsCount))
+	i.metrics.ingestedHistogramsFail.Add(float64(failedHistogramsCount))
 	i.metrics.ingestedExemplars.Add(float64(succeededExemplarsCount))
 	i.metrics.ingestedExemplarsFail.Add(float64(failedExemplarsCount))
 
@@ -1375,20 +1384,20 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
-	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && nativeHistogramCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(nativeHistogramCount))
+	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && discardedNativeHistogramCount > 0 {
+		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
 	}
 
 	// Distributor counts both samples, metadata and histograms, so for consistency ingester does the same.
-	i.ingestionRate.Add(int64(succeededSamplesCount + ingestedMetadata))
+	i.ingestionRate.Add(int64(succeededSamplesCount + succeededHistogramsCount + ingestedMetadata))
 
 	switch req.Source {
 	case cortexpb.RULE:
-		db.ingestedRuleSamples.Add(int64(succeededSamplesCount))
+		db.ingestedRuleSamples.Add(int64(succeededSamplesCount + succeededHistogramsCount))
 	case cortexpb.API:
 		fallthrough
 	default:
-		db.ingestedAPISamples.Add(int64(succeededSamplesCount))
+		db.ingestedAPISamples.Add(int64(succeededSamplesCount + succeededHistogramsCount))
 	}
 
 	if firstPartialErr != nil {
@@ -1397,7 +1406,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		if errors.As(firstPartialErr, &ve) {
 			code = ve.code
 		}
-		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "firstPartialErr", firstPartialErr)
+		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "totalHistograms", succeededHistogramsCount+failedHistogramsCount, "failedHistograms", failedHistogramsCount, "firstPartialErr", firstPartialErr)
 		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
 	}
 
@@ -1959,7 +1968,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	numSamples := 0
 	numSeries := 0
 	totalDataBytes := 0
-	numSeries, numSamples, totalDataBytes, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
+	numChunks := 0
+	numSeries, numSamples, totalDataBytes, numChunks, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
 
 	if err != nil {
 		return err
@@ -1967,10 +1977,12 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	i.metrics.queriedSeries.Observe(float64(numSeries))
 	i.metrics.queriedSamples.Observe(float64(numSamples))
-	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples, "data_bytes", totalDataBytes)
+	i.metrics.queriedChunks.Observe(float64(numChunks))
+	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples, "data_bytes", totalDataBytes, "chunks", numChunks)
 	spanlog.SetTag("series", numSeries)
 	spanlog.SetTag("samples", numSamples)
 	spanlog.SetTag("data_bytes", totalDataBytes)
+	spanlog.SetTag("chunks", numChunks)
 	return nil
 }
 
@@ -1989,16 +2001,16 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 }
 
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
-func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes int, _ error) {
+func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes, numChunks int, _ error) {
 	q, err := db.ChunkQuerier(from, through)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 	defer q.Close()
 
 	c, err := i.trackInflightQueryRequest()
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 	hints := &storage.SelectHints{
 		Start:           from,
@@ -2009,7 +2021,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	ss := q.Select(ctx, false, hints, matchers...)
 	c()
 	if ss.Err() != nil {
-		return 0, 0, 0, ss.Err()
+		return 0, 0, 0, 0, ss.Err()
 	}
 
 	chunkSeries := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
@@ -2035,7 +2047,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			// It is not guaranteed that chunk returned by iterator is populated.
 			// For now just return error. We could also try to figure out how to read the chunk.
 			if meta.Chunk == nil {
-				return 0, 0, 0, errors.Errorf("unfilled chunk returned from TSDB chunk querier")
+				return 0, 0, 0, 0, errors.Errorf("unfilled chunk returned from TSDB chunk querier")
 			}
 
 			ch := client.Chunk{
@@ -2052,10 +2064,11 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			case chunkenc.EncFloatHistogram:
 				ch.Encoding = int32(encoding.PrometheusFloatHistogramChunk)
 			default:
-				return 0, 0, 0, errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
+				return 0, 0, 0, 0, errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
 			}
 
 			ts.Chunks = append(ts.Chunks, ch)
+			numChunks++
 			numSamples += meta.Chunk.NumSamples()
 		}
 		numSeries++
@@ -2069,7 +2082,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 				Chunkseries: chunkSeries,
 			})
 			if err != nil {
-				return 0, 0, 0, err
+				return 0, 0, 0, 0, err
 			}
 
 			batchSizeBytes = 0
@@ -2082,7 +2095,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 
 	// Ensure no error occurred while iterating the series set.
 	if err := ss.Err(); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 
 	// Final flush any existing metrics
@@ -2091,11 +2104,11 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			Chunkseries: chunkSeries,
 		})
 		if err != nil {
-			return 0, 0, 0, err
+			return 0, 0, 0, 0, err
 		}
 	}
 
-	return numSeries, numSamples, totalBatchSizeBytes, nil
+	return numSeries, numSamples, totalBatchSizeBytes, numChunks, nil
 }
 
 func (i *Ingester) getTSDB(userID string) *userTSDB {
@@ -2174,9 +2187,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	blockRanges := i.cfg.BlocksStorageConfig.TSDB.BlockRanges.ToMilliseconds()
 
 	var postingCache cortex_tsdb.ExpandedPostingsCache
-	if i.cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled || i.cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled {
-		logutil.WarnExperimentalUse("expanded postings cache")
-		postingCache = cortex_tsdb.NewBlocksPostingsForMatchersCache(i.cfg.BlocksStorageConfig.TSDB.PostingsCache, i.metrics.expandedPostingsCacheMetrics)
+	if i.expandedPostingsCacheFactory != nil {
+		postingCache = i.expandedPostingsCacheFactory.NewExpandedPostingsCache(userID, i.metrics.expandedPostingsCacheMetrics)
 	}
 
 	userDB := &userTSDB{

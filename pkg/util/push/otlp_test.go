@@ -2,7 +2,9 @@ package push
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -226,50 +228,144 @@ func TestOTLPWriteHandler(t *testing.T) {
 
 	exportRequest := generateOTLPWriteRequest(t)
 
-	t.Run("Test proto format write", func(t *testing.T) {
-		buf, err := exportRequest.MarshalProto()
-		require.NoError(t, err)
+	tests := []struct {
+		description        string
+		maxRecvMsgSize     int
+		format             string
+		expectedStatusCode int
+		expectedErrMsg     string
+		gzipCompression    bool
+		encodingType       string
+	}{
+		{
+			description:        "Test proto format write with no compression",
+			maxRecvMsgSize:     10000,
+			format:             pbContentType,
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			description:        "Test proto format write with gzip",
+			maxRecvMsgSize:     10000,
+			format:             pbContentType,
+			expectedStatusCode: http.StatusOK,
+			encodingType:       "gzip",
+			gzipCompression:    true,
+		},
+		{
+			description:        "Test json format write with no compression",
+			maxRecvMsgSize:     10000,
+			format:             jsonContentType,
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			description:        "Test json format write with gzip",
+			maxRecvMsgSize:     10000,
+			format:             jsonContentType,
+			expectedStatusCode: http.StatusOK,
+			encodingType:       "gzip",
+			gzipCompression:    true,
+		},
+		{
+			description:        "request too big than maxRecvMsgSize (proto) with no compression",
+			maxRecvMsgSize:     10,
+			format:             pbContentType,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrMsg:     "received message larger than max",
+		},
+		{
+			description:        "request too big than maxRecvMsgSize (proto) with gzip",
+			maxRecvMsgSize:     10,
+			format:             pbContentType,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrMsg:     "received message larger than max",
+			encodingType:       "gzip",
+			gzipCompression:    true,
+		},
+		{
+			description:        "request too big than maxRecvMsgSize (json) with no compression",
+			maxRecvMsgSize:     10,
+			format:             jsonContentType,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrMsg:     "received message larger than max",
+		},
+		{
+			description:        "request too big than maxRecvMsgSize (json) with gzip",
+			maxRecvMsgSize:     10,
+			format:             jsonContentType,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrMsg:     "received message larger than max",
+			encodingType:       "gzip",
+			gzipCompression:    true,
+		},
+		{
+			description:        "invalid encoding type: snappy",
+			maxRecvMsgSize:     10000,
+			format:             jsonContentType,
+			expectedStatusCode: http.StatusBadRequest,
+			encodingType:       "snappy",
+		},
+	}
 
-		ctx := context.Background()
-		ctx = user.InjectOrgID(ctx, "user-1")
+	for _, test := range tests {
+		t.Run(test.description, func(t *testing.T) {
+			ctx := context.Background()
+			ctx = user.InjectOrgID(ctx, "user-1")
+			var req *http.Request
 
-		req, err := http.NewRequestWithContext(ctx, "", "", bytes.NewReader(buf))
-		require.NoError(t, err)
-		req.Header.Set("Content-Type", "application/x-protobuf")
+			compressionFunc := func(t *testing.T, body []byte) []byte {
+				var b bytes.Buffer
+				gz := gzip.NewWriter(&b)
+				_, err := gz.Write(body)
+				require.NoError(t, err)
+				require.NoError(t, gz.Close())
 
-		push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
-		overrides, err := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
-		require.NoError(t, err)
-		handler := OTLPHandler(overrides, cfg, nil, push)
+				return b.Bytes()
+			}
 
-		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, req)
+			if test.format == pbContentType {
+				buf, err := exportRequest.MarshalProto()
+				require.NoError(t, err)
 
-		resp := recorder.Result()
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-	})
-	t.Run("Test json format write", func(t *testing.T) {
-		buf, err := exportRequest.MarshalJSON()
-		require.NoError(t, err)
+				if test.gzipCompression {
+					buf = compressionFunc(t, buf)
+				}
 
-		ctx := context.Background()
-		ctx = user.InjectOrgID(ctx, "user-1")
+				req, err = http.NewRequestWithContext(ctx, "", "", bytes.NewReader(buf))
+				require.NoError(t, err)
+				req.Header.Set("Content-Type", pbContentType)
+				req.Header.Set("Content-Encoding", test.encodingType)
+			} else {
+				buf, err := exportRequest.MarshalJSON()
+				require.NoError(t, err)
 
-		req, err := http.NewRequestWithContext(ctx, "", "", bytes.NewReader(buf))
-		require.NoError(t, err)
-		req.Header.Set("Content-Type", "application/json")
+				if test.gzipCompression {
+					buf = compressionFunc(t, buf)
+				}
 
-		push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
-		overrides, err := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
-		require.NoError(t, err)
-		handler := OTLPHandler(overrides, cfg, nil, push)
+				req, err = http.NewRequestWithContext(ctx, "", "", bytes.NewReader(buf))
+				require.NoError(t, err)
+				req.Header.Set("Content-Type", jsonContentType)
+				req.Header.Set("Content-Encoding", test.encodingType)
+			}
 
-		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, req)
+			push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
+			overrides, err := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
+			require.NoError(t, err)
+			handler := OTLPHandler(test.maxRecvMsgSize, overrides, cfg, nil, push)
 
-		resp := recorder.Result()
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-	})
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			resp := recorder.Result()
+			require.Equal(t, test.expectedStatusCode, resp.StatusCode)
+
+			if test.expectedErrMsg != "" {
+				b, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Contains(t, string(b), test.expectedErrMsg)
+			}
+		})
+	}
 }
 
 func generateOTLPWriteRequest(t *testing.T) pmetricotlp.ExportRequest {

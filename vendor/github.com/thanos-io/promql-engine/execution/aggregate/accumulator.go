@@ -290,13 +290,39 @@ type avgAcc struct {
 	avg      float64
 	count    int64
 	hasValue bool
+
+	histSum        *histogram.FloatHistogram
+	histScratch    *histogram.FloatHistogram
+	histSumScratch *histogram.FloatHistogram
+	histCount      float64
 }
 
 func newAvgAcc() *avgAcc {
 	return &avgAcc{}
 }
 
-func (a *avgAcc) Add(v float64, _ *histogram.FloatHistogram) error {
+func (a *avgAcc) Add(v float64, h *histogram.FloatHistogram) error {
+	if h != nil {
+		a.histCount++
+		if a.histSum == nil {
+			a.histSum = h.Copy()
+			a.histScratch = &histogram.FloatHistogram{}
+			a.histSumScratch = &histogram.FloatHistogram{}
+			return nil
+		}
+
+		h.CopyTo(a.histScratch)
+		left := a.histScratch.Div(a.histCount)
+		a.histSum.CopyTo(a.histSumScratch)
+		right := a.histSumScratch.Div(a.histCount)
+		toAdd, err := left.Sub(right)
+		if err != nil {
+			return err
+		}
+		a.histSum, err = a.histSum.Add(toAdd)
+		return err
+	}
+
 	a.count++
 	if !a.hasValue {
 		a.hasValue = true
@@ -327,9 +353,14 @@ func (a *avgAcc) Add(v float64, _ *histogram.FloatHistogram) error {
 	return nil
 }
 
-func (a *avgAcc) AddVector(vs []float64, _ []*histogram.FloatHistogram) error {
+func (a *avgAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) error {
 	for _, v := range vs {
 		if err := a.Add(v, nil); err != nil {
+			return err
+		}
+	}
+	for _, h := range hs {
+		if err := a.Add(0, h); err != nil {
 			return err
 		}
 	}
@@ -337,19 +368,28 @@ func (a *avgAcc) AddVector(vs []float64, _ []*histogram.FloatHistogram) error {
 }
 
 func (a *avgAcc) Value() (float64, *histogram.FloatHistogram) {
-	return a.avg, nil
+	return a.avg, a.histSum
 }
 
-func (c *avgAcc) ValueType() ValueType {
-	if c.hasValue {
-		return SingleTypeValue
-	} else {
-		return NoValue
+func (a *avgAcc) ValueType() ValueType {
+	hasFloat := a.count > 0
+	hasHist := a.histCount > 0
+
+	if hasFloat && hasHist {
+		return MixedTypeValue
 	}
+	if hasFloat || hasHist {
+		return SingleTypeValue
+	}
+	return NoValue
 }
+
 func (a *avgAcc) Reset(_ float64) {
 	a.hasValue = false
 	a.count = 0
+
+	a.histCount = 0
+	a.histSum = nil
 }
 
 type statAcc struct {
@@ -445,6 +485,56 @@ func (q *quantileAcc) Reset(f float64) {
 	q.hasValue = false
 	q.arg = f
 	q.points = q.points[:0]
+}
+
+type histogramAvg struct {
+	sum      *histogram.FloatHistogram
+	count    int64
+	hasFloat bool
+}
+
+func newHistogramAvg() *histogramAvg {
+	return &histogramAvg{
+		sum: &histogram.FloatHistogram{},
+	}
+}
+
+func (acc *histogramAvg) Add(v float64, h *histogram.FloatHistogram) error {
+	if h == nil {
+		acc.hasFloat = true
+	}
+	if acc.count == 0 {
+		h.CopyTo(acc.sum)
+	}
+	var err error
+	if h.Schema >= acc.sum.Schema {
+		if acc.sum, err = acc.sum.Add(h); err != nil {
+			return err
+		}
+	} else {
+		t := h.Copy()
+		if _, err = t.Add(acc.sum); err != nil {
+			return err
+		}
+		acc.sum = t
+	}
+	acc.count++
+	return nil
+}
+
+func (acc *histogramAvg) Value() (float64, *histogram.FloatHistogram) {
+	return 0, acc.sum.Mul(1 / float64(acc.count))
+}
+
+func (acc *histogramAvg) ValueType() ValueType {
+	if acc.count > 0 && !acc.hasFloat {
+		return SingleTypeValue
+	}
+	return NoValue
+}
+
+func (acc *histogramAvg) Reset(f float64) {
+	acc.count = 0
 }
 
 // SumCompensated returns the sum of the elements of the slice calculated with greater

@@ -54,7 +54,9 @@ func (h *Handler) Loop() {
 			case syscall.SIGINT, syscall.SIGTERM:
 				h.log.Infof("=== received SIGINT/SIGTERM ===\n*** exiting")
 				for _, subsystem := range h.receivers {
-					subsystem.Stop()
+					if err := subsystem.Stop(); err != nil {
+						h.log.Errorf("Error stopping subsystem: %v", err)
+					}
 				}
 				return
 			case syscall.SIGQUIT:

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,13 +63,21 @@ func TestLimits_Validate(t *testing.T) {
 			shardByAllLabels: true,
 			expected:         nil,
 		},
+		"external-labels invalid label name": {
+			limits:   Limits{RulerExternalLabels: labels.Labels{{Name: "123invalid", Value: "good"}}},
+			expected: errInvalidLabelName,
+		},
+		"external-labels invalid label value": {
+			limits:   Limits{RulerExternalLabels: labels.Labels{{Name: "good", Value: string([]byte{0xff, 0xfe, 0xfd})}}},
+			expected: errInvalidLabelValue,
+		},
 	}
 
 	for testName, testData := range tests {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			assert.Equal(t, testData.expected, testData.limits.Validate(testData.shardByAllLabels))
+			assert.ErrorIs(t, testData.limits.Validate(testData.shardByAllLabels), testData.expected)
 		})
 	}
 }

@@ -32,7 +32,7 @@ type Level struct {
 
 // RegisterFlags adds the log level flag to the provided flagset.
 func (l *Level) RegisterFlags(f *flag.FlagSet) {
-	l.Set("info")
+	l.Set("info") //nolint:errcheck
 	f.Var(l, "log.level", "Only log messages with the given severity or above. Valid levels: [debug, info, warn, error]")
 }
 

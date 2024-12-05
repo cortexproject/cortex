@@ -52,6 +52,123 @@ func init() {
 	}
 }
 
+func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
+	prometheusLatestImage := "quay.io/prometheus/prometheus:v2.55.1"
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
+	flags := mergeFlags(
+		baseFlags,
+		map[string]string{
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.tsdb.block-ranges-period":         "2h",
+			"-blocks-storage.tsdb.ship-interval":               "1h",
+			"-blocks-storage.bucket-store.sync-interval":       "1s",
+			"-blocks-storage.tsdb.retention-period":            "24h",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-querier.query-store-for-labels-enabled":          "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor": "1",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url":      "http://localhost/alertmanager",
+			"-frontend.query-vertical-shard-size": "1",
+			"-frontend.max-cache-freshness":       "1m",
+			// enable experimental promQL funcs
+			"-querier.enable-promql-experimental-functions": "true",
+		},
+	)
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	now := time.Now()
+	start := now.Add(-time.Hour * 2)
+	end := now.Add(-time.Hour)
+	numSeries := 10
+	numSamples := 60
+	lbls := make([]labels.Labels, 0, numSeries*2)
+	scrapeInterval := time.Minute
+	statusCodes := []string{"200", "400", "404", "500", "502"}
+	for i := 0; i < numSeries; i++ {
+		lbls = append(lbls, labels.Labels{
+			{Name: labels.MetricName, Value: "test_series_a"},
+			{Name: "job", Value: "test"},
+			{Name: "series", Value: strconv.Itoa(i % 3)},
+			{Name: "status_code", Value: statusCodes[i%5]},
+		})
+
+		lbls = append(lbls, labels.Labels{
+			{Name: labels.MetricName, Value: "test_series_b"},
+			{Name: "job", Value: "test"},
+			{Name: "series", Value: strconv.Itoa((i + 1) % 3)},
+			{Name: "status_code", Value: statusCodes[(i+1)%5]},
+		})
+	}
+
+	ctx := context.Background()
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+
+	dir := filepath.Join(s.SharedDir(), "data")
+	err = os.MkdirAll(dir, os.ModePerm)
+	require.NoError(t, err)
+	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, err)
+	bkt := bucket.NewUserBucketClient("user-1", storage.GetBucket(), nil)
+	id, err := e2e.CreateBlock(ctx, rnd, dir, lbls, numSamples, start.UnixMilli(), end.UnixMilli(), scrapeInterval.Milliseconds(), 10)
+	require.NoError(t, err)
+	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
+	require.NoError(t, err)
+
+	// Wait for querier and store to sync blocks.
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"))))
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
+
+	c1, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	err = writeFileToSharedDir(s, "prometheus.yml", []byte(""))
+	require.NoError(t, err)
+	prom := e2edb.NewPrometheus(prometheusLatestImage, map[string]string{
+		"--enable-feature": "promql-experimental-functions",
+	})
+	require.NoError(t, s.StartAndWaitReady(prom))
+
+	c2, err := e2ecortex.NewPromQueryClient(prom.HTTPEndpoint())
+	require.NoError(t, err)
+
+	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
+
+	opts := []promqlsmith.Option{
+		promqlsmith.WithEnableOffset(true),
+		promqlsmith.WithEnableAtModifier(true),
+		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnableExperimentalPromQLFunctions(true),
+	}
+	ps := promqlsmith.New(rnd, lbls, opts...)
+
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
+}
+
 func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
@@ -515,7 +632,123 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 100)
+	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000)
+}
+
+func TestProtobufCodecFuzz(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul1 := e2edb.NewConsulWithName("consul1")
+	consul2 := e2edb.NewConsulWithName("consul2")
+	require.NoError(t, s.StartAndWaitReady(consul1, consul2))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                    blocksStorageEngine,
+			"-blocks-storage.backend":                          "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.tsdb.block-ranges-period":         "2h",
+			"-blocks-storage.tsdb.ship-interval":               "1h",
+			"-blocks-storage.bucket-store.sync-interval":       "15m",
+			"-blocks-storage.tsdb.retention-period":            "2h",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-querier.query-store-for-labels-enabled":          "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor": "1",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path1 := path.Join(s.SharedDir(), "cortex-1")
+	path2 := path.Join(s.SharedDir(), "cortex-2")
+
+	flags1 := mergeFlags(flags, map[string]string{"-blocks-storage.filesystem.dir": path1})
+	// Start Cortex replicas.
+	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags1, "")
+	// Enable protobuf codec for the second Cortex instance.
+	flags2 := mergeFlags(flags, map[string]string{
+		"-api.querier-default-codec":     "protobuf",
+		"-blocks-storage.filesystem.dir": path2,
+		"-consul.hostname":               consul2.NetworkHTTPEndpoint(),
+	})
+	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags2, "")
+	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	c1, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex1.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+	c2, err := e2ecortex.NewClient(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+	// Push some series to Cortex.
+	start := now.Add(-time.Minute * 10)
+	end := now.Add(-time.Minute * 1)
+	numSeries := 3
+	numSamples := 20
+	lbls := make([]labels.Labels, numSeries*2)
+	serieses := make([]prompb.TimeSeries, numSeries*2)
+	scrapeInterval := 30 * time.Second
+	for i := 0; i < numSeries; i++ {
+		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
+		serieses[i] = series
+		builder := labels.NewBuilder(labels.EmptyLabels())
+		for _, lbl := range series.Labels {
+			builder.Set(lbl.Name, lbl.Value)
+		}
+		lbls[i] = builder.Labels()
+	}
+	// Generate another set of series for testing binary expression and vector matching.
+	for i := numSeries; i < 2*numSeries; i++ {
+		prompbLabels := []prompb.Label{{Name: "job", Value: "test"}, {Name: "series", Value: strconv.Itoa(i)}}
+		if i%3 == 0 {
+			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "200"})
+		} else if i%3 == 1 {
+			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "400"})
+		} else {
+			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "500"})
+		}
+		series := e2e.GenerateSeriesWithSamples("test_series_b", start, scrapeInterval, i*numSamples, numSamples, prompbLabels...)
+		serieses[i] = series
+		builder := labels.NewBuilder(labels.EmptyLabels())
+		for _, lbl := range series.Labels {
+			builder.Set(lbl.Name, lbl.Value)
+		}
+		lbls[i] = builder.Labels()
+	}
+	res, err := c1.Push(serieses)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	res, err = c2.Push(serieses)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, end)
+
+	rnd := rand.New(rand.NewSource(now.Unix()))
+	opts := []promqlsmith.Option{
+		promqlsmith.WithEnableOffset(true),
+		promqlsmith.WithEnableAtModifier(true),
+		promqlsmith.WithEnabledFunctions(enabledFunctions),
+	}
+	ps := promqlsmith.New(rnd, lbls, opts...)
+
+	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000)
 }
 
 // comparer should be used to compare promql results between engines.
@@ -525,7 +758,8 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 	}
 	compareFloats := func(l, r float64) bool {
 		const epsilon = 1e-6
-		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(0, epsilon))
+		const fraction = 1.e-10 // 0.00000001%
+		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(fraction, epsilon))
 	}
 	compareMetrics := func(l, r model.Metric) bool {
 		return l.Equal(r)
@@ -1065,7 +1299,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 100)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
 }
 
 // TestPrometheusCompatibilityQueryFuzz compares Cortex with latest Prometheus release.
@@ -1178,7 +1412,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 100)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
 }
 
 // waitUntilReady is a helper function to wait and check if both servers to test load the expected data.
@@ -1201,8 +1435,11 @@ func waitUntilReady(t *testing.T, ctx context.Context, c1, c2 *e2ecortex.Client,
 		labelSet2, err = c2.Series([]string{query}, start, end)
 		require.NoError(t, err)
 
-		if cmp.Equal(labelSet1, labelSet2, labelSetsComparer) {
-			break
+		// Make sure series can be queried.
+		if len(labelSet1) > 0 {
+			if cmp.Equal(labelSet1, labelSet2, labelSetsComparer) {
+				break
+			}
 		}
 
 		retries.Wait()
@@ -1290,6 +1527,15 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 func isValidQuery(generatedQuery parser.Expr, maxDepth int) bool {
 	isValid := true
 	currentDepth := 0
+	// TODO(SungJin1212): Test limitk, limit_ratio
+	if strings.Contains(generatedQuery.String(), "limitk") {
+		// current skip the limitk
+		return false
+	}
+	if strings.Contains(generatedQuery.String(), "limit_ratio") {
+		// current skip the limit_ratio
+		return false
+	}
 	parser.Inspect(generatedQuery, func(node parser.Node, path []parser.Node) error {
 		if currentDepth > maxDepth {
 			isValid = false

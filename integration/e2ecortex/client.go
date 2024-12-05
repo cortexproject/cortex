@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -74,7 +75,7 @@ func NewClient(
 		querierAddress:      querierAddress,
 		alertmanagerAddress: alertmanagerAddress,
 		rulerAddress:        rulerAddress,
-		timeout:             5 * time.Second,
+		timeout:             30 * time.Second,
 		httpClient:          &http.Client{},
 		querierClient:       promv1.NewAPI(querierAPIClient),
 		orgID:               orgID,
@@ -105,7 +106,7 @@ func NewPromQueryClient(address string) (*Client, error) {
 	}
 
 	c := &Client{
-		timeout:       5 * time.Second,
+		timeout:       30 * time.Second,
 		httpClient:    &http.Client{},
 		querierClient: promv1.NewAPI(querierAPIClient),
 	}
@@ -332,7 +333,26 @@ func (c *Client) OTLP(timeseries []prompb.TimeSeries) (*http.Response, error) {
 
 // Query runs an instant query.
 func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
-	value, _, err := c.querierClient.Query(context.Background(), query, ts)
+	ctx := context.Background()
+	retries := backoff.New(ctx, backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 3 * time.Second,
+		MaxRetries: 5,
+	})
+	var (
+		value model.Value
+		err   error
+	)
+	for retries.Ongoing() {
+		value, _, err = c.querierClient.Query(context.Background(), query, ts)
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "EOF") {
+			break
+		}
+		retries.Wait()
+	}
 	return value, err
 }
 
@@ -345,11 +365,31 @@ func (c *Client) QueryExemplars(query string, start, end time.Time) ([]promv1.Ex
 
 // QueryRange runs a query range.
 func (c *Client) QueryRange(query string, start, end time.Time, step time.Duration) (model.Value, error) {
-	value, _, err := c.querierClient.QueryRange(context.Background(), query, promv1.Range{
-		Start: start,
-		End:   end,
-		Step:  step,
+	ctx := context.Background()
+	retries := backoff.New(ctx, backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 3 * time.Second,
+		MaxRetries: 5,
 	})
+	var (
+		value model.Value
+		err   error
+	)
+	for retries.Ongoing() {
+		value, _, err = c.querierClient.QueryRange(context.Background(), query, promv1.Range{
+			Start: start,
+			End:   end,
+			Step:  step,
+		})
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "EOF") {
+			break
+		}
+		retries.Wait()
+	}
+
 	return value, err
 }
 

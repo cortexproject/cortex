@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -103,17 +104,17 @@ func (cfg *Config) Validate() error {
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, reg prometheus.Registerer) (bucket objstore.InstrumentedBucket, err error) {
+func NewClient(ctx context.Context, cfg Config, hedgedRoundTripper func(rt http.RoundTripper) http.RoundTripper, name string, logger log.Logger, reg prometheus.Registerer) (bucket objstore.InstrumentedBucket, err error) {
 	var client objstore.Bucket
 	switch cfg.Backend {
 	case S3:
-		client, err = s3.NewBucketClient(cfg.S3, name, logger)
+		client, err = s3.NewBucketClient(cfg.S3, hedgedRoundTripper, name, logger)
 	case GCS:
-		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger)
+		client, err = gcs.NewBucketClient(ctx, cfg.GCS, hedgedRoundTripper, name, logger)
 	case Azure:
-		client, err = azure.NewBucketClient(cfg.Azure, name, logger)
+		client, err = azure.NewBucketClient(cfg.Azure, hedgedRoundTripper, name, logger)
 	case Swift:
-		client, err = swift.NewBucketClient(cfg.Swift, name, logger)
+		client, err = swift.NewBucketClient(cfg.Swift, hedgedRoundTripper, name, logger)
 	case Filesystem:
 		client, err = filesystem.NewBucketClient(cfg.Filesystem)
 	default:

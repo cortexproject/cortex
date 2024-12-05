@@ -54,7 +54,9 @@ Currently experimental features are:
 - Metric relabeling in the distributor.
 - Scalable query-frontend (when using query-scheduler)
 - Ingester: do not unregister from ring on shutdown (`-ingester.unregister-on-shutdown=false`)
-- Distributor: do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
+- Distributor:
+  - Do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
+  - Accept multiple HA pairs in the same request (enabled via `-experimental.distributor.ha-tracker.mixed-ha-samples=true`)
 - Tenant Deletion in Purger, for blocks storage.
 - Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)
 - Blocks storage bucket index

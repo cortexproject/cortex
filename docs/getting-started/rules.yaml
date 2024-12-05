@@ -364,7 +364,7 @@ groups:
             cortex_ingester_memory_series
           )[24h:]
         )
-        / 1500000
+        / 3000000
       )
     labels:
       deployment: ingester
@@ -373,7 +373,7 @@ groups:
   - expr: |
       ceil(
         sum by (cluster, namespace) (cortex_overrides{limit_name="max_global_series_per_user"})
-        * 3 * 0.59999999999999998 / 1500000
+        * 3 * 0.59999999999999998 / 3000000
       )
     labels:
       deployment: ingester

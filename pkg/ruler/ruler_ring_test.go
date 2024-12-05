@@ -255,7 +255,7 @@ func TestGetReplicationSetForListRule(t *testing.T) {
 			}
 
 			r, _ := buildRuler(t, cfg, nil, store, nil)
-			r.limits = ruleLimits{}
+			r.limits = &ruleLimits{}
 
 			rulerRing := r.ring
 			// We start ruler's ring, but nothing else (not even lifecycler).

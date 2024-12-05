@@ -25,6 +25,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
+var testInstantQueryCodec = NewInstantQueryCodec(string(tripperware.NonCompression), string(tripperware.ProtobufCodecType))
+
 const testHistogramResponse = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"prometheus_http_request_duration_seconds","handler":"/metrics","instance":"localhost:9090","job":"prometheus"},"histogram":[1719528871.898,{"count":"6342","sum":"43.31319875499995","buckets":[[0,"0.0013810679320049755","0.0015060652591874421","1"],[0,"0.0015060652591874421","0.001642375811042411","7"],[0,"0.001642375811042411","0.0017910235218841233","5"],[0,"0.0017910235218841233","0.001953125","13"],[0,"0.001953125","0.0021298979153618314","19"],[0,"0.0021298979153618314","0.0023226701464896895","13"],[0,"0.0023226701464896895","0.002532889755177753","13"],[0,"0.002532889755177753","0.002762135864009951","15"],[0,"0.002762135864009951","0.0030121305183748843","12"],[0,"0.0030121305183748843","0.003284751622084822","34"],[0,"0.003284751622084822","0.0035820470437682465","188"],[0,"0.0035820470437682465","0.00390625","372"],[0,"0.00390625","0.004259795830723663","400"],[0,"0.004259795830723663","0.004645340292979379","411"],[0,"0.004645340292979379","0.005065779510355506","425"],[0,"0.005065779510355506","0.005524271728019902","425"],[0,"0.005524271728019902","0.0060242610367497685","521"],[0,"0.0060242610367497685","0.006569503244169644","621"],[0,"0.006569503244169644","0.007164094087536493","593"],[0,"0.007164094087536493","0.0078125","506"],[0,"0.0078125","0.008519591661447326","458"],[0,"0.008519591661447326","0.009290680585958758","346"],[0,"0.009290680585958758","0.010131559020711013","285"],[0,"0.010131559020711013","0.011048543456039804","196"],[0,"0.011048543456039804","0.012048522073499537","129"],[0,"0.012048522073499537","0.013139006488339287","85"],[0,"0.013139006488339287","0.014328188175072986","65"],[0,"0.014328188175072986","0.015625","54"],[0,"0.015625","0.01703918332289465","53"],[0,"0.01703918332289465","0.018581361171917516","20"],[0,"0.018581361171917516","0.020263118041422026","21"],[0,"0.020263118041422026","0.022097086912079608","15"],[0,"0.022097086912079608","0.024097044146999074","11"],[0,"0.024097044146999074","0.026278012976678575","2"],[0,"0.026278012976678575","0.028656376350145972","3"],[0,"0.028656376350145972","0.03125","3"],[0,"0.04052623608284405","0.044194173824159216","2"]]}]}]}}`
 
 func sortPrometheusResponseHeader(headers []*tripperware.PrometheusResponseHeader) {
@@ -35,7 +37,7 @@ func sortPrometheusResponseHeader(headers []*tripperware.PrometheusResponseHeade
 
 func TestRequest(t *testing.T) {
 	t.Parallel()
-	codec := InstantQueryCodec
+	codec := testInstantQueryCodec
 
 	for _, tc := range []struct {
 		url         string
@@ -182,7 +184,7 @@ func TestCompressedResponse(t *testing.T) {
 				Header:     h,
 				Body:       io.NopCloser(responseBody),
 			}
-			resp, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+			resp, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
 			require.Equal(t, tc.err, err)
 
 			if err == nil {
@@ -221,6 +223,77 @@ func TestResponse(t *testing.T) {
 		},
 		{
 			jsonBody: testHistogramResponse,
+		},
+		{
+			jsonBody: testHistogramResponse,
+			promBody: &tripperware.PrometheusResponse{
+				Status: tripperware.StatusSuccess,
+				Data: tripperware.PrometheusData{
+					ResultType: model.ValVector.String(),
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Vector{
+							Vector: &tripperware.Vector{
+								Samples: []tripperware.Sample{
+									{
+										Labels: []cortexpb.LabelAdapter{
+											{Name: "__name__", Value: "prometheus_http_request_duration_seconds"},
+											{Name: "handler", Value: "/metrics"},
+											{Name: "instance", Value: "localhost:9090"},
+											{Name: "job", Value: "prometheus"},
+										},
+										Histogram: &tripperware.SampleHistogramPair{
+											TimestampMs: 1719528871898,
+											Histogram: tripperware.SampleHistogram{
+												Count: 6342,
+												Sum:   43.31319875499995,
+												Buckets: []*tripperware.HistogramBucket{
+													{Boundaries: 0, Upper: 0.0015060652591874421, Lower: 0.0013810679320049755, Count: 1},
+													{Boundaries: 0, Upper: 0.001642375811042411, Lower: 0.0015060652591874421, Count: 7},
+													{Boundaries: 0, Upper: 0.0017910235218841233, Lower: 0.001642375811042411, Count: 5},
+													{Boundaries: 0, Upper: 0.001953125, Lower: 0.0017910235218841233, Count: 13},
+													{Boundaries: 0, Upper: 0.0021298979153618314, Lower: 0.001953125, Count: 19},
+													{Boundaries: 0, Upper: 0.0023226701464896895, Lower: 0.0021298979153618314, Count: 13},
+													{Boundaries: 0, Upper: 0.002532889755177753, Lower: 0.0023226701464896895, Count: 13},
+													{Boundaries: 0, Upper: 0.002762135864009951, Lower: 0.002532889755177753, Count: 15},
+													{Boundaries: 0, Upper: 0.0030121305183748843, Lower: 0.002762135864009951, Count: 12},
+													{Boundaries: 0, Upper: 0.003284751622084822, Lower: 0.0030121305183748843, Count: 34},
+													{Boundaries: 0, Upper: 0.0035820470437682465, Lower: 0.003284751622084822, Count: 188},
+													{Boundaries: 0, Upper: 0.00390625, Lower: 0.0035820470437682465, Count: 372},
+													{Boundaries: 0, Upper: 0.004259795830723663, Lower: 0.00390625, Count: 400},
+													{Boundaries: 0, Upper: 0.004645340292979379, Lower: 0.004259795830723663, Count: 411},
+													{Boundaries: 0, Upper: 0.005065779510355506, Lower: 0.004645340292979379, Count: 425},
+													{Boundaries: 0, Upper: 0.005524271728019902, Lower: 0.005065779510355506, Count: 425},
+													{Boundaries: 0, Upper: 0.0060242610367497685, Lower: 0.005524271728019902, Count: 521},
+													{Boundaries: 0, Upper: 0.006569503244169644, Lower: 0.0060242610367497685, Count: 621},
+													{Boundaries: 0, Upper: 0.007164094087536493, Lower: 0.006569503244169644, Count: 593},
+													{Boundaries: 0, Upper: 0.0078125, Lower: 0.007164094087536493, Count: 506},
+													{Boundaries: 0, Upper: 0.008519591661447326, Lower: 0.0078125, Count: 458},
+													{Boundaries: 0, Upper: 0.009290680585958758, Lower: 0.008519591661447326, Count: 346},
+													{Boundaries: 0, Upper: 0.010131559020711013, Lower: 0.009290680585958758, Count: 285},
+													{Boundaries: 0, Upper: 0.011048543456039804, Lower: 0.010131559020711013, Count: 196},
+													{Boundaries: 0, Upper: 0.012048522073499537, Lower: 0.011048543456039804, Count: 129},
+													{Boundaries: 0, Upper: 0.013139006488339287, Lower: 0.012048522073499537, Count: 85},
+													{Boundaries: 0, Upper: 0.014328188175072986, Lower: 0.013139006488339287, Count: 65},
+													{Boundaries: 0, Upper: 0.015625, Lower: 0.014328188175072986, Count: 54},
+													{Boundaries: 0, Upper: 0.01703918332289465, Lower: 0.015625, Count: 53},
+													{Boundaries: 0, Upper: 0.018581361171917516, Lower: 0.01703918332289465, Count: 20},
+													{Boundaries: 0, Upper: 0.020263118041422026, Lower: 0.018581361171917516, Count: 21},
+													{Boundaries: 0, Upper: 0.022097086912079608, Lower: 0.020263118041422026, Count: 15},
+													{Boundaries: 0, Upper: 0.024097044146999074, Lower: 0.022097086912079608, Count: 11},
+													{Boundaries: 0, Upper: 0.026278012976678575, Lower: 0.024097044146999074, Count: 2},
+													{Boundaries: 0, Upper: 0.028656376350145972, Lower: 0.026278012976678575, Count: 3},
+													{Boundaries: 0, Upper: 0.03125, Lower: 0.028656376350145972, Count: 3},
+													{Boundaries: 0, Upper: 0.044194173824159216, Lower: 0.04052623608284405, Count: 2},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 		{
 			jsonBody: `{"status":"success","data":{"resultType":"string","result":[1,"foo"]}}`,
@@ -357,7 +430,6 @@ func TestResponse(t *testing.T) {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
-
 			var response *http.Response
 			if tc.promBody != nil {
 				protobuf, err := proto.Marshal(tc.promBody)
@@ -376,7 +448,7 @@ func TestResponse(t *testing.T) {
 				}
 			}
 
-			resp, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+			resp, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
 			require.NoError(t, err)
 
 			// Reset response, as the above call will have consumed the body reader.
@@ -386,7 +458,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
 				ContentLength: int64(len(tc.jsonBody)),
 			}
-			resp2, err := InstantQueryCodec.EncodeResponse(context.Background(), resp)
+			resp2, err := testInstantQueryCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})
@@ -645,7 +717,7 @@ func TestMergeResponse(t *testing.T) {
 				if tc.cancelBeforeDecode {
 					cancelCtx()
 				}
-				dr, err := InstantQueryCodec.DecodeResponse(ctx, hr, nil)
+				dr, err := testInstantQueryCodec.DecodeResponse(ctx, hr, nil)
 				assert.Equal(t, tc.expectedDecodeErr, err)
 				if err != nil {
 					cancelCtx()
@@ -657,13 +729,13 @@ func TestMergeResponse(t *testing.T) {
 			if tc.cancelBeforeMerge {
 				cancelCtx()
 			}
-			resp, err := InstantQueryCodec.MergeResponse(ctx, tc.req, resps...)
+			resp, err := testInstantQueryCodec.MergeResponse(ctx, tc.req, resps...)
 			assert.Equal(t, tc.expectedErr, err)
 			if err != nil {
 				cancelCtx()
 				return
 			}
-			dr, err := InstantQueryCodec.EncodeResponse(ctx, resp)
+			dr, err := testInstantQueryCodec.EncodeResponse(ctx, resp)
 			assert.Equal(t, tc.expectedErr, err)
 			contents, err := io.ReadAll(dr.Body)
 			assert.Equal(t, tc.expectedErr, err)
@@ -1660,7 +1732,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 				if tc.cancelBeforeDecode {
 					cancelCtx()
 				}
-				dr, err := InstantQueryCodec.DecodeResponse(ctx, hr, nil)
+				dr, err := testInstantQueryCodec.DecodeResponse(ctx, hr, nil)
 				assert.Equal(t, tc.expectedDecodeErr, err)
 				if err != nil {
 					cancelCtx()
@@ -1672,13 +1744,13 @@ func TestMergeResponseProtobuf(t *testing.T) {
 			if tc.cancelBeforeMerge {
 				cancelCtx()
 			}
-			resp, err := InstantQueryCodec.MergeResponse(ctx, tc.req, resps...)
+			resp, err := testInstantQueryCodec.MergeResponse(ctx, tc.req, resps...)
 			assert.Equal(t, tc.expectedErr, err)
 			if err != nil {
 				cancelCtx()
 				return
 			}
-			dr, err := InstantQueryCodec.EncodeResponse(ctx, resp)
+			dr, err := testInstantQueryCodec.EncodeResponse(ctx, resp)
 			assert.Equal(t, tc.expectedErr, err)
 			contents, err := io.ReadAll(dr.Body)
 			assert.Equal(t, tc.expectedErr, err)
@@ -1743,7 +1815,7 @@ func Benchmark_Decode(b *testing.B) {
 					StatusCode: 200,
 					Body:       io.NopCloser(bytes.NewBuffer(body)),
 				}
-				_, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+				_, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
 				require.NoError(b, err)
 			}
 		})
@@ -1806,7 +1878,7 @@ func Benchmark_Decode_Protobuf(b *testing.B) {
 					Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
 					Body:       io.NopCloser(bytes.NewBuffer(body)),
 				}
-				_, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+				_, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
 				require.NoError(b, err)
 			}
 		})

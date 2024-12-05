@@ -1,20 +1,24 @@
 package push
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -24,8 +28,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+const (
+	pbContentType   = "application/x-protobuf"
+	jsonContentType = "application/json"
+)
+
 // OTLPHandler is a http.Handler which accepts OTLP metrics.
-func OTLPHandler(overrides *validation.Overrides, cfg distributor.OTLPConfig, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
+func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distributor.OTLPConfig, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := util_log.WithContext(ctx, util_log.Logger)
@@ -42,7 +51,7 @@ func OTLPHandler(overrides *validation.Overrides, cfg distributor.OTLPConfig, so
 			return
 		}
 
-		req, err := remote.DecodeOTLPWriteRequest(r)
+		req, err := decodeOTLPWriteRequest(ctx, r, maxRecvMsgSize)
 		if err != nil {
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -88,6 +97,64 @@ func OTLPHandler(overrides *validation.Overrides, cfg distributor.OTLPConfig, so
 			http.Error(w, string(resp.Body), int(resp.Code))
 		}
 	})
+}
+
+func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (pmetricotlp.ExportRequest, error) {
+	expectedSize := int(r.ContentLength)
+	if expectedSize > maxSize {
+		return pmetricotlp.NewExportRequest(), fmt.Errorf("received message larger than max (%d vs %d)", expectedSize, maxSize)
+	}
+
+	contentType := r.Header.Get("Content-Type")
+	contentEncoding := r.Header.Get("Content-Encoding")
+
+	var compressionType util.CompressionType
+	switch contentEncoding {
+	case "gzip":
+		compressionType = util.Gzip
+	case "":
+		compressionType = util.NoCompression
+	default:
+		return pmetricotlp.NewExportRequest(), fmt.Errorf("unsupported compression: %s, Supported compression types are \"gzip\" or '' (no compression)", contentEncoding)
+	}
+
+	var decoderFunc func(reader io.Reader) (pmetricotlp.ExportRequest, error)
+	switch contentType {
+	case pbContentType:
+		decoderFunc = func(reader io.Reader) (pmetricotlp.ExportRequest, error) {
+			req := pmetricotlp.NewExportRequest()
+			otlpReqProto := otlpProtoMessage{req: &req}
+			return req, util.ParseProtoReader(ctx, reader, expectedSize, maxSize, otlpReqProto, compressionType)
+		}
+	case jsonContentType:
+		decoderFunc = func(reader io.Reader) (pmetricotlp.ExportRequest, error) {
+			req := pmetricotlp.NewExportRequest()
+
+			reader = io.LimitReader(reader, int64(maxSize)+1)
+			if compressionType == util.Gzip {
+				var err error
+				reader, err = gzip.NewReader(reader)
+				if err != nil {
+					return req, err
+				}
+			}
+
+			var buf bytes.Buffer
+			if expectedSize > 0 {
+				buf.Grow(expectedSize + bytes.MinRead) // extra space guarantees no reallocation
+			}
+			_, err := buf.ReadFrom(reader)
+			if err != nil {
+				return req, err
+			}
+
+			return req, req.UnmarshalJSON(buf.Bytes())
+		}
+	default:
+		return pmetricotlp.NewExportRequest(), fmt.Errorf("unsupported content type: %s, supported: [%s, %s]", contentType, jsonContentType, pbContentType)
+	}
+
+	return decoderFunc(r.Body)
 }
 
 func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) ([]prompb.TimeSeries, error) {
@@ -223,3 +290,16 @@ func joinAttributeMaps(from, to pcommon.Map) {
 		return true
 	})
 }
+
+// otlpProtoMessage Implements proto.Meesage, proto.Unmarshaler
+type otlpProtoMessage struct {
+	req *pmetricotlp.ExportRequest
+}
+
+func (otlpProtoMessage) ProtoMessage() {}
+
+func (otlpProtoMessage) Reset() {}
+
+func (otlpProtoMessage) String() string { return "" }
+
+func (o otlpProtoMessage) Unmarshal(data []byte) error { return o.req.UnmarshalProto(data) }

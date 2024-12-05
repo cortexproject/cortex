@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
@@ -26,6 +27,8 @@ var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-se
 var errDuplicateQueryPriorities = errors.New("duplicate entry of priorities found. Make sure they are all unique, including the default priority")
 var errCompilingQueryPriorityRegex = errors.New("error compiling query priority regex")
 var errDuplicatePerLabelSetLimit = errors.New("duplicate per labelSet limits found. Make sure they are all unique")
+var errInvalidLabelName = errors.New("invalid label name")
+var errInvalidLabelValue = errors.New("invalid label value")
 
 // Supported values for enum limits
 const (
@@ -119,6 +122,7 @@ type Limits struct {
 	IngestionRateStrategy     string              `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
 	IngestionBurstSize        int                 `yaml:"ingestion_burst_size" json:"ingestion_burst_size"`
 	AcceptHASamples           bool                `yaml:"accept_ha_samples" json:"accept_ha_samples"`
+	AcceptMixedHASamples      bool                `yaml:"accept_mixed_ha_samples" json:"accept_mixed_ha_samples"`
 	HAClusterLabel            string              `yaml:"ha_cluster_label" json:"ha_cluster_label"`
 	HAReplicaLabel            string              `yaml:"ha_replica_label" json:"ha_replica_label"`
 	HAMaxClusters             int                 `yaml:"ha_max_clusters" json:"ha_max_clusters"`
@@ -181,6 +185,7 @@ type Limits struct {
 	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
+	RulerExternalLabels         labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
@@ -221,6 +226,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 	f.BoolVar(&l.AcceptHASamples, "distributor.ha-tracker.enable-for-all-users", false, "Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup.")
+	f.BoolVar(&l.AcceptMixedHASamples, "experimental.distributor.ha-tracker.mixed-ha-samples", false, "[Experimental] Flag to enable handling of samples with mixed external labels identifying replicas in an HA Prometheus setup. Supported only if -distributor.ha-tracker.enable-for-all-users is true.")
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
 	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
 	f.IntVar(&l.HAMaxClusters, "distributor.ha-tracker.max-clusters", 0, "Maximum number of clusters that HA tracker will keep track of for single user. 0 to disable the limit.")
@@ -306,6 +312,18 @@ func (l *Limits) Validate(shardByAllLabels bool) error {
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
 		return errMaxGlobalSeriesPerUserValidation
+	}
+
+	if err := l.RulerExternalLabels.Validate(func(l labels.Label) error {
+		if !model.LabelName(l.Name).IsValid() {
+			return fmt.Errorf("%w: %q", errInvalidLabelName, l.Name)
+		}
+		if !model.LabelValue(l.Value).IsValid() {
+			return fmt.Errorf("%w: %q", errInvalidLabelValue, l.Value)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	return nil
@@ -547,6 +565,11 @@ func (o *Overrides) IngestionBurstSize(userID string) int {
 // AcceptHASamples returns whether the distributor should track and accept samples from HA replicas for this user.
 func (o *Overrides) AcceptHASamples(userID string) bool {
 	return o.GetOverridesForUser(userID).AcceptHASamples
+}
+
+// AcceptMixedHASamples returns whether the distributor should track and accept samples from mixed HA replicas for this user.
+func (o *Overrides) AcceptMixedHASamples(userID string) bool {
+	return o.GetOverridesForUser(userID).AcceptMixedHASamples
 }
 
 // HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
@@ -939,6 +962,10 @@ func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 		}
 	}
 	return DisabledRuleGroups{}
+}
+
+func (o *Overrides) RulerExternalLabels(userID string) labels.Labels {
+	return o.GetOverridesForUser(userID).RulerExternalLabels
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

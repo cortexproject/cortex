@@ -62,7 +62,7 @@ func NewAlertStore(ctx context.Context, cfg Config, cfgProvider bucket.TenantCon
 		return local.NewStore(cfg.Local)
 	}
 
-	bucketClient, err := bucket.NewClient(ctx, cfg.Config, "alertmanager-storage", logger, reg)
+	bucketClient, err := bucket.NewClient(ctx, cfg.Config, nil, "alertmanager-storage", logger, reg)
 	if err != nil {
 		return nil, err
 	}

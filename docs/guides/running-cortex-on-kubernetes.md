@@ -17,7 +17,7 @@ this, but this is not mandatory.
 If using Kubernetes, each container should specify resource requests
 so that the scheduler can place them on a node with sufficient capacity.
 
-For example an ingester might request:
+For example, an ingester might request:
 
 ```
         resources:
@@ -27,19 +27,19 @@ For example an ingester might request:
 ```
 
 The specific values here should be adjusted based on your own
-experiences running Cortex - they are very dependent on rate of data
+experiences running Cortex - they are very dependent on the rate of data
 arriving and other factors such as series churn.
 
 ### Take extra care with ingesters
 
 Ingesters hold hours of timeseries data in memory; you can configure
-Cortex to replicate the data but you should take steps to avoid losing
+Cortex to replicate the data, but you should take steps to avoid losing
 all replicas at once:
 
- - Don't run multiple ingesters on the same node.
- - Don't run ingesters on preemptible/spot nodes.
- - Spread out ingesters across racks / availability zones / whatever
-   applies in your datacenters.
+- Don't run multiple ingesters on the same node.
+- Don't run ingesters on preemptible/spot nodes.
+- Spread out ingesters across racks / availability zones / whatever
+  applies in your datacenters.
 
 You can ask Kubernetes to avoid running on the same node like this:
 
@@ -59,13 +59,13 @@ You can ask Kubernetes to avoid running on the same node like this:
 ```
 
 Give plenty of time for an ingester to hand over or flush data to
-store when shutting down; for Kubernetes this looks like:
+store when shutting down; for Kubernetes, this looks like:
 
 ```
       terminationGracePeriodSeconds: 2400
 ```
 
-Ask Kubernetes to limit rolling updates to one ingester at a time, and
+Ask Kubernetes to limit rolling updates to one ingester at a time and
 signal the old one to stop before the new one is ready:
 
 ```

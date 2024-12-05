@@ -2445,7 +2445,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 # CLI flag: -<prefix>.consul.acl-token
 [acl_token: <string> | default = ""]
 
-# HTTP timeout when talking to Consul
+# HTTP timeout when talking to Consul.
 # CLI flag: -<prefix>.consul.client-timeout
 [http_client_timeout: <duration> | default = 20s]
 
@@ -2461,6 +2461,33 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 # Burst size used in rate limit. Values less than 1 are treated as 1.
 # CLI flag: -<prefix>.consul.watch-burst-size
 [watch_burst_size: <int> | default = 1]
+
+# Enable TLS.
+# CLI flag: -<prefix>.consul.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
+# CLI flag: -<prefix>.consul.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
+# CLI flag: -<prefix>.consul.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
+# CLI flag: -<prefix>.consul.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -<prefix>.consul.tls-server-name
+[tls_server_name: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -<prefix>.consul.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `distributor_config`
@@ -2561,6 +2588,10 @@ ha_tracker:
 # remote_write API max receive message size (bytes).
 # CLI flag: -distributor.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 104857600]
+
+# Maximum OTLP request size in bytes that the Distributor can accept.
+# CLI flag: -distributor.otlp-max-recv-msg-size
+[otlp_max_recv_msg_size: <int> | default = 104857600]
 
 # Timeout for downstream ingesters.
 # CLI flag: -distributor.remote-timeout
@@ -2674,6 +2705,12 @@ instance_limits:
   # unlimited.
   # CLI flag: -distributor.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
+
+  # Max inflight ingester client requests that this distributor can handle. This
+  # limit is per-distributor, not per-tenant. Additional requests will be
+  # rejected. 0 = unlimited.
+  # CLI flag: -distributor.instance-limits.max-inflight-client-requests
+  [max_inflight_client_requests: <int> | default = 0]
 
 otlp:
   # If true, all resource attributes are converted to labels.
@@ -3246,6 +3283,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -distributor.ha-tracker.enable-for-all-users
 [accept_ha_samples: <boolean> | default = false]
 
+# [Experimental] Flag to enable handling of samples with mixed external labels
+# identifying replicas in an HA Prometheus setup. Supported only if
+# -distributor.ha-tracker.enable-for-all-users is true.
+# CLI flag: -experimental.distributor.ha-tracker.mixed-ha-samples
+[accept_mixed_ha_samples: <boolean> | default = false]
+
 # Prometheus label to look for in samples to identify a Prometheus HA cluster.
 # CLI flag: -distributor.ha-tracker.cluster
 [ha_cluster_label: <string> | default = "cluster"]
@@ -3502,6 +3545,9 @@ query_rejection:
 # Duration to offset all rule evaluation queries per-tenant.
 # CLI flag: -ruler.query-offset
 [ruler_query_offset: <duration> | default = 0s]
+
+# external labels for alerting rules
+[ruler_external_labels: <map of string (labelName) to string (labelValue)> | default = []]
 
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the
@@ -3987,6 +4033,10 @@ store_gateway_client:
 # like at Query Frontend or Ruler.
 # CLI flag: -querier.ignore-max-query-length
 [ignore_max_query_length: <boolean> | default = false]
+
+# [Experimental] If true, experimental promQL functions are enabled.
+# CLI flag: -querier.enable-promql-experimental-functions
+[enable_promql_experimental_functions: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`
@@ -5370,6 +5420,12 @@ grpc_tls_config:
 # CLI flag: -server.grpc-max-concurrent-streams
 [grpc_server_max_concurrent_streams: <int> | default = 100]
 
+# Number of worker goroutines that should be used to process incoming
+# streams.Setting this 0 (default) will disable workers and spawn a new
+# goroutine for each stream.
+# CLI flag: -server.grpc_server-num-stream-workers
+[grpc_server_num_stream_workers: <int> | default = 0]
+
 # The duration after which an idle connection should be closed. Default:
 # infinity
 # CLI flag: -server.grpc.keepalive.max-connection-idle
@@ -5608,6 +5664,23 @@ sharding_ring:
 # tenant(s) for processing will ignore them instead.
 # CLI flag: -store-gateway.disabled-tenants
 [disabled_tenants: <string> | default = ""]
+
+hedged_request:
+  # If true, hedged requests are applied to object store calls. It can help with
+  # reducing tail latency.
+  # CLI flag: -store-gateway.hedged-request.enabled
+  [enabled: <boolean> | default = false]
+
+  # Maximum number of hedged requests allowed for each initial request. A high
+  # number can reduce latency but increase internal calls.
+  # CLI flag: -store-gateway.hedged-request.max-requests
+  [max_requests: <int> | default = 3]
+
+  # It is used to calculate a latency threshold to trigger hedged requests. For
+  # example, additional requests are triggered when the initial request response
+  # time exceeds the 90th percentile.
+  # CLI flag: -store-gateway.hedged-request.quantile
+  [quantile: <float> | default = 0.9]
 ```
 
 ### `tracing_config`

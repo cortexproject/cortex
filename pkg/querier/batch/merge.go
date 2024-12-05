@@ -2,9 +2,8 @@ package batch
 
 import (
 	"container/heap"
-	"sort"
-
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"sort"
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk"
 )

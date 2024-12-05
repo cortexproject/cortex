@@ -18,18 +18,14 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/promql-engine/engine"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
-	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -666,25 +662,4 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 	}
 
 	return int64(startTime), int64(endTime), nil
-}
-
-// Series in the returned set are sorted alphabetically by labels.
-func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkIteratorFunc) storage.SeriesSet {
-	chunksBySeries := map[string][]chunk.Chunk{}
-	for _, c := range chunks {
-		key := client.LabelsToKeyString(c.Metric)
-		chunksBySeries[key] = append(chunksBySeries[key], c)
-	}
-
-	series := make([]storage.Series, 0, len(chunksBySeries))
-	for i := range chunksBySeries {
-		series = append(series, &storage.SeriesEntry{
-			Lset: chunksBySeries[i][0].Metric,
-			SampleIteratorFn: func(it chunkenc.Iterator) chunkenc.Iterator {
-				return iteratorFunc(it, chunksBySeries[i], model.Time(mint), model.Time(maxt))
-			},
-		})
-	}
-
-	return seriesset.NewConcreteSeriesSet(true, series)
 }

@@ -1969,7 +1969,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	numSeries := 0
 	totalDataBytes := 0
 	numChunks := 0
-	numSeries, numSamples, totalDataBytes, numChunks, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
+	numSeries, numSamples, totalDataBytes, numChunks, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, req.Symbolized, stream)
 
 	if err != nil {
 		return err
@@ -2001,7 +2001,7 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 }
 
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
-func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes, numChunks int, _ error) {
+func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, sym bool, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes, numChunks int, _ error) {
 	q, err := db.ChunkQuerier(from, through)
 	if err != nil {
 		return 0, 0, 0, 0, err
@@ -2078,9 +2078,13 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 		if (batchSizeBytes > 0 && batchSizeBytes+tsSize > queryStreamBatchMessageSize) || len(chunkSeries) >= queryStreamBatchSize {
 			// Adding this series to the batch would make it too big,
 			// flush the data and add it to new batch instead.
-			err = client.SendQueryStream(stream, &client.QueryStreamResponse{
+			r := &client.QueryStreamResponse{
 				Chunkseries: chunkSeries,
-			})
+			}
+			if sym {
+				r.SymbolizeLabels()
+			}
+			err = client.SendQueryStream(stream, r)
 			if err != nil {
 				return 0, 0, 0, 0, err
 			}

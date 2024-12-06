@@ -283,6 +283,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 				return nil, validation.LimitError(dataBytesLimitErr.Error())
 			}
 
+			result.DesymbolizeLabels()
 			result.Chunkseries = append(result.Chunkseries, resp.Chunkseries...)
 		}
 		return result, nil

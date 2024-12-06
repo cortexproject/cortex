@@ -43,6 +43,7 @@ message QueryRequest {
   int64 start_timestamp_ms = 1;
   int64 end_timestamp_ms = 2;
   repeated LabelMatcher matchers = 3;
+  bool Symbolized = 4;
 }
 
 message ExemplarQueryRequest {
@@ -56,6 +57,8 @@ message QueryStreamResponse {
   repeated TimeSeriesChunk chunkseries = 1 [(gogoproto.nullable) = false];
   // Not used anymore
   reserved  2;
+
+  repeated string symbols = 3;
 }
 
 message ExemplarQueryResponse {
@@ -140,6 +143,7 @@ message TimeSeriesChunk {
   string user_id = 2;
   repeated cortexpb.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
+  repeated uint32 labels_refs = 5;
 }
 
 message Chunk {

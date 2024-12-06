@@ -1099,7 +1099,7 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 	level.Debug(am.logger).Log("msg", "message received for replication", "user", userID, "key", part.Key)
 
 	selfAddress := am.ringLifecycler.GetInstanceAddr()
-	err := ring.DoBatch(ctx, RingOp, am.ring, []uint32{shardByUser(userID)}, func(desc ring.InstanceDesc, _ []int) error {
+	err := ring.DoBatch(ctx, RingOp, am.ring, nil, []uint32{shardByUser(userID)}, func(desc ring.InstanceDesc, _ []int) error {
 		if desc.GetAddr() == selfAddress {
 			return nil
 		}

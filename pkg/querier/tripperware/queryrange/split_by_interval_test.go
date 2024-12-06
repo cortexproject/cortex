@@ -330,7 +330,6 @@ func TestSplitByDay(t *testing.T) {
 }
 
 func Test_evaluateAtModifier(t *testing.T) {
-	t.Parallel()
 	const (
 		start, end = int64(1546300800), int64(1646300800)
 	)
@@ -386,7 +385,6 @@ func Test_evaluateAtModifier(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.in, func(t *testing.T) {
-			t.Parallel()
 			out, err := evaluateAtModifierFunction(tt.in, start, end)
 			if tt.expectedErrorCode != 0 {
 				require.Error(t, err)

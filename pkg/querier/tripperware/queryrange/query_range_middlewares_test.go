@@ -25,7 +25,6 @@ var (
 )
 
 func TestRoundTrip(t *testing.T) {
-	t.Parallel()
 	s := httptest.NewServer(
 		middleware.AuthenticateUser.Wrap(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

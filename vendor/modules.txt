@@ -1045,6 +1045,9 @@ github.com/thanos-io/thanos/pkg/tracing/interceptors
 github.com/thanos-io/thanos/pkg/tracing/migration
 github.com/thanos-io/thanos/pkg/tracing/tracing_middleware
 github.com/thanos-io/thanos/pkg/tracing/util/metautils
+# github.com/tjhop/slog-gokit v0.1.2
+## explicit; go 1.21
+github.com/tjhop/slog-gokit
 # github.com/uber/jaeger-client-go v2.30.0+incompatible
 ## explicit
 github.com/uber/jaeger-client-go

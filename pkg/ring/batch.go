@@ -8,7 +8,12 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
+)
+
+var (
+	noOpExecutor = util.NewNoOpExecutor()
 )
 
 type batchTracker struct {
@@ -66,10 +71,14 @@ func (i *itemTracker) getError() error {
 // cleanup() is always called, either on an error before starting the batches or after they all finish.
 //
 // Not implemented as a method on Ring so we can test separately.
-func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callback func(InstanceDesc, []int) error, cleanup func()) error {
+func DoBatch(ctx context.Context, op Operation, r ReadRing, e util.AsyncExecutor, keys []uint32, callback func(InstanceDesc, []int) error, cleanup func()) error {
 	if r.InstancesCount() <= 0 {
 		cleanup()
 		return fmt.Errorf("DoBatch: InstancesCount <= 0")
+	}
+
+	if e == nil {
+		e = noOpExecutor
 	}
 
 	expectedTrackers := len(keys) * (r.ReplicationFactor() + 1) / r.InstancesCount()
@@ -115,11 +124,11 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 
 	wg.Add(len(instances))
 	for _, i := range instances {
-		go func(i instance) {
+		e.Submit(func() {
 			err := callback(i.desc, i.indexes)
 			tracker.record(i, err)
 			wg.Done()
-		}(i)
+		})
 	}
 
 	// Perform cleanup at the end.

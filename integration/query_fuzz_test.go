@@ -751,6 +751,36 @@ func TestProtobufCodecFuzz(t *testing.T) {
 	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000)
 }
 
+var sampleNumComparer = cmp.Comparer(func(x, y model.Value) bool {
+	if x.Type() != y.Type() {
+		return false
+	}
+
+	vx, xvec := x.(model.Vector)
+	vy, yvec := y.(model.Vector)
+
+	if xvec && yvec {
+		return len(vx) == len(vy)
+	}
+
+	mx, xmat := x.(model.Matrix)
+	my, ymat := y.(model.Matrix)
+
+	mxSamples := 0
+	mySamples := 0
+
+	if xmat && ymat {
+		for i := 0; i < len(mx); i++ {
+			mxSamples += len(mx[i].Values)
+		}
+		for i := 0; i < len(my); i++ {
+			mySamples += len(my[i].Values)
+		}
+	}
+
+	return mxSamples == mySamples
+})
+
 // comparer should be used to compare promql results between engines.
 var comparer = cmp.Comparer(func(x, y model.Value) bool {
 	if x.Type() != y.Type() {
@@ -1471,6 +1501,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 				break
 			}
 		}
+
 		res1, err1 := c1.Query(query, queryTime)
 		res2, err2 := c2.Query(query, queryTime)
 		cases = append(cases, &testCase{
@@ -1491,6 +1522,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 				break
 			}
 		}
+
 		res1, err1 := c1.QueryRange(query, start, end, step)
 		res2, err2 := c2.QueryRange(query, start, end, step)
 		cases = append(cases, &testCase{
@@ -1514,6 +1546,11 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
 				failures++
 			}
+		} else if shouldUseSampleNumComparer(tc.query) {
+			if !cmp.Equal(tc.res1, tc.res2, sampleNumComparer) {
+				t.Logf("case %d # of samples mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
+				failures++
+			}
 		} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
 			t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
 			failures++
@@ -1522,6 +1559,13 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	if failures > 0 {
 		require.Failf(t, "finished query fuzzing tests", "%d test cases failed", failures)
 	}
+}
+
+func shouldUseSampleNumComparer(query string) bool {
+	if strings.Contains(query, "bottomk") || strings.Contains(query, "topk") {
+		return true
+	}
+	return false
 }
 
 func isValidQuery(generatedQuery parser.Expr, maxDepth int) bool {

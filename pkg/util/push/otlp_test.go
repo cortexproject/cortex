@@ -7,10 +7,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -236,12 +239,20 @@ func TestOTLPWriteHandler(t *testing.T) {
 		expectedErrMsg     string
 		gzipCompression    bool
 		encodingType       string
+		expectedMetrics    string
 	}{
 		{
 			description:        "Test proto format write with no compression",
 			maxRecvMsgSize:     10000,
 			format:             pbContentType,
 			expectedStatusCode: http.StatusOK,
+			expectedMetrics: `
+				# HELP cortex_distributor_push_requests_uncompressed_size_bytes Histogram of push request's uncompressed size in bytes
+				# TYPE cortex_distributor_push_requests_uncompressed_size_bytes histogram
+				cortex_distributor_push_requests_uncompressed_size_bytes_bucket{format="otlp",user="user-1",le="+Inf"} 1
+				cortex_distributor_push_requests_uncompressed_size_bytes_sum{format="otlp",user="user-1"} 665
+				cortex_distributor_push_requests_uncompressed_size_bytes_count{format="otlp",user="user-1"} 1
+			`,
 		},
 		{
 			description:        "Test proto format write with gzip",
@@ -250,12 +261,26 @@ func TestOTLPWriteHandler(t *testing.T) {
 			expectedStatusCode: http.StatusOK,
 			encodingType:       "gzip",
 			gzipCompression:    true,
+			expectedMetrics: `
+				# HELP cortex_distributor_push_requests_uncompressed_size_bytes Histogram of push request's uncompressed size in bytes
+				# TYPE cortex_distributor_push_requests_uncompressed_size_bytes histogram
+				cortex_distributor_push_requests_uncompressed_size_bytes_bucket{format="otlp",user="user-1",le="+Inf"} 1
+				cortex_distributor_push_requests_uncompressed_size_bytes_sum{format="otlp",user="user-1"} 665
+				cortex_distributor_push_requests_uncompressed_size_bytes_count{format="otlp",user="user-1"} 1
+			`,
 		},
 		{
 			description:        "Test json format write with no compression",
 			maxRecvMsgSize:     10000,
 			format:             jsonContentType,
 			expectedStatusCode: http.StatusOK,
+			expectedMetrics: `
+				# HELP cortex_distributor_push_requests_uncompressed_size_bytes Histogram of push request's uncompressed size in bytes
+				# TYPE cortex_distributor_push_requests_uncompressed_size_bytes histogram
+				cortex_distributor_push_requests_uncompressed_size_bytes_bucket{format="otlp",user="user-1",le="+Inf"} 1
+				cortex_distributor_push_requests_uncompressed_size_bytes_sum{format="otlp",user="user-1"} 1568
+				cortex_distributor_push_requests_uncompressed_size_bytes_count{format="otlp",user="user-1"} 1
+			`,
 		},
 		{
 			description:        "Test json format write with gzip",
@@ -264,6 +289,13 @@ func TestOTLPWriteHandler(t *testing.T) {
 			expectedStatusCode: http.StatusOK,
 			encodingType:       "gzip",
 			gzipCompression:    true,
+			expectedMetrics: `
+				# HELP cortex_distributor_push_requests_uncompressed_size_bytes Histogram of push request's uncompressed size in bytes
+				# TYPE cortex_distributor_push_requests_uncompressed_size_bytes histogram
+				cortex_distributor_push_requests_uncompressed_size_bytes_bucket{format="otlp",user="user-1",le="+Inf"} 1
+				cortex_distributor_push_requests_uncompressed_size_bytes_sum{format="otlp",user="user-1"} 1568
+				cortex_distributor_push_requests_uncompressed_size_bytes_count{format="otlp",user="user-1"} 1
+			`,
 		},
 		{
 			description:        "request too big than maxRecvMsgSize (proto) with no compression",
@@ -351,13 +383,18 @@ func TestOTLPWriteHandler(t *testing.T) {
 			push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
 			overrides, err := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
 			require.NoError(t, err)
-			handler := OTLPHandler(test.maxRecvMsgSize, overrides, cfg, nil, push)
+			reg := prometheus.NewRegistry()
+			handler := OTLPHandler(test.maxRecvMsgSize, overrides, cfg, nil, push, distributor.NewPushHandlerMetrics(reg))
 
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, req)
 
 			resp := recorder.Result()
 			require.Equal(t, test.expectedStatusCode, resp.StatusCode)
+
+			if test.expectedMetrics != "" {
+				require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(test.expectedMetrics), "cortex_distributor_push_requests"))
+			}
 
 			if test.expectedErrMsg != "" {
 				b, err := io.ReadAll(resp.Body)

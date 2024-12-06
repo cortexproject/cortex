@@ -66,13 +66,13 @@ func (c *mergeIterator) Reset(size int) *mergeIterator {
 	c.h = c.h[:0]
 	c.batches = c.batches[:0]
 
-	if len(c.its) <= cap(c.batchesBuf) {
+	if size > cap(c.batchesBuf) {
+		c.batchesBuf = make(batchStream, len(c.its))
+	} else {
 		c.batchesBuf = c.batchesBuf[:size]
 		for i := 0; i < size; i++ {
 			c.batchesBuf[i] = promchunk.Batch{}
 		}
-	} else {
-		c.batchesBuf = make(batchStream, len(c.its))
 	}
 
 	for i := 0; i < len(c.nextBatchBuf); i++ {

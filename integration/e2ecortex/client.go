@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/prompb"
+	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
 	yaml "gopkg.in/yaml.v3"
@@ -132,6 +133,39 @@ func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
 	req.Header.Add("Content-Encoding", "snappy")
 	req.Header.Set("Content-Type", "application/x-protobuf")
 	req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+	return res, nil
+}
+
+// PushV2 the input timeseries to the remote endpoint
+func (c *Client) PushV2(symbols []string, timeseries []writev2.TimeSeries) (*http.Response, error) {
+	// Create write request
+	data, err := proto.Marshal(&writev2.Request{Symbols: symbols, Timeseries: timeseries})
+	if err != nil {
+		return nil, err
+	}
+
+	// Create HTTP request
+	compressed := snappy.Encode(nil, data)
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/api/prom/push", c.distributorAddress), bytes.NewReader(compressed))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Encoding", "snappy")
+	req.Header.Set("Content-Type", "application/x-protobuf;proto=io.prometheus.write.v2.Request")
+	req.Header.Set("X-Prometheus-Remote-Write-Version", "2.0.0")
 	req.Header.Set("X-Scope-OrgID", c.orgID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
@@ -354,6 +388,12 @@ func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 		retries.Wait()
 	}
 	return value, err
+}
+
+// Metadata runs a metadata query
+func (c *Client) Metadata(name, limit string) (map[string][]promv1.Metadata, error) {
+	metadata, err := c.querierClient.Metadata(context.Background(), name, limit)
+	return metadata, err
 }
 
 // QueryExemplars runs an exemplars query

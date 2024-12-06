@@ -42,6 +42,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 		expected       *tripperware.PrometheusResponse
 	}{
 		{
+			name: "vector",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeVector,
 				Result: promql.Vector{
@@ -85,6 +86,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
+			name: "scalar",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeScalar,
 				Result:     promql.Scalar{T: 1000, V: 1},
@@ -147,6 +149,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
+			name: "matrix",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeMatrix,
 				Result: promql.Matrix{
@@ -180,6 +183,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
+			name: "matrix with multiple series",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeMatrix,
 				Result: promql.Matrix{
@@ -223,6 +227,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
+			name: "matrix: not cortex internal with histogram",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeMatrix,
 				Result: promql.Matrix{
@@ -312,6 +317,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
+			name: "vector: not cortex internal with histogram",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeVector,
 				Result: promql.Vector{
@@ -400,7 +406,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
-			name:           "cortex internal with native histogram",
+			name:           "vector: cortex internal with native histogram",
 			cortexInternal: true,
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeVector,

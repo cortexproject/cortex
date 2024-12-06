@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
@@ -32,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
+	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -333,7 +335,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					for _, queryable := range tc.storeQueriables {
 						wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
 					}
-					queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
+					queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides)
 					opts := promql.EngineOpts{
 						Logger:     log.NewNopLogger(),
 						MaxSamples: 1e6,
@@ -521,7 +523,7 @@ func TestLimits(t *testing.T) {
 				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
 				require.NoError(t, err)
 
-				queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
+				queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides)
 				opts := promql.EngineOpts{
 					Logger:     log.NewNopLogger(),
 					MaxSamples: 1e6,
@@ -1476,7 +1478,7 @@ type mockStoreQuerier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q *mockStoreQuerier) Select(ctx context.Context, _ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (q *mockStoreQuerier) Select(_ context.Context, _ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	// If we don't skip here, it'll make /series lookups extremely slow as all the chunks will be loaded.
 	// That flag is only to be set with blocks storage engine, and this is a protective measure.
 	if sp != nil && sp.Func == "series" {
@@ -1488,7 +1490,24 @@ func (q *mockStoreQuerier) Select(ctx context.Context, _ bool, sp *storage.Selec
 		return storage.ErrSeriesSet(err)
 	}
 
-	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc)
+	cs := make([]storage.Series, 0, len(chunks))
+	chunksBySeries := map[string][]chunk.Chunk{}
+
+	for _, c := range chunks {
+		key := client.LabelsToKeyString(c.Metric)
+		chunksBySeries[key] = append(chunksBySeries[key], c)
+	}
+
+	for i, c := range chunksBySeries {
+		cs = append(cs, &storage.SeriesEntry{
+			Lset: chunksBySeries[i][0].Metric,
+			SampleIteratorFn: func(it chunkenc.Iterator) chunkenc.Iterator {
+				return q.chunkIteratorFunc(it, c, model.Time(mint), model.Time(maxt))
+			},
+		})
+	}
+
+	return series.NewConcreteSeriesSet(true, cs)
 }
 
 func (q *mockStoreQuerier) LabelValues(ctx context.Context, name string, _ *storage.LabelHints, labels ...*labels.Matcher) ([]string, annotations.Annotations, error) {

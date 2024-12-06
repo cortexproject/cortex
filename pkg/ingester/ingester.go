@@ -142,6 +142,8 @@ type Config struct {
 	// When disabled, the result may contain samples outside the queried time range but Select() performances
 	// may be improved.
 	DisableChunkTrimming bool `yaml:"disable_chunk_trimming"`
+
+	MatchersCacheMaxItems int `yaml:"matchers_cache_max_items"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -170,6 +172,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
 
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
+	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the matchers cache. 0 to disable.")
 }
 
 func (cfg *Config) Validate() error {
@@ -240,6 +243,8 @@ type Ingester struct {
 	maxInflightQueryRequests util_math.MaxTracker
 
 	expandedPostingsCacheFactory *cortex_tsdb.ExpandedPostingsCacheFactory
+
+	newMatcherFunc func(t labels.MatchType, n, v string) (*labels.Matcher, error)
 }
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -698,12 +703,22 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
+	newMatcherFunc := labels.NewMatcher
+	if cfg.MatchersCacheMaxItems > 0 {
+		matcherCache, err := util.NewMatcherCache(1024)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create matcher cache")
+		}
+		newMatcherFunc = matcherCache.GetMatcher
+	}
+
 	i := &Ingester{
 		cfg:                          cfg,
 		limits:                       limits,
 		usersMetadata:                map[string]*userMetricsMetadata{},
 		TSDBState:                    newTSDBState(bucketClient, registerer),
 		logger:                       logger,
+		newMatcherFunc:               newMatcherFunc,
 		ingestionRate:                util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 		expandedPostingsCacheFactory: cortex_tsdb.NewExpandedPostingsCacheFactory(cfg.BlocksStorageConfig.TSDB.PostingsCache),
 	}
@@ -1448,7 +1463,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
-	from, through, matchers, err := client.FromExemplarQueryRequest(req)
+	from, through, matchers, err := client.FromExemplarQueryRequest(req, i.newMatcherFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -1538,7 +1553,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	labelName, startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelValuesRequest(req)
+	labelName, startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelValuesRequest(req, i.newMatcherFunc)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1628,7 +1643,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelNamesRequest(req)
+	startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelNamesRequest(req, i.newMatcherFunc)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1727,7 +1742,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 	}
 
 	// Parse the request
-	_, _, limit, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, limit, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req, i.newMatcherFunc)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1946,7 +1961,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
-	from, through, matchers, err := client.FromQueryRequest(req)
+	from, through, matchers, err := client.FromQueryRequest(req, i.newMatcherFunc)
 	if err != nil {
 		return err
 	}

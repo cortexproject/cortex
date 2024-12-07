@@ -81,7 +81,7 @@ func benchmarkBatch(b *testing.B, g TokenGenerator, numInstances, numKeys int) {
 			exe: noOpExecutor,
 		},
 		"workerExecutor": {
-			exe: util.NewWorkerPool(100),
+			exe: util.NewWorkerPool("test", 100, prometheus.NewPedanticRegistry()),
 		},
 	}
 

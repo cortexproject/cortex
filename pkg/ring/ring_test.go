@@ -73,12 +73,29 @@ func benchmarkBatch(b *testing.B, g TokenGenerator, numInstances, numKeys int) {
 	}
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	keys := make([]uint32, numKeys)
-	// Generate a batch of N random keys, and look them up
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		generateKeys(rnd, numKeys, keys)
-		err := DoBatch(ctx, Write, &r, keys, callback, cleanup)
-		require.NoError(b, err)
+
+	tc := map[string]struct {
+		exe util.AsyncExecutor
+	}{
+		"noOpExecutor": {
+			exe: noOpExecutor,
+		},
+		"workerExecutor": {
+			exe: util.NewWorkerPool("test", 100, prometheus.NewPedanticRegistry()),
+		},
+	}
+
+	for n, c := range tc {
+		b.Run(n, func(b *testing.B) {
+			// Generate a batch of N random keys, and look them up
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				generateKeys(rnd, numKeys, keys)
+				err := DoBatch(ctx, Write, &r, c.exe, keys, callback, cleanup)
+				require.NoError(b, err)
+			}
+		})
 	}
 }
 
@@ -167,7 +184,7 @@ func TestDoBatchZeroInstances(t *testing.T) {
 		ringDesc: desc,
 		strategy: NewDefaultReplicationStrategy(),
 	}
-	require.Error(t, DoBatch(ctx, Write, &r, keys, callback, cleanup))
+	require.Error(t, DoBatch(ctx, Write, &r, nil, keys, callback, cleanup))
 }
 
 func TestAddIngester(t *testing.T) {

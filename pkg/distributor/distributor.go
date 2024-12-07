@@ -374,10 +374,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		}, []string{"user"}),
 
 		validateMetrics: validation.NewValidateMetrics(reg),
+		asyncExecutor:   util.NewNoOpExecutor(),
 	}
 
 	if cfg.NumPushWorkers > 0 {
-		d.asyncExecutor = util.NewWorkerPool(cfg.NumPushWorkers)
+		d.asyncExecutor = util.NewWorkerPool("distributor", cfg.NumPushWorkers, reg)
 	}
 
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{

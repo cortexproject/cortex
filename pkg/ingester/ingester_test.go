@@ -5128,6 +5128,42 @@ func TestIngester_instanceLimitsMetrics(t *testing.T) {
 	`), "cortex_ingester_instance_limits"))
 }
 
+func TestIngester_StringInterningRace(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	for i := 0; i < 1; i++ {
+		r := prometheus.NewRegistry()
+		i, err := prepareIngesterWithBlocksStorage(t, cfg, r)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+
+		// Wait until the ingester is ACTIVE
+		test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+			return i.lifecycler.GetState()
+		})
+
+		numberOfTenants := 1000
+		wg := sync.WaitGroup{}
+
+		userId := "user"
+		for k := 0; k < 100; k++ {
+			wg.Add(numberOfTenants)
+			for j := 0; j < numberOfTenants; j++ {
+				go func() {
+					defer wg.Done()
+					ctx := user.InjectOrgID(context.Background(), userId)
+					_, err := i.Push(ctx, cortexpb.ToWriteRequest(
+						[]labels.Labels{labels.FromStrings(labels.MetricName, "foo", "userId", userId, "k", strconv.Itoa(k))}, []cortexpb.Sample{{Value: 2, TimestampMs: 4 * 60 * 60 * 1000}}, nil, nil, cortexpb.API))
+					require.NoError(t, err)
+				}()
+			}
+			wg.Wait()
+		}
+		services.StopAndAwaitTerminated(context.Background(), i)
+	}
+}
+
 func TestExpendedPostingsCacheIsolation(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}

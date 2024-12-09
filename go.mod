@@ -80,6 +80,7 @@ require (
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/google/go-cmp v0.6.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/sercand/kuberesolver/v5 v5.1.1
 	go.opentelemetry.io/collector/pdata v1.21.0
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
@@ -163,7 +164,6 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/hashicorp/golang-lru v0.6.0 // indirect
-	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/jessevdk/go-flags v1.5.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect

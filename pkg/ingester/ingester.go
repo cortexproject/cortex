@@ -440,6 +440,10 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 		return err
 	}
 
+	if u.labelsStringInterningEnabled {
+		metric.InternStrings(u.interner.Intern)
+	}
+
 	return nil
 }
 
@@ -454,9 +458,6 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	}
 	u.seriesInMetric.increaseSeriesForMetric(metricName)
 	u.labelSetCounter.increaseSeriesLabelSet(u, metric)
-	if u.labelsStringInterningEnabled {
-		metric.InternStrings(u.interner.Intern)
-	}
 
 	if u.postingCache != nil {
 		u.postingCache.ExpireSeries(metric)
@@ -475,9 +476,6 @@ func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) 
 		}
 		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 		u.labelSetCounter.decreaseSeriesLabelSet(u, metric)
-		if u.labelsStringInterningEnabled {
-			metric.ReleaseStrings(u.interner.Release)
-		}
 		if u.postingCache != nil {
 			u.postingCache.ExpireSeries(metric)
 		}
@@ -1233,7 +1231,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			} else {
 				// Copy the label set because both TSDB and the active series tracker may retain it.
 				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
-
 				// Retain the reference in case there are multiple samples for the series.
 				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					succeededSamplesCount++
@@ -2201,7 +2198,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 		instanceLimitsFn:             i.getInstanceLimits,
 		instanceSeriesCount:          &i.TSDBState.seriesCount,
-		interner:                     util.NewInterner(),
+		interner:                     util.NewLruInterner(),
 		labelsStringInterningEnabled: i.cfg.LabelsStringInterningEnabled,
 
 		blockRetentionPeriod: i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),

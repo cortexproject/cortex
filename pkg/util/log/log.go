@@ -62,7 +62,8 @@ func InitLogger(cfg *server.Config) {
 
 // PrometheusLogger exposes Prometheus counters for each of go-kit's log levels.
 type PrometheusLogger struct {
-	logger log.Logger
+	logger   log.Logger
+	logLevel logging.Level
 }
 
 // NewPrometheusLogger creates a new instance of PrometheusLogger which exposes
@@ -92,7 +93,8 @@ func newPrometheusLoggerFrom(logger log.Logger, logLevel logging.Level, keyvals 
 		logMessages.WithLabelValues(level.String())
 	}
 	return &PrometheusLogger{
-		logger: logger,
+		logger:   logger,
+		logLevel: logLevel,
 	}
 }
 

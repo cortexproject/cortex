@@ -55,7 +55,7 @@ var (
 	ErrInvalidBucketIndexBlockDiscoveryStrategy         = errors.New("bucket index block discovery strategy can only be enabled when bucket index is enabled")
 	ErrBlockDiscoveryStrategy                           = errors.New("invalid block discovery strategy")
 	ErrInvalidTokenBucketBytesLimiterMode               = errors.New("invalid token bucket bytes limiter mode")
-	ErrInvalidLazyExpandedPostingGroupMaxKeySeriesRatio = errors.New("lazy expanded posting group max key series ratio needs to be greater than 1.0")
+	ErrInvalidLazyExpandedPostingGroupMaxKeySeriesRatio = errors.New("lazy expanded posting group max key series ratio needs to be equal or greater than 0")
 )
 
 // BlocksStorageConfig holds the config information for the blocks storage.
@@ -395,7 +395,7 @@ func (cfg *BucketStoreConfig) Validate() error {
 	if !util.StringsContain(supportedTokenBucketBytesLimiterModes, cfg.TokenBucketBytesLimiter.Mode) {
 		return ErrInvalidTokenBucketBytesLimiterMode
 	}
-	if cfg.LazyExpandedPostingGroupMaxKeySeriesRatio <= 1.0 {
+	if cfg.LazyExpandedPostingGroupMaxKeySeriesRatio < 0 {
 		return ErrInvalidLazyExpandedPostingGroupMaxKeySeriesRatio
 	}
 	return nil

@@ -407,14 +407,26 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 
 func TestPushRace(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
+	l := defaultLimitsTestConfig()
 	cfg.LabelsStringInterningEnabled = true
 	cfg.LifecyclerConfig.JoinAfter = 0
+
+	l.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
+		{
+			LabelSet: labels.FromMap(map[string]string{
+				labels.MetricName: "foo",
+			}),
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 10e10,
+			},
+		},
+	}
+
 	dir := t.TempDir()
 	blocksDir := filepath.Join(dir, "blocks")
-
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, defaultLimitsTestConfig(), nil, blocksDir, prometheus.NewRegistry(), true)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, l, nil, blocksDir, prometheus.NewRegistry(), true)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))

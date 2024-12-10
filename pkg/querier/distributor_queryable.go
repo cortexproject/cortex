@@ -155,8 +155,8 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 
 		serieses = append(serieses, &storage.SeriesEntry{
 			Lset: ls,
-			SampleIteratorFn: func(_ chunkenc.Iterator) chunkenc.Iterator {
-				return q.chunkIterFn(chunks, model.Time(minT), model.Time(maxT))
+			SampleIteratorFn: func(it chunkenc.Iterator) chunkenc.Iterator {
+				return q.chunkIterFn(it, chunks, model.Time(minT), model.Time(maxT))
 			},
 		})
 	}

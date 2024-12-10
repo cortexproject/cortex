@@ -3256,17 +3256,17 @@ grpc_client_config:
   healthcheck_config:
     # The number of consecutive failed health checks required before considering
     # a target unhealthy. 0 means disabled.
-    # CLI flag: -ingester.client.unhealthy-threshold
+    # CLI flag: -ingester.client.healthcheck.unhealthy-threshold
     [unhealthy_threshold: <int> | default = 0]
 
     # The approximate amount of time between health checks of an individual
     # target.
-    # CLI flag: -ingester.client.interval
+    # CLI flag: -ingester.client.healthcheck.interval
     [interval: <duration> | default = 5s]
 
     # The amount of time during which no response from a target means a failed
     # health check.
-    # CLI flag: -ingester.client.timeout
+    # CLI flag: -ingester.client.healthcheck.timeout
     [timeout: <duration> | default = 1s]
 
 # Max inflight push requests that this ingester client can handle. This limit is
@@ -4004,17 +4004,17 @@ store_gateway_client:
   healthcheck_config:
     # The number of consecutive failed health checks required before considering
     # a target unhealthy. 0 means disabled.
-    # CLI flag: -querier.store-gateway-client.unhealthy-threshold
+    # CLI flag: -querier.store-gateway-client.healthcheck.unhealthy-threshold
     [unhealthy_threshold: <int> | default = 0]
 
     # The approximate amount of time between health checks of an individual
     # target.
-    # CLI flag: -querier.store-gateway-client.interval
+    # CLI flag: -querier.store-gateway-client.healthcheck.interval
     [interval: <duration> | default = 5s]
 
     # The amount of time during which no response from a target means a failed
     # health check.
-    # CLI flag: -querier.store-gateway-client.timeout
+    # CLI flag: -querier.store-gateway-client.healthcheck.timeout
     [timeout: <duration> | default = 1s]
 
 # If enabled, store gateway query stats will be logged using `info` log level.

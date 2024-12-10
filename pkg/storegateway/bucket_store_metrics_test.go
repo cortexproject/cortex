@@ -543,6 +543,10 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# HELP cortex_bucket_store_indexheader_lazy_unload_total Total number of index-header lazy unload operations.
 			# TYPE cortex_bucket_store_indexheader_lazy_unload_total counter
 			cortex_bucket_store_indexheader_lazy_unload_total 1.396178e+06
+        	# HELP cortex_bucket_store_lazy_expanded_posting_groups_total Total number of posting groups that are marked as lazy and corresponding reason.
+        	# TYPE cortex_bucket_store_lazy_expanded_posting_groups_total counter
+        	cortex_bucket_store_lazy_expanded_posting_groups_total{reason="keys_limit"} 202671
+        	cortex_bucket_store_lazy_expanded_posting_groups_total{reason="postings_size"} 225190
 			# HELP cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total Total number of series size in bytes overfetched due to posting lazy expansion.
 			# TYPE cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total counter
 			cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total 180152
@@ -687,6 +691,8 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	m.lazyExpandedPostingsCount.Add(6 * base)
 	m.lazyExpandedPostingSizeBytes.Add(7 * base)
 	m.lazyExpandedPostingSeriesOverfetchedSizeBytes.Add(8 * base)
+	m.lazyExpandedPostingGroups.WithLabelValues("keys_limit").Add(9 * base)
+	m.lazyExpandedPostingGroups.WithLabelValues("postings_size").Add(10 * base)
 
 	return reg
 }
@@ -733,6 +739,7 @@ type mockedBucketStoreMetrics struct {
 	indexHeaderLazyLoadDuration      prometheus.Histogram
 
 	lazyExpandedPostingsCount                     prometheus.Counter
+	lazyExpandedPostingGroups                     *prometheus.CounterVec
 	lazyExpandedPostingSizeBytes                  prometheus.Counter
 	lazyExpandedPostingSeriesOverfetchedSizeBytes prometheus.Counter
 }
@@ -916,6 +923,11 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 		Name: "thanos_bucket_store_lazy_expanded_postings_total",
 		Help: "Total number of times when lazy expanded posting optimization applies.",
 	})
+
+	m.lazyExpandedPostingGroups = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_lazy_expanded_posting_groups_total",
+		Help: "Total number of posting groups that are marked as lazy and corresponding reason.",
+	}, []string{"reason"})
 
 	m.lazyExpandedPostingSizeBytes = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_lazy_expanded_posting_size_bytes_total",

@@ -46,6 +46,7 @@ type BucketStoreMetrics struct {
 	chunkFetchDurationSum  *prometheus.Desc
 
 	lazyExpandedPostingsCount                     *prometheus.Desc
+	lazyExpandedPostingGroups                     *prometheus.Desc
 	lazyExpandedPostingSizeBytes                  *prometheus.Desc
 	lazyExpandedPostingSeriesOverfetchedSizeBytes *prometheus.Desc
 
@@ -209,6 +210,10 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"cortex_bucket_store_lazy_expanded_postings_total",
 			"Total number of lazy expanded postings when fetching block series.",
 			nil, nil),
+		lazyExpandedPostingGroups: prometheus.NewDesc(
+			"cortex_bucket_store_lazy_expanded_posting_groups_total",
+			"Total number of posting groups that are marked as lazy and corresponding reason.",
+			[]string{"reason"}, nil),
 		lazyExpandedPostingSizeBytes: prometheus.NewDesc(
 			"cortex_bucket_store_lazy_expanded_posting_size_bytes_total",
 			"Total number of lazy posting group size in bytes.",
@@ -269,6 +274,7 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.indexHeaderLazyLoadDuration
 
 	out <- m.lazyExpandedPostingsCount
+	out <- m.lazyExpandedPostingGroups
 	out <- m.lazyExpandedPostingSizeBytes
 	out <- m.lazyExpandedPostingSeriesOverfetchedSizeBytes
 }
@@ -319,6 +325,7 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.indexHeaderLazyLoadDuration, "thanos_bucket_store_indexheader_lazy_load_duration_seconds")
 
 	data.SendSumOfCounters(out, m.lazyExpandedPostingsCount, "thanos_bucket_store_lazy_expanded_postings_total")
+	data.SendSumOfCountersWithLabels(out, m.lazyExpandedPostingGroups, "thanos_bucket_store_lazy_expanded_posting_groups_total", "reason")
 	data.SendSumOfCounters(out, m.lazyExpandedPostingSizeBytes, "thanos_bucket_store_lazy_expanded_posting_size_bytes_total")
 	data.SendSumOfCounters(out, m.lazyExpandedPostingSeriesOverfetchedSizeBytes, "thanos_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total")
 }

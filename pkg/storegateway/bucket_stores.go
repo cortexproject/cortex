@@ -625,6 +625,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			return u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes
 		}),
 		store.WithLazyExpandedPostings(u.cfg.BucketStore.LazyExpandedPostingsEnabled),
+		store.WithPostingGroupMaxKeySeriesRatio(u.cfg.BucketStore.LazyExpandedPostingGroupMaxKeySeriesRatio),
 		store.WithDontResort(true), // Cortex doesn't need to resort series in store gateway.
 	}
 	if u.logLevel.String() == "debug" {

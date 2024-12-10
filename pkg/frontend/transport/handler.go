@@ -66,6 +66,8 @@ const (
 	limitSeriesStoreGateway = `exceeded series limit`
 	limitChunksStoreGateway = `exceeded chunks limit`
 	limitBytesStoreGateway  = `exceeded bytes limit`
+
+	userAgentUnKnown = "unknown"
 )
 
 // Config for a Handler.
@@ -269,7 +271,12 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeServiceTimingHeader(queryResponseTime, hs, stats)
 	}
 
-	logger := util_log.WithContext(r.Context(), f.log)
+	userAgent := r.Header.Get("User-Agent")
+	if userAgent == "" {
+		userAgent = userAgentUnKnown
+	}
+
+	logger := util_log.WithUserAgent(userAgent, util_log.WithContext(r.Context(), f.log))
 	if err != nil {
 		writeError(logger, w, err, hs)
 		return

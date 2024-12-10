@@ -2692,10 +2692,10 @@ ring:
   # CLI flag: -distributor.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
 
-# Number of go routines to handle push calls from distributors to ingesters.
-# When no workers are available, a new goroutine will be spawned automatically.
-# If set to 0 (default), workers are disabled, and a new goroutine will be
-# created for each push request.
+# EXPERIMENTAL: Number of go routines to handle push calls from distributors to
+# ingesters. When no workers are available, a new goroutine will be spawned
+# automatically. If set to 0 (default), workers are disabled, and a new
+# goroutine will be created for each push request.
 # CLI flag: -distributor.num-push-workers
 [num_push_workers: <int> | default = 0]
 

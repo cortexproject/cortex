@@ -56,6 +56,11 @@ func WithContext(ctx context.Context, l log.Logger) log.Logger {
 	return WithTraceID(traceID, l)
 }
 
+// WithUserAgent returns a Logger that has information about the user agent
+func WithUserAgent(userAgent string, l log.Logger) log.Logger {
+	return log.With(l, "userAgent", userAgent)
+}
+
 // WithSourceIPs returns a Logger that has information about the source IPs in
 // its details.
 func WithSourceIPs(sourceIPs string, l log.Logger) log.Logger {

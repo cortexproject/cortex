@@ -1665,8 +1665,8 @@ github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97 h1:VjG0mwhN1Dkn
 github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97/go.mod h1:vyzFrBXgP+fGNG2FopEGWOO/zrIuoy7zt3LpLeezRsw=
 github.com/thanos-io/promql-engine v0.0.0-20241203103240-2f49f80c7c68 h1:cChM/FbpXeYmrSmXO1/MmmSlONviLVxWAWCB0/g4JrY=
 github.com/thanos-io/promql-engine v0.0.0-20241203103240-2f49f80c7c68/go.mod h1:wx0JlRZtsB2S10JYUgeg5GqLfMxw31SzArP+28yyE00=
-github.com/thanos-io/thanos v0.37.1 h1:PuTMql3S/i5UWlBT0WbCDwwL6Kc6Jf7DLHt2rdj4ivY=
-github.com/thanos-io/thanos v0.37.1/go.mod h1:5Ni7Uc1Bc8UCGOYmZ/2f/LVvDkZKNDdqDJZqjDFG+rI=
+github.com/thanos-io/thanos v0.37.2-0.20241205123958-d0d93dbf3efc h1:LMpGIErJWqv+9FmCHAcl9t+6VL8gn6lptIKDgglbNnU=
+github.com/thanos-io/thanos v0.37.2-0.20241205123958-d0d93dbf3efc/go.mod h1:5Ni7Uc1Bc8UCGOYmZ/2f/LVvDkZKNDdqDJZqjDFG+rI=
 github.com/tjhop/slog-gokit v0.1.2 h1:pmQI4SvU9h4gA0vIQsdhJQSqQg4mOmsPykG2/PM3j1I=
 github.com/tjhop/slog-gokit v0.1.2/go.mod h1:8fhlcp8C8ELbg3GCyKv06tgt4B5sDq2P1r2DQAu1HuM=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=

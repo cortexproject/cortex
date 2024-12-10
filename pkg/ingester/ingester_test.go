@@ -405,6 +405,70 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 
 }
 
+func TestPushRace(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.LabelsStringInterningEnabled = true
+	cfg.LifecyclerConfig.JoinAfter = 0
+	dir := t.TempDir()
+	blocksDir := filepath.Join(dir, "blocks")
+
+	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
+
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, defaultLimitsTestConfig(), nil, blocksDir, prometheus.NewRegistry(), true)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+	// Wait until it's ACTIVE
+	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+		return ing.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	sample1 := cortexpb.Sample{
+		TimestampMs: 0,
+		Value:       1,
+	}
+
+	concurrentRequest := 100
+	numberOfSeries := 100
+	wg := sync.WaitGroup{}
+	wg.Add(numberOfSeries * concurrentRequest)
+	for k := 0; k < numberOfSeries; k++ {
+		for i := 0; i < concurrentRequest; i++ {
+			go func() {
+				defer wg.Done()
+				_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "foo", "userId", userID, "k", strconv.Itoa(k))}, []cortexpb.Sample{sample1}, nil, nil, cortexpb.API))
+				require.NoError(t, err)
+			}()
+		}
+	}
+
+	wg.Wait()
+
+	db := ing.getTSDB(userID)
+	ir, err := db.db.Head().Index()
+	require.NoError(t, err)
+
+	p, err := ir.Postings(ctx, "", "")
+	require.NoError(t, err)
+	p = ir.SortedPostings(p)
+	total := 0
+	var builder labels.ScratchBuilder
+
+	for p.Next() {
+		total++
+		err = ir.Series(p.At(), &builder, nil)
+		require.NoError(t, err)
+		lbls := builder.Labels()
+		require.Equal(t, "foo", lbls.Get(labels.MetricName))
+		require.Equal(t, "1", lbls.Get("userId"))
+		require.NotEmpty(t, lbls.Get("k"))
+		builder.Reset()
+	}
+	require.Equal(t, numberOfSeries, total)
+	require.Equal(t, uint64(numberOfSeries), db.Head().NumSeries())
+}
+
 func TestIngesterUserLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.MaxLocalSeriesPerUser = 1

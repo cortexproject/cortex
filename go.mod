@@ -53,7 +53,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97
 	github.com/thanos-io/promql-engine v0.0.0-20241203103240-2f49f80c7c68
-	github.com/thanos-io/thanos v0.37.1
+	github.com/thanos-io/thanos v0.37.2-0.20241205123958-d0d93dbf3efc
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 	go.etcd.io/etcd/api/v3 v3.5.17

@@ -34,9 +34,9 @@ type HealthCheckConfig struct {
 
 // RegisterFlagsWithPrefix for Config.
 func (cfg *HealthCheckConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.Int64Var(&cfg.UnhealthyThreshold, prefix+".unhealthy-threshold", 0, "The number of consecutive failed health checks required before considering a target unhealthy. 0 means disabled.")
-	f.DurationVar(&cfg.Timeout, prefix+".timeout", 1*time.Second, "The amount of time during which no response from a target means a failed health check.")
-	f.DurationVar(&cfg.Interval, prefix+".interval", 5*time.Second, "The approximate amount of time between health checks of an individual target.")
+	f.Int64Var(&cfg.UnhealthyThreshold, prefix+".healthcheck.unhealthy-threshold", 0, "The number of consecutive failed health checks required before considering a target unhealthy. 0 means disabled.")
+	f.DurationVar(&cfg.Timeout, prefix+".healthcheck.timeout", 1*time.Second, "The amount of time during which no response from a target means a failed health check.")
+	f.DurationVar(&cfg.Interval, prefix+".healthcheck.interval", 5*time.Second, "The approximate amount of time between health checks of an individual target.")
 }
 
 type healthCheckClient struct {

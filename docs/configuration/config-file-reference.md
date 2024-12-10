@@ -1949,6 +1949,14 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.lazy-expanded-postings-enabled
   [lazy_expanded_postings_enabled: <boolean> | default = false]
 
+  # Mark posting group as lazy if it fetches more keys than R * max series the
+  # query should fetch. With R set to 100, a posting group which fetches 100K
+  # keys will be marked as lazy if the current query only fetches 1000 series.
+  # This config is only valid if lazy expanded posting is enabled. 0 disables
+  # the limit.
+  # CLI flag: -blocks-storage.bucket-store.lazy-expanded-posting-group-max-key-series-ratio
+  [lazy_expanded_posting_group_max_key_series_ratio: <float> | default = 100]
+
   # Controls how many series to fetch per batch in Store Gateway. Default value
   # is 10000.
   # CLI flag: -blocks-storage.bucket-store.series-batch-size

@@ -143,8 +143,8 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 
 // ValidateSampleTimestamp returns an err if the sample timestamp is invalid.
 // The returned error may retain the provided series labels.
-func ValidateSampleTimestamp(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, timestampMs int64) ValidationError {
-	unsafeMetricName, _ := extract.UnsafeMetricNameFromLabelAdapters(ls)
+func ValidateSampleTimestamp(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelPair, timestampMs int64) ValidationError {
+	unsafeMetricName, _ := extract.MetricNameFromLabelAdapters(ls)
 
 	if limits.RejectOldSamples && model.Time(timestampMs) < model.Now().Add(-time.Duration(limits.RejectOldSamplesMaxAge)) {
 		validateMetrics.DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
@@ -161,10 +161,10 @@ func ValidateSampleTimestamp(validateMetrics *ValidateMetrics, limits *Limits, u
 
 // ValidateExemplar returns an error if the exemplar is invalid.
 // The returned error may retain the provided series labels.
-func ValidateExemplar(validateMetrics *ValidateMetrics, userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exemplar) ValidationError {
+func ValidateExemplar(validateMetrics *ValidateMetrics, userID string, ls []cortexpb.LabelPair, e cortexpb.Exemplar) ValidationError {
 	if len(e.Labels) <= 0 {
 		validateMetrics.DiscardedExemplars.WithLabelValues(exemplarLabelsMissing, userID).Inc()
-		return newExemplarEmtpyLabelsError(ls, []cortexpb.LabelAdapter{}, e.TimestampMs)
+		return newExemplarEmtpyLabelsError(ls, []cortexpb.LabelPair{}, e.TimestampMs)
 	}
 
 	if e.TimestampMs == 0 {
@@ -198,9 +198,9 @@ func ValidateExemplar(validateMetrics *ValidateMetrics, userID string, ls []cort
 
 // ValidateLabels returns an err if the labels are invalid.
 // The returned error may retain the provided series labels.
-func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) ValidationError {
+func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelPair, skipLabelNameValidation bool) ValidationError {
 	if limits.EnforceMetricName {
-		unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
+		unsafeMetricName, err := extract.MetricNameFromLabelAdapters(ls)
 		if err != nil {
 			validateMetrics.DiscardedSamples.WithLabelValues(missingMetricName, userID).Inc()
 			return newNoMetricNameError()
@@ -288,7 +288,7 @@ func ValidateMetadata(validateMetrics *ValidateMetrics, cfg *Limits, userID stri
 	return nil
 }
 
-func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, histogramSample cortexpb.Histogram) (cortexpb.Histogram, error) {
+func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelPair, histogramSample cortexpb.Histogram) (cortexpb.Histogram, error) {
 	if limits.MaxNativeHistogramBuckets == 0 {
 		return histogramSample, nil
 	}

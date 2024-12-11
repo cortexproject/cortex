@@ -156,13 +156,13 @@ func TestIngesterStreaming(t *testing.T) {
 			&client.QueryStreamResponse{
 				Chunkseries: []client.TimeSeriesChunk{
 					{
-						Labels: []cortexpb.LabelAdapter{
+						Labels: []cortexpb.LabelPair{
 							{Name: "bar", Value: "baz"},
 						},
 						Chunks: clientChunks,
 					},
 					{
-						Labels: []cortexpb.LabelAdapter{
+						Labels: []cortexpb.LabelPair{
 							{Name: "foo", Value: "bar"},
 						},
 						Chunks: clientChunks,

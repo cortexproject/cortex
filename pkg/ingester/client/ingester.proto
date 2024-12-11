@@ -138,7 +138,7 @@ message MetricsMetadataResponse {
 message TimeSeriesChunk {
   string from_ingester_id = 1;
   string user_id = 2;
-  repeated cortexpb.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
+  repeated cortexpb.LabelPair labels = 3 [(gogoproto.nullable) = false];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
 }
 

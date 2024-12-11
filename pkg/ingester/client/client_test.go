@@ -24,7 +24,7 @@ func TestMarshall(t *testing.T) {
 		for i := 0; i < numSeries; i++ {
 			req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseries{
 				TimeSeries: &cortexpb.TimeSeries{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: "foo", Value: strconv.Itoa(i)},
 					},
 					Samples: []cortexpb.Sample{

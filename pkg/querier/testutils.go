@@ -72,7 +72,7 @@ func (m *MockLimitingDistributor) QueryStream(ctx context.Context, from, to mode
 	var (
 		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
-	s := make([][]cortexpb.LabelAdapter, 0, len(m.response.Chunkseries))
+	s := make([][]cortexpb.LabelPair, 0, len(m.response.Chunkseries))
 
 	response := &client.QueryStreamResponse{}
 	for _, series := range m.response.Chunkseries {

@@ -68,7 +68,7 @@ func TestFromValue(t *testing.T) {
 			err: false,
 			expected: []tripperware.SampleStream{
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
@@ -80,7 +80,7 @@ func TestFromValue(t *testing.T) {
 					},
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: "a", Value: "a2"},
 						{Name: "b", Value: "b2"},
 					},
@@ -122,7 +122,7 @@ func TestFromValue(t *testing.T) {
 			err: false,
 			expected: []tripperware.SampleStream{
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
@@ -138,7 +138,7 @@ func TestFromValue(t *testing.T) {
 					},
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: "a", Value: "a2"},
 						{Name: "b", Value: "b2"},
 					},

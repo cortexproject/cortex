@@ -98,7 +98,7 @@ func mockPrometheusResponse(numSeries, numSamplesPerSeries int) *tripperware.Pro
 		}
 
 		// Generate random labels.
-		lbls := make([]cortexpb.LabelAdapter, 10)
+		lbls := make([]cortexpb.LabelPair, 10)
 		for i := range lbls {
 			lbls[i].Name = "a_medium_size_label_name"
 			lbls[i].Value = "a_medium_size_label_value_that_is_used_to_benchmark_marshalling"

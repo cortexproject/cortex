@@ -71,7 +71,7 @@ func TestRemoteReadHandler(t *testing.T) {
 			{
 				Timeseries: []cortexpb.TimeSeries{
 					{
-						Labels: []cortexpb.LabelAdapter{
+						Labels: []cortexpb.LabelPair{
 							{Name: "foo", Value: "bar"},
 						},
 						Samples: []cortexpb.Sample{

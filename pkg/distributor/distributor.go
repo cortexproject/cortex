@@ -494,12 +494,12 @@ func (d *Distributor) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
-func (d *Distributor) tokenForLabels(userID string, labels []cortexpb.LabelAdapter) (uint32, error) {
+func (d *Distributor) tokenForLabels(userID string, labels []cortexpb.LabelPair) (uint32, error) {
 	if d.cfg.ShardByAllLabels {
 		return shardByAllLabels(userID, labels), nil
 	}
 
-	unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(labels)
+	unsafeMetricName, err := extract.MetricNameFromLabelAdapters(labels)
 	if err != nil {
 		return 0, err
 	}
@@ -529,7 +529,7 @@ func shardByUser(userID string) uint32 {
 }
 
 // This function generates different values for different order of same labels.
-func shardByAllLabels(userID string, labels []cortexpb.LabelAdapter) uint32 {
+func shardByAllLabels(userID string, labels []cortexpb.LabelPair) uint32 {
 	h := shardByUser(userID)
 	for _, label := range labels {
 		if len(label.Value) > 0 {
@@ -541,7 +541,7 @@ func shardByAllLabels(userID string, labels []cortexpb.LabelAdapter) uint32 {
 }
 
 // Remove the label labelname from a slice of LabelPairs if it exists.
-func removeLabel(labelName string, labels *[]cortexpb.LabelAdapter) {
+func removeLabel(labelName string, labels *[]cortexpb.LabelPair) {
 	for i := 0; i < len(*labels); i++ {
 		pair := (*labels)[i]
 		if pair.Name == labelName {
@@ -1014,7 +1014,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	return seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
 }
 
-func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
+func sortLabelsIfNeeded(labels []cortexpb.LabelPair) {
 	// no need to run sort.Slice, if labels are already sorted, which is most of the time.
 	// we can avoid extra memory allocations (mostly interface-related) this way.
 	sorted := true
@@ -1271,7 +1271,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
 				return nil, validation.LimitError(err.Error())
 			}
-			s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
+			s := make([][]cortexpb.LabelPair, 0, len(resp.Metric))
 			for _, m := range resp.Metric {
 				s = append(s, m.Labels)
 				m := cortexpb.FromLabelAdaptersToMetric(m.Labels)
@@ -1309,7 +1309,7 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 				} else if err != nil {
 					return nil, err
 				}
-				s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
+				s := make([][]cortexpb.LabelPair, 0, len(resp.Metric))
 				for _, metric := range resp.Metric {
 					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)
 					s = append(s, metric.Labels)
@@ -1519,9 +1519,9 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func findHALabels(replicaLabel, clusterLabel string, labels []cortexpb.LabelAdapter) (string, string) {
+func findHALabels(replicaLabel, clusterLabel string, labels []cortexpb.LabelPair) (string, string) {
 	var cluster, replica string
-	var pair cortexpb.LabelAdapter
+	var pair cortexpb.LabelPair
 
 	for _, pair = range labels {
 		if pair.Name == replicaLabel {

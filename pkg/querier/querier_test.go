@@ -279,14 +279,14 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		unorderedResponse := client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: model.MetricNameLabel, Value: "foo"},
 						{Name: "order", Value: "2"},
 					},
 					Chunks: clientChks2,
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: model.MetricNameLabel, Value: "foo"},
 						{Name: "order", Value: "1"},
 					},
@@ -401,35 +401,35 @@ func TestLimits(t *testing.T) {
 		streamResponse := client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: model.MetricNameLabel, Value: "foo"},
 						{Name: "order", Value: "2"},
 					},
 					Chunks: clientChks,
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: model.MetricNameLabel, Value: "foo"},
 						{Name: "order", Value: "1"},
 					},
 					Chunks: clientChks,
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: model.MetricNameLabel, Value: "foo"},
 						{Name: "orders", Value: "3"},
 					},
 					Chunks: clientChks,
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: model.MetricNameLabel, Value: "bar"},
 						{Name: "orders", Value: "2"},
 					},
 					Chunks: clientChks,
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: model.MetricNameLabel, Value: "bar"},
 						{Name: "orders", Value: "1"},
 					},
@@ -1333,7 +1333,7 @@ func mockDistibutorFor(t *testing.T, cks []chunk.Chunk) *MockDistributor {
 	require.NoError(t, err)
 
 	tsc := client.TimeSeriesChunk{
-		Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "foo"}},
+		Labels: []cortexpb.LabelPair{{Name: model.MetricNameLabel, Value: "foo"}},
 		Chunks: chunks,
 	}
 

@@ -103,7 +103,7 @@ func TestMetricMetadataToMetricTypeToMetricType(t *testing.T) {
 }
 
 func TestFromLabelAdaptersToLabels(t *testing.T) {
-	input := []LabelAdapter{{Name: "hello", Value: "world"}}
+	input := []LabelPair{{Name: "hello", Value: "world"}}
 	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
 	actual := FromLabelAdaptersToLabels(input)
 
@@ -115,7 +115,7 @@ func TestFromLabelAdaptersToLabels(t *testing.T) {
 }
 
 func TestFromLabelAdaptersToLabelsWithCopy(t *testing.T) {
-	input := []LabelAdapter{{Name: "hello", Value: "world"}}
+	input := []LabelPair{{Name: "hello", Value: "world"}}
 	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
 	actual := FromLabelAdaptersToLabelsWithCopy(input)
 
@@ -127,7 +127,7 @@ func TestFromLabelAdaptersToLabelsWithCopy(t *testing.T) {
 }
 
 func BenchmarkFromLabelAdaptersToLabelsWithCopy(b *testing.B) {
-	input := []LabelAdapter{
+	input := []LabelPair{
 		{Name: "hello", Value: "world"},
 		{Name: "some label", Value: "and its value"},
 		{Name: "long long long long long label name", Value: "perhaps even longer label value, but who's counting anyway?"}}

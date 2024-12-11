@@ -1142,7 +1142,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			}
 		}
 
-		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels) (rollback bool) {
+		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelPair, copiedLabels labels.Labels) (rollback bool) {
 			// Check if the error is a soft error we can proceed on. If so, we keep track
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
@@ -3071,7 +3071,7 @@ func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB, queryIngesters
 	return
 }
 
-func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []cortexpb.LabelAdapter) error {
+func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []cortexpb.LabelPair) error {
 	if ingestErr == nil {
 		return nil
 	}
@@ -3084,7 +3084,7 @@ func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []cortex
 	}
 }
 
-func wrappedTSDBIngestExemplarErr(ingestErr error, timestamp model.Time, seriesLabels, exemplarLabels []cortexpb.LabelAdapter) error {
+func wrappedTSDBIngestExemplarErr(ingestErr error, timestamp model.Time, seriesLabels, exemplarLabels []cortexpb.LabelPair) error {
 	if ingestErr == nil {
 		return nil
 	}

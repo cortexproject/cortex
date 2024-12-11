@@ -723,7 +723,7 @@ func TestGetIgnoreSeriesLimitForMetricNamesMap(t *testing.T) {
 }
 
 func TestIngester_Push(t *testing.T) {
-	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabelAdapters := []cortexpb.LabelPair{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	metricNames := []string{
 		"cortex_ingester_ingested_samples_total",
@@ -886,15 +886,15 @@ func TestIngester_Push(t *testing.T) {
 					Timeseries: []cortexpb.PreallocTimeseries{
 						{
 							TimeSeries: &cortexpb.TimeSeries{
-								Labels: []cortexpb.LabelAdapter{metricLabelAdapters[0]}, // Cannot reuse test slice var because it is cleared and returned to the pool
+								Labels: []cortexpb.LabelPair{metricLabelAdapters[0]}, // Cannot reuse test slice var because it is cleared and returned to the pool
 								Exemplars: []cortexpb.Exemplar{
 									{
-										Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}},
+										Labels:      []cortexpb.LabelPair{{Name: "traceID", Value: "123"}},
 										TimestampMs: 1000,
 										Value:       1000,
 									},
 									{
-										Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "456"}},
+										Labels:      []cortexpb.LabelPair{{Name: "traceID", Value: "456"}},
 										TimestampMs: 1001,
 										Value:       1001,
 									},
@@ -913,12 +913,12 @@ func TestIngester_Push(t *testing.T) {
 					Labels: metricLabelAdapters,
 					Exemplars: []cortexpb.Exemplar{
 						{
-							Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}},
+							Labels:      []cortexpb.LabelPair{{Name: "traceID", Value: "123"}},
 							TimestampMs: 1000,
 							Value:       1000,
 						},
 						{
-							Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "456"}},
+							Labels:      []cortexpb.LabelPair{{Name: "traceID", Value: "456"}},
 							TimestampMs: 1001,
 							Value:       1001,
 						},
@@ -1292,10 +1292,10 @@ func TestIngester_Push(t *testing.T) {
 					Timeseries: []cortexpb.PreallocTimeseries{
 						{
 							TimeSeries: &cortexpb.TimeSeries{
-								Labels: []cortexpb.LabelAdapter{metricLabelAdapters[0]}, // Cannot reuse test slice var because it is cleared and returned to the pool
+								Labels: []cortexpb.LabelPair{metricLabelAdapters[0]}, // Cannot reuse test slice var because it is cleared and returned to the pool
 								Exemplars: []cortexpb.Exemplar{
 									{
-										Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}},
+										Labels:      []cortexpb.LabelPair{{Name: "traceID", Value: "123"}},
 										TimestampMs: 1000,
 										Value:       1000,
 									},
@@ -1305,7 +1305,7 @@ func TestIngester_Push(t *testing.T) {
 					},
 				},
 			},
-			expectedErr:              httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestExemplarErr(errExemplarRef, model.Time(1000), cortexpb.FromLabelsToLabelAdapters(metricLabels), []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}}), userID).Error()),
+			expectedErr:              httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestExemplarErr(errExemplarRef, model.Time(1000), cortexpb.FromLabelsToLabelAdapters(metricLabels), []cortexpb.LabelPair{{Name: "traceID", Value: "123"}}), userID).Error()),
 			expectedIngested:         nil,
 			expectedMetadataIngested: nil,
 			additionalMetrics: []string{
@@ -1624,7 +1624,7 @@ func TestIngester_Push(t *testing.T) {
 
 // Referred from https://github.com/prometheus/prometheus/blob/v2.52.1/model/histogram/histogram_test.go#L985.
 func TestIngester_PushNativeHistogramErrors(t *testing.T) {
-	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabelAdapters := []cortexpb.LabelPair{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	for _, tc := range []struct {
 		name        string
@@ -1796,7 +1796,7 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 }
 
 func TestIngester_Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testing.T) {
-	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabelAdapters := []cortexpb.LabelPair{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	metricNames := []string{
 		"cortex_ingester_ingested_samples_total",
@@ -1883,7 +1883,7 @@ func TestIngester_Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testi
 }
 
 func TestIngester_Push_DecreaseInactiveSeries(t *testing.T) {
-	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabelAdapters := []cortexpb.LabelPair{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	metricNames := []string{
 		"cortex_ingester_memory_series_created_total",
@@ -1981,7 +1981,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 	})
 
 	// Push a single time series to set the TSDB min time.
-	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabelAdapters := []cortexpb.LabelPair{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	startTime := util.TimeToMillis(time.Now())
 
@@ -5017,7 +5017,7 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 			reqs: map[string][]*cortexpb.WriteRequest{
 				"test": {
 					cortexpb.ToWriteRequest(
-						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}})},
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelPair{{Name: labels.MetricName, Value: "test"}})},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						[]*cortexpb.MetricMetadata{
 							{MetricFamilyName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: cortexpb.COUNTER},
@@ -5035,14 +5035,14 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 			reqs: map[string][]*cortexpb.WriteRequest{
 				"test": {
 					cortexpb.ToWriteRequest(
-						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelPair{{Name: labels.MetricName, Value: "test1"}})},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						nil,
 						nil,
 						cortexpb.API),
 
 					cortexpb.ToWriteRequest(
-						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test2"}})}, // another series
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelPair{{Name: labels.MetricName, Value: "test2"}})}, // another series
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
 						nil,
 						nil,
@@ -5059,7 +5059,7 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 			reqs: map[string][]*cortexpb.WriteRequest{
 				"user1": {
 					cortexpb.ToWriteRequest(
-						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelPair{{Name: labels.MetricName, Value: "test1"}})},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						nil,
 						nil,
@@ -5068,7 +5068,7 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 
 				"user2": {
 					cortexpb.ToWriteRequest(
-						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test2"}})}, // another series
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelPair{{Name: labels.MetricName, Value: "test2"}})}, // another series
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
 						nil,
 						nil,
@@ -5084,14 +5084,14 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 			reqs: map[string][]*cortexpb.WriteRequest{
 				"user1": {
 					cortexpb.ToWriteRequest(
-						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelPair{{Name: labels.MetricName, Value: "test1"}})},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						nil,
 						nil,
 						cortexpb.API),
 
 					cortexpb.ToWriteRequest(
-						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelPair{{Name: labels.MetricName, Value: "test1"}})},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
 						nil,
 						nil,

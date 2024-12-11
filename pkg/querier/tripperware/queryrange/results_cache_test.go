@@ -83,7 +83,7 @@ var (
 					Matrix: &tripperware.Matrix{
 						SampleStreams: []tripperware.SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []cortexpb.LabelPair{
 									{Name: "foo", Value: "bar"},
 								},
 								Samples: []cortexpb.Sample{
@@ -108,7 +108,7 @@ var (
 					Matrix: &tripperware.Matrix{
 						SampleStreams: []tripperware.SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []cortexpb.LabelPair{
 									{Name: "foo", Value: "bar"},
 								},
 								Samples: []cortexpb.Sample{
@@ -133,7 +133,7 @@ var (
 					Matrix: &tripperware.Matrix{
 						SampleStreams: []tripperware.SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []cortexpb.LabelPair{
 									{Name: "foo", Value: "bar"},
 								},
 								Samples: []cortexpb.Sample{
@@ -183,7 +183,7 @@ func mkAPIResponseWithStats(start, end, step int64, withStats bool, oldFormat bo
 				Stats:      stats,
 				Result: []tripperware.SampleStream{
 					{
-						Labels: []cortexpb.LabelAdapter{
+						Labels: []cortexpb.LabelPair{
 							{Name: "foo", Value: "bar"},
 						},
 						Samples: samples,
@@ -203,7 +203,7 @@ func mkAPIResponseWithStats(start, end, step int64, withStats bool, oldFormat bo
 					Matrix: &tripperware.Matrix{
 						SampleStreams: []tripperware.SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []cortexpb.LabelPair{
 									{Name: "foo", Value: "bar"},
 								},
 								Samples: samples,

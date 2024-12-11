@@ -118,7 +118,7 @@ func TestResponse(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
@@ -151,7 +151,7 @@ func TestResponse(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
@@ -184,7 +184,7 @@ func TestResponse(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
@@ -216,7 +216,7 @@ func TestResponse(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
@@ -244,7 +244,7 @@ func TestResponse(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
@@ -333,7 +333,7 @@ func TestResponseWithStats(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
@@ -370,7 +370,7 @@ func TestResponseWithStats(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
@@ -528,7 +528,7 @@ func TestMergeAPIResponses(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{},
+											Labels: []cortexpb.LabelPair{},
 											Samples: []cortexpb.Sample{
 												{Value: 0, TimestampMs: 0},
 												{Value: 1, TimestampMs: 1},
@@ -548,7 +548,7 @@ func TestMergeAPIResponses(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{},
+											Labels: []cortexpb.LabelPair{},
 											Samples: []cortexpb.Sample{
 												{Value: 2, TimestampMs: 2},
 												{Value: 3, TimestampMs: 3},
@@ -570,7 +570,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{},
+										Labels: []cortexpb.LabelPair{},
 										Samples: []cortexpb.Sample{
 											{Value: 0, TimestampMs: 0},
 											{Value: 1, TimestampMs: 1},
@@ -600,7 +600,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 0, TimestampMs: 0},
 											{Value: 1, TimestampMs: 1000},
@@ -630,7 +630,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 1, TimestampMs: 1000},
 											{Value: 2, TimestampMs: 2000},
@@ -659,7 +659,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 1, TimestampMs: 1000},
 											{Value: 2, TimestampMs: 2000},
@@ -691,7 +691,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 1, TimestampMs: 1000},
 										},
@@ -719,7 +719,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 1, TimestampMs: 1000},
 										},
@@ -746,7 +746,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 2, TimestampMs: 2000},
 											{Value: 3, TimestampMs: 3000},
@@ -772,7 +772,7 @@ func TestMergeAPIResponses(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{},
+											Labels: []cortexpb.LabelPair{},
 											Samples: []cortexpb.Sample{
 												{Value: 0, TimestampMs: 0},
 												{Value: 1, TimestampMs: 1},
@@ -792,7 +792,7 @@ func TestMergeAPIResponses(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{},
+											Labels: []cortexpb.LabelPair{},
 											Samples: []cortexpb.Sample{
 												{Value: 2, TimestampMs: 2},
 												{Value: 3, TimestampMs: 3},
@@ -889,7 +889,7 @@ func TestMergeAPIResponses(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{},
+											Labels: []cortexpb.LabelPair{},
 											Samples: []cortexpb.Sample{
 												{Value: 0, TimestampMs: 0},
 												{Value: 1, TimestampMs: 1},
@@ -916,7 +916,7 @@ func TestMergeAPIResponses(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{},
+											Labels: []cortexpb.LabelPair{},
 											Samples: []cortexpb.Sample{
 												{Value: 2, TimestampMs: 2},
 												{Value: 3, TimestampMs: 3},
@@ -945,7 +945,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{},
+										Labels: []cortexpb.LabelPair{},
 										Samples: []cortexpb.Sample{
 											{Value: 0, TimestampMs: 0},
 											{Value: 1, TimestampMs: 1},
@@ -984,7 +984,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 1, TimestampMs: 1000},
 											{Value: 2, TimestampMs: 2000},
@@ -1022,7 +1022,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 1, TimestampMs: 1000},
 											{Value: 2, TimestampMs: 2000},
@@ -1067,7 +1067,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 1, TimestampMs: 1000},
 											{Value: 2, TimestampMs: 2000},
@@ -1108,7 +1108,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 2, TimestampMs: 2000},
 											{Value: 3, TimestampMs: 3000},
@@ -1147,7 +1147,7 @@ func TestMergeAPIResponses(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 2, TimestampMs: 2000},
 											{Value: 3, TimestampMs: 3000},
@@ -1219,7 +1219,7 @@ func TestCompressedResponse(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+										Labels: []cortexpb.LabelPair{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 										Samples: []cortexpb.Sample{
 											{Value: 2, TimestampMs: 2000},
 											{Value: 3, TimestampMs: 3000},

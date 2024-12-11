@@ -186,7 +186,7 @@ func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distribu
 	return promConverter.TimeSeries(), nil
 }
 
-func makeLabels(in []prompb.Label) []cortexpb.LabelAdapter {
+func makeLabels(in []prompb.Label) []cortexpb.LabelPair {
 	out := make(labels.Labels, 0, len(in))
 	for _, l := range in {
 		out = append(out, labels.Label{Name: l.Name, Value: l.Value})

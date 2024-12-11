@@ -21,7 +21,7 @@ type ValidationError error
 type genericValidationError struct {
 	message string
 	cause   string
-	series  []cortexpb.LabelAdapter
+	series  []cortexpb.LabelPair
 }
 
 func (e *genericValidationError) Error() string {
@@ -32,7 +32,7 @@ func (e *genericValidationError) Error() string {
 // formatted in different order in Error.
 type labelNameTooLongError struct {
 	labelName string
-	series    []cortexpb.LabelAdapter
+	series    []cortexpb.LabelPair
 	limit     int
 }
 
@@ -40,7 +40,7 @@ func (e *labelNameTooLongError) Error() string {
 	return fmt.Sprintf("label name too long for metric (actual: %d, limit: %d) metric: %.200q label name: %.200q", len(e.labelName), e.limit, formatLabelSet(e.series), e.labelName)
 }
 
-func newLabelNameTooLongError(series []cortexpb.LabelAdapter, labelName string, limit int) ValidationError {
+func newLabelNameTooLongError(series []cortexpb.LabelPair, labelName string, limit int) ValidationError {
 	return &labelNameTooLongError{
 		labelName: labelName,
 		series:    series,
@@ -53,7 +53,7 @@ func newLabelNameTooLongError(series []cortexpb.LabelAdapter, labelName string, 
 type labelValueTooLongError struct {
 	labelName  string
 	labelValue string
-	series     []cortexpb.LabelAdapter
+	series     []cortexpb.LabelPair
 	limit      int
 }
 
@@ -62,7 +62,7 @@ func (e *labelValueTooLongError) Error() string {
 		len(e.labelValue), e.limit, formatLabelSet(e.series), e.labelName, e.labelValue)
 }
 
-func newLabelValueTooLongError(series []cortexpb.LabelAdapter, labelName, labelValue string, limit int) ValidationError {
+func newLabelValueTooLongError(series []cortexpb.LabelPair, labelName, labelValue string, limit int) ValidationError {
 	return &labelValueTooLongError{
 		labelName:  labelName,
 		labelValue: labelValue,
@@ -75,7 +75,7 @@ func newLabelValueTooLongError(series []cortexpb.LabelAdapter, labelName, labelV
 // formatted in different order in Error.
 type labelsSizeBytesExceededError struct {
 	labelsSizeBytes int
-	series          []cortexpb.LabelAdapter
+	series          []cortexpb.LabelPair
 	limit           int
 }
 
@@ -83,7 +83,7 @@ func (e *labelsSizeBytesExceededError) Error() string {
 	return fmt.Sprintf("labels size bytes exceeded for metric (actual: %d, limit: %d) metric: %.200q", e.labelsSizeBytes, e.limit, formatLabelSet(e.series))
 }
 
-func labelSizeBytesExceededError(series []cortexpb.LabelAdapter, labelsSizeBytes int, limit int) ValidationError {
+func labelSizeBytesExceededError(series []cortexpb.LabelPair, labelsSizeBytes int, limit int) ValidationError {
 	return &labelsSizeBytesExceededError{
 		labelsSizeBytes: labelsSizeBytes,
 		series:          series,
@@ -91,7 +91,7 @@ func labelSizeBytesExceededError(series []cortexpb.LabelAdapter, labelsSizeBytes
 	}
 }
 
-func newInvalidLabelError(series []cortexpb.LabelAdapter, labelName string) ValidationError {
+func newInvalidLabelError(series []cortexpb.LabelPair, labelName string) ValidationError {
 	return &genericValidationError{
 		message: "sample invalid label: %.200q metric %.200q",
 		cause:   labelName,
@@ -99,7 +99,7 @@ func newInvalidLabelError(series []cortexpb.LabelAdapter, labelName string) Vali
 	}
 }
 
-func newDuplicatedLabelError(series []cortexpb.LabelAdapter, labelName string) ValidationError {
+func newDuplicatedLabelError(series []cortexpb.LabelPair, labelName string) ValidationError {
 	return &genericValidationError{
 		message: "duplicate label name: %.200q metric %.200q",
 		cause:   labelName,
@@ -107,7 +107,7 @@ func newDuplicatedLabelError(series []cortexpb.LabelAdapter, labelName string) V
 	}
 }
 
-func newLabelsNotSortedError(series []cortexpb.LabelAdapter, labelName string) ValidationError {
+func newLabelsNotSortedError(series []cortexpb.LabelPair, labelName string) ValidationError {
 	return &genericValidationError{
 		message: "labels not sorted: %.200q metric %.200q",
 		cause:   labelName,
@@ -116,11 +116,11 @@ func newLabelsNotSortedError(series []cortexpb.LabelAdapter, labelName string) V
 }
 
 type tooManyLabelsError struct {
-	series []cortexpb.LabelAdapter
+	series []cortexpb.LabelPair
 	limit  int
 }
 
-func newTooManyLabelsError(series []cortexpb.LabelAdapter, limit int) ValidationError {
+func newTooManyLabelsError(series []cortexpb.LabelPair, limit int) ValidationError {
 	return &tooManyLabelsError{
 		series: series,
 		limit:  limit,
@@ -187,8 +187,8 @@ func newSampleTimestampTooNewError(metricName string, timestamp int64) Validatio
 // exemplarValidationError is a ValidationError implementation suitable for exemplar validation errors.
 type exemplarValidationError struct {
 	message        string
-	seriesLabels   []cortexpb.LabelAdapter
-	exemplarLabels []cortexpb.LabelAdapter
+	seriesLabels   []cortexpb.LabelPair
+	exemplarLabels []cortexpb.LabelPair
 	timestamp      int64
 }
 
@@ -196,7 +196,7 @@ func (e *exemplarValidationError) Error() string {
 	return fmt.Sprintf(e.message, e.timestamp, cortexpb.FromLabelAdaptersToLabels(e.seriesLabels).String(), cortexpb.FromLabelAdaptersToLabels(e.exemplarLabels).String())
 }
 
-func newExemplarEmtpyLabelsError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
+func newExemplarEmtpyLabelsError(seriesLabels []cortexpb.LabelPair, exemplarLabels []cortexpb.LabelPair, timestamp int64) ValidationError {
 	return &exemplarValidationError{
 		message:        "exemplar missing labels, timestamp: %d series: %s labels: %s",
 		seriesLabels:   seriesLabels,
@@ -205,7 +205,7 @@ func newExemplarEmtpyLabelsError(seriesLabels []cortexpb.LabelAdapter, exemplarL
 	}
 }
 
-func newExemplarMissingTimestampError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
+func newExemplarMissingTimestampError(seriesLabels []cortexpb.LabelPair, exemplarLabels []cortexpb.LabelPair, timestamp int64) ValidationError {
 	return &exemplarValidationError{
 		message:        "exemplar missing timestamp, timestamp: %d series: %s labels: %s",
 		seriesLabels:   seriesLabels,
@@ -216,7 +216,7 @@ func newExemplarMissingTimestampError(seriesLabels []cortexpb.LabelAdapter, exem
 
 var labelLenMsg = "exemplar combined labelset exceeds " + strconv.Itoa(ExemplarMaxLabelSetLength) + " characters, timestamp: %d series: %s labels: %s"
 
-func newExemplarLabelLengthError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
+func newExemplarLabelLengthError(seriesLabels []cortexpb.LabelPair, exemplarLabels []cortexpb.LabelPair, timestamp int64) ValidationError {
 	return &exemplarValidationError{
 		message:        labelLenMsg,
 		seriesLabels:   seriesLabels,
@@ -228,11 +228,11 @@ func newExemplarLabelLengthError(seriesLabels []cortexpb.LabelAdapter, exemplarL
 // histogramBucketLimitExceededError is a ValidationError implementation for samples with native histogram
 // exceeding max bucket limit and cannot reduce resolution further to be within the max bucket limit.
 type histogramBucketLimitExceededError struct {
-	series []cortexpb.LabelAdapter
+	series []cortexpb.LabelPair
 	limit  int
 }
 
-func newHistogramBucketLimitExceededError(series []cortexpb.LabelAdapter, limit int) ValidationError {
+func newHistogramBucketLimitExceededError(series []cortexpb.LabelPair, limit int) ValidationError {
 	return &histogramBucketLimitExceededError{
 		series: series,
 		limit:  limit,
@@ -246,7 +246,7 @@ func (e *histogramBucketLimitExceededError) Error() string {
 // formatLabelSet formats label adapters as a metric name with labels, while preserving
 // label order, and keeping duplicates. If there are multiple "__name__" labels, only
 // first one is used as metric name, other ones will be included as regular labels.
-func formatLabelSet(ls []cortexpb.LabelAdapter) string {
+func formatLabelSet(ls []cortexpb.LabelPair) string {
 	metricName, hasMetricName := "", false
 
 	labelStrings := make([]string, 0, len(ls))

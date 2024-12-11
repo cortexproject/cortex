@@ -21,8 +21,8 @@ func TestMergeExemplars(t *testing.T) {
 	exemplar3 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-3")), TimestampMs: now + 4, Value: 3}
 	exemplar4 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-4")), TimestampMs: now + 8, Value: 7}
 	exemplar5 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-4")), TimestampMs: now, Value: 7}
-	labels1 := []cortexpb.LabelAdapter{{Name: "label1", Value: "foo1"}}
-	labels2 := []cortexpb.LabelAdapter{{Name: "label1", Value: "foo2"}}
+	labels1 := []cortexpb.LabelPair{{Name: "label1", Value: "foo1"}}
+	labels2 := []cortexpb.LabelPair{{Name: "label1", Value: "foo2"}}
 
 	for i, c := range []struct {
 		seriesA       []cortexpb.TimeSeries

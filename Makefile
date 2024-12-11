@@ -218,6 +218,9 @@ lint:
 test:
 	go test -tags netgo -timeout 30m -race -count 1 ./...
 
+test-no-race:
+	go test -tags netgo -timeout 30m -count 1 ./...
+
 cover:
 	$(eval COVERDIR := $(shell mktemp -d coverage.XXXXXXXXXX))
 	$(eval COVERFILE := $(shell mktemp $(COVERDIR)/unit.XXXXXXXXXX))

@@ -61,6 +61,24 @@ jobs:
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Run Tests
         run: make BUILD_IN_CONTAINER=false test
+  test-no-race:
+    runs-on: ubuntu-20.04
+    container:
+      image: quay.io/cortexproject/build-image:master-0ddced051
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Setup Git safe.directory
+        run: |
+          echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
+          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
+          git config --system --add safe.directory $GITHUB_WORKSPACE
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Run Tests
+        run: make BUILD_IN_CONTAINER=false test-no-race
 
   security:
     name: CodeQL

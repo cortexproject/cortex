@@ -40,12 +40,10 @@ message RuleDesc {
   string alert = 3;
   google.protobuf.Duration for = 4 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true];
   repeated cortexpb.LabelPair labels = 5 [
-    (gogoproto.nullable) = false,
-    (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"
+    (gogoproto.nullable) = false
   ];
   repeated cortexpb.LabelPair annotations = 6 [
-    (gogoproto.nullable) = false,
-    (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"
+    (gogoproto.nullable) = false
   ];
   google.protobuf.Duration keepFiringFor = 13 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true, (gogoproto.jsontag) = "keep_firing_for"];
 }

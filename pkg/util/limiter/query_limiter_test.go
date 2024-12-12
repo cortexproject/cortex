@@ -46,7 +46,7 @@ func TestQueryLimiter_AddSeriers_ShouldReturnErrorOnLimitExceeded(t *testing.T) 
 	)
 
 	var (
-		series1 = []cortexpb.LabelAdapter{
+		series1 = []cortexpb.LabelPair{
 			{
 				Name:  labels.MetricName,
 				Value: metricName + "_1",
@@ -57,7 +57,7 @@ func TestQueryLimiter_AddSeriers_ShouldReturnErrorOnLimitExceeded(t *testing.T) 
 			},
 		}
 
-		series1OtherOrderLabels = []cortexpb.LabelAdapter{
+		series1OtherOrderLabels = []cortexpb.LabelPair{
 			{
 				Name:  "series1",
 				Value: "1",
@@ -94,10 +94,10 @@ func TestQueryLimiter_AddSeriesBatch_ShouldReturnErrorOnLimitExceeded(t *testing
 	)
 
 	limiter := NewQueryLimiter(10, 0, 0, 0)
-	series := make([][]cortexpb.LabelAdapter, 0, 10)
+	series := make([][]cortexpb.LabelPair, 0, 10)
 
 	for i := 0; i < 10; i++ {
-		s := []cortexpb.LabelAdapter{
+		s := []cortexpb.LabelPair{
 			{
 				Name:  labels.MetricName,
 				Value: fmt.Sprintf("%v_%v", metricName, i),
@@ -108,7 +108,7 @@ func TestQueryLimiter_AddSeriesBatch_ShouldReturnErrorOnLimitExceeded(t *testing
 	err := limiter.AddSeries(series...)
 	require.NoError(t, err)
 
-	series1 := []cortexpb.LabelAdapter{
+	series1 := []cortexpb.LabelPair{
 		{
 			Name:  labels.MetricName,
 			Value: metricName + "_11",
@@ -169,7 +169,7 @@ func AddSeriesConcurrentBench(b *testing.B, batchSize int) {
 		}
 
 		for i := 0; i < len(series); i += batchSize {
-			s := make([][]cortexpb.LabelAdapter, 0, batchSize)
+			s := make([][]cortexpb.LabelPair, 0, batchSize)
 			j := i + batchSize
 			if j > len(series) {
 				j = len(series)

@@ -57,10 +57,10 @@ func FromResult(res *promql.Result) ([]tripperware.SampleStream, error) {
 	return nil, errors.Errorf("Unexpected value type: [%s]", res.Value.Type())
 }
 
-func mapLabels(ls labels.Labels) []cortexpb.LabelAdapter {
-	result := make([]cortexpb.LabelAdapter, 0, len(ls))
+func mapLabels(ls labels.Labels) []cortexpb.LabelPair {
+	result := make([]cortexpb.LabelPair, 0, len(ls))
 	for _, l := range ls {
-		result = append(result, cortexpb.LabelAdapter(l))
+		result = append(result, cortexpb.LabelPair(l))
 	}
 
 	return result

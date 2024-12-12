@@ -66,13 +66,13 @@ func TestProtobufCodec_Encode(t *testing.T) {
 							Vector: &tripperware.Vector{
 								Samples: []tripperware.Sample{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "__name__", Value: "foo"},
 										},
 										Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
 									},
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "__name__", Value: "bar"},
 										},
 										Sample: &cortexpb.Sample{Value: 2, TimestampMs: 2000},
@@ -124,7 +124,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "__name__", Value: "foo"},
 										},
 										Samples: []cortexpb.Sample{
@@ -132,7 +132,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 										},
 									},
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "__name__", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
@@ -165,7 +165,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "__name__", Value: "foo"},
 										},
 										Samples: []cortexpb.Sample{
@@ -205,7 +205,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "__name__", Value: "foo"},
 											{Name: "__job__", Value: "bar"},
 										},
@@ -241,7 +241,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "__name__", Value: "foo"},
 										},
 										Histograms: []tripperware.SampleHistogramPair{
@@ -331,7 +331,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 							Vector: &tripperware.Vector{
 								Samples: []tripperware.Sample{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "__name__", Value: "foo"},
 										},
 										Histogram: &tripperware.SampleHistogramPair{
@@ -421,7 +421,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 							Vector: &tripperware.Vector{
 								Samples: []tripperware.Sample{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "__name__", Value: "foo"},
 										},
 										RawHistogram: &testProtoHistogram,

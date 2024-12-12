@@ -66,7 +66,7 @@ func QueryLimiterFromContextWithFallback(ctx context.Context) *QueryLimiter {
 }
 
 // AddSeries adds the batch of input series and returns an error if the limit is reached.
-func (ql *QueryLimiter) AddSeries(series ...[]cortexpb.LabelAdapter) error {
+func (ql *QueryLimiter) AddSeries(series ...[]cortexpb.LabelPair) error {
 	// If the max series is unlimited just return without managing map
 	if ql.maxSeriesPerQuery == 0 {
 		return nil

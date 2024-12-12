@@ -145,7 +145,7 @@ func TestParseProtoReader(t *testing.T) {
 			Timeseries: []cortexpb.PreallocTimeseries{
 				{
 					TimeSeries: &cortexpb.TimeSeries{
-						Labels: []cortexpb.LabelAdapter{
+						Labels: []cortexpb.LabelPair{
 							{Name: "foo", Value: "bar"},
 						},
 						Samples: []cortexpb.Sample{

@@ -9,20 +9,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLabelAdapter_Marshal(t *testing.T) {
+func TestLabelPair_Marshal(t *testing.T) {
 	tests := []struct {
-		bs *LabelAdapter
+		bs *LabelPair
 	}{
-		{&LabelAdapter{Name: "foo", Value: "bar"}},
-		{&LabelAdapter{Name: "very long label name", Value: "very long label value"}},
-		{&LabelAdapter{Name: "", Value: "foo"}},
-		{&LabelAdapter{}},
+		{&LabelPair{Name: "foo", Value: "bar"}},
+		{&LabelPair{Name: "very long label name", Value: "very long label value"}},
+		{&LabelPair{Name: "", Value: "foo"}},
+		{&LabelPair{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.bs.Name, func(t *testing.T) {
 			bytes, err := tt.bs.Marshal()
 			require.NoError(t, err)
-			lbs := &LabelAdapter{}
+			lbs := &LabelPair{}
 			require.NoError(t, lbs.Unmarshal(bytes))
 			require.EqualValues(t, tt.bs, lbs)
 		})
@@ -57,7 +57,7 @@ func TestTimeseriesFromPool(t *testing.T) {
 
 	t.Run("instance is cleaned before reusing", func(t *testing.T) {
 		ts := TimeseriesFromPool()
-		ts.Labels = []LabelAdapter{{Name: "foo", Value: "bar"}}
+		ts.Labels = []LabelPair{{Name: "foo", Value: "bar"}}
 		ts.Samples = []Sample{{Value: 1, TimestampMs: 2}}
 		ReuseTimeseries(ts)
 
@@ -72,7 +72,7 @@ func BenchmarkMarshallWriteRequest(b *testing.B) {
 
 	for i := 0; i < 100; i++ {
 		ts = append(ts, PreallocTimeseries{TimeSeries: TimeseriesFromPool()})
-		ts[i].Labels = []LabelAdapter{
+		ts[i].Labels = []LabelPair{
 			{Name: "foo", Value: "bar"},
 			{Name: "very long label name", Value: "very long label value"},
 			{Name: "very long label name 2", Value: "very long label value 2"},

@@ -59,14 +59,14 @@ func (w *WriteRequest) AddHistogramTimeSeries(lbls []labels.Labels, histograms [
 //
 // Note: while resulting labels.Labels is supposedly sorted, this function
 // doesn't enforce that. If input is not sorted, output will be wrong.
-func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
+func FromLabelAdaptersToLabels(ls []LabelPair) labels.Labels {
 	return *(*labels.Labels)(unsafe.Pointer(&ls))
 }
 
 // FromLabelAdaptersToLabelsWithCopy converts []LabelAdapter to labels.Labels.
 // Do NOT use unsafe to convert between data types because this function may
 // get in input labels whose data structure is reused.
-func FromLabelAdaptersToLabelsWithCopy(input []LabelAdapter) labels.Labels {
+func FromLabelAdaptersToLabelsWithCopy(input []LabelPair) labels.Labels {
 	return CopyLabels(FromLabelAdaptersToLabels(input))
 }
 
@@ -107,29 +107,29 @@ func copyStringToBuffer(in string, buf []byte) (string, []byte) {
 // FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.
 // It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
 // This allows us to use labels.Labels directly in protos.
-func FromLabelsToLabelAdapters(ls labels.Labels) []LabelAdapter {
-	return *(*[]LabelAdapter)(unsafe.Pointer(&ls))
+func FromLabelsToLabelAdapters(ls labels.Labels) []LabelPair {
+	return *(*[]LabelPair)(unsafe.Pointer(&ls))
 }
 
 // FromLabelAdaptersToMetric converts []LabelAdapter to a model.Metric.
 // Don't do this on any performance sensitive paths.
-func FromLabelAdaptersToMetric(ls []LabelAdapter) model.Metric {
+func FromLabelAdaptersToMetric(ls []LabelPair) model.Metric {
 	return util.LabelsToMetric(FromLabelAdaptersToLabels(ls))
 }
 
 // FromLabelAdaptersToMetric converts []LabelAdapter to a model.Metric with copy.
 // Don't do this on any performance sensitive paths.
-func FromLabelAdaptersToMetricWithCopy(ls []LabelAdapter) model.Metric {
+func FromLabelAdaptersToMetricWithCopy(ls []LabelPair) model.Metric {
 	return util.LabelsToMetric(FromLabelAdaptersToLabelsWithCopy(ls))
 }
 
 // FromMetricsToLabelAdapters converts model.Metric to []LabelAdapter.
 // Don't do this on any performance sensitive paths.
 // The result is sorted.
-func FromMetricsToLabelAdapters(metric model.Metric) []LabelAdapter {
-	result := make([]LabelAdapter, 0, len(metric))
+func FromMetricsToLabelAdapters(metric model.Metric) []LabelPair {
+	result := make([]LabelPair, 0, len(metric))
 	for k, v := range metric {
-		result = append(result, LabelAdapter{
+		result = append(result, LabelPair{
 			Name:  string(k),
 			Value: string(v),
 		})
@@ -162,7 +162,7 @@ func FromExemplarProtosToExemplars(es []Exemplar) []exemplar.Exemplar {
 	return result
 }
 
-type byLabel []LabelAdapter
+type byLabel []LabelPair
 
 func (s byLabel) Len() int           { return len(s) }
 func (s byLabel) Less(i, j int) bool { return strings.Compare(s[i].Name, s[j].Name) < 0 }

@@ -91,7 +91,7 @@ func createCortexWriteRequestProtobuf(t *testing.T, skipLabelNameValidation bool
 	t.Helper()
 	ts := cortexpb.PreallocTimeseries{
 		TimeSeries: &cortexpb.TimeSeries{
-			Labels: []cortexpb.LabelAdapter{
+			Labels: []cortexpb.LabelPair{
 				{Name: "__name__", Value: "foo"},
 			},
 			Samples: []cortexpb.Sample{

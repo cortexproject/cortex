@@ -102,11 +102,11 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 	for i := 0; i < sampleStreamsLen; i++ {
 		sampleStream := data.Result.(promql.Matrix)[i]
 		labelsLen := len(sampleStream.Metric)
-		var labels []cortexpb.LabelAdapter
+		var labels []cortexpb.LabelPair
 		if labelsLen > 0 {
-			labels = make([]cortexpb.LabelAdapter, labelsLen)
+			labels = make([]cortexpb.LabelPair, labelsLen)
 			for j := 0; j < labelsLen; j++ {
-				labels[j] = cortexpb.LabelAdapter{
+				labels[j] = cortexpb.LabelPair{
 					Name:  sampleStream.Metric[j].Name,
 					Value: sampleStream.Metric[j].Value,
 				}
@@ -159,11 +159,11 @@ func getVectorSamples(data *v1.QueryData, cortexInternal bool) *[]tripperware.Sa
 	for i := 0; i < vectorSamplesLen; i++ {
 		sample := data.Result.(promql.Vector)[i]
 		labelsLen := len(sample.Metric)
-		var labels []cortexpb.LabelAdapter
+		var labels []cortexpb.LabelPair
 		if labelsLen > 0 {
-			labels = make([]cortexpb.LabelAdapter, labelsLen)
+			labels = make([]cortexpb.LabelPair, labelsLen)
 			for j := 0; j < labelsLen; j++ {
-				labels[j] = cortexpb.LabelAdapter{
+				labels[j] = cortexpb.LabelPair{
 					Name:  sample.Metric[j].Name,
 					Value: sample.Metric[j].Value,
 				}

@@ -301,7 +301,7 @@ func FromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
 }
 
 // FastFingerprint runs the same algorithm as Prometheus labelSetToFastFingerprint()
-func FastFingerprint(ls []cortexpb.LabelAdapter) model.Fingerprint {
+func FastFingerprint(ls []cortexpb.LabelPair) model.Fingerprint {
 	if len(ls) == 0 {
 		return model.Metric(nil).FastFingerprint()
 	}

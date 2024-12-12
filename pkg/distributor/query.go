@@ -266,7 +266,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 				return nil, validation.LimitError(chunkLimitErr.Error())
 			}
 
-			s := make([][]cortexpb.LabelAdapter, 0, len(resp.Chunkseries))
+			s := make([][]cortexpb.LabelPair, 0, len(resp.Chunkseries))
 			for _, series := range resp.Chunkseries {
 				s = append(s, series.Labels)
 			}

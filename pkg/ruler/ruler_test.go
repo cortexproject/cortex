@@ -645,14 +645,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "rulename", Value: "rtest_user1_group1_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "alertname", Value: "atest_user1_group1_rule_1"},
 				},
 			},
@@ -661,7 +661,7 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "rulename", Value: "rtest_user1_group2_rule_1"},
 				},
 			},
@@ -670,7 +670,7 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "rulename", Value: "rtest_user2_group1_rule_1"},
 				},
 			},
@@ -679,14 +679,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "rulename", Value: "rtest_user1_group3_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "alertname", Value: "atest_user1_group3_rule_1"},
 				},
 			},
@@ -695,14 +695,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "rulename", Value: "rtest_user2_group1_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "alertname", Value: "atest_user2_group1_rule_1"},
 				},
 			},
@@ -711,14 +711,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user2_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "rulename", Value: "rtest_user2_group2_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user2_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "alertname", Value: "atest_user2_group2_rule_1"},
 				},
 			},
@@ -727,7 +727,7 @@ func TestGetRules(t *testing.T) {
 			{
 				Alert: "atest_user3_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "alertname", Value: "atest_user3_group1_rule_1"},
 				},
 			},
@@ -736,14 +736,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "rulename", Value: "rtest_user2_group1_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "alertname", Value: "atest_user2_group1_rule_1"},
 				},
 			},
@@ -752,14 +752,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Record: "rtest_user1_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "rulename", Value: "rtest_user2_group2_rule_1"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "alertname", Value: "atest_user2_group2_rule_1"},
 				},
 			},
@@ -768,14 +768,14 @@ func TestGetRules(t *testing.T) {
 			{
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
 				Record: "rtest_user1_1",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "templatedlabel", Value: "{{ $externalURL }}"},
 				},
 			},
 			{
 				Alert: "atest_user1_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "alertname", Value: "atest_user3_group1_rule_1"},
 				},
 			},
@@ -1438,17 +1438,17 @@ func TestGetRulesFromBackup(t *testing.T) {
 		{
 			Record: "rtest_user1_2",
 			Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-			Labels: []cortexpb.LabelAdapter{
+			Labels: []cortexpb.LabelPair{
 				{Name: "key", Value: "val"},
 			},
 		},
 		{
 			Alert: "atest_user1_2",
 			Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-			Labels: []cortexpb.LabelAdapter{
+			Labels: []cortexpb.LabelPair{
 				{Name: "key", Value: "val"},
 			},
-			Annotations: []cortexpb.LabelAdapter{
+			Annotations: []cortexpb.LabelPair{
 				{Name: "aKey", Value: "aVal"},
 			},
 			For:           10 * time.Second,
@@ -1653,17 +1653,17 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 			{
 				Record: "rtest_user1_2",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "key", Value: "val"},
 				},
 			},
 			{
 				Alert: "atest_user1_2",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "key", Value: "val"},
 				},
-				Annotations: []cortexpb.LabelAdapter{
+				Annotations: []cortexpb.LabelPair{
 					{Name: "aKey", Value: "aVal"},
 				},
 				For:           10 * time.Second,
@@ -2763,7 +2763,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: labels.MetricName, Value: "ALERTS_FOR_STATE"},
 						{Name: labels.AlertName, Value: mockRules["user1"][0].GetRules()[0].Alert},
 					},

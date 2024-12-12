@@ -99,7 +99,7 @@ func createWriteRequest(numTs int, exemplar bool, family string, help string, un
 	for i := 0; i < numTs; i++ {
 		w.Timeseries = append(w.Timeseries, PreallocTimeseries{
 			TimeSeries: &TimeSeries{
-				Labels: []LabelAdapter{
+				Labels: []LabelPair{
 					{
 						Name:  fmt.Sprintf("Name-%v", i),
 						Value: fmt.Sprintf("Value-%v", i),
@@ -111,7 +111,7 @@ func createWriteRequest(numTs int, exemplar bool, family string, help string, un
 		if exemplar {
 			w.Timeseries[i].Exemplars = []Exemplar{
 				{
-					Labels: []LabelAdapter{
+					Labels: []LabelPair{
 						{
 							Name:  fmt.Sprintf("Ex-Name-%v", i),
 							Value: fmt.Sprintf("Ex-Value-%v", i),

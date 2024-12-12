@@ -14,35 +14,13 @@ var (
 )
 
 // MetricNameFromLabelAdapters extracts the metric name from a list of LabelPairs.
-// The returned metric name string is a copy of the label value.
-func MetricNameFromLabelAdapters(labels []cortexpb.LabelAdapter) (string, error) {
-	unsafeMetricName, err := UnsafeMetricNameFromLabelAdapters(labels)
-	if err != nil {
-		return "", err
-	}
-
-	// Force a string copy since LabelAdapter is often a pointer into
-	// a large gRPC buffer which we don't want to keep alive on the heap.
-	return string([]byte(unsafeMetricName)), nil
-}
-
-// UnsafeMetricNameFromLabelAdapters extracts the metric name from a list of LabelPairs.
-// The returned metric name string is a reference to the label value (no copy).
-func UnsafeMetricNameFromLabelAdapters(labels []cortexpb.LabelAdapter) (string, error) {
+func MetricNameFromLabelAdapters(labels []cortexpb.LabelPair) (string, error) {
 	for _, label := range labels {
 		if label.Name == model.MetricNameLabel {
 			return label.Value, nil
 		}
 	}
 	return "", errNoMetricNameLabel
-}
-
-// MetricNameFromMetric extract the metric name from a model.Metric
-func MetricNameFromMetric(m model.Metric) (model.LabelValue, error) {
-	if value, found := m[model.MetricNameLabel]; found {
-		return value, nil
-	}
-	return "", fmt.Errorf("no MetricNameLabel for chunk")
 }
 
 // MetricNameMatcherFromMatchers extracts the metric name from a set of matchers

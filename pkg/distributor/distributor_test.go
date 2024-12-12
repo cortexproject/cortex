@@ -1377,7 +1377,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 		writeReq = &cortexpb.WriteRequest{}
 		for i := 0; i < maxChunksLimit; i++ {
 			writeReq.Timeseries = append(writeReq.Timeseries,
-				makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: fmt.Sprintf("another_series_%d", i)}}, 0, 0, histogram),
+				makeWriteRequestTimeseries([]cortexpb.LabelPair{{Name: model.MetricNameLabel, Value: fmt.Sprintf("another_series_%d", i)}}, 0, 0, histogram),
 			)
 		}
 
@@ -1438,7 +1438,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 		// Push more series to exceed the limit once we'll query back all series.
 		writeReq = &cortexpb.WriteRequest{}
 		writeReq.Timeseries = append(writeReq.Timeseries,
-			makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0, histogram),
+			makeWriteRequestTimeseries([]cortexpb.LabelPair{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0, histogram),
 		)
 
 		writeRes, err = ds[0].Push(ctx, writeReq)
@@ -1480,7 +1480,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 		// Push a single series to allow us to calculate the chunk size to calculate the limit for the test.
 		writeReq := &cortexpb.WriteRequest{}
 		writeReq.Timeseries = append(writeReq.Timeseries,
-			makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0, histogram),
+			makeWriteRequestTimeseries([]cortexpb.LabelPair{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0, histogram),
 		)
 		writeRes, err := ds[0].Push(ctx, writeReq)
 		assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
@@ -1514,7 +1514,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 		// Push another series to exceed the chunk bytes limit once we'll query back all series.
 		writeReq = &cortexpb.WriteRequest{}
 		writeReq.Timeseries = append(writeReq.Timeseries,
-			makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series_1"}}, 0, 0, histogram),
+			makeWriteRequestTimeseries([]cortexpb.LabelPair{{Name: model.MetricNameLabel, Value: "another_series_1"}}, 0, 0, histogram),
 		)
 
 		writeRes, err = ds[0].Push(ctx, writeReq)
@@ -1556,7 +1556,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimitIsR
 		// Push a single series to allow us to calculate the label size to calculate the limit for the test.
 		writeReq := &cortexpb.WriteRequest{}
 		writeReq.Timeseries = append(writeReq.Timeseries,
-			makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0, histogram),
+			makeWriteRequestTimeseries([]cortexpb.LabelPair{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0, histogram),
 		)
 
 		writeRes, err := ds[0].Push(ctx, writeReq)
@@ -1591,7 +1591,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimitIsR
 		// Push another series to exceed the chunk bytes limit once we'll query back all series.
 		writeReq = &cortexpb.WriteRequest{}
 		writeReq.Timeseries = append(writeReq.Timeseries,
-			makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series_1"}}, 0, 0, histogram),
+			makeWriteRequestTimeseries([]cortexpb.LabelPair{{Name: model.MetricNameLabel, Value: "another_series_1"}}, 0, 0, histogram),
 		)
 
 		writeRes, err = ds[0].Push(ctx, writeReq)
@@ -3001,7 +3001,7 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histogr
 	request := &cortexpb.WriteRequest{}
 	for i := 0; i < samples; i++ {
 		request.Timeseries = append(request.Timeseries, makeWriteRequestTimeseries(
-			[]cortexpb.LabelAdapter{
+			[]cortexpb.LabelPair{
 				{Name: model.MetricNameLabel, Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: fmt.Sprintf("%d", i)},
@@ -3010,7 +3010,7 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histogr
 
 	for i := 0; i < histograms; i++ {
 		request.Timeseries = append(request.Timeseries, makeWriteRequestTimeseries(
-			[]cortexpb.LabelAdapter{
+			[]cortexpb.LabelPair{
 				{Name: model.MetricNameLabel, Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "histogram", Value: fmt.Sprintf("%d", i)},
@@ -3029,7 +3029,7 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histogr
 	return request
 }
 
-func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts int64, value int, histogram bool) cortexpb.PreallocTimeseries {
+func makeWriteRequestTimeseries(labels []cortexpb.LabelPair, ts int64, value int, histogram bool) cortexpb.PreallocTimeseries {
 	t := cortexpb.PreallocTimeseries{
 		TimeSeries: &cortexpb.TimeSeries{
 			Labels: labels,
@@ -3051,7 +3051,7 @@ func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *c
 	for i := 0; i < samples; i++ {
 		ts := cortexpb.PreallocTimeseries{
 			TimeSeries: &cortexpb.TimeSeries{
-				Labels: []cortexpb.LabelAdapter{
+				Labels: []cortexpb.LabelPair{
 					{Name: "__name__", Value: "foo"},
 					{Name: "__replica__", Value: replica},
 					{Name: "bar", Value: "baz"},
@@ -3119,7 +3119,7 @@ func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.Write
 		if cluster == "" && replica == "" {
 			ts = cortexpb.PreallocTimeseries{
 				TimeSeries: &cortexpb.TimeSeries{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: "__name__", Value: "foo"},
 						{Name: "bar", Value: "baz"},
 					},
@@ -3128,7 +3128,7 @@ func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.Write
 		} else if cluster == "" && replica != "" {
 			ts = cortexpb.PreallocTimeseries{
 				TimeSeries: &cortexpb.TimeSeries{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: "__name__", Value: "foo"},
 						{Name: "__replica__", Value: replica},
 						{Name: "bar", Value: "baz"},
@@ -3138,7 +3138,7 @@ func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.Write
 		} else if cluster != "" && replica == "" {
 			ts = cortexpb.PreallocTimeseries{
 				TimeSeries: &cortexpb.TimeSeries{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: "__name__", Value: "foo"},
 						{Name: "bar", Value: "baz"},
 						{Name: "cluster", Value: cluster},
@@ -3148,7 +3148,7 @@ func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.Write
 		} else {
 			ts = cortexpb.PreallocTimeseries{
 				TimeSeries: &cortexpb.TimeSeries{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []cortexpb.LabelPair{
 						{Name: "__name__", Value: "foo"},
 						{Name: "__replica__", Value: replica},
 						{Name: "bar", Value: "baz"},
@@ -3182,7 +3182,7 @@ func makeWriteRequestExemplar(seriesLabels []string, timestamp int64, exemplarLa
 		Timeseries: []cortexpb.PreallocTimeseries{
 			{
 				TimeSeries: &cortexpb.TimeSeries{
-					// Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "test"}},
+					// Labels: []cortexpb.LabelPair{{Name: model.MetricNameLabel, Value: "test"}},
 					Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(seriesLabels...)),
 					Exemplars: []cortexpb.Exemplar{
 						{
@@ -3328,7 +3328,7 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 		if !ok {
 			// Make a copy because the request Timeseries are reused
 			item := cortexpb.TimeSeries{
-				Labels:  make([]cortexpb.LabelAdapter, len(series.TimeSeries.Labels)),
+				Labels:  make([]cortexpb.LabelPair, len(series.TimeSeries.Labels)),
 				Samples: make([]cortexpb.Sample, len(series.TimeSeries.Samples)),
 			}
 
@@ -3594,7 +3594,7 @@ func (i *mockIngester) AllUserStats(ctx context.Context, in *client.UserStatsReq
 	return &i.stats, nil
 }
 
-func match(labels []cortexpb.LabelAdapter, matchers []*labels.Matcher) bool {
+func match(labels []cortexpb.LabelPair, matchers []*labels.Matcher) bool {
 outer:
 	for _, matcher := range matchers {
 		for _, labels := range labels {
@@ -3739,18 +3739,18 @@ func TestRemoveReplicaLabel(t *testing.T) {
 	replicaLabel := "replica"
 	clusterLabel := "cluster"
 	cases := []struct {
-		labelsIn  []cortexpb.LabelAdapter
-		labelsOut []cortexpb.LabelAdapter
+		labelsIn  []cortexpb.LabelPair
+		labelsOut []cortexpb.LabelPair
 	}{
 		// Replica label is present
 		{
-			labelsIn: []cortexpb.LabelAdapter{
+			labelsIn: []cortexpb.LabelPair{
 				{Name: "__name__", Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: "1"},
 				{Name: "replica", Value: replicaLabel},
 			},
-			labelsOut: []cortexpb.LabelAdapter{
+			labelsOut: []cortexpb.LabelPair{
 				{Name: "__name__", Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: "1"},
@@ -3758,13 +3758,13 @@ func TestRemoveReplicaLabel(t *testing.T) {
 		},
 		// Replica label is not present
 		{
-			labelsIn: []cortexpb.LabelAdapter{
+			labelsIn: []cortexpb.LabelPair{
 				{Name: "__name__", Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: "1"},
 				{Name: "cluster", Value: clusterLabel},
 			},
-			labelsOut: []cortexpb.LabelAdapter{
+			labelsOut: []cortexpb.LabelPair{
 				{Name: "__name__", Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: "1"},
@@ -3782,13 +3782,13 @@ func TestRemoveReplicaLabel(t *testing.T) {
 // This is not great, but we deal with unsorted labels when validating labels.
 func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
 	t.Parallel()
-	val1 := shardByAllLabels("test", []cortexpb.LabelAdapter{
+	val1 := shardByAllLabels("test", []cortexpb.LabelPair{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},
 		{Name: "sample", Value: "1"},
 	})
 
-	val2 := shardByAllLabels("test", []cortexpb.LabelAdapter{
+	val2 := shardByAllLabels("test", []cortexpb.LabelPair{
 		{Name: "__name__", Value: "foo"},
 		{Name: "sample", Value: "1"},
 		{Name: "bar", Value: "baz"},
@@ -3799,7 +3799,7 @@ func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
 
 func TestSortLabels(t *testing.T) {
 	t.Parallel()
-	sorted := []cortexpb.LabelAdapter{
+	sorted := []cortexpb.LabelPair{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},
 		{Name: "cluster", Value: "cluster"},
@@ -3811,7 +3811,7 @@ func TestSortLabels(t *testing.T) {
 		sortLabelsIfNeeded(sorted)
 	}))
 
-	unsorted := []cortexpb.LabelAdapter{
+	unsorted := []cortexpb.LabelPair{
 		{Name: "__name__", Value: "foo"},
 		{Name: "sample", Value: "1"},
 		{Name: "cluster", Value: "cluster"},
@@ -4099,11 +4099,11 @@ func TestFindHALabels(t *testing.T) {
 		replica string
 	}
 	cases := []struct {
-		labelsIn []cortexpb.LabelAdapter
+		labelsIn []cortexpb.LabelPair
 		expected expectedOutput
 	}{
 		{
-			[]cortexpb.LabelAdapter{
+			[]cortexpb.LabelPair{
 				{Name: "__name__", Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: "1"},
@@ -4112,7 +4112,7 @@ func TestFindHALabels(t *testing.T) {
 			expectedOutput{cluster: "", replica: "1"},
 		},
 		{
-			[]cortexpb.LabelAdapter{
+			[]cortexpb.LabelPair{
 				{Name: "__name__", Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: "1"},
@@ -4121,7 +4121,7 @@ func TestFindHALabels(t *testing.T) {
 			expectedOutput{cluster: "cluster-2", replica: ""},
 		},
 		{
-			[]cortexpb.LabelAdapter{
+			[]cortexpb.LabelPair{
 				{Name: "__name__", Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: "1"},

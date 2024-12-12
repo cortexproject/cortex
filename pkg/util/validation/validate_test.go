@@ -50,7 +50,7 @@ func TestValidateLabels(t *testing.T) {
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid", "foo ": "bar"},
 			false,
-			newInvalidLabelError([]cortexpb.LabelAdapter{
+			newInvalidLabelError([]cortexpb.LabelPair{
 				{Name: model.MetricNameLabel, Value: "valid"},
 				{Name: "foo ", Value: "bar"},
 			}, "foo "),
@@ -63,7 +63,7 @@ func TestValidateLabels(t *testing.T) {
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelName", "this_is_a_really_really_long_name_that_should_cause_an_error": "test_value_please_ignore"},
 			false,
-			newLabelNameTooLongError([]cortexpb.LabelAdapter{
+			newLabelNameTooLongError([]cortexpb.LabelPair{
 				{Name: model.MetricNameLabel, Value: "badLabelName"},
 				{Name: "this_is_a_really_really_long_name_that_should_cause_an_error", Value: "test_value_please_ignore"},
 			}, "this_is_a_really_really_long_name_that_should_cause_an_error", cfg.MaxLabelNameLength),
@@ -71,7 +71,7 @@ func TestValidateLabels(t *testing.T) {
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelValue", "much_shorter_name": "test_value_please_ignore_no_really_nothing_to_see_here"},
 			false,
-			newLabelValueTooLongError([]cortexpb.LabelAdapter{
+			newLabelValueTooLongError([]cortexpb.LabelPair{
 				{Name: model.MetricNameLabel, Value: "badLabelValue"},
 				{Name: "much_shorter_name", Value: "test_value_please_ignore_no_really_nothing_to_see_here"},
 			}, "much_shorter_name", "test_value_please_ignore_no_really_nothing_to_see_here", cfg.MaxLabelValueLength),
@@ -79,7 +79,7 @@ func TestValidateLabels(t *testing.T) {
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "bar": "baz", "blip": "blop"},
 			false,
-			newTooManyLabelsError([]cortexpb.LabelAdapter{
+			newTooManyLabelsError([]cortexpb.LabelPair{
 				{Name: model.MetricNameLabel, Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "blip", Value: "blop"},
@@ -88,7 +88,7 @@ func TestValidateLabels(t *testing.T) {
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "exactly_twenty_five_chars", "exactly_twenty_five_chars": "exactly_twenty_five_chars"},
 			false,
-			labelSizeBytesExceededError([]cortexpb.LabelAdapter{
+			labelSizeBytesExceededError([]cortexpb.LabelPair{
 				{Name: model.MetricNameLabel, Value: "exactly_twenty_five_chars"},
 				{Name: "exactly_twenty_five_chars", Value: "exactly_twenty_five_chars"},
 			}, 91, cfg.MaxLabelsSizeBytes),
@@ -147,17 +147,17 @@ func TestValidateExemplars(t *testing.T) {
 		},
 		{
 			// Invalid timestamp
-			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+			Labels: []cortexpb.LabelPair{{Name: "foo", Value: "bar"}},
 		},
 		{
 			// Combined labelset too long
-			Labels:      []cortexpb.LabelAdapter{{Name: "foo", Value: strings.Repeat("0", 126)}},
+			Labels:      []cortexpb.LabelPair{{Name: "foo", Value: strings.Repeat("0", 126)}},
 			TimestampMs: 1000,
 		},
 	}
 
 	for _, ie := range invalidExemplars {
-		err := ValidateExemplar(validateMetrics, userID, []cortexpb.LabelAdapter{}, ie)
+		err := ValidateExemplar(validateMetrics, userID, []cortexpb.LabelPair{}, ie)
 		assert.NotNil(t, err)
 	}
 
@@ -258,12 +258,12 @@ func TestValidateLabelOrder(t *testing.T) {
 	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"
 
-	actual := ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelAdapter{
+	actual := ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelPair{
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
 		{Name: "a", Value: "a"},
 	}, false)
-	expected := newLabelsNotSortedError([]cortexpb.LabelAdapter{
+	expected := newLabelsNotSortedError([]cortexpb.LabelPair{
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
 		{Name: "a", Value: "a"},
@@ -280,22 +280,22 @@ func TestValidateLabelDuplication(t *testing.T) {
 	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"
 
-	actual := ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelAdapter{
+	actual := ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelPair{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
 	}, false)
-	expected := newDuplicatedLabelError([]cortexpb.LabelAdapter{
+	expected := newDuplicatedLabelError([]cortexpb.LabelPair{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
 	}, model.MetricNameLabel)
 	assert.Equal(t, expected, actual)
 
-	actual = ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelAdapter{
+	actual = ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelPair{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},
 		{Name: "a", Value: "a"},
 	}, false)
-	expected = newDuplicatedLabelError([]cortexpb.LabelAdapter{
+	expected = newDuplicatedLabelError([]cortexpb.LabelPair{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},
 		{Name: "a", Value: "a"},

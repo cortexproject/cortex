@@ -235,7 +235,7 @@ func TestResponse(t *testing.T) {
 							Vector: &tripperware.Vector{
 								Samples: []tripperware.Sample{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "__name__", Value: "prometheus_http_request_duration_seconds"},
 											{Name: "handler", Value: "/metrics"},
 											{Name: "instance", Value: "localhost:9090"},
@@ -336,7 +336,7 @@ func TestResponse(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
@@ -373,7 +373,7 @@ func TestResponse(t *testing.T) {
 							Matrix: &tripperware.Matrix{
 								SampleStreams: []tripperware.SampleStream{
 									{
-										Labels: []cortexpb.LabelAdapter{
+										Labels: []cortexpb.LabelPair{
 											{Name: "foo", Value: "bar"},
 										},
 										Samples: []cortexpb.Sample{
@@ -415,7 +415,7 @@ func TestResponse(t *testing.T) {
 							Vector: &tripperware.Vector{
 								Samples: []tripperware.Sample{
 									{
-										Labels: []cortexpb.LabelAdapter{},
+										Labels: []cortexpb.LabelPair{},
 										Sample: &cortexpb.Sample{Value: 1266464.0146205237, TimestampMs: 1000},
 									},
 								},
@@ -826,7 +826,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
@@ -856,7 +856,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
@@ -895,7 +895,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
@@ -918,7 +918,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
@@ -948,7 +948,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
@@ -980,7 +980,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 											},
 											Sample: &cortexpb.Sample{Value: 1, TimestampMs: 1000},
@@ -1019,7 +1019,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "foo"},
 											},
@@ -1043,7 +1043,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "bar"},
 											},
@@ -1074,7 +1074,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "foo"},
 											},
@@ -1098,7 +1098,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "bar"},
 											},
@@ -1129,7 +1129,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "foo"},
 											},
@@ -1153,7 +1153,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "bar"},
 											},
@@ -1184,7 +1184,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "foo"},
 											},
@@ -1208,7 +1208,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "bar"},
 											},
@@ -1239,7 +1239,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "foo"},
 											},
@@ -1264,7 +1264,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "bar"},
 											},
@@ -1296,7 +1296,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "foo"},
 											},
@@ -1329,7 +1329,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "bar"},
 											},
@@ -1404,7 +1404,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 											},
 											Samples: []cortexpb.Sample{
@@ -1437,7 +1437,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "bar"},
 											},
 											Samples: []cortexpb.Sample{
@@ -1463,7 +1463,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "foo"},
 											},
 											Samples: []cortexpb.Sample{
@@ -1496,7 +1496,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "bar"},
 											},
 											Samples: []cortexpb.Sample{
@@ -1522,7 +1522,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "bar"},
 											},
 											Samples: []cortexpb.Sample{
@@ -1554,7 +1554,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "bar"},
 											},
 											Samples: []cortexpb.Sample{
@@ -1580,7 +1580,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Matrix: &tripperware.Matrix{
 									SampleStreams: []tripperware.SampleStream{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "bar"},
 											},
 											Samples: []cortexpb.Sample{
@@ -1614,7 +1614,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "foo"},
 											},
@@ -1638,7 +1638,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "bar"},
 											},
@@ -1670,7 +1670,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "foo"},
 											},
@@ -1694,7 +1694,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 								Vector: &tripperware.Vector{
 									Samples: []tripperware.Sample{
 										{
-											Labels: []cortexpb.LabelAdapter{
+											Labels: []cortexpb.LabelPair{
 												{Name: "__name__", Value: "up"},
 												{Name: "job", Value: "bar"},
 											},
@@ -1765,9 +1765,9 @@ func Benchmark_Decode(b *testing.B) {
 	samples := make([]tripperware.SampleStream, maxSamplesCount)
 
 	for i := 0; i < maxSamplesCount; i++ {
-		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample%v", i), Value: fmt.Sprintf("Value%v", i)})
-		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample2%v", i), Value: fmt.Sprintf("Value2%v", i)})
-		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample3%v", i), Value: fmt.Sprintf("Value3%v", i)})
+		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelPair{Name: fmt.Sprintf("Sample%v", i), Value: fmt.Sprintf("Value%v", i)})
+		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelPair{Name: fmt.Sprintf("Sample2%v", i), Value: fmt.Sprintf("Value2%v", i)})
+		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelPair{Name: fmt.Sprintf("Sample3%v", i), Value: fmt.Sprintf("Value3%v", i)})
 		samples[i].Samples = append(samples[i].Samples, cortexpb.Sample{TimestampMs: int64(i), Value: float64(i)})
 	}
 
@@ -1827,9 +1827,9 @@ func Benchmark_Decode_Protobuf(b *testing.B) {
 	samples := make([]tripperware.SampleStream, maxSamplesCount)
 
 	for i := 0; i < maxSamplesCount; i++ {
-		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample%v", i), Value: fmt.Sprintf("Value%v", i)})
-		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample2%v", i), Value: fmt.Sprintf("Value2%v", i)})
-		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample3%v", i), Value: fmt.Sprintf("Value3%v", i)})
+		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelPair{Name: fmt.Sprintf("Sample%v", i), Value: fmt.Sprintf("Value%v", i)})
+		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelPair{Name: fmt.Sprintf("Sample2%v", i), Value: fmt.Sprintf("Value2%v", i)})
+		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelPair{Name: fmt.Sprintf("Sample3%v", i), Value: fmt.Sprintf("Value3%v", i)})
 		samples[i].Samples = append(samples[i].Samples, cortexpb.Sample{TimestampMs: int64(i), Value: float64(i)})
 	}
 

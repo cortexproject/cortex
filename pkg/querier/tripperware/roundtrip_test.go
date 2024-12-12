@@ -59,7 +59,7 @@ func (c mockCodec) DecodeRequest(_ context.Context, r *http.Request, _ []string)
 	return mockRequest{}, nil
 }
 
-func (c mockCodec) EncodeResponse(_ context.Context, resp Response) (*http.Response, error) {
+func (c mockCodec) EncodeResponse(_ context.Context, _ *http.Request, resp Response) (*http.Response, error) {
 	r := resp.(*mockResponse)
 	return &http.Response{
 		Header: http.Header{

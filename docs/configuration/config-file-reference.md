@@ -4313,6 +4313,12 @@ The `ruler_config` configures the Cortex ruler.
 # CLI flag: -ruler.frontend-address
 [frontend_address: <string> | default = ""]
 
+# [Experimental] Query response format to get query results from Query Frontend
+# when the rule evaluation. It will only take effect when
+# `-ruler.frontend-address` is configured. Supported values: json,protobuf
+# CLI flag: -ruler.query-response-format
+[query_response_format: <string> | default = "protobuf"]
+
 frontend_client:
   # gRPC client max receive message size (bytes).
   # CLI flag: -ruler.frontendClient.grpc-max-recv-msg-size

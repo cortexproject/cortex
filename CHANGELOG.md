@@ -47,7 +47,7 @@
 * [ENHANCEMENT] Distributor: Return HTTP 5XX instead of HTTP 4XX when instance limits are hit. #6358
 * [ENHANCEMENT] Ingester: Make sure unregistered ingester joining the ring after WAL replay. #6277
 * [ENHANCEMENT] Distributor: Add a new `-distributor.num-push-workers` flag to use a goroutine worker pool when sending data from distributor to ingesters. #6406
-* [ENHANCEMENT] Added metric name in limiter per-metric exceeded errors
+* [ENHANCEMENT] Added metric name in limiter per-metric exceeded errors. #6416
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 * [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
 * [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled.  #6271

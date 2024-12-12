@@ -1,7 +1,7 @@
 # Changelog
 
 ## master / unreleased
-* [ENHANCEMENT] Added metric name in limiter per-metric exceeded errors
+
 * [CHANGE] OTLP: Change OTLP handler to be consistent with the Prometheus OTLP handler. #6272
 - `target_info` metric is enabled by default and can be disabled via `-distributor.otlp.disable-target-info=true` flag
 - Convert all attributes to labels is disabled by default and can be enabled via `-distributor.otlp.convert-all-attributes=true` flag
@@ -46,11 +46,12 @@
 * [ENHANCEMENT] Add new option `-server.grpc_server-num-stream-workers` to configure the number of worker goroutines that should be used to process incoming streams. #6386
 * [ENHANCEMENT] Distributor: Return HTTP 5XX instead of HTTP 4XX when instance limits are hit. #6358
 * [ENHANCEMENT] Ingester: Make sure unregistered ingester joining the ring after WAL replay. #6277
+* [ENHANCEMENT] Distributor: Add a new `-distributor.num-push-workers` flag to use a goroutine worker pool when sending data from distributor to ingesters. #6406
+* [ENHANCEMENT] Added metric name in limiter per-metric exceeded errors
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 * [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
 * [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled.  #6271
 * [BUGFIX] Ingester: Fix regression on usage of cortex_ingester_queried_chunks. #6398
-* [ENHANCEMENT] Distributor: Add a new `-distributor.num-push-workers` flag to use a goroutine worker pool when sending data from distributor to ingesters. #6406
 * [BUGFIX] Ingester: Fix possible race condition when `active series per LabelSet` is configured. #6409
 
 ## 1.18.1 2024-10-14

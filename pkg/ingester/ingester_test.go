@@ -110,8 +110,8 @@ func seriesSetFromResponseStream(s *mockQueryStreamServer) (storage.SeriesSet, e
 
 		serieses = append(serieses, &storage.SeriesEntry{
 			Lset: ls,
-			SampleIteratorFn: func(_ chunkenc.Iterator) chunkenc.Iterator {
-				return batch.NewChunkMergeIterator(chunks, math.MinInt64, math.MaxInt64)
+			SampleIteratorFn: func(it chunkenc.Iterator) chunkenc.Iterator {
+				return batch.NewChunkMergeIterator(it, chunks, math.MinInt64, math.MaxInt64)
 			},
 		})
 	}

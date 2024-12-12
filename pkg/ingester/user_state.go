@@ -74,7 +74,7 @@ func (m *metricCounter) canAddSeriesFor(userID, metric string) error {
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
-	return m.limiter.AssertMaxSeriesPerMetric(userID, shard.m[metric])
+	return m.limiter.AssertMaxSeriesPerMetric(userID, shard.m[metric], metric)
 }
 
 func (m *metricCounter) increaseSeriesForMetric(metric string) {

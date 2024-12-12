@@ -3,6 +3,7 @@ package ingester
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -67,22 +68,22 @@ func NewLimiter(
 
 // AssertMaxSeriesPerMetric limit has not been reached compared to the current
 // number of series in input and returns an error if so.
-func (l *Limiter) AssertMaxSeriesPerMetric(userID string, series int) error {
+func (l *Limiter) AssertMaxSeriesPerMetric(userID string, series int, metric string) error {
 	if actualLimit := l.maxSeriesPerMetric(userID); series < actualLimit {
 		return nil
 	}
 
-	return errMaxSeriesPerMetricLimitExceeded
+	return errors.Wrap(errMaxSeriesPerMetricLimitExceeded, "{metric name: " + metric + "}")
 }
 
 // AssertMaxMetadataPerMetric limit has not been reached compared to the current
 // number of metadata per metric in input and returns an error if so.
-func (l *Limiter) AssertMaxMetadataPerMetric(userID string, metadata int) error {
+func (l *Limiter) AssertMaxMetadataPerMetric(userID string, metadata int, metric string) error {
 	if actualLimit := l.maxMetadataPerMetric(userID); metadata < actualLimit {
 		return nil
 	}
 
-	return errMaxMetadataPerMetricLimitExceeded
+	return errors.Wrap(errMaxMetadataPerMetricLimitExceeded, "{metric name: " + metric + "}")
 }
 
 // AssertMaxSeriesPerUser limit has not been reached compared to the current
@@ -130,16 +131,16 @@ func (l *Limiter) AssertMaxSeriesPerLabelSet(userID string, metric labels.Labels
 // FormatError returns the input error enriched with the actual limits for the given user.
 // It acts as pass-through if the input error is unknown.
 func (l *Limiter) FormatError(userID string, err error) error {
-	switch {
-	case errors.Is(err, errMaxSeriesPerUserLimitExceeded):
-		return l.formatMaxSeriesPerUserError(userID)
-	case errors.Is(err, errMaxSeriesPerMetricLimitExceeded):
-		return l.formatMaxSeriesPerMetricError(userID)
-	case errors.Is(err, errMaxMetadataPerUserLimitExceeded):
-		return l.formatMaxMetadataPerUserError(userID)
-	case errors.Is(err, errMaxMetadataPerMetricLimitExceeded):
-		return l.formatMaxMetadataPerMetricError(userID)
-	case errors.As(err, &errMaxSeriesPerLabelSetLimitExceeded{}):
+	switch cause := errors.Cause(err); {
+	case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
+		return l.formatMaxSeriesPerUserError(userID, err)
+	case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
+		return l.formatMaxSeriesPerMetricError(userID, err)
+	case errors.Is(cause, errMaxMetadataPerUserLimitExceeded):
+		return l.formatMaxMetadataPerUserError(userID, err)
+	case errors.Is(cause, errMaxMetadataPerMetricLimitExceeded):
+		return l.formatMaxMetadataPerMetricError(userID, err)
+	case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
 		e := errMaxSeriesPerLabelSetLimitExceeded{}
 		errors.As(err, &e)
 		return l.formatMaxSeriesPerLabelSetError(e)
@@ -148,40 +149,60 @@ func (l *Limiter) FormatError(userID string, err error) error {
 	}
 }
 
-func (l *Limiter) formatMaxSeriesPerUserError(userID string) error {
+func (l *Limiter) formatMaxSeriesPerUserError(userID string, err error) error {
 	actualLimit := l.maxSeriesPerUser(userID)
 	localLimit := l.limits.MaxLocalSeriesPerUser(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerUser(userID)
+	errorMessage := strings.TrimSuffix(err.Error(), errors.Cause(err).Error())
+	if len(errorMessage) > 0 {
+		errorMessage = strings.TrimSuffix(errorMessage, ": ")
+		errorMessage = " " + errorMessage
+	}
 
-	return fmt.Errorf("per-user series limit of %d exceeded, %s (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
+	return fmt.Errorf("per-user series limit of %d exceeded, %s%s (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, errorMessage, localLimit, globalLimit, actualLimit)
 }
 
-func (l *Limiter) formatMaxSeriesPerMetricError(userID string) error {
+func (l *Limiter) formatMaxSeriesPerMetricError(userID string, err error) error {
 	actualLimit := l.maxSeriesPerMetric(userID)
 	localLimit := l.limits.MaxLocalSeriesPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerMetric(userID)
+	errorMessage := strings.TrimSuffix(err.Error(), errors.Cause(err).Error())
+	if len(errorMessage) > 0 {
+		errorMessage = strings.TrimSuffix(errorMessage, ": ")
+		errorMessage = " " + errorMessage
+	}
 
-	return fmt.Errorf("per-metric series limit of %d exceeded, %s (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
+	return fmt.Errorf("per-metric series limit of %d exceeded, %s%s (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, errorMessage, localLimit, globalLimit, actualLimit)
 }
 
-func (l *Limiter) formatMaxMetadataPerUserError(userID string) error {
+func (l *Limiter) formatMaxMetadataPerUserError(userID string, err error) error {
 	actualLimit := l.maxMetadataPerUser(userID)
 	localLimit := l.limits.MaxLocalMetricsWithMetadataPerUser(userID)
 	globalLimit := l.limits.MaxGlobalMetricsWithMetadataPerUser(userID)
+	errorMessage := strings.TrimSuffix(err.Error(), errors.Cause(err).Error())
+	if len(errorMessage) > 0 {
+		errorMessage = strings.TrimSuffix(errorMessage, ": ")
+		errorMessage = " " + errorMessage
+	}
 
-	return fmt.Errorf("per-user metric metadata limit of %d exceeded, %s (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
+	return fmt.Errorf("per-user metric metadata limit of %d exceeded, %s%s (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, errorMessage, localLimit, globalLimit, actualLimit)
 }
 
-func (l *Limiter) formatMaxMetadataPerMetricError(userID string) error {
+func (l *Limiter) formatMaxMetadataPerMetricError(userID string, err error) error {
 	actualLimit := l.maxMetadataPerMetric(userID)
 	localLimit := l.limits.MaxLocalMetadataPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalMetadataPerMetric(userID)
+	errorMessage := strings.TrimSuffix(err.Error(), errors.Cause(err).Error())
+	if len(errorMessage) > 0 {
+		errorMessage = strings.TrimSuffix(errorMessage, ": ")
+		errorMessage = " " + errorMessage
+	}
 
-	return fmt.Errorf("per-metric metadata limit of %d exceeded, %s (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
+	return fmt.Errorf("per-metric metadata limit of %d exceeded, %s%s (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, errorMessage, localLimit, globalLimit, actualLimit)
 }
 
 func (l *Limiter) formatMaxSeriesPerLabelSetError(err errMaxSeriesPerLabelSetLimitExceeded) error {

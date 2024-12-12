@@ -51,7 +51,7 @@ func (mm *userMetricsMetadata) add(metric string, metadata *cortexpb.MetricMetad
 		mm.metricToMetadata[metric] = set
 	}
 
-	if err := mm.limiter.AssertMaxMetadataPerMetric(mm.userID, len(set)); err != nil {
+	if err := mm.limiter.AssertMaxMetadataPerMetric(mm.userID, len(set), metric); err != nil {
 		mm.validateMetrics.DiscardedMetadata.WithLabelValues(mm.userID, perMetricMetadataLimit).Inc()
 		return makeMetricLimitError(perMetricMetadataLimit, labels.FromStrings(labels.MetricName, metric), mm.limiter.FormatError(mm.userID, err))
 	}

@@ -3,6 +3,7 @@ package ingester
 import (
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -86,7 +87,7 @@ func TestMetricCounter(t *testing.T) {
 					assert.NoError(t, err)
 					mc.increaseSeriesForMetric(metric)
 				} else {
-					assert.Equal(t, tc.expectedErrorOnLastSeries, err)
+					assert.Equal(t, tc.expectedErrorOnLastSeries, errors.Cause(err))
 				}
 			}
 		})

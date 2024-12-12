@@ -1,11 +1,10 @@
 package ingester
 
 import (
-	"errors"
-
 	"math"
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -293,9 +292,9 @@ func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
-			actual := limiter.AssertMaxSeriesPerMetric("test", testData.series)
+			actual := limiter.AssertMaxSeriesPerMetric("test", testData.series, "")
 
-			assert.Equal(t, testData.expected, actual)
+			assert.Equal(t, testData.expected, errors.Cause(actual))
 		})
 	}
 }
@@ -355,9 +354,9 @@ func TestLimiter_AssertMaxMetadataPerMetric(t *testing.T) {
 			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
-			actual := limiter.AssertMaxMetadataPerMetric("test", testData.metadata)
+			actual := limiter.AssertMaxMetadataPerMetric("test", testData.metadata, "")
 
-			assert.Equal(t, testData.expected, actual)
+			assert.Equal(t, testData.expected, errors.Cause(actual))
 		})
 	}
 }
@@ -600,6 +599,12 @@ func TestLimiter_FormatError(t *testing.T) {
 
 	actual = limiter.FormatError("user-1", errMaxMetadataPerMetricLimitExceeded)
 	assert.EqualError(t, actual, "per-metric metadata limit of 3 exceeded, please contact administrator to raise it (local limit: 0 global limit: 3 actual local limit: 3)")
+
+	actual = limiter.FormatError("user-1", errors.Wrap(errMaxSeriesPerMetricLimitExceeded, "{metric name: testMetric}"))
+	assert.EqualError(t, actual, "per-metric series limit of 20 exceeded, please contact administrator to raise it {metric name: testMetric} (local limit: 0 global limit: 20 actual local limit: 20)")
+	
+	actual = limiter.FormatError("user-1", errors.Wrap(errMaxMetadataPerMetricLimitExceeded, "{metric name: testMetric}"))
+	assert.EqualError(t, actual, "per-metric metadata limit of 3 exceeded, please contact administrator to raise it {metric name: testMetric} (local limit: 0 global limit: 3 actual local limit: 3)")
 
 	input := errors.New("unknown error")
 	actual = limiter.FormatError("user-1", input)

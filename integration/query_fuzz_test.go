@@ -312,6 +312,11 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
 				failures++
 			}
+		} else if shouldUseSampleNumComparer(tc.query) {
+			if !cmp.Equal(tc.res1, tc.res2, sampleNumComparer) {
+				t.Logf("case %d # of samples mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
+				failures++
+			}
 		} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
 			t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
 			failures++
@@ -506,6 +511,11 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			if tc.err1 != nil || tc.err2 != nil {
 				if !cmp.Equal(tc.err1, tc.err2) {
 					t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
+					failures++
+				}
+			} else if shouldUseSampleNumComparer(tc.query) {
+				if !cmp.Equal(tc.res1, tc.res2, sampleNumComparer) {
+					t.Logf("case %d # of samples mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
 					failures++
 				}
 			} else if !cmp.Equal(tc.res1, tc.res2, comparer) {

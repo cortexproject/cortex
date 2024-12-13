@@ -73,7 +73,7 @@ func (l *Limiter) AssertMaxSeriesPerMetric(userID string, series int, metric str
 		return nil
 	}
 
-	return errors.Wrap(errMaxSeriesPerMetricLimitExceeded, "{metric name: " + metric + "}")
+	return errors.Wrapf(errMaxSeriesPerMetricLimitExceeded, "{metric name: %s}", metric)
 }
 
 // AssertMaxMetadataPerMetric limit has not been reached compared to the current
@@ -83,7 +83,7 @@ func (l *Limiter) AssertMaxMetadataPerMetric(userID string, metadata int, metric
 		return nil
 	}
 
-	return errors.Wrap(errMaxMetadataPerMetricLimitExceeded, "{metric name: " + metric + "}")
+	return errors.Wrapf(errMaxMetadataPerMetricLimitExceeded, "{metric name: %s}", metric)
 }
 
 // AssertMaxSeriesPerUser limit has not been reached compared to the current

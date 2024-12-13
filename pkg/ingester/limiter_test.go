@@ -602,7 +602,7 @@ func TestLimiter_FormatError(t *testing.T) {
 
 	actual = limiter.FormatError("user-1", errors.Wrap(errMaxSeriesPerMetricLimitExceeded, "{metric name: testMetric}"))
 	assert.EqualError(t, actual, "per-metric series limit of 20 exceeded, please contact administrator to raise it {metric name: testMetric} (local limit: 0 global limit: 20 actual local limit: 20)")
-	
+
 	actual = limiter.FormatError("user-1", errors.Wrap(errMaxMetadataPerMetricLimitExceeded, "{metric name: testMetric}"))
 	assert.EqualError(t, actual, "per-metric metadata limit of 3 exceeded, please contact administrator to raise it {metric name: testMetric} (local limit: 0 global limit: 3 actual local limit: 3)")
 

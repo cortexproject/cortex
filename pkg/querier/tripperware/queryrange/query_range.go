@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -241,6 +242,9 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res tripperware.Respo
 	if a != nil {
 		m := a.Data.Result.GetMatrix()
 		sp.LogFields(otlog.Int("series", len(m.GetSampleStreams())))
+
+		queryStats := stats.FromContext(ctx)
+		tripperware.SetQueryResponseStats(a, queryStats)
 	}
 
 	b, err := json.Marshal(a)

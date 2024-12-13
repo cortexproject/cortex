@@ -90,7 +90,7 @@ type Handler struct {
 
 	// Metrics.
 	querySeconds        *prometheus.CounterVec
-	querySeries         *prometheus.CounterVec
+	queryFetchedSeries  *prometheus.CounterVec
 	queryFetchedSamples *prometheus.CounterVec
 	queryScannedSamples *prometheus.CounterVec
 	queryPeakSamples    *prometheus.HistogramVec
@@ -114,7 +114,7 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Total amount of wall clock time spend processing queries.",
 		}, []string{"user"})
 
-		h.querySeries = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		h.queryFetchedSeries = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_fetched_series_total",
 			Help: "Number of series fetched to execute a query.",
 		}, []string{"user"})
@@ -158,7 +158,7 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 			h.querySeconds.DeleteLabelValues(user)
-			h.querySeries.DeleteLabelValues(user)
+			h.queryFetchedSeries.DeleteLabelValues(user)
 			h.queryFetchedSamples.DeleteLabelValues(user)
 			h.queryScannedSamples.DeleteLabelValues(user)
 			h.queryPeakSamples.DeleteLabelValues(user)
@@ -338,9 +338,10 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, resp *http.Response) {
 	wallTime := stats.LoadWallTime()
 	queryStorageWallTime := stats.LoadQueryStorageWallTime()
-	numSeries := stats.LoadFetchedSeries()
-	numChunks := stats.LoadFetchedChunks()
-	numSamples := stats.LoadFetchedSamples()
+	numResponseSeries := stats.LoadResponseSeries()
+	numFetchedSeries := stats.LoadFetchedSeries()
+	numFetchedChunks := stats.LoadFetchedChunks()
+	numFetchedSamples := stats.LoadFetchedSamples()
 	numScannedSamples := stats.LoadScannedSamples()
 	numPeakSamples := stats.LoadPeakSamples()
 	numChunkBytes := stats.LoadFetchedChunkBytes()
@@ -353,8 +354,8 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
-	f.querySeries.WithLabelValues(userID).Add(float64(numSeries))
-	f.queryFetchedSamples.WithLabelValues(userID).Add(float64(numSamples))
+	f.queryFetchedSeries.WithLabelValues(userID).Add(float64(numFetchedSeries))
+	f.queryFetchedSamples.WithLabelValues(userID).Add(float64(numFetchedSamples))
 	f.queryScannedSamples.WithLabelValues(userID).Add(float64(numScannedSamples))
 	f.queryPeakSamples.WithLabelValues(userID).Observe(float64(numPeakSamples))
 	f.queryChunkBytes.WithLabelValues(userID).Add(float64(numChunkBytes))
@@ -378,9 +379,10 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 		"path", r.URL.Path,
 		"response_time", queryResponseTime,
 		"query_wall_time_seconds", wallTime.Seconds(),
-		"fetched_series_count", numSeries,
-		"fetched_chunks_count", numChunks,
-		"fetched_samples_count", numSamples,
+		"response_series_count", numResponseSeries,
+		"fetched_series_count", numFetchedSeries,
+		"fetched_chunks_count", numFetchedChunks,
+		"fetched_samples_count", numFetchedSamples,
 		"fetched_chunks_bytes", numChunkBytes,
 		"fetched_data_bytes", numDataBytes,
 		"split_queries", splitQueries,

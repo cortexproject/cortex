@@ -72,7 +72,10 @@ func (b *nonFlushingBadResponseLoggingWriter) Write(data []byte) (int, error) {
 	}
 	n, err := b.rw.Write(data)
 	if b.logBody {
-		b.captureResponseBody(data)
+		err := b.captureResponseBody(data)
+		if err != nil {
+			return n, err
+		}
 	}
 	if err != nil {
 		b.writeError = err
@@ -106,16 +109,23 @@ func (b *nonFlushingBadResponseLoggingWriter) getWriteError() error {
 	return b.writeError
 }
 
-func (b *nonFlushingBadResponseLoggingWriter) captureResponseBody(data []byte) {
+func (b *nonFlushingBadResponseLoggingWriter) captureResponseBody(data []byte) error {
 	if len(data) > b.bodyBytesLeft {
-		b.buffer.Write(data[:b.bodyBytesLeft])
-		io.WriteString(b.buffer, "...")
+		if _, err := b.buffer.Write(data[:b.bodyBytesLeft]); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(b.buffer, "..."); err != nil {
+			return err
+		}
 		b.bodyBytesLeft = 0
 		b.logBody = false
 	} else {
-		b.buffer.Write(data)
+		if _, err := b.buffer.Write(data); err != nil {
+			return err
+		}
 		b.bodyBytesLeft -= len(data)
 	}
+	return nil
 }
 
 func (b *flushingBadResponseLoggingWriter) Flush() {

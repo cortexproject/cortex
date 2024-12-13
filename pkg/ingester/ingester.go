@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"math"
 	"net/http"
@@ -136,6 +137,11 @@ type Config struct {
 	AdminLimitMessage string `yaml:"admin_limit_message"`
 
 	LabelsStringInterningEnabled bool `yaml:"labels_string_interning_enabled"`
+
+	// DisableChunkTrimming allows to disable trimming of matching series chunks based on query Start and End time.
+	// When disabled, the result may contain samples outside the queried time range but Select() performances
+	// may be improved.
+	DisableChunkTrimming bool `yaml:"disable_chunk_trimming"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -162,6 +168,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
 
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
+
+	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 }
 
 func (cfg *Config) Validate() error {
@@ -230,6 +238,8 @@ type Ingester struct {
 
 	inflightQueryRequests    atomic.Int64
 	maxInflightQueryRequests util_math.MaxTracker
+
+	expandedPostingsCacheFactory *cortex_tsdb.ExpandedPostingsCacheFactory
 }
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -308,6 +318,10 @@ type userTSDB struct {
 	// Used to dedup strings and keep a single reference in memory
 	labelsStringInterningEnabled bool
 	interner                     util.Interner
+
+	blockRetentionPeriod int64
+
+	postingCache cortex_tsdb.ExpandedPostingsCache
 }
 
 // Explicitly wrapping the tsdb.DB functions that we use.
@@ -426,6 +440,10 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 		return err
 	}
 
+	if u.labelsStringInterningEnabled {
+		metric.InternStrings(u.interner.Intern)
+	}
+
 	return nil
 }
 
@@ -440,8 +458,9 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	}
 	u.seriesInMetric.increaseSeriesForMetric(metricName)
 	u.labelSetCounter.increaseSeriesLabelSet(u, metric)
-	if u.labelsStringInterningEnabled {
-		metric.InternStrings(u.interner.Intern)
+
+	if u.postingCache != nil {
+		u.postingCache.ExpireSeries(metric)
 	}
 }
 
@@ -457,8 +476,8 @@ func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) 
 		}
 		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 		u.labelSetCounter.decreaseSeriesLabelSet(u, metric)
-		if u.labelsStringInterningEnabled {
-			metric.ReleaseStrings(u.interner.Release)
+		if u.postingCache != nil {
+			u.postingCache.ExpireSeries(metric)
 		}
 	}
 }
@@ -469,6 +488,14 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 		return nil
 	}
 	deletable := tsdb.DefaultBlocksToDelete(u.db)(blocks)
+
+	now := time.Now().UnixMilli()
+	for _, b := range blocks {
+		if now-b.MaxTime() >= u.blockRetentionPeriod {
+			deletable[b.Meta().ULID] = struct{}{}
+		}
+	}
+
 	if u.shipper == nil {
 		return deletable
 	}
@@ -664,18 +691,19 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
-	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", logger, registerer)
+	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, nil, "ingester", logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
 	i := &Ingester{
-		cfg:           cfg,
-		limits:        limits,
-		usersMetadata: map[string]*userMetricsMetadata{},
-		TSDBState:     newTSDBState(bucketClient, registerer),
-		logger:        logger,
-		ingestionRate: util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		cfg:                          cfg,
+		limits:                       limits,
+		usersMetadata:                map[string]*userMetricsMetadata{},
+		TSDBState:                    newTSDBState(bucketClient, registerer),
+		logger:                       logger,
+		ingestionRate:                util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		expandedPostingsCacheFactory: cortex_tsdb.NewExpandedPostingsCacheFactory(cfg.BlocksStorageConfig.TSDB.PostingsCache),
 	}
 	i.metrics = newIngesterMetrics(registerer,
 		false,
@@ -683,7 +711,8 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		i.getInstanceLimits,
 		i.ingestionRate,
 		&i.inflightPushRequests,
-		&i.maxInflightQueryRequests)
+		&i.maxInflightQueryRequests,
+		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled)
 	i.validateMetrics = validation.NewValidateMetrics(registerer)
 
 	// Replace specific metrics which we can't directly track but we need to read
@@ -738,7 +767,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 // this is a special version of ingester used by Flusher. This ingester is not ingesting anything, its only purpose is to react
 // on Flush method and flush all opened TSDBs when called.
 func NewForFlusher(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
-	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", logger, registerer)
+	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, nil, "ingester", logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -765,6 +794,7 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		nil,
 		&i.inflightPushRequests,
 		&i.maxInflightQueryRequests,
+		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled,
 	)
 
 	i.TSDBState.shipperIngesterID = "flusher"
@@ -1090,19 +1120,21 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
-		succeededSamplesCount       = 0
-		failedSamplesCount          = 0
-		succeededExemplarsCount     = 0
-		failedExemplarsCount        = 0
-		startAppend                 = time.Now()
-		sampleOutOfBoundsCount      = 0
-		sampleOutOfOrderCount       = 0
-		sampleTooOldCount           = 0
-		newValueForTimestampCount   = 0
-		perUserSeriesLimitCount     = 0
-		perLabelSetSeriesLimitCount = 0
-		perMetricSeriesLimitCount   = 0
-		nativeHistogramCount        = 0
+		succeededSamplesCount         = 0
+		failedSamplesCount            = 0
+		succeededHistogramsCount      = 0
+		failedHistogramsCount         = 0
+		succeededExemplarsCount       = 0
+		failedExemplarsCount          = 0
+		startAppend                   = time.Now()
+		sampleOutOfBoundsCount        = 0
+		sampleOutOfOrderCount         = 0
+		sampleTooOldCount             = 0
+		newValueForTimestampCount     = 0
+		perUserSeriesLimitCount       = 0
+		perLabelSetSeriesLimitCount   = 0
+		perMetricSeriesLimitCount     = 0
+		discardedNativeHistogramCount = 0
 
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
@@ -1172,6 +1204,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx).(extendedAppender)
+	var newSeries []labels.Labels
+
 	for _, ts := range req.Timeseries {
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
@@ -1183,6 +1217,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
+		// To find out if any histogram was added to this series, we keep old value.
+		oldSucceededHistogramsCount := succeededHistogramsCount
 
 		for _, s := range ts.Samples {
 			var err error
@@ -1197,9 +1233,12 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			} else {
 				// Copy the label set because both TSDB and the active series tracker may retain it.
 				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
-
 				// Retain the reference in case there are multiple samples for the series.
 				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
+					// Keep track of what series needs to be expired on the postings cache
+					if db.postingCache != nil {
+						newSeries = append(newSeries, copiedLabels)
+					}
 					succeededSamplesCount++
 					continue
 				}
@@ -1234,19 +1273,23 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 				if ref != 0 {
 					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						succeededSamplesCount++
+						succeededHistogramsCount++
 						continue
 					}
 				} else {
 					// Copy the label set because both TSDB and the active series tracker may retain it.
 					copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 					if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						succeededSamplesCount++
+						// Keep track of what series needs to be expired on the postings cache
+						if db.postingCache != nil {
+							newSeries = append(newSeries, copiedLabels)
+						}
+						succeededHistogramsCount++
 						continue
 					}
 				}
 
-				failedSamplesCount++
+				failedHistogramsCount++
 
 				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels); !rollback {
 					continue
@@ -1258,12 +1301,12 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				return nil, wrapWithUser(err, userID)
 			}
 		} else {
-			nativeHistogramCount += len(ts.Histograms)
+			discardedNativeHistogramCount += len(ts.Histograms)
 		}
-
-		if i.cfg.ActiveSeriesMetricsEnabled && succeededSamplesCount > oldSucceededSamplesCount {
+		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || (succeededHistogramsCount > oldSucceededHistogramsCount)
+		if i.cfg.ActiveSeriesMetricsEnabled && shouldUpdateSeries {
 			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, func(l labels.Labels) labels.Labels {
-				// we must already have copied the labels if succeededSamplesCount has been incremented.
+				// we must already have copied the labels if succeededSamplesCount or succeededHistogramsCount has been incremented.
 				return copiedLabels
 			})
 		}
@@ -1309,10 +1352,21 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	if err := app.Commit(); err != nil {
 		return nil, wrapWithUser(err, userID)
 	}
+
+	// This is a workaround of https://github.com/prometheus/prometheus/pull/15579
+	// Calling expire here may result in the series names being expired multiple times,
+	// as there may be multiple Push operations concurrently for the same new timeseries.
+	// TODO: alanprot remove this when/if the PR is merged
+	if db.postingCache != nil {
+		for _, s := range newSeries {
+			db.postingCache.ExpireSeries(s)
+		}
+	}
+
 	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
 
-	// If only invalid samples are pushed, don't change "last update", as TSDB was not modified.
-	if succeededSamplesCount > 0 {
+	// If only invalid samples or histograms are pushed, don't change "last update", as TSDB was not modified.
+	if succeededSamplesCount > 0 || succeededHistogramsCount > 0 {
 		db.setLastUpdate(time.Now())
 	}
 
@@ -1321,6 +1375,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// which will be converted into an HTTP 5xx and the client should/will retry.
 	i.metrics.ingestedSamples.Add(float64(succeededSamplesCount))
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
+	i.metrics.ingestedHistograms.Add(float64(succeededHistogramsCount))
+	i.metrics.ingestedHistogramsFail.Add(float64(failedHistogramsCount))
 	i.metrics.ingestedExemplars.Add(float64(succeededExemplarsCount))
 	i.metrics.ingestedExemplarsFail.Add(float64(failedExemplarsCount))
 
@@ -1346,20 +1402,20 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
-	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && nativeHistogramCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(nativeHistogramCount))
+	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && discardedNativeHistogramCount > 0 {
+		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
 	}
 
 	// Distributor counts both samples, metadata and histograms, so for consistency ingester does the same.
-	i.ingestionRate.Add(int64(succeededSamplesCount + ingestedMetadata))
+	i.ingestionRate.Add(int64(succeededSamplesCount + succeededHistogramsCount + ingestedMetadata))
 
 	switch req.Source {
 	case cortexpb.RULE:
-		db.ingestedRuleSamples.Add(int64(succeededSamplesCount))
+		db.ingestedRuleSamples.Add(int64(succeededSamplesCount + succeededHistogramsCount))
 	case cortexpb.API:
 		fallthrough
 	default:
-		db.ingestedAPISamples.Add(int64(succeededSamplesCount))
+		db.ingestedAPISamples.Add(int64(succeededSamplesCount + succeededHistogramsCount))
 	}
 
 	if firstPartialErr != nil {
@@ -1368,7 +1424,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		if errors.As(firstPartialErr, &ve) {
 			code = ve.code
 		}
-		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "firstPartialErr", firstPartialErr)
+		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "totalHistograms", succeededHistogramsCount+failedHistogramsCount, "failedHistograms", failedHistogramsCount, "firstPartialErr", firstPartialErr)
 		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
 	}
 
@@ -1590,6 +1646,11 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
+	startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelNamesRequest(req)
+	if err != nil {
+		return nil, cleanup, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, cleanup, err
@@ -1600,12 +1661,10 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return &client.LabelNamesResponse{}, cleanup, nil
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
 	if err != nil {
 		return nil, cleanup, err
 	}
-
-	limit := int(req.Limit)
 
 	q, err := db.Querier(mint, maxt)
 	if err != nil {
@@ -1621,7 +1680,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 	defer c()
-	names, _, err := q.LabelNames(ctx, &storage.LabelHints{Limit: limit})
+	names, _, err := q.LabelNames(ctx, &storage.LabelHints{Limit: limit}, matchers...)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1804,7 +1863,42 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return &client.UserStatsResponse{}, nil
 	}
 
-	return createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled), nil
+	userStat := createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled)
+
+	return &client.UserStatsResponse{
+		IngestionRate:     userStat.IngestionRate,
+		NumSeries:         userStat.NumSeries,
+		ApiIngestionRate:  userStat.APIIngestionRate,
+		RuleIngestionRate: userStat.RuleIngestionRate,
+		ActiveSeries:      userStat.ActiveSeries,
+		LoadedBlocks:      userStat.LoadedBlocks,
+	}, nil
+}
+
+func (i *Ingester) userStats() []UserIDStats {
+	i.stoppedMtx.RLock()
+	defer i.stoppedMtx.RUnlock()
+
+	perUserTotals := make(map[string]UserStats)
+
+	users := i.TSDBState.dbs
+
+	response := make([]UserIDStats, 0, len(perUserTotals))
+	for id, db := range users {
+		response = append(response, UserIDStats{
+			UserID:    id,
+			UserStats: createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled),
+		})
+	}
+
+	return response
+}
+
+// AllUserStatsHandler shows stats for all users.
+func (i *Ingester) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {
+	stats := i.userStats()
+
+	AllUserStatsRender(w, r, stats, 0)
 }
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
@@ -1813,24 +1907,28 @@ func (i *Ingester) AllUserStats(_ context.Context, _ *client.UserStatsRequest) (
 		return nil, err
 	}
 
-	i.stoppedMtx.RLock()
-	defer i.stoppedMtx.RUnlock()
-
-	users := i.TSDBState.dbs
+	userStats := i.userStats()
 
 	response := &client.UsersStatsResponse{
-		Stats: make([]*client.UserIDStatsResponse, 0, len(users)),
+		Stats: make([]*client.UserIDStatsResponse, 0, len(userStats)),
 	}
-	for userID, db := range users {
+	for _, userStat := range userStats {
 		response.Stats = append(response.Stats, &client.UserIDStatsResponse{
-			UserId: userID,
-			Data:   createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled),
+			UserId: userStat.UserID,
+			Data: &client.UserStatsResponse{
+				IngestionRate:     userStat.IngestionRate,
+				NumSeries:         userStat.NumSeries,
+				ApiIngestionRate:  userStat.APIIngestionRate,
+				RuleIngestionRate: userStat.RuleIngestionRate,
+				ActiveSeries:      userStat.ActiveSeries,
+				LoadedBlocks:      userStat.LoadedBlocks,
+			},
 		})
 	}
 	return response, nil
 }
 
-func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) *client.UserStatsResponse {
+func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) UserStats {
 	apiRate := db.ingestedAPISamples.Rate()
 	ruleRate := db.ingestedRuleSamples.Rate()
 
@@ -1839,12 +1937,13 @@ func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) *client.User
 		activeSeries = uint64(db.activeSeries.Active())
 	}
 
-	return &client.UserStatsResponse{
+	return UserStats{
 		IngestionRate:     apiRate + ruleRate,
-		ApiIngestionRate:  apiRate,
+		APIIngestionRate:  apiRate,
 		RuleIngestionRate: ruleRate,
 		NumSeries:         db.Head().NumSeries(),
 		ActiveSeries:      activeSeries,
+		LoadedBlocks:      uint64(len(db.Blocks())),
 	}
 }
 
@@ -1887,7 +1986,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	numSamples := 0
 	numSeries := 0
 	totalDataBytes := 0
-	numSeries, numSamples, totalDataBytes, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
+	numChunks := 0
+	numSeries, numSamples, totalDataBytes, numChunks, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
 
 	if err != nil {
 		return err
@@ -1895,10 +1995,12 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	i.metrics.queriedSeries.Observe(float64(numSeries))
 	i.metrics.queriedSamples.Observe(float64(numSamples))
-	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples, "data_bytes", totalDataBytes)
+	i.metrics.queriedChunks.Observe(float64(numChunks))
+	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples, "data_bytes", totalDataBytes, "chunks", numChunks)
 	spanlog.SetTag("series", numSeries)
 	spanlog.SetTag("samples", numSamples)
 	spanlog.SetTag("data_bytes", totalDataBytes)
+	spanlog.SetTag("chunks", numChunks)
 	return nil
 }
 
@@ -1917,22 +2019,27 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 }
 
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
-func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes int, _ error) {
+func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes, numChunks int, _ error) {
 	q, err := db.ChunkQuerier(from, through)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 	defer q.Close()
 
 	c, err := i.trackInflightQueryRequest()
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
+	}
+	hints := &storage.SelectHints{
+		Start:           from,
+		End:             through,
+		DisableTrimming: i.cfg.DisableChunkTrimming,
 	}
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss := q.Select(ctx, false, nil, matchers...)
+	ss := q.Select(ctx, false, hints, matchers...)
 	c()
 	if ss.Err() != nil {
-		return 0, 0, 0, ss.Err()
+		return 0, 0, 0, 0, ss.Err()
 	}
 
 	chunkSeries := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
@@ -1958,7 +2065,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			// It is not guaranteed that chunk returned by iterator is populated.
 			// For now just return error. We could also try to figure out how to read the chunk.
 			if meta.Chunk == nil {
-				return 0, 0, 0, errors.Errorf("unfilled chunk returned from TSDB chunk querier")
+				return 0, 0, 0, 0, errors.Errorf("unfilled chunk returned from TSDB chunk querier")
 			}
 
 			ch := client.Chunk{
@@ -1975,10 +2082,11 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			case chunkenc.EncFloatHistogram:
 				ch.Encoding = int32(encoding.PrometheusFloatHistogramChunk)
 			default:
-				return 0, 0, 0, errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
+				return 0, 0, 0, 0, errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
 			}
 
 			ts.Chunks = append(ts.Chunks, ch)
+			numChunks++
 			numSamples += meta.Chunk.NumSamples()
 		}
 		numSeries++
@@ -1992,7 +2100,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 				Chunkseries: chunkSeries,
 			})
 			if err != nil {
-				return 0, 0, 0, err
+				return 0, 0, 0, 0, err
 			}
 
 			batchSizeBytes = 0
@@ -2005,7 +2113,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 
 	// Ensure no error occurred while iterating the series set.
 	if err := ss.Err(); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 
 	// Final flush any existing metrics
@@ -2014,11 +2122,11 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			Chunkseries: chunkSeries,
 		})
 		if err != nil {
-			return 0, 0, 0, err
+			return 0, 0, 0, 0, err
 		}
 	}
 
-	return numSeries, numSamples, totalBatchSizeBytes, nil
+	return numSeries, numSamples, totalBatchSizeBytes, numChunks, nil
 }
 
 func (i *Ingester) getTSDB(userID string) *userTSDB {
@@ -2096,6 +2204,11 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	blockRanges := i.cfg.BlocksStorageConfig.TSDB.BlockRanges.ToMilliseconds()
 
+	var postingCache cortex_tsdb.ExpandedPostingsCache
+	if i.expandedPostingsCacheFactory != nil {
+		postingCache = i.expandedPostingsCacheFactory.NewExpandedPostingsCache(userID, i.metrics.expandedPostingsCacheMetrics)
+	}
+
 	userDB := &userTSDB{
 		userID:              userID,
 		activeSeries:        NewActiveSeries(),
@@ -2106,8 +2219,11 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 		instanceLimitsFn:             i.getInstanceLimits,
 		instanceSeriesCount:          &i.TSDBState.seriesCount,
-		interner:                     util.NewInterner(),
+		interner:                     util.NewLruInterner(),
 		labelsStringInterningEnabled: i.cfg.LabelsStringInterningEnabled,
+
+		blockRetentionPeriod: i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
+		postingCache:         postingCache,
 	}
 
 	enableExemplars := false
@@ -2116,11 +2232,12 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		enableExemplars = true
 	}
 	oooTimeWindow := i.limits.OutOfOrderTimeWindow(userID)
+
 	walCompressType := wlog.CompressionNone
-	// TODO(yeya24): expose zstd compression for WAL.
-	if i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled {
-		walCompressType = wlog.CompressionSnappy
+	if i.cfg.BlocksStorageConfig.TSDB.WALCompressionType != "" {
+		walCompressType = wlog.CompressionType(i.cfg.BlocksStorageConfig.TSDB.WALCompressionType)
 	}
+
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration:              i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
@@ -2142,6 +2259,12 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
+		BlockChunkQuerierFunc: func(b tsdb.BlockReader, mint, maxt int64) (storage.ChunkQuerier, error) {
+			if postingCache != nil {
+				return cortex_tsdb.NewCachedBlockChunkQuerier(postingCache, b, mint, maxt)
+			}
+			return tsdb.NewBlockChunkQuerier(b, mint, maxt)
+		},
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
@@ -2879,6 +3002,61 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ModeHandler Change mode of ingester. It will also update set unregisterOnShutdown to true if READONLY mode
+func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		respMsg := "failed to parse HTTP request in mode handler"
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg, "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		// We ignore errors here, because we cannot do anything about them.
+		_, _ = w.Write([]byte(respMsg))
+		return
+	}
+
+	currentState := i.lifecycler.GetState()
+	reqMode := strings.ToUpper(r.Form.Get("mode"))
+	switch reqMode {
+	case "READONLY":
+		if currentState != ring.READONLY {
+			err = i.lifecycler.ChangeState(r.Context(), ring.READONLY)
+			if err != nil {
+				respMsg := fmt.Sprintf("failed to change state: %s", err)
+				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+				w.WriteHeader(http.StatusBadRequest)
+				// We ignore errors here, because we cannot do anything about them.
+				_, _ = w.Write([]byte(respMsg))
+				return
+			}
+		}
+	case "ACTIVE":
+		if currentState != ring.ACTIVE {
+			err = i.lifecycler.ChangeState(r.Context(), ring.ACTIVE)
+			if err != nil {
+				respMsg := fmt.Sprintf("failed to change state: %s", err)
+				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+				w.WriteHeader(http.StatusBadRequest)
+				// We ignore errors here, because we cannot do anything about them.
+				_, _ = w.Write([]byte(respMsg))
+				return
+			}
+		}
+	default:
+		respMsg := fmt.Sprintf("invalid mode input: %s", html.EscapeString(reqMode))
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+		w.WriteHeader(http.StatusBadRequest)
+		// We ignore errors here, because we cannot do anything about them.
+		_, _ = w.Write([]byte(respMsg))
+		return
+	}
+
+	respMsg := fmt.Sprintf("Ingester mode %s", i.lifecycler.GetState())
+	level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", respMsg)
+	w.WriteHeader(http.StatusOK)
+	// We ignore errors here, because we cannot do anything about them.
+	_, _ = w.Write([]byte(respMsg))
 }
 
 // metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.

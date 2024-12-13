@@ -5,7 +5,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"golang.org/x/exp/slices"
 )
 
 var (
@@ -34,6 +33,11 @@ var (
 		parser.COUNT_VALUES,
 	}
 
+	experimentalPromQLAggrs = []parser.ItemType{
+		parser.LIMITK,
+		parser.LIMIT_RATIO,
+	}
+
 	defaultSupportedBinOps = []parser.ItemType{
 		parser.SUB,
 		parser.ADD,
@@ -53,21 +57,17 @@ var (
 		parser.LUNLESS,
 	}
 
-	defaultSupportedFuncs []*parser.Function
+	defaultSupportedFuncs      []*parser.Function
+	experimentalSupportedFuncs []*parser.Function
 )
 
 func init() {
 	for _, f := range parser.Functions {
-		// We skip variadic functions for now.
-		if f.Variadic != 0 {
-			continue
-		}
-		if slices.Contains(f.ArgTypes, parser.ValueTypeString) {
-			continue
-		}
 		// Ignore experimental functions for now.
 		if !f.Experimental {
 			defaultSupportedFuncs = append(defaultSupportedFuncs, f)
+		} else {
+			experimentalSupportedFuncs = append(experimentalSupportedFuncs, f)
 		}
 	}
 }
@@ -78,10 +78,11 @@ type options struct {
 	enabledFuncs  []*parser.Function
 	enabledBinops []parser.ItemType
 
-	enableOffset           bool
-	enableAtModifier       bool
-	enableVectorMatching   bool
-	atModifierMaxTimestamp int64
+	enableOffset                      bool
+	enableAtModifier                  bool
+	enableVectorMatching              bool
+	enableExperimentalPromQLFunctions bool
+	atModifierMaxTimestamp            int64
 
 	enforceLabelMatchers []*labels.Matcher
 }
@@ -101,6 +102,11 @@ func (o *options) applyDefaults() {
 
 	if len(o.enabledFuncs) == 0 {
 		o.enabledFuncs = defaultSupportedFuncs
+	}
+
+	if o.enableExperimentalPromQLFunctions {
+		o.enabledAggrs = append(o.enabledAggrs, experimentalPromQLAggrs...)
+		o.enabledFuncs = append(o.enabledFuncs, experimentalSupportedFuncs...)
 	}
 
 	if o.atModifierMaxTimestamp == 0 {
@@ -140,6 +146,12 @@ func WithEnableAtModifier(enableAtModifier bool) Option {
 func WithEnableVectorMatching(enableVectorMatching bool) Option {
 	return optionFunc(func(o *options) {
 		o.enableVectorMatching = enableVectorMatching
+	})
+}
+
+func WithEnableExperimentalPromQLFunctions(enableExperimentalPromQLFunctions bool) Option {
+	return optionFunc(func(o *options) {
+		o.enableExperimentalPromQLFunctions = enableExperimentalPromQLFunctions
 	})
 }
 

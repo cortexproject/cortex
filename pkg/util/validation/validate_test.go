@@ -119,6 +119,14 @@ func TestValidateLabels(t *testing.T) {
 			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_samples_total"))
 
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_label_size_bytes The combined size in bytes of all labels and label values for a time series.
+			# TYPE cortex_label_size_bytes histogram
+			cortex_label_size_bytes_bucket{user="testUser",le="+Inf"} 3
+			cortex_label_size_bytes_sum{user="testUser"} 148
+			cortex_label_size_bytes_count{user="testUser"} 3
+	`), "cortex_label_size_bytes"))
+
 	DeletePerUserValidationMetrics(validateMetrics, userID, util_log.Logger)
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
@@ -310,6 +318,7 @@ func TestValidateNativeHistogram(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		bucketLimit       int
+		resolutionReduced bool
 		histogram         cortexpb.Histogram
 		expectedHistogram cortexpb.Histogram
 		expectedErr       error
@@ -341,12 +350,14 @@ func TestValidateNativeHistogram(t *testing.T) {
 			bucketLimit:       6,
 			histogram:         cortexpb.HistogramToHistogramProto(0, h.Copy()),
 			expectedHistogram: cortexpb.HistogramToHistogramProto(0, h.Copy().ReduceResolution(0)),
+			resolutionReduced: true,
 		},
 		{
 			name:              "exceed limit and reduce resolution for 1 level, float histogram",
 			bucketLimit:       6,
 			histogram:         cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
 			expectedHistogram: cortexpb.FloatHistogramToHistogramProto(0, fh.Copy().ReduceResolution(0)),
+			resolutionReduced: true,
 		},
 		{
 			name:              "exceed limit and reduce resolution for 2 levels, histogram",
@@ -394,7 +405,13 @@ func TestValidateNativeHistogram(t *testing.T) {
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, actualErr)
 				require.Equal(t, float64(1), testutil.ToFloat64(validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID)))
+				// Should never increment if error was returned
+				require.Equal(t, float64(0), testutil.ToFloat64(validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID)))
+
 			} else {
+				if tc.resolutionReduced {
+					require.Equal(t, float64(1), testutil.ToFloat64(validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID)))
+				}
 				require.NoError(t, actualErr)
 				require.Equal(t, tc.expectedHistogram, actualHistogram)
 			}

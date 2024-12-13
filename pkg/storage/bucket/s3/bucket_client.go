@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
@@ -21,13 +22,13 @@ var defaultRetryMinBackoff = 5 * time.Second
 var defaultRetryMaxBackoff = 1 * time.Minute
 
 // NewBucketClient creates a new S3 bucket client
-func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
+func NewBucketClient(cfg Config, hedgedRoundTripper func(rt http.RoundTripper) http.RoundTripper, name string, logger log.Logger) (objstore.Bucket, error) {
 	s3Cfg, err := newS3Config(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name)
+	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name, hedgedRoundTripper)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +48,7 @@ func NewBucketReaderClient(cfg Config, name string, logger log.Logger) (objstore
 		return nil, err
 	}
 
-	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name)
+	bucket, err := s3.NewBucketWithConfig(logger, s3Cfg, name, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -102,9 +103,10 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			Transport:             cfg.HTTP.Transport,
 		},
 		// Enforce signature version 2 if CLI flag is set
-		SignatureV2:      cfg.SignatureVersion == SignatureVersionV2,
-		BucketLookupType: bucketLookupType,
-		AWSSDKAuth:       cfg.AccessKeyID == "",
+		ListObjectsVersion: cfg.ListObjectsVersion,
+		SignatureV2:        cfg.SignatureVersion == SignatureVersionV2,
+		BucketLookupType:   bucketLookupType,
+		AWSSDKAuth:         cfg.AccessKeyID == "",
 	}, nil
 }
 
@@ -146,6 +148,16 @@ func (b *BucketWithRetries) retry(ctx context.Context, f func() error, operation
 
 func (b *BucketWithRetries) Name() string {
 	return b.bucket.Name()
+}
+
+func (b *BucketWithRetries) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	return b.retry(ctx, func() error {
+		return b.bucket.IterWithAttributes(ctx, dir, f, options...)
+	}, fmt.Sprintf("IterWithAttributes %s", dir))
+}
+
+func (b *BucketWithRetries) SupportedIterOptions() []objstore.IterOptionType {
+	return b.bucket.SupportedIterOptions()
 }
 
 func (b *BucketWithRetries) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {

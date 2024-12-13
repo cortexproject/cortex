@@ -34,9 +34,19 @@ type Config struct {
 	SignWriteRequestsEnabled bool             `yaml:"-"`
 }
 
+type ConfigWithHealthCheck struct {
+	Config            `yaml:",inline"`
+	HealthCheckConfig HealthCheckConfig `yaml:"healthcheck_config" doc:"description=EXPERIMENTAL: If enabled, gRPC clients perform health checks for each target and fail the request if the target is marked as unhealthy."`
+}
+
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", "", f)
+}
+
+func (cfg *ConfigWithHealthCheck) RegisterFlagsWithPrefix(prefix, defaultGrpcCompression string, f *flag.FlagSet) {
+	cfg.Config.RegisterFlagsWithPrefix(prefix, defaultGrpcCompression, f)
+	cfg.HealthCheckConfig.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // RegisterFlagsWithPrefix registers flags with prefix.
@@ -73,6 +83,15 @@ func (cfg *Config) CallOptions() []grpc.CallOption {
 		opts = append(opts, grpc.UseCompressor(cfg.GRPCCompression))
 	}
 	return opts
+}
+
+func (cfg *ConfigWithHealthCheck) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
+	if cfg.HealthCheckConfig.HealthCheckInterceptors != nil {
+		unaryClientInterceptors = append(unaryClientInterceptors, cfg.HealthCheckConfig.UnaryHealthCheckInterceptor(cfg))
+		streamClientInterceptors = append(streamClientInterceptors, cfg.HealthCheckConfig.StreamClientInterceptor(cfg))
+	}
+
+	return cfg.Config.DialOption(unaryClientInterceptors, streamClientInterceptors)
 }
 
 // DialOption returns the config as a grpc.DialOptions.

@@ -118,7 +118,7 @@ func (m *labelSetCounter) canAddSeriesForLabelSet(ctx context.Context, u *userTS
 		s := m.shards[util.HashFP(model.Fingerprint(set.Hash))%numMetricCounterShards]
 		s.RLock()
 		if r, ok := s.valuesCounter[set.Hash]; ok {
-			s.RUnlock()
+			defer s.RUnlock()
 			return r.count, nil
 		}
 		s.RUnlock()

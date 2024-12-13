@@ -73,6 +73,8 @@ var (
 		"quay.io/cortexproject/cortex:v1.16.1": nil,
 		"quay.io/cortexproject/cortex:v1.17.0": nil,
 		"quay.io/cortexproject/cortex:v1.17.1": nil,
+		"quay.io/cortexproject/cortex:v1.18.0": nil,
+		"quay.io/cortexproject/cortex:v1.18.1": nil,
 	}
 )
 

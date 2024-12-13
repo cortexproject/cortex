@@ -82,7 +82,7 @@ func NewVectorSelector(
 
 		selectTimestamp: selectTimestamp,
 	}
-	o.OperatorTelemetry = model.NewTelemetry(o, queryOpts.EnableAnalysis)
+	o.OperatorTelemetry = model.NewTelemetry(o, queryOpts)
 
 	// For instant queries, set the step to a positive value
 	// so that the operator can terminate.
@@ -165,8 +165,8 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 				}
 				currStepSamples++
 			}
+			o.IncrementSamplesAtTimestamp(int(currStepSamples), seriesTs)
 			seriesTs += o.step
-			o.IncrementSamplesAtStep(int(currStepSamples), currStep)
 		}
 	}
 	if o.currentSeries == int64(len(o.scanners)) {

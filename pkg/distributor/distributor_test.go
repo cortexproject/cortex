@@ -404,21 +404,25 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 	d := dists[0]
 	reg := regs[0]
 
-	metrics := []string{
+	permanentMetrics := []string{
 		"cortex_distributor_received_samples_total",
 		"cortex_distributor_received_exemplars_total",
 		"cortex_distributor_received_metadata_total",
-		"cortex_distributor_deduped_samples_total",
 		"cortex_distributor_samples_in_total",
-		"cortex_distributor_exemplars_in_total",
-		"cortex_distributor_metadata_in_total",
-		"cortex_distributor_non_ha_samples_received_total",
-		"cortex_distributor_latest_seen_sample_timestamp_seconds",
 		"cortex_distributor_ingester_append_failures_total",
 		"cortex_distributor_ingester_appends_total",
 		"cortex_distributor_ingester_query_failures_total",
 		"cortex_distributor_ingester_queries_total",
 	}
+	removedMetrics := []string{
+		"cortex_distributor_deduped_samples_total",
+		"cortex_distributor_exemplars_in_total",
+		"cortex_distributor_metadata_in_total",
+		"cortex_distributor_non_ha_samples_received_total",
+		"cortex_distributor_latest_seen_sample_timestamp_seconds",
+	}
+
+	allMetrics := append(removedMetrics, permanentMetrics...)
 
 	d.receivedSamples.WithLabelValues("userA", sampleMetricTypeFloat).Add(5)
 	d.receivedSamples.WithLabelValues("userB", sampleMetricTypeFloat).Add(10)
@@ -505,7 +509,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_ingester_query_failures_total counter
 		cortex_distributor_ingester_query_failures_total{ingester="ingester-0"} 1
 		cortex_distributor_ingester_query_failures_total{ingester="ingester-1"} 1
-		`), metrics...))
+		`), allMetrics...))
 
 	d.cleanupInactiveUser("userA")
 
@@ -524,18 +528,6 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 	d.cleanStaleIngesterMetrics()
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.
-		# TYPE cortex_distributor_deduped_samples_total counter
-
-		# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
-		# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-
-		# HELP cortex_distributor_metadata_in_total The total number of metadata the have come in to the distributor, including rejected.
-		# TYPE cortex_distributor_metadata_in_total counter
-
-		# HELP cortex_distributor_non_ha_samples_received_total The total number of received samples for a user that has HA tracking turned on, but the sample didn't contain both HA labels.
-		# TYPE cortex_distributor_non_ha_samples_received_total counter
-
 		# HELP cortex_distributor_received_metadata_total The total number of received metadata, excluding rejected.
 		# TYPE cortex_distributor_received_metadata_total counter
 		cortex_distributor_received_metadata_total{user="userB"} 10
@@ -553,9 +545,6 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_received_exemplars_total counter
 		cortex_distributor_received_exemplars_total{user="userB"} 10
 
-		# HELP cortex_distributor_exemplars_in_total The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.
-		# TYPE cortex_distributor_exemplars_in_total counter
-
 		# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 		# TYPE cortex_distributor_ingester_append_failures_total counter
 		cortex_distributor_ingester_append_failures_total{ingester="ingester-1",status="2xx",type="metadata"} 1
@@ -568,7 +557,9 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# HELP cortex_distributor_ingester_query_failures_total The total number of failed queries sent to ingesters.
 		# TYPE cortex_distributor_ingester_query_failures_total counter
 		cortex_distributor_ingester_query_failures_total{ingester="ingester-1"} 1
-		`), metrics...))
+		`), permanentMetrics...))
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(""), removedMetrics...))
 }
 
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
@@ -795,13 +786,15 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "user")
 	tests := map[string]struct {
-		preInflight    int
-		preRateSamples int        // initial rate before first push
-		pushes         []testPush // rate is recomputed after each push
+		preInflight       int
+		preInflightClient int
+		preRateSamples    int        // initial rate before first push
+		pushes            []testPush // rate is recomputed after each push
 
 		// limits
-		inflightLimit      int
-		ingestionRateLimit float64
+		inflightLimit       int
+		inflightClientLimit int
+		ingestionRateLimit  float64
 
 		metricNames     []string
 		expectedMetrics string
@@ -818,6 +811,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
 				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_client_requests"} 0
 				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
 				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
 			`,
@@ -837,6 +831,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 
 				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
 				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_client_requests"} 0
 				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 101
 				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
 			`,
@@ -845,7 +840,31 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			preInflight:   101,
 			inflightLimit: 101,
 			pushes: []testPush{
-				{samples: 100, expectedError: errTooManyInflightPushRequests},
+				{samples: 100, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable, "too many inflight push requests in distributor")},
+			},
+		},
+		"below inflight client limit": {
+			preInflightClient:   90,
+			inflightClientLimit: 101,
+			pushes: []testPush{
+				{samples: 100, expectedError: nil},
+			},
+
+			metricNames: []string{instanceLimitsMetric},
+			expectedMetrics: `
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_client_requests"} 101
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
+			`,
+		},
+		"hits inflight client limit": {
+			preInflightClient:   103,
+			inflightClientLimit: 101,
+			pushes: []testPush{
+				{samples: 100, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable,
+					"too many inflight ingester client requests in distributor")},
 			},
 		},
 		"below ingestion rate limit": {
@@ -864,6 +883,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 
 				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
 				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_client_requests"} 0
 				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
 				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 1000
 			`,
@@ -873,7 +893,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			ingestionRateLimit: 1000,
 
 			pushes: []testPush{
-				{samples: 100, expectedError: errMaxSamplesPushRateLimitReached},
+				{samples: 100, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable, "distributor's samples push rate limit reached")},
 				{samples: 100, expectedError: nil},
 			},
 		},
@@ -883,10 +903,10 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 			ingestionRateLimit: 1000,
 
 			pushes: []testPush{
-				{samples: 5000, expectedError: nil},                               // after push, rate = 500 + 0.2*(5000-500) = 1400
-				{samples: 5000, expectedError: errMaxSamplesPushRateLimitReached}, // after push, rate = 1400 + 0.2*(0 - 1400) = 1120
-				{samples: 5000, expectedError: errMaxSamplesPushRateLimitReached}, // after push, rate = 1120 + 0.2*(0 - 1120) = 896
-				{samples: 5000, expectedError: nil},                               // 896 is below 1000, so this push succeeds, new rate = 896 + 0.2*(5000-896) = 1716.8
+				{samples: 5000, expectedError: nil}, // after push, rate = 500 + 0.2*(5000-500) = 1400
+				{samples: 5000, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable, "distributor's samples push rate limit reached")}, // after push, rate = 1400 + 0.2*(0 - 1400) = 1120
+				{samples: 5000, expectedError: httpgrpc.Errorf(http.StatusServiceUnavailable, "distributor's samples push rate limit reached")}, // after push, rate = 1120 + 0.2*(0 - 1120) = 896
+				{samples: 5000, expectedError: nil}, // 896 is below 1000, so this push succeeds, new rate = 896 + 0.2*(5000-896) = 1716.8
 			},
 		},
 	}
@@ -903,17 +923,19 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 
 				// Start all expected distributors
 				distributors, _, regs, _ := prepare(t, prepConfig{
-					numIngesters:        3,
-					happyIngesters:      3,
-					numDistributors:     1,
-					shardByAllLabels:    true,
-					limits:              limits,
-					maxInflightRequests: testData.inflightLimit,
-					maxIngestionRate:    testData.ingestionRateLimit,
+					numIngesters:              3,
+					happyIngesters:            3,
+					numDistributors:           1,
+					shardByAllLabels:          true,
+					limits:                    limits,
+					maxInflightRequests:       testData.inflightLimit,
+					maxInflightClientRequests: testData.inflightClientLimit,
+					maxIngestionRate:          testData.ingestionRateLimit,
 				})
 
 				d := distributors[0]
 				d.inflightPushRequests.Add(int64(testData.preInflight))
+				d.inflightClientRequests.Add(int64(testData.preInflightClient))
 				d.ingestionRate.Add(int64(testData.preRateSamples))
 
 				d.ingestionRate.Tick()
@@ -1031,6 +1053,102 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 						assert.Equal(t, tc.expectedCode, httpResp.Code)
 					} else if tc.expectedCode != 0 {
 						assert.Fail(t, "expected HTTP status code", tc.expectedCode)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestDistributor_PushMixedHAInstances(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	for i, tc := range []struct {
+		enableTracker        bool
+		acceptMixedHASamples bool
+		samples              int
+		expectedResponse     *cortexpb.WriteResponse
+		expectedCode         int32
+	}{
+		{
+			enableTracker:        true,
+			acceptMixedHASamples: true,
+			samples:              5,
+			expectedResponse:     emptyResponse,
+			expectedCode:         202,
+		},
+	} {
+		for _, shardByAllLabels := range []bool{true} {
+			tc := tc
+			shardByAllLabels := shardByAllLabels
+			for _, enableHistogram := range []bool{false} {
+				enableHistogram := enableHistogram
+				t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v, histogram=%v)", i, shardByAllLabels, enableHistogram), func(t *testing.T) {
+					t.Parallel()
+					var limits validation.Limits
+					flagext.DefaultValues(&limits)
+					limits.AcceptHASamples = true
+					limits.AcceptMixedHASamples = tc.acceptMixedHASamples
+					limits.MaxLabelValueLength = 25
+
+					ds, ingesters, _, _ := prepare(t, prepConfig{
+						numIngesters:      2,
+						happyIngesters:    2,
+						numDistributors:   1,
+						replicationFactor: 2,
+						shardByAllLabels:  shardByAllLabels,
+						limits:            &limits,
+						enableTracker:     tc.enableTracker,
+					})
+
+					d := ds[0]
+
+					request := makeWriteRequestHAMixedSamples(tc.samples, enableHistogram)
+					response, _ := d.Push(ctx, request)
+					assert.Equal(t, tc.expectedResponse, response)
+
+					for i := range ingesters {
+						timeseries := ingesters[i].series()
+						assert.Equal(t, 5, len(timeseries))
+						clusters := make(map[string]int)
+						replicas := make(map[string]int)
+						for _, v := range timeseries {
+							replicaLabel := ""
+							clusterLabel := ""
+							for _, label := range v.Labels {
+								if label.Name == "__replica__" {
+									replicaLabel = label.Value
+									_, ok := replicas[label.Value]
+									if !ok {
+										replicas[label.Value] = 1
+									} else {
+										assert.Fail(t, fmt.Sprintf("Two timeseries with same replica label, %s, were found, but only one should be present", label.Value))
+									}
+								}
+								if label.Name == "cluster" {
+									clusterLabel = label.Value
+									_, ok := clusters[label.Value]
+									if !ok {
+										clusters[label.Value] = 1
+									} else {
+										assert.Fail(t, fmt.Sprintf("Two timeseries with same cluster label, %s, were found, but only one should be present", label.Value))
+									}
+								}
+							}
+							if clusterLabel == "" && replicaLabel != "" {
+								assert.Equal(t, "replicaNoCluster", replicaLabel)
+							}
+							assert.Equal(t, tc.samples, len(v.Samples))
+						}
+						assert.Equal(t, 3, len(clusters))
+						for _, nr := range clusters {
+							assert.Equal(t, true, nr == 1)
+						}
+						assert.Equal(t, 1, len(replicas))
+						for _, nr := range clusters {
+							assert.Equal(t, true, nr == 1)
+						}
 					}
 				})
 			}
@@ -1497,6 +1615,7 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		expectedSeries labels.Labels
 		removeReplica  bool
 		removeLabels   []string
+		exemplars      []cortexpb.Exemplar
 	}
 
 	cases := []testcase{
@@ -1543,6 +1662,20 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 				{Name: "cluster", Value: "one"},
 			},
 		},
+		// No labels left.
+		{
+			removeReplica: true,
+			removeLabels:  []string{"cluster"},
+			inputSeries: labels.Labels{
+				{Name: "cluster", Value: "one"},
+				{Name: "__replica__", Value: "two"},
+			},
+			expectedSeries: labels.Labels{},
+			exemplars: []cortexpb.Exemplar{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("test", "a")), Value: 1, TimestampMs: 0},
+				{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("test", "b")), Value: 1, TimestampMs: 0},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -1552,6 +1685,15 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 			flagext.DefaultValues(&limits)
 			limits.DropLabels = tc.removeLabels
 			limits.AcceptHASamples = tc.removeReplica
+
+			expectedDiscardedSamples := 0
+			expectedDiscardedExemplars := 0
+			if tc.expectedSeries.Len() == 0 {
+				expectedDiscardedSamples = 1
+				expectedDiscardedExemplars = len(tc.exemplars)
+				// Allow series with no labels to ingest
+				limits.EnforceMetricName = false
+			}
 
 			ds, ingesters, _, _ := prepare(t, prepConfig{
 				numIngesters:     2,
@@ -1563,14 +1705,24 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 
 			// Push the series to the distributor
 			req := mockWriteRequest([]labels.Labels{tc.inputSeries}, 1, 1, histogram)
+			req.Timeseries[0].Exemplars = tc.exemplars
 			_, err = ds[0].Push(ctx, req)
 			require.NoError(t, err)
+
+			actualDiscardedSamples := testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByUserConfigurationOverride, "user"))
+			actualDiscardedExemplars := testutil.ToFloat64(ds[0].validateMetrics.DiscardedExemplars.WithLabelValues(validation.DroppedByUserConfigurationOverride, "user"))
+			require.Equal(t, float64(expectedDiscardedSamples), actualDiscardedSamples)
+			require.Equal(t, float64(expectedDiscardedExemplars), actualDiscardedExemplars)
 
 			// Since each test pushes only 1 series, we do expect the ingester
 			// to have received exactly 1 series
 			for i := range ingesters {
 				timeseries := ingesters[i].series()
-				assert.Equal(t, 1, len(timeseries))
+				expectedSeries := 1
+				if tc.expectedSeries.Len() == 0 {
+					expectedSeries = 0
+				}
+				assert.Equal(t, expectedSeries, len(timeseries))
 				for _, v := range timeseries {
 					assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
 				}
@@ -2184,7 +2336,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			require.NoError(b, err)
 
 			// Start the distributor.
-			distributor, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil, log.NewNopLogger())
+			distributor, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, prometheus.NewRegistry(), log.NewNopLogger())
 			require.NoError(b, err)
 			require.NoError(b, services.StartAndAwaitRunning(context.Background(), distributor))
 
@@ -2669,6 +2821,7 @@ type prepConfig struct {
 	numDistributors              int
 	skipLabelNameValidation      bool
 	maxInflightRequests          int
+	maxInflightClientRequests    int
 	maxIngestionRate             float64
 	replicationFactor            int
 	enableTracker                bool
@@ -2786,6 +2939,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		distributorCfg.DistributorRing.InstanceAddr = "127.0.0.1"
 		distributorCfg.SkipLabelNameValidation = cfg.skipLabelNameValidation
 		distributorCfg.InstanceLimits.MaxInflightPushRequests = cfg.maxInflightRequests
+		distributorCfg.InstanceLimits.MaxInflightClientRequests = cfg.maxInflightClientRequests
 		distributorCfg.InstanceLimits.MaxIngestionRate = cfg.maxIngestionRate
 
 		if cfg.shuffleShardEnabled {
@@ -2804,7 +2958,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 				EnableHATracker: true,
 				KVStore:         kv.Config{Mock: mock},
 				UpdateTimeout:   100 * time.Millisecond,
-				FailoverTimeout: time.Second,
+				FailoverTimeout: time.Hour,
 			}
 			cfg.limits.HAMaxClusters = 100
 		}
@@ -2917,6 +3071,106 @@ func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *c
 					TimestampMs: int64(i),
 				},
 			}
+		}
+		request.Timeseries = append(request.Timeseries, ts)
+	}
+	return request
+}
+
+func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.WriteRequest {
+	request := &cortexpb.WriteRequest{}
+
+	for _, haPair := range []struct {
+		cluster string
+		replica string
+	}{
+		{
+			cluster: "cluster0",
+			replica: "replica0",
+		},
+		{
+			cluster: "cluster0",
+			replica: "replica1",
+		},
+		{
+			cluster: "cluster1",
+			replica: "replica0",
+		},
+		{
+			cluster: "cluster1",
+			replica: "replica1",
+		},
+		{
+			cluster: "",
+			replica: "replicaNoCluster",
+		},
+		{
+			cluster: "clusterNoReplica",
+			replica: "",
+		},
+		{
+			cluster: "",
+			replica: "",
+		},
+	} {
+		cluster := haPair.cluster
+		replica := haPair.replica
+		var ts cortexpb.PreallocTimeseries
+		if cluster == "" && replica == "" {
+			ts = cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: "__name__", Value: "foo"},
+						{Name: "bar", Value: "baz"},
+					},
+				},
+			}
+		} else if cluster == "" && replica != "" {
+			ts = cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: "__name__", Value: "foo"},
+						{Name: "__replica__", Value: replica},
+						{Name: "bar", Value: "baz"},
+					},
+				},
+			}
+		} else if cluster != "" && replica == "" {
+			ts = cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: "__name__", Value: "foo"},
+						{Name: "bar", Value: "baz"},
+						{Name: "cluster", Value: cluster},
+					},
+				},
+			}
+		} else {
+			ts = cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: "__name__", Value: "foo"},
+						{Name: "__replica__", Value: replica},
+						{Name: "bar", Value: "baz"},
+						{Name: "cluster", Value: cluster},
+					},
+				},
+			}
+		}
+		if histogram {
+			ts.Histograms = []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(int64(samples), tsdbutil.GenerateTestHistogram(samples)),
+			}
+		} else {
+			var s = make([]cortexpb.Sample, 0)
+			for i := 0; i < samples; i++ {
+				sample := cortexpb.Sample{
+					Value:       float64(i),
+					TimestampMs: int64(i),
+				}
+				s = append(s, sample)
+			}
+			ts.Samples = s
 		}
 		request.Timeseries = append(request.Timeseries, ts)
 	}
@@ -3288,6 +3542,10 @@ type noopIngester struct {
 
 func (i *noopIngester) Close() error {
 	return nil
+}
+
+func (i *noopIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return nil, nil
 }
 
 func (i *noopIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
@@ -3784,39 +4042,43 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	flagext.DefaultValues(&limits)
 	limits.MetricRelabelConfigs = metricRelabelConfigs
 
-	ds, ingesters, regs, _ := prepare(t, prepConfig{
-		numIngesters:     2,
-		happyIngesters:   2,
-		numDistributors:  1,
-		shardByAllLabels: true,
-		limits:           &limits,
-	})
+	for _, histogramEnabled := range []bool{false, true} {
+		ds, ingesters, _, _ := prepare(t, prepConfig{
+			numIngesters:     2,
+			happyIngesters:   2,
+			numDistributors:  1,
+			shardByAllLabels: true,
+			limits:           &limits,
+		})
 
-	// Push the series to the distributor
-	req := mockWriteRequest(inputSeries, 1, 1, false)
-	ctx := user.InjectOrgID(context.Background(), "userDistributorPushRelabelDropWillExportMetricOfDroppedSamples")
-	_, err = ds[0].Push(ctx, req)
-	require.NoError(t, err)
+		// Push the series to the distributor
+		id := "user"
+		req := mockWriteRequest(inputSeries, 1, 1, histogramEnabled)
+		req.Timeseries[0].Exemplars = []cortexpb.Exemplar{
+			{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("test", "a")), Value: 1, TimestampMs: 0},
+			{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("test", "b")), Value: 1, TimestampMs: 0},
+		}
+		ctx := user.InjectOrgID(context.Background(), id)
+		_, err = ds[0].Push(ctx, req)
+		require.NoError(t, err)
 
-	// Since each test pushes only 1 series, we do expect the ingester
-	// to have received exactly 1 series
-	for i := range ingesters {
-		timeseries := ingesters[i].series()
-		assert.Equal(t, 1, len(timeseries))
+		for i := range ingesters {
+			timeseries := ingesters[i].series()
+			assert.Equal(t, 1, len(timeseries))
+		}
+
+		require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByRelabelConfiguration, id)), float64(1))
+		require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedExemplars.WithLabelValues(validation.DroppedByRelabelConfiguration, id)), float64(2))
+		receivedFloatSamples := testutil.ToFloat64(ds[0].receivedSamples.WithLabelValues(id, "float"))
+		receivedHistogramSamples := testutil.ToFloat64(ds[0].receivedSamples.WithLabelValues(id, "histogram"))
+		if histogramEnabled {
+			require.Equal(t, receivedFloatSamples, float64(0))
+			require.Equal(t, receivedHistogramSamples, float64(1))
+		} else {
+			require.Equal(t, receivedFloatSamples, float64(1))
+			require.Equal(t, receivedHistogramSamples, float64(0))
+		}
 	}
-
-	metrics := []string{"cortex_distributor_received_samples_total", "cortex_discarded_samples_total"}
-
-	expectedMetrics := `
-		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
-		# TYPE cortex_discarded_samples_total counter
-		cortex_discarded_samples_total{reason="relabel_configuration",user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 1
-		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
-		# TYPE cortex_distributor_received_samples_total counter
-        cortex_distributor_received_samples_total{type="float",user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 1
-        cortex_distributor_received_samples_total{type="histogram",user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 0
-		`
-	require.NoError(t, testutil.GatherAndCompare(regs[0], strings.NewReader(expectedMetrics), metrics...))
 }
 
 func countMockIngestersCalls(ingesters []*mockIngester, name string) int {

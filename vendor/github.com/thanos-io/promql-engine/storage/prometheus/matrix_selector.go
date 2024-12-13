@@ -16,9 +16,8 @@ import (
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
-	"github.com/thanos-io/promql-engine/execution/function"
 	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/execution/scan"
+	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/ringbuffer"
@@ -28,24 +27,26 @@ type matrixScanner struct {
 	labels    labels.Labels
 	signature uint64
 
-	buffer           *ringbuffer.RingBuffer[scan.Value]
+	buffer           ringbuffer.Buffer
 	iterator         chunkenc.Iterator
-	lastSample       ringbuffer.Sample[scan.Value]
+	lastSample       ringbuffer.Sample
 	metricAppearedTs *int64
 }
 
 type matrixSelector struct {
 	model.OperatorTelemetry
 
-	vectorPool   *model.VectorPool
+	vectorPool *model.VectorPool
+	storage    SeriesSelector
+	scalarArg  float64
+	scanners   []matrixScanner
+	series     []labels.Labels
+	once       sync.Once
+
 	functionName string
-	storage      SeriesSelector
-	scalarArg    float64
-	call         scan.FunctionCall
-	scanners     []matrixScanner
-	bufferTail   []ringbuffer.Sample[scan.Value]
-	series       []labels.Labels
-	once         sync.Once
+	call         ringbuffer.FunctionCall
+	fhReader     *histogram.FloatHistogram
+	opts         *query.Options
 
 	numSteps      int
 	mint          int64
@@ -79,24 +80,24 @@ func NewMatrixSelector(
 	batchSize int64,
 	shard, numShard int,
 ) (model.VectorOperator, error) {
-	call, err := scan.NewRangeVectorFunc(functionName)
+	call, err := ringbuffer.NewRangeVectorFunc(functionName)
 	if err != nil {
 		return nil, err
 	}
-	isExtFunction := function.IsExtFunction(functionName)
 	m := &matrixSelector{
 		storage:      selector,
 		call:         call,
 		functionName: functionName,
 		vectorPool:   pool,
 		scalarArg:    arg,
-		bufferTail:   make([]ringbuffer.Sample[scan.Value], 16),
+		fhReader:     &histogram.FloatHistogram{},
 
+		opts:          opts,
 		numSteps:      opts.NumSteps(),
 		mint:          opts.Start.UnixMilli(),
 		maxt:          opts.End.UnixMilli(),
 		step:          opts.Step.Milliseconds(),
-		isExtFunction: isExtFunction,
+		isExtFunction: parse.IsExtFunction(functionName),
 
 		selectRange:     selectRange.Milliseconds(),
 		offset:          offset.Milliseconds(),
@@ -108,7 +109,7 @@ func NewMatrixSelector(
 
 		extLookbackDelta: opts.ExtLookbackDelta.Milliseconds(),
 	}
-	m.OperatorTelemetry = model.NewTelemetry(m, opts.EnableAnalysis)
+	m.OperatorTelemetry = model.NewTelemetry(m, opts)
 
 	// For instant queries, set the step to a positive value
 	// so that the operator can terminate.
@@ -166,7 +167,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 	firstSeries := o.currentSeries
 	for ; o.currentSeries-firstSeries < o.seriesBatchSize && o.currentSeries < int64(len(o.scanners)); o.currentSeries++ {
 		var (
-			series   = &o.scanners[o.currentSeries]
+			scanner  = &o.scanners[o.currentSeries]
 			seriesTs = ts
 		)
 
@@ -174,41 +175,26 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			maxt := seriesTs - o.offset
 			mint := maxt - o.selectRange
 
-			var err error
-
-			if !o.isExtFunction {
-				err = series.selectPoints(mint, maxt)
-			} else {
-				err = series.selectExtPoints(mint, maxt, o.extLookbackDelta)
-			}
-			if err != nil {
+			if err := scanner.selectPoints(mint, maxt, seriesTs, o.fhReader, o.isExtFunction); err != nil {
 				return nil, err
 			}
-
 			// TODO(saswatamcode): Handle multi-arg functions for matrixSelectors.
 			// Also, allow operator to exist independently without being nested
 			// under parser.Call by implementing new data model.
 			// https://github.com/thanos-io/promql-engine/issues/39
-			f, h, ok, err := o.call(scan.FunctionArgs{
-				Samples:          series.buffer.Samples(),
-				StepTime:         seriesTs,
-				SelectRange:      o.selectRange,
-				Offset:           o.offset,
-				ScalarPoint:      o.scalarArg,
-				MetricAppearedTs: series.metricAppearedTs,
-			})
+			f, h, ok, err := scanner.buffer.Eval(o.scalarArg, scanner.metricAppearedTs)
 			if err != nil {
 				return nil, err
 			}
 			if ok {
 				vectors[currStep].T = seriesTs
 				if h != nil {
-					vectors[currStep].AppendHistogram(o.vectorPool, series.signature, h)
+					vectors[currStep].AppendHistogram(o.vectorPool, scanner.signature, h)
 				} else {
-					vectors[currStep].AppendSample(o.vectorPool, series.signature, f)
+					vectors[currStep].AppendSample(o.vectorPool, scanner.signature, f)
 				}
 			}
-			o.IncrementSamplesAtStep(len(series.buffer.Samples()), currStep)
+			o.IncrementSamplesAtTimestamp(scanner.buffer.Len(), seriesTs)
 			seriesTs += o.step
 		}
 	}
@@ -245,8 +231,8 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 				labels:     lbls,
 				signature:  s.Signature,
 				iterator:   s.Iterator(nil),
-				lastSample: ringbuffer.Sample[scan.Value]{T: math.MinInt64},
-				buffer:     ringbuffer.New[scan.Value](8),
+				lastSample: ringbuffer.Sample{T: math.MinInt64},
+				buffer:     o.newBuffer(),
 			}
 			o.series[i] = lbls
 		}
@@ -257,6 +243,23 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 		o.vectorPool.SetStepSize(int(o.seriesBatchSize))
 	})
 	return err
+}
+
+func (o *matrixSelector) newBuffer() ringbuffer.Buffer {
+	switch o.functionName {
+	case "rate":
+		return ringbuffer.NewRateBuffer(*o.opts, true, true, o.selectRange, o.offset)
+	case "increase":
+		return ringbuffer.NewRateBuffer(*o.opts, true, false, o.selectRange, o.offset)
+	case "delta":
+		return ringbuffer.NewRateBuffer(*o.opts, false, false, o.selectRange, o.offset)
+	}
+
+	if o.isExtFunction {
+		return ringbuffer.NewWithExtLookback(8, o.selectRange, o.offset, o.opts.ExtLookbackDelta.Milliseconds(), o.call)
+	}
+	return ringbuffer.New(8, o.selectRange, o.offset, o.call)
+
 }
 
 func (o *matrixSelector) String() string {
@@ -276,117 +279,76 @@ func (o *matrixSelector) String() string {
 // into the [mint, maxt] range are retained; only points with later timestamps
 // are populated from the iterator.
 // TODO(fpetkovski): Add max samples limit.
-func (m *matrixScanner) selectPoints(mint, maxt int64) error {
-	m.buffer.DropBefore(mint)
+func (m *matrixScanner) selectPoints(
+	mint, maxt, evalt int64,
+	fh *histogram.FloatHistogram,
+	isExtFunction bool,
+) error {
+	m.buffer.Reset(mint, evalt)
 	if m.lastSample.T > maxt {
 		return nil
 	}
 
+	if bufMaxt := m.buffer.MaxT() + 1; bufMaxt > mint {
+		mint = bufMaxt
+	}
 	mint = maxInt64(mint, m.buffer.MaxT()+1)
 	if m.lastSample.T >= mint {
-		m.buffer.ReadIntoNext(func(s *ringbuffer.Sample[scan.Value]) bool {
-			s.T, s.V.F = m.lastSample.T, m.lastSample.V.F
-			if m.lastSample.V.H != nil {
-				if s.V.H == nil {
-					s.V.H = m.lastSample.V.H.Copy()
-				} else {
-					m.lastSample.V.H.CopyTo(s.V.H)
-				}
-			}
-			return true
-		})
+		m.buffer.Push(m.lastSample.T, m.lastSample.V)
 		m.lastSample.T = math.MinInt64
 		mint = maxInt64(mint, m.buffer.MaxT()+1)
-	}
-
-	for valType := m.iterator.Next(); valType != chunkenc.ValNone; valType = m.iterator.Next() {
-		switch valType {
-		case chunkenc.ValHistogram, chunkenc.ValFloatHistogram:
-			var stop bool
-			m.buffer.ReadIntoNext(func(s *ringbuffer.Sample[scan.Value]) (keep bool) {
-				if s.V.H == nil {
-					s.V.H = &histogram.FloatHistogram{}
-				}
-				s.T, s.V.H = m.iterator.AtFloatHistogram(s.V.H)
-				if value.IsStaleNaN(s.V.H.Sum) {
-					return false
-				}
-				if s.T < mint {
-					return false
-				}
-				if s.T > maxt {
-					m.lastSample.T, m.lastSample.V.H = s.T, s.V.H.Copy()
-					stop = true
-					return false
-				}
-				return true
-			})
-			if stop {
-				return nil
-			}
-		case chunkenc.ValFloat:
-			t, v := m.iterator.At()
-			if value.IsStaleNaN(v) {
-				continue
-			}
-			if t > maxt {
-				m.lastSample.T, m.lastSample.V.F, m.lastSample.V.H = t, v, nil
-				return nil
-			}
-			if t >= mint {
-				m.buffer.Push(t, scan.Value{F: v})
-			}
-		}
-	}
-	return m.iterator.Err()
-}
-
-// matrixIterSlice populates a matrix vector covering the requested range for a
-// single time series, with points retrieved from an iterator.
-//
-// As an optimization, the matrix vector may already contain points of the same
-// time series from the evaluation of an earlier step (with lower mint and maxt
-// values). Any such points falling before mint are discarded; points that fall
-// into the [mint, maxt] range are retained; only points with later timestamps
-// are populated from the iterator.
-// TODO(fpetkovski): Add max samples limit.
-func (m *matrixScanner) selectExtPoints(mint, maxt, extLookbackDelta int64) error {
-	m.buffer.DropBeforeWithExtLookback(mint, mint-extLookbackDelta)
-	if m.lastSample.T > maxt {
-		return nil
-	}
-
-	mint = maxInt64(mint, m.buffer.MaxT()+1)
-	if m.lastSample.T >= mint {
-		m.buffer.Push(m.lastSample.T, scan.Value{F: m.lastSample.V.F, H: m.lastSample.V.H})
-		m.lastSample.T = math.MinInt64
-		mint = maxInt64(m.buffer.MaxT()+1, mint)
 	}
 
 	appendedPointBeforeMint := m.buffer.Len() > 0
 	for valType := m.iterator.Next(); valType != chunkenc.ValNone; valType = m.iterator.Next() {
 		switch valType {
 		case chunkenc.ValHistogram, chunkenc.ValFloatHistogram:
-			return ErrNativeHistogramsNotSupported
+			if isExtFunction {
+				return ErrNativeHistogramsNotSupported
+			}
+			var t int64
+			t, fh = m.iterator.AtFloatHistogram(fh)
+			if value.IsStaleNaN(fh.Sum) || t < mint {
+				continue
+			}
+			if t > maxt {
+				m.lastSample.T = t
+				if m.lastSample.V.H == nil {
+					m.lastSample.V.H = fh.Copy()
+				} else {
+					fh.CopyTo(m.lastSample.V.H)
+				}
+				return nil
+			}
+			if t >= mint {
+				m.buffer.Push(t, ringbuffer.Value{H: fh})
+			}
 		case chunkenc.ValFloat:
 			t, v := m.iterator.At()
 			if value.IsStaleNaN(v) {
 				continue
 			}
 			if m.metricAppearedTs == nil {
-				m.metricAppearedTs = &t
+				tCopy := t
+				m.metricAppearedTs = &tCopy
 			}
 			if t > maxt {
 				m.lastSample.T, m.lastSample.V.F, m.lastSample.V.H = t, v, nil
 				return nil
 			}
-			if t >= mint || !appendedPointBeforeMint {
-				m.buffer.Push(t, scan.Value{F: v})
-				appendedPointBeforeMint = true
+			if isExtFunction {
+				if t >= mint || !appendedPointBeforeMint {
+					m.buffer.Push(t, ringbuffer.Value{F: v})
+					appendedPointBeforeMint = true
+				} else {
+					m.buffer.ReadIntoLast(func(s *ringbuffer.Sample) {
+						s.T, s.V.F, s.V.H = t, v, nil
+					})
+				}
 			} else {
-				m.buffer.ReadIntoLast(func(s *ringbuffer.Sample[scan.Value]) {
-					s.T, s.V.F, s.V.H = t, v, nil
-				})
+				if t >= mint {
+					m.buffer.Push(t, ringbuffer.Value{F: v})
+				}
 			}
 		}
 	}

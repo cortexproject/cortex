@@ -33,13 +33,18 @@ func TestLoadRuntimeConfigFromStorageBackend(t *testing.T) {
 
 	filePath := filepath.Join(e2e.ContainerSharedDir, runtimeConfigFile)
 	tests := []struct {
-		name  string
-		flags map[string]string
+		name    string
+		flags   map[string]string
+		workDir string
 	}{
 		{
 			name: "no storage backend provided",
 			flags: map[string]string{
 				"-runtime-config.file": filePath,
+				// alert manager
+				"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+				"-alertmanager-storage.backend":    "local",
+				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 			},
 		},
 		{
@@ -47,13 +52,43 @@ func TestLoadRuntimeConfigFromStorageBackend(t *testing.T) {
 			flags: map[string]string{
 				"-runtime-config.file":    filePath,
 				"-runtime-config.backend": "filesystem",
+				// alert manager
+				"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+				"-alertmanager-storage.backend":    "local",
+				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 			},
 		},
+		{
+			name: "runtime-config.file is a relative path",
+			flags: map[string]string{
+				"-runtime-config.file": runtimeConfigFile,
+				// alert manager
+				"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+				"-alertmanager-storage.backend":    "local",
+				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+			},
+			workDir: e2e.ContainerSharedDir,
+		},
+		{
+			name: "runtime-config.file is an absolute path but working directory is not /",
+			flags: map[string]string{
+				"-runtime-config.file": filePath,
+				// alert manager
+				"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+				"-alertmanager-storage.backend":    "local",
+				"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+			},
+			workDir: "/var/lib/cortex",
+		},
 	}
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cortexSvc := e2ecortex.NewSingleBinaryWithConfigFile(fmt.Sprintf("cortex-%d", i), cortexConfigFile, tt.flags, "", 9009, 9095)
+			cortexSvc.SetWorkDir(tt.workDir)
+
 			require.NoError(t, s.StartAndWaitReady(cortexSvc))
 
 			assertRuntimeConfigLoadedCorrectly(t, cortexSvc)
@@ -79,7 +114,14 @@ func TestLoadRuntimeConfigFromCloudStorage(t *testing.T) {
 		"-runtime-config.s3.insecure":          "true",
 		"-runtime-config.file":                 configFileName,
 		"-runtime-config.reload-period":        "2s",
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 	}
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
 	// create s3 storage backend
 	minio := e2edb.NewMinio(9000, bucketName)
 	require.NoError(t, s.StartAndWaitReady(minio))
@@ -90,7 +132,7 @@ func TestLoadRuntimeConfigFromCloudStorage(t *testing.T) {
 		Bucket:    bucketName,
 		AccessKey: e2edb.MinioAccessKey,
 		SecretKey: e2edb.MinioSecretKey,
-	}, "runtime-config-test")
+	}, "runtime-config-test", nil)
 	require.NoError(t, err)
 
 	content, err := os.ReadFile(filepath.Join(getCortexProjectDir(), "docs/configuration/runtime-config.yaml"))

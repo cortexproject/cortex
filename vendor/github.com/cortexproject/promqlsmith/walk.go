@@ -16,6 +16,9 @@ import (
 const (
 	// max number of grouping labels in either by or without clause.
 	maxGroupingLabels = 5
+
+	// Destination label used in functions like label_replace and label_join.
+	destinationLabel = "__promqlsmith_dst_label__"
 )
 
 // walkExpr generates the given expression type with one of the required value type.
@@ -32,7 +35,7 @@ func (s *PromQLSmith) walkExpr(e ExprType, valueTypes ...parser.ValueType) (pars
 	case MatrixSelector:
 		return s.walkMatrixSelector(), nil
 	case VectorSelector:
-		return s.walkVectorSelector(), nil
+		return s.walkVectorSelector(s.enableAtModifier), nil
 	case CallExpr:
 		return s.walkCall(valueTypes...), nil
 	case NumberLiteral:
@@ -80,6 +83,8 @@ func (s *PromQLSmith) walkAggregateParam(op parser.ItemType) parser.Expr {
 		return s.Walk(parser.ValueTypeScalar)
 	case parser.COUNT_VALUES:
 		return &parser.StringLiteral{Val: "value"}
+	case parser.LIMITK, parser.LIMIT_RATIO:
+		return s.Walk(parser.ValueTypeScalar)
 	}
 	return nil
 }
@@ -211,7 +216,7 @@ func (s *PromQLSmith) walkSubQueryExpr() parser.Expr {
 	expr := &parser.SubqueryExpr{
 		Range: time.Hour,
 		Step:  time.Minute,
-		Expr:  s.walkVectorSelector(),
+		Expr:  s.walkVectorSelector(s.enableAtModifier),
 	}
 	if s.enableOffset && s.rnd.Int()%2 == 0 {
 		negativeOffset := s.rnd.Intn(2) == 0
@@ -244,14 +249,34 @@ func (s *PromQLSmith) walkCall(valueTypes ...parser.ValueType) parser.Expr {
 	}
 	sort.Slice(funcs, func(i, j int) bool { return strings.Compare(funcs[i].Name, funcs[j].Name) < 0 })
 	expr.Func = funcs[s.rnd.Intn(len(funcs))]
-	s.walkFuncArgs(expr)
+	s.walkFunctions(expr)
 	return expr
 }
 
-func (s *PromQLSmith) walkFuncArgs(expr *parser.Call) {
+func (s *PromQLSmith) walkFunctions(expr *parser.Call) {
+	switch expr.Func.Name {
+	case "label_join":
+		s.walkLabelJoin(expr)
+		return
+	case "sort_by_label", "sort_by_label_desc":
+		s.walkSortByLabel(expr)
+		return
+	default:
+	}
+
 	expr.Args = make([]parser.Expr, len(expr.Func.ArgTypes))
 	if expr.Func.Name == "holt_winters" {
 		s.walkHoltWinters(expr)
+		return
+	} else if expr.Func.Name == "label_replace" {
+		s.walkLabelReplace(expr)
+		return
+	} else if expr.Func.Name == "info" {
+		s.walkInfo(expr)
+		return
+	}
+	if expr.Func.Variadic != 0 {
+		s.walkVariadicFunctions(expr)
 		return
 	}
 	for i, arg := range expr.Func.ArgTypes {
@@ -265,7 +290,131 @@ func (s *PromQLSmith) walkHoltWinters(expr *parser.Call) {
 	expr.Args[2] = &parser.NumberLiteral{Val: getNonZeroFloat64(s.rnd)}
 }
 
-func (s *PromQLSmith) walkVectorSelector() parser.Expr {
+func (s *PromQLSmith) walkInfo(expr *parser.Call) {
+	expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
+	if s.rnd.Int()%2 == 0 {
+		// skip second parameter
+		expr.Args = expr.Args[:1]
+	} else {
+		expr.Args[1] = s.walkVectorSelector(false)
+	}
+}
+
+func (s *PromQLSmith) walkLabelReplace(expr *parser.Call) {
+	expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
+	expr.Args[1] = &parser.StringLiteral{Val: destinationLabel}
+	expr.Args[2] = &parser.StringLiteral{Val: "$1"}
+	seriesSet, _ := getOutputSeries(expr.Args[0])
+
+	var srcLabel string
+	if len(seriesSet) > 0 {
+		lbls := seriesSet[0]
+		if lbls.Len() > 0 {
+			idx := s.rnd.Intn(lbls.Len())
+			cnt := 0
+			lbls.Range(func(lbl labels.Label) {
+				if cnt == idx {
+					srcLabel = lbl.Name
+				}
+				cnt++
+			})
+		}
+	}
+	if srcLabel != "" {
+		// It is possible that the vector selector match nothing. In this case, it doesn't matter which label
+		// we pick. Just pick something from all series labels.
+		idx := s.rnd.Intn(len(s.labelNames))
+		srcLabel = s.labelNames[idx]
+	}
+	expr.Args[3] = &parser.StringLiteral{Val: srcLabel}
+	// Just copy the label we picked.
+	expr.Args[4] = &parser.StringLiteral{Val: "(.*)"}
+}
+
+func (s *PromQLSmith) walkSortByLabel(expr *parser.Call) {
+	expr.Args = make([]parser.Expr, 0, len(expr.Func.ArgTypes))
+	expr.Args = append(expr.Args, s.Walk(expr.Func.ArgTypes[0]))
+	seriesSet, _ := getOutputSeries(expr.Args[0])
+
+	// Let's try to not sort more than 1 label for simplicity.
+	cnt := 0
+	if len(seriesSet) > 0 {
+		seriesSet[0].Range(func(lbl labels.Label) {
+			if cnt < 2 {
+				if s.rnd.Int()%2 == 0 {
+					expr.Args = append(expr.Args, &parser.StringLiteral{Val: lbl.Name})
+					cnt++
+				}
+			}
+		})
+
+		return
+	}
+
+	// It is possible that the vector selector match nothing. In this case, it doesn't matter which label
+	// we pick. Just pick something from all series labels.
+	for _, name := range s.labelNames {
+		if cnt < 1 {
+			if s.rnd.Int()%2 == 0 {
+				expr.Args = append(expr.Args, &parser.StringLiteral{Val: name})
+				cnt++
+			}
+		}
+	}
+}
+
+func (s *PromQLSmith) walkLabelJoin(expr *parser.Call) {
+	expr.Args = make([]parser.Expr, 0, len(expr.Func.ArgTypes))
+	expr.Args = append(expr.Args, s.Walk(expr.Func.ArgTypes[0]))
+	seriesSet, _ := getOutputSeries(expr.Args[0])
+	expr.Args = append(expr.Args, &parser.StringLiteral{Val: destinationLabel})
+	expr.Args = append(expr.Args, &parser.StringLiteral{Val: ","})
+
+	// Let's try to not join more than 2 labels for simplicity.
+	cnt := 0
+	if len(seriesSet) > 0 {
+		seriesSet[0].Range(func(lbl labels.Label) {
+			if cnt < 2 {
+				if s.rnd.Int()%2 == 0 {
+					expr.Args = append(expr.Args, &parser.StringLiteral{Val: lbl.Name})
+					cnt++
+				}
+			}
+		})
+		return
+	}
+
+	// It is possible that the vector selector match nothing. In this case, it doesn't matter which label
+	// we pick. Just pick something from all series labels.
+	for _, name := range s.labelNames {
+		if cnt < 2 {
+			if s.rnd.Int()%2 == 0 {
+				expr.Args = append(expr.Args, &parser.StringLiteral{Val: name})
+				cnt++
+			}
+		}
+	}
+}
+
+// Supported variadic functions include:
+// days_in_month, day_of_month, day_of_week, day_of_year, year,
+// hour, minute, month, round.
+// Unsupported variadic functions include:
+// label_join, sort_by_label_desc, sort_by_label
+func (s *PromQLSmith) walkVariadicFunctions(expr *parser.Call) {
+	switch expr.Func.Name {
+	case "round":
+		expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
+		expr.Args[1] = &parser.NumberLiteral{Val: float64(s.rnd.Intn(10))}
+	default:
+		// Rest of supported functions have either 0 or 1 function argument.
+		// If not specified it uses current timestamp instead of the vector timestamp.
+		// To reduce test flakiness we always use vector timestamp.
+		expr.Args[0] = s.Walk(expr.Func.ArgTypes[0])
+	}
+}
+
+func (s *PromQLSmith) walkVectorSelector(enableAtModifier bool) parser.Expr {
 	expr := &parser.VectorSelector{}
 	expr.LabelMatchers = s.walkLabelMatchers()
 	s.populateSeries(expr)
@@ -276,7 +425,7 @@ func (s *PromQLSmith) walkVectorSelector() parser.Expr {
 			expr.OriginalOffset = -expr.OriginalOffset
 		}
 	}
-	if s.enableAtModifier && s.rnd.Float64() > 0.7 {
+	if enableAtModifier && s.rnd.Float64() > 0.7 {
 		expr.Timestamp, expr.StartOrEnd = s.walkAtModifier()
 	}
 
@@ -472,7 +621,7 @@ func (s *PromQLSmith) walkMatrixSelector() parser.Expr {
 	return &parser.MatrixSelector{
 		// Make sure the time range is > 0s.
 		Range:          time.Duration(s.rnd.Intn(5)+1) * time.Minute,
-		VectorSelector: s.walkVectorSelector(),
+		VectorSelector: s.walkVectorSelector(s.enableAtModifier),
 	}
 }
 
@@ -594,9 +743,7 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 		if !node.Without {
 			for _, lbl := range lbls {
 				for _, groupLabel := range node.Grouping {
-					if val := lbl.Get(groupLabel); val == "" {
-						continue
-					} else {
+					if val := lbl.Get(groupLabel); val != "" {
 						lb.Set(groupLabel, val)
 					}
 				}

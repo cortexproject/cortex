@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -93,12 +94,18 @@ func (e *DisabledRuleGroupErr) Error() string {
 
 // Config is the configuration for the recording rules server.
 type Config struct {
+	// This is used for query to query frontend to evaluate rules
+	FrontendAddress string `yaml:"frontend_address"`
+	// HTTP timeout duration when querying to query frontend to evaluate rules
+	FrontendTimeout time.Duration `yaml:"-"`
+	// Query frontend GRPC Client configuration.
+	GRPCClientConfig grpcclient.Config `yaml:"frontend_client"`
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
 	// Labels to add to all alerts
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"nocli|description=Labels to add to all alerts."`
 	// GRPC Client configuration.
-	ClientTLSConfig grpcclient.Config `yaml:"ruler_client"`
+	ClientTLSConfig ClientConfig `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
 	// How frequently to poll for updated rules.
@@ -147,10 +154,14 @@ type Config struct {
 	RingCheckPeriod time.Duration `yaml:"-"`
 
 	// Field will be populated during runtime.
-	LookbackDelta time.Duration `yaml:"-"`
+	LookbackDelta        time.Duration `yaml:"-"`
+	PrometheusHTTPPrefix string        `yaml:"-"`
 
 	EnableQueryStats      bool `yaml:"query_stats_enabled"`
 	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
+
+	EnableHAEvaluation   bool          `yaml:"enable_ha_evaluation"`
+	LivenessCheckTimeout time.Duration `yaml:"liveness_check_timeout"`
 }
 
 // Validate config and returns error on failure
@@ -167,6 +178,10 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 		return errors.Wrap(err, "invalid ruler gRPC client config")
 	}
 
+	if err := cfg.GRPCClientConfig.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid query frontend gRPC client config")
+	}
+
 	if cfg.ConcurrentEvalsEnabled && cfg.MaxConcurrentEvals <= 0 {
 		return errInvalidMaxConcurrentEvals
 	}
@@ -175,7 +190,8 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", "", f)
+	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ruler.frontendClient", "", f)
 	cfg.Ring.RegisterFlags(f)
 	cfg.Notifier.RegisterFlags(f)
 
@@ -190,6 +206,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "ruler.alertmanager-use-v2", "This flag is no longer functional. V1 API is deprecated and removed", util_log.Logger)
 
+	f.StringVar(&cfg.FrontendAddress, "ruler.frontend-address", "", "[Experimental] GRPC listen address of the Query Frontend, in host:port format. If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries to Ingesters directly.")
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
@@ -217,8 +234,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.EnabledTenants, "ruler.enabled-tenants", "Comma separated list of tenants whose rules this ruler can evaluate. If specified, only these tenants will be handled by ruler, otherwise this ruler can process rules from all tenants. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
 
-	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report the wall time for ruler queries to complete as a per user metric and as an info level log message.")
+	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report query statistics for ruler queries to complete as a per user metric and as an info level log message.")
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
+
+	f.BoolVar(&cfg.EnableHAEvaluation, "ruler.enable-ha-evaluation", false, "Enable high availability")
+	f.DurationVar(&cfg.LivenessCheckTimeout, "ruler.liveness-check-timeout", 1*time.Second, "Timeout duration for non-primary rulers during liveness checks. If the check times out, the non-primary ruler will evaluate the rule group. Applicable when ruler.enable-ha-evaluation is true.")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }
@@ -294,6 +314,7 @@ type Ruler struct {
 	ruleGroupStoreLoadDuration prometheus.Gauge
 	ruleGroupSyncDuration      prometheus.Gauge
 	rulerGetRulesFailures      *prometheus.CounterVec
+	ruleGroupMetrics           *RuleGroupMetrics
 
 	allowedTenants *util.AllowedTenants
 
@@ -303,7 +324,7 @@ type Ruler struct {
 
 // NewRuler creates a new ruler from a distributor and chunk store.
 func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
-	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg))
+	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig.Config, logger, reg))
 }
 
 func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
@@ -342,6 +363,7 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 			Help: "The total number of failed rules request sent to rulers in getShardedRules.",
 		}, []string{"ruler"}),
 	}
+	ruler.ruleGroupMetrics = NewRuleGroupMetrics(reg, ruler.allowedTenants)
 
 	if len(cfg.EnabledTenants) > 0 {
 		level.Info(ruler.logger).Log("msg", "ruler using enabled users", "enabled", strings.Join(cfg.EnabledTenants, ", "))
@@ -379,7 +401,9 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 	// Define lifecycler delegates in reverse order (last to be called defined first because they're
 	// chained via "next delegate").
 	delegate := ring.BasicLifecyclerDelegate(r)
-	delegate = ring.NewLeaveOnStoppingDelegate(delegate, r.logger)
+	if !r.Config().Ring.KeepInstanceInTheRingOnShutdown {
+		delegate = ring.NewLeaveOnStoppingDelegate(delegate, r.logger)
+	}
 	delegate = ring.NewTokensPersistencyDelegate(r.cfg.Ring.TokensFilePath, ring.JOINING, delegate, r.logger)
 	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, r.logger)
 
@@ -395,6 +419,18 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 	}
 
 	return nil
+}
+
+func (r *Ruler) Logger() log.Logger {
+	return r.logger
+}
+
+func (r *Ruler) GetClientFor(addr string) (RulerClient, error) {
+	return r.clientsPool.GetClientFor(addr)
+}
+
+func (r *Ruler) Config() Config {
+	return r.cfg
 }
 
 func (r *Ruler) starting(ctx context.Context) error {
@@ -488,34 +524,110 @@ func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
-func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, instanceAddr string, forBackup bool) (bool, error) {
+func (r *Ruler) instanceOwnsRuleGroup(rr ring.ReadRing, g *rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, forBackup bool) (bool, error) {
 
 	hash := tokenForGroup(g)
 
-	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
+	rlrs, err := rr.Get(hash, RingOp, nil, nil, nil)
 	if err != nil {
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
 
-	var ownsRuleGroup bool
+	instanceAddr := r.lifecycler.GetInstanceAddr()
 	if forBackup {
 		// Only the second up to the last replica are used as backup
 		for i := 1; i < len(rlrs.Instances); i++ {
 			if rlrs.Instances[i].Addr == instanceAddr {
-				ownsRuleGroup = true
-				break
+				return ownsRuleGroupOrDisable(g, disabledRuleGroups)
 			}
 		}
-	} else {
-		// Even if the replication factor is set to a number bigger than 1, only the first ruler evaluates the rule group
-		ownsRuleGroup = rlrs.Instances[0].Addr == instanceAddr
+		return false, nil
 	}
+	if r.Config().EnableHAEvaluation {
+		for i, ruler := range rlrs.Instances {
+			if ruler.Addr == instanceAddr && i == 0 {
+				level.Debug(r.Logger()).Log("msg", "primary taking ownership", "user", g.User, "group", g.Name, "namespace", g.Namespace, "ruler", instanceAddr)
+				return ownsRuleGroupOrDisable(g, disabledRuleGroups)
+			}
+			if ruler.Addr == instanceAddr && r.nonPrimaryInstanceOwnsRuleGroup(g, rlrs.GetAddresses()[:i]) {
+				level.Info(r.Logger()).Log("msg", "non-primary ruler taking ownership", "user", g.User, "group", g.Name, "namespace", g.Namespace, "ruler", instanceAddr)
+				return ownsRuleGroupOrDisable(g, disabledRuleGroups)
+			}
+		}
+		return false, nil
+	}
+	// Even if the replication factor is set to a number bigger than 1, only the first ruler evaluates the rule group
+	if rlrs.Instances[0].Addr == instanceAddr {
+		return ownsRuleGroupOrDisable(g, disabledRuleGroups)
+	}
+	return false, nil
+}
 
-	if ownsRuleGroup && ruleGroupDisabled(g, disabledRuleGroups) {
+func ownsRuleGroupOrDisable(g *rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups) (bool, error) {
+	if ruleGroupDisabled(g, disabledRuleGroups) {
 		return false, &DisabledRuleGroupErr{Message: fmt.Sprintf("rule group %s, namespace %s, user %s is disabled", g.Name, g.Namespace, g.User)}
 	}
+	return true, nil
+}
 
-	return ownsRuleGroup, nil
+func (r *Ruler) LivenessCheck(_ context.Context, request *LivenessCheckRequest) (*LivenessCheckResponse, error) {
+	if r.lifecycler.ServiceContext().Err() != nil || r.subservices.IsStopped() {
+		return nil, errors.New("ruler's context is canceled and might be stopping soon")
+	}
+	if !r.subservices.IsHealthy() {
+		return nil, errors.New("not all subservices are in healthy state")
+	}
+	return &LivenessCheckResponse{State: int32(r.State())}, nil
+}
+
+// This function performs a liveness check against the provided replicas. If any one of the replicas responds with a state = Running, then
+// this Ruler should not take ownership of the rule group. Otherwise, this Ruler must take ownership of the rule group to avoid missing evaluations
+func (r *Ruler) nonPrimaryInstanceOwnsRuleGroup(g *rulespb.RuleGroupDesc, replicas []string) bool {
+	userID := g.User
+
+	jobs := concurrency.CreateJobsFromStrings(replicas)
+
+	errorChan := make(chan error, len(jobs))
+	responseChan := make(chan *LivenessCheckResponse, len(jobs))
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx, cancel := context.WithTimeout(ctx, r.cfg.LivenessCheckTimeout)
+	defer cancel()
+
+	err := concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
+		addr := job.(string)
+		rulerClient, err := r.GetClientFor(addr)
+		if err != nil {
+			errorChan <- err
+			level.Error(r.Logger()).Log("msg", "unable to get client for ruler", "ruler addr", addr)
+			return nil
+		}
+		level.Debug(r.Logger()).Log("msg", "performing liveness check against", "addr", addr, "for", g.Name)
+
+		resp, err := rulerClient.LivenessCheck(ctx, &LivenessCheckRequest{})
+		if err != nil {
+			errorChan <- err
+			level.Debug(r.Logger()).Log("msg", "liveness check failed", "addr", addr, "for", g.Name, "err", err.Error())
+			return nil
+		}
+		level.Debug(r.Logger()).Log("msg", "liveness check succeeded ", "addr", addr, "for", g.Name, "ruler state", services.State(resp.GetState()))
+		responseChan <- resp
+		return nil
+	})
+
+	close(errorChan)
+	close(responseChan)
+
+	if len(errorChan) == len(jobs) || err != nil {
+		return true
+	}
+
+	for resp := range responseChan {
+		if services.State(resp.GetState()) == services.Running {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -577,7 +689,7 @@ func (r *Ruler) run(ctx context.Context) error {
 }
 
 func (r *Ruler) syncRules(ctx context.Context, reason string) {
-	level.Debug(r.logger).Log("msg", "syncing rules", "reason", reason)
+	level.Info(r.logger).Log("msg", "syncing rules", "reason", reason)
 	r.rulerSync.WithLabelValues(reason).Inc()
 	timer := prometheus.NewTimer(nil)
 
@@ -591,6 +703,10 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 		return
 	}
 
+	if ctx.Err() != nil {
+		level.Info(r.logger).Log("msg", "context is canceled. not syncing rules")
+		return
+	}
 	// This will also delete local group files for users that are no longer in 'configs' map.
 	r.manager.SyncRuleGroups(ctx, loadedConfigs)
 
@@ -667,7 +783,9 @@ func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulespb.Rul
 	if err != nil {
 		return nil, nil, err
 	}
+	ruleGroupCounts := make(map[string]int, len(allRuleGroups))
 	for userID, groups := range allRuleGroups {
+		ruleGroupCounts[userID] = len(groups)
 		disabledRuleGroupsForUser := r.limits.DisabledRuleGroups(userID)
 		if len(disabledRuleGroupsForUser) == 0 {
 			continue
@@ -682,6 +800,7 @@ func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulespb.Rul
 		}
 		allRuleGroups[userID] = filteredGroupsForUser
 	}
+	r.ruleGroupMetrics.UpdateRuleGroupsInStore(ruleGroupCounts)
 	return allRuleGroups, nil, nil
 }
 
@@ -691,20 +810,23 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 		return nil, nil, err
 	}
 
+	ruleGroupCounts := make(map[string]int, len(configs))
 	ownedConfigs := make(map[string]rulespb.RuleGroupList)
 	backedUpConfigs := make(map[string]rulespb.RuleGroupList)
 	for userID, groups := range configs {
-		owned := filterRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		ruleGroupCounts[userID] = len(groups)
+		owned := r.filterRuleGroups(userID, groups, r.ring)
 		if len(owned) > 0 {
 			ownedConfigs[userID] = owned
 		}
 		if r.cfg.RulesBackupEnabled() {
-			backup := filterBackupRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+			backup := r.filterBackupRuleGroups(userID, groups, owned, r.ring)
 			if len(backup) > 0 {
 				backedUpConfigs[userID] = backup
 			}
 		}
 	}
+	r.ruleGroupMetrics.UpdateRuleGroupsInStore(ruleGroupCounts)
 	return ownedConfigs, backedUpConfigs, nil
 }
 
@@ -732,6 +854,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	}
 
 	if len(userRings) == 0 {
+		r.ruleGroupMetrics.UpdateRuleGroupsInStore(make(map[string]int))
 		return nil, nil, nil
 	}
 
@@ -744,6 +867,8 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	mu := sync.Mutex{}
 	owned := map[string]rulespb.RuleGroupList{}
 	backedUp := map[string]rulespb.RuleGroupList{}
+	gLock := sync.Mutex{}
+	ruleGroupCounts := make(map[string]int, len(userRings))
 
 	concurrency := loadRulesConcurrency
 	if len(userRings) < concurrency {
@@ -758,11 +883,14 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 				if err != nil {
 					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 				}
+				gLock.Lock()
+				ruleGroupCounts[userID] = len(groups)
+				gLock.Unlock()
 
-				filterOwned := filterRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+				filterOwned := r.filterRuleGroups(userID, groups, userRings[userID])
 				var filterBackup []*rulespb.RuleGroupDesc
 				if r.cfg.RulesBackupEnabled() {
-					filterBackup = filterBackupRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+					filterBackup = r.filterBackupRuleGroups(userID, groups, filterOwned, userRings[userID])
 				}
 				if len(filterOwned) == 0 && len(filterBackup) == 0 {
 					continue
@@ -781,36 +909,37 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	}
 
 	err = g.Wait()
+	r.ruleGroupMetrics.UpdateRuleGroupsInStore(ruleGroupCounts)
 	return owned, backedUp, err
 }
 
 // filterRuleGroups returns map of rule groups that given instance "owns" based on supplied ring.
 // This function only uses User, Namespace, and Name fields of individual RuleGroups.
 //
-// Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
-// but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
+// This method must not use r.ring, but only ring passed as parameter.
+func (r *Ruler) filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing) []*rulespb.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
 	var result []*rulespb.RuleGroupDesc
+
 	for _, g := range ruleGroups {
-		owned, err := instanceOwnsRuleGroup(ring, g, disabledRuleGroups, instanceAddr, false)
+		owned, err := r.instanceOwnsRuleGroup(ring, g, r.limits.DisabledRuleGroups(userID), false)
 		if err != nil {
 			switch e := err.(type) {
 			case *DisabledRuleGroupErr:
-				level.Info(log).Log("msg", e.Message)
+				level.Info(r.logger).Log("msg", e.Message)
 				continue
 			default:
-				ringCheckErrors.Inc()
-				level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
+				r.ringCheckErrors.Inc()
+				level.Error(r.logger).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
 				continue
 			}
 		}
 
 		if owned {
-			level.Debug(log).Log("msg", "rule group owned", "user", g.User, "namespace", g.Namespace, "name", g.Name)
+			level.Debug(r.logger).Log("msg", "rule group owned", "user", g.User, "namespace", g.Namespace, "name", g.Name)
 			result = append(result, g)
 		} else {
-			level.Debug(log).Log("msg", "rule group not owned, ignoring", "user", g.User, "namespace", g.Namespace, "name", g.Name)
+			level.Debug(r.logger).Log("msg", "rule group not owned, ignoring", "user", g.User, "namespace", g.Namespace, "name", g.Name)
 		}
 	}
 
@@ -820,29 +949,38 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, disabl
 // filterBackupRuleGroups returns map of rule groups that given instance backs up based on supplied ring.
 // This function only uses User, Namespace, and Name fields of individual RuleGroups.
 //
-// Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
-// but only ring passed as parameter.
-func filterBackupRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
+// This method must not use r.ring, but only ring passed as parameter
+func (r *Ruler) filterBackupRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, owned []*rulespb.RuleGroupDesc, ring ring.ReadRing) []*rulespb.RuleGroupDesc {
 	var result []*rulespb.RuleGroupDesc
+	ownedMap := map[uint32]struct{}{}
+	for _, g := range owned {
+		hash := tokenForGroup(g)
+		ownedMap[hash] = struct{}{}
+	}
 	for _, g := range ruleGroups {
-		backup, err := instanceOwnsRuleGroup(ring, g, disabledRuleGroups, instanceAddr, true)
+		hash := tokenForGroup(g)
+		// if already owned for eval, don't take backup ownership
+		if _, OK := ownedMap[hash]; OK {
+			continue
+		}
+		backup, err := r.instanceOwnsRuleGroup(ring, g, r.limits.DisabledRuleGroups(userID), true)
 		if err != nil {
 			switch e := err.(type) {
 			case *DisabledRuleGroupErr:
-				level.Info(log).Log("msg", e.Message)
+				level.Info(r.logger).Log("msg", e.Message)
 				continue
 			default:
-				ringCheckErrors.Inc()
-				level.Error(log).Log("msg", "failed to check if the ruler replica backs up the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
+				r.ringCheckErrors.Inc()
+				level.Error(r.logger).Log("msg", "failed to check if the ruler replica backs up the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
 				continue
 			}
 		}
 
 		if backup {
-			level.Debug(log).Log("msg", "rule group backed up", "user", g.User, "namespace", g.Namespace, "name", g.Name)
+			level.Debug(r.logger).Log("msg", "rule group backed up", "user", g.User, "namespace", g.Namespace, "name", g.Name)
 			result = append(result, g)
 		} else {
-			level.Debug(log).Log("msg", "rule group not backed up, ignoring", "user", g.User, "namespace", g.Namespace, "name", g.Name)
+			level.Debug(r.logger).Log("msg", "rule group not backed up, ignoring", "user", g.User, "namespace", g.Namespace, "name", g.Name)
 		}
 	}
 
@@ -851,20 +989,28 @@ func filterBackupRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, 
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) ([]*GroupStateDesc, error) {
+func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) (*RulesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID, rulesRequest)
+		resp, err := r.getShardedRules(ctx, userID, rulesRequest)
+		if resp == nil {
+			return &RulesResponse{
+				Groups:    make([]*GroupStateDesc, 0),
+				NextToken: "",
+			}, err
+		}
+		return resp, err
 	}
 
-	return r.getLocalRules(userID, rulesRequest, false)
+	response, err := r.getLocalRules(userID, rulesRequest, false)
+	return &response, err
 }
 
-func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeBackups bool) ([]*GroupStateDesc, error) {
+func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeBackups bool) (RulesResponse, error) {
 	groups := r.manager.GetRules(userID)
 
 	groupDescs := make([]*GroupStateDesc, 0, len(groups))
@@ -886,7 +1032,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 	health := rulesRequest.Health
 	matcherSets, err := parseMatchersParam(rulesRequest.Matchers)
 	if err != nil {
-		return nil, errors.Wrap(err, "error parsing matcher values")
+		return RulesResponse{}, errors.Wrap(err, "error parsing matcher values")
 	}
 
 	returnAlerts := ruleType == "" || ruleType == alertingRuleFilter
@@ -896,7 +1042,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		// The mapped filename is url path escaped encoded to make handling `/` characters easier
 		decodedNamespace, err := url.PathUnescape(strings.TrimPrefix(group.File(), prefix))
 		if err != nil {
-			return nil, errors.Wrap(err, "unable to decode rule filename")
+			return RulesResponse{}, errors.Wrap(err, "unable to decode rule filename")
 		}
 		if len(fileSet) > 0 {
 			if _, OK := fileSet[decodedNamespace]; !OK {
@@ -1000,7 +1146,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
 			default:
-				return nil, errors.Errorf("failed to assert type of rule '%v'", rule.Name())
+				return RulesResponse{}, errors.Errorf("failed to assert type of rule '%v'", rule.Name())
 			}
 			groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
 		}
@@ -1009,24 +1155,51 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		}
 	}
 
-	if !includeBackups {
-		return groupDescs, nil
+	combinedRuleStateDescs := groupDescs
+	if includeBackups {
+		backupGroups := r.manager.GetBackupRules(userID)
+		backupGroupDescs, err := r.ruleGroupListToGroupStateDesc(userID, backupGroups, groupListFilter{
+			ruleNameSet,
+			ruleGroupNameSet,
+			fileSet,
+			returnAlerts,
+			returnRecording,
+			matcherSets,
+		})
+		if err != nil {
+			return RulesResponse{}, err
+		}
+		combinedRuleStateDescs = append(combinedRuleStateDescs, backupGroupDescs...)
 	}
 
-	backupGroups := r.manager.GetBackupRules(userID)
-	backupGroupDescs, err := r.ruleGroupListToGroupStateDesc(userID, backupGroups, groupListFilter{
-		ruleNameSet,
-		ruleGroupNameSet,
-		fileSet,
-		returnAlerts,
-		returnRecording,
-		matcherSets,
-	})
-	if err != nil {
-		return nil, err
+	if rulesRequest.MaxRuleGroups <= 0 {
+		return RulesResponse{
+			Groups:    combinedRuleStateDescs,
+			NextToken: "",
+		}, nil
 	}
 
-	return append(groupDescs, backupGroupDescs...), nil
+	sort.Sort(PaginatedGroupStates(combinedRuleStateDescs))
+
+	resultingGroupDescs := make([]*GroupStateDesc, 0, len(combinedRuleStateDescs))
+	for _, group := range combinedRuleStateDescs {
+		groupID := GetRuleGroupNextToken(group.Group.Namespace, group.Group.Name)
+
+		// Only want groups whose groupID is greater than the token. This comparison works because
+		// we sort by that groupID
+		if len(rulesRequest.NextToken) > 0 && rulesRequest.NextToken >= groupID {
+			continue
+		}
+		if len(group.ActiveRules) > 0 {
+			resultingGroupDescs = append(resultingGroupDescs, group)
+		}
+	}
+
+	resultingGroupDescs, nextToken := generatePage(resultingGroupDescs, int(rulesRequest.MaxRuleGroups))
+	return RulesResponse{
+		Groups:    resultingGroupDescs,
+		NextToken: nextToken,
+	}, nil
 }
 
 type groupListFilter struct {
@@ -1135,7 +1308,7 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) ([]*GroupStateDesc, error) {
+func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -1154,7 +1327,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 
 	var (
 		mtx      sync.Mutex
-		merged   []*GroupStateDesc
+		merged   []*RulesResponse
 		errCount int
 	)
 
@@ -1174,13 +1347,19 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
 
+		ctx, cancel := context.WithTimeout(ctx, r.cfg.ClientTLSConfig.RemoteTimeout)
+		defer cancel()
 		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{
 			RuleNames:      rulesRequest.GetRuleNames(),
 			RuleGroupNames: rulesRequest.GetRuleGroupNames(),
 			Files:          rulesRequest.GetFiles(),
 			Type:           rulesRequest.GetType(),
-			ExcludeAlerts:  rulesRequest.GetExcludeAlerts(),
+			State:          rulesRequest.GetState(),
+			Health:         rulesRequest.GetHealth(),
 			Matchers:       rulesRequest.GetMatchers(),
+			ExcludeAlerts:  rulesRequest.GetExcludeAlerts(),
+			MaxRuleGroups:  rulesRequest.GetMaxRuleGroups(),
+			NextToken:      rulesRequest.GetNextToken(),
 		})
 
 		if err != nil {
@@ -1202,17 +1381,23 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		}
 
 		mtx.Lock()
-		merged = append(merged, newGrps.Groups...)
+		merged = append(merged, newGrps)
 		mtx.Unlock()
 
 		return nil
 	})
 
-	if err == nil && (r.cfg.RulesBackupEnabled() || r.cfg.APIDeduplicateRules) {
-		merged = mergeGroupStateDesc(merged)
+	if err == nil {
+		if r.cfg.RulesBackupEnabled() || r.cfg.APIDeduplicateRules {
+			return mergeGroupStateDesc(merged, rulesRequest.MaxRuleGroups, true), nil
+		}
+		return mergeGroupStateDesc(merged, rulesRequest.MaxRuleGroups, false), nil
 	}
 
-	return merged, err
+	return &RulesResponse{
+		Groups:    make([]*GroupStateDesc, 0),
+		NextToken: "",
+	}, err
 }
 
 // Rules implements the rules service
@@ -1223,12 +1408,12 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	groupDescs, err := r.getLocalRules(userID, *in, r.cfg.RulesBackupEnabled())
+	response, err := r.getLocalRules(userID, *in, r.cfg.RulesBackupEnabled())
 	if err != nil {
 		return nil, err
 	}
 
-	return &RulesResponse{Groups: groupDescs}, nil
+	return &response, nil
 }
 
 // HasMaxRuleGroupsLimit check if RulerMaxRuleGroupsPerTenant limit is set for the userID.

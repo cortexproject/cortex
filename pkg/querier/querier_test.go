@@ -296,7 +296,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		}
 
 		distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
-		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
 
 		tCases := []struct {
 			name                 string
@@ -442,7 +442,7 @@ func TestLimits(t *testing.T) {
 			response: &streamResponse,
 		}
 
-		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
 
 		tCases := []struct {
 			name                 string
@@ -542,7 +542,6 @@ func TestLimits(t *testing.T) {
 }
 
 func TestQuerier(t *testing.T) {
-	t.Parallel()
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 	const chunks = 24
@@ -610,7 +609,6 @@ func TestQuerierMetric(t *testing.T) {
 }
 
 func TestNoHistoricalQueryToIngester(t *testing.T) {
-	t.Parallel()
 	testCases := []struct {
 		name                 string
 		mint, maxt           time.Time
@@ -711,7 +709,6 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
-	t.Parallel()
 	const engineLookbackDelta = 5 * time.Minute
 
 	now := time.Now()
@@ -804,7 +801,6 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
-	t.Parallel()
 	const maxQueryLength = 30 * 24 * time.Hour
 
 	tests := map[string]struct {
@@ -893,7 +889,6 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Series(t *testing.T) {
-	t.Parallel()
 	const maxQueryLength = 30 * 24 * time.Hour
 
 	//parallel testing causes data race
@@ -928,8 +923,79 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Series(t *testing.T) {
 	require.True(t, strings.Contains(ss.Err().Error(), "the query time range exceeds the limit (query length: 721h0m0s, limit: 720h0m0s)"))
 }
 
+func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Labels(t *testing.T) {
+	const maxQueryLength = 30 * 24 * time.Hour
+	tests := map[string]struct {
+		startTime            time.Time
+		endTime              time.Time
+		expected             error
+		ignoreMaxQueryLength bool
+	}{
+		"time range shorter than maxQueryLength": {
+			startTime:            time.Now().Add(-maxQueryLength).Add(time.Hour),
+			endTime:              time.Now(),
+			expected:             nil,
+			ignoreMaxQueryLength: false,
+		},
+		"time range longer than maxQueryLength": {
+			startTime:            time.Now().Add(-maxQueryLength).Add(-time.Hour),
+			endTime:              time.Now(),
+			expected:             validation.LimitError("expanding series: the query time range exceeds the limit (query length: 721h0m0s, limit: 720h0m0s)"),
+			ignoreMaxQueryLength: false,
+		},
+		"time range longer than maxQueryLength and ignoreMaxQueryLength is true": {
+			startTime:            time.Now().Add(-maxQueryLength).Add(-time.Hour),
+			endTime:              time.Now(),
+			expected:             validation.LimitError("expanding series: the query time range exceeds the limit (query length: 721h0m0s, limit: 720h0m0s)"),
+			ignoreMaxQueryLength: true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			var cfg Config
+			flagext.DefaultValues(&cfg)
+			cfg.ActiveQueryTrackerDir = ""
+			cfg.IgnoreMaxQueryLength = testData.ignoreMaxQueryLength
+
+			limits := DefaultLimitsConfig()
+			limits.MaxQueryLength = model.Duration(maxQueryLength)
+			overrides, err := validation.NewOverrides(limits, nil)
+			require.NoError(t, err)
+
+			chunkStore := &emptyChunkStore{}
+			distributor := &emptyDistributor{}
+
+			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
+			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+
+			q, err := queryable.Querier(util.TimeToMillis(testData.startTime), util.TimeToMillis(testData.endTime))
+			require.NoError(t, err)
+
+			_, _, err = q.LabelNames(ctx, &storage.LabelHints{Limit: 0})
+
+			if testData.expected != nil {
+				require.NotNil(t, err)
+				assert.True(t, strings.Contains(testData.expected.Error(), err.Error()))
+			} else {
+				assert.Nil(t, err)
+			}
+
+			_, _, err = q.LabelValues(ctx, labels.MetricName, &storage.LabelHints{Limit: 0})
+
+			if testData.expected != nil {
+				require.NotNil(t, err)
+				assert.True(t, strings.Contains(testData.expected.Error(), err.Error()))
+			} else {
+				assert.Nil(t, err)
+			}
+		})
+	}
+}
+
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
-	t.Parallel()
 	const (
 		engineLookbackDelta = 5 * time.Minute
 		thirtyDays          = 30 * 24 * time.Hour
@@ -1119,8 +1185,8 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 
 				t.Run("label names", func(t *testing.T) {
 					distributor := &MockDistributor{}
-					distributor.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
-					distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+					distributor.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+					distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -1309,10 +1375,10 @@ func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, mo
 func (m *errDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
+func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
+func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
 func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
@@ -1362,11 +1428,11 @@ func (d *emptyDistributor) LabelValuesForLabelNameStream(context.Context, model.
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
+func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints) ([]string, error) {
+func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
@@ -1438,7 +1504,6 @@ func (q *mockStoreQuerier) Close() error {
 }
 
 func TestShortTermQueryToLTS(t *testing.T) {
-	t.Parallel()
 	testCases := []struct {
 		name                 string
 		mint, maxt           time.Time

@@ -130,7 +130,7 @@ type Lifecycler struct {
 	// goes away and comes back empty. The state changes during lifecycle of instance.
 	stateMtx     sync.RWMutex
 	state        InstanceState
-	tokens       Tokens
+	tokenFile    *TokenFile
 	registeredAt time.Time
 
 	// Controls the ready-reporting
@@ -205,6 +205,7 @@ func NewLifecycler(
 		actorChan:            make(chan func()),
 		autojoinChan:         make(chan struct{}, 1),
 		state:                PENDING,
+		tokenFile:            &TokenFile{PreviousState: ACTIVE},
 		lifecyclerMetrics:    NewLifecyclerMetrics(ringName, reg),
 		logger:               logger,
 		tg:                   tg,
@@ -301,6 +302,7 @@ func (i *Lifecycler) GetState() InstanceState {
 func (i *Lifecycler) setState(state InstanceState) {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
+	level.Info(i.logger).Log("msg", "set state", "old_state", i.state, "new_state", state)
 	i.state = state
 }
 
@@ -334,7 +336,7 @@ func (i *Lifecycler) ChangeState(ctx context.Context, state InstanceState) error
 func (i *Lifecycler) getTokens() Tokens {
 	i.stateMtx.RLock()
 	defer i.stateMtx.RUnlock()
-	return i.tokens
+	return i.tokenFile.Tokens
 }
 
 func (i *Lifecycler) setTokens(tokens Tokens) {
@@ -343,12 +345,52 @@ func (i *Lifecycler) setTokens(tokens Tokens) {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
 
-	i.tokens = tokens
+	i.tokenFile.Tokens = tokens
 	if i.cfg.TokensFilePath != "" {
-		if err := i.tokens.StoreToFile(i.cfg.TokensFilePath); err != nil {
+		if err := i.tokenFile.StoreToFile(i.cfg.TokensFilePath); err != nil {
 			level.Error(i.logger).Log("msg", "error storing tokens to disk", "path", i.cfg.TokensFilePath, "err", err)
 		}
 	}
+}
+
+func (i *Lifecycler) getPreviousState() InstanceState {
+	i.stateMtx.RLock()
+	defer i.stateMtx.RUnlock()
+	return i.tokenFile.PreviousState
+}
+
+func (i *Lifecycler) setPreviousState(state InstanceState) {
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+
+	if !(state == ACTIVE || state == READONLY) {
+		level.Error(i.logger).Log("msg", "cannot store unsupported state to disk", "new_state", state, "old_state", i.tokenFile.PreviousState)
+		return
+	}
+
+	i.tokenFile.PreviousState = state
+	if i.cfg.TokensFilePath != "" {
+		if err := i.tokenFile.StoreToFile(i.cfg.TokensFilePath); err != nil {
+			level.Error(i.logger).Log("msg", "error storing state to disk", "path", i.cfg.TokensFilePath, "err", err)
+		} else {
+			level.Info(i.logger).Log("msg", "saved state to disk", "state", state, "path", i.cfg.TokensFilePath)
+		}
+	}
+}
+
+func (i *Lifecycler) loadTokenFile() (*TokenFile, error) {
+
+	t, err := LoadTokenFile(i.cfg.TokensFilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+
+	i.tokenFile = t
+	level.Info(i.logger).Log("msg", "loaded token file", "state", i.tokenFile.PreviousState, "num_tokens", len(i.tokenFile.Tokens), "path", i.cfg.TokensFilePath)
+	return i.tokenFile, nil
 }
 
 func (i *Lifecycler) getRegisteredAt() time.Time {
@@ -449,7 +491,8 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	joined := false
 	// First, see if we exist in the cluster, update our state to match if we do,
 	// and add ourselves (without tokens) if we don't.
-	if err := i.initRing(context.Background()); err != nil {
+	addedInRing, err := i.initRing(context.Background())
+	if err != nil {
 		return errors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
@@ -462,18 +505,23 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	}
 
 	var heartbeatTickerChan <-chan time.Time
-	if uint64(i.cfg.HeartbeatPeriod) > 0 {
-		heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
-		heartbeatTicker.Stop()
-		// We are jittering for at least half of the time and max the time of the heartbeat.
-		// If we jitter too soon, we can have problems of concurrency with autoJoin leaving the instance on ACTIVE without tokens
-		time.AfterFunc(time.Duration(uint64(i.cfg.HeartbeatPeriod/2)+uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod/2)), func() {
-			i.heartbeat()
-			heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
-		})
-		defer heartbeatTicker.Stop()
+	startHeartbeat := func() {
+		if uint64(i.cfg.HeartbeatPeriod) > 0 {
+			heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
+			heartbeatTicker.Stop()
+			// We are jittering for at least half of the time and max the time of the heartbeat.
+			// If we jitter too soon, we can have problems of concurrency with autoJoin leaving the instance on ACTIVE without tokens
+			time.AfterFunc(time.Duration(uint64(i.cfg.HeartbeatPeriod/2)+uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod/2)), func() {
+				i.heartbeat(ctx)
+				heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
+			})
+			defer heartbeatTicker.Stop()
 
-		heartbeatTickerChan = heartbeatTicker.C
+			heartbeatTickerChan = heartbeatTicker.C
+		}
+	}
+	if addedInRing {
+		startHeartbeat()
 	}
 
 	for {
@@ -494,16 +542,20 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				if i.cfg.ObservePeriod > 0 {
 					// let's observe the ring. By using JOINING state, this ingester will be ignored by LEAVING
 					// ingesters, but we also signal that it is not fully functional yet.
-					if err := i.autoJoin(context.Background(), JOINING); err != nil {
+					if err := i.autoJoin(context.Background(), JOINING, addedInRing); err != nil {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 
 					level.Info(i.logger).Log("msg", "observing tokens before going ACTIVE", "ring", i.RingName)
 					observeChan = time.After(i.cfg.ObservePeriod)
 				} else {
-					if err := i.autoJoin(context.Background(), ACTIVE); err != nil {
-						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
+					if err := i.autoJoin(context.Background(), i.getPreviousState(), addedInRing); err != nil {
+						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s, state: %s", i.RingName, i.getPreviousState())
 					}
+				}
+
+				if !addedInRing {
+					startHeartbeat()
 				}
 			}
 
@@ -519,9 +571,13 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			if i.verifyTokens(context.Background()) {
 				level.Info(i.logger).Log("msg", "token verification successful", "ring", i.RingName)
 
-				err := i.changeState(context.Background(), ACTIVE)
+				err := i.changeState(context.Background(), i.getPreviousState())
 				if err != nil {
-					level.Error(i.logger).Log("msg", "failed to set state to ACTIVE", "ring", i.RingName, "err", err)
+					level.Error(i.logger).Log("msg", "failed to set state", "ring", i.RingName, "state", i.getPreviousState(), "err", err)
+				}
+
+				if !addedInRing {
+					startHeartbeat()
 				}
 			} else {
 				level.Info(i.logger).Log("msg", "token verification failed, observing", "ring", i.RingName)
@@ -530,7 +586,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			}
 
 		case <-heartbeatTickerChan:
-			i.heartbeat()
+			i.heartbeat(ctx)
 		case f := <-i.actorChan:
 			f()
 
@@ -541,9 +597,11 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	}
 }
 
-func (i *Lifecycler) heartbeat() {
+func (i *Lifecycler) heartbeat(ctx context.Context) {
 	i.lifecyclerMetrics.consulHeartbeats.Inc()
-	if err := i.updateConsul(context.Background()); err != nil {
+	ctx, cancel := context.WithTimeout(ctx, i.cfg.HeartbeatPeriod)
+	defer cancel()
+	if err := i.updateConsul(ctx); err != nil {
 		level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 	}
 }
@@ -561,6 +619,12 @@ func (i *Lifecycler) stopping(runningError error) error {
 
 	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(i.cfg.HeartbeatPeriod)
 	defer heartbeatTickerStop()
+
+	// save current state into file
+	if i.cfg.TokensFilePath != "" {
+		currentState := i.GetState()
+		i.setPreviousState(currentState)
+	}
 
 	// Mark ourselved as Leaving so no more samples are send to us.
 	err := i.changeState(context.Background(), LEAVING)
@@ -603,17 +667,22 @@ heartbeatLoop:
 // initRing is the first thing we do when we start. It:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
-func (i *Lifecycler) initRing(ctx context.Context) error {
+func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 	var (
 		ringDesc       *Desc
 		tokensFromFile Tokens
 		err            error
 	)
+	addedInRing := true
 
 	if i.cfg.TokensFilePath != "" {
-		tokensFromFile, err = LoadTokensFromFile(i.cfg.TokensFilePath)
+		tokenFile, err := i.loadTokenFile()
 		if err != nil && !os.IsNotExist(err) {
-			level.Error(i.logger).Log("msg", "error loading tokens from file", "err", err)
+			level.Error(i.logger).Log("msg", "error loading tokens and previous state from file", "err", err)
+		}
+
+		if tokenFile != nil {
+			tokensFromFile = tokenFile.Tokens
 		}
 	} else {
 		level.Info(i.logger).Log("msg", "not loading tokens from file, tokens file path is empty")
@@ -637,11 +706,16 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			if len(tokensFromFile) > 0 {
 				level.Info(i.logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
 				if len(tokensFromFile) >= i.cfg.NumTokens && i.autoJoinOnStartup {
-					i.setState(ACTIVE)
+					i.setState(i.getPreviousState())
+					state := i.GetState()
+					ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, state, registeredAt)
+					level.Info(i.logger).Log("msg", "auto join on startup, adding with token and state", "ring", i.RingName, "state", state)
+					return ringDesc, true, nil
 				}
-				ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, i.GetState(), registeredAt)
 				i.setTokens(tokensFromFile)
-				return ringDesc, true, nil
+				// Do not return ring to CAS call since instance has not been added to ring yet.
+				addedInRing = false
+				return nil, true, nil
 			}
 
 			// Either we are a new ingester, or consul must have restarted
@@ -667,11 +741,11 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		// If the ingester failed to clean its ring entry up in can leave its state in LEAVING
 		// OR unregister_on_shutdown=false
-		// if autoJoinOnStartup, move it into ACTIVE to ensure the ingester joins the ring.
-		// else set to PENDING
+		// if autoJoinOnStartup, move it into previous state based on token file (default: ACTIVE)
+		// to ensure the ingester joins the ring. else set to PENDING
 		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) != 0 {
 			if i.autoJoinOnStartup {
-				instanceDesc.State = ACTIVE
+				instanceDesc.State = i.getPreviousState()
 			} else {
 				instanceDesc.State = PENDING
 			}
@@ -683,6 +757,9 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		i.setTokens(tokens)
 
 		level.Info(i.logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
+
+		// Update the address if it has changed
+		instanceDesc.Addr = i.Addr
 
 		// Update the ring if the instance has been changed and the heartbeat is disabled.
 		// We dont need to update KV here when heartbeat is enabled as this info will eventually be update on KV
@@ -703,7 +780,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		i.updateCounters(ringDesc)
 	}
 
-	return err
+	return addedInRing, err
 }
 
 func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
@@ -818,7 +895,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 }
 
 // autoJoin selects random tokens & moves state to targetState
-func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) error {
+func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, alreadyInRing bool) error {
 	var ringDesc *Desc
 
 	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
@@ -833,11 +910,16 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		// Need to make sure we didn't change the num of tokens configured
 		myTokens, _ := ringDesc.TokensFor(i.ID)
+		if !alreadyInRing {
+			myTokens = i.getTokens()
+		}
 		needTokens := i.cfg.NumTokens - len(myTokens)
 
 		if needTokens == 0 && myTokens.Equals(i.getTokens()) {
 			// Tokens have been verified. No need to change them.
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
+			state := i.GetState()
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
+			level.Info(i.logger).Log("msg", "auto joined with existing tokens", "ring", i.RingName, "state", state)
 			return ringDesc, true, nil
 		}
 
@@ -851,7 +933,9 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 		sort.Sort(myTokens)
 		i.setTokens(myTokens)
 
-		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
+		state := i.GetState()
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
+		level.Info(i.logger).Log("msg", "auto joined with new tokens", "ring", i.RingName, "state", state)
 
 		return ringDesc, true, nil
 	})
@@ -906,11 +990,16 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error {
 	currState := i.GetState()
 	// Only the following state transitions can be triggered externally
-	if !((currState == PENDING && state == JOINING) || // triggered by TransferChunks at the beginning
-		(currState == JOINING && state == PENDING) || // triggered by TransferChunks on failure
-		(currState == JOINING && state == ACTIVE) || // triggered by TransferChunks on success
+	if !((currState == PENDING && state == JOINING) ||
+		(currState == JOINING && state == PENDING) ||
+		(currState == JOINING && state == ACTIVE) ||
+		(currState == JOINING && state == READONLY) ||
 		(currState == PENDING && state == ACTIVE) || // triggered by autoJoin
-		(currState == ACTIVE && state == LEAVING)) { // triggered by shutdown
+		(currState == PENDING && state == READONLY) || // triggered by autoJoin
+		(currState == ACTIVE && state == LEAVING) || // triggered by shutdown
+		(currState == ACTIVE && state == READONLY) || // triggered by ingester mode
+		(currState == READONLY && state == ACTIVE) || // triggered by ingester mode
+		(currState == READONLY && state == LEAVING)) { // triggered by shutdown
 		return fmt.Errorf("Changing instance state from %v -> %v is disallowed", currState, state)
 	}
 

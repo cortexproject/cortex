@@ -4,6 +4,7 @@
 package logicalplan
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -250,6 +251,26 @@ func (p *Unary) String() string               { return fmt.Sprintf("%s%s", p.Op.
 func (p *Unary) ReturnType() parser.ValueType { return p.Expr.ReturnType() }
 func (p *Unary) Type() NodeType               { return UnaryNode }
 
+type unary struct{ Op string }
+
+func (p *Unary) MarshalJSON() ([]byte, error) {
+	return json.Marshal(unary{
+		Op: p.Op.String(),
+	})
+}
+
+func (p *Unary) UnmarshalJSON(data []byte) error {
+	a := unary{}
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	lexer := parser.Lex(a.Op)
+	var opItem parser.Item
+	lexer.NextItem(&opItem)
+	p.Op = opItem.Typ
+	return nil
+}
+
 // Aggregation represents a PromQL aggregation.
 type Aggregation struct {
 	Op       parser.ItemType
@@ -302,6 +323,34 @@ func (f *Aggregation) getAggOpStr() string {
 	}
 
 	return aggrString
+}
+
+type aggregation struct {
+	Op       string
+	Grouping []string
+	Without  bool
+}
+
+func (f *Aggregation) MarshalJSON() ([]byte, error) {
+	return json.Marshal(aggregation{
+		Op:       f.Op.String(),
+		Grouping: f.Grouping,
+		Without:  f.Without,
+	})
+}
+
+func (f *Aggregation) UnmarshalJSON(data []byte) error {
+	a := aggregation{}
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	lexer := parser.Lex(a.Op)
+	var opItem parser.Item
+	lexer.NextItem(&opItem)
+	f.Op = opItem.Typ
+	f.Grouping = a.Grouping
+	f.Without = a.Without
+	return nil
 }
 
 type Binary struct {
@@ -371,6 +420,38 @@ func (b *Binary) getMatchingStr() string {
 	return matching
 }
 
+type binary struct {
+	Op             string
+	VectorMatching *parser.VectorMatching
+	ReturnBool     bool
+	ValueType      parser.ValueType
+}
+
+func (b *Binary) MarshalJSON() ([]byte, error) {
+	return json.Marshal(binary{
+		Op:             b.Op.String(),
+		VectorMatching: b.VectorMatching,
+		ReturnBool:     b.ReturnBool,
+		ValueType:      b.ValueType,
+	})
+}
+
+func (b *Binary) UnmarshalJSON(data []byte) error {
+	a := binary{}
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	lexer := parser.Lex(a.Op)
+	var opItem parser.Item
+	lexer.NextItem(&opItem)
+	b.Op = opItem.Typ
+	b.VectorMatching = a.VectorMatching
+	b.ReturnBool = a.ReturnBool
+	b.ValueType = a.ValueType
+
+	return nil
+}
+
 type Subquery struct {
 	Expr  Node `json:"-"`
 	Range time.Duration
@@ -433,6 +514,44 @@ func (s *Subquery) getSubqueryTimeSuffix() any {
 	return fmt.Sprintf("[%s:%s]%s%s", model.Duration(s.Range), step, at, offset)
 }
 
+type subquery struct {
+	Range          time.Duration
+	OriginalOffset time.Duration
+	Offset         time.Duration
+	Timestamp      *int64
+	Step           time.Duration
+	StartOrEnd     string
+}
+
+func (s *Subquery) MarshalJSON() ([]byte, error) {
+	return json.Marshal(subquery{
+		Range:          s.Range,
+		OriginalOffset: s.OriginalOffset,
+		Offset:         s.Offset,
+		Timestamp:      s.Timestamp,
+		Step:           s.Step,
+		StartOrEnd:     s.StartOrEnd.String(),
+	})
+}
+
+func (s *Subquery) UnmarshalJSON(data []byte) error {
+	a := subquery{}
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	lexer := parser.Lex(a.StartOrEnd)
+	var opItem parser.Item
+	lexer.NextItem(&opItem)
+
+	s.Range = a.Range
+	s.OriginalOffset = a.OriginalOffset
+	s.Offset = a.Offset
+	s.Timestamp = a.Timestamp
+	s.Step = a.Step
+	s.StartOrEnd = opItem.Typ
+	return nil
+}
+
 func shallowCloneSlice[T any](s []T) []T {
 	if s == nil {
 		return nil
@@ -440,4 +559,14 @@ func shallowCloneSlice[T any](s []T) []T {
 	clone := make([]T, len(s))
 	copy(clone, s)
 	return clone
+}
+
+func isAvgAggregation(expr *Node) bool {
+	if expr == nil {
+		return false
+	}
+	if aggr, ok := (*expr).(*Aggregation); ok {
+		return aggr.Op == parser.AVG
+	}
+	return false
 }

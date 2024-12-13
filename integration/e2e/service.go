@@ -48,6 +48,9 @@ type ConcreteService struct {
 	// docker NetworkName used to start this container.
 	// If empty it means service is stopped.
 	usedNetworkName string
+
+	// workDir is the working directory inside the container
+	workDir string
 }
 
 func NewConcreteService(
@@ -90,6 +93,10 @@ func (s *ConcreteService) SetEnvVars(env map[string]string) {
 
 func (s *ConcreteService) SetUser(user string) {
 	s.user = user
+}
+
+func (s *ConcreteService) SetWorkDir(workDir string) {
+	s.workDir = workDir
 }
 
 func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
@@ -151,6 +158,9 @@ func (s *ConcreteService) Stop() error {
 		logger.Log(string(out))
 		return err
 	}
+
+	s.Wait()
+
 	s.usedNetworkName = ""
 
 	return nil
@@ -168,13 +178,20 @@ func (s *ConcreteService) Kill() error {
 		return err
 	}
 
-	// Wait until the container actually stopped. However, this could fail if
-	// the container already exited, so we just ignore the error.
-	_, _ = RunCommandAndGetOutput("docker", "wait", s.containerName())
+	s.Wait()
 
 	s.usedNetworkName = ""
 
 	return nil
+}
+
+// Wait waits until the service is stopped.
+func (s *ConcreteService) Wait() {
+	// Wait until the container actually stopped. However, this could fail if
+	// the container already exited, so we just ignore the error.
+	if out, err := RunCommandAndGetOutput("docker", "wait", s.containerName()); err != nil {
+		logger.Log(string(out))
+	}
 }
 
 // Endpoint returns external (from host perspective) service endpoint (host:port) for given internal port.
@@ -307,6 +324,10 @@ func (s *ConcreteService) buildDockerRunArgs(networkName, sharedDir string) []st
 
 	if s.user != "" {
 		args = append(args, "--user", s.user)
+	}
+
+	if s.workDir != "" {
+		args = append(args, "--workdir", s.workDir)
 	}
 
 	// Published ports

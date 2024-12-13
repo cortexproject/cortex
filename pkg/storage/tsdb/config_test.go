@@ -121,6 +121,30 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: errInvalidOutOfOrderCapMax,
 		},
+		"should pass on valid wal compression type (snappy)": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.TSDB.WALCompressionType = "snappy"
+			},
+			expectedErr: nil,
+		},
+		"should pass on valid wal compression type (zstd)": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.TSDB.WALCompressionType = "zstd"
+			},
+			expectedErr: nil,
+		},
+		"should pass on valid wal compression type ('')": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.TSDB.WALCompressionType = ""
+			},
+			expectedErr: nil,
+		},
+		"should fail on invalid wal compression type": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.TSDB.WALCompressionType = "dummy"
+			},
+			expectedErr: errUnSupportedWALCompressionType,
+		},
 	}
 
 	for testName, testData := range tests {

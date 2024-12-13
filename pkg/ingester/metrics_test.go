@@ -34,7 +34,8 @@ func TestIngesterMetrics(t *testing.T) {
 		},
 		ingestionRate,
 		inflightPushRequests,
-		&maxInflightQueryRequests)
+		&maxInflightQueryRequests,
+		false)
 
 	require.NotNil(t, m)
 
@@ -63,6 +64,12 @@ func TestIngesterMetrics(t *testing.T) {
 			# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 			# TYPE cortex_ingester_ingested_samples_total counter
 			cortex_ingester_ingested_samples_total 0
+			# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
+			# TYPE cortex_ingester_ingested_native_histograms_total counter
+			cortex_ingester_ingested_native_histograms_total 0
+			# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
+			# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
+			cortex_ingester_ingested_native_histograms_failures_total 0
 			# HELP cortex_ingester_ingestion_rate_samples_per_second Current ingestion rate in samples/sec that ingester is using to limit access.
 			# TYPE cortex_ingester_ingestion_rate_samples_per_second gauge
 			cortex_ingester_ingestion_rate_samples_per_second 0

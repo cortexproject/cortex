@@ -62,7 +62,8 @@ func InitLogger(cfg *server.Config) {
 
 // PrometheusLogger exposes Prometheus counters for each of go-kit's log levels.
 type PrometheusLogger struct {
-	logger log.Logger
+	logger   log.Logger
+	logLevel logging.Level
 }
 
 // NewPrometheusLogger creates a new instance of PrometheusLogger which exposes
@@ -85,14 +86,15 @@ func newPrometheusLoggerFrom(logger log.Logger, logLevel logging.Level, keyvals 
 	// Ref: https://github.com/go-kit/log/issues/14#issuecomment-945038252
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 	logger = log.With(logger, keyvals...)
-	logger = level.NewFilter(logger, LevelFilter(logLevel.String()))
+	logger = level.NewFilter(logger, logLevel.Gokit)
 
 	// Initialise counters for all supported levels:
 	for _, level := range supportedLevels {
 		logMessages.WithLabelValues(level.String())
 	}
 	return &PrometheusLogger{
-		logger: logger,
+		logger:   logger,
+		logLevel: logLevel,
 	}
 }
 
@@ -120,24 +122,6 @@ func CheckFatal(location string, err error) {
 		// %+v gets the stack trace from errors using github.com/pkg/errors
 		logger.Log("err", fmt.Sprintf("%+v", err))
 		os.Exit(1)
-	}
-}
-
-// TODO(dannyk): remove once weaveworks/common updates to go-kit/log
-//
-//	-> we can then revert to using Level.Gokit
-func LevelFilter(l string) level.Option {
-	switch l {
-	case "debug":
-		return level.AllowDebug()
-	case "info":
-		return level.AllowInfo()
-	case "warn":
-		return level.AllowWarn()
-	case "error":
-		return level.AllowError()
-	default:
-		return level.AllowAll()
 	}
 }
 

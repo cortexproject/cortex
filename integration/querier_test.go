@@ -97,6 +97,44 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
 			bucketIndexEnabled:     true,
 		},
+		"blocks sharding disabled, in-memory chunk cache": {
+			blocksShardingStrategy: "",
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
+		"blocks default sharding, in-memory chunk cache": {
+			blocksShardingStrategy: "default",
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
+		"blocks shuffle sharding, in-memory chunk cache": {
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
+		"block sharding disabled, multi-level chunk cache": {
+			blocksShardingStrategy: "",
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
+			bucketIndexEnabled:     true,
+		},
+		"block default sharding, multi-level chunk cache": {
+			blocksShardingStrategy: "default",
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
+			bucketIndexEnabled:     true,
+		},
+		"block shuffle sharding, multi-level chunk cache": {
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
+			bucketIndexEnabled:     true,
+		},
 	}
 
 	for testName, testCfg := range tests {
@@ -141,9 +179,10 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendRedis) {
 					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
-				if testCfg.chunkCacheBackend == tsdb.CacheBackendMemcached {
+				if strings.Contains(testCfg.chunkCacheBackend, tsdb.CacheBackendMemcached) {
 					flags["-blocks-storage.bucket-store.chunks-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
-				} else if testCfg.chunkCacheBackend == tsdb.CacheBackendRedis {
+				}
+				if strings.Contains(testCfg.chunkCacheBackend, tsdb.CacheBackendRedis) {
 					flags["-blocks-storage.bucket-store.chunks-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 
@@ -228,7 +267,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					// then the metric only appears in one store gateway instance.
 					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_bucket_store_blocks_loaded"}, e2e.SkipMissingMetrics))
 				} else {
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(2*storeGateways.NumInstances())), "cortex_bucket_store_blocks_loaded"))
+					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(float64(2*storeGateways.NumInstances())), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
 				}
 
 				// Check how many tenants have been discovered and synced by store-gateways.
@@ -365,26 +404,33 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 
 				// Configure the blocks storage to frequently compact TSDB head
 				// and ship blocks to the storage.
-				flags := mergeFlags(BlocksStorageFlags(), map[string]string{
-					"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
-					"-blocks-storage.tsdb.ship-interval":                "1s",
-					"-blocks-storage.bucket-store.sync-interval":        "1s",
-					"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
-					"-blocks-storage.bucket-store.index-cache.backend":  testCfg.indexCacheBackend,
-					"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
-					"-querier.query-store-for-labels-enabled":           "true",
-					"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
-					// Ingester.
-					"-ring.store":      "consul",
-					"-consul.hostname": consul.NetworkHTTPEndpoint(),
-					// Distributor.
-					"-distributor.replication-factor": strconv.FormatInt(seriesReplicationFactor, 10),
-					// Store-gateway.
-					"-store-gateway.sharding-enabled":                 strconv.FormatBool(testCfg.blocksShardingEnabled),
-					"-store-gateway.sharding-ring.store":              "consul",
-					"-store-gateway.sharding-ring.consul.hostname":    consul.NetworkHTTPEndpoint(),
-					"-store-gateway.sharding-ring.replication-factor": "1",
-				})
+				flags := mergeFlags(
+					BlocksStorageFlags(),
+					AlertmanagerLocalFlags(),
+					map[string]string{
+						"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
+						"-blocks-storage.tsdb.ship-interval":                "1s",
+						"-blocks-storage.bucket-store.sync-interval":        "1s",
+						"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
+						"-blocks-storage.bucket-store.index-cache.backend":  testCfg.indexCacheBackend,
+						"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
+						"-querier.query-store-for-labels-enabled":           "true",
+						"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
+						// Ingester.
+						"-ring.store":      "consul",
+						"-consul.hostname": consul.NetworkHTTPEndpoint(),
+						// Distributor.
+						"-distributor.replication-factor": strconv.FormatInt(seriesReplicationFactor, 10),
+						// Store-gateway.
+						"-store-gateway.sharding-enabled":                 strconv.FormatBool(testCfg.blocksShardingEnabled),
+						"-store-gateway.sharding-ring.store":              "consul",
+						"-store-gateway.sharding-ring.consul.hostname":    consul.NetworkHTTPEndpoint(),
+						"-store-gateway.sharding-ring.replication-factor": "1",
+						// alert manager
+						"-alertmanager.web.external-url": "http://localhost/alertmanager",
+					},
+				)
+				require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
 
 				// Add the cache address to the flags.
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {

@@ -3,11 +3,13 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -17,18 +19,21 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
 	query                    = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
 	queryWithWarnings        = "/api/v1/query_range?end=1536716898&query=sumsum%28warnings%29&start=1536673680&stats=all&step=120&warnings=true"
+	queryWithInfos           = "/api/v1/query_range?end=1536716898&query=rate%28go_gc_gogc_percent%5B5m%5D%29&start=1536673680&stats=all&step=120"
 	responseBody             = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 	responseBodyWithWarnings = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]},"warnings":["test-warn"]}`
+	responseBodyWithInfos    = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]},"infos":["PromQL info: metric might not be a counter, name does not end in _total/_sum/_count/_bucket: \"go_gc_gogc_percent\" (1:6)"]}`
 )
 
 var (
-	parsedRequest = &PrometheusRequest{
+	parsedRequest = &tripperware.PrometheusRequest{
 		Path:  "/api/v1/query_range",
 		Start: 1536673680 * 1e3,
 		End:   1536716898 * 1e3,
@@ -36,66 +41,107 @@ var (
 		Query: "sum(container_memory_rss) by (namespace)",
 		Stats: "all",
 	}
-	reqHeaders = []*tripperware.PrometheusRequestHeader{
-		{
-			Name:   "Test-Header",
-			Values: []string{"test"},
-		},
-	}
-	noCacheRequest = &PrometheusRequest{
+	reqHeaders = http.Header(map[string][]string{"Test-Header": {"test"}})
+
+	noCacheRequest = &tripperware.PrometheusRequest{
 		Path:           "/api/v1/query_range",
 		Start:          1536673680 * 1e3,
 		End:            1536716898 * 1e3,
 		Step:           120 * 1e3,
 		Query:          "sum(container_memory_rss) by (namespace)",
-		CachingOptions: CachingOptions{Disabled: true},
+		CachingOptions: tripperware.CachingOptions{Disabled: true},
 	}
-	noCacheRequestWithStats = &PrometheusRequest{
+	noCacheRequestWithStats = &tripperware.PrometheusRequest{
 		Path:           "/api/v1/query_range",
 		Start:          1536673680 * 1e3,
 		End:            1536716898 * 1e3,
 		Step:           120 * 1e3,
 		Stats:          "all",
 		Query:          "sum(container_memory_rss) by (namespace)",
-		CachingOptions: CachingOptions{Disabled: true},
+		CachingOptions: tripperware.CachingOptions{Disabled: true},
 	}
-	respHeaders = []*tripperware.PrometheusResponseHeader{
+	respHeadersJson = []*tripperware.PrometheusResponseHeader{
 		{
 			Name:   "Content-Type",
-			Values: []string{"application/json"},
+			Values: []string{tripperware.ApplicationJson},
 		},
 	}
-	parsedResponse = &PrometheusResponse{
+
+	respHeadersProtobuf = []*tripperware.PrometheusResponseHeader{
+		{
+			Name:   "Content-Type",
+			Values: []string{tripperware.ApplicationProtobuf},
+		},
+	}
+
+	parsedResponse = &tripperware.PrometheusResponse{
 		Status: "success",
-		Data: PrometheusData{
+		Data: tripperware.PrometheusData{
 			ResultType: model.ValMatrix.String(),
-			Result: []tripperware.SampleStream{
-				{
-					Labels: []cortexpb.LabelAdapter{
-						{Name: "foo", Value: "bar"},
-					},
-					Samples: []cortexpb.Sample{
-						{Value: 137, TimestampMs: 1536673680000},
-						{Value: 137, TimestampMs: 1536673780000},
+			Result: tripperware.PrometheusQueryResult{
+				Result: &tripperware.PrometheusQueryResult_Matrix{
+					Matrix: &tripperware.Matrix{
+						SampleStreams: []tripperware.SampleStream{
+							{
+								Labels: []cortexpb.LabelAdapter{
+									{Name: "foo", Value: "bar"},
+								},
+								Samples: []cortexpb.Sample{
+									{Value: 137, TimestampMs: 1536673680000},
+									{Value: 137, TimestampMs: 1536673780000},
+								},
+							},
+						},
 					},
 				},
 			},
 		},
 	}
 
-	parsedResponseWithWarnings = &PrometheusResponse{
+	parsedResponseWithWarnings = &tripperware.PrometheusResponse{
 		Status:   "success",
 		Warnings: []string{"test-warn"},
-		Data: PrometheusData{
+		Data: tripperware.PrometheusData{
 			ResultType: model.ValMatrix.String(),
-			Result: []tripperware.SampleStream{
-				{
-					Labels: []cortexpb.LabelAdapter{
-						{Name: "foo", Value: "bar"},
+			Result: tripperware.PrometheusQueryResult{
+				Result: &tripperware.PrometheusQueryResult_Matrix{
+					Matrix: &tripperware.Matrix{
+						SampleStreams: []tripperware.SampleStream{
+							{
+								Labels: []cortexpb.LabelAdapter{
+									{Name: "foo", Value: "bar"},
+								},
+								Samples: []cortexpb.Sample{
+									{Value: 137, TimestampMs: 1536673680000},
+									{Value: 137, TimestampMs: 1536673780000},
+								},
+							},
+						},
 					},
-					Samples: []cortexpb.Sample{
-						{Value: 137, TimestampMs: 1536673680000},
-						{Value: 137, TimestampMs: 1536673780000},
+				},
+			},
+		},
+	}
+
+	parsedResponseWithInfos = &tripperware.PrometheusResponse{
+		Status: "success",
+		Infos:  []string{"PromQL info: metric might not be a counter, name does not end in _total/_sum/_count/_bucket: \"go_gc_gogc_percent\" (1:6)"},
+		Data: tripperware.PrometheusData{
+			ResultType: model.ValMatrix.String(),
+			Result: tripperware.PrometheusQueryResult{
+				Result: &tripperware.PrometheusQueryResult_Matrix{
+					Matrix: &tripperware.Matrix{
+						SampleStreams: []tripperware.SampleStream{
+							{
+								Labels: []cortexpb.LabelAdapter{
+									{Name: "foo", Value: "bar"},
+								},
+								Samples: []cortexpb.Sample{
+									{Value: 137, TimestampMs: 1536673680000},
+									{Value: 137, TimestampMs: 1536673780000},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -103,11 +149,11 @@ var (
 	}
 )
 
-func mkAPIResponse(start, end, step int64) *PrometheusResponse {
-	return mkAPIResponseWithStats(start, end, step, false)
+func mkAPIResponse(start, end, step int64) tripperware.Response {
+	return mkAPIResponseWithStats(start, end, step, false, false)
 }
 
-func mkAPIResponseWithStats(start, end, step int64, withStats bool) *PrometheusResponse {
+func mkAPIResponseWithStats(start, end, step int64, withStats bool, oldFormat bool) tripperware.Response {
 	var samples []cortexpb.Sample
 	var stats *tripperware.PrometheusResponseStats
 	if withStats {
@@ -129,42 +175,74 @@ func mkAPIResponseWithStats(start, end, step int64, withStats bool) *PrometheusR
 		}
 	}
 
-	return &PrometheusResponse{
+	if oldFormat {
+		return &PrometheusResponse{
+			Status: StatusSuccess,
+			Data: PrometheusData{
+				ResultType: matrix,
+				Stats:      stats,
+				Result: []tripperware.SampleStream{
+					{
+						Labels: []cortexpb.LabelAdapter{
+							{Name: "foo", Value: "bar"},
+						},
+						Samples: samples,
+					},
+				},
+			},
+		}
+	}
+
+	return &tripperware.PrometheusResponse{
 		Status: StatusSuccess,
-		Data: PrometheusData{
+		Data: tripperware.PrometheusData{
 			ResultType: matrix,
 			Stats:      stats,
-			Result: []tripperware.SampleStream{
-				{
-					Labels: []cortexpb.LabelAdapter{
-						{Name: "foo", Value: "bar"},
+			Result: tripperware.PrometheusQueryResult{
+				Result: &tripperware.PrometheusQueryResult_Matrix{
+					Matrix: &tripperware.Matrix{
+						SampleStreams: []tripperware.SampleStream{
+							{
+								Labels: []cortexpb.LabelAdapter{
+									{Name: "foo", Value: "bar"},
+								},
+								Samples: samples,
+							},
+						},
 					},
-					Samples: samples,
 				},
 			},
 		},
 	}
 }
 
-func mkExtentWithStats(start, end int64) Extent {
-	return mkExtentWithStepWithStats(start, end, 10, true)
+func mkExtentWithStats(start, end int64) tripperware.Extent {
+	return mkExtentWithStepWithStatsWithFormat(start, end, 10, true, false)
 }
 
-func mkExtent(start, end int64) Extent {
-	return mkExtentWithStepWithStats(start, end, 10, false)
+func mkExtent(start, end int64) tripperware.Extent {
+	return mkExtentWithStepWithStatsWithFormat(start, end, 10, false, false)
 }
 
-func mkExtentWithStep(start, end, step int64) Extent {
-	return mkExtentWithStepWithStats(start, end, step, false)
+func mkExtentWithOldFormat(start, end int64) tripperware.Extent {
+	return mkExtentWithStepWithStatsWithFormat(start, end, 10, false, true)
 }
 
-func mkExtentWithStepWithStats(start, end, step int64, withStats bool) Extent {
-	res := mkAPIResponseWithStats(start, end, step, withStats)
+func mkExtentWithStep(start, end, step int64) tripperware.Extent {
+	return mkExtentWithStepWithStatsWithFormat(start, end, step, false, false)
+}
+
+func mkExtentWithStepAndFormat(start, end, step int64, oldFormat bool) tripperware.Extent {
+	return mkExtentWithStepWithStatsWithFormat(start, end, step, false, false)
+}
+
+func mkExtentWithStepWithStatsWithFormat(start, end, step int64, withStats bool, oldFormat bool) tripperware.Extent {
+	res := mkAPIResponseWithStats(start, end, step, withStats, oldFormat)
 	any, err := types.MarshalAny(res)
 	if err != nil {
 		panic(err)
 	}
-	return Extent{
+	return tripperware.Extent{
 		Start:    start,
 		End:      end,
 		Response: any,
@@ -192,29 +270,29 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 			name:                       "should return response with stats",
 			cacheQueryableSamplesStats: true,
 			req:                        noCacheRequestWithStats,
-			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, true),
-			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, true),
+			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, true, false),
+			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, true, false),
 		},
 		{
 			name:                       "should return response strip stats if not requested",
 			cacheQueryableSamplesStats: true,
 			req:                        noCacheRequest,
-			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, false),
-			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false),
+			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, false, false),
+			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false, false),
 		},
 		{
 			name:                       "should not ask stats is cacheQueryableSamplesStats is disabled",
 			cacheQueryableSamplesStats: false,
 			req:                        noCacheRequest,
-			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, false),
-			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false),
+			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, false, false),
+			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false, false),
 		},
 		{
 			name:                       "should not forward stats when cacheQueryableSamplesStats is disabled",
 			cacheQueryableSamplesStats: false,
 			req:                        noCacheRequestWithStats,
-			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, true),
-			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false),
+			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, true, false),
+			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false, false),
 		},
 	} {
 		tc := tc
@@ -267,8 +345,8 @@ func TestShouldCache(t *testing.T) {
 		// Tests only for cacheControlHeader
 		{
 			name:    "does not contain the cacheControl header",
-			request: &PrometheusRequest{Query: "metric"},
-			input: tripperware.Response(&PrometheusResponse{
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
 				Headers: []*tripperware.PrometheusResponseHeader{
 					{
 						Name:   "meaninglessheader",
@@ -280,8 +358,8 @@ func TestShouldCache(t *testing.T) {
 		},
 		{
 			name:    "does contain the cacheControl header which has the value",
-			request: &PrometheusRequest{Query: "metric"},
-			input: tripperware.Response(&PrometheusResponse{
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
 				Headers: []*tripperware.PrometheusResponseHeader{
 					{
 						Name:   cacheControlHeader,
@@ -293,8 +371,8 @@ func TestShouldCache(t *testing.T) {
 		},
 		{
 			name:    "cacheControl header contains extra values but still good",
-			request: &PrometheusRequest{Query: "metric"},
-			input: tripperware.Response(&PrometheusResponse{
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
 				Headers: []*tripperware.PrometheusResponseHeader{
 					{
 						Name:   cacheControlHeader,
@@ -306,22 +384,22 @@ func TestShouldCache(t *testing.T) {
 		},
 		{
 			name:     "broken response",
-			request:  &PrometheusRequest{Query: "metric"},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "metric"},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:    "nil headers",
-			request: &PrometheusRequest{Query: "metric"},
-			input: tripperware.Response(&PrometheusResponse{
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
 				Headers: []*tripperware.PrometheusResponseHeader{nil},
 			}),
 			expected: true,
 		},
 		{
 			name:    "had cacheControl header but no values",
-			request: &PrometheusRequest{Query: "metric"},
-			input: tripperware.Response(&PrometheusResponse{
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
 				Headers: []*tripperware.PrometheusResponseHeader{{Name: cacheControlHeader}},
 			}),
 			expected: true,
@@ -329,151 +407,151 @@ func TestShouldCache(t *testing.T) {
 		// @ modifier on vector selectors.
 		{
 			name:     "@ modifier on vector selector, before end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ 123", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "metric @ 123", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on vector selector, after end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ 127", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "metric @ 127", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on vector selector, before end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ 151", End: 200000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "metric @ 151", End: 200000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on vector selector, after end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ 151", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "metric @ 151", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on vector selector with start() before maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ start()", Start: 100000, End: 200000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "metric @ start()", Start: 100000, End: 200000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on vector selector with end() after maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ end()", Start: 100000, End: 200000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "metric @ end()", Start: 100000, End: 200000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		// @ modifier on matrix selectors.
 		{
 			name:     "@ modifier on matrix selector, before end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 123)", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "rate(metric[5m] @ 123)", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on matrix selector, after end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 127)", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "rate(metric[5m] @ 127)", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on matrix selector, before end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 200000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 200000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on matrix selector, after end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on matrix selector with start() before maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ start())", Start: 100000, End: 200000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "rate(metric[5m] @ start())", Start: 100000, End: 200000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on matrix selector with end() after maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ end())", Start: 100000, End: 200000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "rate(metric[5m] @ end())", Start: 100000, End: 200000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		// @ modifier on subqueries.
 		{
 			name:     "@ modifier on subqueries, before end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 123)", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 123)", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on subqueries, after end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 127)", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 127)", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on subqueries, before end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 200000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 200000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on subqueries, after end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on subqueries with start() before maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ start())", Start: 100000, End: 200000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ start())", Start: 100000, End: 200000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on subqueries with end() after maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ end())", Start: 100000, End: 200000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ end())", Start: 100000, End: 200000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		// offset on vector selectors.
 		{
 			name:     "positive offset on vector selector",
-			request:  &PrometheusRequest{Query: "metric offset 10ms", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "metric offset 10ms", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "negative offset on vector selector",
-			request:  &PrometheusRequest{Query: "metric offset -10ms", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "metric offset -10ms", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		// offset on matrix selectors.
 		{
 			name:     "positive offset on matrix selector",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] offset 10ms)", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "rate(metric[5m] offset 10ms)", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "negative offset on matrix selector",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] offset -10ms)", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "rate(metric[5m] offset -10ms)", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 		// offset on subqueries.
 		{
 			name:     "positive offset on subqueries",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] offset 10ms)", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] offset 10ms)", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "negative offset on subqueries",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] offset -10ms)", End: 125000},
-			input:    tripperware.Response(&PrometheusResponse{}),
+			request:  &tripperware.PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] offset -10ms)", End: 125000},
+			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
 	} {
@@ -492,17 +570,17 @@ func TestPartition(t *testing.T) {
 	for _, tc := range []struct {
 		name                   string
 		input                  tripperware.Request
-		prevCachedResponse     []Extent
+		prevCachedResponse     []tripperware.Extent
 		expectedRequests       []tripperware.Request
 		expectedCachedResponse []tripperware.Response
 	}{
 		{
 			name: "Test a complete hit.",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtent(0, 100),
 			},
 			expectedCachedResponse: []tripperware.Response{
@@ -511,31 +589,64 @@ func TestPartition(t *testing.T) {
 		},
 
 		{
-			name: "Test with a complete miss.",
-			input: &PrometheusRequest{
+			name: "Test a complete hit with old format.",
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
+				mkExtentWithOldFormat(0, 100),
+			},
+			expectedCachedResponse: []tripperware.Response{
+				mkAPIResponse(0, 100, 10),
+			},
+		},
+
+		{
+			name: "Test with a complete miss.",
+			input: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   100,
+			},
+			prevCachedResponse: []tripperware.Extent{
 				mkExtent(110, 210),
 			},
 			expectedRequests: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 0,
 					End:   100,
 				}},
 		},
 		{
 			name: "Test a partial hit.",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtent(50, 100),
 			},
 			expectedRequests: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
+					Start: 0,
+					End:   50,
+				},
+			},
+			expectedCachedResponse: []tripperware.Response{
+				mkAPIResponse(50, 100, 10),
+			},
+		},
+		{
+			name: "Test a partial hit with old format.",
+			input: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   100,
+			},
+			prevCachedResponse: []tripperware.Extent{
+				mkExtentWithOldFormat(50, 100),
+			},
+			expectedRequests: []tripperware.Request{
+				&tripperware.PrometheusRequest{
 					Start: 0,
 					End:   50,
 				},
@@ -546,16 +657,37 @@ func TestPartition(t *testing.T) {
 		},
 		{
 			name: "Test multiple partial hits.",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   200,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},
 			expectedRequests: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
+					Start: 120,
+					End:   160,
+				},
+			},
+			expectedCachedResponse: []tripperware.Response{
+				mkAPIResponse(100, 120, 10),
+				mkAPIResponse(160, 200, 10),
+			},
+		},
+		{
+			name: "Test multiple partial hits with old format.",
+			input: &tripperware.PrometheusRequest{
+				Start: 100,
+				End:   200,
+			},
+			prevCachedResponse: []tripperware.Extent{
+				mkExtentWithOldFormat(50, 120),
+				mkExtentWithOldFormat(160, 250),
+			},
+			expectedRequests: []tripperware.Request{
+				&tripperware.PrometheusRequest{
 					Start: 120,
 					End:   160,
 				},
@@ -567,16 +699,36 @@ func TestPartition(t *testing.T) {
 		},
 		{
 			name: "Partial hits with tiny gap.",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   160,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtent(50, 120),
 				mkExtent(122, 130),
 			},
 			expectedRequests: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
+					Start: 120,
+					End:   160,
+				},
+			},
+			expectedCachedResponse: []tripperware.Response{
+				mkAPIResponse(100, 120, 10),
+			},
+		},
+		{
+			name: "Partial hits with tiny gap with old format.",
+			input: &tripperware.PrometheusRequest{
+				Start: 100,
+				End:   160,
+			},
+			prevCachedResponse: []tripperware.Extent{
+				mkExtentWithOldFormat(50, 120),
+				mkExtentWithOldFormat(122, 130),
+			},
+			expectedRequests: []tripperware.Request{
+				&tripperware.PrometheusRequest{
 					Start: 120,
 					End:   160,
 				},
@@ -587,15 +739,15 @@ func TestPartition(t *testing.T) {
 		},
 		{
 			name: "Extent is outside the range and the request has a single step (same start and end).",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   100,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtent(50, 90),
 			},
 			expectedRequests: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 100,
 					End:   100,
 				},
@@ -604,11 +756,11 @@ func TestPartition(t *testing.T) {
 		{
 			name: "Test when hit has a large step and only a single sample extent.",
 			// If there is a only a single sample in the split interval, start and end will be the same.
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   100,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtent(100, 100),
 			},
 			expectedCachedResponse: []tripperware.Response{
@@ -616,105 +768,148 @@ func TestPartition(t *testing.T) {
 			},
 		},
 		{
+			name: "Test when hit has a large step and only a single sample extent with old format.",
+			// If there is a only a single sample in the split interval, start and end will be the same.
+			input: &tripperware.PrometheusRequest{
+				Start: 100,
+				End:   100,
+			},
+			prevCachedResponse: []tripperware.Extent{
+				mkExtentWithOldFormat(100, 100),
+			},
+			expectedCachedResponse: []tripperware.Response{
+				mkAPIResponse(100, 105, 10),
+			},
+		},
+		{
 			name: "[Stats] Test a complete hit.",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtentWithStats(0, 100),
 			},
 			expectedCachedResponse: []tripperware.Response{
-				mkAPIResponseWithStats(0, 100, 10, true),
+				mkAPIResponseWithStats(0, 100, 10, true, false),
+			},
+		},
+
+		{
+			name: "[Stats] Test a complete hit with old format.",
+			input: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   100,
+			},
+			prevCachedResponse: []tripperware.Extent{
+				mkExtentWithStepWithStatsWithFormat(0, 100, 10, true, true),
+			},
+			expectedCachedResponse: []tripperware.Response{
+				mkAPIResponseWithStats(0, 100, 10, true, false),
 			},
 		},
 
 		{
 			name: "[Stats] Test with a complete miss.",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtentWithStats(110, 210),
 			},
 			expectedRequests: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
+					Start: 0,
+					End:   100,
+				}},
+		},
+		{
+			name: "[Stats] Test with a complete miss with old format.",
+			input: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   100,
+			},
+			prevCachedResponse: []tripperware.Extent{
+				mkExtentWithStepWithStatsWithFormat(110, 210, 10, true, true),
+			},
+			expectedRequests: []tripperware.Request{
+				&tripperware.PrometheusRequest{
 					Start: 0,
 					End:   100,
 				}},
 		},
 		{
 			name: "[stats] Test a partial hit.",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtentWithStats(50, 100),
 			},
 			expectedRequests: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 0,
 					End:   50,
 				},
 			},
 			expectedCachedResponse: []tripperware.Response{
-				mkAPIResponseWithStats(50, 100, 10, true),
+				mkAPIResponseWithStats(50, 100, 10, true, false),
 			},
 		},
 		{
 			name: "[stats] Test multiple partial hits.",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   200,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtentWithStats(50, 120),
 				mkExtentWithStats(160, 250),
 			},
 			expectedRequests: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 120,
 					End:   160,
 				},
 			},
 			expectedCachedResponse: []tripperware.Response{
-				mkAPIResponseWithStats(100, 120, 10, true),
-				mkAPIResponseWithStats(160, 200, 10, true),
+				mkAPIResponseWithStats(100, 120, 10, true, false),
+				mkAPIResponseWithStats(160, 200, 10, true, false),
 			},
 		},
 		{
 			name: "[stats] Partial hits with tiny gap.",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   160,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtentWithStats(50, 120),
 				mkExtentWithStats(122, 130),
 			},
 			expectedRequests: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 120,
 					End:   160,
 				},
 			},
 			expectedCachedResponse: []tripperware.Response{
-				mkAPIResponseWithStats(100, 120, 10, true),
+				mkAPIResponseWithStats(100, 120, 10, true, false),
 			},
 		},
 		{
 			name: "[stats] Extent is outside the range and the request has a single step (same start and end).",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   100,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtentWithStats(50, 90),
 			},
 			expectedRequests: []tripperware.Request{
-				&PrometheusRequest{
+				&tripperware.PrometheusRequest{
 					Start: 100,
 					End:   100,
 				},
@@ -723,15 +918,29 @@ func TestPartition(t *testing.T) {
 		{
 			name: "[stats] Test when hit has a large step and only a single sample extent.",
 			// If there is a only a single sample in the split interval, start and end will be the same.
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   100,
 			},
-			prevCachedResponse: []Extent{
+			prevCachedResponse: []tripperware.Extent{
 				mkExtentWithStats(100, 100),
 			},
 			expectedCachedResponse: []tripperware.Response{
-				mkAPIResponseWithStats(100, 105, 10, true),
+				mkAPIResponseWithStats(100, 105, 10, true, false),
+			},
+		},
+		{
+			name: "[stats] Test when hit has a large step and only a single sample extent with old format.",
+			// If there is a only a single sample in the split interval, start and end will be the same.
+			input: &tripperware.PrometheusRequest{
+				Start: 100,
+				End:   100,
+			},
+			prevCachedResponse: []tripperware.Extent{
+				mkExtentWithStepWithStatsWithFormat(100, 100, 10, true, true),
+			},
+			expectedCachedResponse: []tripperware.Response{
+				mkAPIResponseWithStats(100, 105, 10, true, false),
 			},
 		},
 	} {
@@ -755,24 +964,24 @@ func TestHandleHit(t *testing.T) {
 	for _, tc := range []struct {
 		name                       string
 		input                      tripperware.Request
-		cachedEntry                []Extent
-		expectedUpdatedCachedEntry []Extent
+		cachedEntry                []tripperware.Extent
+		expectedUpdatedCachedEntry []tripperware.Extent
 	}{
 		{
 			name: "Should drop tiny extent that overlaps with non-tiny request only",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   120,
 				Step:  5,
 			},
-			cachedEntry: []Extent{
+			cachedEntry: []tripperware.Extent{
 				mkExtentWithStep(0, 50, 5),
 				mkExtentWithStep(60, 65, 5),
 				mkExtentWithStep(100, 105, 5),
 				mkExtentWithStep(110, 150, 5),
 				mkExtentWithStep(160, 165, 5),
 			},
-			expectedUpdatedCachedEntry: []Extent{
+			expectedUpdatedCachedEntry: []tripperware.Extent{
 				mkExtentWithStep(0, 50, 5),
 				mkExtentWithStep(60, 65, 5),
 				mkExtentWithStep(100, 150, 5),
@@ -781,12 +990,12 @@ func TestHandleHit(t *testing.T) {
 		},
 		{
 			name: "Should replace tiny extents that are cover by bigger request",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   200,
 				Step:  5,
 			},
-			cachedEntry: []Extent{
+			cachedEntry: []tripperware.Extent{
 				mkExtentWithStep(0, 50, 5),
 				mkExtentWithStep(60, 65, 5),
 				mkExtentWithStep(100, 105, 5),
@@ -795,7 +1004,7 @@ func TestHandleHit(t *testing.T) {
 				mkExtentWithStep(220, 225, 5),
 				mkExtentWithStep(240, 250, 5),
 			},
-			expectedUpdatedCachedEntry: []Extent{
+			expectedUpdatedCachedEntry: []tripperware.Extent{
 				mkExtentWithStep(0, 50, 5),
 				mkExtentWithStep(60, 65, 5),
 				mkExtentWithStep(100, 200, 5),
@@ -805,12 +1014,12 @@ func TestHandleHit(t *testing.T) {
 		},
 		{
 			name: "Should not drop tiny extent that completely overlaps with tiny request",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   105,
 				Step:  5,
 			},
-			cachedEntry: []Extent{
+			cachedEntry: []tripperware.Extent{
 				mkExtentWithStep(0, 50, 5),
 				mkExtentWithStep(60, 65, 5),
 				mkExtentWithStep(100, 105, 5),
@@ -820,12 +1029,12 @@ func TestHandleHit(t *testing.T) {
 		},
 		{
 			name: "Should not drop tiny extent that partially center-overlaps with tiny request",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 106,
 				End:   108,
 				Step:  2,
 			},
-			cachedEntry: []Extent{
+			cachedEntry: []tripperware.Extent{
 				mkExtentWithStep(60, 64, 2),
 				mkExtentWithStep(104, 110, 2),
 				mkExtentWithStep(160, 166, 2),
@@ -834,17 +1043,17 @@ func TestHandleHit(t *testing.T) {
 		},
 		{
 			name: "Should not drop tiny extent that partially left-overlaps with tiny request",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   106,
 				Step:  2,
 			},
-			cachedEntry: []Extent{
+			cachedEntry: []tripperware.Extent{
 				mkExtentWithStep(60, 64, 2),
 				mkExtentWithStep(104, 110, 2),
 				mkExtentWithStep(160, 166, 2),
 			},
-			expectedUpdatedCachedEntry: []Extent{
+			expectedUpdatedCachedEntry: []tripperware.Extent{
 				mkExtentWithStep(60, 64, 2),
 				mkExtentWithStep(100, 110, 2),
 				mkExtentWithStep(160, 166, 2),
@@ -852,17 +1061,17 @@ func TestHandleHit(t *testing.T) {
 		},
 		{
 			name: "Should not drop tiny extent that partially right-overlaps with tiny request",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   106,
 				Step:  2,
 			},
-			cachedEntry: []Extent{
+			cachedEntry: []tripperware.Extent{
 				mkExtentWithStep(60, 64, 2),
 				mkExtentWithStep(98, 102, 2),
 				mkExtentWithStep(160, 166, 2),
 			},
-			expectedUpdatedCachedEntry: []Extent{
+			expectedUpdatedCachedEntry: []tripperware.Extent{
 				mkExtentWithStep(60, 64, 2),
 				mkExtentWithStep(98, 106, 2),
 				mkExtentWithStep(160, 166, 2),
@@ -870,57 +1079,57 @@ func TestHandleHit(t *testing.T) {
 		},
 		{
 			name: "Should merge fragmented extents if request fills the hole",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 40,
 				End:   80,
 				Step:  20,
 			},
-			cachedEntry: []Extent{
+			cachedEntry: []tripperware.Extent{
 				mkExtentWithStep(0, 20, 20),
 				mkExtentWithStep(80, 100, 20),
 			},
-			expectedUpdatedCachedEntry: []Extent{
+			expectedUpdatedCachedEntry: []tripperware.Extent{
 				mkExtentWithStep(0, 100, 20),
 			},
 		},
 		{
 			name: "Should left-extend extent if request starts earlier than extent in cache",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 40,
 				End:   80,
 				Step:  20,
 			},
-			cachedEntry: []Extent{
+			cachedEntry: []tripperware.Extent{
 				mkExtentWithStep(60, 160, 20),
 			},
-			expectedUpdatedCachedEntry: []Extent{
+			expectedUpdatedCachedEntry: []tripperware.Extent{
 				mkExtentWithStep(40, 160, 20),
 			},
 		},
 		{
 			name: "Should right-extend extent if request ends later than extent in cache",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				Start: 100,
 				End:   180,
 				Step:  20,
 			},
-			cachedEntry: []Extent{
+			cachedEntry: []tripperware.Extent{
 				mkExtentWithStep(60, 160, 20),
 			},
-			expectedUpdatedCachedEntry: []Extent{
+			expectedUpdatedCachedEntry: []tripperware.Extent{
 				mkExtentWithStep(60, 180, 20),
 			},
 		},
 		{
 			name: "Should not throw error if complete-overlapped smaller Extent is erroneous",
-			input: &PrometheusRequest{
+			input: &tripperware.PrometheusRequest{
 				// This request is carefully created such that cachedEntry is not used to fulfill
 				// the request.
 				Start: 160,
 				End:   180,
 				Step:  20,
 			},
-			cachedEntry: []Extent{
+			cachedEntry: []tripperware.Extent{
 				{
 					Start: 60,
 					End:   80,
@@ -932,8 +1141,56 @@ func TestHandleHit(t *testing.T) {
 				},
 				mkExtentWithStep(60, 160, 20),
 			},
-			expectedUpdatedCachedEntry: []Extent{
+			expectedUpdatedCachedEntry: []tripperware.Extent{
 				mkExtentWithStep(60, 180, 20),
+			},
+		},
+		{
+			name: "Should replace tiny extents with old format that are cover by bigger request",
+			input: &tripperware.PrometheusRequest{
+				Start: 100,
+				End:   200,
+				Step:  5,
+			},
+			cachedEntry: []tripperware.Extent{
+				mkExtentWithStepAndFormat(0, 50, 5, true),
+				mkExtentWithStepAndFormat(60, 65, 5, true),
+				mkExtentWithStepAndFormat(100, 105, 5, true),
+				mkExtentWithStepAndFormat(110, 115, 5, true),
+				mkExtentWithStepAndFormat(120, 125, 5, true),
+				mkExtentWithStepAndFormat(220, 225, 5, true),
+				mkExtentWithStepAndFormat(240, 250, 5, true),
+			},
+			expectedUpdatedCachedEntry: []tripperware.Extent{
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 200, 5),
+				mkExtentWithStep(220, 225, 5),
+				mkExtentWithStep(240, 250, 5),
+			},
+		},
+		{
+			name: "Should replace tiny extents with mixed of new and old format that are cover by bigger request",
+			input: &tripperware.PrometheusRequest{
+				Start: 100,
+				End:   200,
+				Step:  5,
+			},
+			cachedEntry: []tripperware.Extent{
+				mkExtentWithStepAndFormat(0, 50, 5, true),
+				mkExtentWithStepAndFormat(60, 65, 5, false),
+				mkExtentWithStepAndFormat(100, 105, 5, true),
+				mkExtentWithStepAndFormat(110, 115, 5, false),
+				mkExtentWithStepAndFormat(120, 125, 5, true),
+				mkExtentWithStepAndFormat(220, 225, 5, false),
+				mkExtentWithStepAndFormat(240, 250, 5, true),
+			},
+			expectedUpdatedCachedEntry: []tripperware.Extent{
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 200, 5),
+				mkExtentWithStep(220, 225, 5),
+				mkExtentWithStep(240, 250, 5),
 			},
 		},
 	} {
@@ -1051,7 +1308,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 	for i, tc := range []struct {
 		fakeLimits       tripperware.Limits
 		Handler          tripperware.HandlerFunc
-		expectedResponse *PrometheusResponse
+		expectedResponse tripperware.Response
 	}{
 		{
 			fakeLimits:       mockLimits{maxCacheFreshness: 5 * time.Second},
@@ -1096,7 +1353,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 
 			// fill cache
 			key := constSplitter(day).GenerateCacheKey("1", req)
-			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
+			rc.(*resultsCache).put(ctx, key, []tripperware.Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
 
 			resp, err := rc.Do(ctx, req)
 			require.NoError(t, err)
@@ -1127,13 +1384,13 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	ctx := context.Background()
 
 	// fill up the cache
-	rc.put(ctx, "empty", []Extent{{
+	rc.put(ctx, "empty", []tripperware.Extent{{
 		Start:    100,
 		End:      200,
 		Response: nil,
 	}})
-	rc.put(ctx, "notempty", []Extent{mkExtent(100, 120)})
-	rc.put(ctx, "mixed", []Extent{mkExtent(100, 120), {
+	rc.put(ctx, "notempty", []tripperware.Extent{mkExtent(100, 120)})
+	rc.put(ctx, "mixed", []tripperware.Extent{mkExtent(100, 120), {
 		Start:    120,
 		End:      200,
 		Response: nil,
@@ -1161,14 +1418,14 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 		interval time.Duration
 		want     string
 	}{
-		{"0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
-		{"<30m", &PrometheusRequest{Start: toMs(10 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
-		{"30m", &PrometheusRequest{Start: toMs(30 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:1"},
-		{"91m", &PrometheusRequest{Start: toMs(91 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:3"},
-		{"0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
-		{"<1d", &PrometheusRequest{Start: toMs(22 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
-		{"4d", &PrometheusRequest{Start: toMs(4 * 24 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:4"},
-		{"3d5h", &PrometheusRequest{Start: toMs(77 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:3"},
+		{"0", &tripperware.PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
+		{"<30m", &tripperware.PrometheusRequest{Start: toMs(10 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
+		{"30m", &tripperware.PrometheusRequest{Start: toMs(30 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:1"},
+		{"91m", &tripperware.PrometheusRequest{Start: toMs(91 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:3"},
+		{"0", &tripperware.PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
+		{"<1d", &tripperware.PrometheusRequest{Start: toMs(22 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
+		{"4d", &tripperware.PrometheusRequest{Start: toMs(4 * 24 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:4"},
+		{"3d5h", &tripperware.PrometheusRequest{Start: toMs(77 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:3"},
 	}
 	for _, tt := range tests {
 		tt := tt
@@ -1206,7 +1463,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 		{
 			name: "check cache based on request",
 			shouldCache: func(r tripperware.Request) bool {
-				if v, ok := r.(*PrometheusRequest); ok {
+				if v, ok := r.(*tripperware.PrometheusRequest); ok {
 					return !v.CachingOptions.Disabled
 				}
 				return false
@@ -1249,6 +1506,46 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 			require.Equal(t, tc.expectedCall, calls)
 		})
 	}
+}
+
+func TestResultsCacheFillCompatibility(t *testing.T) {
+	var cfg ResultsCacheConfig
+	flagext.DefaultValues(&cfg)
+	c := cache.NewMockCache()
+	cfg.CacheConfig.Cache = c
+	rcm, _, err := NewResultsCacheMiddleware(
+		log.NewNopLogger(),
+		cfg,
+		constSplitter(day),
+		mockLimits{maxCacheFreshness: 10 * time.Minute},
+		PrometheusCodec,
+		PrometheusResponseExtractor{},
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+	rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
+		return parsedResponse, nil
+	}))
+	ctx := user.InjectOrgID(context.Background(), "1")
+	_, err = rc.Do(ctx, parsedRequest)
+	require.NoError(t, err)
+
+	// Check cache and make sure we write response in old format even though the response is new format.
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	require.NoError(t, err)
+	cacheKey := cache.HashKey(constSplitter(day).GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), parsedRequest))
+	found, bufs, _ := c.Fetch(ctx, []string{cacheKey})
+	require.Equal(t, []string{cacheKey}, found)
+	require.Len(t, bufs, 1)
+
+	var resp tripperware.CachedResponse
+	require.NoError(t, proto.Unmarshal(bufs[0], &resp))
+	require.Len(t, resp.Extents, 1)
+	expectedResp := convertFromTripperwarePrometheusResponse(parsedResponse)
+	any, err := types.MarshalAny(expectedResp)
+	require.NoError(t, err)
+	require.Equal(t, any, resp.Extents[0].Response)
 }
 
 func toMs(t time.Duration) int64 {

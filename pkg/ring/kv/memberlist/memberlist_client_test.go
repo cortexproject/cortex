@@ -1350,7 +1350,7 @@ type dnsProviderMock struct {
 	resolved []string
 }
 
-func (p *dnsProviderMock) Resolve(ctx context.Context, addrs []string) error {
+func (p *dnsProviderMock) Resolve(ctx context.Context, addrs []string, flushOld bool) error {
 	p.resolved = addrs
 	return nil
 }

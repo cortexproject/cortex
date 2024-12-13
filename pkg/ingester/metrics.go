@@ -5,6 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 )
@@ -24,9 +25,11 @@ const (
 
 type ingesterMetrics struct {
 	ingestedSamples         prometheus.Counter
+	ingestedHistograms      prometheus.Counter
 	ingestedExemplars       prometheus.Counter
 	ingestedMetadata        prometheus.Counter
 	ingestedSamplesFail     prometheus.Counter
+	ingestedHistogramsFail  prometheus.Counter
 	ingestedExemplarsFail   prometheus.Counter
 	ingestedMetadataFail    prometheus.Counter
 	queries                 prometheus.Counter
@@ -54,6 +57,9 @@ type ingesterMetrics struct {
 	maxInflightPushRequests prometheus.GaugeFunc
 	inflightRequests        prometheus.GaugeFunc
 	inflightQueryRequests   prometheus.GaugeFunc
+
+	// Posting Cache Metrics
+	expandedPostingsCacheMetrics *tsdb.ExpandedPostingsCacheMetrics
 }
 
 func newIngesterMetrics(r prometheus.Registerer,
@@ -63,6 +69,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 	ingestionRate *util_math.EwmaRate,
 	inflightPushRequests *atomic.Int64,
 	maxInflightQueryRequests *util_math.MaxTracker,
+	postingsCacheEnabled bool,
 ) *ingesterMetrics {
 	const (
 		instanceLimits     = "cortex_ingester_instance_limits"
@@ -75,6 +82,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_ingested_samples_total",
 			Help: "The total number of samples ingested.",
 		}),
+		ingestedHistograms: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_ingested_native_histograms_total",
+			Help: "The total number of native histograms ingested.",
+		}),
 		ingestedExemplars: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_exemplars_total",
 			Help: "The total number of exemplars ingested.",
@@ -86,6 +97,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 		ingestedSamplesFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_failures_total",
 			Help: "The total number of samples that errored on ingestion.",
+		}),
+		ingestedHistogramsFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_ingested_native_histograms_failures_total",
+			Help: "The total number of native histograms that errored on ingestion.",
 		}),
 		ingestedExemplarsFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_exemplars_failures_total",
@@ -233,6 +248,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_active_series",
 			Help: "Number of currently active series per user.",
 		}, []string{"user"}),
+	}
+
+	if postingsCacheEnabled && r != nil {
+		m.expandedPostingsCacheMetrics = tsdb.NewPostingCacheMetrics(r)
 	}
 
 	if activeSeriesEnabled && r != nil {

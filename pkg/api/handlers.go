@@ -26,6 +26,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/codec"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -225,11 +226,16 @@ func NewQuerierHandler(
 		// This is used for the stats API which we should not support. Or find other ways to.
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 		reg,
-		nil,
+		querier.StatsRenderer,
 		false,
 		nil,
 		false,
 	)
+
+	// JSON codec is already installed. Install Protobuf codec to give the option for using either.
+	api.InstallCodec(codec.ProtobufCodec{CortexInternal: false})
+	// Protobuf codec for Cortex internal requests. This should be used by Cortex Ruler only for remote evaluation.
+	api.InstallCodec(codec.ProtobufCodec{CortexInternal: true})
 
 	router := mux.NewRouter()
 

@@ -574,8 +574,16 @@ func TestRuleEvalMetricsDeletePerUserMetrics(t *testing.T) {
 	m.FailedQueriesVec.WithLabelValues("fake2").Add(10)
 	m.RulerQuerySeconds.WithLabelValues("fake1").Add(10)
 	m.RulerQuerySeconds.WithLabelValues("fake2").Add(10)
+	m.RulerQuerySeries.WithLabelValues("fake1").Add(10)
+	m.RulerQuerySeries.WithLabelValues("fake2").Add(10)
+	m.RulerQuerySamples.WithLabelValues("fake1").Add(10)
+	m.RulerQuerySamples.WithLabelValues("fake2").Add(10)
+	m.RulerQueryChunkBytes.WithLabelValues("fake1").Add(10)
+	m.RulerQueryChunkBytes.WithLabelValues("fake2").Add(10)
+	m.RulerQueryDataBytes.WithLabelValues("fake1").Add(10)
+	m.RulerQueryDataBytes.WithLabelValues("fake2").Add(10)
 
-	metricNames := []string{"cortex_ruler_write_requests_total", "cortex_ruler_write_requests_failed_total", "cortex_ruler_queries_total", "cortex_ruler_queries_failed_total", "cortex_ruler_query_seconds_total"}
+	metricNames := []string{"cortex_ruler_write_requests_total", "cortex_ruler_write_requests_failed_total", "cortex_ruler_queries_total", "cortex_ruler_queries_failed_total", "cortex_ruler_query_seconds_total", "cortex_ruler_fetched_series_total", "cortex_ruler_samples_total", "cortex_ruler_fetched_chunks_bytes_total", "cortex_ruler_fetched_data_bytes_total"}
 	gm, err := reg.Gather()
 	require.NoError(t, err)
 	mfm, err := util.NewMetricFamilyMap(gm)
@@ -594,4 +602,42 @@ func TestRuleEvalMetricsDeletePerUserMetrics(t *testing.T) {
 		require.NotContains(t, mfm[name].String(), "value:\"fake1\"")
 		require.Contains(t, mfm[name].String(), "value:\"fake2\"")
 	}
+}
+
+func TestRuleGroupMetrics(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+	m := NewRuleGroupMetrics(reg, util.NewAllowedTenants(nil, []string{"fake3"}))
+	m.UpdateRuleGroupsInStore(map[string]int{
+		"fake1": 10,
+		"fake2": 20,
+		"fake3": 30,
+	})
+	gm, err := reg.Gather()
+	require.NoError(t, err)
+	mfm, err := util.NewMetricFamilyMap(gm)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(mfm["cortex_ruler_rule_groups_in_store"].Metric))
+	requireMetricEqual(t, mfm["cortex_ruler_rule_groups_in_store"].Metric[0], map[string]string{
+		"user": "fake1",
+	}, float64(10))
+	requireMetricEqual(t, mfm["cortex_ruler_rule_groups_in_store"].Metric[1], map[string]string{
+		"user": "fake2",
+	}, float64(20))
+	m.UpdateRuleGroupsInStore(map[string]int{
+		"fake2": 30,
+	})
+	gm, err = reg.Gather()
+	require.NoError(t, err)
+	mfm, err = util.NewMetricFamilyMap(gm)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(mfm["cortex_ruler_rule_groups_in_store"].Metric))
+	requireMetricEqual(t, mfm["cortex_ruler_rule_groups_in_store"].Metric[0], map[string]string{
+		"user": "fake2",
+	}, float64(30))
+	m.UpdateRuleGroupsInStore(make(map[string]int))
+	gm, err = reg.Gather()
+	require.NoError(t, err)
+	mfm, err = util.NewMetricFamilyMap(gm)
+	require.NoError(t, err)
+	require.Nil(t, mfm["cortex_ruler_rule_groups_in_store"])
 }

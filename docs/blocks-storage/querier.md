@@ -109,6 +109,10 @@ querier:
   # CLI flag: -querier.ingester-metadata-streaming
   [ingester_metadata_streaming: <boolean> | default = true]
 
+  # Use LabelNames ingester RPCs with match params.
+  # CLI flag: -querier.ingester-label-names-with-matchers
+  [ingester_label_names_with_matchers: <boolean> | default = false]
+
   # Maximum number of samples a single query can load into memory.
   # CLI flag: -querier.max-samples
   [max_samples: <int> | default = 50000000]
@@ -121,6 +125,11 @@ querier:
   # Enable returning samples stats per steps in query response.
   # CLI flag: -querier.per-step-stats-enabled
   [per_step_stats_enabled: <boolean> | default = false]
+
+  # Use compression for metrics query API or instant and range query APIs.
+  # Supports 'gzip' and '' (disable compression)
+  # CLI flag: -querier.response-compression
+  [response_compression: <string> | default = "gzip"]
 
   # The time after which a metric should be queried from storage and not just
   # ingesters. 0 means all queries are sent to store. When running the blocks
@@ -195,9 +204,33 @@ querier:
     # CLI flag: -querier.store-gateway-client.grpc-compression
     [grpc_compression: <string> | default = ""]
 
+    # EXPERIMENTAL: If enabled, gRPC clients perform health checks for each
+    # target and fail the request if the target is marked as unhealthy.
+    healthcheck_config:
+      # The number of consecutive failed health checks required before
+      # considering a target unhealthy. 0 means disabled.
+      # CLI flag: -querier.store-gateway-client.healthcheck.unhealthy-threshold
+      [unhealthy_threshold: <int> | default = 0]
+
+      # The approximate amount of time between health checks of an individual
+      # target.
+      # CLI flag: -querier.store-gateway-client.healthcheck.interval
+      [interval: <duration> | default = 5s]
+
+      # The amount of time during which no response from a target means a failed
+      # health check.
+      # CLI flag: -querier.store-gateway-client.healthcheck.timeout
+      [timeout: <duration> | default = 1s]
+
   # If enabled, store gateway query stats will be logged using `info` log level.
   # CLI flag: -querier.store-gateway-query-stats-enabled
   [store_gateway_query_stats: <boolean> | default = true]
+
+  # The maximum number of times we attempt fetching missing blocks from
+  # different store-gateways. If no more store-gateways are left (ie. due to
+  # lower replication factor) than we'll end the retries earlier
+  # CLI flag: -querier.store-gateway-consistency-check-max-attempts
+  [store_gateway_consistency_check_max_attempts: <int> | default = 3]
 
   # When distributor's sharding strategy is shuffle-sharding and this setting is
   # > 0, queriers fetch in-memory series from the minimum set of required
@@ -220,6 +253,10 @@ querier:
   # evaluation like at Query Frontend or Ruler.
   # CLI flag: -querier.ignore-max-query-length
   [ignore_max_query_length: <boolean> | default = false]
+
+  # [Experimental] If true, experimental promQL functions are enabled.
+  # CLI flag: -querier.enable-promql-experimental-functions
+  [enable_promql_experimental_functions: <boolean> | default = false]
 ```
 
 ### `blocks_storage_config`
@@ -278,6 +315,10 @@ blocks_storage:
     # instead.
     # CLI flag: -blocks-storage.s3.send-content-md5
     [send_content_md5: <boolean> | default = true]
+
+    # The list api version. Supported values are: v1, v2, and ''.
+    # CLI flag: -blocks-storage.s3.list-objects-version
+    [list_objects_version: <string> | default = ""]
 
     # The s3_sse_config configures the S3 server-side encryption.
     # The CLI flags prefix for this block config is: blocks-storage
@@ -418,6 +459,18 @@ blocks_storage:
     # OpenStack Swift authentication URL
     # CLI flag: -blocks-storage.swift.auth-url
     [auth_url: <string> | default = ""]
+
+    # OpenStack Swift application credential ID.
+    # CLI flag: -blocks-storage.swift.application-credential-id
+    [application_credential_id: <string> | default = ""]
+
+    # OpenStack Swift application credential name.
+    # CLI flag: -blocks-storage.swift.application-credential-name
+    [application_credential_name: <string> | default = ""]
+
+    # OpenStack Swift application credential secret.
+    # CLI flag: -blocks-storage.swift.application-credential-secret
+    [application_credential_secret: <string> | default = ""]
 
     # OpenStack Swift username.
     # CLI flag: -blocks-storage.swift.username
@@ -571,7 +624,7 @@ blocks_storage:
 
         # The maximum number of concurrent asynchronous operations can occur.
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-concurrency
-        [max_async_concurrency: <int> | default = 50]
+        [max_async_concurrency: <int> | default = 3]
 
         # The maximum number of enqueued asynchronous operations allowed.
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-buffer-size
@@ -677,7 +730,7 @@ blocks_storage:
 
         # The maximum number of concurrent asynchronous operations can occur.
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-concurrency
-        [max_async_concurrency: <int> | default = 50]
+        [max_async_concurrency: <int> | default = 3]
 
         # The maximum number of enqueued asynchronous operations allowed.
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-buffer-size
@@ -767,7 +820,7 @@ blocks_storage:
         # The maximum number of concurrent asynchronous operations can occur
         # when backfilling cache items.
         # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-async-concurrency
-        [max_async_concurrency: <int> | default = 50]
+        [max_async_concurrency: <int> | default = 3]
 
         # The maximum number of enqueued asynchronous operations allowed when
         # backfilling cache items.
@@ -779,9 +832,18 @@ blocks_storage:
         [max_backfill_items: <int> | default = 10000]
 
     chunks_cache:
-      # Backend for chunks cache, if not empty. Supported values: memcached.
+      # The chunks cache backend type. Single or Multiple cache backend can be
+      # provided. Supported values in single cache: memcached, redis, inmemory,
+      # and '' (disable). Supported values in multi level cache: a
+      # comma-separated list of (inmemory, memcached, redis)
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
       [backend: <string> | default = ""]
+
+      inmemory:
+        # Maximum size in bytes of in-memory chunk cache used to speed up chunk
+        # lookups (shared between all tenants).
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.inmemory.max-size-bytes
+        [max_size_bytes: <int> | default = 1073741824]
 
       memcached:
         # Comma separated list of memcached addresses. Supported prefixes are:
@@ -802,7 +864,7 @@ blocks_storage:
 
         # The maximum number of concurrent asynchronous operations can occur.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-concurrency
-        [max_async_concurrency: <int> | default = 50]
+        [max_async_concurrency: <int> | default = 3]
 
         # The maximum number of enqueued asynchronous operations allowed.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-buffer-size
@@ -903,7 +965,7 @@ blocks_storage:
 
         # The maximum number of concurrent asynchronous operations can occur.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-concurrency
-        [max_async_concurrency: <int> | default = 50]
+        [max_async_concurrency: <int> | default = 3]
 
         # The maximum number of enqueued asynchronous operations allowed.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-buffer-size
@@ -984,6 +1046,21 @@ blocks_storage:
           # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.failure-percent
           [failure_percent: <float> | default = 0.05]
 
+      multilevel:
+        # The maximum number of concurrent asynchronous operations can occur
+        # when backfilling cache items.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.multilevel.max-async-concurrency
+        [max_async_concurrency: <int> | default = 3]
+
+        # The maximum number of enqueued asynchronous operations allowed when
+        # backfilling cache items.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.multilevel.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
+        # The maximum number of items to backfill per asynchronous operation.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.multilevel.max-backfill-items
+        [max_backfill_items: <int> | default = 10000]
+
       # Size of each subrange that bucket object is split into for better
       # caching.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-size
@@ -1004,7 +1081,8 @@ blocks_storage:
       [subrange_ttl: <duration> | default = 24h]
 
     metadata_cache:
-      # Backend for metadata cache, if not empty. Supported values: memcached.
+      # Backend for metadata cache, if not empty. Supported values: memcached,
+      # redis, and '' (disable).
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.backend
       [backend: <string> | default = ""]
 
@@ -1027,7 +1105,7 @@ blocks_storage:
 
         # The maximum number of concurrent asynchronous operations can occur.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-concurrency
-        [max_async_concurrency: <int> | default = 50]
+        [max_async_concurrency: <int> | default = 3]
 
         # The maximum number of enqueued asynchronous operations allowed.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-buffer-size
@@ -1128,7 +1206,7 @@ blocks_storage:
 
         # The maximum number of concurrent asynchronous operations can occur.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-concurrency
-        [max_async_concurrency: <int> | default = 50]
+        [max_async_concurrency: <int> | default = 3]
 
         # The maximum number of enqueued asynchronous operations allowed.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-buffer-size
@@ -1337,6 +1415,14 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.lazy-expanded-postings-enabled
     [lazy_expanded_postings_enabled: <boolean> | default = false]
 
+    # Mark posting group as lazy if it fetches more keys than R * max series the
+    # query should fetch. With R set to 100, a posting group which fetches 100K
+    # keys will be marked as lazy if the current query only fetches 1000 series.
+    # This config is only valid if lazy expanded posting is enabled. 0 disables
+    # the limit.
+    # CLI flag: -blocks-storage.bucket-store.lazy-expanded-posting-group-max-key-series-ratio
+    [lazy_expanded_posting_group_max_key_series_ratio: <float> | default = 100]
+
     # Controls how many series to fetch per batch in Store Gateway. Default
     # value is 10000.
     # CLI flag: -blocks-storage.bucket-store.series-batch-size
@@ -1414,9 +1500,15 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.stripe-size
     [stripe_size: <int> | default = 16384]
 
-    # True to enable TSDB WAL compression.
+    # Deprecated (use blocks-storage.tsdb.wal-compression-type instead): True to
+    # enable TSDB WAL compression.
     # CLI flag: -blocks-storage.tsdb.wal-compression-enabled
     [wal_compression_enabled: <boolean> | default = false]
+
+    # TSDB WAL type. Supported values are: 'snappy', 'zstd' and '' (disable
+    # compression)
+    # CLI flag: -blocks-storage.tsdb.wal-compression-type
+    [wal_compression_type: <string> | default = ""]
 
     # TSDB WAL segments files max size (bytes).
     # CLI flag: -blocks-storage.tsdb.wal-segment-size-bytes
@@ -1464,4 +1556,38 @@ blocks_storage:
     # [EXPERIMENTAL] True to enable native histogram.
     # CLI flag: -blocks-storage.tsdb.enable-native-histograms
     [enable_native_histograms: <boolean> | default = false]
+
+    # [EXPERIMENTAL] If enabled, ingesters will cache expanded postings when
+    # querying blocks. Caching can be configured separately for the head and
+    # compacted blocks.
+    expanded_postings_cache:
+      # If enabled, ingesters will cache expanded postings for the head block.
+      # Only queries with with an equal matcher for metric __name__ are cached.
+      head:
+        # Whether the postings cache is enabled or not
+        # CLI flag: -blocks-storage.expanded_postings_cache.head.enabled
+        [enabled: <boolean> | default = false]
+
+        # Max bytes for postings cache
+        # CLI flag: -blocks-storage.expanded_postings_cache.head.max-bytes
+        [max_bytes: <int> | default = 10485760]
+
+        # TTL for postings cache
+        # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
+        [ttl: <duration> | default = 10m]
+
+      # If enabled, ingesters will cache expanded postings for the compacted
+      # blocks. The cache is shared between all blocks.
+      blocks:
+        # Whether the postings cache is enabled or not
+        # CLI flag: -blocks-storage.expanded_postings_cache.block.enabled
+        [enabled: <boolean> | default = false]
+
+        # Max bytes for postings cache
+        # CLI flag: -blocks-storage.expanded_postings_cache.block.max-bytes
+        [max_bytes: <int> | default = 10485760]
+
+        # TTL for postings cache
+        # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl
+        [ttl: <duration> | default = 10m]
 ```

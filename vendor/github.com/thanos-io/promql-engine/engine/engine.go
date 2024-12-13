@@ -184,13 +184,14 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 		disableDuplicateLabelChecks: opts.DisableDuplicateLabelChecks,
 		disableFallback:             opts.DisableFallback,
 
-		logger:            opts.Logger,
-		lookbackDelta:     opts.LookbackDelta,
-		logicalOptimizers: opts.getLogicalOptimizers(),
-		timeout:           opts.Timeout,
-		metrics:           metrics,
-		extLookbackDelta:  opts.ExtLookbackDelta,
-		enableAnalysis:    opts.EnableAnalysis,
+		logger:             opts.Logger,
+		lookbackDelta:      opts.LookbackDelta,
+		enablePerStepStats: opts.EnablePerStepStats,
+		logicalOptimizers:  opts.getLogicalOptimizers(),
+		timeout:            opts.Timeout,
+		metrics:            metrics,
+		extLookbackDelta:   opts.ExtLookbackDelta,
+		enableAnalysis:     opts.EnableAnalysis,
 		noStepSubqueryIntervalFn: func(d time.Duration) time.Duration {
 			return time.Duration(opts.NoStepSubqueryIntervalFn(d.Milliseconds()) * 1000000)
 		},
@@ -214,11 +215,12 @@ type Engine struct {
 	disableDuplicateLabelChecks bool
 	disableFallback             bool
 
-	logger            log.Logger
-	lookbackDelta     time.Duration
-	logicalOptimizers []logicalplan.Optimizer
-	timeout           time.Duration
-	metrics           *engineMetrics
+	logger             log.Logger
+	lookbackDelta      time.Duration
+	enablePerStepStats bool
+	logicalOptimizers  []logicalplan.Optimizer
+	timeout            time.Duration
+	metrics            *engineMetrics
 
 	extLookbackDelta         time.Duration
 	decodingConcurrency      int
@@ -256,6 +258,7 @@ func (e *Engine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts 
 		Step:                     0,
 		StepsBatch:               stepsBatch,
 		LookbackDelta:            opts.LookbackDelta(),
+		EnablePerStepStats:       e.enablePerStepStats && opts.EnablePerStepStats(),
 		ExtLookbackDelta:         e.extLookbackDelta,
 		EnableAnalysis:           e.enableAnalysis,
 		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
@@ -270,9 +273,14 @@ func (e *Engine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts 
 	}
 	lplan, warns := logicalplan.NewFromAST(expr, qOpts, planOpts).Optimize(e.logicalOptimizers)
 
+	scanners, err := e.storageScanners(q, qOpts, lplan)
+	if err != nil {
+		return nil, errors.Wrap(err, "creating storage scanners")
+	}
+
 	ctx = warnings.NewContext(ctx)
 	defer func() { warns.Merge(warnings.FromContext(ctx)) }()
-	exec, err := execution.New(ctx, lplan.Root(), e.storageScanners(q), qOpts)
+	exec, err := execution.New(ctx, lplan.Root(), scanners, qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
 		return e.prom.NewInstantQuery(ctx, q, opts, qs, ts)
@@ -289,6 +297,7 @@ func (e *Engine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts 
 		warns:      warns,
 		t:          InstantQuery,
 		resultSort: resultSort,
+		scanners:   scanners,
 	}, nil
 }
 
@@ -317,7 +326,13 @@ func (e *Engine) NewInstantQueryFromPlan(ctx context.Context, q storage.Queryabl
 
 	ctx = warnings.NewContext(ctx)
 	defer func() { warns.Merge(warnings.FromContext(ctx)) }()
-	exec, err := execution.New(ctx, lplan.Root(), e.storageScanners(q), qOpts)
+
+	scnrs, err := e.storageScanners(q, qOpts, lplan)
+	if err != nil {
+		return nil, errors.Wrap(err, "creating storage scanners")
+	}
+
+	exec, err := execution.New(ctx, lplan.Root(), scnrs, qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
 		return e.prom.NewInstantQuery(ctx, q, opts, root.String(), ts)
@@ -336,6 +351,7 @@ func (e *Engine) NewInstantQueryFromPlan(ctx context.Context, q storage.Queryabl
 		t:      InstantQuery,
 		// TODO(fpetkovski): Infer the sort order from the plan, ideally without copying the newResultSort function.
 		resultSort: noSortResultSort{},
+		scanners:   scnrs,
 	}, nil
 }
 
@@ -372,7 +388,12 @@ func (e *Engine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts pr
 
 	ctx = warnings.NewContext(ctx)
 	defer func() { warns.Merge(warnings.FromContext(ctx)) }()
-	exec, err := execution.New(ctx, lplan.Root(), e.storageScanners(q), qOpts)
+	scnrs, err := e.storageScanners(q, qOpts, lplan)
+	if err != nil {
+		return nil, errors.Wrap(err, "creating storage scanners")
+	}
+
+	exec, err := execution.New(ctx, lplan.Root(), scnrs, qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
 		return e.prom.NewRangeQuery(ctx, q, opts, qs, start, end, step)
@@ -383,11 +404,12 @@ func (e *Engine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts pr
 	}
 
 	return &compatibilityQuery{
-		Query:  &Query{exec: exec, opts: opts},
-		engine: e,
-		plan:   lplan,
-		warns:  warns,
-		t:      RangeQuery,
+		Query:    &Query{exec: exec, opts: opts},
+		engine:   e,
+		plan:     lplan,
+		warns:    warns,
+		t:        RangeQuery,
+		scanners: scnrs,
 	}, nil
 }
 
@@ -413,9 +435,14 @@ func (e *Engine) NewRangeQueryFromPlan(ctx context.Context, q storage.Queryable,
 	}
 	lplan, warns := logicalplan.New(root, qOpts, planOpts).Optimize(e.logicalOptimizers)
 
+	scnrs, err := e.storageScanners(q, qOpts, lplan)
+	if err != nil {
+		return nil, errors.Wrap(err, "creating storage scanners")
+	}
+
 	ctx = warnings.NewContext(ctx)
 	defer func() { warns.Merge(warnings.FromContext(ctx)) }()
-	exec, err := execution.New(ctx, lplan.Root(), e.storageScanners(q), qOpts)
+	exec, err := execution.New(ctx, lplan.Root(), scnrs, qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
 		return e.prom.NewRangeQuery(ctx, q, opts, lplan.Root().String(), start, end, step)
@@ -425,11 +452,12 @@ func (e *Engine) NewRangeQueryFromPlan(ctx context.Context, q storage.Queryable,
 		return nil, err
 	}
 	return &compatibilityQuery{
-		Query:  &Query{exec: exec, opts: opts},
-		engine: e,
-		plan:   lplan,
-		warns:  warns,
-		t:      RangeQuery,
+		Query:    &Query{exec: exec, opts: opts},
+		engine:   e,
+		plan:     lplan,
+		warns:    warns,
+		t:        RangeQuery,
+		scanners: scnrs,
 	}, nil
 }
 
@@ -440,6 +468,7 @@ func (e *Engine) makeQueryOpts(start time.Time, end time.Time, step time.Duratio
 		Step:                     step,
 		StepsBatch:               stepsBatch,
 		LookbackDelta:            opts.LookbackDelta(),
+		EnablePerStepStats:       e.enablePerStepStats && opts.EnablePerStepStats(),
 		ExtLookbackDelta:         e.extLookbackDelta,
 		EnableAnalysis:           e.enableAnalysis,
 		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
@@ -448,11 +477,11 @@ func (e *Engine) makeQueryOpts(start time.Time, end time.Time, step time.Duratio
 	return qOpts
 }
 
-func (e *Engine) storageScanners(queryable storage.Queryable) engstorage.Scanners {
+func (e *Engine) storageScanners(queryable storage.Queryable, qOpts *query.Options, lplan logicalplan.Plan) (engstorage.Scanners, error) {
 	if e.scanners == nil {
-		return promstorage.NewPrometheusScanners(queryable)
+		return promstorage.NewPrometheusScanners(queryable, qOpts, lplan)
 	}
-	return e.scanners
+	return e.scanners, nil
 }
 
 func (e *Engine) triggerFallback(err error) bool {
@@ -491,6 +520,8 @@ type compatibilityQuery struct {
 	t          QueryType
 	resultSort resultSorter
 	cancel     context.CancelFunc
+
+	scanners engstorage.Scanners
 }
 
 func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
@@ -661,12 +692,17 @@ func (q *compatibilityQuery) Stats() *stats.Statistics {
 	if analysis != nil {
 		samples.PeakSamples = int(analysis.PeakSamples())
 		samples.TotalSamples = analysis.TotalSamples()
+		samples.TotalSamplesPerStep = analysis.TotalSamplesPerStep()
 	}
 
 	return &stats.Statistics{Timers: stats.NewQueryTimers(), Samples: samples}
 }
 
-func (q *compatibilityQuery) Close() { q.Cancel() }
+func (q *compatibilityQuery) Close() {
+	if err := q.scanners.Close(); err != nil {
+		level.Warn(q.engine.logger).Log("msg", "error closing storage scanners, some memory might have leaked", "err", err)
+	}
+}
 
 func (q *compatibilityQuery) String() string { return q.plan.Root().String() }
 
@@ -682,6 +718,7 @@ type nopQueryTracker struct{}
 func (n nopQueryTracker) GetMaxConcurrent() int                                 { return -1 }
 func (n nopQueryTracker) Insert(ctx context.Context, query string) (int, error) { return 0, nil }
 func (n nopQueryTracker) Delete(insertIndex int)                                {}
+func (n nopQueryTracker) Close() error                                          { return nil }
 
 func recoverEngine(logger log.Logger, plan logicalplan.Plan, errp *error) {
 	e := recover()

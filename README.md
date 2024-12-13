@@ -50,8 +50,8 @@ For security issues see https://github.com/cortexproject/cortex/security/policy
 
 ## Engage with Our Community
 
-We invite you to participate in the bi-weekly Cortex Community Calls, an exciting opportunity to connect with fellow
-developers and enthusiasts. These meetings are held every alternate Thursday, alternating between 1200 UTC and 1700 UTC,
+We invite you to participate in the Cortex Community Calls, an exciting opportunity to connect with fellow
+developers and enthusiasts. These meetings are held every 4 weeks on Thursdays at 1700 UTC,
 providing a platform for open discussion, collaboration, and knowledge sharing.
 
 Our meeting notes are meticulously documented and can be
@@ -61,14 +61,9 @@ comprehensive overview of the topics discussed and decisions made.
 To ensure you never miss a meeting, we've made it easy for you to keep track:
 
 - View the Cortex Community Call schedule in your
-  browser [here](https://calendar.google.com/calendar/u/0/embed?src=cncf-cortex-maintainers@lists.cncf.io&ctz=UTC). The
-  displayed time zone is UTC.
-- If you're a Google Calendar user, you can seamlessly integrate the Cortex Community Call schedule into your personal
-  calendar.
-  Click [here](https://calendar.google.com/calendar/u/0?cid=Y25jZi1jb3J0ZXgtbWFpbnRhaW5lcnNAbGlzdHMuY25jZi5pbw) to add
-  the Cortex calendar.
+  browser [here](https://zoom-lfx.platform.linuxfoundation.org/meetings/cortex?view=month).
 - Alternatively, download the .ics
-  file [here](https://calendar.google.com/calendar/ical/cncf-cortex-maintainers%40lists.cncf.io/public/basic.ics) for
+  file [here](https://webcal.prod.itx.linuxfoundation.org/lfx/a092M00001IfTjPQAV) for
   use with any calendar application or service that supports the iCal format.
 
 Join us in shaping the future of Cortex, and let's build something amazing together!
@@ -77,6 +72,7 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 
 ### Talks
 
+- Nov 2024 KubeCon talk "Cortex Intro: Multi-Tenant Scalable Prometheus" ([video](https://youtu.be/OGAEWCoM6Tw), [slides](https://static.sched.com/hosted_files/kccncna2024/0f/Cortex%20Talk%20KubeCon%20US%202024.pdf))
 - Mar 2024 KubeCon talk "Cortex Intro: Multi-Tenant Scalable Prometheus" ([video](https://youtu.be/by538PPSPQ0), [slides](https://static.sched.com/hosted_files/kccnceu2024/a1/Cortex%20Talk%20KubeConEU24.pptx.pdf))
 - Apr 2023 KubeCon talk "How to Run a Rock Solid Multi-Tenant Prometheus" ([video](https://youtu.be/Pl5hEoRPLJU), [slides](https://static.sched.com/hosted_files/kccnceu2023/49/Kubecon2023.pptx.pdf))
 - Oct 2022 KubeCon talk "Current State and the Future of Cortex" ([video](https://youtu.be/u1SfBAGWHgQ), [slides](https://static.sched.com/hosted_files/kccncna2022/93/KubeCon%20%2B%20CloudNativeCon%20NA%202022%20PowerPoint%20-%20Cortex.pdf))
@@ -181,4 +177,4 @@ There are several commercial services where you can use Cortex on-demand:
 
 ## History of Cortex
 
-The Cortex project was started by Tom Wilkie (Grafana Labs' VP Product) and Julius Volz (Prometheus' co-founder) in June 2016.
+The Cortex project was started by Tom Wilkie and Julius Volz (Prometheus' co-founder) in June 2016.

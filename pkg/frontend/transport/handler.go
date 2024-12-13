@@ -89,13 +89,15 @@ type Handler struct {
 	roundTripper http.RoundTripper
 
 	// Metrics.
-	querySeconds    *prometheus.CounterVec
-	querySeries     *prometheus.CounterVec
-	querySamples    *prometheus.CounterVec
-	queryChunkBytes *prometheus.CounterVec
-	queryDataBytes  *prometheus.CounterVec
-	rejectedQueries *prometheus.CounterVec
-	activeUsers     *util.ActiveUsersCleanupService
+	querySeconds        *prometheus.CounterVec
+	querySeries         *prometheus.CounterVec
+	queryFetchedSamples *prometheus.CounterVec
+	queryScannedSamples *prometheus.CounterVec
+	queryPeakSamples    *prometheus.HistogramVec
+	queryChunkBytes     *prometheus.CounterVec
+	queryDataBytes      *prometheus.CounterVec
+	rejectedQueries     *prometheus.CounterVec
+	activeUsers         *util.ActiveUsersCleanupService
 }
 
 // NewHandler creates a new frontend handler.
@@ -117,9 +119,23 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Number of series fetched to execute a query.",
 		}, []string{"user"})
 
-		h.querySamples = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		h.queryFetchedSamples = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_samples_total",
 			Help: "Number of samples fetched to execute a query.",
+		}, []string{"user"})
+
+		// It tracks TotalSamples in https://github.com/prometheus/prometheus/blob/main/util/stats/query_stats.go#L237 for each user.
+		h.queryScannedSamples = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_query_samples_scanned_total",
+			Help: "Number of samples scanned to execute a query.",
+		}, []string{"user"})
+
+		h.queryPeakSamples = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "cortex_query_peak_samples",
+			Help:                            "Highest count of samples considered to execute a query.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 		}, []string{"user"})
 
 		h.queryChunkBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -143,7 +159,9 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 			h.querySeconds.DeleteLabelValues(user)
 			h.querySeries.DeleteLabelValues(user)
-			h.querySamples.DeleteLabelValues(user)
+			h.queryFetchedSamples.DeleteLabelValues(user)
+			h.queryScannedSamples.DeleteLabelValues(user)
+			h.queryPeakSamples.DeleteLabelValues(user)
 			h.queryChunkBytes.DeleteLabelValues(user)
 			h.queryDataBytes.DeleteLabelValues(user)
 			if err := util.DeleteMatchingLabels(h.rejectedQueries, map[string]string{"user": user}); err != nil {
@@ -207,16 +225,21 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(&buf)
 	}
 
+	// Log request
+	if f.cfg.QueryStatsEnabled {
+		queryString = f.parseRequestQueryString(r, buf)
+		f.logQueryRequest(r, queryString)
+	}
+
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
-	// Check whether we should parse the query string.
+	// Check if we need to parse the query string to avoid parsing twice.
 	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
-	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
+	if shouldReportSlowQuery && !f.cfg.QueryStatsEnabled {
 		queryString = f.parseRequestQueryString(r, buf)
 	}
-
 	if shouldReportSlowQuery {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
 	}
@@ -277,6 +300,23 @@ func formatGrafanaStatsFields(r *http.Request) []interface{} {
 	return fields
 }
 
+// logQueryRequest logs query request before query execution.
+func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values) {
+	logMessage := []interface{}{
+		"msg", "query request",
+		"component", "query-frontend",
+		"method", r.Method,
+		"path", r.URL.Path,
+	}
+	grafanaFields := formatGrafanaStatsFields(r)
+	if len(grafanaFields) > 0 {
+		logMessage = append(logMessage, grafanaFields...)
+	}
+	logMessage = append(logMessage, formatQueryString(queryString)...)
+
+	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+}
+
 // reportSlowQuery reports slow queries.
 func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
 	logMessage := []interface{}{
@@ -301,6 +341,8 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	numSeries := stats.LoadFetchedSeries()
 	numChunks := stats.LoadFetchedChunks()
 	numSamples := stats.LoadFetchedSamples()
+	numScannedSamples := stats.LoadScannedSamples()
+	numPeakSamples := stats.LoadPeakSamples()
 	numChunkBytes := stats.LoadFetchedChunkBytes()
 	numDataBytes := stats.LoadFetchedDataBytes()
 	numStoreGatewayTouchedPostings := stats.LoadStoreGatewayTouchedPostings()
@@ -312,7 +354,9 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
 	f.querySeries.WithLabelValues(userID).Add(float64(numSeries))
-	f.querySamples.WithLabelValues(userID).Add(float64(numSamples))
+	f.queryFetchedSamples.WithLabelValues(userID).Add(float64(numSamples))
+	f.queryScannedSamples.WithLabelValues(userID).Add(float64(numScannedSamples))
+	f.queryPeakSamples.WithLabelValues(userID).Observe(float64(numPeakSamples))
 	f.queryChunkBytes.WithLabelValues(userID).Add(float64(numChunkBytes))
 	f.queryDataBytes.WithLabelValues(userID).Add(float64(numDataBytes))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())

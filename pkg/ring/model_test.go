@@ -275,6 +275,20 @@ func TestDesc_Ready(t *testing.T) {
 	if err := r.IsReady(now, 10*time.Second); err != nil {
 		t.Fatal("expected ready, got", err)
 	}
+
+	r = &Desc{
+		Ingesters: map[string]InstanceDesc{
+			"ing1": {
+				Tokens:    []uint32{100, 200, 300},
+				State:     READONLY,
+				Timestamp: now.Unix(),
+			},
+		},
+	}
+
+	if err := r.IsReady(now, 10*time.Second); err != nil {
+		t.Fatal("expected readonly ingester as ready, but got", err)
+	}
 }
 
 func TestDesc_getTokensByZone(t *testing.T) {

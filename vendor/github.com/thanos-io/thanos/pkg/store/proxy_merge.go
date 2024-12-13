@@ -26,8 +26,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/tracing"
 )
 
+type seriesStream interface {
+	Next() bool
+	At() *storepb.SeriesResponse
+}
+
 type responseDeduplicator struct {
-	h *losertree.Tree[*storepb.SeriesResponse, respSet]
+	h seriesStream
 
 	bufferedSameSeries []*storepb.SeriesResponse
 
@@ -36,20 +41,23 @@ type responseDeduplicator struct {
 
 	prev *storepb.SeriesResponse
 	ok   bool
+
+	chunkDedupMap map[uint64]storepb.AggrChunk
 }
 
 // NewResponseDeduplicator returns a wrapper around a loser tree that merges duplicated series messages into one.
 // It also deduplicates identical chunks identified by the same checksum from each series message.
-func NewResponseDeduplicator(h *losertree.Tree[*storepb.SeriesResponse, respSet]) *responseDeduplicator {
+func NewResponseDeduplicator(h seriesStream) *responseDeduplicator {
 	ok := h.Next()
 	var prev *storepb.SeriesResponse
 	if ok {
 		prev = h.At()
 	}
 	return &responseDeduplicator{
-		h:    h,
-		ok:   ok,
-		prev: prev,
+		h:             h,
+		ok:            ok,
+		prev:          prev,
+		chunkDedupMap: make(map[uint64]storepb.AggrChunk),
 	}
 }
 
@@ -73,7 +81,7 @@ func (d *responseDeduplicator) Next() bool {
 			d.ok = d.h.Next()
 			if !d.ok {
 				if len(d.bufferedSameSeries) > 0 {
-					d.bufferedResp = append(d.bufferedResp, chainSeriesAndRemIdenticalChunks(d.bufferedSameSeries))
+					d.bufferedResp = append(d.bufferedResp, d.chainSeriesAndRemIdenticalChunks(d.bufferedSameSeries))
 				}
 				return len(d.bufferedResp) > 0
 			}
@@ -101,15 +109,15 @@ func (d *responseDeduplicator) Next() bool {
 			continue
 		}
 
-		d.bufferedResp = append(d.bufferedResp, chainSeriesAndRemIdenticalChunks(d.bufferedSameSeries))
+		d.bufferedResp = append(d.bufferedResp, d.chainSeriesAndRemIdenticalChunks(d.bufferedSameSeries))
 		d.prev = s
 
 		return true
 	}
 }
 
-func chainSeriesAndRemIdenticalChunks(series []*storepb.SeriesResponse) *storepb.SeriesResponse {
-	chunkDedupMap := map[uint64]*storepb.AggrChunk{}
+func (d *responseDeduplicator) chainSeriesAndRemIdenticalChunks(series []*storepb.SeriesResponse) *storepb.SeriesResponse {
+	clear(d.chunkDedupMap)
 
 	for _, s := range series {
 		for _, chk := range s.GetSeries().Chunks {
@@ -124,9 +132,9 @@ func chainSeriesAndRemIdenticalChunks(series []*storepb.SeriesResponse) *storepb
 					hash = xxhash.Sum64(field.Data)
 				}
 
-				if _, ok := chunkDedupMap[hash]; !ok {
+				if _, ok := d.chunkDedupMap[hash]; !ok {
 					chk := chk
-					chunkDedupMap[hash] = &chk
+					d.chunkDedupMap[hash] = chk
 					break
 				}
 			}
@@ -134,13 +142,13 @@ func chainSeriesAndRemIdenticalChunks(series []*storepb.SeriesResponse) *storepb
 	}
 
 	// If no chunks were requested.
-	if len(chunkDedupMap) == 0 {
+	if len(d.chunkDedupMap) == 0 {
 		return series[0]
 	}
 
-	finalChunks := make([]storepb.AggrChunk, 0, len(chunkDedupMap))
-	for _, chk := range chunkDedupMap {
-		finalChunks = append(finalChunks, *chk)
+	finalChunks := make([]storepb.AggrChunk, 0, len(d.chunkDedupMap))
+	for _, chk := range d.chunkDedupMap {
+		finalChunks = append(finalChunks, chk)
 	}
 
 	sort.Slice(finalChunks, func(i, j int) bool {
@@ -211,6 +219,7 @@ func (l *lazyRespSet) StoreLabels() map[string]struct{} {
 type lazyRespSet struct {
 	// Generic parameters.
 	span           opentracing.Span
+	cl             storepb.Store_SeriesClient
 	closeSeries    context.CancelFunc
 	storeName      string
 	storeLabelSets []labels.Labels
@@ -310,6 +319,7 @@ func newLazyRespSet(
 		frameTimeout:         frameTimeout,
 		storeName:            storeName,
 		storeLabelSets:       storeLabelSets,
+		cl:                   cl,
 		closeSeries:          closeSeries,
 		span:                 span,
 		dataOrFinishEvent:    dataAvailable,
@@ -361,7 +371,9 @@ func newLazyRespSet(
 				var rerr error
 				// If timer is already stopped
 				if t != nil && !t.Stop() {
-					<-t.C // Drain the channel if it was already stopped.
+					if t.C != nil {
+						<-t.C // Drain the channel if it was already stopped.
+					}
 					rerr = errors.Wrapf(err, "failed to receive any data in %s from %s", l.frameTimeout, st)
 				} else {
 					rerr = errors.Wrapf(err, "receive series from %s", st)
@@ -436,8 +448,10 @@ func newAsyncRespSet(
 	emptyStreamResponses prometheus.Counter,
 ) (respSet, error) {
 
-	var span opentracing.Span
-	var closeSeries context.CancelFunc
+	var (
+		span   opentracing.Span
+		cancel context.CancelFunc
+	)
 
 	storeID, storeAddr, isLocalStore := storeInfo(st)
 	seriesCtx := grpc_opentracing.ClientAddContextTags(ctx, opentracing.Tags{
@@ -449,7 +463,7 @@ func newAsyncRespSet(
 		"store.addr":     storeAddr,
 	})
 
-	seriesCtx, closeSeries = context.WithCancel(seriesCtx)
+	seriesCtx, cancel = context.WithCancel(seriesCtx)
 
 	shardMatcher := shardInfo.Matcher(buffers)
 
@@ -464,7 +478,7 @@ func newAsyncRespSet(
 
 		span.SetTag("err", err.Error())
 		span.Finish()
-		closeSeries()
+		cancel()
 		return nil, err
 	}
 
@@ -487,7 +501,7 @@ func newAsyncRespSet(
 			frameTimeout,
 			st.String(),
 			st.LabelSets(),
-			closeSeries,
+			cancel,
 			cl,
 			shardMatcher,
 			applySharding,
@@ -499,7 +513,7 @@ func newAsyncRespSet(
 			frameTimeout,
 			st.String(),
 			st.LabelSets(),
-			closeSeries,
+			cancel,
 			cl,
 			shardMatcher,
 			applySharding,
@@ -520,6 +534,7 @@ func (l *lazyRespSet) Close() {
 	l.dataOrFinishEvent.Signal()
 
 	l.shardMatcher.Close()
+	_ = l.cl.CloseSend()
 }
 
 // eagerRespSet is a SeriesSet that blocks until all data is retrieved from
@@ -529,6 +544,7 @@ type eagerRespSet struct {
 	// Generic parameters.
 	span opentracing.Span
 
+	cl           storepb.Store_SeriesClient
 	closeSeries  context.CancelFunc
 	frameTimeout time.Duration
 
@@ -559,6 +575,7 @@ func newEagerRespSet(
 ) respSet {
 	ret := &eagerRespSet{
 		span:              span,
+		cl:                cl,
 		closeSeries:       closeSeries,
 		frameTimeout:      frameTimeout,
 		bufferedResponses: []*storepb.SeriesResponse{},
@@ -614,7 +631,9 @@ func newEagerRespSet(
 				var rerr error
 				// If timer is already stopped
 				if t != nil && !t.Stop() {
-					<-t.C // Drain the channel if it was already stopped.
+					if t.C != nil {
+						<-t.C // Drain the channel if it was already stopped.
+					}
 					rerr = errors.Wrapf(err, "failed to receive any data in %s from %s", l.frameTimeout, storeName)
 				} else {
 					rerr = errors.Wrapf(err, "receive series from %s", storeName)
@@ -705,6 +724,7 @@ func (l *eagerRespSet) Close() {
 		l.closeSeries()
 	}
 	l.shardMatcher.Close()
+	_ = l.cl.CloseSend()
 }
 
 func (l *eagerRespSet) At() *storepb.SeriesResponse {

@@ -57,6 +57,16 @@ func (m *ClientMock) Name() string {
 	return "mock"
 }
 
+func (m *ClientMock) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	args := m.Called(ctx, dir, f, options)
+	return args.Error(0)
+}
+
+func (m *ClientMock) SupportedIterOptions() []objstore.IterOptionType {
+	args := m.Called()
+	return args.Get(0).([]objstore.IterOptionType)
+}
+
 // Iter mocks objstore.Bucket.Iter()
 func (m *ClientMock) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	args := m.Called(ctx, dir, f, options)

@@ -6,6 +6,7 @@ package engine
 import (
 	"math"
 
+	"github.com/facette/natsort"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -26,6 +27,12 @@ type sortFuncResultSort struct {
 	sortOrder sortOrder
 }
 
+type sortByLabelFuncResult struct {
+	sortingLabels []string
+
+	sortOrder sortOrder
+}
+
 type aggregateResultSort struct {
 	sortingLabels []string
 	groupBy       bool
@@ -36,6 +43,16 @@ type aggregateResultSort struct {
 type noSortResultSort struct {
 }
 
+func extractSortingLabels(f *parser.Call) []string {
+	args := f.Args[1:]
+
+	res := make([]string, 0)
+	for i := range args {
+		res = append(res, args[i].(*parser.StringLiteral).Val)
+	}
+	return res
+}
+
 func newResultSort(expr parser.Expr) resultSorter {
 	switch texpr := expr.(type) {
 	case *parser.Call:
@@ -44,6 +61,10 @@ func newResultSort(expr parser.Expr) resultSorter {
 			return sortFuncResultSort{sortOrder: sortOrderAsc}
 		case "sort_desc":
 			return sortFuncResultSort{sortOrder: sortOrderDesc}
+		case "sort_by_label":
+			return sortByLabelFuncResult{sortOrder: sortOrderAsc, sortingLabels: extractSortingLabels(texpr)}
+		case "sort_by_label_desc":
+			return sortByLabelFuncResult{sortOrder: sortOrderDesc, sortingLabels: extractSortingLabels(texpr)}
 		}
 	case *parser.AggregateExpr:
 		switch texpr.Op {
@@ -80,6 +101,28 @@ func valueCompare(order sortOrder, l, r float64) bool {
 
 func (s sortFuncResultSort) comparer(samples *promql.Vector) func(i, j int) bool {
 	return func(i, j int) bool {
+		return valueCompare(s.sortOrder, (*samples)[i].F, (*samples)[j].F)
+	}
+}
+
+func (s sortByLabelFuncResult) comparer(samples *promql.Vector) func(i, j int) bool {
+	return func(i, j int) bool {
+		iLb := labels.NewBuilder((*samples)[i].Metric)
+		jLb := labels.NewBuilder((*samples)[j].Metric)
+
+		for _, label := range s.sortingLabels {
+			lv1 := iLb.Get(label)
+			lv2 := jLb.Get(label)
+
+			if lv1 == lv2 {
+				continue
+			}
+			if natsort.Compare(lv1, lv2) {
+				return s.sortOrder == sortOrderAsc
+			} else {
+				return s.sortOrder == sortOrderDesc
+			}
+		}
 		return valueCompare(s.sortOrder, (*samples)[i].F, (*samples)[j].F)
 	}
 }

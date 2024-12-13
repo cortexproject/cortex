@@ -27,7 +27,7 @@ func newTimestampOperator(next model.VectorOperator, opts *query.Options) *times
 	oper := &timestampOperator{
 		next: next,
 	}
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
 
 	return oper
 }

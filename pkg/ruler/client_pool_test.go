@@ -14,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func Test_newRulerClientFactory(t *testing.T) {
@@ -62,6 +63,12 @@ func Test_newRulerClientFactory(t *testing.T) {
 }
 
 type mockRulerServer struct{}
+
+func (m *mockRulerServer) LivenessCheck(ctx context.Context, request *LivenessCheckRequest) (*LivenessCheckResponse, error) {
+	return &LivenessCheckResponse{
+		State: int32(services.Running),
+	}, nil
+}
 
 func (m *mockRulerServer) Rules(context.Context, *RulesRequest) (*RulesResponse, error) {
 	return &RulesResponse{}, nil

@@ -21,6 +21,9 @@ linters-settings:
     local-prefixes: "github.com/cortexproject/cortex"
   revive:
     severity: error # We only want critical issues.
+  govet:
+    disable:
+      - printf
 
   depguard:
     rules:

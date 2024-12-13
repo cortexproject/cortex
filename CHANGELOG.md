@@ -2,10 +2,64 @@
 
 ## master / unreleased
 
+* [CHANGE] OTLP: Change OTLP handler to be consistent with the Prometheus OTLP handler. #6272
+- `target_info` metric is enabled by default and can be disabled via `-distributor.otlp.disable-target-info=true` flag
+- Convert all attributes to labels is disabled by default and can be enabled via `-distributor.otlp.convert-all-attributes=true` flag
+- You can specify the attributes converted to labels via `-distributor.promote-resource-attributes` flag. Supported only if `-distributor.otlp.convert-all-attributes=false`
+* [CHANGE] Change all max async concurrency default values `50` to `3` #6268
+* [CHANGE] Change default value of `-blocks-storage.bucket-store.index-cache.multilevel.max-async-concurrency` from `50` to `3` #6265
+* [CHANGE] Enable Compactor and Alertmanager in target all. #6204
+* [FEATURE] Ruler: Pagination support for List Rules API. #6299
+* [FEATURE] Query Frontend/Querier: Add protobuf codec `-api.querier-default-codec` and the option to choose response compression type `-querier.response-compression`. #5527
+* [FEATURE] Ruler: Experimental: Add `ruler.frontend-address` to allow query to query frontends instead of ingesters. #6151
+* [FEATURE] Ruler: Minimize chances of missed rule group evaluations that can occur due to OOM kills, bad underlying nodes, or due to an unhealthy ruler that appears in the ring as healthy. This feature is enabled via `-ruler.enable-ha-evaluation` flag. #6129
+* [FEATURE] Store Gateway: Add an in-memory chunk cache. #6245
+* [FEATURE] Chunk Cache: Support multi level cache and add metrics. #6249
+* [FEATURE] Distributor: Accept multiple HA Tracker pairs in the same request. #6256
+* [FEATURE] Ruler: Add support for per-user external labels #6340
+* [ENHANCEMENT] Store Gateway: Add a hedged request to reduce the tail latency. #6388
+* [ENHANCEMENT] Ingester: Add metrics to track succeed/failed native histograms. #6370
+* [ENHANCEMENT] Query Frontend/Querier: Add an experimental flag `-querier.enable-promql-experimental-functions` to enable experimental promQL functions. #6355
+* [ENHANCEMENT] OTLP: Add `-distributor.otlp-max-recv-msg-size` flag to limit OTLP request size in bytes. #6333
+* [ENHANCEMENT] S3 Bucket Client: Add a list objects version configs to configure list api object version. #6280
+* [ENHANCEMENT] OpenStack Swift: Add application credential configs for Openstack swift object storage backend. #6255
+* [ENHANCEMENT] Query Frontend: Add new query stats metrics `cortex_query_samples_scanned_total` and `cortex_query_peak_samples` to track scannedSamples and peakSample per user. #6228
+* [ENHANCEMENT] Ingester: Add option `ingester.disable-chunk-trimming` to disable chunk trimming. #6300
+* [ENHANCEMENT] Ingester: Add `blocks-storage.tsdb.wal-compression-type` to support zstd wal compression type. #6232
+* [ENHANCEMENT] Query Frontend: Add info field to query response. #6207
+* [ENHANCEMENT] Query Frontend: Add peakSample in query stats response. #6188
+* [ENHANCEMENT] Ruler: Add new ruler metric `cortex_ruler_rule_groups_in_store` that is the total rule groups per tenant in store, which can be used to compare with `cortex_prometheus_rule_group_rules` to count the number of rule groups that are not loaded by a ruler. #5869
+* [ENHANCEMENT] Ingester/Ring: New `READONLY` status on ring to be used by Ingester. New ingester API to change mode of ingester #6163
+* [ENHANCEMENT] Ruler: Add query statistics metrics when --ruler.query-stats-enabled=true. #6173
+* [ENHANCEMENT] Ingester: Add new API `/ingester/all_user_stats` which shows loaded blocks, active timeseries and ingestion rate for a specific ingester. #6178
+* [ENHANCEMENT] Distributor: Add new `cortex_reduced_resolution_histogram_samples_total` metric to track the number of histogram samples which resolution was reduced. #6182
+* [ENHANCEMENT] StoreGateway: Implement metadata API limit in queryable. #6195
+* [ENHANCEMENT] Ingester: Add matchers to ingester LabelNames() and LabelNamesStream() RPC. #6209
+* [ENHANCEMENT] KV: Add TLS configs to consul. #6374
+* [ENHANCEMENT] Ingester/Store Gateway Clients: Introduce an experimental HealthCheck handler to quickly fail requests directed to unhealthy targets. #6225 #6257
+* [ENHANCEMENT] Upgrade build image and Go version to 1.23.2. #6261 #6262
+* [ENHANCEMENT] Ingester: Introduce a new experimental feature for caching expanded postings on the ingester. #6296
+* [ENHANCEMENT] Querier/Ruler: Expose `store_gateway_consistency_check_max_attempts` for max retries when querying store gateway in consistency check. #6276
+* [ENHANCEMENT] StoreGateway: Add new `cortex_bucket_store_chunk_pool_inuse_bytes` metric to track the usage in chunk pool. #6310
+* [ENHANCEMENT] Distributor: Add new `cortex_distributor_inflight_client_requests` metric to track number of ingester client inflight requests. #6358
+* [ENHANCEMENT] Distributor: Expose `cortex_label_size_bytes` native histogram metric. #6372
+* [ENHANCEMENT] Add new option `-server.grpc_server-num-stream-workers` to configure the number of worker goroutines that should be used to process incoming streams. #6386
+* [ENHANCEMENT] Distributor: Return HTTP 5XX instead of HTTP 4XX when instance limits are hit. #6358
+* [ENHANCEMENT] Ingester: Make sure unregistered ingester joining the ring after WAL replay. #6277
+* [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
+* [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
+* [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled.  #6271
+* [BUGFIX] Ingester: Fix regression on usage of cortex_ingester_queried_chunks. #6398
+* [ENHANCEMENT] Distributor: Add a new `-distributor.num-push-workers` flag to use a goroutine worker pool when sending data from distributor to ingesters. #6406
+* [BUGFIX] Ingester: Fix possible race condition when `active series per LabelSet` is configured. #6409
 
-## 1.18.0 in progress
+## 1.18.1 2024-10-14
 
-* [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
+* [BUGFIX] Backporting upgrade to go 1.22.7 to patch CVE-2024-34155, CVE-2024-34156, CVE-2024-34158 #6217 #6264
+
+
+## 1.18.0 2024-09-03
+
 * [CHANGE] Ingester: Remove `-querier.query-store-for-labels-enabled` flag. Querying long-term store for labels is always enabled. #5984
 * [CHANGE] Server: Instrument `cortex_request_duration_seconds` metric with native histogram. If `native-histograms` feature is enabled in monitoring Prometheus then the metric name needs to be updated in your dashboards. #6056
 * [CHANGE] Distributor/Ingester: Change `cortex_distributor_ingester_appends_total`, `cortex_distributor_ingester_append_failures_total`, `cortex_distributor_ingester_queries_total`, and `cortex_distributor_ingester_query_failures_total` metrics to use the ingester ID instead of its IP as the label value. #6078
@@ -13,7 +67,7 @@
 * [CHANGE] Querier: Deprecate and enable by default `querier.ingester-metadata-streaming` flag. #6147
 * [CHANGE] QueryFrontend/QueryScheduler: Deprecate `-querier.max-outstanding-requests-per-tenant` and `-query-scheduler.max-outstanding-requests-per-tenant` flags. Use frontend.max-outstanding-requests-per-tenant instead. #6146
 * [CHANGE] Ingesters: Enable 'snappy-block' compression on ingester clients by default. #6148
-* [CHANGE] Ruler: Scheduling `ruler.evaluation-delay-duration` to be deprecated. Use the highest value between `ruler.evaluation-delay-duration` and `ruler.query-offset` #6149
+* [CHANGE] Ruler: Scheduling `ruler.evaluation-delay-duration` to be deprecated. Ruler will use the highest value between `ruler.evaluation-delay-duration` and `ruler.query-offset` #6149
 * [CHANGE] Querier: Remove `-querier.at-modifier-enabled` flag. #6157
 * [CHANGE] Tracing: Remove deprecated `oltp_endpoint` config entirely. #6158
 * [CHANGE] Store Gateway: Enable store gateway zone stable shuffle sharding by default. #6161
@@ -26,20 +80,18 @@
 * [FEATURE] OTLP: Support ingesting OTLP exponential metrics as native histograms. #6071 #6135
 * [FEATURE] Ingester: Add `ingester.instance-limits.max-inflight-query-requests` to allow limiting ingester concurrent queries. #6081
 * [FEATURE] Distributor: Add `validation.max-native-histogram-buckets` to limit max number of bucket count. Distributor will try to automatically reduce histogram resolution until it is within the bucket limit or resolution cannot be reduced anymore. #6104
-* [FEATURE] Store Gateway: Token bucket limiter. #6016
+* [FEATURE] Store Gateway: Introduce token bucket limiter to enhance store gateway throttling. #6016
 * [FEATURE] Ruler: Add support for `query_offset` field on RuleGroup and new `ruler_query_offset` per-tenant limit. #6085
-* [ENHANCEMENT] rulers: Add support to persist tokens in rulers. #5987
+* [ENHANCEMENT] Ruler: Add support to persist tokens in rulers. #5987
 * [ENHANCEMENT] Query Frontend/Querier: Added store gateway postings touched count and touched size in Querier stats and log in Query Frontend. #5892
 * [ENHANCEMENT] Query Frontend/Querier: Returns `warnings` on prometheus query responses. #5916
 * [ENHANCEMENT] Ingester: Allowing to configure `-blocks-storage.tsdb.head-compaction-interval` flag up to 30 min and add a jitter on the first head compaction. #5919 #5928
 * [ENHANCEMENT] Distributor: Added `max_inflight_push_requests` config to ingester client to protect distributor from OOMKilled. #5917
 * [ENHANCEMENT] Distributor/Querier: Clean stale per-ingester metrics after ingester restarts. #5930
 * [ENHANCEMENT] Distributor/Ring: Allow disabling detailed ring metrics by ring member. #5931
-* [ENHANCEMENT] KV: Etcd Added etcd.ping-without-stream-allowed parameter to disable/enable  PermitWithoutStream #5933
+* [ENHANCEMENT] KV: Etcd Added etcd.ping-without-stream-allowed parameter to disable/enable PermitWithoutStream #5933
 * [ENHANCEMENT] Ingester: Add a new `limits_per_label_set` limit. This limit functions similarly to `max_series_per_metric`, but allowing users to define the maximum number of series per LabelSet. #5950 #5993
 * [ENHANCEMENT] Store Gateway: Log gRPC requests together with headers configured in `http_request_headers_to_log`. #5958
-* [ENHANCEMENT] Upgrade Alpine to 3.19. #6014
-* [ENHANCEMENT] Upgrade go to 1.22.5 #6014 #6072
 * [ENHANCEMENT] Ingester: Add a new experimental `-ingester.labels-string-interning-enabled` flag to enable string interning for metrics labels. #6057
 * [ENHANCEMENT] Ingester: Add link to renew 10% of the ingesters tokens in the admin page. #6063
 * [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
@@ -51,12 +103,12 @@
 * [ENHANCEMENT] Ruler: Add support for filtering by `state` and `health` field on Rules API. #6040
 * [ENHANCEMENT] Compactor: Split cleaner cycle for active and deleted tenants. #6112
 * [ENHANCEMENT] Compactor: Introduce cleaner visit marker. #6113
-* [ENHANCEMENT] Query Frontend: Add cortex_query_samples_total metric. #6142
+* [ENHANCEMENT] Query Frontend: Add `cortex_query_samples_total` metric. #6142
 * [ENHANCEMENT] Ingester: Implement metadata API limit. #6128
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920
 * [BUGFIX] Ingester: Fix `user` and `type` labels for the `cortex_ingester_tsdb_head_samples_appended_total` TSDB metric. #5952
 * [BUGFIX] Querier: Enforce max query length check for `/api/v1/series` API even though `ignoreMaxQueryLength` is set to true. #6018
-* [BUGFIX] Ingester: Fix issue with the minimize token generator where it was not taking in consideration the current ownerhip of an instance when generating extra tokens. #6062
+* [BUGFIX] Ingester: Fix issue with the minimize token generator where it was not taking in consideration the current ownership of an instance when generating extra tokens. #6062
 * [BUGFIX] Scheduler: Fix user queue in scheduler that was not thread-safe. #6077 #6160
 * [BUGFIX] Ingester: Include out-of-order head compaction when compacting TSDB head. #6108
 * [BUGFIX] Ingester: Fix `cortex_ingester_tsdb_mmap_chunks_total` metric. #6134

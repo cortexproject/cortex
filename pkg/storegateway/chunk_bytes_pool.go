@@ -7,14 +7,15 @@ import (
 )
 
 type chunkBytesPool struct {
-	pool *pool.BucketedBytes
+	pool *pool.BucketedPool[byte]
 
 	// Metrics.
-	poolByteStats *prometheus.CounterVec
+	poolByteStats  *prometheus.CounterVec
+	poolInUseBytes prometheus.GaugeFunc
 }
 
 func newChunkBytesPool(minBucketSize, maxBucketSize int, maxChunkPoolBytes uint64, reg prometheus.Registerer) (*chunkBytesPool, error) {
-	upstream, err := pool.NewBucketedBytes(minBucketSize, maxBucketSize, 2, maxChunkPoolBytes)
+	upstream, err := pool.NewBucketedPool[byte](minBucketSize, maxBucketSize, 2, maxChunkPoolBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -25,6 +26,12 @@ func newChunkBytesPool(minBucketSize, maxBucketSize int, maxChunkPoolBytes uint6
 			Name: "cortex_bucket_store_chunk_pool_operation_bytes_total",
 			Help: "Total bytes number of bytes pooled by operation.",
 		}, []string{"operation", "stats"}),
+		poolInUseBytes: promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_bucket_store_chunk_pool_inuse_bytes",
+			Help: "Total bytes in use in the chunk pool.",
+		}, func() float64 {
+			return float64(upstream.UsedBytes())
+		}),
 	}, nil
 }
 

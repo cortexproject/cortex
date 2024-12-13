@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -28,7 +29,8 @@ overrides:
   '1235': *id001
   '1236': *id001
 `)
-	runtimeCfg, err := loadRuntimeConfig(yamlFile)
+	loader := runtimeConfigLoader{cfg: Config{Distributor: distributor.Config{ShardByAllLabels: true}}}
+	runtimeCfg, err := loader.load(yamlFile)
 	require.NoError(t, err)
 
 	limits := validation.Limits{
@@ -51,7 +53,7 @@ func TestLoadRuntimeConfig_ShouldLoadEmptyFile(t *testing.T) {
 	yamlFile := strings.NewReader(`
 # This is an empty YAML.
 `)
-	actual, err := loadRuntimeConfig(yamlFile)
+	actual, err := runtimeConfigLoader{}.load(yamlFile)
 	require.NoError(t, err)
 	assert.Equal(t, &RuntimeConfigValues{}, actual)
 }
@@ -60,7 +62,7 @@ func TestLoadRuntimeConfig_MissingPointerFieldsAreNil(t *testing.T) {
 	yamlFile := strings.NewReader(`
 # This is an empty YAML.
 `)
-	actual, err := loadRuntimeConfig(yamlFile)
+	actual, err := runtimeConfigLoader{}.load(yamlFile)
 	require.NoError(t, err)
 
 	actualCfg, ok := actual.(*RuntimeConfigValues)
@@ -102,7 +104,7 @@ overrides:
 	}
 
 	for _, tc := range cases {
-		actual, err := loadRuntimeConfig(strings.NewReader(tc))
+		actual, err := runtimeConfigLoader{}.load(strings.NewReader(tc))
 		assert.Equal(t, errMultipleDocuments, err)
 		assert.Nil(t, actual)
 	}

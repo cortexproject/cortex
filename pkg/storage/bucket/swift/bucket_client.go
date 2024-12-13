@@ -1,6 +1,8 @@
 package swift
 
 import (
+	"net/http"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
@@ -9,26 +11,29 @@ import (
 )
 
 // NewBucketClient creates a new Swift bucket client
-func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
+func NewBucketClient(cfg Config, hedgedRoundTripper func(rt http.RoundTripper) http.RoundTripper, _ string, logger log.Logger) (objstore.Bucket, error) {
 	bucketConfig := swift.Config{
-		AuthVersion:       cfg.AuthVersion,
-		AuthUrl:           cfg.AuthURL,
-		Username:          cfg.Username,
-		UserDomainName:    cfg.UserDomainName,
-		UserDomainID:      cfg.UserDomainID,
-		UserId:            cfg.UserID,
-		Password:          cfg.Password,
-		DomainId:          cfg.DomainID,
-		DomainName:        cfg.DomainName,
-		ProjectID:         cfg.ProjectID,
-		ProjectName:       cfg.ProjectName,
-		ProjectDomainID:   cfg.ProjectDomainID,
-		ProjectDomainName: cfg.ProjectDomainName,
-		RegionName:        cfg.RegionName,
-		ContainerName:     cfg.ContainerName,
-		Retries:           cfg.MaxRetries,
-		ConnectTimeout:    model.Duration(cfg.ConnectTimeout),
-		Timeout:           model.Duration(cfg.RequestTimeout),
+		AuthVersion:                 cfg.AuthVersion,
+		AuthUrl:                     cfg.AuthURL,
+		ApplicationCredentialID:     cfg.ApplicationCredentialID,
+		ApplicationCredentialName:   cfg.ApplicationCredentialName,
+		ApplicationCredentialSecret: cfg.ApplicationCredentialSecret,
+		Username:                    cfg.Username,
+		UserDomainName:              cfg.UserDomainName,
+		UserDomainID:                cfg.UserDomainID,
+		UserId:                      cfg.UserID,
+		Password:                    cfg.Password,
+		DomainId:                    cfg.DomainID,
+		DomainName:                  cfg.DomainName,
+		ProjectID:                   cfg.ProjectID,
+		ProjectName:                 cfg.ProjectName,
+		ProjectDomainID:             cfg.ProjectDomainID,
+		ProjectDomainName:           cfg.ProjectDomainName,
+		RegionName:                  cfg.RegionName,
+		ContainerName:               cfg.ContainerName,
+		Retries:                     cfg.MaxRetries,
+		ConnectTimeout:              model.Duration(cfg.ConnectTimeout),
+		Timeout:                     model.Duration(cfg.RequestTimeout),
 
 		// Hard-coded defaults.
 		ChunkSize:              swift.DefaultConfig.ChunkSize,
@@ -42,5 +47,5 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		return nil, err
 	}
 
-	return swift.NewContainer(logger, serialized)
+	return swift.NewContainer(logger, serialized, hedgedRoundTripper)
 }

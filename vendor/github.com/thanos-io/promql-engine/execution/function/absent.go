@@ -36,7 +36,7 @@ func newAbsentOperator(
 		pool:     pool,
 		next:     next,
 	}
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
 
 	return oper
 }

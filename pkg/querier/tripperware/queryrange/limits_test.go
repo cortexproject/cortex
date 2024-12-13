@@ -74,7 +74,7 @@ func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
 		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
-			req := &PrometheusRequest{
+			req := &tripperware.PrometheusRequest{
 				Start: util.TimeToMillis(testData.reqStartTime),
 				End:   util.TimeToMillis(testData.reqEndTime),
 			}
@@ -82,7 +82,7 @@ func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
 			limits := mockLimits{maxQueryLookback: testData.maxQueryLookback}
 			middleware := NewLimitsMiddleware(limits, 5*time.Minute)
 
-			innerRes := NewEmptyPrometheusResponse()
+			innerRes := tripperware.NewEmptyPrometheusResponse(false)
 			inner := &mockHandler{}
 			inner.On("Do", mock.Anything, mock.Anything).Return(innerRes, nil)
 
@@ -193,7 +193,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
-			req := &PrometheusRequest{
+			req := &tripperware.PrometheusRequest{
 				Query: testData.query,
 				Start: util.TimeToMillis(testData.reqStartTime),
 				End:   util.TimeToMillis(testData.reqEndTime),
@@ -205,7 +205,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 			limits := mockLimits{maxQueryLength: testData.maxQueryLength}
 			middleware := NewLimitsMiddleware(limits, 5*time.Minute)
 
-			innerRes := NewEmptyPrometheusResponse()
+			innerRes := tripperware.NewEmptyPrometheusResponse(false)
 			inner := &mockHandler{}
 			inner.On("Do", mock.Anything, mock.Anything).Return(innerRes, nil)
 

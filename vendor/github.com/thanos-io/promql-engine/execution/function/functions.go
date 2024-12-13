@@ -4,15 +4,11 @@
 package function
 
 import (
-	"fmt"
 	"math"
 	"time"
 
-	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/promql/parser"
-
-	"github.com/thanos-io/promql-engine/execution/parse"
 )
 
 type functionCall func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool)
@@ -121,6 +117,12 @@ var instantVectorFuncs = map[string]functionCall{
 		}
 		return h.Count, true
 	},
+	"histogram_avg": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h == nil {
+			return 0., false
+		}
+		return h.Sum / h.Count, true
+	},
 	"histogram_fraction": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
 		if h == nil || len(vargs) != 2 {
 			return 0., false
@@ -159,6 +161,12 @@ var instantVectorFuncs = map[string]functionCall{
 		return v
 	}),
 	"sort_desc": simpleFunc(func(v float64) float64 {
+		return v
+	}),
+	"sort_by_label": simpleFunc(func(v float64) float64 {
+		return v
+	}),
+	"sort_by_label_desc": simpleFunc(func(v float64) float64 {
 		return v
 	}),
 }
@@ -267,13 +275,4 @@ var XFunctions = map[string]*parser.Function{
 func IsExtFunction(functionName string) bool {
 	_, ok := XFunctions[functionName]
 	return ok
-}
-
-func UnknownFunctionError(name string) error {
-	msg := fmt.Sprintf("unknown function: %s", name)
-	if _, ok := parser.Functions[name]; ok {
-		return errors.Wrap(parse.ErrNotImplemented, msg)
-	}
-
-	return errors.Wrap(parse.ErrNotSupportedExpr, msg)
 }

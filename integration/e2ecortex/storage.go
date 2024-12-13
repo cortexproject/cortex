@@ -21,7 +21,7 @@ type S3Client struct {
 }
 
 func NewS3Client(cfg s3.Config) (*S3Client, error) {
-	writer, err := s3.NewBucketClient(cfg, "test", log.NewNopLogger())
+	writer, err := s3.NewBucketClient(cfg, nil, "test", log.NewNopLogger())
 	if err != nil {
 		return nil, err
 	}

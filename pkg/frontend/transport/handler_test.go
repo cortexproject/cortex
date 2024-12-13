@@ -188,7 +188,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:               "test handler with stats enabled",
 			cfg:                HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics:    4,
+			expectedMetrics:    6,
 			roundTripperFunc:   roundTripper,
 			expectedStatusCode: http.StatusOK,
 		},
@@ -202,7 +202,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonResponseTooLarge",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusRequestEntityTooLarge,
@@ -218,7 +218,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonTooManyRequests",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusTooManyRequests,
@@ -234,7 +234,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonTooManySamples",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
@@ -250,7 +250,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonTooLongRange",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
@@ -266,7 +266,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonSeriesFetched",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
@@ -282,7 +282,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonChunksFetched",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
@@ -298,7 +298,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonChunkBytesFetched",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
@@ -314,7 +314,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonDataBytesFetched",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
@@ -330,7 +330,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonSeriesLimitStoreGateway",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
@@ -346,7 +346,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonChunksLimitStoreGateway",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
@@ -362,7 +362,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		{
 			name:            "test handler with reasonBytesLimitStoreGateway",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics: 4,
+			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
@@ -395,6 +395,8 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				"cortex_query_fetched_series_total",
 				"cortex_query_samples_total",
 				"cortex_query_fetched_chunks_bytes_total",
+				"cortex_query_samples_scanned_total",
+				"cortex_query_peak_samples",
 			)
 
 			assert.NoError(t, err)

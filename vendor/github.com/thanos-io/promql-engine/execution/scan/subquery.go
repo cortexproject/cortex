@@ -26,12 +26,13 @@ type subqueryOperator struct {
 	paramOp model.VectorOperator
 
 	pool        *model.VectorPool
-	call        FunctionCall
+	call        ringbuffer.FunctionCall
 	mint        int64
 	maxt        int64
 	currentStep int64
 	step        int64
 	stepsBatch  int
+	opts        *query.Options
 
 	funcExpr *logicalplan.FunctionCall
 	subQuery *logicalplan.Subquery
@@ -41,14 +42,14 @@ type subqueryOperator struct {
 
 	lastVectors   []model.StepVector
 	lastCollected int
-	buffers       []*ringbuffer.RingBuffer[Value]
+	buffers       []*ringbuffer.GenericRingBuffer
 
 	// params holds the function parameter for each step.
 	params []float64
 }
 
 func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOperator, opts *query.Options, funcExpr *logicalplan.FunctionCall, subQuery *logicalplan.Subquery) (model.VectorOperator, error) {
-	call, err := NewRangeVectorFunc(funcExpr.Func.Name)
+	call, err := ringbuffer.NewRangeVectorFunc(funcExpr.Func.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -64,6 +65,7 @@ func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOpera
 		pool:          pool,
 		funcExpr:      funcExpr,
 		subQuery:      subQuery,
+		opts:          opts,
 		mint:          opts.Start.UnixMilli(),
 		maxt:          opts.End.UnixMilli(),
 		currentStep:   opts.Start.UnixMilli(),
@@ -72,7 +74,7 @@ func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOpera
 		lastCollected: -1,
 		params:        make([]float64, opts.StepsBatch),
 	}
-	o.OperatorTelemetry = model.NewTelemetry(o, opts.EnableAnalysis)
+	o.OperatorTelemetry = model.NewSubqueryTelemetry(o, opts)
 
 	return o, nil
 }
@@ -128,7 +130,7 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		mint := o.currentStep - o.subQuery.Range.Milliseconds() - o.subQuery.OriginalOffset.Milliseconds()
 		maxt := o.currentStep - o.subQuery.OriginalOffset.Milliseconds()
 		for _, b := range o.buffers {
-			b.DropBefore(mint)
+			b.Reset(mint, maxt+o.subQuery.Offset.Milliseconds())
 		}
 		if len(o.lastVectors) > 0 {
 			for _, v := range o.lastVectors[o.lastCollected+1:] {
@@ -167,13 +169,7 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 
 		sv := o.pool.GetStepVector(o.currentStep)
 		for sampleId, rangeSamples := range o.buffers {
-			f, h, ok, err := o.call(FunctionArgs{
-				ScalarPoint: o.params[i],
-				Samples:     rangeSamples.Samples(),
-				StepTime:    maxt + o.subQuery.Offset.Milliseconds(),
-				SelectRange: o.subQuery.Range.Milliseconds(),
-				Offset:      o.subQuery.Offset.Milliseconds(),
-			})
+			f, h, ok, err := rangeSamples.Eval(o.params[i], nil)
 			if err != nil {
 				return nil, err
 			}
@@ -183,6 +179,7 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 				} else {
 					sv.AppendSample(o.pool, uint64(sampleId), f)
 				}
+				o.IncrementSamplesAtTimestamp(rangeSamples.Len(), sv.T)
 			}
 		}
 		res = append(res, sv)
@@ -202,14 +199,14 @@ func (o *subqueryOperator) collect(v model.StepVector, mint int64) {
 		if buffer.Len() > 0 && v.T <= buffer.MaxT() {
 			continue
 		}
-		buffer.Push(v.T, Value{F: s})
+		buffer.Push(v.T, ringbuffer.Value{F: s})
 	}
 	for i, s := range v.Histograms {
 		buffer := o.buffers[v.HistogramIDs[i]]
 		if buffer.Len() > 0 && v.T < buffer.MaxT() {
 			continue
 		}
-		buffer.Push(v.T, Value{H: s})
+		buffer.Push(v.T, ringbuffer.Value{H: s})
 	}
 	o.next.GetPool().PutStepVector(v)
 }
@@ -234,9 +231,9 @@ func (o *subqueryOperator) initSeries(ctx context.Context) error {
 		}
 
 		o.series = make([]labels.Labels, len(series))
-		o.buffers = make([]*ringbuffer.RingBuffer[Value], len(series))
+		o.buffers = make([]*ringbuffer.GenericRingBuffer, len(series))
 		for i := range o.buffers {
-			o.buffers[i] = ringbuffer.New[Value](8)
+			o.buffers[i] = ringbuffer.New(8, o.subQuery.Range.Milliseconds(), o.subQuery.Offset.Milliseconds(), o.call)
 		}
 		var b labels.ScratchBuilder
 		for i, s := range series {

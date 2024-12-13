@@ -40,6 +40,14 @@ func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	return lifecyclerConfig
 }
 
+// testLifecyclerConfigWithAddr creates a LifecyclerConfig with the given address.
+// This is useful for testing when we want to set the address to a specific value.
+func testLifecyclerConfigWithAddr(ringConfig Config, id string, addr string) LifecyclerConfig {
+	l := testLifecyclerConfig(ringConfig, id)
+	l.Addr = addr
+	return l
+}
+
 func checkNormalised(d interface{}, id string) bool {
 	desc, ok := d.(*Desc)
 	return ok &&
@@ -644,8 +652,8 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	}
 
 	// Starts Ingester and wait it to became active
-	startIngesterAndWaitActive := func(ingId string) *Lifecycler {
-		lifecyclerConfig := testLifecyclerConfig(ringConfig, ingId)
+	startIngesterAndWaitActive := func(ingId string, addr string) *Lifecycler {
+		lifecyclerConfig := testLifecyclerConfigWithAddr(ringConfig, ingId, addr)
 		// Disabling heartBeat and unregister_on_shutdown
 		lifecyclerConfig.UnregisterOnShutdown = false
 		lifecyclerConfig.HeartbeatPeriod = 0
@@ -662,10 +670,10 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	// test if the ingester 2 became active after:
 	// * Clean Shutdown (LEAVING after shutdown)
 	// * Crashes while in the PENDING or JOINING state
-	l1 := startIngesterAndWaitActive("ing1")
+	l1 := startIngesterAndWaitActive("ing1", "0.0.0.0")
 	defer services.StopAndAwaitTerminated(context.Background(), l1) //nolint:errcheck
 
-	l2 := startIngesterAndWaitActive("ing2")
+	l2 := startIngesterAndWaitActive("ing2", "0.0.0.0")
 
 	ingesters := poll(func(desc *Desc) bool {
 		return len(desc.Ingesters) == 2 && desc.Ingesters["ing1"].State == ACTIVE && desc.Ingesters["ing2"].State == ACTIVE
@@ -684,7 +692,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	assert.Equal(t, LEAVING, ingesters["ing2"].State)
 
 	// Start Ingester2 again - Should flip back to ACTIVE in the ring
-	l2 = startIngesterAndWaitActive("ing2")
+	l2 = startIngesterAndWaitActive("ing2", "0.0.0.0")
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
 
 	// Simulate ingester2 crash on startup and left the ring with JOINING state
@@ -698,7 +706,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	})
 	require.NoError(t, err)
 
-	l2 = startIngesterAndWaitActive("ing2")
+	l2 = startIngesterAndWaitActive("ing2", "0.0.0.0")
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
 
 	// Simulate ingester2 crash on startup and left the ring with PENDING state
@@ -712,11 +720,30 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	})
 	require.NoError(t, err)
 
-	l2 = startIngesterAndWaitActive("ing2")
+	l2 = startIngesterAndWaitActive("ing2", "0.0.0.0")
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
+
+	// Simulate ingester2 crashing and left the ring with ACTIVE state, but when it comes up
+	// it has a different ip address
+	startIngesterAndWaitActive("ing2", "0.0.0.0")
+	ingesters = poll(func(desc *Desc) bool {
+		return desc.Ingesters["ing2"].State == ACTIVE && desc.Ingesters["ing2"].Addr == "0.0.0.0:1"
+	})
+	assert.Equal(t, ACTIVE, ingesters["ing2"].State)
+	assert.Equal(t, "0.0.0.0:1", ingesters["ing2"].Addr)
+
+	l2 = startIngesterAndWaitActive("ing2", "1.1.1.1")
+
+	// The ring should have the new ip address
+	ingesters = poll(func(desc *Desc) bool {
+		return desc.Ingesters["ing2"].State == ACTIVE && desc.Ingesters["ing2"].Addr == "1.1.1.1:1"
+	})
+	assert.Equal(t, ACTIVE, ingesters["ing2"].State)
+	assert.Equal(t, "1.1.1.1:1", ingesters["ing2"].Addr)
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
 }
 
-func TestTokensOnDisk(t *testing.T) {
+func TestTokenFileOnDisk(t *testing.T) {
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -756,6 +783,18 @@ func TestTokensOnDisk(t *testing.T) {
 			len(desc.Ingesters["ing1"].Tokens) == 512
 	})
 
+	// Change state from ACTIVE to READONLY
+	err = l1.ChangeState(context.Background(), READONLY)
+	require.NoError(t, err)
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		return ok &&
+			desc.Ingesters["ing1"].State == READONLY
+	})
+
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l1))
 
 	// Start new ingester at same token directory.
@@ -776,7 +815,109 @@ func TestTokensOnDisk(t *testing.T) {
 		}
 		return ok &&
 			len(desc.Ingesters) == 1 &&
-			desc.Ingesters["ing2"].State == ACTIVE &&
+			desc.Ingesters["ing2"].State == READONLY &&
+			len(desc.Ingesters["ing2"].Tokens) == 512
+	})
+
+	// Check for same tokens.
+	sort.Slice(expTokens, func(i, j int) bool { return expTokens[i] < expTokens[j] })
+	sort.Slice(actTokens, func(i, j int) bool { return actTokens[i] < actTokens[j] })
+	for i := 0; i < 512; i++ {
+		require.Equal(t, expTokens, actTokens)
+	}
+}
+
+func TestTokenFileOnDisk_WithoutAutoJoinOnStartup(t *testing.T) {
+	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = ringStore
+
+	r, err := New(ringConfig, "ingester", ringKey, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	tokenDir := t.TempDir()
+
+	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
+	lifecyclerConfig.NumTokens = 512
+	lifecyclerConfig.TokensFilePath = tokenDir + "/tokens"
+
+	// Start first ingester.
+	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", ringKey, false, true, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
+
+	// First ingester joins the ring
+	l1.Join()
+
+	// Check this ingester joined, is active, and has 512 token.
+	var expTokens []uint32
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		if ok {
+			expTokens = desc.Ingesters["ing1"].Tokens
+		}
+		return ok &&
+			len(desc.Ingesters) == 1 &&
+			desc.Ingesters["ing1"].State == ACTIVE &&
+			len(desc.Ingesters["ing1"].Tokens) == 512
+	})
+
+	// Change state from ACTIVE to READONLY
+	err = l1.ChangeState(context.Background(), READONLY)
+	require.NoError(t, err)
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		return ok &&
+			desc.Ingesters["ing1"].State == READONLY
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l1))
+
+	// Start new ingester at same token directory.
+	lifecyclerConfig.ID = "ing2"
+	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", ringKey, false, true, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2))
+	defer services.StopAndAwaitTerminated(context.Background(), l2) //nolint:errcheck
+
+	// Check this ingester should not in the ring before calling Join
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+		desc, ok := d.(*Desc)
+		if ok {
+			_, ingesterInRing := desc.Ingesters["ing2"]
+			return !ingesterInRing
+		}
+		return ok
+	})
+
+	// New ingester joins the ring
+	l2.Join()
+
+	// Check this ingester joined, is in readonly state, and has 512 token.
+	var actTokens []uint32
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+		desc, ok := d.(*Desc)
+		if ok {
+			actTokens = desc.Ingesters["ing2"].Tokens
+		}
+		return ok &&
+			len(desc.Ingesters) == 1 &&
+			desc.Ingesters["ing2"].State == READONLY &&
 			len(desc.Ingesters["ing2"].Tokens) == 512
 	})
 

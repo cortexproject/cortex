@@ -57,7 +57,7 @@ type BucketStores struct {
 	indexCache storecache.IndexCache
 
 	// Chunks bytes pool shared across all tenants.
-	chunksPool pool.Bytes
+	chunksPool pool.Pool[byte]
 
 	// Partitioner shared across all tenants.
 	partitioner store.Partitioner
@@ -625,6 +625,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			return u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes
 		}),
 		store.WithLazyExpandedPostings(u.cfg.BucketStore.LazyExpandedPostingsEnabled),
+		store.WithPostingGroupMaxKeySeriesRatio(u.cfg.BucketStore.LazyExpandedPostingGroupMaxKeySeriesRatio),
 		store.WithDontResort(true), // Cortex doesn't need to resort series in store gateway.
 	}
 	if u.logLevel.String() == "debug" {

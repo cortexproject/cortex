@@ -60,7 +60,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r tripperware.Request) (trippe
 				"redEnd", util.FormatTimeMillis(r.GetEnd()),
 				"maxQueryLookback", maxQueryLookback)
 
-			return NewEmptyPrometheusResponse(), nil
+			return tripperware.NewEmptyPrometheusResponse(false), nil
 		}
 
 		if r.GetStart() < minStartTime {

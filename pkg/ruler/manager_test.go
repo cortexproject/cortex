@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -28,8 +29,9 @@ func TestSyncRuleGroups(t *testing.T) {
 	}
 
 	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
+	limits := &ruleLimits{externalLabels: labels.FromStrings("from", "cortex")}
 
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, ruleManagerFactory, nil, nil, log.NewNopLogger())
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, limits, ruleManagerFactory, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	const user = "testUser"
@@ -60,6 +62,9 @@ func TestSyncRuleGroups(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []string{user}, users)
 		require.True(t, ok)
+		lset, ok := m.userExternalLabels.get(user)
+		require.True(t, ok)
+		require.Equal(t, limits.RulerExternalLabels(user), lset)
 	}
 
 	// Passing empty map / nil stops all managers.
@@ -77,6 +82,8 @@ func TestSyncRuleGroups(t *testing.T) {
 		_, ok := m.notifiers[user]
 		require.NoError(t, err)
 		require.Equal(t, []string(nil), users)
+		require.False(t, ok)
+		_, ok = m.userExternalLabels.get(user)
 		require.False(t, ok)
 	}
 
@@ -153,7 +160,7 @@ func TestSlowRuleGroupSyncDoesNotSlowdownListRules(t *testing.T) {
 	}
 
 	ruleManagerFactory := RuleManagerFactory(groupsToReturn, waitDurations)
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, ruleManagerFactory, nil, prometheus.NewRegistry(), log.NewNopLogger())
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, &ruleLimits{}, ruleManagerFactory, nil, prometheus.NewRegistry(), log.NewNopLogger())
 	require.NoError(t, err)
 
 	m.SyncRuleGroups(context.Background(), userRules)
@@ -216,7 +223,7 @@ func TestSyncRuleGroupsCleanUpPerUserMetrics(t *testing.T) {
 
 	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
 
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, &ruleLimits{}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	const user = "testUser"
@@ -264,7 +271,7 @@ func TestBackupRules(t *testing.T) {
 	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
 	config := Config{RulePath: dir}
 	config.Ring.ReplicationFactor = 3
-	m, err := NewDefaultMultiTenantManager(config, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
+	m, err := NewDefaultMultiTenantManager(config, &ruleLimits{}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	const user1 = "testUser"
@@ -304,13 +311,13 @@ func getManager(m *DefaultMultiTenantManager, user string) RulesManager {
 }
 
 func RuleManagerFactory(groupsToReturn [][]*promRules.Group, waitDurations []time.Duration) ManagerFactory {
-	return func(_ context.Context, _ string, _ *notifier.Manager, _ log.Logger, _ prometheus.Registerer) RulesManager {
+	return func(_ context.Context, _ string, _ *notifier.Manager, _ log.Logger, _ *client.Pool, _ prometheus.Registerer) (RulesManager, error) {
 		return &mockRulesManager{
 			done:           make(chan struct{}),
 			groupsToReturn: groupsToReturn,
 			waitDurations:  waitDurations,
 			iteration:      -1,
-		}
+		}, nil
 	}
 }
 

@@ -26,7 +26,7 @@ func newScalarOperator(pool *model.VectorPool, next model.VectorOperator, opts *
 		next: next,
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
 	return oper
 }
 

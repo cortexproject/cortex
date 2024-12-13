@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -23,10 +24,27 @@ import (
 
 type Scanners struct {
 	selectors *SelectorPool
+
+	querier storage.Querier
 }
 
-func NewPrometheusScanners(queryable storage.Queryable) *Scanners {
-	return &Scanners{selectors: NewSelectorPool(queryable)}
+func (s *Scanners) Close() error {
+	return s.querier.Close()
+}
+
+func NewPrometheusScanners(queryable storage.Queryable, qOpts *query.Options, lplan logicalplan.Plan) (*Scanners, error) {
+	var min, max int64
+	if lplan != nil {
+		min, max = lplan.MinMaxTime(qOpts)
+	} else {
+		min, max = qOpts.Start.UnixMilli(), qOpts.End.UnixMilli()
+	}
+
+	querier, err := queryable.Querier(min, max)
+	if err != nil {
+		return nil, errors.Wrap(err, "create querier")
+	}
+	return &Scanners{querier: querier, selectors: NewSelectorPool(querier)}, nil
 }
 
 func (p Scanners) NewVectorSelector(
@@ -142,5 +160,5 @@ func newHistogramStatsSeries(series storage.Series) histogramStatsSeries {
 }
 
 func (h histogramStatsSeries) Iterator(it chunkenc.Iterator) chunkenc.Iterator {
-	return NewHistogramStatsIterator(h.Series.Iterator(it))
+	return promql.NewHistogramStatsIterator(h.Series.Iterator(it))
 }

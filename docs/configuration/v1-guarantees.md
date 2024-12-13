@@ -35,6 +35,7 @@ Cortex is an actively developed project and we want to encourage the introductio
 
 Currently experimental features are:
 
+- Ruler: Evaluate rules to query frontend instead of ingesters (enabled via `-ruler.frontend-address` )
 - S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).
 - Azure blob storage.
 - Zone awareness based replication.
@@ -53,7 +54,9 @@ Currently experimental features are:
 - Metric relabeling in the distributor.
 - Scalable query-frontend (when using query-scheduler)
 - Ingester: do not unregister from ring on shutdown (`-ingester.unregister-on-shutdown=false`)
-- Distributor: do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
+- Distributor:
+  - Do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
+  - Accept multiple HA pairs in the same request (enabled via `-experimental.distributor.ha-tracker.mixed-ha-samples=true`)
 - Tenant Deletion in Purger, for blocks storage.
 - Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)
 - Blocks storage bucket index
@@ -114,3 +117,4 @@ Currently experimental features are:
 - String interning for metrics labels
   - Enable string interning for metrics labels by setting `-ingester.labels-string-interning-enabled` on Ingester.
 - Query-frontend: query rejection (`-frontend.query-rejection.enabled`)
+- Querier: protobuf codec (`-api.querier-default-codec`)

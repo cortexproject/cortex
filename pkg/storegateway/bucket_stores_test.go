@@ -699,19 +699,20 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	require.NoError(t, stores.InitialSync(ctx))
 	require.Equal(t, []string{user1, user2}, getUsersInDir(t, cfg.BucketStore.SyncDir))
 
-	metricNames := []string{"cortex_bucket_store_block_drops_total", "cortex_bucket_store_block_loads_total", "cortex_bucket_store_blocks_loaded"}
+	metricNamesWithoutLoaded := []string{"cortex_bucket_store_block_drops_total", "cortex_bucket_store_block_loads_total"}
+	metricNames := append(metricNamesWithoutLoaded, "cortex_bucket_store_blocks_loaded")
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-        	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
-        	            	# TYPE cortex_bucket_store_block_drops_total counter
-        	            	cortex_bucket_store_block_drops_total 0
-        	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
-        	            	# TYPE cortex_bucket_store_block_loads_total counter
-        	            	cortex_bucket_store_block_loads_total 2
-        	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
-        	            	# TYPE cortex_bucket_store_blocks_loaded gauge
-        	            	cortex_bucket_store_blocks_loaded{user="user-1"} 1
-        	            	cortex_bucket_store_blocks_loaded{user="user-2"} 1
+		            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
+		            	# TYPE cortex_bucket_store_block_drops_total counter
+		            	cortex_bucket_store_block_drops_total 0
+		            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+		            	# TYPE cortex_bucket_store_block_loads_total counter
+		            	cortex_bucket_store_block_loads_total 2
+		            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+		            	# TYPE cortex_bucket_store_blocks_loaded gauge
+		            	cortex_bucket_store_blocks_loaded{user="user-1"} 1
+		            	cortex_bucket_store_blocks_loaded{user="user-2"} 1
 	`), metricNames...))
 
 	// Single user left in shard.
@@ -720,15 +721,15 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	require.Equal(t, []string{user1}, getUsersInDir(t, cfg.BucketStore.SyncDir))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-        	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
-        	            	# TYPE cortex_bucket_store_block_drops_total counter
-        	            	cortex_bucket_store_block_drops_total 1
-        	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
-        	            	# TYPE cortex_bucket_store_block_loads_total counter
-        	            	cortex_bucket_store_block_loads_total 2
-        	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
-        	            	# TYPE cortex_bucket_store_blocks_loaded gauge
-        	            	cortex_bucket_store_blocks_loaded{user="user-1"} 1
+	  	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
+	  	            	# TYPE cortex_bucket_store_block_drops_total counter
+	  	            	cortex_bucket_store_block_drops_total 1
+	  	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+	  	            	# TYPE cortex_bucket_store_block_loads_total counter
+	  	            	cortex_bucket_store_block_loads_total 2
+	  	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+	  	            	# TYPE cortex_bucket_store_blocks_loaded gauge
+	  	            	cortex_bucket_store_blocks_loaded{user="user-1"} 1
 	`), metricNames...))
 
 	// No users left in this shard.
@@ -737,13 +738,13 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	require.Equal(t, []string(nil), getUsersInDir(t, cfg.BucketStore.SyncDir))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-        	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
-        	            	# TYPE cortex_bucket_store_block_drops_total counter
-        	            	cortex_bucket_store_block_drops_total 2
-        	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
-        	            	# TYPE cortex_bucket_store_block_loads_total counter
-        	            	cortex_bucket_store_block_loads_total 2
-	`), metricNames...))
+	   	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
+	   	            	# TYPE cortex_bucket_store_block_drops_total counter
+	   	            	cortex_bucket_store_block_drops_total 2
+	   	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+	   	            	# TYPE cortex_bucket_store_block_loads_total counter
+	   	            	cortex_bucket_store_block_loads_total 2
+	`), metricNamesWithoutLoaded...))
 
 	// We can always get user back.
 	sharding.users = []string{user1}
@@ -751,15 +752,15 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	require.Equal(t, []string{user1}, getUsersInDir(t, cfg.BucketStore.SyncDir))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-        	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
-        	            	# TYPE cortex_bucket_store_block_drops_total counter
-        	            	cortex_bucket_store_block_drops_total 2
-        	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
-        	            	# TYPE cortex_bucket_store_block_loads_total counter
-        	            	cortex_bucket_store_block_loads_total 3
-        	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
-        	            	# TYPE cortex_bucket_store_blocks_loaded gauge
-        	            	cortex_bucket_store_blocks_loaded{user="user-1"} 1
+	   	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
+	   	            	# TYPE cortex_bucket_store_block_drops_total counter
+	   	            	cortex_bucket_store_block_drops_total 2
+	   	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+	   	            	# TYPE cortex_bucket_store_block_loads_total counter
+	   	            	cortex_bucket_store_block_loads_total 3
+	   	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+	   	            	# TYPE cortex_bucket_store_blocks_loaded gauge
+	   	            	cortex_bucket_store_blocks_loaded{user="user-1"} 1
 	`), metricNames...))
 }
 

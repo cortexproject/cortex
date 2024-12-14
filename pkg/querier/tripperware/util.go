@@ -6,6 +6,7 @@ import (
 
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -69,4 +70,20 @@ func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits 
 	}
 
 	return resps, firstErr
+}
+
+func SetQueryResponseStats(a *PrometheusResponse, queryStats *stats.QueryStats) {
+	if queryStats != nil {
+		v := a.Data.Result.GetVector()
+		if v != nil {
+			queryStats.AddResponseSeries(uint64(len(v.GetSamples())))
+			return
+		}
+
+		m := a.Data.Result.GetMatrix()
+		if m != nil {
+			queryStats.AddResponseSeries(uint64(len(m.GetSampleStreams())))
+			return
+		}
+	}
 }

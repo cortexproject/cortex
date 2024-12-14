@@ -17,6 +17,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -175,6 +176,9 @@ func (instantQueryCodec) EncodeResponse(ctx context.Context, res tripperware.Res
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
+
+	queryStats := stats.FromContext(ctx)
+	tripperware.SetQueryResponseStats(a, queryStats)
 
 	b, err := json.Marshal(a)
 	if err != nil {

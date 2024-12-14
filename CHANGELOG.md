@@ -17,6 +17,7 @@
 * [FEATURE] Chunk Cache: Support multi level cache and add metrics. #6249
 * [FEATURE] Distributor: Accept multiple HA Tracker pairs in the same request. #6256
 * [FEATURE] Ruler: Add support for per-user external labels #6340
+* [ENHANCEMENT] Query Frontend: Add a number of series in the query response to the query stat log. #6423
 * [ENHANCEMENT] Store Gateway: Add a hedged request to reduce the tail latency. #6388
 * [ENHANCEMENT] Ingester: Add metrics to track succeed/failed native histograms. #6370
 * [ENHANCEMENT] Query Frontend/Querier: Add an experimental flag `-querier.enable-promql-experimental-functions` to enable experimental promQL functions. #6355

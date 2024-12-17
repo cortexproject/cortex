@@ -1043,3 +1043,33 @@ func MaxDurationPerTenant(tenantIDs []string, f func(string) time.Duration) time
 	}
 	return result
 }
+
+// LimitsPerLabelSetsForSeries checks matching labelset limits for the given series.
+func LimitsPerLabelSetsForSeries(limitsPerLabelSets []LimitsPerLabelSet, metric labels.Labels) []LimitsPerLabelSet {
+	// returning early to not have any overhead
+	if len(limitsPerLabelSets) == 0 {
+		return nil
+	}
+	r := make([]LimitsPerLabelSet, 0, len(limitsPerLabelSets))
+	defaultPartitionIndex := -1
+outer:
+	for i, lbls := range limitsPerLabelSets {
+		// Default partition exists.
+		if lbls.LabelSet.Len() == 0 {
+			defaultPartitionIndex = i
+			continue
+		}
+		for _, lbl := range lbls.LabelSet {
+			// We did not find some of the labels on the set
+			if v := metric.Get(lbl.Name); v != lbl.Value {
+				continue outer
+			}
+		}
+		r = append(r, lbls)
+	}
+	// Use default partition limiter if it is configured and no other matching partitions.
+	if defaultPartitionIndex != -1 && len(r) == 0 {
+		r = append(r, limitsPerLabelSets[defaultPartitionIndex])
+	}
+	return r
+}

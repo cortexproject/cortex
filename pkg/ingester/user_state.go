@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/segmentio/fasthash/fnv1a"
 
@@ -114,21 +115,30 @@ func newLabelSetCounter(limiter *Limiter) *labelSetCounter {
 }
 
 func (m *labelSetCounter) canAddSeriesForLabelSet(ctx context.Context, u *userTSDB, metric labels.Labels) error {
-	return m.limiter.AssertMaxSeriesPerLabelSet(u.userID, metric, func(set validation.LimitsPerLabelSet) (int, error) {
-		s := m.shards[util.HashFP(model.Fingerprint(set.Hash))%numMetricCounterShards]
+	return m.limiter.AssertMaxSeriesPerLabelSet(u.userID, metric, func(allLimits []validation.LimitsPerLabelSet, limit validation.LimitsPerLabelSet) (int, error) {
+		s := m.shards[util.HashFP(model.Fingerprint(limit.Hash))%numMetricCounterShards]
 		s.RLock()
-		if r, ok := s.valuesCounter[set.Hash]; ok {
+		if r, ok := s.valuesCounter[limit.Hash]; ok {
 			defer s.RUnlock()
 			return r.count, nil
 		}
 		s.RUnlock()
 
 		// We still dont keep track of this label value so we need to backfill
-		return m.backFillLimit(ctx, u, set, s)
+		return m.backFillLimit(ctx, u, false, allLimits, limit, s)
 	})
 }
 
-func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, limit validation.LimitsPerLabelSet, s *labelSetCounterShard) (int, error) {
+func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, forceBackfill bool, allLimits []validation.LimitsPerLabelSet, limit validation.LimitsPerLabelSet, s *labelSetCounterShard) (int, error) {
+	s.Lock()
+	// If not force backfill, use existing counter value.
+	if !forceBackfill {
+		if r, ok := s.valuesCounter[limit.Hash]; ok {
+			s.Unlock()
+			return r.count, nil
+		}
+	}
+
 	ir, err := u.db.Head().Index()
 	if err != nil {
 		return 0, err
@@ -136,37 +146,82 @@ func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, limit 
 
 	defer ir.Close()
 
-	s.Lock()
-	defer s.Unlock()
-	if r, ok := s.valuesCounter[limit.Hash]; !ok {
-		postings := make([]index.Postings, 0, len(limit.LabelSet))
-		for _, lbl := range limit.LabelSet {
-			p, err := ir.Postings(ctx, lbl.Name, lbl.Value)
-			if err != nil {
-				return 0, err
-			}
-			postings = append(postings, p)
-		}
-
-		p := index.Intersect(postings...)
-
-		totalCount := 0
-		for p.Next() {
-			totalCount++
-		}
-
-		if p.Err() != nil {
-			return 0, p.Err()
-		}
-
-		s.valuesCounter[limit.Hash] = &labelSetCounterEntry{
-			count:  totalCount,
-			labels: limit.LabelSet,
-		}
-		return totalCount, nil
-	} else {
-		return r.count, nil
+	totalCount, err := getCardinalityForLimitsPerLabelSet(ctx, ir, allLimits, limit)
+	if err != nil {
+		return 0, err
 	}
+
+	s.valuesCounter[limit.Hash] = &labelSetCounterEntry{
+		count:  totalCount,
+		labels: limit.LabelSet,
+	}
+	s.Unlock()
+	return totalCount, nil
+}
+
+func getCardinalityForLimitsPerLabelSet(ctx context.Context, ir tsdb.IndexReader, allLimits []validation.LimitsPerLabelSet, limit validation.LimitsPerLabelSet) (int, error) {
+	// Easy path with explicit labels.
+	if limit.LabelSet.Len() > 0 {
+		p, err := getPostingForLabels(ctx, ir, limit.LabelSet)
+		if err != nil {
+			return 0, err
+		}
+		return getPostingCardinality(p)
+	}
+
+	// Default partition needs to get cardinality of all series that doesn't belong to any existing partitions.
+	postings := make([]index.Postings, 0, len(allLimits)-1)
+	for _, l := range allLimits {
+		if l.Hash == limit.Hash {
+			continue
+		}
+		p, err := getPostingForLabels(ctx, ir, l.LabelSet)
+		if err != nil {
+			return 0, err
+		}
+		postings = append(postings, p)
+	}
+	mergedCardinality, err := getPostingCardinality(index.Merge(ctx, postings...))
+	if err != nil {
+		return 0, err
+	}
+
+	name, value := index.AllPostingsKey()
+	// Don't expand all postings but get length directly instead.
+	allPostings, err := ir.Postings(ctx, name, value)
+	if err != nil {
+		return 0, err
+	}
+	allCardinality, err := getPostingCardinality(allPostings)
+	if err != nil {
+		return 0, err
+	}
+	return allCardinality - mergedCardinality, nil
+}
+
+func getPostingForLabels(ctx context.Context, ir tsdb.IndexReader, lbls labels.Labels) (index.Postings, error) {
+	postings := make([]index.Postings, 0, len(lbls))
+	for _, lbl := range lbls {
+		p, err := ir.Postings(ctx, lbl.Name, lbl.Value)
+		if err != nil {
+			return nil, err
+		}
+		postings = append(postings, p)
+	}
+
+	return index.Intersect(postings...), nil
+}
+
+func getPostingCardinality(p index.Postings) (int, error) {
+	totalCount := 0
+	for p.Next() {
+		totalCount++
+	}
+
+	if p.Err() != nil {
+		return 0, p.Err()
+	}
+	return totalCount, nil
 }
 
 func (m *labelSetCounter) increaseSeriesLabelSet(u *userTSDB, metric labels.Labels) {
@@ -200,10 +255,13 @@ func (m *labelSetCounter) decreaseSeriesLabelSet(u *userTSDB, metric labels.Labe
 
 func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, metrics *ingesterMetrics) error {
 	currentLbsLimitHash := map[uint64]validation.LimitsPerLabelSet{}
-	for _, l := range m.limiter.limits.LimitsPerLabelSet(u.userID) {
+	limits := m.limiter.limits.LimitsPerLabelSet(u.userID)
+	for _, l := range limits {
 		currentLbsLimitHash[l.Hash] = l
 	}
 
+	nonDefaultPartitionRemoved := false
+	var defaultPartitionHash uint64
 	for i := 0; i < numMetricCounterShards; i++ {
 		s := m.shards[i]
 		s.RLock()
@@ -215,17 +273,31 @@ func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, metrics
 				metrics.limitsPerLabelSet.DeleteLabelValues(u.userID, "max_series", lbls)
 				continue
 			}
-			metrics.usagePerLabelSet.WithLabelValues(u.userID, "max_series", lbls).Set(float64(entry.count))
-			metrics.limitsPerLabelSet.WithLabelValues(u.userID, "max_series", lbls).Set(float64(currentLbsLimitHash[h].Limits.MaxSeries))
-			delete(currentLbsLimitHash, h)
+			// Delay deletion of default partition from current label limits as if
+			// another label set is removed then we need to backfill default partition again.
+			if entry.labels.Len() > 0 {
+				metrics.usagePerLabelSet.WithLabelValues(u.userID, "max_series", lbls).Set(float64(entry.count))
+				metrics.limitsPerLabelSet.WithLabelValues(u.userID, "max_series", lbls).Set(float64(currentLbsLimitHash[h].Limits.MaxSeries))
+				delete(currentLbsLimitHash, h)
+				nonDefaultPartitionRemoved = true
+			} else {
+				defaultPartitionHash = h
+			}
 		}
 		s.RUnlock()
+	}
+
+	// No partitions with label sets configured got removed, no need to backfill default partition.
+	if !nonDefaultPartitionRemoved {
+		delete(currentLbsLimitHash, defaultPartitionHash)
 	}
 
 	// Backfill all limits that are not being tracked yet
 	for _, l := range currentLbsLimitHash {
 		s := m.shards[util.HashFP(model.Fingerprint(l.Hash))%numMetricCounterShards]
-		count, err := m.backFillLimit(ctx, u, l, s)
+		// Force backfill is enabled to make sure we update the counter for the default partition
+		// when other limits got removed.
+		count, err := m.backFillLimit(ctx, u, true, limits, l, s)
 		if err != nil {
 			return err
 		}

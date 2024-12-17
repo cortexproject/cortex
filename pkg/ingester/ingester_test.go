@@ -366,22 +366,77 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 3
 	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
-	// Should remove metrics when the limits is removed
+	// Add default partition -> no label set configured working as a fallback when a series
+	// doesn't match any existing label set limit.
+	emptyLabels := labels.EmptyLabels()
+	defaultPartitionLimits := validation.LimitsPerLabelSet{LabelSet: emptyLabels,
+		Limits: validation.LimitsPerLabelSetEntry{
+			MaxSeries: 2,
+		},
+	}
+	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet, defaultPartitionLimits)
+	b, err = json.Marshal(limits)
+	require.NoError(t, err)
+	require.NoError(t, limits.UnmarshalJSON(b))
+	tenantLimits.setLimits(userID, &limits)
+
+	lbls = []string{labels.MetricName, "test_default"}
+	for i := 0; i < 2; i++ {
+		_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
+			[]labels.Labels{labels.FromStrings(append(lbls, "series", strconv.Itoa(i))...)}, samples, nil, nil, cortexpb.API))
+		require.NoError(t, err)
+	}
+
+	// Max series limit for default partition is 2 so 1 more series will be throttled.
+	_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
+		[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", "extraValueUpdate2")...)}, samples, nil, nil, cortexpb.API))
+	httpResp, ok = httpgrpc.HTTPResponseFromError(err)
+	require.True(t, ok, "returned error is not an httpgrpc response")
+	assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
+	require.ErrorContains(t, err, emptyLabels.String())
+
+	ing.updateActiveSeries(ctx)
+	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 7
+				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{}",limit="max_series",user="1"} 2
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
+
+	// Should remove metrics when the limits is removed, keep default partition limit
 	limits.LimitsPerLabelSet = limits.LimitsPerLabelSet[:2]
+	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet, defaultPartitionLimits)
 	b, err = json.Marshal(limits)
 	require.NoError(t, err)
 	require.NoError(t, limits.UnmarshalJSON(b))
 	tenantLimits.setLimits(userID, &limits)
 	ing.updateActiveSeries(ctx)
+	// Default partition usage increased from 2 to 10 as some existing partitions got removed.
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
 				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
 				# TYPE cortex_ingester_limits_per_labelset gauge
 				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{}",limit="max_series",user="1"} 2
 				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
 				# TYPE cortex_ingester_usage_per_labelset gauge
 				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{}",limit="max_series",user="1"} 10
 	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
 	// Should persist between restarts
@@ -396,10 +451,12 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				# TYPE cortex_ingester_limits_per_labelset gauge
 				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{}",limit="max_series",user="1"} 2
 				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
 				# TYPE cortex_ingester_usage_per_labelset gauge
 				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{}",limit="max_series",user="1"} 10
 	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 	services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
@@ -416,6 +473,13 @@ func TestPushRace(t *testing.T) {
 			LabelSet: labels.FromMap(map[string]string{
 				labels.MetricName: "foo",
 			}),
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 10e10,
+			},
+		},
+		{
+			// Default partition.
+			LabelSet: labels.EmptyLabels(),
 			Limits: validation.LimitsPerLabelSetEntry{
 				MaxSeries: 10e10,
 			},
@@ -451,6 +515,10 @@ func TestPushRace(t *testing.T) {
 				defer wg.Done()
 				_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "foo", "userId", userID, "k", strconv.Itoa(k))}, []cortexpb.Sample{sample1}, nil, nil, cortexpb.API))
 				require.NoError(t, err)
+
+				// Go to default partition.
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "bar", "userId", userID, "k", strconv.Itoa(k))}, []cortexpb.Sample{sample1}, nil, nil, cortexpb.API))
+				require.NoError(t, err)
 			}()
 		}
 	}
@@ -472,13 +540,13 @@ func TestPushRace(t *testing.T) {
 		err = ir.Series(p.At(), &builder, nil)
 		require.NoError(t, err)
 		lbls := builder.Labels()
-		require.Equal(t, "foo", lbls.Get(labels.MetricName))
+		require.True(t, lbls.Get(labels.MetricName) == "foo" || lbls.Get(labels.MetricName) == "bar")
 		require.Equal(t, "1", lbls.Get("userId"))
 		require.NotEmpty(t, lbls.Get("k"))
 		builder.Reset()
 	}
-	require.Equal(t, numberOfSeries, total)
-	require.Equal(t, uint64(numberOfSeries), db.Head().NumSeries())
+	require.Equal(t, 2*numberOfSeries, total)
+	require.Equal(t, uint64(2*numberOfSeries), db.Head().NumSeries())
 }
 
 func TestIngesterUserLimitExceeded(t *testing.T) {

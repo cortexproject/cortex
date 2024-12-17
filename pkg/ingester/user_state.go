@@ -139,6 +139,7 @@ func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, forceB
 		}
 	}
 
+	defer s.Unlock()
 	ir, err := u.db.Head().Index()
 	if err != nil {
 		return 0, err
@@ -155,7 +156,6 @@ func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, forceB
 		count:  totalCount,
 		labels: limit.LabelSet,
 	}
-	s.Unlock()
 	return totalCount, nil
 }
 

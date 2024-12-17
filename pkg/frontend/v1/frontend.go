@@ -183,6 +183,7 @@ func (f *Frontend) cleanupInactiveUserMetrics(user string) {
 	f.discardedRequests.DeletePartialMatch(prometheus.Labels{
 		"user": user,
 	})
+	f.requestQueue.CleanupInactiveUserMetrics(user)
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).

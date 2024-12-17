@@ -247,3 +247,7 @@ func (q *RequestQueue) QuerierDisconnecting() {
 func (q *RequestQueue) GetConnectedQuerierWorkersMetric() float64 {
 	return float64(q.connectedQuerierWorkers.Load())
 }
+
+func (q *RequestQueue) CleanupInactiveUserMetrics(user string) {
+	q.totalRequests.DeletePartialMatch(prometheus.Labels{"user": user})
+}

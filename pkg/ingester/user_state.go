@@ -147,7 +147,8 @@ func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, forceB
 
 	defer ir.Close()
 
-	totalCount, err := getCardinalityForLimitsPerLabelSet(ctx, ir, allLimits, limit)
+	numSeries := u.db.Head().NumSeries()
+	totalCount, err := getCardinalityForLimitsPerLabelSet(ctx, numSeries, ir, allLimits, limit)
 	if err != nil {
 		return 0, err
 	}
@@ -159,7 +160,7 @@ func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, forceB
 	return totalCount, nil
 }
 
-func getCardinalityForLimitsPerLabelSet(ctx context.Context, ir tsdb.IndexReader, allLimits []validation.LimitsPerLabelSet, limit validation.LimitsPerLabelSet) (int, error) {
+func getCardinalityForLimitsPerLabelSet(ctx context.Context, numSeries uint64, ir tsdb.IndexReader, allLimits []validation.LimitsPerLabelSet, limit validation.LimitsPerLabelSet) (int, error) {
 	// Easy path with explicit labels.
 	if limit.LabelSet.Len() > 0 {
 		p, err := getPostingForLabels(ctx, ir, limit.LabelSet)
@@ -186,17 +187,7 @@ func getCardinalityForLimitsPerLabelSet(ctx context.Context, ir tsdb.IndexReader
 		return 0, err
 	}
 
-	name, value := index.AllPostingsKey()
-	// Don't expand all postings but get length directly instead.
-	allPostings, err := ir.Postings(ctx, name, value)
-	if err != nil {
-		return 0, err
-	}
-	allCardinality, err := getPostingCardinality(allPostings)
-	if err != nil {
-		return 0, err
-	}
-	return allCardinality - mergedCardinality, nil
+	return int(numSeries) - mergedCardinality, nil
 }
 
 func getPostingForLabels(ctx context.Context, ir tsdb.IndexReader, lbls labels.Labels) (index.Postings, error) {
@@ -260,8 +251,7 @@ func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, metrics
 		currentLbsLimitHash[l.Hash] = l
 	}
 
-	nonDefaultPartitionRemoved := false
-	var defaultPartitionHash uint64
+	nonDefaultPartitionChanged := false
 	for i := 0; i < numMetricCounterShards; i++ {
 		s := m.shards[i]
 		s.RLock()
@@ -271,33 +261,45 @@ func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, metrics
 			if _, ok := currentLbsLimitHash[h]; !ok {
 				metrics.usagePerLabelSet.DeleteLabelValues(u.userID, "max_series", lbls)
 				metrics.limitsPerLabelSet.DeleteLabelValues(u.userID, "max_series", lbls)
+				if entry.labels.Len() > 0 {
+					nonDefaultPartitionChanged = true
+				}
 				continue
 			}
-			// Delay deletion of default partition from current label limits as if
-			// another label set is removed then we need to backfill default partition again.
+			// Delay exposing default partition metrics from current label limits as if
+			// another label set is added or removed then we need to backfill default partition again.
 			if entry.labels.Len() > 0 {
 				metrics.usagePerLabelSet.WithLabelValues(u.userID, "max_series", lbls).Set(float64(entry.count))
 				metrics.limitsPerLabelSet.WithLabelValues(u.userID, "max_series", lbls).Set(float64(currentLbsLimitHash[h].Limits.MaxSeries))
 				delete(currentLbsLimitHash, h)
-				nonDefaultPartitionRemoved = true
-			} else {
-				defaultPartitionHash = h
 			}
 		}
 		s.RUnlock()
 	}
 
-	// No partitions with label sets configured got removed, no need to backfill default partition.
-	if !nonDefaultPartitionRemoved {
-		delete(currentLbsLimitHash, defaultPartitionHash)
+	// Check if we need to backfill default partition. We don't need to backfill when any condition meet:
+	// 1. Default partition doesn't exist.
+	// 2. No new partition added and no old partition removed.
+	if !nonDefaultPartitionChanged {
+		for _, l := range currentLbsLimitHash {
+			if l.LabelSet.Len() > 0 {
+				nonDefaultPartitionChanged = true
+				break
+			}
+		}
 	}
 
 	// Backfill all limits that are not being tracked yet
 	for _, l := range currentLbsLimitHash {
 		s := m.shards[util.HashFP(model.Fingerprint(l.Hash))%numMetricCounterShards]
-		// Force backfill is enabled to make sure we update the counter for the default partition
-		// when other limits got removed.
-		count, err := m.backFillLimit(ctx, u, true, limits, l, s)
+		force := false
+		// Force backfill to make sure we update the counter for the default partition
+		// when other limits got added or removed. If no partition is changed then we
+		// can use the value in the counter.
+		if l.LabelSet.Len() == 0 && nonDefaultPartitionChanged {
+			force = true
+		}
+		count, err := m.backFillLimit(ctx, u, force, limits, l, s)
 		if err != nil {
 			return err
 		}

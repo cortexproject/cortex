@@ -417,6 +417,46 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				cortex_ingester_usage_per_labelset{labelset="{}",limit="max_series",user="1"} 2
 	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
+	// Add a new label set limit.
+	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet,
+		validation.LimitsPerLabelSet{LabelSet: labels.FromMap(map[string]string{
+			"series": "0",
+		}),
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 3,
+			},
+		},
+	)
+	b, err = json.Marshal(limits)
+	require.NoError(t, err)
+	require.NoError(t, limits.UnmarshalJSON(b))
+	tenantLimits.setLimits(userID, &limits)
+	ing.updateActiveSeries(ctx)
+	// Default partition usage reduced from 2 to 1 as one series in default partition
+	// now counted into the new partition.
+	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{series=\"0\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 7
+				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{series=\"0\"}",limit="max_series",user="1"} 1
+				cortex_ingester_usage_per_labelset{labelset="{}",limit="max_series",user="1"} 1
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
+
 	// Should remove metrics when the limits is removed, keep default partition limit
 	limits.LimitsPerLabelSet = limits.LimitsPerLabelSet[:2]
 	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet, defaultPartitionLimits)

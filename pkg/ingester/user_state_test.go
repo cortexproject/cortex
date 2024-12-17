@@ -104,12 +104,13 @@ func TestGetCardinalityForLimitsPerLabelSet(t *testing.T) {
 	ctx := context.Background()
 	testErr := errors.New("err")
 	for _, tc := range []struct {
-		name   string
-		ir     tsdb.IndexReader
-		limits []validation.LimitsPerLabelSet
-		idx    int
-		cnt    int
-		err    error
+		name      string
+		ir        tsdb.IndexReader
+		limits    []validation.LimitsPerLabelSet
+		idx       int
+		cnt       int
+		numSeries uint64
+		err       error
 	}{
 		{
 			name: "single label",
@@ -186,22 +187,21 @@ func TestGetCardinalityForLimitsPerLabelSet(t *testing.T) {
 			ir: &mockIndexReader{postings: map[string]map[string]index.Postings{
 				"job": {"test": index.NewListPostings([]storage.SeriesRef{3, 4, 5, 6, 7, 8})},
 				"foo": {"bar": index.NewListPostings([]storage.SeriesRef{1, 2, 3, 4, 5})},
-				"":    {"": index.NewListPostings([]storage.SeriesRef{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})},
 			}},
 			limits: []validation.LimitsPerLabelSet{
 				{Hash: 1, LabelSet: labels.FromStrings("foo", "bar")},
 				{Hash: 2, LabelSet: labels.FromStrings("job", "test")},
 				{}, // Default partition.
 			},
-			idx: 2,
-			cnt: 4,
+			idx:       2,
+			cnt:       4,
+			numSeries: 12,
 		},
 		{
 			name: "default partition with error getting postings",
 			ir: &mockIndexReader{postings: map[string]map[string]index.Postings{
 				"job": {"test": index.NewListPostings([]storage.SeriesRef{5, 6, 7, 8})},
-				"foo": {"bar": index.NewListPostings([]storage.SeriesRef{1, 2, 3, 4, 5})},
-				"":    {"": index.ErrPostings(testErr)},
+				"foo": {"bar": index.ErrPostings(testErr)},
 			}},
 			limits: []validation.LimitsPerLabelSet{
 				{Hash: 1, LabelSet: labels.FromStrings("foo", "bar")},
@@ -213,7 +213,7 @@ func TestGetCardinalityForLimitsPerLabelSet(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cnt, err := getCardinalityForLimitsPerLabelSet(ctx, tc.ir, tc.limits, tc.limits[tc.idx])
+			cnt, err := getCardinalityForLimitsPerLabelSet(ctx, tc.numSeries, tc.ir, tc.limits, tc.limits[tc.idx])
 			if err != nil {
 				require.EqualError(t, err, tc.err.Error())
 			} else {

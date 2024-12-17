@@ -212,9 +212,9 @@ func TestFrontendMetricsCleanup(t *testing.T) {
 				# HELP cortex_query_frontend_queue_length Number of queries in the queue.
 				# TYPE cortex_query_frontend_queue_length gauge
 				cortex_query_frontend_queue_length{priority="0",type="fifo",user="1"} 0
-        	    # HELP cortex_request_queue_requests_total Total number of query requests going to the request queue.
-        	    # TYPE cortex_request_queue_requests_total counter
-        	    cortex_request_queue_requests_total{priority="0",user="1"} 1
+				# HELP cortex_request_queue_requests_total Total number of query requests going to the request queue.
+				# TYPE cortex_request_queue_requests_total counter
+				cortex_request_queue_requests_total{priority="0",user="1"} 1
 			`), "cortex_query_frontend_queue_length", "cortex_request_queue_requests_total"))
 
 			fr.cleanupInactiveUserMetrics("1")

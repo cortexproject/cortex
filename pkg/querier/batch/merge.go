@@ -23,18 +23,27 @@ type mergeIterator struct {
 	currErr error
 }
 
-func newMergeIterator(cs []GenericChunk) *mergeIterator {
+func newMergeIterator(it iterator, cs []GenericChunk) *mergeIterator {
 	css := partitionChunks(cs)
-	its := make([]*nonOverlappingIterator, 0, len(css))
-	for _, cs := range css {
-		its = append(its, newNonOverlappingIterator(cs))
+
+	var c *mergeIterator
+
+	if mIterator, ok := it.(*mergeIterator); ok && cap(mIterator.its) >= len(css) {
+		c = mIterator.Reset(len(css))
+	} else {
+		c = &mergeIterator{
+			h:          make(iteratorHeap, 0, len(css)),
+			batches:    make(batchStream, 0, len(css)),
+			batchesBuf: make(batchStream, len(css)),
+		}
 	}
 
-	c := &mergeIterator{
-		its:        its,
-		h:          make(iteratorHeap, 0, len(its)),
-		batches:    make(batchStream, 0, len(its)),
-		batchesBuf: make(batchStream, len(its)),
+	if cap(c.its) < len(css) {
+		c.its = make([]*nonOverlappingIterator, 0, len(css))
+	}
+
+	for _, cs := range css {
+		c.its = append(c.its, newNonOverlappingIterator(cs))
 	}
 
 	for _, iter := range c.its {
@@ -49,6 +58,29 @@ func newMergeIterator(cs []GenericChunk) *mergeIterator {
 	}
 
 	heap.Init(&c.h)
+	return c
+}
+
+func (c *mergeIterator) Reset(size int) *mergeIterator {
+	c.its = c.its[:0]
+	c.h = c.h[:0]
+	c.batches = c.batches[:0]
+
+	if size > cap(c.batchesBuf) {
+		c.batchesBuf = make(batchStream, len(c.its))
+	} else {
+		c.batchesBuf = c.batchesBuf[:size]
+		for i := 0; i < size; i++ {
+			c.batchesBuf[i] = promchunk.Batch{}
+		}
+	}
+
+	for i := 0; i < len(c.nextBatchBuf); i++ {
+		c.nextBatchBuf[i] = promchunk.Batch{}
+	}
+
+	c.currErr = nil
+
 	return c
 }
 

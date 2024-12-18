@@ -52,19 +52,26 @@ type iterator interface {
 }
 
 // NewChunkMergeIterator returns a chunkenc.Iterator that merges Cortex chunks together.
-func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) chunkenc.Iterator {
+func NewChunkMergeIterator(it chunkenc.Iterator, chunks []chunk.Chunk, _, _ model.Time) chunkenc.Iterator {
 	converted := make([]GenericChunk, len(chunks))
 	for i, c := range chunks {
 		c := c
 		converted[i] = NewGenericChunk(int64(c.From), int64(c.Through), c.NewIterator)
 	}
 
-	return NewGenericChunkMergeIterator(converted)
+	return NewGenericChunkMergeIterator(it, converted)
 }
 
 // NewGenericChunkMergeIterator returns a chunkenc.Iterator that merges generic chunks together.
-func NewGenericChunkMergeIterator(chunks []GenericChunk) chunkenc.Iterator {
-	iter := newMergeIterator(chunks)
+func NewGenericChunkMergeIterator(it chunkenc.Iterator, chunks []GenericChunk) chunkenc.Iterator {
+
+	var underlying iterator
+
+	if ia, ok := it.(*iteratorAdapter); ok {
+		underlying = ia.underlying
+	}
+
+	iter := newMergeIterator(underlying, chunks)
 	return newIteratorAdapter(iter)
 }
 

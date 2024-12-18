@@ -197,7 +197,7 @@ func NewQuerierHandler(
 	api := v1.NewAPI(
 		engine,
 		querier.NewErrorTranslateSampleAndChunkQueryable(queryable), // Translate errors to errors expected by API.
-		nil,                                                         // No remote write support.
+		nil, // No remote write support.
 		exemplarQueryable,
 		func(ctx context.Context) v1.ScrapePoolsRetriever { return nil },
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
@@ -234,7 +234,7 @@ func NewQuerierHandler(
 	// Let's clear all codecs to create the instrumented ones
 	api.ClearCodecs()
 	cm := codec.NewInstrumentedCodecMetrics(reg)
-	
+
 	api.InstallCodec(codec.NewInstrumentedCodec(v1.JSONCodec{}, cm))
 	// Install Protobuf codec to give the option for using either.
 	api.InstallCodec(codec.NewInstrumentedCodec(codec.ProtobufCodec{CortexInternal: false}, cm))

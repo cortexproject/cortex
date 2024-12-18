@@ -109,7 +109,7 @@ type LimitsPerLabelSetEntry struct {
 
 type LimitsPerLabelSet struct {
 	Limits   LimitsPerLabelSetEntry `yaml:"limits" json:"limits" doc:"nocli"`
-	LabelSet labels.Labels          `yaml:"label_set" json:"label_set" doc:"nocli|description=LabelSet which the limit should be applied."`
+	LabelSet labels.Labels          `yaml:"label_set" json:"label_set" doc:"nocli|description=LabelSet which the limit should be applied. If no labels are provided, it becomes the default partition which matches any series that doesn't match any other explicitly defined label sets.'"`
 	Id       string                 `yaml:"-" json:"-" doc:"nocli"`
 	Hash     uint64                 `yaml:"-" json:"-" doc:"nocli"`
 }
@@ -1042,4 +1042,34 @@ func MaxDurationPerTenant(tenantIDs []string, f func(string) time.Duration) time
 		}
 	}
 	return result
+}
+
+// LimitsPerLabelSetsForSeries checks matching labelset limits for the given series.
+func LimitsPerLabelSetsForSeries(limitsPerLabelSets []LimitsPerLabelSet, metric labels.Labels) []LimitsPerLabelSet {
+	// returning early to not have any overhead
+	if len(limitsPerLabelSets) == 0 {
+		return nil
+	}
+	r := make([]LimitsPerLabelSet, 0, len(limitsPerLabelSets))
+	defaultPartitionIndex := -1
+outer:
+	for i, lbls := range limitsPerLabelSets {
+		// Default partition exists.
+		if lbls.LabelSet.Len() == 0 {
+			defaultPartitionIndex = i
+			continue
+		}
+		for _, lbl := range lbls.LabelSet {
+			// We did not find some of the labels on the set
+			if v := metric.Get(lbl.Name); v != lbl.Value {
+				continue outer
+			}
+		}
+		r = append(r, lbls)
+	}
+	// Use default partition limiter if it is configured and no other matching partitions.
+	if defaultPartitionIndex != -1 && len(r) == 0 {
+		r = append(r, limitsPerLabelSets[defaultPartitionIndex])
+	}
+	return r
 }

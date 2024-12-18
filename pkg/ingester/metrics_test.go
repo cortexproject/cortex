@@ -39,7 +39,7 @@ func TestIngesterMetrics(t *testing.T) {
 	require.NotNil(t, m)
 
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
-			# HELP cortex_ingester_inflight_push_requests Current number of inflight push requests in ingester.
+			# HELP cortex_ingester_inflight_push_requests Max number of inflight push requests in ingester in the last minute.
 			# TYPE cortex_ingester_inflight_push_requests gauge
 			cortex_ingester_inflight_push_requests 14
 			# HELP cortex_ingester_max_inflight_query_requests Max number of inflight query requests in ingester.

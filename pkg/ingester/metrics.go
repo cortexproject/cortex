@@ -216,7 +216,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 
 		inflightRequests: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "cortex_ingester_inflight_push_requests",
-			Help: "Current number of inflight push requests in ingester.",
+			Help: "Max number of inflight push requests in ingester in the last minute.",
 		}, func() float64 {
 			if inflightPushRequests != nil {
 				return float64(inflightPushRequests.Load())

@@ -498,6 +498,13 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
 				cortex_ingester_usage_per_labelset{labelset="{}",limit="max_series",user="1"} 10
 	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
+
+	// Force set tenant to be deleted.
+	ing.getTSDB(userID).deletionMarkFound.Store(true)
+	require.Equal(t, tsdbTenantMarkedForDeletion, ing.closeAndDeleteUserTSDBIfIdle(userID))
+	// LabelSet metrics cleaned up.
+	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(``), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
+
 	services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 }

@@ -278,6 +278,8 @@ func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
 	m.memMetadataCreatedTotal.DeleteLabelValues(userID)
 	m.memMetadataRemovedTotal.DeleteLabelValues(userID)
 	m.activeSeriesPerUser.DeleteLabelValues(userID)
+	m.usagePerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
+	m.limitsPerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
 
 	if m.memSeriesCreatedTotal != nil {
 		m.memSeriesCreatedTotal.DeleteLabelValues(userID)

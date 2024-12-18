@@ -1,9 +1,13 @@
 package codec
 
 import (
+	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -437,7 +441,9 @@ func TestProtobufCodec_Encode(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			codec := ProtobufCodec{CortexInternal: test.cortexInternal}
+			reg := prometheus.NewPedanticRegistry()
+			cm := NewInstrumentedCodecMetrics(reg)
+			codec := NewInstrumentedCodec(ProtobufCodec{CortexInternal: test.cortexInternal}, cm)
 			body, err := codec.Encode(&v1.Response{
 				Status: tripperware.StatusSuccess,
 				Data:   test.data,
@@ -446,6 +452,21 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			b, err := proto.Marshal(test.expected)
 			require.NoError(t, err)
 			require.Equal(t, string(b), string(body))
+			require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(fmt.Sprintf(`
+				# HELP cortex_querier_codec_response_size Size of the encoded prometheus response from the queriers.
+				# TYPE cortex_querier_codec_response_size histogram
+				cortex_querier_codec_response_size_bucket{content_type="`+codec.ContentType().String()+`",le="1.048576e+06"} 1
+				cortex_querier_codec_response_size_bucket{content_type="`+codec.ContentType().String()+`",le="2.62144e+06"} 1
+				cortex_querier_codec_response_size_bucket{content_type="`+codec.ContentType().String()+`",le="5.24288e+06"} 1
+				cortex_querier_codec_response_size_bucket{content_type="`+codec.ContentType().String()+`",le="1.048576e+07"} 1
+				cortex_querier_codec_response_size_bucket{content_type="`+codec.ContentType().String()+`",le="2.62144e+07"} 1
+				cortex_querier_codec_response_size_bucket{content_type="`+codec.ContentType().String()+`",le="5.24288e+07"} 1
+				cortex_querier_codec_response_size_bucket{content_type="`+codec.ContentType().String()+`",le="1.048576e+08"} 1
+				cortex_querier_codec_response_size_bucket{content_type="`+codec.ContentType().String()+`",le="2.62144e+08"} 1
+				cortex_querier_codec_response_size_bucket{content_type="`+codec.ContentType().String()+`",le="+Inf"} 1
+				cortex_querier_codec_response_size_sum{content_type="`+codec.ContentType().String()+`"} %v
+				cortex_querier_codec_response_size_count{content_type="`+codec.ContentType().String()+`"} 1
+	`, len(body))), "cortex_querier_codec_response_size"))
 		})
 	}
 }

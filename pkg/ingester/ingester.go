@@ -1715,7 +1715,7 @@ func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatc
 			Labels: cortexpb.FromLabelsToLabelAdapters(l),
 		})
 
-		if len(result.Metric) > metadataStreamBatchSize {
+		if len(result.Metric) >= metadataStreamBatchSize {
 			err := client.SendMetricsForLabelMatchersStream(stream, result)
 			if err != nil {
 				return err

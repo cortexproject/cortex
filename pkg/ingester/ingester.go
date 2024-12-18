@@ -233,8 +233,9 @@ type Ingester struct {
 	TSDBState TSDBState
 
 	// Rate of pushed samples. Only used by V2-ingester to limit global samples push rate.
-	ingestionRate        *util_math.EwmaRate
-	inflightPushRequests atomic.Int64
+	ingestionRate           *util_math.EwmaRate
+	inflightPushRequests    atomic.Int64
+	maxInflightPushRequests util_math.MaxTracker
 
 	inflightQueryRequests    atomic.Int64
 	maxInflightQueryRequests util_math.MaxTracker
@@ -710,7 +711,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		cfg.ActiveSeriesMetricsEnabled,
 		i.getInstanceLimits,
 		i.ingestionRate,
-		&i.inflightPushRequests,
+		&i.maxInflightPushRequests,
 		&i.maxInflightQueryRequests,
 		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled)
 	i.validateMetrics = validation.NewValidateMetrics(registerer)
@@ -792,7 +793,7 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		false,
 		i.getInstanceLimits,
 		nil,
-		&i.inflightPushRequests,
+		&i.maxInflightPushRequests,
 		&i.maxInflightQueryRequests,
 		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled,
 	)
@@ -918,8 +919,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
 	defer metadataPurgeTicker.Stop()
 
-	maxInflightRequestResetTicker := time.NewTicker(maxInflightRequestResetPeriod)
-	defer maxInflightRequestResetTicker.Stop()
+	maxTrackerResetTicker := time.NewTicker(maxInflightRequestResetPeriod)
+	defer maxTrackerResetTicker.Stop()
 
 	for {
 		select {
@@ -937,8 +938,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 
 		case <-activeSeriesTickerChan:
 			i.updateActiveSeries(ctx)
-		case <-maxInflightRequestResetTicker.C:
+		case <-maxTrackerResetTicker.C:
 			i.maxInflightQueryRequests.Tick()
+			i.maxInflightPushRequests.Tick()
 		case <-userTSDBConfigTicker.C:
 			i.updateUserTSDBConfigs()
 		case <-ctx.Done():
@@ -1068,6 +1070,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	// We will report *this* request in the error too.
 	inflight := i.inflightPushRequests.Inc()
+	i.maxInflightPushRequests.Track(inflight)
 	defer i.inflightPushRequests.Dec()
 
 	gl := i.getInstanceLimits()

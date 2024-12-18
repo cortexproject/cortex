@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 )
@@ -16,10 +15,10 @@ import (
 func TestIngesterMetrics(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 	ingestionRate := util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval)
-	inflightPushRequests := &atomic.Int64{}
+	inflightPushRequests := util_math.MaxTracker{}
 	maxInflightQueryRequests := util_math.MaxTracker{}
 	maxInflightQueryRequests.Track(98)
-	inflightPushRequests.Store(14)
+	inflightPushRequests.Track(14)
 
 	m := newIngesterMetrics(mainReg,
 		false,
@@ -33,7 +32,7 @@ func TestIngesterMetrics(t *testing.T) {
 			}
 		},
 		ingestionRate,
-		inflightPushRequests,
+		&inflightPushRequests,
 		&maxInflightQueryRequests,
 		false)
 

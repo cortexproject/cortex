@@ -3,7 +3,6 @@ package ingester
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -53,10 +52,12 @@ type ingesterMetrics struct {
 	maxUsersGauge           prometheus.GaugeFunc
 	maxSeriesGauge          prometheus.GaugeFunc
 	maxIngestionRate        prometheus.GaugeFunc
-	ingestionRate           prometheus.GaugeFunc
 	maxInflightPushRequests prometheus.GaugeFunc
-	inflightRequests        prometheus.GaugeFunc
-	inflightQueryRequests   prometheus.GaugeFunc
+
+	// Current Usage
+	ingestionRate         prometheus.GaugeFunc
+	inflightRequests      prometheus.GaugeFunc
+	inflightQueryRequests prometheus.GaugeFunc
 
 	// Posting Cache Metrics
 	expandedPostingsCacheMetrics *tsdb.ExpandedPostingsCacheMetrics
@@ -67,7 +68,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 	activeSeriesEnabled bool,
 	instanceLimitsFn func() *InstanceLimits,
 	ingestionRate *util_math.EwmaRate,
-	inflightPushRequests *atomic.Int64,
+	inflightPushRequests *util_math.MaxTracker,
 	maxInflightQueryRequests *util_math.MaxTracker,
 	postingsCacheEnabled bool,
 ) *ingesterMetrics {

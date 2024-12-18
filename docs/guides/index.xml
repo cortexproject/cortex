@@ -789,7 +789,7 @@ even if you plan to use the default values.&lt;/p>
 multiple destinations such as &lt;a href="https://aws-otel.github.io/docs/getting-started/x-ray">AWS X-Ray&lt;/a>,
 &lt;a href="https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/googlecloudexporter">Google Cloud&lt;/a>,
 &lt;a href="https://docs.datadoghq.com/tracing/trace_collection/open_standards/otel_collector_datadog_exporter/">DataDog&lt;/a> and
-&lt;a href="https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter">others&lt;/a>. OpenTelemetry Collector
+[others(https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter). OpenTelemetry Collector
 provides a &lt;a href="https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-collector/examples/deployment-otlp-traces">helm chart&lt;/a>
 to set up the environment.&lt;/p>
 &lt;h3 id="configuration-1">Configuration&lt;/h3>

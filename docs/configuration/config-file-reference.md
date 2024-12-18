@@ -5770,7 +5770,9 @@ limits:
   # would not enforce any limits.
   [max_series: <int> | default = ]
 
-# LabelSet which the limit should be applied.
+# LabelSet which the limit should be applied. If no labels are provided, it
+# becomes the default partition which matches any series that doesn't match any
+# other explicitly defined label sets.'
 [label_set: <map of string (labelName) to string (labelValue)> | default = []]
 ```
 

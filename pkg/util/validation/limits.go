@@ -109,7 +109,7 @@ type LimitsPerLabelSetEntry struct {
 
 type LimitsPerLabelSet struct {
 	Limits   LimitsPerLabelSetEntry `yaml:"limits" json:"limits" doc:"nocli"`
-	LabelSet labels.Labels          `yaml:"label_set" json:"label_set" doc:"nocli|description=LabelSet which the limit should be applied."`
+	LabelSet labels.Labels          `yaml:"label_set" json:"label_set" doc:"nocli|description=LabelSet which the limit should be applied. If no labels are provided, it becomes the default partition which matches any series that doesn't match any other explicitly defined label sets.'"`
 	Id       string                 `yaml:"-" json:"-" doc:"nocli"`
 	Hash     uint64                 `yaml:"-" json:"-" doc:"nocli"`
 }

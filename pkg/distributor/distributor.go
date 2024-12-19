@@ -926,7 +926,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	validatedExemplars := 0
 	limitsPerLabelSet := d.limits.LimitsPerLabelSet(userID)
 
-	labelSetCounters := make(map[uint64]*samplesLabelSetEntry)
+	var labelSetCounters map[uint64]*samplesLabelSetEntry
 	var firstPartialErr error
 
 	latestSampleTimestampMs := int64(0)
@@ -1043,7 +1043,11 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			continue
 		}
 
-		for _, l := range validation.LimitsPerLabelSetsForSeries(limitsPerLabelSet, cortexpb.FromLabelAdaptersToLabels(validatedSeries.Labels)) {
+		matchedLabelSetLimits := validation.LimitsPerLabelSetsForSeries(limitsPerLabelSet, cortexpb.FromLabelAdaptersToLabels(validatedSeries.Labels))
+		if len(matchedLabelSetLimits) > 0 {
+			labelSetCounters = make(map[uint64]*samplesLabelSetEntry, len(matchedLabelSetLimits))
+		}
+		for _, l := range matchedLabelSetLimits {
 			if c, exists := labelSetCounters[l.Hash]; exists {
 				c.floatSamples += int64(len(ts.Samples))
 				c.histogramSamples += int64(len(ts.Histograms))

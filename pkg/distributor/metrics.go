@@ -11,27 +11,29 @@ import (
 )
 
 const (
-	numMetricCounterShards = 128
+	numMetricShards = 128
 )
 
-type labelSetCounter struct {
+type labelSetTracker struct {
+	receivedSamplesPerLabelSet *prometheus.CounterVec
+
 	shards []*labelSetCounterShard
 }
 
-func newLabelSetCounter() *labelSetCounter {
-	shards := make([]*labelSetCounterShard, 0, numMetricCounterShards)
-	for i := 0; i < numMetricCounterShards; i++ {
+func newLabelSetTracker(receivedSamplesPerLabelSet *prometheus.CounterVec) *labelSetTracker {
+	shards := make([]*labelSetCounterShard, 0, numMetricShards)
+	for i := 0; i < numMetricShards; i++ {
 		shards = append(shards, &labelSetCounterShard{
 			RWMutex:       &sync.RWMutex{},
-			valuesCounter: map[string]map[uint64]*samplesLabelSetEntry{},
+			userLabelSets: map[string]map[uint64]labels.Labels{},
 		})
 	}
-	return &labelSetCounter{shards: shards}
+	return &labelSetTracker{shards: shards, receivedSamplesPerLabelSet: receivedSamplesPerLabelSet}
 }
 
 type labelSetCounterShard struct {
 	*sync.RWMutex
-	valuesCounter map[string]map[uint64]*samplesLabelSetEntry
+	userLabelSets map[string]map[uint64]labels.Labels
 }
 
 type samplesLabelSetEntry struct {
@@ -40,63 +42,51 @@ type samplesLabelSetEntry struct {
 	labels           labels.Labels
 }
 
-func (s *samplesLabelSetEntry) reset() {
-	s.floatSamples = 0
-	s.histogramSamples = 0
-}
-
-func (m *labelSetCounter) increaseSamplesLabelSet(userId string, hash uint64, labelSet labels.Labels, floatSamples, histogramSamples int64) {
-	s := m.shards[util.HashFP(model.Fingerprint(hash))%numMetricCounterShards]
+func (m *labelSetTracker) increaseSamplesLabelSet(userId string, hash uint64, labelSet labels.Labels, floatSamples, histogramSamples int64) {
+	s := m.shards[util.HashFP(model.Fingerprint(hash))%numMetricShards]
 	s.Lock()
-	defer s.Unlock()
-	if userEntry, ok := s.valuesCounter[userId]; ok {
-		if e, ok2 := userEntry[hash]; ok2 {
-			e.floatSamples += floatSamples
-			e.histogramSamples += histogramSamples
-		} else {
-			userEntry[hash] = &samplesLabelSetEntry{
-				floatSamples:     floatSamples,
-				histogramSamples: histogramSamples,
-				labels:           labelSet,
-			}
+	if userEntry, ok := s.userLabelSets[userId]; ok {
+		if _, ok2 := userEntry[hash]; !ok2 {
+			userEntry[hash] = labelSet
 		}
 	} else {
-		s.valuesCounter[userId] = map[uint64]*samplesLabelSetEntry{
-			hash: {
-				floatSamples:     floatSamples,
-				histogramSamples: histogramSamples,
-				labels:           labelSet,
-			},
-		}
+		s.userLabelSets[userId] = map[uint64]labels.Labels{hash: labelSet}
+	}
+	// Unlock before we update metrics.
+	s.Unlock()
+
+	labelSetStr := labelSet.String()
+	if floatSamples > 0 {
+		m.receivedSamplesPerLabelSet.WithLabelValues(userId, sampleMetricTypeFloat, labelSetStr).Add(float64(floatSamples))
+	}
+	if histogramSamples > 0 {
+		m.receivedSamplesPerLabelSet.WithLabelValues(userId, sampleMetricTypeHistogram, labelSetStr).Add(float64(histogramSamples))
 	}
 }
 
-func (m *labelSetCounter) updateMetrics(userSet map[string]map[uint64]struct{}, receivedSamplesPerLabelSet *prometheus.CounterVec) {
-	for i := 0; i < numMetricCounterShards; i++ {
+// Clean up dangling user and label set from the tracker as well as metrics.
+func (m *labelSetTracker) updateMetrics(userSet map[string]map[uint64]struct{}) {
+	for i := 0; i < numMetricShards; i++ {
 		shard := m.shards[i]
 		shard.Lock()
 
-		for user, userEntry := range shard.valuesCounter {
+		for user, userEntry := range shard.userLabelSets {
 			limits, ok := userSet[user]
 			if !ok {
 				// If user is removed, we will delete user metrics in cleanupInactiveUser loop
 				// so skip deleting metrics here.
-				delete(shard.valuesCounter, user)
+				delete(shard.userLabelSets, user)
 				continue
 			}
-			for h, entry := range userEntry {
-				labelSetStr := entry.labels.String()
+			for h, lbls := range userEntry {
 				// This limit no longer exists.
 				if _, ok := limits[h]; !ok {
 					delete(userEntry, h)
-					receivedSamplesPerLabelSet.DeleteLabelValues(user, sampleMetricTypeFloat, labelSetStr)
-					receivedSamplesPerLabelSet.DeleteLabelValues(user, sampleMetricTypeHistogram, labelSetStr)
+					labelSetStr := lbls.String()
+					m.receivedSamplesPerLabelSet.DeleteLabelValues(user, sampleMetricTypeFloat, labelSetStr)
+					m.receivedSamplesPerLabelSet.DeleteLabelValues(user, sampleMetricTypeHistogram, labelSetStr)
 					continue
 				}
-				receivedSamplesPerLabelSet.WithLabelValues(user, sampleMetricTypeFloat, labelSetStr).Add(float64(entry.floatSamples))
-				receivedSamplesPerLabelSet.WithLabelValues(user, sampleMetricTypeHistogram, labelSetStr).Add(float64(entry.histogramSamples))
-				// Reset entry counter to 0. Delete it only if it is removed from the limit.
-				entry.reset()
 			}
 		}
 

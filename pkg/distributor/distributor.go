@@ -129,8 +129,8 @@ type Distributor struct {
 
 	asyncExecutor util.AsyncExecutor
 
-	// Counter to track metrics per label set.
-	labelSetCounter *labelSetCounter
+	// Map to track label sets from user.
+	labelSetTracker *labelSetTracker
 }
 
 // Config contains the configuration required to
@@ -296,7 +296,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		HATracker:              haTracker,
 		ingestionRate:          util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
-		labelSetCounter:        newLabelSetCounter(),
 
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -388,6 +387,8 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		validateMetrics: validation.NewValidateMetrics(reg),
 		asyncExecutor:   util.NewNoOpExecutor(),
 	}
+
+	d.labelSetTracker = newLabelSetTracker(d.receivedSamplesPerLabelSet)
 
 	if cfg.NumPushWorkers > 0 {
 		util_log.WarnExperimentalUse("Distributor: using goroutine worker pool")
@@ -809,7 +810,7 @@ func (d *Distributor) updateLabelSetMetrics() {
 		}
 	}
 
-	d.labelSetCounter.updateMetrics(activeUserSet, d.receivedSamplesPerLabelSet)
+	d.labelSetTracker.updateMetrics(activeUserSet)
 }
 
 func (d *Distributor) cleanStaleIngesterMetrics() {
@@ -1062,7 +1063,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		validatedExemplars += len(ts.Exemplars)
 	}
 	for h, counter := range labelSetCounters {
-		d.labelSetCounter.increaseSamplesLabelSet(userID, h, counter.labels, counter.floatSamples, counter.histogramSamples)
+		d.labelSetTracker.increaseSamplesLabelSet(userID, h, counter.labels, counter.floatSamples, counter.histogramSamples)
 	}
 	return seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
 }

@@ -4135,16 +4135,12 @@ func TestDistributor_PushLabelSetMetrics(t *testing.T) {
 	_, err = ds[0].Push(ctx, req)
 	require.NoError(t, err)
 
-	ds[0].updateLabelSetMetrics()
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_distributor_received_samples_per_labelset_total The total number of received samples per label set, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_per_labelset_total counter
 		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"one\"}",type="float",user="user"} 2
-		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"one\"}",type="histogram",user="user"} 0
 		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"two\"}",type="float",user="user"} 1
-		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"two\"}",type="histogram",user="user"} 0
 		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user"} 1
-		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="histogram",user="user"} 0
 		`), "cortex_distributor_received_samples_per_labelset_total"))
 
 	// Push more series.
@@ -4166,20 +4162,14 @@ func TestDistributor_PushLabelSetMetrics(t *testing.T) {
 	req = mockWriteRequest(inputSeries, 1, 1, false)
 	_, err = ds[0].Push(ctx2, req)
 	require.NoError(t, err)
-	ds[0].updateLabelSetMetrics()
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_distributor_received_samples_per_labelset_total The total number of received samples per label set, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_per_labelset_total counter
 		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"one\"}",type="float",user="user"} 2
-		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"one\"}",type="histogram",user="user"} 0
 		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"two\"}",type="float",user="user"} 2
 		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"two\"}",type="float",user="user2"} 1
-		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"two\"}",type="histogram",user="user"} 0
-		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"two\"}",type="histogram",user="user2"} 0
 		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user"} 2
 		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user2"} 1
-		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="histogram",user="user"} 0
-		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="histogram",user="user2"} 0
 		`), "cortex_distributor_received_samples_per_labelset_total"))
 
 	// Remove existing limits and add new limits
@@ -4198,8 +4188,6 @@ func TestDistributor_PushLabelSetMetrics(t *testing.T) {
 		# TYPE cortex_distributor_received_samples_per_labelset_total counter
 		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user"} 2
 		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user2"} 1
-		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="histogram",user="user"} 0
-		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="histogram",user="user2"} 0
 		`), "cortex_distributor_received_samples_per_labelset_total"))
 
 	// Metrics from `user` got removed but `user2` metric should remain.
@@ -4208,7 +4196,6 @@ func TestDistributor_PushLabelSetMetrics(t *testing.T) {
 		# HELP cortex_distributor_received_samples_per_labelset_total The total number of received samples per label set, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_per_labelset_total counter
 		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user2"} 1
-		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="histogram",user="user2"} 0
 		`), "cortex_distributor_received_samples_per_labelset_total"))
 }
 

@@ -5,31 +5,48 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/distributor"
 )
 
 func TestHandler_remoteWrite(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	metrics := distributor.NewPushHandlerMetrics(reg)
+
 	req := createRequest(t, createPrometheusRemoteWriteProtobuf(t))
 	resp := httptest.NewRecorder()
-	handler := Handler(100000, nil, verifyWriteRequestHandler(t, cortexpb.API))
+	handler := Handler(100000, nil, verifyWriteRequestHandler(t, cortexpb.API), metrics)
 	handler.ServeHTTP(resp, req)
 	assert.Equal(t, 200, resp.Code)
+
+	expectedMetrics := `
+			# HELP cortex_distributor_push_requests_uncompressed_size_bytes Histogram of push request's uncompressed size in bytes
+			# TYPE cortex_distributor_push_requests_uncompressed_size_bytes histogram
+			cortex_distributor_push_requests_uncompressed_size_bytes_bucket{format="prw1",user="fake",le="+Inf"} 1
+			cortex_distributor_push_requests_uncompressed_size_bytes_sum{format="prw1",user="fake"} 40
+			cortex_distributor_push_requests_uncompressed_size_bytes_count{format="prw1",user="fake"} 1
+		`
+	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expectedMetrics), "cortex_distributor_push_requests"))
 }
 
 func TestHandler_cortexWriteRequest(t *testing.T) {
 	req := createRequest(t, createCortexWriteRequestProtobuf(t, false))
 	resp := httptest.NewRecorder()
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(100000, sourceIPs, verifyWriteRequestHandler(t, cortexpb.RULE))
+	handler := Handler(100000, sourceIPs, verifyWriteRequestHandler(t, cortexpb.RULE), nil)
 	handler.ServeHTTP(resp, req)
 	assert.Equal(t, 200, resp.Code)
 }
@@ -40,7 +57,7 @@ func TestHandler_ignoresSkipLabelNameValidationIfSet(t *testing.T) {
 		createRequest(t, createCortexWriteRequestProtobuf(t, false)),
 	} {
 		resp := httptest.NewRecorder()
-		handler := Handler(100000, nil, verifyWriteRequestHandler(t, cortexpb.RULE))
+		handler := Handler(100000, nil, verifyWriteRequestHandler(t, cortexpb.RULE), nil)
 		handler.ServeHTTP(resp, req)
 		assert.Equal(t, 200, resp.Code)
 	}
@@ -61,7 +78,8 @@ func verifyWriteRequestHandler(t *testing.T, expectSource cortexpb.WriteRequest_
 func createRequest(t *testing.T, protobuf []byte) *http.Request {
 	t.Helper()
 	inoutBytes := snappy.Encode(nil, protobuf)
-	req, err := http.NewRequest("POST", "http://localhost/", bytes.NewReader(inoutBytes))
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	req, err := http.NewRequestWithContext(ctx, "POST", "http://localhost/", bytes.NewReader(inoutBytes))
 	require.NoError(t, err)
 	req.Header.Add("Content-Encoding", "snappy")
 	req.Header.Set("Content-Type", "application/x-protobuf")

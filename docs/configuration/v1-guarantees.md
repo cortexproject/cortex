@@ -57,6 +57,7 @@ Currently experimental features are:
 - Distributor:
   - Do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
   - Accept multiple HA pairs in the same request (enabled via `-experimental.distributor.ha-tracker.mixed-ha-samples=true`)
+  - Accept Prometheus remote write 2.0 request (`-distributor.remote-write2-enabled=true`)
 - Tenant Deletion in Purger, for blocks storage.
 - Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)
 - Blocks storage bucket index

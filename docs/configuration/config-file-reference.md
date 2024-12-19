@@ -2630,6 +2630,11 @@ ha_tracker:
 # CLI flag: -distributor.sign-write-requests
 [sign_write_requests: <boolean> | default = false]
 
+# EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push
+# request.
+# CLI flag: -distributor.remote-write2-enabled
+[remote_write2_enabled: <boolean> | default = false]
+
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,

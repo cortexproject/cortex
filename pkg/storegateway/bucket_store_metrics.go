@@ -55,6 +55,8 @@ type BucketStoreMetrics struct {
 	indexHeaderLazyUnloadCount       *prometheus.Desc
 	indexHeaderLazyUnloadFailedCount *prometheus.Desc
 	indexHeaderLazyLoadDuration      *prometheus.Desc
+	indexHeaderDownloadDuration      *prometheus.Desc
+	indexHeaderLoadDuration          *prometheus.Desc
 }
 
 func NewBucketStoreMetrics() *BucketStoreMetrics {
@@ -205,6 +207,14 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"cortex_bucket_store_indexheader_lazy_load_duration_seconds",
 			"Duration of the index-header lazy loading in seconds.",
 			nil, nil),
+		indexHeaderDownloadDuration: prometheus.NewDesc(
+			"cortex_bucket_store_indexheader_download_duration_seconds",
+			"Duration of the index-header download from objstore in seconds.",
+			nil, nil),
+		indexHeaderLoadDuration: prometheus.NewDesc(
+			"cortex_bucket_store_indexheader_load_duration_seconds",
+			"Duration of the index-header loading in seconds.",
+			nil, nil),
 
 		lazyExpandedPostingsCount: prometheus.NewDesc(
 			"cortex_bucket_store_lazy_expanded_postings_total",
@@ -272,6 +282,8 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.indexHeaderLazyUnloadCount
 	out <- m.indexHeaderLazyUnloadFailedCount
 	out <- m.indexHeaderLazyLoadDuration
+	out <- m.indexHeaderDownloadDuration
+	out <- m.indexHeaderLoadDuration
 
 	out <- m.lazyExpandedPostingsCount
 	out <- m.lazyExpandedPostingGroups
@@ -323,6 +335,8 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, m.indexHeaderLazyUnloadCount, "thanos_bucket_store_indexheader_lazy_unload_total")
 	data.SendSumOfCounters(out, m.indexHeaderLazyUnloadFailedCount, "thanos_bucket_store_indexheader_lazy_unload_failed_total")
 	data.SendSumOfHistograms(out, m.indexHeaderLazyLoadDuration, "thanos_bucket_store_indexheader_lazy_load_duration_seconds")
+	data.SendSumOfHistograms(out, m.indexHeaderDownloadDuration, "thanos_bucket_store_indexheader_download_duration_seconds")
+	data.SendSumOfHistograms(out, m.indexHeaderLoadDuration, "thanos_bucket_store_indexheader_load_duration_seconds")
 
 	data.SendSumOfCounters(out, m.lazyExpandedPostingsCount, "thanos_bucket_store_lazy_expanded_postings_total")
 	data.SendSumOfCountersWithLabels(out, m.lazyExpandedPostingGroups, "thanos_bucket_store_lazy_expanded_posting_groups_total", "reason")

@@ -926,8 +926,10 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	validatedExemplars := 0
 	limitsPerLabelSet := d.limits.LimitsPerLabelSet(userID)
 
-	var labelSetCounters map[uint64]*samplesLabelSetEntry
-	var firstPartialErr error
+	var (
+		labelSetCounters map[uint64]*samplesLabelSetEntry
+		firstPartialErr  error
+	)
 
 	latestSampleTimestampMs := int64(0)
 	defer func() {
@@ -1044,7 +1046,8 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		}
 
 		matchedLabelSetLimits := validation.LimitsPerLabelSetsForSeries(limitsPerLabelSet, cortexpb.FromLabelAdaptersToLabels(validatedSeries.Labels))
-		if len(matchedLabelSetLimits) > 0 {
+		if len(matchedLabelSetLimits) > 0 && labelSetCounters == nil {
+			// TODO: use pool.
 			labelSetCounters = make(map[uint64]*samplesLabelSetEntry, len(matchedLabelSetLimits))
 		}
 		for _, l := range matchedLabelSetLimits {

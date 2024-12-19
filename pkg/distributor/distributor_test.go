@@ -420,6 +420,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		"cortex_distributor_metadata_in_total",
 		"cortex_distributor_non_ha_samples_received_total",
 		"cortex_distributor_latest_seen_sample_timestamp_seconds",
+		"cortex_distributor_received_samples_per_labelset_total",
 	}
 
 	allMetrics := append(removedMetrics, permanentMetrics...)
@@ -438,6 +439,8 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 	d.nonHASamples.WithLabelValues("userA").Add(5)
 	d.dedupedSamples.WithLabelValues("userA", "cluster1").Inc() // We cannot clean this metric
 	d.latestSeenSampleTimestampPerUser.WithLabelValues("userA").Set(1111)
+	d.receivedSamplesPerLabelSet.WithLabelValues("userA", sampleMetricTypeFloat, "{}").Add(5)
+	d.receivedSamplesPerLabelSet.WithLabelValues("userA", sampleMetricTypeHistogram, "{}").Add(10)
 
 	h, _, _ := r.GetAllInstanceDescs(ring.WriteNoExtend)
 	ingId0, _ := r.GetInstanceIdByAddr(h[0].Addr)
@@ -472,6 +475,11 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_received_metadata_total counter
 		cortex_distributor_received_metadata_total{user="userA"} 5
 		cortex_distributor_received_metadata_total{user="userB"} 10
+
+		# HELP cortex_distributor_received_samples_per_labelset_total The total number of received samples per label set, excluding rejected and deduped samples.
+		# TYPE cortex_distributor_received_samples_per_labelset_total counter
+		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="userA"} 5
+		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="histogram",user="userA"} 10
 
 		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_total counter
@@ -4079,6 +4087,116 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 			require.Equal(t, receivedHistogramSamples, float64(0))
 		}
 	}
+}
+
+func TestDistributor_PushLabelSetMetrics(t *testing.T) {
+	t.Parallel()
+	inputSeries := []labels.Labels{
+		{
+			{Name: "__name__", Value: "foo"},
+			{Name: "cluster", Value: "one"},
+		},
+		{
+			{Name: "__name__", Value: "bar"},
+			{Name: "cluster", Value: "one"},
+		},
+		{
+			{Name: "__name__", Value: "bar"},
+			{Name: "cluster", Value: "two"},
+		},
+		{
+			{Name: "__name__", Value: "foo"},
+			{Name: "cluster", Value: "three"},
+		},
+	}
+
+	var err error
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
+		{Hash: 0, LabelSet: labels.FromStrings("cluster", "one")},
+		{Hash: 1, LabelSet: labels.FromStrings("cluster", "two")},
+		{Hash: 2, LabelSet: labels.EmptyLabels()},
+	}
+
+	ds, _, regs, _ := prepare(t, prepConfig{
+		numIngesters:     2,
+		happyIngesters:   2,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           &limits,
+	})
+	reg := regs[0]
+
+	// Push the series to the distributor
+	id := "user"
+	req := mockWriteRequest(inputSeries, 1, 1, false)
+	ctx := user.InjectOrgID(context.Background(), id)
+	_, err = ds[0].Push(ctx, req)
+	require.NoError(t, err)
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_distributor_received_samples_per_labelset_total The total number of received samples per label set, excluding rejected and deduped samples.
+		# TYPE cortex_distributor_received_samples_per_labelset_total counter
+		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"one\"}",type="float",user="user"} 2
+		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"two\"}",type="float",user="user"} 1
+		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user"} 1
+		`), "cortex_distributor_received_samples_per_labelset_total"))
+
+	// Push more series.
+	inputSeries = []labels.Labels{
+		{
+			{Name: "__name__", Value: "baz"},
+			{Name: "cluster", Value: "two"},
+		},
+		{
+			{Name: "__name__", Value: "foo"},
+			{Name: "cluster", Value: "four"},
+		},
+	}
+	// Write the same request twice for different users.
+	req = mockWriteRequest(inputSeries, 1, 1, false)
+	ctx2 := user.InjectOrgID(context.Background(), "user2")
+	_, err = ds[0].Push(ctx, req)
+	require.NoError(t, err)
+	req = mockWriteRequest(inputSeries, 1, 1, false)
+	_, err = ds[0].Push(ctx2, req)
+	require.NoError(t, err)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_distributor_received_samples_per_labelset_total The total number of received samples per label set, excluding rejected and deduped samples.
+		# TYPE cortex_distributor_received_samples_per_labelset_total counter
+		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"one\"}",type="float",user="user"} 2
+		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"two\"}",type="float",user="user"} 2
+		cortex_distributor_received_samples_per_labelset_total{labelset="{cluster=\"two\"}",type="float",user="user2"} 1
+		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user"} 2
+		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user2"} 1
+		`), "cortex_distributor_received_samples_per_labelset_total"))
+
+	// Remove existing limits and add new limits
+	limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
+		{Hash: 3, LabelSet: labels.FromStrings("cluster", "three")},
+		{Hash: 4, LabelSet: labels.FromStrings("cluster", "four")},
+		{Hash: 2, LabelSet: labels.EmptyLabels()},
+	}
+	ds[0].limits, err = validation.NewOverrides(limits, nil)
+	require.NoError(t, err)
+	ds[0].updateLabelSetMetrics()
+	// Old label set metrics are removed. New label set metrics will be added when
+	// new requests come in.
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_distributor_received_samples_per_labelset_total The total number of received samples per label set, excluding rejected and deduped samples.
+		# TYPE cortex_distributor_received_samples_per_labelset_total counter
+		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user"} 2
+		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user2"} 1
+		`), "cortex_distributor_received_samples_per_labelset_total"))
+
+	// Metrics from `user` got removed but `user2` metric should remain.
+	ds[0].cleanupInactiveUser(id)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_distributor_received_samples_per_labelset_total The total number of received samples per label set, excluding rejected and deduped samples.
+		# TYPE cortex_distributor_received_samples_per_labelset_total counter
+		cortex_distributor_received_samples_per_labelset_total{labelset="{}",type="float",user="user2"} 1
+		`), "cortex_distributor_received_samples_per_labelset_total"))
 }
 
 func countMockIngestersCalls(ingesters []*mockIngester, name string) int {

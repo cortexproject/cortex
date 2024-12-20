@@ -284,7 +284,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.Var(&l.CompactorBlocksRetentionPeriod, "compactor.blocks-retention-period", "Delete blocks containing samples older than the specified retention period. 0 to disable.")
 	f.IntVar(&l.CompactorTenantShardSize, "compactor.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the compactor. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
-	f.Int64Var(&l.CompactorPartitionIndexSizeLimitInBytes, "compactor.partition-index-size-limit-in-bytes", 0, "Index size limit in bytes for each compaction partition. 0 means no limit")
+	// Default to 64GB because this is the hard limit of index size in Cortex
+	f.Int64Var(&l.CompactorPartitionIndexSizeLimitInBytes, "compactor.partition-index-size-limit-in-bytes", 68719476736, "Index size limit in bytes for each compaction partition. 0 means no limit")
 	f.Int64Var(&l.CompactorPartitionSeriesCountLimit, "compactor.partition-series-count-limit", 0, "Time series count limit for each compaction partition. 0 means no limit")
 
 	// Store-gateway.

@@ -3591,7 +3591,7 @@ query_rejection:
 
 # Index size limit in bytes for each compaction partition. 0 means no limit
 # CLI flag: -compactor.partition-index-size-limit-in-bytes
-[compactor_partition_index_size_limit_in_bytes: <int> | default = 0]
+[compactor_partition_index_size_limit_in_bytes: <int> | default = 68719476736]
 
 # Time series count limit for each compaction partition. 0 means no limit
 # CLI flag: -compactor.partition-series-count-limit

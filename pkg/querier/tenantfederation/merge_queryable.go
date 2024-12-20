@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -36,8 +38,8 @@ const (
 // If the label "__tenant_id__" is already existing, its value is overwritten
 // by the tenant ID and the previous value is exposed through a new label
 // prefixed with "original_". This behaviour is not implemented recursively.
-func NewQueryable(upstream storage.Queryable, byPassWithSingleQuerier bool) storage.Queryable {
-	return NewMergeQueryable(defaultTenantLabel, tenantQuerierCallback(upstream), byPassWithSingleQuerier)
+func NewQueryable(upstream storage.Queryable, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
+	return NewMergeQueryable(defaultTenantLabel, tenantQuerierCallback(upstream), byPassWithSingleQuerier, reg)
 }
 
 func tenantQuerierCallback(queryable storage.Queryable) MergeQuerierCallback {
@@ -79,11 +81,18 @@ type MergeQuerierCallback func(ctx context.Context, mint int64, maxt int64) (ids
 // If the label `idLabelName` is already existing, its value is overwritten and
 // the previous value is exposed through a new label prefixed with "original_".
 // This behaviour is not implemented recursively.
-func NewMergeQueryable(idLabelName string, callback MergeQuerierCallback, byPassWithSingleQuerier bool) storage.Queryable {
+func NewMergeQueryable(idLabelName string, callback MergeQuerierCallback, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
 	return &mergeQueryable{
 		idLabelName:             idLabelName,
 		callback:                callback,
 		byPassWithSingleQuerier: byPassWithSingleQuerier,
+
+		tenantsPerQuery: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Namespace: "cortex",
+			Name:      "querier_federated_tenants_per_query",
+			Help:      "Number of tenants per query.",
+			Buckets:   []float64{1, 2, 4, 8, 16, 32, 64},
+		}),
 	}
 }
 
@@ -91,6 +100,7 @@ type mergeQueryable struct {
 	idLabelName             string
 	byPassWithSingleQuerier bool
 	callback                MergeQuerierCallback
+	tenantsPerQuery         prometheus.Histogram
 }
 
 // Querier returns a new mergeQuerier, which aggregates results from multiple
@@ -102,6 +112,7 @@ func (m *mergeQueryable) Querier(mint int64, maxt int64) (storage.Querier, error
 		maxt:                    maxt,
 		byPassWithSingleQuerier: m.byPassWithSingleQuerier,
 		callback:                m.callback,
+		tenantsPerQuery:         m.tenantsPerQuery,
 	}, nil
 }
 
@@ -117,6 +128,7 @@ type mergeQuerier struct {
 	callback    MergeQuerierCallback
 
 	byPassWithSingleQuerier bool
+	tenantsPerQuery         prometheus.Histogram
 }
 
 // LabelValues returns all potential values for a label name.  It is not safe
@@ -129,6 +141,8 @@ func (m *mergeQuerier) LabelValues(ctx context.Context, name string, hints *stor
 	if err != nil {
 		return nil, nil, err
 	}
+
+	m.tenantsPerQuery.Observe(float64(len(ids)))
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {
@@ -168,6 +182,8 @@ func (m *mergeQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints
 	if err != nil {
 		return nil, nil, err
 	}
+
+	m.tenantsPerQuery.Observe(float64(len(ids)))
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {
@@ -308,6 +324,8 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
+
+	m.tenantsPerQuery.Observe(float64(len(ids)))
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {

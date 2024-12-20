@@ -57,6 +57,7 @@
 * [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled.  #6271
 * [BUGFIX] Ingester: Fix regression on usage of cortex_ingester_queried_chunks. #6398
 * [BUGFIX] Ingester: Fix possible race condition when `active series per LabelSet` is configured. #6409
+* [BUGFIX] Query Frontend: Fix @ modifier not being applied correctly on sub queries. #6450
 
 ## 1.18.1 2024-10-14
 

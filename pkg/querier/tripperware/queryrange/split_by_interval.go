@@ -110,6 +110,15 @@ func evaluateAtModifierFunction(query string, start, end int64) (string, error) 
 			}
 			selector.StartOrEnd = 0
 		}
+		if selector, ok := n.(*parser.SubqueryExpr); ok {
+			switch selector.StartOrEnd {
+			case parser.START:
+				selector.Timestamp = &start
+			case parser.END:
+				selector.Timestamp = &end
+			}
+			selector.StartOrEnd = 0
+		}
 		return nil
 	})
 	return expr.String(), err

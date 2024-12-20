@@ -588,21 +588,22 @@ func TestLimiter_FormatError(t *testing.T) {
 	require.NoError(t, err)
 
 	limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, true, 3, false, "please contact administrator to raise it")
+	lbls := labels.FromStrings(labels.MetricName, "testMetric")
 
-	actual := limiter.FormatError("user-1", errMaxSeriesPerUserLimitExceeded)
+	actual := limiter.FormatError("user-1", errMaxSeriesPerUserLimitExceeded, lbls)
 	assert.EqualError(t, actual, "per-user series limit of 100 exceeded, please contact administrator to raise it (local limit: 0 global limit: 100 actual local limit: 100)")
 
-	actual = limiter.FormatError("user-1", errMaxSeriesPerMetricLimitExceeded)
-	assert.EqualError(t, actual, "per-metric series limit of 20 exceeded, please contact administrator to raise it (local limit: 0 global limit: 20 actual local limit: 20)")
+	actual = limiter.FormatError("user-1", errMaxSeriesPerMetricLimitExceeded, lbls)
+	assert.EqualError(t, actual, "per-metric series limit of 20 exceeded for metric testMetric, please contact administrator to raise it (local limit: 0 global limit: 20 actual local limit: 20)")
 
-	actual = limiter.FormatError("user-1", errMaxMetadataPerUserLimitExceeded)
+	actual = limiter.FormatError("user-1", errMaxMetadataPerUserLimitExceeded, lbls)
 	assert.EqualError(t, actual, "per-user metric metadata limit of 10 exceeded, please contact administrator to raise it (local limit: 0 global limit: 10 actual local limit: 10)")
 
-	actual = limiter.FormatError("user-1", errMaxMetadataPerMetricLimitExceeded)
-	assert.EqualError(t, actual, "per-metric metadata limit of 3 exceeded, please contact administrator to raise it (local limit: 0 global limit: 3 actual local limit: 3)")
+	actual = limiter.FormatError("user-1", errMaxMetadataPerMetricLimitExceeded, lbls)
+	assert.EqualError(t, actual, "per-metric metadata limit of 3 exceeded for metric testMetric, please contact administrator to raise it (local limit: 0 global limit: 3 actual local limit: 3)")
 
 	input := errors.New("unknown error")
-	actual = limiter.FormatError("user-1", input)
+	actual = limiter.FormatError("user-1", input, lbls)
 	assert.Equal(t, input, actual)
 }
 

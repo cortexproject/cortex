@@ -1169,18 +1169,18 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
-				updateFirstPartial(func() error { return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause)) })
+				updateFirstPartial(func() error { return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels)) })
 
 			case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
 				perMetricSeriesLimitCount++
 				updateFirstPartial(func() error {
-					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
+					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
 
 			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
 				perLabelSetSeriesLimitCount++
 				updateFirstPartial(func() error {
-					return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
+					return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
 
 			case errors.Is(cause, histogram.ErrHistogramSpanNegativeOffset):

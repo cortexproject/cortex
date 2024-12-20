@@ -208,7 +208,7 @@ func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 		return nil, 0, err
 	}
 
-	key := c.cacheKey(seed, blockID, ms...)
+	key := cacheKey(seed, blockID, ms...)
 	promise, loaded := cache.getPromiseForKey(key, fetch)
 	if loaded {
 		c.metrics.CacheHits.WithLabelValues(cache.name).Inc()
@@ -235,7 +235,7 @@ func (c *blocksPostingsForMatchersCache) getSeedForMetricName(metricName string)
 	return c.seedByHash.getSeed(c.userId, metricName)
 }
 
-func (c *blocksPostingsForMatchersCache) cacheKey(seed string, blockID ulid.ULID, ms ...*labels.Matcher) string {
+func cacheKey(seed string, blockID ulid.ULID, ms ...*labels.Matcher) string {
 	slices.SortFunc(ms, func(i, j *labels.Matcher) int {
 		if i.Type != j.Type {
 			return int(i.Type - j.Type)
@@ -254,15 +254,16 @@ func (c *blocksPostingsForMatchersCache) cacheKey(seed string, blockID ulid.ULID
 		sepLen  = 1
 	)
 
-	var size int
+	size := len(seed) + len(blockID.String()) + 2*sepLen
 	for _, m := range ms {
-		size += len(seed) + len(blockID.String()) + len(m.Name) + len(m.Value) + typeLen + 2*sepLen
+		size += len(m.Name) + len(m.Value) + typeLen + sepLen
 	}
 	sb := strings.Builder{}
 	sb.Grow(size)
 	sb.WriteString(seed)
 	sb.WriteByte('|')
 	sb.WriteString(blockID.String())
+	sb.WriteByte('|')
 	for _, m := range ms {
 		sb.WriteString(m.Name)
 		sb.WriteString(m.Type.String())

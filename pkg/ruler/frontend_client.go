@@ -15,6 +15,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -22,22 +23,29 @@ const (
 	orgIDHeader      = "X-Scope-OrgID"
 	instantQueryPath = "/api/v1/query"
 	mimeTypeForm     = "application/x-www-form-urlencoded"
-	contentTypeJSON  = "application/json"
 )
+
+var jsonDecoder JsonDecoder
+var protobufDecoder ProtobufDecoder
 
 type FrontendClient struct {
 	client               httpgrpc.HTTPClient
 	timeout              time.Duration
 	prometheusHTTPPrefix string
-	jsonDecoder          JsonDecoder
+	queryResponseFormat  string
+	decoders             map[string]Decoder
 }
 
-func NewFrontendClient(client httpgrpc.HTTPClient, timeout time.Duration, prometheusHTTPPrefix string) *FrontendClient {
+func NewFrontendClient(client httpgrpc.HTTPClient, timeout time.Duration, prometheusHTTPPrefix, queryResponseFormat string) *FrontendClient {
 	return &FrontendClient{
 		client:               client,
 		timeout:              timeout,
 		prometheusHTTPPrefix: prometheusHTTPPrefix,
-		jsonDecoder:          JsonDecoder{},
+		queryResponseFormat:  queryResponseFormat,
+		decoders: map[string]Decoder{
+			jsonDecoder.ContentType():     jsonDecoder,
+			protobufDecoder.ContentType(): protobufDecoder,
+		},
 	}
 }
 
@@ -55,15 +63,23 @@ func (p *FrontendClient) makeRequest(ctx context.Context, qs string, ts time.Tim
 		return nil, err
 	}
 
+	acceptHeader := ""
+	switch p.queryResponseFormat {
+	case queryResponseFormatJson:
+		acceptHeader = jsonDecoder.ContentType()
+	case queryResponseFormatProtobuf:
+		acceptHeader = fmt.Sprintf("%s,%s", protobufDecoder.ContentType(), jsonDecoder.ContentType())
+	}
+
 	req := &httpgrpc.HTTPRequest{
 		Method: http.MethodPost,
 		Url:    p.prometheusHTTPPrefix + instantQueryPath,
 		Body:   body,
 		Headers: []*httpgrpc.Header{
-			{Key: textproto.CanonicalMIMEHeaderKey("User-Agent"), Values: []string{fmt.Sprintf("Cortex/%s", version.Version)}},
+			{Key: textproto.CanonicalMIMEHeaderKey("User-Agent"), Values: []string{fmt.Sprintf("%s/%s", tripperware.RulerUserAgent, version.Version)}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Type"), Values: []string{mimeTypeForm}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Length"), Values: []string{strconv.Itoa(len(body))}},
-			{Key: textproto.CanonicalMIMEHeaderKey("Accept"), Values: []string{contentTypeJSON}},
+			{Key: textproto.CanonicalMIMEHeaderKey("Accept"), Values: []string{acceptHeader}},
 			{Key: textproto.CanonicalMIMEHeaderKey(orgIDHeader), Values: []string{orgID}},
 		},
 	}
@@ -91,7 +107,15 @@ func (p *FrontendClient) InstantQuery(ctx context.Context, qs string, t time.Tim
 		return nil, err
 	}
 
-	vector, warning, err := p.jsonDecoder.Decode(resp.Body)
+	contentType := extractHeader(resp.Headers, "Content-Type")
+	decoder, ok := p.decoders[contentType]
+	if !ok {
+		err = fmt.Errorf("unknown content type: %s", contentType)
+		level.Error(log).Log("err", err, "query", qs)
+		return nil, err
+	}
+
+	vector, warning, err := decoder.Decode(resp.Body)
 	if err != nil {
 		level.Error(log).Log("err", err, "query", qs)
 		return nil, err
@@ -102,4 +126,14 @@ func (p *FrontendClient) InstantQuery(ctx context.Context, qs string, t time.Tim
 	}
 
 	return vector, nil
+}
+
+func extractHeader(headers []*httpgrpc.Header, target string) string {
+	for _, h := range headers {
+		if h.Key == target && len(h.Values) > 0 {
+			return h.Values[0]
+		}
+	}
+
+	return ""
 }

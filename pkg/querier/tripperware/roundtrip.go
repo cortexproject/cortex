@@ -115,7 +115,7 @@ func NewQueryTripperware(
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_query_frontend_queries_total",
 		Help: "Total queries sent per tenant.",
-	}, []string{"op", "user"})
+	}, []string{"op", "user", "source"})
 
 	rejectedQueriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_query_frontend_rejected_queries_total",
@@ -156,7 +156,8 @@ func NewQueryTripperware(
 				now := time.Now()
 				userStr := tenant.JoinTenantIDs(tenantIDs)
 				activeUsers.UpdateUserTimestamp(userStr, now)
-				queriesPerTenant.WithLabelValues(op, userStr).Inc()
+				source := getSource(r.Header.Get("User-Agent"))
+				queriesPerTenant.WithLabelValues(op, userStr, source).Inc()
 
 				if maxSubQuerySteps > 0 && (isQuery || isQueryRange) {
 					query := r.FormValue("query")
@@ -211,7 +212,7 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	return q.codec.EncodeResponse(r.Context(), response)
+	return q.codec.EncodeResponse(r.Context(), r, response)
 }
 
 // Do implements Handler.
@@ -239,4 +240,13 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}()
 
 	return q.codec.DecodeResponse(ctx, response, r)
+}
+
+func getSource(userAgent string) string {
+	if strings.Contains(userAgent, RulerUserAgent) {
+		// caller is ruler
+		return SourceRuler
+	}
+
+	return SourceAPI
 }

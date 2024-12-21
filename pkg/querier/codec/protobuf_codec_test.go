@@ -46,6 +46,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 		expected       *tripperware.PrometheusResponse
 	}{
 		{
+			name: "vector",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeVector,
 				Result: promql.Vector{
@@ -89,6 +90,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
+			name: "scalar",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeScalar,
 				Result:     promql.Scalar{T: 1000, V: 1},
@@ -106,6 +108,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
+			name: "matrix",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeMatrix,
 				Result: promql.Matrix{
@@ -151,39 +154,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
-			data: &v1.QueryData{
-				ResultType: parser.ValueTypeMatrix,
-				Result: promql.Matrix{
-					promql.Series{
-						Floats: []promql.FPoint{{F: 1, T: 1000}},
-						Metric: labels.FromStrings("__name__", "foo"),
-					},
-				},
-			},
-			expected: &tripperware.PrometheusResponse{
-				Status: tripperware.StatusSuccess,
-				Data: tripperware.PrometheusData{
-					ResultType: model.ValMatrix.String(),
-					Result: tripperware.PrometheusQueryResult{
-						Result: &tripperware.PrometheusQueryResult_Matrix{
-							Matrix: &tripperware.Matrix{
-								SampleStreams: []tripperware.SampleStream{
-									{
-										Labels: []cortexpb.LabelAdapter{
-											{Name: "__name__", Value: "foo"},
-										},
-										Samples: []cortexpb.Sample{
-											{Value: 1, TimestampMs: 1000},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
+			name: "matrix with multiple float samples",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeMatrix,
 				Result: promql.Matrix{
@@ -227,6 +198,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
+			name: "matrix with histogram and not cortex internal",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeMatrix,
 				Result: promql.Matrix{
@@ -316,6 +288,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
+			name: "vector with histogram and not cortex internal",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeVector,
 				Result: promql.Vector{
@@ -404,7 +377,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
-			name:           "cortex internal with native histogram",
+			name:           "vector with histogram and cortex internal",
 			cortexInternal: true,
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeVector,

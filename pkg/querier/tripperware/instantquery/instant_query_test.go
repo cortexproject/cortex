@@ -27,6 +27,12 @@ import (
 
 var testInstantQueryCodec = NewInstantQueryCodec(string(tripperware.NonCompression), string(tripperware.ProtobufCodecType))
 
+var jsonHttpReq = &http.Request{
+	Header: map[string][]string{
+		"Accept": {"application/json"},
+	},
+}
+
 const testHistogramResponse = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"prometheus_http_request_duration_seconds","handler":"/metrics","instance":"localhost:9090","job":"prometheus"},"histogram":[1719528871.898,{"count":"6342","sum":"43.31319875499995","buckets":[[0,"0.0013810679320049755","0.0015060652591874421","1"],[0,"0.0015060652591874421","0.001642375811042411","7"],[0,"0.001642375811042411","0.0017910235218841233","5"],[0,"0.0017910235218841233","0.001953125","13"],[0,"0.001953125","0.0021298979153618314","19"],[0,"0.0021298979153618314","0.0023226701464896895","13"],[0,"0.0023226701464896895","0.002532889755177753","13"],[0,"0.002532889755177753","0.002762135864009951","15"],[0,"0.002762135864009951","0.0030121305183748843","12"],[0,"0.0030121305183748843","0.003284751622084822","34"],[0,"0.003284751622084822","0.0035820470437682465","188"],[0,"0.0035820470437682465","0.00390625","372"],[0,"0.00390625","0.004259795830723663","400"],[0,"0.004259795830723663","0.004645340292979379","411"],[0,"0.004645340292979379","0.005065779510355506","425"],[0,"0.005065779510355506","0.005524271728019902","425"],[0,"0.005524271728019902","0.0060242610367497685","521"],[0,"0.0060242610367497685","0.006569503244169644","621"],[0,"0.006569503244169644","0.007164094087536493","593"],[0,"0.007164094087536493","0.0078125","506"],[0,"0.0078125","0.008519591661447326","458"],[0,"0.008519591661447326","0.009290680585958758","346"],[0,"0.009290680585958758","0.010131559020711013","285"],[0,"0.010131559020711013","0.011048543456039804","196"],[0,"0.011048543456039804","0.012048522073499537","129"],[0,"0.012048522073499537","0.013139006488339287","85"],[0,"0.013139006488339287","0.014328188175072986","65"],[0,"0.014328188175072986","0.015625","54"],[0,"0.015625","0.01703918332289465","53"],[0,"0.01703918332289465","0.018581361171917516","20"],[0,"0.018581361171917516","0.020263118041422026","21"],[0,"0.020263118041422026","0.022097086912079608","15"],[0,"0.022097086912079608","0.024097044146999074","11"],[0,"0.024097044146999074","0.026278012976678575","2"],[0,"0.026278012976678575","0.028656376350145972","3"],[0,"0.028656376350145972","0.03125","3"],[0,"0.04052623608284405","0.044194173824159216","2"]]}]}]}}`
 
 func sortPrometheusResponseHeader(headers []*tripperware.PrometheusResponseHeader) {
@@ -394,7 +400,7 @@ func TestResponse(t *testing.T) {
 			promBody: &tripperware.PrometheusResponse{
 				Status: "success",
 				Data: tripperware.PrometheusData{
-					ResultType: model.ValString.String(),
+					ResultType: model.ValScalar.String(),
 					Result: tripperware.PrometheusQueryResult{
 						Result: &tripperware.PrometheusQueryResult_RawBytes{
 							RawBytes: []byte(`{"resultType":"scalar","result":[1,"13"]}`),
@@ -458,7 +464,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
 				ContentLength: int64(len(tc.jsonBody)),
 			}
-			resp2, err := testInstantQueryCodec.EncodeResponse(context.Background(), resp)
+			resp2, err := testInstantQueryCodec.EncodeResponse(context.Background(), jsonHttpReq, resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})
@@ -735,7 +741,7 @@ func TestMergeResponse(t *testing.T) {
 				cancelCtx()
 				return
 			}
-			dr, err := testInstantQueryCodec.EncodeResponse(ctx, resp)
+			dr, err := testInstantQueryCodec.EncodeResponse(ctx, jsonHttpReq, resp)
 			assert.Equal(t, tc.expectedErr, err)
 			contents, err := io.ReadAll(dr.Body)
 			assert.Equal(t, tc.expectedErr, err)
@@ -1750,12 +1756,61 @@ func TestMergeResponseProtobuf(t *testing.T) {
 				cancelCtx()
 				return
 			}
-			dr, err := testInstantQueryCodec.EncodeResponse(ctx, resp)
+			dr, err := testInstantQueryCodec.EncodeResponse(ctx, jsonHttpReq, resp)
 			assert.Equal(t, tc.expectedErr, err)
 			contents, err := io.ReadAll(dr.Body)
 			assert.Equal(t, tc.expectedErr, err)
 			assert.Equal(t, tc.expectedResp, string(contents))
 			cancelCtx()
+		})
+	}
+}
+
+func Test_marshalResponseContentType(t *testing.T) {
+	mockResp := &tripperware.PrometheusResponse{}
+
+	tests := []struct {
+		name                string
+		acceptHeader        string
+		expectedContentType string
+	}{
+		{
+			name:                "empty accept header",
+			acceptHeader:        "",
+			expectedContentType: tripperware.ApplicationJson,
+		},
+		{
+			name:                "type and subtype are *",
+			acceptHeader:        "*/*",
+			expectedContentType: tripperware.ApplicationJson,
+		},
+		{
+			name:                "sub type is *",
+			acceptHeader:        "application/*",
+			expectedContentType: tripperware.ApplicationJson,
+		},
+		{
+			name:                "json type",
+			acceptHeader:        tripperware.ApplicationJson,
+			expectedContentType: tripperware.ApplicationJson,
+		},
+		{
+			name:                "proto type",
+			acceptHeader:        tripperware.ApplicationProtobuf,
+			expectedContentType: tripperware.ApplicationJson,
+		},
+		{
+			name:                "cortex type, json type",
+			acceptHeader:        "application/x-cortex-query+proto, application/json",
+			expectedContentType: "application/x-cortex-query+proto",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			contentType, _, err := marshalResponse(mockResp, test.acceptHeader)
+			require.NoError(t, err)
+			require.Equal(t, test.expectedContentType, contentType)
 		})
 	}
 }

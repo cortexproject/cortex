@@ -307,7 +307,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
 				ContentLength: int64(len(tc.jsonBody)),
 			}
-			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
+			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), nil, resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 			cancelCtx()
@@ -431,7 +431,7 @@ func TestResponseWithStats(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
 				ContentLength: int64(len(tc.jsonBody)),
 			}
-			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
+			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), nil, resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})

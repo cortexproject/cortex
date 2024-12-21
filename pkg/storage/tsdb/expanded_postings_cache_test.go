@@ -18,7 +18,6 @@ import (
 
 func TestCacheKey(t *testing.T) {
 	blockID := ulid.MustNew(1, nil)
-	seed := "seed123"
 	matchers := []*labels.Matcher{
 		{
 			Type:  labels.MatchEqual,
@@ -41,8 +40,8 @@ func TestCacheKey(t *testing.T) {
 			Value: "value_4",
 		},
 	}
-	r := cacheKey(seed, blockID, matchers...)
-	require.Equal(t, "seed123|00000000010000000000000000|name_1=value_1|name_2!=value_2|name_3=~value_4|name_5!~value_4|", r)
+	r := cacheKey(blockID, matchers...)
+	require.Equal(t, "00000000010000000000000000|name_1=value_1|name_2!=value_2|name_3=~value_4|name_5!~value_4|", r)
 }
 
 func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
@@ -67,7 +66,7 @@ func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		go func() {
 			defer wg.Done()
-			cache.getPromiseForKey("key1", fetchFunc)
+			cache.getPromiseForKey(1, "key1", fetchFunc)
 		}()
 	}
 
@@ -82,7 +81,7 @@ func TestFifoCacheDisabled(t *testing.T) {
 	m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
 	timeNow := time.Now
 	cache := newFifoCache[int](cfg, "test", m, timeNow)
-	old, loaded := cache.getPromiseForKey("key1", func() (int, int64, error) {
+	old, loaded := cache.getPromiseForKey(1, "key1", func() (int, int64, error) {
 		return 1, 0, nil
 	})
 	require.False(t, loaded)
@@ -91,7 +90,6 @@ func TestFifoCacheDisabled(t *testing.T) {
 }
 
 func TestFifoCacheExpire(t *testing.T) {
-
 	keySize := 20
 	numberOfKeys := 100
 
@@ -128,17 +126,24 @@ func TestFifoCacheExpire(t *testing.T) {
 
 			for i := 0; i < numberOfKeys; i++ {
 				key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
-				p, loaded := cache.getPromiseForKey(key, func() (int, int64, error) {
+				p, loaded := cache.getPromiseForKey(1, key, func() (int, int64, error) {
 					return 1, 8, nil
 				})
 				require.False(t, loaded)
 				require.Equal(t, 1, p.v)
 				require.True(t, cache.contains(key))
-				p, loaded = cache.getPromiseForKey(key, func() (int, int64, error) {
-					return 1, 0, nil
+				p, loaded = cache.getPromiseForKey(1, key, func() (int, int64, error) {
+					return 1, 8, nil
 				})
 				require.True(t, loaded)
 				require.Equal(t, 1, p.v)
+
+				// Changing seed and make sure the key is reloaded
+				p, loaded = cache.getPromiseForKey(2, key, func() (int, int64, error) {
+					return 2, 8, nil
+				})
+				require.False(t, loaded)
+				require.Equal(t, 2, p.v)
 			}
 
 			totalCacheSize := 0
@@ -156,8 +161,9 @@ func TestFifoCacheExpire(t *testing.T) {
 				err := testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
 		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
 		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
+		cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="invalidated"} %v
         cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="full"} %v
-`, numberOfKeys-c.expectedFinalItems)), "cortex_ingester_expanded_postings_cache_evicts")
+`, numberOfKeys, numberOfKeys-c.expectedFinalItems)), "cortex_ingester_expanded_postings_cache_evicts")
 				require.NoError(t, err)
 
 			}
@@ -170,7 +176,7 @@ func TestFifoCacheExpire(t *testing.T) {
 				for i := 0; i < numberOfKeys; i++ {
 					key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
 					originalSize := cache.cachedBytes
-					p, loaded := cache.getPromiseForKey(key, func() (int, int64, error) {
+					p, loaded := cache.getPromiseForKey(2, key, func() (int, int64, error) {
 						return 2, 18, nil
 					})
 					require.False(t, loaded)
@@ -183,15 +189,16 @@ func TestFifoCacheExpire(t *testing.T) {
 				err := testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
 		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
 		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
+        cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="invalidated"} %v
         cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="expired"} %v
-`, numberOfKeys)), "cortex_ingester_expanded_postings_cache_evicts")
+`, numberOfKeys, numberOfKeys)), "cortex_ingester_expanded_postings_cache_evicts")
 				require.NoError(t, err)
 
 				cache.timeNow = func() time.Time {
 					return timeNow().Add(5 * c.cfg.Ttl)
 				}
 
-				cache.getPromiseForKey("newKwy", func() (int, int64, error) {
+				cache.getPromiseForKey(1, "newKwy", func() (int, int64, error) {
 					return 2, 18, nil
 				})
 
@@ -200,7 +207,8 @@ func TestFifoCacheExpire(t *testing.T) {
 		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
 		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
         cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="expired"} %v
-`, numberOfKeys*2)), "cortex_ingester_expanded_postings_cache_evicts")
+        cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="invalidated"} %v
+`, numberOfKeys*2, numberOfKeys)), "cortex_ingester_expanded_postings_cache_evicts")
 				require.NoError(t, err)
 			}
 		})

@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -166,7 +165,7 @@ func (c *blocksPostingsForMatchersCache) PostingsForMatchers(ctx context.Context
 }
 
 func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) func(context.Context) (index.Postings, error) {
-	var seed string
+	var seed int
 	cache := c.blocksCache
 
 	// If is a head block, lets add the seed on the cache key so we can
@@ -208,8 +207,8 @@ func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 		return nil, 0, err
 	}
 
-	key := cacheKey(seed, blockID, ms...)
-	promise, loaded := cache.getPromiseForKey(key, fetch)
+	key := cacheKey(blockID, ms...)
+	promise, loaded := cache.getPromiseForKey(seed, key, fetch)
 	if loaded {
 		c.metrics.CacheHits.WithLabelValues(cache.name).Inc()
 	}
@@ -231,11 +230,11 @@ func (c *blocksPostingsForMatchersCache) result(ce *cacheEntryPromise[[]storage.
 	}
 }
 
-func (c *blocksPostingsForMatchersCache) getSeedForMetricName(metricName string) string {
+func (c *blocksPostingsForMatchersCache) getSeedForMetricName(metricName string) int {
 	return c.seedByHash.getSeed(c.userId, metricName)
 }
 
-func cacheKey(seed string, blockID ulid.ULID, ms ...*labels.Matcher) string {
+func cacheKey(blockID ulid.ULID, ms ...*labels.Matcher) string {
 	slices.SortFunc(ms, func(i, j *labels.Matcher) int {
 		if i.Type != j.Type {
 			return int(i.Type - j.Type)
@@ -254,14 +253,12 @@ func cacheKey(seed string, blockID ulid.ULID, ms ...*labels.Matcher) string {
 		sepLen  = 1
 	)
 
-	size := len(seed) + len(blockID.String()) + 2*sepLen
+	size := len(blockID.String()) + sepLen
 	for _, m := range ms {
 		size += len(m.Name) + len(m.Value) + typeLen + sepLen
 	}
 	sb := strings.Builder{}
 	sb.Grow(size)
-	sb.WriteString(seed)
-	sb.WriteByte('|')
 	sb.WriteString(blockID.String())
 	sb.WriteByte('|')
 	for _, m := range ms {
@@ -300,13 +297,13 @@ func newSeedByHash(size int) *seedByHash {
 	}
 }
 
-func (s *seedByHash) getSeed(userId string, v string) string {
+func (s *seedByHash) getSeed(userId string, v string) int {
 	h := memHashString(userId, v)
 	i := h % uint64(len(s.seedByHash))
 	l := i % uint64(len(s.strippedLock))
 	s.strippedLock[l].RLock()
 	defer s.strippedLock[l].RUnlock()
-	return strconv.Itoa(s.seedByHash[i])
+	return s.seedByHash[i]
 }
 
 func (s *seedByHash) incrementSeed(userId string, v string) {
@@ -360,9 +357,10 @@ func (c *fifoCache[V]) expire() {
 	}
 }
 
-func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)) (*cacheEntryPromise[V], bool) {
+func (c *fifoCache[V]) getPromiseForKey(seed int, k string, fetch func() (V, int64, error)) (*cacheEntryPromise[V], bool) {
 	r := &cacheEntryPromise[V]{
 		done: make(chan struct{}),
+		seed: seed,
 	}
 	defer close(r.done)
 
@@ -385,15 +383,39 @@ func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)
 		// If the promise is already in the cache, lets wait it to fetch the data.
 		<-loaded.(*cacheEntryPromise[V]).done
 
-		// If is cached but is expired, lets try to replace the cache value.
-		if loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) && c.cachedValues.CompareAndSwap(k, loaded, r) {
-			c.metrics.CacheEvicts.WithLabelValues(c.name, "expired").Inc()
-			r.v, r.sizeBytes, r.err = fetch()
-			r.sizeBytes += int64(len(k))
-			c.updateSize(loaded.(*cacheEntryPromise[V]).sizeBytes, r.sizeBytes)
-			loaded = r
-			r.ts = c.timeNow()
-			ok = false
+		var reason string
+		invalidated, expired := false, false
+
+		switch {
+		// If the seed from the cached promise is not equal with the incoming sample, it means that the cache key was invalidated
+		case loaded.(*cacheEntryPromise[V]).seed != seed:
+			invalidated = true
+			reason = "invalidated"
+		case loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()):
+			expired = true
+			reason = "expired"
+		}
+
+		if invalidated || expired {
+			c.metrics.CacheEvicts.WithLabelValues(c.name, reason).Inc()
+
+			// If the cache is invalid of expired, lets try to replace its value
+			if c.cachedValues.CompareAndSwap(k, loaded, r) {
+				r.v, r.sizeBytes, r.err = fetch()
+				r.sizeBytes += int64(len(k))
+				c.updateSize(loaded.(*cacheEntryPromise[V]).sizeBytes, r.sizeBytes)
+				loaded = r
+				r.ts = c.timeNow()
+				ok = false
+			} else if invalidated {
+				// If we cannot perform the swap, it indicates that another goroutine is attempting to set the cache key concurrently.
+				// In this scenario, fetch the key if it was invalidated, as we cannot be certain whether the other goroutine holds
+				// the most up-to-date value. Loading from the cache in this state may result in returning a stale value.
+				r.v, r.sizeBytes, r.err = fetch()
+				r.sizeBytes += int64(len(k))
+				r.ts = c.timeNow()
+				loaded = r
+			}
 		}
 	}
 
@@ -459,6 +481,7 @@ func (c *fifoCache[V]) updateSize(oldSize, newSizeBytes int64) {
 type cacheEntryPromise[V any] struct {
 	ts        time.Time
 	sizeBytes int64
+	seed      int
 
 	done chan struct{}
 	v    V

@@ -268,13 +268,12 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 
 // Enable merge querier if multi tenant query federation is enabled
 func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
-
 	if t.Cfg.TenantFederation.Enabled {
 		// Make sure the mergeQuerier is only used for request with more than a
 		// single tenant. This allows for a less impactful enabling of tenant
 		// federation.
 		byPassForSingleQuerier := true
-		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, byPassForSingleQuerier, prometheus.DefaultRegisterer))
+		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer))
 	}
 	return nil, nil
 }

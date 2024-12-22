@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	defaultTenantLabel   = "__tenant_id__"
-	retainExistingPrefix = "original_"
-	maxConcurrency       = 16
+	defaultTenantLabel    = "__tenant_id__"
+	retainExistingPrefix  = "original_"
+	defaultMaxConcurrency = 16
 )
 
 // NewQueryable returns a queryable that iterates through all the tenant IDs
@@ -38,8 +38,8 @@ const (
 // If the label "__tenant_id__" is already existing, its value is overwritten
 // by the tenant ID and the previous value is exposed through a new label
 // prefixed with "original_". This behaviour is not implemented recursively.
-func NewQueryable(upstream storage.Queryable, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
-	return NewMergeQueryable(defaultTenantLabel, tenantQuerierCallback(upstream), byPassWithSingleQuerier, reg)
+func NewQueryable(upstream storage.Queryable, maxConcurrent int, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
+	return NewMergeQueryable(defaultTenantLabel, maxConcurrent, tenantQuerierCallback(upstream), byPassWithSingleQuerier, reg)
 }
 
 func tenantQuerierCallback(queryable storage.Queryable) MergeQuerierCallback {
@@ -81,9 +81,10 @@ type MergeQuerierCallback func(ctx context.Context, mint int64, maxt int64) (ids
 // If the label `idLabelName` is already existing, its value is overwritten and
 // the previous value is exposed through a new label prefixed with "original_".
 // This behaviour is not implemented recursively.
-func NewMergeQueryable(idLabelName string, callback MergeQuerierCallback, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
+func NewMergeQueryable(idLabelName string, maxConcurrent int, callback MergeQuerierCallback, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
 	return &mergeQueryable{
 		idLabelName:             idLabelName,
+		maxConcurrent:           maxConcurrent,
 		callback:                callback,
 		byPassWithSingleQuerier: byPassWithSingleQuerier,
 
@@ -98,6 +99,7 @@ func NewMergeQueryable(idLabelName string, callback MergeQuerierCallback, byPass
 
 type mergeQueryable struct {
 	idLabelName             string
+	maxConcurrent           int
 	byPassWithSingleQuerier bool
 	callback                MergeQuerierCallback
 	tenantsPerQuery         prometheus.Histogram
@@ -108,6 +110,7 @@ type mergeQueryable struct {
 func (m *mergeQueryable) Querier(mint int64, maxt int64) (storage.Querier, error) {
 	return &mergeQuerier{
 		idLabelName:             m.idLabelName,
+		maxConcurrent:           m.maxConcurrent,
 		mint:                    mint,
 		maxt:                    maxt,
 		byPassWithSingleQuerier: m.byPassWithSingleQuerier,
@@ -123,9 +126,10 @@ func (m *mergeQueryable) Querier(mint int64, maxt int64) (storage.Querier, error
 // the previous value is exposed through a new label prefixed with "original_".
 // This behaviour is not implemented recursively
 type mergeQuerier struct {
-	idLabelName string
-	mint, maxt  int64
-	callback    MergeQuerierCallback
+	idLabelName   string
+	mint, maxt    int64
+	callback      MergeQuerierCallback
+	maxConcurrent int
 
 	byPassWithSingleQuerier bool
 	tenantsPerQuery         prometheus.Histogram
@@ -273,7 +277,7 @@ func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(ctx context.Context, 
 		return nil
 	}
 
-	err := concurrency.ForEach(ctx, jobs, maxConcurrency, run)
+	err := concurrency.ForEach(ctx, jobs, m.maxConcurrent, run)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -370,7 +374,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 		return nil
 	}
 
-	if err := concurrency.ForEach(ctx, jobs, maxConcurrency, run); err != nil {
+	if err := concurrency.ForEach(ctx, jobs, m.maxConcurrent, run); err != nil {
 		return storage.ErrSeriesSet(err)
 	}
 

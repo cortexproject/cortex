@@ -302,7 +302,7 @@ type mergeQueryableScenario struct {
 func (s *mergeQueryableScenario) init() (storage.Querier, prometheus.Gatherer, error) {
 	// initialize with default tenant label
 	reg := prometheus.NewPedanticRegistry()
-	q := NewQueryable(&s.queryable, !s.doNotByPassSingleQuerier, reg)
+	q := NewQueryable(&s.queryable, defaultMaxConcurrency, !s.doNotByPassSingleQuerier, reg)
 
 	// retrieve querier
 	querier, err := q.Querier(mint, maxt)
@@ -384,7 +384,7 @@ func TestMergeQueryable_Querier(t *testing.T) {
 	t.Run("querying without a tenant specified should error", func(t *testing.T) {
 		t.Parallel()
 		queryable := &mockTenantQueryableWithFilter{}
-		q := NewQueryable(queryable, false /* byPassWithSingleQuerier */, nil)
+		q := NewQueryable(queryable, defaultMaxConcurrency, false /* byPassWithSingleQuerier */, nil)
 
 		querier, err := q.Querier(mint, maxt)
 		require.NoError(t, err)
@@ -1115,7 +1115,7 @@ func TestTracingMergeQueryable(t *testing.T) {
 	// set a multi tenant resolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	filter := mockTenantQueryableWithFilter{}
-	q := NewQueryable(&filter, false, nil)
+	q := NewQueryable(&filter, defaultMaxConcurrency, false, nil)
 	// retrieve querier if set
 	querier, err := q.Querier(mint, maxt)
 	require.NoError(t, err)

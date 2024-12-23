@@ -1169,7 +1169,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
-				updateFirstPartial(func() error { return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels)) })
+				updateFirstPartial(func() error {
+					return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels))
+				})
 
 			case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
 				perMetricSeriesLimitCount++

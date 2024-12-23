@@ -133,23 +133,23 @@ func (l *Limiter) AssertMaxSeriesPerLabelSet(userID string, metric labels.Labels
 func (l *Limiter) FormatError(userID string, err error, lbls labels.Labels) error {
 	switch {
 	case errors.Is(err, errMaxSeriesPerUserLimitExceeded):
-		return l.formatMaxSeriesPerUserError(userID, lbls)
+		return l.formatMaxSeriesPerUserError(userID)
 	case errors.Is(err, errMaxSeriesPerMetricLimitExceeded):
-		return l.formatMaxSeriesPerMetricError(userID, lbls)
+		return l.formatMaxSeriesPerMetricError(userID, lbls.Get(labels.MetricName))
 	case errors.Is(err, errMaxMetadataPerUserLimitExceeded):
-		return l.formatMaxMetadataPerUserError(userID, lbls)
+		return l.formatMaxMetadataPerUserError(userID)
 	case errors.Is(err, errMaxMetadataPerMetricLimitExceeded):
-		return l.formatMaxMetadataPerMetricError(userID, lbls)
+		return l.formatMaxMetadataPerMetricError(userID, lbls.Get(labels.MetricName))
 	case errors.As(err, &errMaxSeriesPerLabelSetLimitExceeded{}):
 		e := errMaxSeriesPerLabelSetLimitExceeded{}
 		errors.As(err, &e)
-		return l.formatMaxSeriesPerLabelSetError(e, lbls)
+		return l.formatMaxSeriesPerLabelSetError(e)
 	default:
 		return err
 	}
 }
 
-func (l *Limiter) formatMaxSeriesPerUserError(userID string, lbls labels.Labels) error {
+func (l *Limiter) formatMaxSeriesPerUserError(userID string) error {
 	actualLimit := l.maxSeriesPerUser(userID)
 	localLimit := l.limits.MaxLocalSeriesPerUser(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerUser(userID)
@@ -158,16 +158,16 @@ func (l *Limiter) formatMaxSeriesPerUserError(userID string, lbls labels.Labels)
 		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
 }
 
-func (l *Limiter) formatMaxSeriesPerMetricError(userID string, lbls labels.Labels) error {
+func (l *Limiter) formatMaxSeriesPerMetricError(userID string, metric string) error {
 	actualLimit := l.maxSeriesPerMetric(userID)
 	localLimit := l.limits.MaxLocalSeriesPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerMetric(userID)
 
 	return fmt.Errorf("per-metric series limit of %d exceeded for metric %s, %s (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), lbls.Get(labels.MetricName), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
+		minNonZero(localLimit, globalLimit), metric, l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
 }
 
-func (l *Limiter) formatMaxMetadataPerUserError(userID string, lbls labels.Labels) error {
+func (l *Limiter) formatMaxMetadataPerUserError(userID string) error {
 	actualLimit := l.maxMetadataPerUser(userID)
 	localLimit := l.limits.MaxLocalMetricsWithMetadataPerUser(userID)
 	globalLimit := l.limits.MaxGlobalMetricsWithMetadataPerUser(userID)
@@ -176,16 +176,16 @@ func (l *Limiter) formatMaxMetadataPerUserError(userID string, lbls labels.Label
 		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
 }
 
-func (l *Limiter) formatMaxMetadataPerMetricError(userID string, lbls labels.Labels) error {
+func (l *Limiter) formatMaxMetadataPerMetricError(userID string, metric string) error {
 	actualLimit := l.maxMetadataPerMetric(userID)
 	localLimit := l.limits.MaxLocalMetadataPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalMetadataPerMetric(userID)
 
 	return fmt.Errorf("per-metric metadata limit of %d exceeded for metric %s, %s (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), lbls.Get(labels.MetricName), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
+		minNonZero(localLimit, globalLimit), metric, l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
 }
 
-func (l *Limiter) formatMaxSeriesPerLabelSetError(err errMaxSeriesPerLabelSetLimitExceeded, lbls labels.Labels) error {
+func (l *Limiter) formatMaxSeriesPerLabelSetError(err errMaxSeriesPerLabelSetLimitExceeded) error {
 	return fmt.Errorf("per-labelset series limit of %d exceeded (labelSet: %s, local limit: %d global limit: %d actual)",
 		minNonZero(err.globalLimit, err.localLimit), err.id, err.localLimit, err.globalLimit)
 }

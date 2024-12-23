@@ -47,23 +47,23 @@ type ExpandedPostingsCacheMetrics struct {
 func NewPostingCacheMetrics(r prometheus.Registerer) *ExpandedPostingsCacheMetrics {
 	return &ExpandedPostingsCacheMetrics{
 		CacheRequests: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_expanded_postings_cache_requests",
+			Name: "cortex_ingester_expanded_postings_cache_requests_total",
 			Help: "Total number of requests to the cache.",
 		}, []string{"cache"}),
 		CacheHits: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_expanded_postings_cache_hits",
+			Name: "cortex_ingester_expanded_postings_cache_hits_total",
 			Help: "Total number of hit requests to the cache.",
 		}, []string{"cache"}),
 		CacheMiss: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_expanded_postings_cache_miss",
+			Name: "cortex_ingester_expanded_postings_cache_miss_total",
 			Help: "Total number of miss requests to the cache.",
 		}, []string{"cache", "reason"}),
 		CacheEvicts: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_expanded_postings_cache_evicts",
+			Name: "cortex_ingester_expanded_postings_cache_evicts_total",
 			Help: "Total number of evictions in the cache, excluding items that got evicted due to TTL.",
 		}, []string{"cache", "reason"}),
 		NonCacheableQueries: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_expanded_postings_non_cacheable_queries",
+			Name: "cortex_ingester_expanded_postings_non_cacheable_queries_total",
 			Help: "Total number of non cacheable queries.",
 		}, []string{"cache"}),
 	}

@@ -5553,22 +5553,22 @@ func TestExpendedPostingsCache(t *testing.T) {
 
 			if c.expectedHeadPostingCall > 0 || c.expectedBlockPostingCall > 0 {
 				metric := `
-		# HELP cortex_ingester_expanded_postings_cache_requests Total number of requests to the cache.
-		# TYPE cortex_ingester_expanded_postings_cache_requests counter
+		# HELP cortex_ingester_expanded_postings_cache_requests_total Total number of requests to the cache.
+		# TYPE cortex_ingester_expanded_postings_cache_requests_total counter
 `
 				if c.expectedBlockPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_requests{cache="block"} 4
+		cortex_ingester_expanded_postings_cache_requests_total{cache="block"} 4
 `
 				}
 
 				if c.expectedHeadPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_requests{cache="head"} 4
+		cortex_ingester_expanded_postings_cache_requests_total{cache="head"} 4
 `
 				}
 
-				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_requests")
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_requests_total")
 				require.NoError(t, err)
 			}
 
@@ -5583,22 +5583,22 @@ func TestExpendedPostingsCache(t *testing.T) {
 
 			if c.expectedHeadPostingCall > 0 || c.expectedBlockPostingCall > 0 {
 				metric := `
-		# HELP cortex_ingester_expanded_postings_cache_hits Total number of hit requests to the cache.
-		# TYPE cortex_ingester_expanded_postings_cache_hits counter
+		# HELP cortex_ingester_expanded_postings_cache_hits_total Total number of hit requests to the cache.
+		# TYPE cortex_ingester_expanded_postings_cache_hits_total counter
 `
 				if c.expectedBlockPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_hits{cache="block"} 4
+		cortex_ingester_expanded_postings_cache_hits_total{cache="block"} 4
 `
 				}
 
 				if c.expectedHeadPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_hits{cache="head"} 4
+		cortex_ingester_expanded_postings_cache_hits_total{cache="head"} 4
 `
 				}
 
-				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_hits")
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_hits_total")
 				require.NoError(t, err)
 			}
 
@@ -5644,10 +5644,10 @@ func TestExpendedPostingsCache(t *testing.T) {
 			require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedBlockPostingCall))
 			if c.cacheConfig.Head.Enabled {
 				err = testutil.GatherAndCompare(r, bytes.NewBufferString(`
-		# HELP cortex_ingester_expanded_postings_non_cacheable_queries Total number of non cacheable queries.
-		# TYPE cortex_ingester_expanded_postings_non_cacheable_queries counter
-        cortex_ingester_expanded_postings_non_cacheable_queries{cache="head"} 1
-`), "cortex_ingester_expanded_postings_non_cacheable_queries")
+		# HELP cortex_ingester_expanded_postings_non_cacheable_queries_total Total number of non cacheable queries.
+		# TYPE cortex_ingester_expanded_postings_non_cacheable_queries_total counter
+        cortex_ingester_expanded_postings_non_cacheable_queries_total{cache="head"} 1
+`), "cortex_ingester_expanded_postings_non_cacheable_queries_total")
 				require.NoError(t, err)
 			}
 

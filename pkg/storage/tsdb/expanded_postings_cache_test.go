@@ -181,10 +181,11 @@ func TestFifoCacheExpire(t *testing.T) {
 				}
 
 				err := testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
-		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
-		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
-        cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="expired"} %v
-`, numberOfKeys)), "cortex_ingester_expanded_postings_cache_evicts")
+		# HELP cortex_ingester_expanded_postings_cache_miss Total number of miss requests to the cache.
+		# TYPE cortex_ingester_expanded_postings_cache_miss counter
+		cortex_ingester_expanded_postings_cache_miss{cache="test",reason="expired"} %v
+		cortex_ingester_expanded_postings_cache_miss{cache="test",reason="miss"} %v
+`, numberOfKeys, numberOfKeys)), "cortex_ingester_expanded_postings_cache_miss")
 				require.NoError(t, err)
 
 				cache.timeNow = func() time.Time {
@@ -195,12 +196,12 @@ func TestFifoCacheExpire(t *testing.T) {
 					return 2, 18, nil
 				})
 
-				// Should expire all keys again as ttl is expired
+				// Should expire all keys expired keys
 				err = testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
 		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
 		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
         cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="expired"} %v
-`, numberOfKeys*2)), "cortex_ingester_expanded_postings_cache_evicts")
+`, numberOfKeys)), "cortex_ingester_expanded_postings_cache_evicts")
 				require.NoError(t, err)
 			}
 		})

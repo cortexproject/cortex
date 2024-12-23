@@ -40,6 +40,7 @@ type ExpandedPostingsCacheMetrics struct {
 	CacheRequests       *prometheus.CounterVec
 	CacheHits           *prometheus.CounterVec
 	CacheEvicts         *prometheus.CounterVec
+	CacheMiss           *prometheus.CounterVec
 	NonCacheableQueries *prometheus.CounterVec
 }
 
@@ -53,6 +54,10 @@ func NewPostingCacheMetrics(r prometheus.Registerer) *ExpandedPostingsCacheMetri
 			Name: "cortex_ingester_expanded_postings_cache_hits",
 			Help: "Total number of hit requests to the cache.",
 		}, []string{"cache"}),
+		CacheMiss: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_expanded_postings_cache_miss",
+			Help: "Total number of miss requests to the cache.",
+		}, []string{"cache", "reason"}),
 		CacheEvicts: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_expanded_postings_cache_evicts",
 			Help: "Total number of evictions in the cache, excluding items that got evicted due to TTL.",
@@ -374,6 +379,7 @@ func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)
 	loaded, ok := c.cachedValues.LoadOrStore(k, r)
 
 	if !ok {
+		c.metrics.CacheMiss.WithLabelValues(c.name, "miss").Inc()
 		r.v, r.sizeBytes, r.err = fetch()
 		r.sizeBytes += int64(len(k))
 		r.ts = c.timeNow()
@@ -387,7 +393,7 @@ func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)
 
 		// If is cached but is expired, lets try to replace the cache value.
 		if loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) && c.cachedValues.CompareAndSwap(k, loaded, r) {
-			c.metrics.CacheEvicts.WithLabelValues(c.name, "expired").Inc()
+			c.metrics.CacheMiss.WithLabelValues(c.name, "expired").Inc()
 			r.v, r.sizeBytes, r.err = fetch()
 			r.sizeBytes += int64(len(k))
 			c.updateSize(loaded.(*cacheEntryPromise[V]).sizeBytes, r.sizeBytes)

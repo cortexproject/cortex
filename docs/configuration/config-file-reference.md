@@ -157,6 +157,10 @@ tenant_federation:
   # CLI flag: -tenant-federation.enabled
   [enabled: <boolean> | default = false]
 
+  # The number of workers used to process each federated query.
+  # CLI flag: -tenant-federation.max-concurrent
+  [max_concurrent: <int> | default = 16]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 

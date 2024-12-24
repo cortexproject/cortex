@@ -63,7 +63,7 @@ The next three options only apply when the querier is used together with the Que
 
    If set to true, will cause the query frontend to mutate incoming queries and align their start and end parameters to the step parameter of the query.  This improves the cacheability of the query results.
 
-- `-querier.split-queries-by-day`
+- `-querier.split-queries-by-interval`
 
    If set to true, will cause the query frontend to split multi-day queries into multiple single-day queries and execute them in parallel.
 

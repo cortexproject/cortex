@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
+	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
@@ -333,4 +334,79 @@ func CreateBlock(
 	}
 
 	return id, nil
+}
+
+func GenerateHistogramSeriesV2(name string, ts time.Time, i uint32, floatHistogram bool, additionalLabels ...prompb.Label) (symbols []string, series []writev2.TimeSeries) {
+	tsMillis := TimeToMilliseconds(ts)
+
+	st := writev2.NewSymbolTable()
+
+	lbs := labels.Labels{labels.Label{Name: "__name__", Value: name}}
+	for _, lbl := range additionalLabels {
+		lbs = append(lbs, labels.Label{Name: lbl.Name, Value: lbl.Value})
+	}
+
+	var (
+		h  *histogram.Histogram
+		fh *histogram.FloatHistogram
+		ph writev2.Histogram
+	)
+	if floatHistogram {
+		fh = tsdbutil.GenerateTestFloatHistogram(int(i))
+		ph = writev2.FromFloatHistogram(tsMillis, fh)
+	} else {
+		h = tsdbutil.GenerateTestHistogram(int(i))
+		ph = writev2.FromIntHistogram(tsMillis, h)
+	}
+
+	// Generate the series
+	series = append(series, writev2.TimeSeries{
+		LabelsRefs: st.SymbolizeLabels(lbs, nil),
+		Histograms: []writev2.Histogram{ph},
+	})
+
+	symbols = st.Symbols()
+
+	return
+}
+
+func GenerateSeriesV2(name string, ts time.Time, additionalLabels ...prompb.Label) (symbols []string, series []writev2.TimeSeries, vector model.Vector) {
+	tsMillis := TimeToMilliseconds(ts)
+	value := rand.Float64()
+
+	st := writev2.NewSymbolTable()
+	lbs := labels.Labels{{Name: labels.MetricName, Value: name}}
+
+	for _, label := range additionalLabels {
+		lbs = append(lbs, labels.Label{
+			Name:  label.Name,
+			Value: label.Value,
+		})
+	}
+	series = append(series, writev2.TimeSeries{
+		// Generate the series
+		LabelsRefs: st.SymbolizeLabels(lbs, nil),
+		Samples: []writev2.Sample{
+			{Value: value, Timestamp: tsMillis},
+		},
+		Metadata: writev2.Metadata{
+			Type: writev2.Metadata_METRIC_TYPE_GAUGE,
+		},
+	})
+	symbols = st.Symbols()
+
+	// Generate the expected vector when querying it
+	metric := model.Metric{}
+	metric[labels.MetricName] = model.LabelValue(name)
+	for _, lbl := range additionalLabels {
+		metric[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
+
+	vector = append(vector, &model.Sample{
+		Metric:    metric,
+		Value:     model.SampleValue(value),
+		Timestamp: model.Time(tsMillis),
+	})
+
+	return
 }

@@ -393,9 +393,7 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
 - `max_series_per_query` / `-ingester.max-series-per-query`
 
-- `max_samples_per_query` / `-ingester.max-samples-per-query`
-
-  Limits on the number of timeseries and samples returns by a single ingester during a query.
+  Limits on the number of timeseries returned by a single ingester during a query.
 
 - `max_metadata_per_user` / `-ingester.max-metadata-per-user`
 - `max_metadata_per_metric` / `-ingester.max-metadata-per-metric`

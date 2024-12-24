@@ -34,7 +34,7 @@ const (
 )
 
 // OTLPHandler is a http.Handler which accepts OTLP metrics.
-func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distributor.OTLPConfig, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
+func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distributor.OTLPConfig, sourceIPs *middleware.SourceIPExtractor, push Func, metrics *distributor.PushHandlerMetrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := util_log.WithContext(ctx, util_log.Logger)
@@ -51,7 +51,7 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 			return
 		}
 
-		req, err := decodeOTLPWriteRequest(ctx, r, maxRecvMsgSize)
+		req, err := decodeOTLPWriteRequest(ctx, r, maxRecvMsgSize, userID, metrics)
 		if err != nil {
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -99,7 +99,7 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 	})
 }
 
-func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (pmetricotlp.ExportRequest, error) {
+func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int, userID string, metrics *distributor.PushHandlerMetrics) (pmetricotlp.ExportRequest, error) {
 	expectedSize := int(r.ContentLength)
 	if expectedSize > maxSize {
 		return pmetricotlp.NewExportRequest(), fmt.Errorf("received message larger than max (%d vs %d)", expectedSize, maxSize)
@@ -124,7 +124,17 @@ func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (
 		decoderFunc = func(reader io.Reader) (pmetricotlp.ExportRequest, error) {
 			req := pmetricotlp.NewExportRequest()
 			otlpReqProto := otlpProtoMessage{req: &req}
-			return req, util.ParseProtoReader(ctx, reader, expectedSize, maxSize, otlpReqProto, compressionType)
+
+			bodySize, err := util.ParseProtoReader(ctx, reader, expectedSize, maxSize, otlpReqProto, compressionType)
+			if err != nil {
+				return req, err
+			}
+
+			if metrics != nil {
+				metrics.ObservePushRequestSize(userID, formatOTLP, float64(bodySize))
+			}
+
+			return req, nil
 		}
 	case jsonContentType:
 		decoderFunc = func(reader io.Reader) (pmetricotlp.ExportRequest, error) {
@@ -143,9 +153,13 @@ func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (
 			if expectedSize > 0 {
 				buf.Grow(expectedSize + bytes.MinRead) // extra space guarantees no reallocation
 			}
-			_, err := buf.ReadFrom(reader)
+			bodySize, err := buf.ReadFrom(reader)
 			if err != nil {
 				return req, err
+			}
+
+			if metrics != nil {
+				metrics.ObservePushRequestSize(userID, formatOTLP, float64(bodySize))
 			}
 
 			return req, req.UnmarshalJSON(buf.Bytes())

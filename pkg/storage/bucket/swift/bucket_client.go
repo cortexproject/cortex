@@ -7,7 +7,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/swift"
-	yaml "gopkg.in/yaml.v2"
 )
 
 // NewBucketClient creates a new Swift bucket client
@@ -40,12 +39,5 @@ func NewBucketClient(cfg Config, hedgedRoundTripper func(rt http.RoundTripper) h
 		UseDynamicLargeObjects: false,
 	}
 
-	// Thanos currently doesn't support passing the config as is, but expects a YAML,
-	// so we're going to serialize it.
-	serialized, err := yaml.Marshal(bucketConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return swift.NewContainer(logger, serialized, hedgedRoundTripper)
+	return swift.NewContainerFromConfig(logger, &bucketConfig, false, hedgedRoundTripper)
 }

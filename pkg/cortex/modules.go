@@ -274,6 +274,7 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 		// federation.
 		byPassForSingleQuerier := true
 		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer))
+		t.ExemplarQueryable = tenantfederation.NewExemplarQueryable(t.ExemplarQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer)
 	}
 	return nil, nil
 }

@@ -53,7 +53,7 @@ The next three options only apply when the querier is used together with the Que
 
 ## Querier and Ruler
 
-- `-promql.lookback-delta`
+- `-querier.lookback-delta`
 
    Time since the last sample after which a time series is considered stale and ignored by expression evaluations.
 

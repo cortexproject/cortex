@@ -230,7 +230,7 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	return &resp, nil
 }
 
-func (prometheusCodec) EncodeResponse(ctx context.Context, res tripperware.Response) (*http.Response, error) {
+func (prometheusCodec) EncodeResponse(ctx context.Context, _ *http.Request, res tripperware.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
 	defer sp.Finish()
 

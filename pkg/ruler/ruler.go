@@ -47,10 +47,13 @@ import (
 var (
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 
+	supportedQueryResponseFormats = []string{queryResponseFormatJson, queryResponseFormatProtobuf}
+
 	// Validation errors.
-	errInvalidShardingStrategy   = errors.New("invalid sharding strategy")
-	errInvalidTenantShardSize    = errors.New("invalid tenant shard size, the value must be greater than 0")
-	errInvalidMaxConcurrentEvals = errors.New("invalid max concurrent evals, the value must be greater than 0")
+	errInvalidShardingStrategy    = errors.New("invalid sharding strategy")
+	errInvalidTenantShardSize     = errors.New("invalid tenant shard size, the value must be greater than 0")
+	errInvalidMaxConcurrentEvals  = errors.New("invalid max concurrent evals, the value must be greater than 0")
+	errInvalidQueryResponseFormat = errors.New("invalid query response format")
 )
 
 const (
@@ -82,6 +85,10 @@ const (
 	unknownHealthFilter string = "unknown"
 	okHealthFilter      string = "ok"
 	errHealthFilter     string = "err"
+
+	// query response formats
+	queryResponseFormatJson     = "json"
+	queryResponseFormatProtobuf = "protobuf"
 )
 
 type DisabledRuleGroupErr struct {
@@ -96,6 +103,9 @@ func (e *DisabledRuleGroupErr) Error() string {
 type Config struct {
 	// This is used for query to query frontend to evaluate rules
 	FrontendAddress string `yaml:"frontend_address"`
+	// Query response format of query frontend for evaluating rules
+	// It will only take effect FrontendAddress is configured.
+	QueryResponseFormat string `yaml:"query_response_format"`
 	// HTTP timeout duration when querying to query frontend to evaluate rules
 	FrontendTimeout time.Duration `yaml:"-"`
 	// Query frontend GRPC Client configuration.
@@ -185,6 +195,10 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 	if cfg.ConcurrentEvalsEnabled && cfg.MaxConcurrentEvals <= 0 {
 		return errInvalidMaxConcurrentEvals
 	}
+
+	if !util.StringsContain(supportedQueryResponseFormats, cfg.QueryResponseFormat) {
+		return errInvalidQueryResponseFormat
+	}
 	return nil
 }
 
@@ -207,6 +221,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "ruler.alertmanager-use-v2", "This flag is no longer functional. V1 API is deprecated and removed", util_log.Logger)
 
 	f.StringVar(&cfg.FrontendAddress, "ruler.frontend-address", "", "[Experimental] GRPC listen address of the Query Frontend, in host:port format. If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries to Ingesters directly.")
+	f.StringVar(&cfg.QueryResponseFormat, "ruler.query-response-format", queryResponseFormatProtobuf, fmt.Sprintf("[Experimental] Query response format to get query results from Query Frontend when the rule evaluation. It will only take effect when `-ruler.frontend-address` is configured. Supported values: %s", strings.Join(supportedQueryResponseFormats, ",")))
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")

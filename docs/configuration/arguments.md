@@ -65,7 +65,7 @@ The next three options only apply when the querier is used together with the Que
 
 - `-querier.split-queries-by-interval`
 
-   If set to true, will cause the query frontend to split multi-day queries into multiple single-day queries and execute them in parallel.
+   If set, will cause the query frontend to split multi-day queries into multiple queries and execute them in parallel. A multiple of 24h should be used when setting this flag.
 
 - `-querier.cache-results`
 

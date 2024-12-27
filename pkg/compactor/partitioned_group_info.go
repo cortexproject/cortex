@@ -140,33 +140,18 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 			status.PendingPartitions++
 			allPartitionCompleted = false
 			status.PendingOrFailedPartitions = append(status.PendingOrFailedPartitions, partition)
-			continue
-		}
-
-		if partitionVisitMarker.VisitTime < p.CreationTime {
+		} else if partitionVisitMarker.VisitTime < p.CreationTime {
 			status.DeleteVisitMarker = true
 			allPartitionCompleted = false
-			continue
-		}
-
-		if partitionVisitMarker.GetStatus() == Completed {
-			continue
-		}
-
-		if (partitionVisitMarker.GetStatus() == Pending || partitionVisitMarker.GetStatus() == InProgress) && !partitionVisitMarker.IsExpired(partitionVisitMarkerTimeout) {
+		} else if (partitionVisitMarker.GetStatus() == Pending || partitionVisitMarker.GetStatus() == InProgress) && !partitionVisitMarker.IsExpired(partitionVisitMarkerTimeout) {
 			status.InProgressPartitions++
 			hasInProgressPartitions = true
 			allPartitionCompleted = false
-			continue
-		}
-
-		if partitionVisitMarker.GetStatus() == Failed {
+		} else if partitionVisitMarker.GetStatus() != Completed {
 			status.PendingPartitions++
-		} else {
-			status.PendingPartitions++
+			allPartitionCompleted = false
+			status.PendingOrFailedPartitions = append(status.PendingOrFailedPartitions, partition)
 		}
-		allPartitionCompleted = false
-		status.PendingOrFailedPartitions = append(status.PendingOrFailedPartitions, partition)
 	}
 
 	if hasInProgressPartitions {

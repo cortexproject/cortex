@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -31,6 +32,21 @@ func TestValidateLabels(t *testing.T) {
 	cfg.MaxLabelNamesPerSeries = 2
 	cfg.MaxLabelsSizeBytes = 90
 	cfg.EnforceMetricName = true
+	cfg.LimitsPerLabelSet = []LimitsPerLabelSet{
+		{
+			Limits: LimitsPerLabelSetEntry{MaxSeries: 0},
+			LabelSet: labels.FromMap(map[string]string{
+				model.MetricNameLabel: "foo",
+			}),
+			Hash: 0,
+		},
+		// Default partition
+		{
+			Limits:   LimitsPerLabelSetEntry{MaxSeries: 0},
+			LabelSet: labels.EmptyLabels(),
+			Hash:     1,
+		},
+	}
 
 	for _, c := range []struct {
 		metric                  model.Metric
@@ -120,6 +136,18 @@ func TestValidateLabels(t *testing.T) {
 	`), "cortex_discarded_samples_total"))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+			# TYPE cortex_discarded_samples_per_labelset_total counter
+			cortex_discarded_samples_per_labelset_total{labelset="{__name__=\"foo\"}",reason="max_label_names_per_series",user="testUser"} 1
+			cortex_discarded_samples_per_labelset_total{labelset="{}",reason="label_invalid",user="testUser"} 1
+			cortex_discarded_samples_per_labelset_total{labelset="{}",reason="label_name_too_long",user="testUser"} 1
+			cortex_discarded_samples_per_labelset_total{labelset="{}",reason="label_value_too_long",user="testUser"} 1
+			cortex_discarded_samples_per_labelset_total{labelset="{}",reason="labels_size_bytes_exceeded",user="testUser"} 1
+			cortex_discarded_samples_per_labelset_total{labelset="{}",reason="metric_name_invalid",user="testUser"} 1
+			cortex_discarded_samples_per_labelset_total{labelset="{}",reason="missing_metric_name",user="testUser"} 1
+	`), "cortex_discarded_samples_per_labelset_total"))
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_label_size_bytes The combined size in bytes of all labels and label values for a time series.
 			# TYPE cortex_label_size_bytes histogram
 			cortex_label_size_bytes_bucket{user="testUser",le="+Inf"} 3
@@ -133,7 +161,7 @@ func TestValidateLabels(t *testing.T) {
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
 			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
-	`), "cortex_discarded_samples_total"))
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 }
 
 func TestValidateExemplars(t *testing.T) {
@@ -254,6 +282,15 @@ func TestValidateLabelOrder(t *testing.T) {
 	cfg.MaxLabelNameLength = 10
 	cfg.MaxLabelNamesPerSeries = 10
 	cfg.MaxLabelValueLength = 10
+	cfg.LimitsPerLabelSet = []LimitsPerLabelSet{
+		{
+			Limits: LimitsPerLabelSetEntry{MaxSeries: 0},
+			LabelSet: labels.FromMap(map[string]string{
+				model.MetricNameLabel: "m",
+			}),
+			Hash: 0,
+		},
+	}
 	reg := prometheus.NewRegistry()
 	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"
@@ -269,6 +306,15 @@ func TestValidateLabelOrder(t *testing.T) {
 		{Name: "a", Value: "a"},
 	}, "a")
 	assert.Equal(t, expected, actual)
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+			# TYPE cortex_discarded_samples_per_labelset_total counter
+			cortex_discarded_samples_per_labelset_total{labelset="{__name__=\"m\"}",reason="labels_not_sorted",user="testUser"} 1
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="labels_not_sorted",user="testUser"} 1
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 }
 
 func TestValidateLabelDuplication(t *testing.T) {
@@ -276,6 +322,15 @@ func TestValidateLabelDuplication(t *testing.T) {
 	cfg.MaxLabelNameLength = 10
 	cfg.MaxLabelNamesPerSeries = 10
 	cfg.MaxLabelValueLength = 10
+	cfg.LimitsPerLabelSet = []LimitsPerLabelSet{
+		{
+			Limits: LimitsPerLabelSetEntry{MaxSeries: 0},
+			LabelSet: labels.FromMap(map[string]string{
+				model.MetricNameLabel: "a",
+			}),
+			Hash: 0,
+		},
+	}
 	reg := prometheus.NewRegistry()
 	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"
@@ -301,6 +356,15 @@ func TestValidateLabelDuplication(t *testing.T) {
 		{Name: "a", Value: "a"},
 	}, "a")
 	assert.Equal(t, expected, actual)
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+			# TYPE cortex_discarded_samples_per_labelset_total counter
+			cortex_discarded_samples_per_labelset_total{labelset="{__name__=\"a\"}",reason="duplicate_label_names",user="testUser"} 2
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="duplicate_label_names",user="testUser"} 2
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 }
 
 func TestValidateNativeHistogram(t *testing.T) {
@@ -417,4 +481,133 @@ func TestValidateNativeHistogram(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateMetrics_UpdateSamplesDiscardedForSeries(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	v := NewValidateMetrics(reg)
+	userID := "user"
+	limits := []LimitsPerLabelSet{
+		{
+			LabelSet: labels.FromMap(map[string]string{"foo": "bar"}),
+			Hash:     0,
+		},
+		{
+			LabelSet: labels.FromMap(map[string]string{"foo": "baz"}),
+			Hash:     1,
+		},
+		{
+			LabelSet: labels.EmptyLabels(),
+			Hash:     2,
+		},
+	}
+	v.UpdateSamplesDiscardedForSeries(userID, "dummy", limits, labels.FromMap(map[string]string{"foo": "bar"}), 100)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+			# TYPE cortex_discarded_samples_per_labelset_total counter
+			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"bar\"}",reason="dummy",user="user"} 100
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
+
+	v.UpdateSamplesDiscardedForSeries(userID, "out-of-order", limits, labels.FromMap(map[string]string{"foo": "baz"}), 1)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+			# TYPE cortex_discarded_samples_per_labelset_total counter
+			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"bar\"}",reason="dummy",user="user"} 100
+			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"baz\"}",reason="out-of-order",user="user"} 1
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+			cortex_discarded_samples_total{reason="out-of-order",user="user"} 1
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
+
+	// Match default partition.
+	v.UpdateSamplesDiscardedForSeries(userID, "too-old", limits, labels.FromMap(map[string]string{"foo": "foo"}), 1)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+			# TYPE cortex_discarded_samples_per_labelset_total counter
+			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"bar\"}",reason="dummy",user="user"} 100
+			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"baz\"}",reason="out-of-order",user="user"} 1
+			cortex_discarded_samples_per_labelset_total{labelset="{}",reason="too-old",user="user"} 1
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+			cortex_discarded_samples_total{reason="out-of-order",user="user"} 1
+			cortex_discarded_samples_total{reason="too-old",user="user"} 1
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
+}
+
+func TestValidateMetrics_UpdateLabelSet(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	v := NewValidateMetrics(reg)
+	userID := "user"
+	logger := log.NewNopLogger()
+	limits := []LimitsPerLabelSet{
+		{
+			LabelSet: labels.FromMap(map[string]string{"foo": "bar"}),
+			Hash:     0,
+		},
+		{
+			LabelSet: labels.FromMap(map[string]string{"foo": "baz"}),
+			Hash:     1,
+		},
+		{
+			LabelSet: labels.EmptyLabels(),
+			Hash:     2,
+		},
+	}
+
+	v.updateSamplesDiscarded(userID, "dummy", limits, 100)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+			# TYPE cortex_discarded_samples_per_labelset_total counter
+			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"bar\"}",reason="dummy",user="user"} 100
+			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"baz\"}",reason="dummy",user="user"} 100
+			cortex_discarded_samples_per_labelset_total{labelset="{}",reason="dummy",user="user"} 100
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
+
+	// Remove default partition.
+	userSet := map[string]map[uint64]struct {
+	}{
+		userID: {0: struct{}{}, 1: struct{}{}},
+	}
+	v.UpdateLabelSet(userSet, logger)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+			# TYPE cortex_discarded_samples_per_labelset_total counter
+			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"bar\"}",reason="dummy",user="user"} 100
+			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"baz\"}",reason="dummy",user="user"} 100
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
+
+	// Remove limit 1.
+	userSet = map[string]map[uint64]struct {
+	}{
+		userID: {0: struct{}{}},
+	}
+	v.UpdateLabelSet(userSet, logger)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+			# TYPE cortex_discarded_samples_per_labelset_total counter
+			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"bar\"}",reason="dummy",user="user"} 100
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
+
+	// Remove user.
+	v.UpdateLabelSet(nil, logger)
+	// cortex_discarded_samples_total metric still exists as it should be cleaned up in another loop.
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 }

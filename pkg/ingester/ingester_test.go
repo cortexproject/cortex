@@ -206,6 +206,10 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 
 	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+				# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+				# TYPE cortex_discarded_samples_per_labelset_total counter
+				cortex_discarded_samples_per_labelset_total{labelset="{label1=\"value1\"}",reason="per_labelset_series_limit",user="1"} 1
+				cortex_discarded_samples_per_labelset_total{labelset="{label2=\"value2\"}",reason="per_labelset_series_limit",user="1"} 1
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 2
@@ -217,7 +221,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				# TYPE cortex_ingester_usage_per_labelset gauge
 				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
-	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total"))
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 
 	// Should apply composite limits
 	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet,
@@ -253,6 +257,10 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	// Should backfill
 	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+				# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+				# TYPE cortex_discarded_samples_per_labelset_total counter
+				cortex_discarded_samples_per_labelset_total{labelset="{label1=\"value1\"}",reason="per_labelset_series_limit",user="1"} 1
+				cortex_discarded_samples_per_labelset_total{labelset="{label2=\"value2\"}",reason="per_labelset_series_limit",user="1"} 1
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 2
@@ -270,7 +278,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 0
 				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
-	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total"))
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 
 	// Adding 5 metrics with only 1 label
 	for i := 0; i < 5; i++ {
@@ -298,6 +306,13 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 
 	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+				# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+				# TYPE cortex_discarded_samples_per_labelset_total counter
+				cortex_discarded_samples_per_labelset_total{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",reason="per_labelset_series_limit",user="1"} 1
+				cortex_discarded_samples_per_labelset_total{labelset="{comp1=\"compValue1\"}",reason="per_labelset_series_limit",user="1"} 1
+				cortex_discarded_samples_per_labelset_total{labelset="{comp2=\"compValue2\"}",reason="per_labelset_series_limit",user="1"} 1
+				cortex_discarded_samples_per_labelset_total{labelset="{label1=\"value1\"}",reason="per_labelset_series_limit",user="1"} 1
+				cortex_discarded_samples_per_labelset_total{labelset="{label2=\"value2\"}",reason="per_labelset_series_limit",user="1"} 1
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 3
@@ -315,7 +330,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
 				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 7
 				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 2
-		`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total"))
+		`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 
 	// Should bootstrap and apply limits when configuration change
 	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet,
@@ -600,6 +615,36 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.MaxLocalSeriesPerUser = 1
 	limits.MaxLocalMetricsWithMetadataPerUser = 1
+	limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
+		{
+			LabelSet: labels.FromMap(map[string]string{"foo": "bar"}),
+			Hash:     0,
+		},
+		{
+			LabelSet: labels.EmptyLabels(),
+			Hash:     1,
+		},
+	}
+
+	userID := "1"
+	// Series
+	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
+	sample1 := cortexpb.Sample{
+		TimestampMs: 0,
+		Value:       1,
+	}
+	sample2 := cortexpb.Sample{
+		TimestampMs: 1,
+		Value:       2,
+	}
+	labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
+	sample3 := cortexpb.Sample{
+		TimestampMs: 1,
+		Value:       3,
+	}
+	// Metadata
+	metadata1 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: cortexpb.COUNTER}
+	metadata2 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric2", Help: "a help for testmetric2", Type: cortexpb.COUNTER}
 
 	dir := t.TempDir()
 
@@ -608,8 +653,8 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	blocksIngesterGenerator := func() *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, prometheus.NewRegistry(), true)
+	blocksIngesterGenerator := func(reg prometheus.Registerer) *Ingester {
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg, true)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -621,36 +666,17 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	}
 
 	tests := []string{"blocks"}
-	for i, ingGenerator := range []func() *Ingester{blocksIngesterGenerator} {
+	for i, ingGenerator := range []func(reg prometheus.Registerer) *Ingester{blocksIngesterGenerator} {
 		t.Run(tests[i], func(t *testing.T) {
-			ing := ingGenerator()
-
-			userID := "1"
-			// Series
-			labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
-			sample1 := cortexpb.Sample{
-				TimestampMs: 0,
-				Value:       1,
-			}
-			sample2 := cortexpb.Sample{
-				TimestampMs: 1,
-				Value:       2,
-			}
-			labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
-			sample3 := cortexpb.Sample{
-				TimestampMs: 1,
-				Value:       3,
-			}
-			// Metadata
-			metadata1 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: cortexpb.COUNTER}
-			metadata2 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric2", Help: "a help for testmetric2", Type: cortexpb.COUNTER}
+			reg := prometheus.NewRegistry()
+			ing := ingGenerator(reg)
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
 			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, nil, cortexpb.API))
 			require.NoError(t, err)
 
-			testLimits := func() {
+			testLimits := func(reg prometheus.Gatherer) {
 				// Append to two series, expect series-exceeded error.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, nil, cortexpb.API))
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
@@ -689,16 +715,27 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 				m, err := ing.MetricsMetadata(ctx, nil)
 				require.NoError(t, err)
 				assert.Equal(t, []*cortexpb.MetricMetadata{metadata1}, m.Metadata)
+
+				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+				# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+				# TYPE cortex_discarded_samples_per_labelset_total counter
+				cortex_discarded_samples_per_labelset_total{labelset="{}",reason="per_user_series_limit",user="1"} 1
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="per_user_series_limit",user="1"} 1
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 			}
 
-			testLimits()
+			testLimits(reg)
 
 			// Limits should hold after restart.
 			services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
-			ing = ingGenerator()
+			// Use new registry to prevent metrics registration panic.
+			reg = prometheus.NewRegistry()
+			ing = ingGenerator(reg)
 			defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
-			testLimits()
+			testLimits(reg)
 		})
 	}
 
@@ -722,6 +759,36 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.MaxLocalSeriesPerMetric = 1
 	limits.MaxLocalMetadataPerMetric = 1
+	limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
+		{
+			LabelSet: labels.FromMap(map[string]string{"foo": "bar"}),
+			Hash:     0,
+		},
+		{
+			LabelSet: labels.EmptyLabels(),
+			Hash:     1,
+		},
+	}
+
+	userID := "1"
+	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
+	sample1 := cortexpb.Sample{
+		TimestampMs: 0,
+		Value:       1,
+	}
+	sample2 := cortexpb.Sample{
+		TimestampMs: 1,
+		Value:       2,
+	}
+	labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
+	sample3 := cortexpb.Sample{
+		TimestampMs: 1,
+		Value:       3,
+	}
+
+	// Metadata
+	metadata1 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: cortexpb.COUNTER}
+	metadata2 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric2", Type: cortexpb.COUNTER}
 
 	dir := t.TempDir()
 
@@ -730,8 +797,8 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	blocksIngesterGenerator := func() *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, prometheus.NewRegistry(), true)
+	blocksIngesterGenerator := func(reg prometheus.Registerer) *Ingester {
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg, true)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -743,36 +810,17 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	}
 
 	tests := []string{"chunks", "blocks"}
-	for i, ingGenerator := range []func() *Ingester{blocksIngesterGenerator} {
+	for i, ingGenerator := range []func(reg prometheus.Registerer) *Ingester{blocksIngesterGenerator} {
 		t.Run(tests[i], func(t *testing.T) {
-			ing := ingGenerator()
-
-			userID := "1"
-			labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
-			sample1 := cortexpb.Sample{
-				TimestampMs: 0,
-				Value:       1,
-			}
-			sample2 := cortexpb.Sample{
-				TimestampMs: 1,
-				Value:       2,
-			}
-			labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
-			sample3 := cortexpb.Sample{
-				TimestampMs: 1,
-				Value:       3,
-			}
-
-			// Metadata
-			metadata1 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: cortexpb.COUNTER}
-			metadata2 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric2", Type: cortexpb.COUNTER}
+			reg := prometheus.NewRegistry()
+			ing := ingGenerator(reg)
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
 			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, nil, cortexpb.API))
 			require.NoError(t, err)
 
-			testLimits := func() {
+			testLimits := func(reg prometheus.Gatherer) {
 				// Append two series, expect series-exceeded error.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, nil, cortexpb.API))
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
@@ -811,16 +859,26 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 				m, err := ing.MetricsMetadata(ctx, nil)
 				require.NoError(t, err)
 				assert.Equal(t, []*cortexpb.MetricMetadata{metadata1}, m.Metadata)
+
+				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+				# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+				# TYPE cortex_discarded_samples_per_labelset_total counter
+				cortex_discarded_samples_per_labelset_total{labelset="{}",reason="per_metric_series_limit",user="1"} 1
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="per_metric_series_limit",user="1"} 1
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 			}
 
-			testLimits()
+			testLimits(reg)
 
 			// Limits should hold after restart.
 			services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
-			ing = ingGenerator()
+			reg = prometheus.NewRegistry()
+			ing = ingGenerator(reg)
 			defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
-			testLimits()
+			testLimits(reg)
 		})
 	}
 }
@@ -887,7 +945,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedMetadataIngested: []*cortexpb.MetricMetadata{
 				{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
 			},
-			additionalMetrics:      []string{"cortex_discarded_samples_total", "cortex_ingester_active_series"},
+			additionalMetrics:      []string{"cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total", "cortex_ingester_active_series"},
 			disableNativeHistogram: true,
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1159,9 +1217,13 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_tsdb_out_of_order_samples_total",
 				"cortex_ingester_tsdb_head_out_of_order_samples_appended_total",
 				"cortex_discarded_samples_total",
+				"cortex_discarded_samples_per_labelset_total",
 				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
+				# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+				# TYPE cortex_discarded_samples_per_labelset_total counter
+				cortex_discarded_samples_per_labelset_total{labelset="{__name__=\"test\"}",reason="sample-out-of-order",user="test"} 2
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
 				cortex_ingester_ingested_samples_total 1
@@ -1278,9 +1340,13 @@ func TestIngester_Push(t *testing.T) {
 			},
 			additionalMetrics: []string{
 				"cortex_discarded_samples_total",
+				"cortex_discarded_samples_per_labelset_total",
 				"cortex_ingester_active_series",
 			},
 			expectedMetrics: `
+				# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+				# TYPE cortex_discarded_samples_per_labelset_total counter
+				cortex_discarded_samples_per_labelset_total{labelset="{__name__=\"test\"}",reason="sample-too-old",user="test"} 1
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
 				cortex_ingester_ingested_samples_total 1
@@ -1370,8 +1436,11 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
-			additionalMetrics: []string{"cortex_discarded_samples_total", "cortex_ingester_active_series"},
+			additionalMetrics: []string{"cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total", "cortex_ingester_active_series"},
 			expectedMetrics: `
+				# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+				# TYPE cortex_discarded_samples_per_labelset_total counter
+				cortex_discarded_samples_per_labelset_total{labelset="{__name__=\"test\"}",reason="new-value-for-timestamp",user="test"} 1
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
 				cortex_ingester_ingested_samples_total 1
@@ -1659,6 +1728,16 @@ func TestIngester_Push(t *testing.T) {
 			limits := defaultLimitsTestConfig()
 			limits.MaxExemplars = testData.maxExemplars
 			limits.OutOfOrderTimeWindow = model.Duration(testData.oooTimeWindow)
+			limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
+				{
+					LabelSet: labels.FromMap(map[string]string{model.MetricNameLabel: "test"}),
+					Hash:     0,
+				},
+				{
+					LabelSet: labels.EmptyLabels(),
+					Hash:     1,
+				},
+			}
 			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry, !testData.disableNativeHistogram)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -6095,6 +6174,81 @@ func TestIngester_UserTSDB_BlocksToDelete(t *testing.T) {
 		require.Contains(t, blocksToDelete, block3.Meta().ULID)
 		require.Contains(t, blocksToDelete, block4.Meta().ULID)
 	})
+}
+
+func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
+	reg := prometheus.NewRegistry()
+	limits := defaultLimitsTestConfig()
+	userID := "1"
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
+		{
+			LabelSet: labels.FromMap(map[string]string{
+				"foo": "bar",
+			}),
+		},
+		{
+			LabelSet: labels.EmptyLabels(),
+		},
+	}
+	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
+
+	dir := t.TempDir()
+	chunksDir := filepath.Join(dir, "chunks")
+	blocksDir := filepath.Join(dir, "blocks")
+	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
+	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
+
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, reg, false)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	// Wait until it's ACTIVE
+	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+	// Add user ID.
+	wreq := &cortexpb.WriteRequest{
+		Timeseries: []cortexpb.PreallocTimeseries{
+			{TimeSeries: &cortexpb.TimeSeries{
+				Labels:  cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{model.MetricNameLabel: "test", "foo": "bar"})),
+				Samples: []cortexpb.Sample{{Value: 0, TimestampMs: 1}},
+			}},
+		},
+	}
+	_, err = i.Push(ctx, wreq)
+	require.NoError(t, err)
+
+	// Push a OOO sample
+	wreq = &cortexpb.WriteRequest{
+		Timeseries: []cortexpb.PreallocTimeseries{
+			{TimeSeries: &cortexpb.TimeSeries{
+				Labels:  cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{model.MetricNameLabel: "test", "foo": "bar"})),
+				Samples: []cortexpb.Sample{{Value: 0, TimestampMs: 0}},
+			}},
+		},
+	}
+	_, err = i.Push(ctx, wreq)
+	require.Error(t, err)
+	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
+		# TYPE cortex_discarded_samples_per_labelset_total counter
+		cortex_discarded_samples_per_labelset_total{labelset="{foo=\"bar\"}",reason="sample-out-of-order",user="1"} 1
+		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+		# TYPE cortex_discarded_samples_total counter
+		cortex_discarded_samples_total{reason="sample-out-of-order",user="1"} 1
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
+
+	// Expect per labelset validate metrics cleaned up.
+	i.closeAllTSDB()
+	i.updateLabelSetMetrics()
+	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+		# TYPE cortex_discarded_samples_total counter
+		cortex_discarded_samples_total{reason="sample-out-of-order",user="1"} 1
+	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 }
 
 // mockTenantLimits exposes per-tenant limits based on a provided map

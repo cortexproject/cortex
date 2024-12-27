@@ -137,6 +137,7 @@ type HATracker struct {
 	electedReplicaTimestamp       *prometheus.GaugeVec
 	electedReplicaPropagationTime prometheus.Histogram
 	kvCASCalls                    *prometheus.CounterVec
+	userReplicaGroupCount         *prometheus.GaugeVec
 
 	cleanupRuns               prometheus.Counter
 	replicasMarkedForDeletion prometheus.Counter
@@ -182,6 +183,11 @@ func NewHATracker(cfg HATrackerConfig, limits HATrackerLimits, trackerStatusConf
 			Help: "The total number of CAS calls to the KV store for a user ID/cluster.",
 		}, []string{"user", "cluster"}),
 
+		userReplicaGroupCount: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "ha_tracker_user_replica_group_count",
+			Help: "Number of HA replica groups tracked for each user.",
+		}, []string{"user"}),
+
 		cleanupRuns: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "ha_tracker_replicas_cleanup_started_total",
 			Help: "Number of elected replicas cleanup loops started.",
@@ -212,6 +218,12 @@ func NewHATracker(cfg HATrackerConfig, limits HATrackerLimits, trackerStatusConf
 		}
 		t.client = client
 	}
+	go func() {
+		for {
+			time.Sleep(10 * time.Second)
+			t.updateUserReplicaGroupCount()
+		}
+	}()
 
 	t.Service = services.NewBasicService(nil, t.loop, nil)
 	return t, nil
@@ -520,4 +532,13 @@ func (c *HATracker) SnapshotElectedReplicas() map[string]ReplicaDesc {
 		}
 	}
 	return electedCopy
+}
+
+func (t *HATracker) updateUserReplicaGroupCount() {
+	t.electedLock.RLock()
+	defer t.electedLock.RUnlock()
+
+	for user, groups := range t.replicaGroups {
+		t.userReplicaGroupCount.WithLabelValues(user).Set(float64(len(groups)))
+	}
 }

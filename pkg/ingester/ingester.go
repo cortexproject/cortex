@@ -1146,27 +1146,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// process it before samples. Otherwise, we risk returning an error before ingestion.
 	ingestedMetadata := i.pushMetadata(ctx, userID, req.GetMetadata())
 
-	type labelsCounter struct {
-		reasonCounter map[string]int
-		lbls          labels.Labels
-	}
-
-	labelSetCounters := make(map[uint64]*labelsCounter)
-
-	updateLabelSetCounter := func(matchedLabelSetLimits []validation.LimitsPerLabelSet, reason string) {
-		for _, l := range matchedLabelSetLimits {
-			if c, exists := labelSetCounters[l.Hash]; exists {
-				c.reasonCounter[reason]++
-			} else {
-				labelSetCounters[l.Hash] = &labelsCounter{
-					reasonCounter: map[string]int{
-						reason: 1,
-					},
-					lbls: l.LabelSet,
-				}
-			}
-		}
-	}
+	reasonCounter := newLabelSetReasonCounters()
 
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
@@ -1201,39 +1181,39 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			switch cause := errors.Cause(err); {
 			case errors.Is(cause, storage.ErrOutOfBounds):
 				sampleOutOfBoundsCount++
-				updateLabelSetCounter(matchedLabelSetLimits, sampleOutOfBounds)
+				reasonCounter.increment(matchedLabelSetLimits, sampleOutOfBounds)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrOutOfOrderSample):
 				sampleOutOfOrderCount++
-				updateLabelSetCounter(matchedLabelSetLimits, sampleOutOfOrder)
+				reasonCounter.increment(matchedLabelSetLimits, sampleOutOfOrder)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrDuplicateSampleForTimestamp):
 				newValueForTimestampCount++
-				updateLabelSetCounter(matchedLabelSetLimits, newValueForTimestamp)
+				reasonCounter.increment(matchedLabelSetLimits, newValueForTimestamp)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrTooOldSample):
 				sampleTooOldCount++
-				updateLabelSetCounter(matchedLabelSetLimits, sampleTooOld)
+				reasonCounter.increment(matchedLabelSetLimits, sampleTooOld)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
-				updateLabelSetCounter(matchedLabelSetLimits, perUserSeriesLimit)
+				reasonCounter.increment(matchedLabelSetLimits, perUserSeriesLimit)
 				updateFirstPartial(func() error { return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause)) })
 
 			case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
 				perMetricSeriesLimitCount++
-				updateLabelSetCounter(matchedLabelSetLimits, perMetricSeriesLimit)
+				reasonCounter.increment(matchedLabelSetLimits, perMetricSeriesLimit)
 				updateFirstPartial(func() error {
 					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
 				})
 
 			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
 				perLabelSetSeriesLimitCount++
-				updateLabelSetCounter(matchedLabelSetLimits, perLabelsetSeriesLimit)
+				reasonCounter.increment(matchedLabelSetLimits, perLabelsetSeriesLimit)
 				updateFirstPartial(func() error {
 					return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
 				})
@@ -1469,7 +1449,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
 	}
 
-	for h, counter := range labelSetCounters {
+	for h, counter := range reasonCounter.counters {
 		labelStr := counter.lbls.String()
 		i.validateMetrics.LabelSetTracker.Track(userID, h, counter.lbls)
 		for reason, count := range counter.reasonCounter {
@@ -3210,4 +3190,32 @@ func (i *Ingester) stopIncomingRequests() {
 	i.stoppedMtx.Lock()
 	defer i.stoppedMtx.Unlock()
 	i.stopped = true
+}
+
+type labelSetReasonCounters struct {
+	counters map[uint64]*labelSetReasonCounter
+}
+
+type labelSetReasonCounter struct {
+	reasonCounter map[string]int
+	lbls          labels.Labels
+}
+
+func newLabelSetReasonCounters() *labelSetReasonCounters {
+	return &labelSetReasonCounters{counters: make(map[uint64]*labelSetReasonCounter)}
+}
+
+func (c *labelSetReasonCounters) increment(matchedLabelSetLimits []validation.LimitsPerLabelSet, reason string) {
+	for _, l := range matchedLabelSetLimits {
+		if rc, exists := c.counters[l.Hash]; exists {
+			rc.reasonCounter[reason]++
+		} else {
+			c.counters[l.Hash] = &labelSetReasonCounter{
+				reasonCounter: map[string]int{
+					reason: 1,
+				},
+				lbls: l.LabelSet,
+			}
+		}
+	}
 }

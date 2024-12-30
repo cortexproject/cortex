@@ -8275,7 +8275,7 @@ See note on &lt;code>-querier.max-concurrent&lt;/code>&lt;/p>
 &lt;h2 id="querier-and-ruler">Querier and Ruler&lt;/h2>
 &lt;ul>
 &lt;li>
-&lt;p>&lt;code>-promql.lookback-delta&lt;/code>&lt;/p>
+&lt;p>&lt;code>-querier.lookback-delta&lt;/code>&lt;/p>
 &lt;p>Time since the last sample after which a time series is considered stale and ignored by expression evaluations.&lt;/p>
 &lt;/li>
 &lt;/ul>
@@ -8286,8 +8286,8 @@ See note on &lt;code>-querier.max-concurrent&lt;/code>&lt;/p>
 &lt;p>If set to true, will cause the query frontend to mutate incoming queries and align their start and end parameters to the step parameter of the query. This improves the cacheability of the query results.&lt;/p>
 &lt;/li>
 &lt;li>
-&lt;p>&lt;code>-querier.split-queries-by-day&lt;/code>&lt;/p>
-&lt;p>If set to true, will cause the query frontend to split multi-day queries into multiple single-day queries and execute them in parallel.&lt;/p>
+&lt;p>&lt;code>-querier.split-queries-by-interval&lt;/code>&lt;/p>
+&lt;p>If set, will cause the query frontend to split multi-day queries into multiple queries and execute them in parallel. A multiple of 24h should be used when setting this flag.&lt;/p>
 &lt;/li>
 &lt;li>
 &lt;p>&lt;code>-querier.cache-results&lt;/code>&lt;/p>
@@ -8596,13 +8596,6 @@ Update the timestamp in the KV store for a given cluster/replica only after this
 &lt;p>Requires &lt;code>-distributor.replication-factor&lt;/code>, &lt;code>-distributor.shard-by-all-labels&lt;/code>, &lt;code>-distributor.sharding-strategy&lt;/code> and &lt;code>-distributor.zone-awareness-enabled&lt;/code> set for the ingesters too.&lt;/p>
 &lt;/li>
 &lt;li>
-&lt;p>&lt;code>max_series_per_query&lt;/code> / &lt;code>-ingester.max-series-per-query&lt;/code>&lt;/p>
-&lt;/li>
-&lt;li>
-&lt;p>&lt;code>max_samples_per_query&lt;/code> / &lt;code>-ingester.max-samples-per-query&lt;/code>&lt;/p>
-&lt;p>Limits on the number of timeseries and samples returns by a single ingester during a query.&lt;/p>
-&lt;/li>
-&lt;li>
 &lt;p>&lt;code>max_metadata_per_user&lt;/code> / &lt;code>-ingester.max-metadata-per-user&lt;/code>&lt;/p>
 &lt;/li>
 &lt;li>
@@ -8647,13 +8640,6 @@ When running Cortex with blocks storage this limit is enforced in the queriers o
 &lt;li>
 &lt;p>&lt;code>max_inflight_push_requests&lt;/code> \ &lt;code>-ingester.instance-limits.max-inflight-push-requests&lt;/code>&lt;/p>
 &lt;p>Limit the maximum number of requests being handled by an ingester at once. This setting is critical for preventing ingesters from using an excessive amount of memory during high load or temporary slow downs. When this limit is reached, new requests will fail with an HTTP 500 error.&lt;/p>
-&lt;/li>
-&lt;/ul>
-&lt;h2 id="storage">Storage&lt;/h2>
-&lt;ul>
-&lt;li>
-&lt;p>&lt;code>s3.force-path-style&lt;/code>&lt;/p>
-&lt;p>Set this to &lt;code>true&lt;/code> to force the request to use path-style addressing (&lt;code>http://s3.amazonaws.com/BUCKET/KEY&lt;/code>). By default, the S3 client will use virtual hosted bucket addressing when possible (&lt;code>http://BUCKET.s3.amazonaws.com/KEY&lt;/code>).&lt;/p>
 &lt;/li>
 &lt;/ul>
 &lt;h2 id="dns-service-discovery">DNS Service Discovery&lt;/h2>

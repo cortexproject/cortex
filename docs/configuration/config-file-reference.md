@@ -4193,6 +4193,13 @@ The `query_range_config` configures the query splitting and caching in the Corte
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
+# Maximum number of splits for a range query, 0 disables it. Uses a multiple of
+# `split-queries-by-interval` to maintain the number of splits below the limit.
+# If vertical sharding is enabled for a query, the combined total number of
+# vertical and interval shards is kept below this limit
+# CLI flag: -querier.split-queries-by-interval-max-splits
+[split_queries_by_interval_max_splits: <int> | default = 0]
+
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step
 [align_queries_with_step: <boolean> | default = false]

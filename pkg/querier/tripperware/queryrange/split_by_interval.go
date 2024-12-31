@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -134,4 +135,26 @@ func nextIntervalBoundary(t, step int64, interval time.Duration) int64 {
 		target -= step
 	}
 	return target
+}
+
+func staticIntervalFn(cfg Config) func(r tripperware.Request) time.Duration {
+	return func(_ tripperware.Request) time.Duration {
+		return cfg.SplitQueriesByInterval
+	}
+}
+
+func dynamicIntervalFn(cfg Config, queryAnalyzer querysharding.Analyzer) func(r tripperware.Request) time.Duration {
+	return func(r tripperware.Request) time.Duration {
+		queryRange := time.Duration((r.GetEnd() - r.GetStart()) * int64(time.Millisecond))
+		baseInterval := cfg.SplitQueriesByInterval
+
+		analysis, _ := queryAnalyzer.Analyze(r.GetQuery())
+		maxSplits := time.Duration(cfg.SplitQueriesByIntervalMaxSplits)
+		if cfg.VerticalShardSize > 0 && analysis.IsShardable() {
+			maxSplits = time.Duration(cfg.SplitQueriesByIntervalMaxSplits / cfg.VerticalShardSize)
+		}
+
+		n := (queryRange + baseInterval*maxSplits - 1) / (baseInterval * maxSplits)
+		return n * cfg.SplitQueriesByInterval
+	}
 }

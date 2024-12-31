@@ -4186,6 +4186,12 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ruler.frontend-address&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[frontend_address&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># [Experimental] Query response format to get query results from Query Frontend&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># when the rule evaluation. It will only take effect when&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># `-ruler.frontend-address` is configured. Supported values: json,protobuf&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ruler.query-response-format&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[query_response_format&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt; | default = &amp;#34;protobuf&amp;#34;]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">frontend_client&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># gRPC client max receive message size (bytes).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ruler.frontendClient.grpc-max-recv-msg-size&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -6225,7 +6231,12 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;p>Cortex is an actively developed project and we want to encourage the introduction of new features and capability. As such, not everything in each release of Cortex is considered &amp;ldquo;production-ready&amp;rdquo;. We don&amp;rsquo;t provide any backwards compatibility guarantees on these and the config and flags might break.&lt;/p>
 &lt;p>Currently experimental features are:&lt;/p>
 &lt;ul>
-&lt;li>Ruler: Evaluate rules to query frontend instead of ingesters (enabled via &lt;code>-ruler.frontend-address&lt;/code> )&lt;/li>
+&lt;li>Ruler
+&lt;ul>
+&lt;li>Evaluate rules to query frontend instead of ingesters (enabled via &lt;code>-ruler.frontend-address&lt;/code>).&lt;/li>
+&lt;li>When &lt;code>-ruler.frontend-address&lt;/code> is specified, the response format can be specified (via &lt;code>-ruler.query-response-format&lt;/code>).&lt;/li>
+&lt;/ul>
+&lt;/li>
 &lt;li>S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).&lt;/li>
 &lt;li>Azure blob storage.&lt;/li>
 &lt;li>Zone awareness based replication.&lt;/li>

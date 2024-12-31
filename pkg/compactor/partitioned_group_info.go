@@ -279,6 +279,8 @@ func ReadPartitionedGroupInfoFile(ctx context.Context, bkt objstore.Instrumented
 }
 
 func UpdatePartitionedGroupInfo(ctx context.Context, bkt objstore.InstrumentedBucket, logger log.Logger, partitionedGroupInfo PartitionedGroupInfo) (*PartitionedGroupInfo, error) {
+	// Ignore error in order to always update partitioned group info. There is no harm to put latest version of
+	// partitioned group info which is supposed to be the correct grouping based on latest bucket store.
 	existingPartitionedGroup, _ := ReadPartitionedGroupInfo(ctx, bkt, logger, partitionedGroupInfo.PartitionedGroupID)
 	if existingPartitionedGroup != nil {
 		level.Warn(logger).Log("msg", "partitioned group info already exists", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)

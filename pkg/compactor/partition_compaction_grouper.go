@@ -338,14 +338,12 @@ func (g *PartitionCompactionGrouper) generatePartitionedGroups(blocks map[ulid.U
 		}
 	}
 
+	var blockIDs []string
 	for _, group := range groups {
 		groupHash := hashGroup(g.userID, group.rangeStart, group.rangeEnd)
 		logger := log.With(g.logger, "partitioned_group_id", groupHash, "rangeStart", group.rangeStartTime().String(), "rangeEnd", group.rangeEndTime().String())
 
-		var blockIDs []string
-		for _, b := range group.blocks {
-			blockIDs = append(blockIDs, b.ULID.String())
-		}
+		blockIDs = group.getBlockIDs()
 		level.Info(logger).Log("msg", "block group", "blocks", strings.Join(blockIDs, ","))
 
 		level.Info(logger).Log("msg", "start generating partitioned group")
@@ -411,9 +409,9 @@ func (g *PartitionCompactionGrouper) partitionBlockGroup(group blocksGroupWithPa
 	partitions := make([]Partition, partitionCount)
 	for partitionID := 0; partitionID < partitionCount; partitionID++ {
 		partitionedGroup := partitionedGroups[partitionID]
-		var blockIDs []ulid.ULID
-		for _, m := range partitionedGroup.blocks {
-			blockIDs = append(blockIDs, m.ULID)
+		blockIDs := make([]ulid.ULID, len(partitionedGroup.blocks))
+		for i, m := range partitionedGroup.blocks {
+			blockIDs[i] = m.ULID
 		}
 		partitions[partitionID] = Partition{
 			PartitionID: partitionID,

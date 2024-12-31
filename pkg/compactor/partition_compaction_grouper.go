@@ -408,17 +408,17 @@ func (g *PartitionCompactionGrouper) partitionBlockGroup(group blocksGroupWithPa
 		return nil, err
 	}
 
-	var partitions []Partition
+	partitions := make([]Partition, partitionCount)
 	for partitionID := 0; partitionID < partitionCount; partitionID++ {
 		partitionedGroup := partitionedGroups[partitionID]
 		var blockIDs []ulid.ULID
 		for _, m := range partitionedGroup.blocks {
 			blockIDs = append(blockIDs, m.ULID)
 		}
-		partitions = append(partitions, Partition{
+		partitions[partitionID] = Partition{
 			PartitionID: partitionID,
 			Blocks:      blockIDs,
-		})
+		}
 	}
 	partitionedGroupInfo := PartitionedGroupInfo{
 		PartitionedGroupID: groupHash,

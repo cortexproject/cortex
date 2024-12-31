@@ -135,11 +135,11 @@ func TestSyncerMetrics(t *testing.T) {
 			cortex_compactor_group_partition_count{user="aaa"} 511060
 			cortex_compactor_group_partition_count{user="bbb"} 522170
 			cortex_compactor_group_partition_count{user="ccc"} 533280
-			# HELP cortex_compact_group_compactions_not_planned Total number of group compaction not planned due to non-critical error (ie. group is currently visited by other compactor).
-			# TYPE cortex_compact_group_compactions_not_planned counter
-			cortex_compact_group_compactions_not_planned{user="aaa"} 544390
-			cortex_compact_group_compactions_not_planned{user="bbb"} 555500
-			cortex_compact_group_compactions_not_planned{user="ccc"} 566610
+			# HELP cortex_compactor_group_compactions_not_planned Total number of group compaction not planned due to non-critical error (ie. group is currently visited by other compactor).
+			# TYPE cortex_compactor_group_compactions_not_planned counter
+			cortex_compactor_group_compactions_not_planned{user="aaa"} 544390
+			cortex_compactor_group_compactions_not_planned{user="bbb"} 555500
+			cortex_compactor_group_compactions_not_planned{user="ccc"} 566610
 	`))
 	require.NoError(t, err)
 

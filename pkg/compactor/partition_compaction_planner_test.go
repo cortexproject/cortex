@@ -280,7 +280,7 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			if testData.visitedPartition.isExpired {
 				expireTime = expireTime.Add(-1 * visitMarkerTimeout)
 			}
-			visitMarker := PartitionVisitMarker{
+			visitMarker := partitionVisitMarker{
 				CompactorID:        testData.visitedPartition.compactorID,
 				PartitionedGroupID: partitionedGroupID,
 				PartitionID:        partitionID,

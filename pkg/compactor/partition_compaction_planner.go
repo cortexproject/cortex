@@ -85,9 +85,9 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 	// claimed same partition in grouper at same time.
 	time.Sleep(p.plannerDelay)
 
-	partitionVisitMarker := NewPartitionVisitMarker(p.ringLifecyclerID, partitionedGroupID, partitionID)
-	visitMarkerManager := NewVisitMarkerManager(p.bkt, p.logger, p.ringLifecyclerID, partitionVisitMarker)
-	existingPartitionVisitMarker := &PartitionVisitMarker{}
+	visitMarker := newPartitionVisitMarker(p.ringLifecyclerID, partitionedGroupID, partitionID)
+	visitMarkerManager := NewVisitMarkerManager(p.bkt, p.logger, p.ringLifecyclerID, visitMarker)
+	existingPartitionVisitMarker := &partitionVisitMarker{}
 	err := visitMarkerManager.ReadVisitMarker(p.ctx, existingPartitionVisitMarker)
 	visitMarkerExists := true
 	if err != nil {
@@ -100,12 +100,12 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 	if visitMarkerExists {
 		if existingPartitionVisitMarker.GetStatus() == Completed {
 			p.compactorMetrics.compactionsNotPlanned.WithLabelValues(p.userID, cortexMetaExtensions.TimeRangeStr()).Inc()
-			level.Warn(p.logger).Log("msg", "partition is in completed status", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "compactor_id", p.ringLifecyclerID, existingPartitionVisitMarker.LogInfo())
+			level.Warn(p.logger).Log("msg", "partition is in completed status", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "compactor_id", p.ringLifecyclerID, existingPartitionVisitMarker.String())
 			return nil, plannerCompletedPartitionError
 		}
 		if !existingPartitionVisitMarker.IsPendingByCompactor(p.partitionVisitMarkerTimeout, partitionID, p.ringLifecyclerID) {
 			p.compactorMetrics.compactionsNotPlanned.WithLabelValues(p.userID, cortexMetaExtensions.TimeRangeStr()).Inc()
-			level.Warn(p.logger).Log("msg", "partition is not visited by current compactor", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "compactor_id", p.ringLifecyclerID, existingPartitionVisitMarker.LogInfo())
+			level.Warn(p.logger).Log("msg", "partition is not visited by current compactor", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "compactor_id", p.ringLifecyclerID, existingPartitionVisitMarker.String())
 			return nil, plannerVisitedPartitionError
 		}
 	}

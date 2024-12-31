@@ -3424,10 +3424,25 @@ func (m *mockQueryStreamServer) Context() context.Context {
 }
 
 func BenchmarkIngester_QueryStream_Chunks(b *testing.B) {
-	benchmarkQueryStream(b)
+	tc := []struct {
+		samplesCount, seriesCount int
+	}{
+		{samplesCount: 10, seriesCount: 10},
+		{samplesCount: 10, seriesCount: 50},
+		{samplesCount: 10, seriesCount: 100},
+		{samplesCount: 50, seriesCount: 10},
+		{samplesCount: 50, seriesCount: 50},
+		{samplesCount: 50, seriesCount: 100},
+	}
+
+	for _, c := range tc {
+		b.Run(fmt.Sprintf("samplesCount=%v; seriesCount=%v", c.samplesCount, c.seriesCount), func(b *testing.B) {
+			benchmarkQueryStream(b, c.samplesCount, c.seriesCount)
+		})
+	}
 }
 
-func benchmarkQueryStream(b *testing.B) {
+func benchmarkQueryStream(b *testing.B, samplesCount, seriesCount int) {
 	cfg := defaultIngesterTestConfig(b)
 
 	// Create ingester.
@@ -3444,7 +3459,6 @@ func benchmarkQueryStream(b *testing.B) {
 	// Push series.
 	ctx := user.InjectOrgID(context.Background(), userID)
 
-	const samplesCount = 1000
 	samples := make([]cortexpb.Sample, 0, samplesCount)
 
 	for i := 0; i < samplesCount; i++ {
@@ -3454,7 +3468,6 @@ func benchmarkQueryStream(b *testing.B) {
 		})
 	}
 
-	const seriesCount = 100
 	for s := 0; s < seriesCount; s++ {
 		_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: strconv.Itoa(s)}}, samples))
 		require.NoError(b, err)
@@ -3462,7 +3475,7 @@ func benchmarkQueryStream(b *testing.B) {
 
 	req := &client.QueryRequest{
 		StartTimestampMs: 0,
-		EndTimestampMs:   samplesCount + 1,
+		EndTimestampMs:   int64(samplesCount + 1),
 
 		Matchers: []*client.LabelMatcher{{
 			Type:  client.EQUAL,
@@ -3474,6 +3487,7 @@ func benchmarkQueryStream(b *testing.B) {
 	mockStream := &mockQueryStreamServer{ctx: ctx}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 
 	for ix := 0; ix < b.N; ix++ {
 		err := i.QueryStream(req, mockStream)

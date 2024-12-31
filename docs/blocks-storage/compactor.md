@@ -286,18 +286,18 @@ compactor:
     [wait_active_instance_timeout: <duration> | default = 10m]
 
   # The compaction strategy to use. Supported values are: default, partitioning.
-  # CLI flag: -compactor.compaction-mode
-  [compaction_mode: <string> | default = "default"]
+  # CLI flag: -compactor.compaction-strategy
+  [compaction_strategy: <string> | default = "default"]
 
-  # How long block visit marker file should be considered as expired and able to
-  # be picked up by compactor again.
-  # CLI flag: -compactor.block-visit-marker-timeout
-  [block_visit_marker_timeout: <duration> | default = 5m]
+  # How long compaction visit marker file should be considered as expired and
+  # able to be picked up by compactor again.
+  # CLI flag: -compactor.compaction-visit-marker-timeout
+  [compaction_visit_marker_timeout: <duration> | default = 10m]
 
-  # How frequently block visit marker file should be updated duration
+  # How frequently compaction visit marker file should be updated duration
   # compaction.
-  # CLI flag: -compactor.block-visit-marker-file-update-interval
-  [block_visit_marker_file_update_interval: <duration> | default = 1m]
+  # CLI flag: -compactor.compaction-visit-marker-file-update-interval
+  [compaction_visit_marker_file_update_interval: <duration> | default = 1m]
 
   # How long cleaner visit marker file should be considered as expired and able
   # to be picked up by cleaner again. The value should be smaller than

@@ -130,16 +130,16 @@ func (l *Limiter) AssertMaxSeriesPerLabelSet(userID string, metric labels.Labels
 
 // FormatError returns the input error enriched with the actual limits for the given user.
 // It acts as pass-through if the input error is unknown.
-func (l *Limiter) FormatError(userID string, err error) error {
+func (l *Limiter) FormatError(userID string, err error, lbls labels.Labels) error {
 	switch {
 	case errors.Is(err, errMaxSeriesPerUserLimitExceeded):
 		return l.formatMaxSeriesPerUserError(userID)
 	case errors.Is(err, errMaxSeriesPerMetricLimitExceeded):
-		return l.formatMaxSeriesPerMetricError(userID)
+		return l.formatMaxSeriesPerMetricError(userID, lbls.Get(labels.MetricName))
 	case errors.Is(err, errMaxMetadataPerUserLimitExceeded):
 		return l.formatMaxMetadataPerUserError(userID)
 	case errors.Is(err, errMaxMetadataPerMetricLimitExceeded):
-		return l.formatMaxMetadataPerMetricError(userID)
+		return l.formatMaxMetadataPerMetricError(userID, lbls.Get(labels.MetricName))
 	case errors.As(err, &errMaxSeriesPerLabelSetLimitExceeded{}):
 		e := errMaxSeriesPerLabelSetLimitExceeded{}
 		errors.As(err, &e)
@@ -158,13 +158,13 @@ func (l *Limiter) formatMaxSeriesPerUserError(userID string) error {
 		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
 }
 
-func (l *Limiter) formatMaxSeriesPerMetricError(userID string) error {
+func (l *Limiter) formatMaxSeriesPerMetricError(userID string, metric string) error {
 	actualLimit := l.maxSeriesPerMetric(userID)
 	localLimit := l.limits.MaxLocalSeriesPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerMetric(userID)
 
-	return fmt.Errorf("per-metric series limit of %d exceeded, %s (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
+	return fmt.Errorf("per-metric series limit of %d exceeded for metric %s, %s (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), metric, l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
 }
 
 func (l *Limiter) formatMaxMetadataPerUserError(userID string) error {
@@ -176,13 +176,13 @@ func (l *Limiter) formatMaxMetadataPerUserError(userID string) error {
 		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
 }
 
-func (l *Limiter) formatMaxMetadataPerMetricError(userID string) error {
+func (l *Limiter) formatMaxMetadataPerMetricError(userID string, metric string) error {
 	actualLimit := l.maxMetadataPerMetric(userID)
 	localLimit := l.limits.MaxLocalMetadataPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalMetadataPerMetric(userID)
 
-	return fmt.Errorf("per-metric metadata limit of %d exceeded, %s (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
+	return fmt.Errorf("per-metric metadata limit of %d exceeded for metric %s, %s (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), metric, l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
 }
 
 func (l *Limiter) formatMaxSeriesPerLabelSetError(err errMaxSeriesPerLabelSetLimitExceeded) error {

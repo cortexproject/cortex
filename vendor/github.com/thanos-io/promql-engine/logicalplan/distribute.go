@@ -254,7 +254,6 @@ func (m DistributedExecutionOptimizer) Optimize(plan Node, opts *query.Options) 
 		*current = m.distributeQuery(current, engines, m.subqueryOpts(parents, current, opts), minEngineOverlap)
 		return true
 	})
-
 	return plan, *warns
 }
 

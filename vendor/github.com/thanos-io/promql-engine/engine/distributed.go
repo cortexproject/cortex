@@ -69,37 +69,45 @@ func NewDistributedEngine(opts Opts, endpoints api.RemoteEndpoints) *Distributed
 func (l DistributedEngine) SetQueryLogger(log promql.QueryLogger) {}
 
 func (l DistributedEngine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
-	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
-	// Some clients might only support second precision when executing queries.
-	ts = ts.Truncate(time.Second)
-
-	return l.remoteEngine.NewInstantQuery(ctx, q, opts, qs, ts)
+	return l.MakeInstantQuery(ctx, q, fromPromQLOpts(opts), qs, ts)
 }
 
 func (l DistributedEngine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
-	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
-	// Some clients might only support second precision when executing queries.
-	start = start.Truncate(time.Second)
-	end = end.Truncate(time.Second)
-	interval = interval.Truncate(time.Second)
-
-	return l.remoteEngine.NewRangeQuery(ctx, q, opts, qs, start, end, interval)
+	return l.MakeRangeQuery(ctx, q, fromPromQLOpts(opts), qs, start, end, interval)
 }
 
-func (l DistributedEngine) NewRangeQueryFromPlan(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, plan logicalplan.Node, start, end time.Time, interval time.Duration) (promql.Query, error) {
-	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
-	// Some clients might only support second precision when executing queries.
-	start = start.Truncate(time.Second)
-	end = end.Truncate(time.Second)
-	interval = interval.Truncate(time.Second)
-
-	return l.remoteEngine.NewRangeQueryFromPlan(ctx, q, opts, plan, start, end, interval)
-}
-
-func (l DistributedEngine) NewInstantQueryFromPlan(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, plan logicalplan.Node, ts time.Time) (promql.Query, error) {
+func (l DistributedEngine) MakeInstantQueryFromPlan(ctx context.Context, q storage.Queryable, opts *QueryOpts, plan logicalplan.Node, ts time.Time) (promql.Query, error) {
 	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
 	// Some clients might only support second precision when executing queries.
 	ts = ts.Truncate(time.Second)
 
-	return l.remoteEngine.NewInstantQueryFromPlan(ctx, q, opts, plan, ts)
+	return l.remoteEngine.MakeInstantQueryFromPlan(ctx, q, opts, plan, ts)
+}
+
+func (l DistributedEngine) MakeRangeQueryFromPlan(ctx context.Context, q storage.Queryable, opts *QueryOpts, plan logicalplan.Node, start, end time.Time, interval time.Duration) (promql.Query, error) {
+	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
+	// Some clients might only support second precision when executing queries.
+	start = start.Truncate(time.Second)
+	end = end.Truncate(time.Second)
+	interval = interval.Truncate(time.Second)
+
+	return l.remoteEngine.MakeRangeQueryFromPlan(ctx, q, opts, plan, start, end, interval)
+}
+
+func (l DistributedEngine) MakeInstantQuery(ctx context.Context, q storage.Queryable, opts *QueryOpts, qs string, ts time.Time) (promql.Query, error) {
+	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
+	// Some clients might only support second precision when executing queries.
+	ts = ts.Truncate(time.Second)
+
+	return l.remoteEngine.MakeInstantQuery(ctx, q, opts, qs, ts)
+}
+
+func (l DistributedEngine) MakeRangeQuery(ctx context.Context, q storage.Queryable, opts *QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
+	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
+	// Some clients might only support second precision when executing queries.
+	start = start.Truncate(time.Second)
+	end = end.Truncate(time.Second)
+	interval = interval.Truncate(time.Second)
+
+	return l.remoteEngine.MakeRangeQuery(ctx, q, opts, qs, start, end, interval)
 }

@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"runtime"
+	"sort"
 	"strconv"
 	"sync"
 	"testing"
@@ -26,6 +27,28 @@ func TestActiveUser(t *testing.T) {
 	as.UpdateUserTimestamp("test1", 17)
 	require.Equal(t, []string{"test3"}, as.PurgeInactiveUsers(16))
 	require.Equal(t, []string{"test1"}, as.PurgeInactiveUsers(20))
+}
+
+func TestActiveUser_ActiveUsers(t *testing.T) {
+	as := NewActiveUsers()
+	as.UpdateUserTimestamp("test1", 5)
+	as.UpdateUserTimestamp("test2", 10)
+	as.UpdateUserTimestamp("test3", 15)
+
+	users := as.ActiveUsers(0)
+	sort.Strings(users)
+	require.Equal(t, []string{"test1", "test2", "test3"}, users)
+
+	users = as.ActiveUsers(5)
+	sort.Strings(users)
+	require.Equal(t, []string{"test2", "test3"}, users)
+
+	users = as.ActiveUsers(10)
+	sort.Strings(users)
+	require.Equal(t, []string{"test3"}, users)
+
+	users = as.ActiveUsers(15)
+	require.Equal(t, []string{}, users)
 }
 
 func TestActiveUserConcurrentUpdateAndPurge(t *testing.T) {

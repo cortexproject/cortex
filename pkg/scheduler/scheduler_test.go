@@ -430,7 +430,11 @@ func TestSchedulerMetrics(t *testing.T) {
 		# TYPE cortex_query_scheduler_queue_length gauge
 		cortex_query_scheduler_queue_length{priority="0",type="fifo",user="another"} 1
 		cortex_query_scheduler_queue_length{priority="0",type="fifo",user="test"} 1
-	`), "cortex_query_scheduler_queue_length"))
+		# HELP cortex_request_queue_requests_total Total number of query requests going to the request queue.
+		# TYPE cortex_request_queue_requests_total counter
+		cortex_request_queue_requests_total{priority="0",user="another"} 1
+		cortex_request_queue_requests_total{priority="0",user="test"} 1
+	`), "cortex_query_scheduler_queue_length", "cortex_request_queue_requests_total"))
 
 	scheduler.cleanupMetricsForInactiveUser("test")
 
@@ -438,7 +442,10 @@ func TestSchedulerMetrics(t *testing.T) {
 		# HELP cortex_query_scheduler_queue_length Number of queries in the queue.
 		# TYPE cortex_query_scheduler_queue_length gauge
 		cortex_query_scheduler_queue_length{priority="0",type="fifo",user="another"} 1
-	`), "cortex_query_scheduler_queue_length"))
+		# HELP cortex_request_queue_requests_total Total number of query requests going to the request queue.
+		# TYPE cortex_request_queue_requests_total counter
+		cortex_request_queue_requests_total{priority="0",user="another"} 1
+	`), "cortex_query_scheduler_queue_length", "cortex_request_queue_requests_total"))
 }
 
 func initFrontendLoop(t *testing.T, client schedulerpb.SchedulerForFrontendClient, frontendAddr string) schedulerpb.SchedulerForFrontend_FrontendLoopClient {

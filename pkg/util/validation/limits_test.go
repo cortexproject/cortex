@@ -791,3 +791,63 @@ func TestEvaluationDelayHigherThanRulerQueryOffset(t *testing.T) {
 	rulerQueryOffset := ov.RulerQueryOffset(tenant)
 	assert.Equal(t, evaluationDelay, rulerQueryOffset)
 }
+
+func TestLimitsPerLabelSetsForSeries(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		limits         []LimitsPerLabelSet
+		metric         labels.Labels
+		expectedLimits []LimitsPerLabelSet
+	}{
+		{
+			name:   "no limits",
+			metric: labels.FromMap(map[string]string{"foo": "bar"}),
+		},
+		{
+			name:   "no limits matched",
+			metric: labels.FromMap(map[string]string{"foo": "bar"}),
+			limits: []LimitsPerLabelSet{
+				{LabelSet: labels.FromMap(map[string]string{"foo": "baz"})},
+			},
+			expectedLimits: []LimitsPerLabelSet{},
+		},
+		{
+			name:   "one limit matched",
+			metric: labels.FromMap(map[string]string{"foo": "bar"}),
+			limits: []LimitsPerLabelSet{
+				{LabelSet: labels.FromMap(map[string]string{"foo": "baz"})},
+				{LabelSet: labels.FromMap(map[string]string{"foo": "bar"})},
+			},
+			expectedLimits: []LimitsPerLabelSet{
+				{LabelSet: labels.FromMap(map[string]string{"foo": "bar"})},
+			},
+		},
+		{
+			name:   "default limit matched",
+			metric: labels.FromMap(map[string]string{"foo": "bar"}),
+			limits: []LimitsPerLabelSet{
+				{LabelSet: labels.FromMap(map[string]string{"foo": "baz"})},
+				{LabelSet: labels.FromMap(map[string]string{})},
+			},
+			expectedLimits: []LimitsPerLabelSet{
+				{LabelSet: labels.FromMap(map[string]string{})},
+			},
+		},
+		{
+			name:   "one limit matched so not picking default limit",
+			metric: labels.FromMap(map[string]string{"foo": "bar", "cluster": "us-west-2"}),
+			limits: []LimitsPerLabelSet{
+				{LabelSet: labels.FromMap(map[string]string{"foo": "bar", "cluster": "us-west-2"})},
+				{LabelSet: labels.FromMap(map[string]string{})},
+			},
+			expectedLimits: []LimitsPerLabelSet{
+				{LabelSet: labels.FromMap(map[string]string{"foo": "bar", "cluster": "us-west-2"})},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			matched := LimitsPerLabelSetsForSeries(tc.limits, tc.metric)
+			require.Equal(t, tc.expectedLimits, matched)
+		})
+	}
+}

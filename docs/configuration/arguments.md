@@ -53,7 +53,7 @@ The next three options only apply when the querier is used together with the Que
 
 ## Querier and Ruler
 
-- `-promql.lookback-delta`
+- `-querier.lookback-delta`
 
    Time since the last sample after which a time series is considered stale and ignored by expression evaluations.
 
@@ -63,9 +63,9 @@ The next three options only apply when the querier is used together with the Que
 
    If set to true, will cause the query frontend to mutate incoming queries and align their start and end parameters to the step parameter of the query.  This improves the cacheability of the query results.
 
-- `-querier.split-queries-by-day`
+- `-querier.split-queries-by-interval`
 
-   If set to true, will cause the query frontend to split multi-day queries into multiple single-day queries and execute them in parallel.
+   If set, will cause the query frontend to split multi-day queries into multiple queries and execute them in parallel. A multiple of 24h should be used when setting this flag.
 
 - `-querier.cache-results`
 
@@ -391,12 +391,6 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
    Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels`, `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` set for the ingesters too.
 
-- `max_series_per_query` / `-ingester.max-series-per-query`
-
-- `max_samples_per_query` / `-ingester.max-samples-per-query`
-
-  Limits on the number of timeseries and samples returns by a single ingester during a query.
-
 - `max_metadata_per_user` / `-ingester.max-metadata-per-user`
 - `max_metadata_per_metric` / `-ingester.max-metadata-per-metric`
   Enforced by the ingesters; limits the number of active metadata a user (or a given metric) can have.  When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of metadata a metric can have 'globally', as all metadata for a single metric will be sent to the same replication set of ingesters.  This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.
@@ -442,12 +436,6 @@ Valid ingester instance limits are (with their corresponding flags):
 - `max_inflight_push_requests` \ `-ingester.instance-limits.max-inflight-push-requests`
 
   Limit the maximum number of requests being handled by an ingester at once. This setting is critical for preventing ingesters from using an excessive amount of memory during high load or temporary slow downs. When this limit is reached, new requests will fail with an HTTP 500 error.
-
-## Storage
-
-- `s3.force-path-style`
-
-  Set this to `true` to force the request to use path-style addressing (`http://s3.amazonaws.com/BUCKET/KEY`). By default, the S3 client will use virtual hosted bucket addressing when possible (`http://BUCKET.s3.amazonaws.com/KEY`).
 
 ## DNS Service Discovery
 

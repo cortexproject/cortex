@@ -64,6 +64,8 @@ const (
 
 	clearStaleIngesterMetricsInterval = time.Minute
 
+	labelSetMetricsTickInterval = 30 * time.Second
+
 	// mergeSlicesParallelism is a constant of how much go routines we should use to merge slices, and
 	// it was based on empirical observation: See BenchmarkMergeSlicesParallel
 	mergeSlicesParallelism = 8
@@ -107,6 +109,7 @@ type Distributor struct {
 	// Metrics
 	queryDuration                    *instrument.HistogramCollector
 	receivedSamples                  *prometheus.CounterVec
+	receivedSamplesPerLabelSet       *prometheus.CounterVec
 	receivedExemplars                *prometheus.CounterVec
 	receivedMetadata                 *prometheus.CounterVec
 	incomingSamples                  *prometheus.CounterVec
@@ -125,6 +128,9 @@ type Distributor struct {
 	validateMetrics *validation.ValidateMetrics
 
 	asyncExecutor util.AsyncExecutor
+
+	// Map to track label sets from user.
+	labelSetTracker *labelSetTracker
 }
 
 // Config contains the configuration required to
@@ -302,6 +308,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name:      "distributor_received_samples_total",
 			Help:      "The total number of received samples, excluding rejected and deduped samples.",
 		}, []string{"user", "type"}),
+		receivedSamplesPerLabelSet: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "distributor_received_samples_per_labelset_total",
+			Help:      "The total number of received samples per label set, excluding rejected and deduped samples.",
+		}, []string{"user", "type", "labelset"}),
 		receivedExemplars: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Name:      "distributor_received_exemplars_total",
@@ -377,6 +388,8 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		asyncExecutor:   util.NewNoOpExecutor(),
 	}
 
+	d.labelSetTracker = newLabelSetTracker(d.receivedSamplesPerLabelSet)
+
 	if cfg.NumPushWorkers > 0 {
 		util_log.WarnExperimentalUse("Distributor: using goroutine worker pool")
 		d.asyncExecutor = util.NewWorkerPool("distributor", cfg.NumPushWorkers, reg)
@@ -449,6 +462,9 @@ func (d *Distributor) running(ctx context.Context) error {
 	staleIngesterMetricTicker := time.NewTicker(clearStaleIngesterMetricsInterval)
 	defer staleIngesterMetricTicker.Stop()
 
+	labelSetMetricsTicker := time.NewTicker(labelSetMetricsTickInterval)
+	defer labelSetMetricsTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -459,6 +475,9 @@ func (d *Distributor) running(ctx context.Context) error {
 
 		case <-staleIngesterMetricTicker.C:
 			d.cleanStaleIngesterMetrics()
+
+		case <-labelSetMetricsTicker.C:
+			d.updateLabelSetMetrics()
 
 		case err := <-d.subservicesWatcher.Chan():
 			return errors.Wrap(err, "distributor subservice failed")
@@ -484,6 +503,10 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 
 	if err := util.DeleteMatchingLabels(d.dedupedSamples, map[string]string{"user": userID}); err != nil {
 		level.Warn(d.log).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
+	}
+
+	if err := util.DeleteMatchingLabels(d.receivedSamplesPerLabelSet, map[string]string{"user": userID}); err != nil {
+		level.Warn(d.log).Log("msg", "failed to remove cortex_distributor_received_samples_per_labelset_total metric for user", "user", userID, "err", err)
 	}
 
 	validation.DeletePerUserValidationMetrics(d.validateMetrics, userID, d.log)
@@ -777,6 +800,19 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	return &cortexpb.WriteResponse{}, firstPartialErr
 }
 
+func (d *Distributor) updateLabelSetMetrics() {
+	activeUserSet := make(map[string]map[uint64]struct{})
+	for _, user := range d.activeUsers.ActiveUsers() {
+		limits := d.limits.LimitsPerLabelSet(user)
+		activeUserSet[user] = make(map[uint64]struct{}, len(limits))
+		for _, l := range limits {
+			activeUserSet[user][l.Hash] = struct{}{}
+		}
+	}
+
+	d.labelSetTracker.updateMetrics(activeUserSet)
+}
+
 func (d *Distributor) cleanStaleIngesterMetrics() {
 	healthy, unhealthy, err := d.ingestersRing.GetAllInstanceDescs(ring.WriteNoExtend)
 	if err != nil {
@@ -888,8 +924,12 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	validatedFloatSamples := 0
 	validatedHistogramSamples := 0
 	validatedExemplars := 0
+	limitsPerLabelSet := d.limits.LimitsPerLabelSet(userID)
 
-	var firstPartialErr error
+	var (
+		labelSetCounters map[uint64]*samplesLabelSetEntry
+		firstPartialErr  error
+	)
 
 	latestSampleTimestampMs := int64(0)
 	defer func() {
@@ -1005,11 +1045,32 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			continue
 		}
 
+		matchedLabelSetLimits := validation.LimitsPerLabelSetsForSeries(limitsPerLabelSet, cortexpb.FromLabelAdaptersToLabels(validatedSeries.Labels))
+		if len(matchedLabelSetLimits) > 0 && labelSetCounters == nil {
+			// TODO: use pool.
+			labelSetCounters = make(map[uint64]*samplesLabelSetEntry, len(matchedLabelSetLimits))
+		}
+		for _, l := range matchedLabelSetLimits {
+			if c, exists := labelSetCounters[l.Hash]; exists {
+				c.floatSamples += int64(len(ts.Samples))
+				c.histogramSamples += int64(len(ts.Histograms))
+			} else {
+				labelSetCounters[l.Hash] = &samplesLabelSetEntry{
+					floatSamples:     int64(len(ts.Samples)),
+					histogramSamples: int64(len(ts.Histograms)),
+					labels:           l.LabelSet,
+				}
+			}
+		}
+
 		seriesKeys = append(seriesKeys, key)
 		validatedTimeseries = append(validatedTimeseries, validatedSeries)
 		validatedFloatSamples += len(ts.Samples)
 		validatedHistogramSamples += len(ts.Histograms)
 		validatedExemplars += len(ts.Exemplars)
+	}
+	for h, counter := range labelSetCounters {
+		d.labelSetTracker.increaseSamplesLabelSet(userID, h, counter.labels, counter.floatSamples, counter.histogramSamples)
 	}
 	return seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
 }

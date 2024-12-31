@@ -231,11 +231,15 @@ func NewQuerierHandler(
 		nil,
 		false,
 	)
+	// Let's clear all codecs to create the instrumented ones
+	api.ClearCodecs()
+	cm := codec.NewInstrumentedCodecMetrics(reg)
 
-	// JSON codec is already installed. Install Protobuf codec to give the option for using either.
-	api.InstallCodec(codec.ProtobufCodec{CortexInternal: false})
+	api.InstallCodec(codec.NewInstrumentedCodec(v1.JSONCodec{}, cm))
+	// Install Protobuf codec to give the option for using either.
+	api.InstallCodec(codec.NewInstrumentedCodec(codec.ProtobufCodec{CortexInternal: false}, cm))
 	// Protobuf codec for Cortex internal requests. This should be used by Cortex Ruler only for remote evaluation.
-	api.InstallCodec(codec.ProtobufCodec{CortexInternal: true})
+	api.InstallCodec(codec.NewInstrumentedCodec(codec.ProtobufCodec{CortexInternal: true}, cm))
 
 	router := mux.NewRouter()
 

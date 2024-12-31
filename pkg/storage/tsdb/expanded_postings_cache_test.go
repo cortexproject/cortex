@@ -8,11 +8,42 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 )
+
+func TestCacheKey(t *testing.T) {
+	blockID := ulid.MustNew(1, nil)
+	seed := "seed123"
+	matchers := []*labels.Matcher{
+		{
+			Type:  labels.MatchEqual,
+			Name:  "name_1",
+			Value: "value_1",
+		},
+		{
+			Type:  labels.MatchNotEqual,
+			Name:  "name_2",
+			Value: "value_2",
+		},
+		{
+			Type:  labels.MatchRegexp,
+			Name:  "name_3",
+			Value: "value_4",
+		},
+		{
+			Type:  labels.MatchNotRegexp,
+			Name:  "name_5",
+			Value: "value_4",
+		},
+	}
+	r := cacheKey(seed, blockID, matchers...)
+	require.Equal(t, "seed123|00000000010000000000000000|name_1=value_1|name_2!=value_2|name_3=~value_4|name_5!~value_4|", r)
+}
 
 func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
 	cfg := PostingsCacheConfig{
@@ -123,10 +154,10 @@ func TestFifoCacheExpire(t *testing.T) {
 
 			if c.expectedFinalItems != numberOfKeys {
 				err := testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
-		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
-		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
-        cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="full"} %v
-`, numberOfKeys-c.expectedFinalItems)), "cortex_ingester_expanded_postings_cache_evicts")
+		# HELP cortex_ingester_expanded_postings_cache_evicts_total Total number of evictions in the cache, excluding items that got evicted due to TTL.
+		# TYPE cortex_ingester_expanded_postings_cache_evicts_total counter
+        cortex_ingester_expanded_postings_cache_evicts_total{cache="test",reason="full"} %v
+`, numberOfKeys-c.expectedFinalItems)), "cortex_ingester_expanded_postings_cache_evicts_total")
 				require.NoError(t, err)
 
 			}
@@ -150,10 +181,11 @@ func TestFifoCacheExpire(t *testing.T) {
 				}
 
 				err := testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
-		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
-		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
-        cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="expired"} %v
-`, numberOfKeys)), "cortex_ingester_expanded_postings_cache_evicts")
+		# HELP cortex_ingester_expanded_postings_cache_miss_total Total number of miss requests to the cache.
+		# TYPE cortex_ingester_expanded_postings_cache_miss_total counter
+		cortex_ingester_expanded_postings_cache_miss_total{cache="test",reason="expired"} %v
+		cortex_ingester_expanded_postings_cache_miss_total{cache="test",reason="miss"} %v
+`, numberOfKeys, numberOfKeys)), "cortex_ingester_expanded_postings_cache_miss_total")
 				require.NoError(t, err)
 
 				cache.timeNow = func() time.Time {
@@ -164,12 +196,12 @@ func TestFifoCacheExpire(t *testing.T) {
 					return 2, 18, nil
 				})
 
-				// Should expire all keys again as ttl is expired
+				// Should expire all keys expired keys
 				err = testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
-		# HELP cortex_ingester_expanded_postings_cache_evicts Total number of evictions in the cache, excluding items that got evicted due to TTL.
-		# TYPE cortex_ingester_expanded_postings_cache_evicts counter
-        cortex_ingester_expanded_postings_cache_evicts{cache="test",reason="expired"} %v
-`, numberOfKeys*2)), "cortex_ingester_expanded_postings_cache_evicts")
+		# HELP cortex_ingester_expanded_postings_cache_evicts_total Total number of evictions in the cache, excluding items that got evicted due to TTL.
+		# TYPE cortex_ingester_expanded_postings_cache_evicts_total counter
+        cortex_ingester_expanded_postings_cache_evicts_total{cache="test",reason="expired"} %v
+`, numberOfKeys)), "cortex_ingester_expanded_postings_cache_evicts_total")
 				require.NoError(t, err)
 			}
 		})

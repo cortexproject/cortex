@@ -532,6 +532,7 @@ func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {
 	s.discardedRequests.DeletePartialMatch(prometheus.Labels{
 		"user": user,
 	})
+	s.requestQueue.CleanupInactiveUserMetrics(user)
 }
 
 func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {

@@ -110,8 +110,8 @@ func seriesSetFromResponseStream(s *mockQueryStreamServer) (storage.SeriesSet, e
 
 		serieses = append(serieses, &storage.SeriesEntry{
 			Lset: ls,
-			SampleIteratorFn: func(_ chunkenc.Iterator) chunkenc.Iterator {
-				return batch.NewChunkMergeIterator(chunks, math.MinInt64, math.MaxInt64)
+			SampleIteratorFn: func(it chunkenc.Iterator) chunkenc.Iterator {
+				return batch.NewChunkMergeIterator(it, chunks, math.MinInt64, math.MaxInt64)
 			},
 		})
 	}
@@ -366,22 +366,117 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 3
 	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
-	// Should remove metrics when the limits is removed
-	limits.LimitsPerLabelSet = limits.LimitsPerLabelSet[:2]
+	// Add default partition -> no label set configured working as a fallback when a series
+	// doesn't match any existing label set limit.
+	emptyLabels := labels.EmptyLabels()
+	defaultPartitionLimits := validation.LimitsPerLabelSet{LabelSet: emptyLabels,
+		Limits: validation.LimitsPerLabelSetEntry{
+			MaxSeries: 2,
+		},
+	}
+	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet, defaultPartitionLimits)
+	b, err = json.Marshal(limits)
+	require.NoError(t, err)
+	require.NoError(t, limits.UnmarshalJSON(b))
+	tenantLimits.setLimits(userID, &limits)
+
+	lbls = []string{labels.MetricName, "test_default"}
+	for i := 0; i < 2; i++ {
+		_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
+			[]labels.Labels{labels.FromStrings(append(lbls, "series", strconv.Itoa(i))...)}, samples, nil, nil, cortexpb.API))
+		require.NoError(t, err)
+	}
+
+	// Max series limit for default partition is 2 so 1 more series will be throttled.
+	_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
+		[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", "extraValueUpdate2")...)}, samples, nil, nil, cortexpb.API))
+	httpResp, ok = httpgrpc.HTTPResponseFromError(err)
+	require.True(t, ok, "returned error is not an httpgrpc response")
+	assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
+	require.ErrorContains(t, err, emptyLabels.String())
+
+	ing.updateActiveSeries(ctx)
+	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 7
+				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{}",limit="max_series",user="1"} 2
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
+
+	// Add a new label set limit.
+	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet,
+		validation.LimitsPerLabelSet{LabelSet: labels.FromMap(map[string]string{
+			"series": "0",
+		}),
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 3,
+			},
+		},
+	)
 	b, err = json.Marshal(limits)
 	require.NoError(t, err)
 	require.NoError(t, limits.UnmarshalJSON(b))
 	tenantLimits.setLimits(userID, &limits)
 	ing.updateActiveSeries(ctx)
+	// Default partition usage reduced from 2 to 1 as one series in default partition
+	// now counted into the new partition.
+	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{series=\"0\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 7
+				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{series=\"0\"}",limit="max_series",user="1"} 1
+				cortex_ingester_usage_per_labelset{labelset="{}",limit="max_series",user="1"} 1
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
+
+	// Should remove metrics when the limits is removed, keep default partition limit
+	limits.LimitsPerLabelSet = limits.LimitsPerLabelSet[:2]
+	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet, defaultPartitionLimits)
+	b, err = json.Marshal(limits)
+	require.NoError(t, err)
+	require.NoError(t, limits.UnmarshalJSON(b))
+	tenantLimits.setLimits(userID, &limits)
+	ing.updateActiveSeries(ctx)
+	// Default partition usage increased from 2 to 10 as some existing partitions got removed.
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
 				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
 				# TYPE cortex_ingester_limits_per_labelset gauge
 				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{}",limit="max_series",user="1"} 2
 				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
 				# TYPE cortex_ingester_usage_per_labelset gauge
 				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{}",limit="max_series",user="1"} 10
 	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
 	// Should persist between restarts
@@ -396,11 +491,20 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				# TYPE cortex_ingester_limits_per_labelset gauge
 				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{}",limit="max_series",user="1"} 2
 				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
 				# TYPE cortex_ingester_usage_per_labelset gauge
 				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
 				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{}",limit="max_series",user="1"} 10
 	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
+
+	// Force set tenant to be deleted.
+	ing.getTSDB(userID).deletionMarkFound.Store(true)
+	require.Equal(t, tsdbTenantMarkedForDeletion, ing.closeAndDeleteUserTSDBIfIdle(userID))
+	// LabelSet metrics cleaned up.
+	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(``), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
+
 	services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 }
@@ -416,6 +520,13 @@ func TestPushRace(t *testing.T) {
 			LabelSet: labels.FromMap(map[string]string{
 				labels.MetricName: "foo",
 			}),
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 10e10,
+			},
+		},
+		{
+			// Default partition.
+			LabelSet: labels.EmptyLabels(),
 			Limits: validation.LimitsPerLabelSetEntry{
 				MaxSeries: 10e10,
 			},
@@ -451,6 +562,10 @@ func TestPushRace(t *testing.T) {
 				defer wg.Done()
 				_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "foo", "userId", userID, "k", strconv.Itoa(k))}, []cortexpb.Sample{sample1}, nil, nil, cortexpb.API))
 				require.NoError(t, err)
+
+				// Go to default partition.
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "bar", "userId", userID, "k", strconv.Itoa(k))}, []cortexpb.Sample{sample1}, nil, nil, cortexpb.API))
+				require.NoError(t, err)
 			}()
 		}
 	}
@@ -472,13 +587,13 @@ func TestPushRace(t *testing.T) {
 		err = ir.Series(p.At(), &builder, nil)
 		require.NoError(t, err)
 		lbls := builder.Labels()
-		require.Equal(t, "foo", lbls.Get(labels.MetricName))
+		require.True(t, lbls.Get(labels.MetricName) == "foo" || lbls.Get(labels.MetricName) == "bar")
 		require.Equal(t, "1", lbls.Get("userId"))
 		require.NotEmpty(t, lbls.Get("k"))
 		builder.Reset()
 	}
-	require.Equal(t, numberOfSeries, total)
-	require.Equal(t, uint64(numberOfSeries), db.Head().NumSeries())
+	require.Equal(t, 2*numberOfSeries, total)
+	require.Equal(t, uint64(2*numberOfSeries), db.Head().NumSeries())
 }
 
 func TestIngesterUserLimitExceeded(t *testing.T) {
@@ -541,7 +656,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
-				assert.Equal(t, wrapWithUser(makeLimitError(perUserSeriesLimit, ing.limiter.FormatError(userID, errMaxSeriesPerUserLimitExceeded)), userID).Error(), string(httpResp.Body))
+				assert.Equal(t, wrapWithUser(makeLimitError(perUserSeriesLimit, ing.limiter.FormatError(userID, errMaxSeriesPerUserLimitExceeded, labels1)), userID).Error(), string(httpResp.Body))
 
 				// Append two metadata, expect no error since metadata is a best effort approach.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, nil, cortexpb.API))
@@ -663,7 +778,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
-				assert.Equal(t, wrapWithUser(makeMetricLimitError(perMetricSeriesLimit, labels3, ing.limiter.FormatError(userID, errMaxSeriesPerMetricLimitExceeded)), userID).Error(), string(httpResp.Body))
+				assert.Equal(t, wrapWithUser(makeMetricLimitError(perMetricSeriesLimit, labels3, ing.limiter.FormatError(userID, errMaxSeriesPerMetricLimitExceeded, labels1)), userID).Error(), string(httpResp.Body))
 
 				// Append two metadata for the same metric. Drop the second one, and expect no error since metadata is a best effort approach.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, nil, cortexpb.API))
@@ -2958,6 +3073,12 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 			res, err := i.MetricsForLabelMatchers(ctx, req)
 			require.NoError(t, err)
 			assert.ElementsMatch(t, testData.expected, res.Metric)
+
+			// Stream
+			ss := mockMetricsForLabelMatchersStreamServer{ctx: ctx}
+			err = i.MetricsForLabelMatchersStream(req, &ss)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, testData.expected, ss.res.Metric)
 		})
 	}
 }
@@ -3292,6 +3413,21 @@ func writeRequestSingleSeries(lbls labels.Labels, samples []cortexpb.Sample) *co
 	return req
 }
 
+type mockMetricsForLabelMatchersStreamServer struct {
+	grpc.ServerStream
+	ctx context.Context
+	res client.MetricsForLabelMatchersStreamResponse
+}
+
+func (m *mockMetricsForLabelMatchersStreamServer) Send(response *client.MetricsForLabelMatchersStreamResponse) error {
+	m.res.Metric = append(m.res.Metric, response.Metric...)
+	return nil
+}
+
+func (m *mockMetricsForLabelMatchersStreamServer) Context() context.Context {
+	return m.ctx
+}
+
 type mockQueryStreamServer struct {
 	grpc.ServerStream
 	ctx context.Context
@@ -3309,10 +3445,25 @@ func (m *mockQueryStreamServer) Context() context.Context {
 }
 
 func BenchmarkIngester_QueryStream_Chunks(b *testing.B) {
-	benchmarkQueryStream(b)
+	tc := []struct {
+		samplesCount, seriesCount int
+	}{
+		{samplesCount: 10, seriesCount: 10},
+		{samplesCount: 10, seriesCount: 50},
+		{samplesCount: 10, seriesCount: 100},
+		{samplesCount: 50, seriesCount: 10},
+		{samplesCount: 50, seriesCount: 50},
+		{samplesCount: 50, seriesCount: 100},
+	}
+
+	for _, c := range tc {
+		b.Run(fmt.Sprintf("samplesCount=%v; seriesCount=%v", c.samplesCount, c.seriesCount), func(b *testing.B) {
+			benchmarkQueryStream(b, c.samplesCount, c.seriesCount)
+		})
+	}
 }
 
-func benchmarkQueryStream(b *testing.B) {
+func benchmarkQueryStream(b *testing.B, samplesCount, seriesCount int) {
 	cfg := defaultIngesterTestConfig(b)
 
 	// Create ingester.
@@ -3329,7 +3480,6 @@ func benchmarkQueryStream(b *testing.B) {
 	// Push series.
 	ctx := user.InjectOrgID(context.Background(), userID)
 
-	const samplesCount = 1000
 	samples := make([]cortexpb.Sample, 0, samplesCount)
 
 	for i := 0; i < samplesCount; i++ {
@@ -3339,7 +3489,6 @@ func benchmarkQueryStream(b *testing.B) {
 		})
 	}
 
-	const seriesCount = 100
 	for s := 0; s < seriesCount; s++ {
 		_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: strconv.Itoa(s)}}, samples))
 		require.NoError(b, err)
@@ -3347,7 +3496,7 @@ func benchmarkQueryStream(b *testing.B) {
 
 	req := &client.QueryRequest{
 		StartTimestampMs: 0,
-		EndTimestampMs:   samplesCount + 1,
+		EndTimestampMs:   int64(samplesCount + 1),
 
 		Matchers: []*client.LabelMatcher{{
 			Type:  client.EQUAL,
@@ -3359,6 +3508,7 @@ func benchmarkQueryStream(b *testing.B) {
 	mockStream := &mockQueryStreamServer{ctx: ctx}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 
 	for ix := 0; ix < b.N; ix++ {
 		err := i.QueryStream(req, mockStream)
@@ -5438,22 +5588,22 @@ func TestExpendedPostingsCache(t *testing.T) {
 
 			if c.expectedHeadPostingCall > 0 || c.expectedBlockPostingCall > 0 {
 				metric := `
-		# HELP cortex_ingester_expanded_postings_cache_requests Total number of requests to the cache.
-		# TYPE cortex_ingester_expanded_postings_cache_requests counter
+		# HELP cortex_ingester_expanded_postings_cache_requests_total Total number of requests to the cache.
+		# TYPE cortex_ingester_expanded_postings_cache_requests_total counter
 `
 				if c.expectedBlockPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_requests{cache="block"} 4
+		cortex_ingester_expanded_postings_cache_requests_total{cache="block"} 4
 `
 				}
 
 				if c.expectedHeadPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_requests{cache="head"} 4
+		cortex_ingester_expanded_postings_cache_requests_total{cache="head"} 4
 `
 				}
 
-				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_requests")
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_requests_total")
 				require.NoError(t, err)
 			}
 
@@ -5468,22 +5618,22 @@ func TestExpendedPostingsCache(t *testing.T) {
 
 			if c.expectedHeadPostingCall > 0 || c.expectedBlockPostingCall > 0 {
 				metric := `
-		# HELP cortex_ingester_expanded_postings_cache_hits Total number of hit requests to the cache.
-		# TYPE cortex_ingester_expanded_postings_cache_hits counter
+		# HELP cortex_ingester_expanded_postings_cache_hits_total Total number of hit requests to the cache.
+		# TYPE cortex_ingester_expanded_postings_cache_hits_total counter
 `
 				if c.expectedBlockPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_hits{cache="block"} 4
+		cortex_ingester_expanded_postings_cache_hits_total{cache="block"} 4
 `
 				}
 
 				if c.expectedHeadPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_hits{cache="head"} 4
+		cortex_ingester_expanded_postings_cache_hits_total{cache="head"} 4
 `
 				}
 
-				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_hits")
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_hits_total")
 				require.NoError(t, err)
 			}
 
@@ -5529,10 +5679,10 @@ func TestExpendedPostingsCache(t *testing.T) {
 			require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedBlockPostingCall))
 			if c.cacheConfig.Head.Enabled {
 				err = testutil.GatherAndCompare(r, bytes.NewBufferString(`
-		# HELP cortex_ingester_expanded_postings_non_cacheable_queries Total number of non cacheable queries.
-		# TYPE cortex_ingester_expanded_postings_non_cacheable_queries counter
-        cortex_ingester_expanded_postings_non_cacheable_queries{cache="head"} 1
-`), "cortex_ingester_expanded_postings_non_cacheable_queries")
+		# HELP cortex_ingester_expanded_postings_non_cacheable_queries_total Total number of non cacheable queries.
+		# TYPE cortex_ingester_expanded_postings_non_cacheable_queries_total counter
+        cortex_ingester_expanded_postings_non_cacheable_queries_total{cache="head"} 1
+`), "cortex_ingester_expanded_postings_non_cacheable_queries_total")
 				require.NoError(t, err)
 			}
 

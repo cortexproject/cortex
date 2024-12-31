@@ -3073,6 +3073,12 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 			res, err := i.MetricsForLabelMatchers(ctx, req)
 			require.NoError(t, err)
 			assert.ElementsMatch(t, testData.expected, res.Metric)
+
+			// Stream
+			ss := mockMetricsForLabelMatchersStreamServer{ctx: ctx}
+			err = i.MetricsForLabelMatchersStream(req, &ss)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, testData.expected, ss.res.Metric)
 		})
 	}
 }
@@ -3405,6 +3411,21 @@ func writeRequestSingleSeries(lbls labels.Labels, samples []cortexpb.Sample) *co
 	req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseries{TimeSeries: &ts})
 
 	return req
+}
+
+type mockMetricsForLabelMatchersStreamServer struct {
+	grpc.ServerStream
+	ctx context.Context
+	res client.MetricsForLabelMatchersStreamResponse
+}
+
+func (m *mockMetricsForLabelMatchersStreamServer) Send(response *client.MetricsForLabelMatchersStreamResponse) error {
+	m.res.Metric = append(m.res.Metric, response.Metric...)
+	return nil
+}
+
+func (m *mockMetricsForLabelMatchersStreamServer) Context() context.Context {
+	return m.ctx
 }
 
 type mockQueryStreamServer struct {

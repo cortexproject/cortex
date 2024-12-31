@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/zeropool"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/shipper"
@@ -95,6 +96,8 @@ const (
 var (
 	errExemplarRef      = errors.New("exemplars not ingested because series not already present")
 	errIngesterStopping = errors.New("ingester stopping")
+
+	tsChunksPool zeropool.Pool[[]client.TimeSeriesChunk]
 )
 
 // Config for an Ingester.
@@ -2055,7 +2058,8 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 		return 0, 0, 0, 0, ss.Err()
 	}
 
-	chunkSeries := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
+	chunkSeries := getTimeSeriesChunksSlice()
+	defer putTimeSeriesChunksSlice(chunkSeries)
 	batchSizeBytes := 0
 	var it chunks.Iterator
 	for ss.Next() {
@@ -3072,6 +3076,31 @@ func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(respMsg))
 }
 
+func (i *Ingester) getInstanceLimits() *InstanceLimits {
+	// Don't apply any limits while starting. We especially don't want to apply series in memory limit while replaying WAL.
+	if i.State() == services.Starting {
+		return nil
+	}
+
+	if i.cfg.InstanceLimitsFn == nil {
+		return defaultInstanceLimits
+	}
+
+	l := i.cfg.InstanceLimitsFn()
+	if l == nil {
+		return defaultInstanceLimits
+	}
+
+	return l
+}
+
+// stopIncomingRequests is called during the shutdown process.
+func (i *Ingester) stopIncomingRequests() {
+	i.stoppedMtx.Lock()
+	defer i.stoppedMtx.Unlock()
+	i.stopped = true
+}
+
 // metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.
 func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB, queryIngestersWithin time.Duration) (mint, maxt int64, err error) {
 	if queryIngestersWithin > 0 {
@@ -3129,27 +3158,16 @@ func wrappedTSDBIngestExemplarErr(ingestErr error, timestamp model.Time, seriesL
 	)
 }
 
-func (i *Ingester) getInstanceLimits() *InstanceLimits {
-	// Don't apply any limits while starting. We especially don't want to apply series in memory limit while replaying WAL.
-	if i.State() == services.Starting {
-		return nil
+func getTimeSeriesChunksSlice() []client.TimeSeriesChunk {
+	if p := tsChunksPool.Get(); p != nil {
+		return p
 	}
 
-	if i.cfg.InstanceLimitsFn == nil {
-		return defaultInstanceLimits
-	}
-
-	l := i.cfg.InstanceLimitsFn()
-	if l == nil {
-		return defaultInstanceLimits
-	}
-
-	return l
+	return make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
 }
 
-// stopIncomingRequests is called during the shutdown process.
-func (i *Ingester) stopIncomingRequests() {
-	i.stoppedMtx.Lock()
-	defer i.stoppedMtx.Unlock()
-	i.stopped = true
+func putTimeSeriesChunksSlice(p []client.TimeSeriesChunk) {
+	if p != nil {
+		tsChunksPool.Put(p[:0])
+	}
 }

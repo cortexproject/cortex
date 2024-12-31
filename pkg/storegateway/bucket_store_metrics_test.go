@@ -493,6 +493,22 @@ func TestBucketStoreMetrics(t *testing.T) {
         	# HELP cortex_bucket_store_empty_postings_total Total number of empty postings when fetching block series.
             # TYPE cortex_bucket_store_empty_postings_total counter
         	cortex_bucket_store_empty_postings_total 112595
+
+			# HELP cortex_bucket_store_indexheader_download_duration_seconds Duration of the index-header download from objstore in seconds.
+			# TYPE cortex_bucket_store_indexheader_download_duration_seconds histogram
+			cortex_bucket_store_indexheader_download_duration_seconds_bucket{le="0.01"} 0
+			cortex_bucket_store_indexheader_download_duration_seconds_bucket{le="0.02"} 0
+			cortex_bucket_store_indexheader_download_duration_seconds_bucket{le="0.05"} 0
+			cortex_bucket_store_indexheader_download_duration_seconds_bucket{le="0.1"} 0
+			cortex_bucket_store_indexheader_download_duration_seconds_bucket{le="0.2"} 0
+			cortex_bucket_store_indexheader_download_duration_seconds_bucket{le="0.5"} 0
+			cortex_bucket_store_indexheader_download_duration_seconds_bucket{le="1"} 3
+			cortex_bucket_store_indexheader_download_duration_seconds_bucket{le="2"} 3
+			cortex_bucket_store_indexheader_download_duration_seconds_bucket{le="5"} 3
+			cortex_bucket_store_indexheader_download_duration_seconds_bucket{le="+Inf"} 3
+			cortex_bucket_store_indexheader_download_duration_seconds_sum 2.25
+			cortex_bucket_store_indexheader_download_duration_seconds_count 3
+
 			# HELP cortex_bucket_store_postings_fetch_duration_seconds Time it takes to fetch postings to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.
 			# TYPE cortex_bucket_store_postings_fetch_duration_seconds histogram
 			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="0.001"} 0
@@ -543,6 +559,22 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# HELP cortex_bucket_store_indexheader_lazy_unload_total Total number of index-header lazy unload operations.
 			# TYPE cortex_bucket_store_indexheader_lazy_unload_total counter
 			cortex_bucket_store_indexheader_lazy_unload_total 1.396178e+06
+
+			# HELP cortex_bucket_store_indexheader_load_duration_seconds Duration of the index-header loading in seconds.
+			# TYPE cortex_bucket_store_indexheader_load_duration_seconds histogram
+			cortex_bucket_store_indexheader_load_duration_seconds_bucket{le="0.01"} 0
+			cortex_bucket_store_indexheader_load_duration_seconds_bucket{le="0.02"} 0
+			cortex_bucket_store_indexheader_load_duration_seconds_bucket{le="0.05"} 0
+			cortex_bucket_store_indexheader_load_duration_seconds_bucket{le="0.1"} 0
+			cortex_bucket_store_indexheader_load_duration_seconds_bucket{le="0.2"} 0
+			cortex_bucket_store_indexheader_load_duration_seconds_bucket{le="0.5"} 0
+			cortex_bucket_store_indexheader_load_duration_seconds_bucket{le="1"} 3
+			cortex_bucket_store_indexheader_load_duration_seconds_bucket{le="2"} 3
+			cortex_bucket_store_indexheader_load_duration_seconds_bucket{le="5"} 3
+			cortex_bucket_store_indexheader_load_duration_seconds_bucket{le="+Inf"} 3
+			cortex_bucket_store_indexheader_load_duration_seconds_sum 2.55
+			cortex_bucket_store_indexheader_load_duration_seconds_count 3
+
         	# HELP cortex_bucket_store_lazy_expanded_posting_groups_total Total number of posting groups that are marked as lazy and corresponding reason.
         	# TYPE cortex_bucket_store_lazy_expanded_posting_groups_total counter
         	cortex_bucket_store_lazy_expanded_posting_groups_total{reason="keys_limit"} 202671
@@ -685,6 +717,8 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	m.indexHeaderLazyUnloadCount.Add(62 * base)
 	m.indexHeaderLazyUnloadFailedCount.Add(63 * base)
 	m.indexHeaderLazyLoadDuration.Observe(0.65)
+	m.indexHeaderDownloadDuration.Observe(0.75)
+	m.indexHeaderLoadDuration.Observe(0.85)
 
 	m.emptyPostingCount.Add(5 * base)
 
@@ -737,6 +771,8 @@ type mockedBucketStoreMetrics struct {
 	indexHeaderLazyUnloadCount       prometheus.Counter
 	indexHeaderLazyUnloadFailedCount prometheus.Counter
 	indexHeaderLazyLoadDuration      prometheus.Histogram
+	indexHeaderDownloadDuration      prometheus.Histogram
+	indexHeaderLoadDuration          prometheus.Histogram
 
 	lazyExpandedPostingsCount                     prometheus.Counter
 	lazyExpandedPostingGroups                     *prometheus.CounterVec
@@ -911,6 +947,16 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 	m.indexHeaderLazyLoadDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Name:    "thanos_bucket_store_indexheader_lazy_load_duration_seconds",
 		Help:    "Duration of the index-header lazy loading in seconds.",
+		Buckets: []float64{0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5},
+	})
+	m.indexHeaderDownloadDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_indexheader_download_duration_seconds",
+		Help:    "Duration of the index-header download from objstore in seconds.",
+		Buckets: []float64{0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5},
+	})
+	m.indexHeaderLoadDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_indexheader_load_duration_seconds",
+		Help:    "Duration of the index-header loading in seconds.",
 		Buckets: []float64{0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5},
 	})
 

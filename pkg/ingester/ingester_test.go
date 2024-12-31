@@ -3073,6 +3073,12 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 			res, err := i.MetricsForLabelMatchers(ctx, req)
 			require.NoError(t, err)
 			assert.ElementsMatch(t, testData.expected, res.Metric)
+
+			// Stream
+			ss := mockMetricsForLabelMatchersStreamServer{ctx: ctx}
+			err = i.MetricsForLabelMatchersStream(req, &ss)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, testData.expected, ss.res.Metric)
 		})
 	}
 }
@@ -3407,6 +3413,21 @@ func writeRequestSingleSeries(lbls labels.Labels, samples []cortexpb.Sample) *co
 	return req
 }
 
+type mockMetricsForLabelMatchersStreamServer struct {
+	grpc.ServerStream
+	ctx context.Context
+	res client.MetricsForLabelMatchersStreamResponse
+}
+
+func (m *mockMetricsForLabelMatchersStreamServer) Send(response *client.MetricsForLabelMatchersStreamResponse) error {
+	m.res.Metric = append(m.res.Metric, response.Metric...)
+	return nil
+}
+
+func (m *mockMetricsForLabelMatchersStreamServer) Context() context.Context {
+	return m.ctx
+}
+
 type mockQueryStreamServer struct {
 	grpc.ServerStream
 	ctx context.Context
@@ -3424,10 +3445,25 @@ func (m *mockQueryStreamServer) Context() context.Context {
 }
 
 func BenchmarkIngester_QueryStream_Chunks(b *testing.B) {
-	benchmarkQueryStream(b)
+	tc := []struct {
+		samplesCount, seriesCount int
+	}{
+		{samplesCount: 10, seriesCount: 10},
+		{samplesCount: 10, seriesCount: 50},
+		{samplesCount: 10, seriesCount: 100},
+		{samplesCount: 50, seriesCount: 10},
+		{samplesCount: 50, seriesCount: 50},
+		{samplesCount: 50, seriesCount: 100},
+	}
+
+	for _, c := range tc {
+		b.Run(fmt.Sprintf("samplesCount=%v; seriesCount=%v", c.samplesCount, c.seriesCount), func(b *testing.B) {
+			benchmarkQueryStream(b, c.samplesCount, c.seriesCount)
+		})
+	}
 }
 
-func benchmarkQueryStream(b *testing.B) {
+func benchmarkQueryStream(b *testing.B, samplesCount, seriesCount int) {
 	cfg := defaultIngesterTestConfig(b)
 
 	// Create ingester.
@@ -3444,7 +3480,6 @@ func benchmarkQueryStream(b *testing.B) {
 	// Push series.
 	ctx := user.InjectOrgID(context.Background(), userID)
 
-	const samplesCount = 1000
 	samples := make([]cortexpb.Sample, 0, samplesCount)
 
 	for i := 0; i < samplesCount; i++ {
@@ -3454,7 +3489,6 @@ func benchmarkQueryStream(b *testing.B) {
 		})
 	}
 
-	const seriesCount = 100
 	for s := 0; s < seriesCount; s++ {
 		_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: strconv.Itoa(s)}}, samples))
 		require.NoError(b, err)
@@ -3462,7 +3496,7 @@ func benchmarkQueryStream(b *testing.B) {
 
 	req := &client.QueryRequest{
 		StartTimestampMs: 0,
-		EndTimestampMs:   samplesCount + 1,
+		EndTimestampMs:   int64(samplesCount + 1),
 
 		Matchers: []*client.LabelMatcher{{
 			Type:  client.EQUAL,
@@ -3474,6 +3508,7 @@ func benchmarkQueryStream(b *testing.B) {
 	mockStream := &mockQueryStreamServer{ctx: ctx}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 
 	for ix := 0; ix < b.N; ix++ {
 		err := i.QueryStream(req, mockStream)
@@ -5553,22 +5588,22 @@ func TestExpendedPostingsCache(t *testing.T) {
 
 			if c.expectedHeadPostingCall > 0 || c.expectedBlockPostingCall > 0 {
 				metric := `
-		# HELP cortex_ingester_expanded_postings_cache_requests Total number of requests to the cache.
-		# TYPE cortex_ingester_expanded_postings_cache_requests counter
+		# HELP cortex_ingester_expanded_postings_cache_requests_total Total number of requests to the cache.
+		# TYPE cortex_ingester_expanded_postings_cache_requests_total counter
 `
 				if c.expectedBlockPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_requests{cache="block"} 4
+		cortex_ingester_expanded_postings_cache_requests_total{cache="block"} 4
 `
 				}
 
 				if c.expectedHeadPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_requests{cache="head"} 4
+		cortex_ingester_expanded_postings_cache_requests_total{cache="head"} 4
 `
 				}
 
-				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_requests")
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_requests_total")
 				require.NoError(t, err)
 			}
 
@@ -5583,22 +5618,22 @@ func TestExpendedPostingsCache(t *testing.T) {
 
 			if c.expectedHeadPostingCall > 0 || c.expectedBlockPostingCall > 0 {
 				metric := `
-		# HELP cortex_ingester_expanded_postings_cache_hits Total number of hit requests to the cache.
-		# TYPE cortex_ingester_expanded_postings_cache_hits counter
+		# HELP cortex_ingester_expanded_postings_cache_hits_total Total number of hit requests to the cache.
+		# TYPE cortex_ingester_expanded_postings_cache_hits_total counter
 `
 				if c.expectedBlockPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_hits{cache="block"} 4
+		cortex_ingester_expanded_postings_cache_hits_total{cache="block"} 4
 `
 				}
 
 				if c.expectedHeadPostingCall > 0 {
 					metric += `
-		cortex_ingester_expanded_postings_cache_hits{cache="head"} 4
+		cortex_ingester_expanded_postings_cache_hits_total{cache="head"} 4
 `
 				}
 
-				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_hits")
+				err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_expanded_postings_cache_hits_total")
 				require.NoError(t, err)
 			}
 
@@ -5644,10 +5679,10 @@ func TestExpendedPostingsCache(t *testing.T) {
 			require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedBlockPostingCall))
 			if c.cacheConfig.Head.Enabled {
 				err = testutil.GatherAndCompare(r, bytes.NewBufferString(`
-		# HELP cortex_ingester_expanded_postings_non_cacheable_queries Total number of non cacheable queries.
-		# TYPE cortex_ingester_expanded_postings_non_cacheable_queries counter
-        cortex_ingester_expanded_postings_non_cacheable_queries{cache="head"} 1
-`), "cortex_ingester_expanded_postings_non_cacheable_queries")
+		# HELP cortex_ingester_expanded_postings_non_cacheable_queries_total Total number of non cacheable queries.
+		# TYPE cortex_ingester_expanded_postings_non_cacheable_queries_total counter
+        cortex_ingester_expanded_postings_non_cacheable_queries_total{cache="head"} 1
+`), "cortex_ingester_expanded_postings_non_cacheable_queries_total")
 				require.NoError(t, err)
 			}
 

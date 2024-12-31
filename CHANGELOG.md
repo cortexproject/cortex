@@ -18,6 +18,7 @@
 * [FEATURE] Chunk Cache: Support multi level cache and add metrics. #6249
 * [FEATURE] Distributor: Accept multiple HA Tracker pairs in the same request. #6256
 * [FEATURE] Ruler: Add support for per-user external labels #6340
+* [ENHANCEMENT] Querier: Add a `-tenant-federation.max-concurrent` flags to configure the number of worker processing federated query and add a `cortex_querier_federated_tenants_per_query` histogram to track the number of tenants per query. #6449
 * [ENHANCEMENT] Query Frontend: Add a number of series in the query response to the query stat log. #6423
 * [ENHANCEMENT] Store Gateway: Add a hedged request to reduce the tail latency. #6388
 * [ENHANCEMENT] Ingester: Add metrics to track succeed/failed native histograms. #6370
@@ -53,11 +54,13 @@
 * [ENHANCEMENT] Querier: Add new `cortex_querier_codec_response_size` metric to track the size of the encoded query responses from queriers. #6444
 * [ENHANCEMENT] Distributor: Added `cortex_distributor_received_samples_per_labelset_total` metric to calculate ingestion rate per label set. #6443
 * [ENHANCEMENT] Added metric name in limiter per-metric exceeded errors. #6416
+* [ENHANCEMENT] StoreGateway: Added `cortex_bucket_store_indexheader_load_duration_seconds` and `cortex_bucket_store_indexheader_download_duration_seconds` metrics for time of downloading and loading index header files. #6445
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 * [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
 * [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled.  #6271
 * [BUGFIX] Ingester: Fix regression on usage of cortex_ingester_queried_chunks. #6398
 * [BUGFIX] Ingester: Fix possible race condition when `active series per LabelSet` is configured. #6409
+* [BUGFIX] Query Frontend: Fix @ modifier not being applied correctly on sub queries. #6450
 
 ## 1.18.1 2024-10-14
 

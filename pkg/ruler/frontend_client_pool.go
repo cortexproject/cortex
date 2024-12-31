@@ -20,6 +20,7 @@ import (
 
 type frontendPool struct {
 	timeout              time.Duration
+	queryResponseFormat  string
 	prometheusHTTPPrefix string
 	grpcConfig           grpcclient.Config
 
@@ -29,6 +30,7 @@ type frontendPool struct {
 func newFrontendPool(cfg Config, log log.Logger, reg prometheus.Registerer) *client.Pool {
 	p := &frontendPool{
 		timeout:              cfg.FrontendTimeout,
+		queryResponseFormat:  cfg.QueryResponseFormat,
 		prometheusHTTPPrefix: cfg.PrometheusHTTPPrefix,
 		grpcConfig:           cfg.GRPCClientConfig,
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
@@ -68,7 +70,7 @@ func (f *frontendPool) createFrontendClient(addr string) (client.PoolClient, err
 	}
 
 	return &frontendClient{
-		FrontendClient: NewFrontendClient(httpgrpc.NewHTTPClient(conn), f.timeout, f.prometheusHTTPPrefix),
+		FrontendClient: NewFrontendClient(httpgrpc.NewHTTPClient(conn), f.timeout, f.prometheusHTTPPrefix, f.queryResponseFormat),
 		HealthClient:   grpc_health_v1.NewHealthClient(conn),
 	}, nil
 }

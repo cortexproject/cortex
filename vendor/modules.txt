@@ -293,9 +293,6 @@ github.com/caio/go-tdigest
 # github.com/cenkalti/backoff/v4 v4.3.0
 ## explicit; go 1.18
 github.com/cenkalti/backoff/v4
-# github.com/cespare/xxhash v1.1.0
-## explicit
-github.com/cespare/xxhash
 # github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
@@ -967,7 +964,7 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing/opentracing
-# github.com/thanos-io/promql-engine v0.0.0-20241203103240-2f49f80c7c68
+# github.com/thanos-io/promql-engine v0.0.0-20241217103156-9dbff30059cf
 ## explicit; go 1.22.0
 github.com/thanos-io/promql-engine/api
 github.com/thanos-io/promql-engine/engine
@@ -990,7 +987,7 @@ github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
-# github.com/thanos-io/thanos v0.37.2-0.20241210234302-0ea6bac096ce
+# github.com/thanos-io/thanos v0.37.3-0.20241224143735-2d041dc774da
 ## explicit; go 1.23.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block
@@ -1307,7 +1304,6 @@ golang.org/x/crypto/pkcs12/internal/rc2
 # golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
 ## explicit; go 1.20
 golang.org/x/exp/constraints
-golang.org/x/exp/maps
 golang.org/x/exp/slices
 # golang.org/x/mod v0.21.0
 ## explicit; go 1.22.0

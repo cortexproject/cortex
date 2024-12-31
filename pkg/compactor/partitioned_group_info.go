@@ -103,6 +103,15 @@ func (p *PartitionedGroupInfo) getAllBlocks() []ulid.ULID {
 	return blocks
 }
 
+func (p *PartitionedGroupInfo) getAllBlockIDs() []string {
+	blocks := p.getAllBlocks()
+	blockIDs := make([]string, len(blocks))
+	for i, block := range blocks {
+		blockIDs[i] = block.String()
+	}
+	return blockIDs
+}
+
 func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 	ctx context.Context,
 	userBucket objstore.InstrumentedBucket,
@@ -121,17 +130,17 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 	allPartitionCompleted := true
 	hasInProgressPartitions := false
 	for _, partition := range p.Partitions {
-		partitionVisitMarker := &PartitionVisitMarker{
+		visitMarker := &partitionVisitMarker{
 			PartitionedGroupID: p.PartitionedGroupID,
 			PartitionID:        partition.PartitionID,
 		}
-		visitMarkerManager := NewVisitMarkerManager(userBucket, userLogger, "PartitionedGroupInfo.getPartitionedGroupStatus", partitionVisitMarker)
+		visitMarkerManager := NewVisitMarkerManager(userBucket, userLogger, "PartitionedGroupInfo.getPartitionedGroupStatus", visitMarker)
 		partitionVisitMarkerExists := true
-		if err := visitMarkerManager.ReadVisitMarker(ctx, partitionVisitMarker); err != nil {
+		if err := visitMarkerManager.ReadVisitMarker(ctx, visitMarker); err != nil {
 			if errors.Is(err, errorVisitMarkerNotFound) {
 				partitionVisitMarkerExists = false
 			} else {
-				level.Warn(userLogger).Log("msg", "unable to read partition visit marker", "path", partitionVisitMarker.GetVisitMarkerFilePath(), "err", err)
+				level.Warn(userLogger).Log("msg", "unable to read partition visit marker", "path", visitMarker.GetVisitMarkerFilePath(), "err", err)
 				return status
 			}
 		}
@@ -140,14 +149,14 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 			status.PendingPartitions++
 			allPartitionCompleted = false
 			status.PendingOrFailedPartitions = append(status.PendingOrFailedPartitions, partition)
-		} else if partitionVisitMarker.VisitTime < p.CreationTime {
+		} else if visitMarker.VisitTime < p.CreationTime {
 			status.DeleteVisitMarker = true
 			allPartitionCompleted = false
-		} else if (partitionVisitMarker.GetStatus() == Pending || partitionVisitMarker.GetStatus() == InProgress) && !partitionVisitMarker.IsExpired(partitionVisitMarkerTimeout) {
+		} else if (visitMarker.GetStatus() == Pending || visitMarker.GetStatus() == InProgress) && !visitMarker.IsExpired(partitionVisitMarkerTimeout) {
 			status.InProgressPartitions++
 			hasInProgressPartitions = true
 			allPartitionCompleted = false
-		} else if partitionVisitMarker.GetStatus() != Completed {
+		} else if visitMarker.GetStatus() != Completed {
 			status.PendingPartitions++
 			allPartitionCompleted = false
 			status.PendingOrFailedPartitions = append(status.PendingOrFailedPartitions, partition)

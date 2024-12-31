@@ -170,7 +170,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 		name                  string
 		expectedResult        PartitionedGroupStatus
 		partitionedGroupInfo  PartitionedGroupInfo
-		partitionVisitMarkers []PartitionVisitMarker
+		partitionVisitMarkers []partitionVisitMarker
 		deletedBlock          map[ulid.ULID]bool
 		noCompactBlock        map[ulid.ULID]struct{}
 	}{
@@ -214,7 +214,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,
@@ -267,7 +267,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,
@@ -319,7 +319,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,
@@ -386,7 +386,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        1,
@@ -437,7 +437,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,
@@ -490,7 +490,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,
@@ -548,7 +548,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,
@@ -600,7 +600,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,
@@ -652,7 +652,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(1 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,
@@ -702,7 +702,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,
@@ -762,7 +762,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,
@@ -815,7 +815,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 				CreationTime: time.Now().Add(-10 * time.Minute).Unix(),
 				Version:      PartitionedGroupInfoVersion1,
 			},
-			partitionVisitMarkers: []PartitionVisitMarker{
+			partitionVisitMarkers: []partitionVisitMarker{
 				{
 					PartitionedGroupID: partitionedGroupID,
 					PartitionID:        0,

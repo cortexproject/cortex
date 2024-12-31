@@ -1929,7 +1929,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 			}
 
 			limits := &validation.Limits{
-				CompactorPartitionSeriesCountLimit: 4,
+				CompactorPartitionSeriesCount: 4,
 			}
 			overrides, err := validation.NewOverrides(*limits, nil)
 			require.NoError(t, err)
@@ -2077,7 +2077,7 @@ func (p *mockExistingPartitionedGroup) setupBucketStore(t *testing.T, bkt *bucke
 		if visitMarker.isExpired {
 			visitTime = time.Now().Add(-2 * visitMarkerTimeout)
 		}
-		partitionVisitMarker := PartitionVisitMarker{
+		actualVisitMarker := partitionVisitMarker{
 			CompactorID:        visitMarker.compactorID,
 			Status:             visitMarker.status,
 			PartitionedGroupID: p.partitionedGroupID,
@@ -2085,7 +2085,7 @@ func (p *mockExistingPartitionedGroup) setupBucketStore(t *testing.T, bkt *bucke
 			VisitTime:          visitTime.UnixMilli(),
 			Version:            PartitionVisitMarkerVersion1,
 		}
-		partitionVisitMarkerContent, err := json.Marshal(partitionVisitMarker)
+		partitionVisitMarkerContent, err := json.Marshal(actualVisitMarker)
 		require.NoError(t, err)
 		bkt.MockGet(partitionVisitMarkerFilePath, string(partitionVisitMarkerContent), nil)
 	}

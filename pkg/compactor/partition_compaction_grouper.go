@@ -165,11 +165,10 @@ func (g *PartitionCompactionGrouper) generateCompactionJobs(blocks map[ulid.ULID
 	if err != nil {
 		return nil, err
 	}
+
+	var blockIDs []string
 	for _, p := range existingPartitionedGroups {
-		var blockIDs []string
-		for _, b := range p.getAllBlocks() {
-			blockIDs = append(blockIDs, b.String())
-		}
+		blockIDs = p.getAllBlockIDs()
 		level.Info(g.logger).Log("msg", "existing partitioned group", "partitioned_group_id", p.PartitionedGroupID, "partition_count", p.PartitionCount, "rangeStart", p.rangeStartTime().String(), "rangeEnd", p.rangeEndTime().String(), "blocks", strings.Join(blockIDs, ","))
 	}
 
@@ -179,19 +178,13 @@ func (g *PartitionCompactionGrouper) generateCompactionJobs(blocks map[ulid.ULID
 	}
 	g.sortPartitionedGroups(allPartitionedGroup)
 	for _, p := range allPartitionedGroup {
-		var blockIDs []string
-		for _, b := range p.getAllBlocks() {
-			blockIDs = append(blockIDs, b.String())
-		}
+		blockIDs = p.getAllBlockIDs()
 		level.Info(g.logger).Log("msg", "partitioned group ready for compaction", "partitioned_group_id", p.PartitionedGroupID, "partition_count", p.PartitionCount, "rangeStart", p.rangeStartTime().String(), "rangeEnd", p.rangeEndTime().String(), "blocks", strings.Join(blockIDs, ","))
 	}
 
 	partitionCompactionJobs := g.generatePartitionCompactionJobs(blocks, allPartitionedGroup, g.doRandomPick)
 	for _, p := range partitionCompactionJobs {
-		var blockIDs []string
-		for _, b := range p.blocks {
-			blockIDs = append(blockIDs, b.ULID.String())
-		}
+		blockIDs = p.getBlockIDs()
 		level.Info(g.logger).Log("msg", "partitioned compaction job", "partitioned_group_id", p.partitionedGroupInfo.PartitionedGroupID, "partition_id", p.partition.PartitionID, "partition_count", p.partitionedGroupInfo.PartitionCount, "rangeStart", p.rangeStartTime().String(), "rangeEnd", p.rangeEndTime().String(), "blocks", strings.Join(blockIDs, ","))
 	}
 	return partitionCompactionJobs, nil
@@ -439,8 +432,8 @@ func (g *PartitionCompactionGrouper) partitionBlockGroup(group blocksGroupWithPa
 }
 
 func (g *PartitionCompactionGrouper) calculatePartitionCount(group blocksGroupWithPartition, groupHash uint32) int {
-	indexSizeLimit := g.limits.CompactorPartitionIndexSizeLimitInBytes(g.userID)
-	seriesCountLimit := g.limits.CompactorPartitionSeriesCountLimit(g.userID)
+	indexSizeLimit := g.limits.CompactorPartitionIndexSizeBytes(g.userID)
+	seriesCountLimit := g.limits.CompactorPartitionSeriesCount(g.userID)
 	smallestRange := g.compactorCfg.BlockRanges.ToMilliseconds()[0]
 	groupRange := group.rangeLength()
 	if smallestRange >= groupRange {
@@ -611,18 +604,19 @@ func (g *PartitionCompactionGrouper) generatePartitionCompactionJobs(blocks map[
 	return partitionedBlockGroups
 }
 
+// handleEmptyPartition uploads a completed partition visit marker for any partition that does have any blocks assigned
 func (g *PartitionCompactionGrouper) handleEmptyPartition(partitionedGroupInfo *PartitionedGroupInfo, partition Partition) error {
 	if len(partition.Blocks) > 0 {
 		return nil
 	}
 
 	level.Info(g.logger).Log("msg", "handling empty block partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID)
-	partitionVisitMarker := &PartitionVisitMarker{
+	visitMarker := &partitionVisitMarker{
 		PartitionedGroupID: partitionedGroupInfo.PartitionedGroupID,
 		PartitionID:        partition.PartitionID,
 		Version:            PartitionVisitMarkerVersion1,
 	}
-	visitMarkerManager := NewVisitMarkerManager(g.bkt, g.logger, g.ringLifecyclerID, partitionVisitMarker)
+	visitMarkerManager := NewVisitMarkerManager(g.bkt, g.logger, g.ringLifecyclerID, visitMarker)
 	visitMarkerManager.MarkWithStatus(g.ctx, Completed)
 
 	level.Info(g.logger).Log("msg", "handled empty block in partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID)
@@ -637,8 +631,8 @@ func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompact
 		partitionCount := partitionedGroup.partitionedGroupInfo.PartitionCount
 		partitionID := partitionedGroup.partition.PartitionID
 		partitionedGroupLogger := log.With(g.logger, "rangeStart", partitionedGroup.rangeStartTime().String(), "rangeEnd", partitionedGroup.rangeEndTime().String(), "rangeDuration", partitionedGroup.rangeDuration().String(), "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "group_hash", groupHash)
-		partitionVisitMarker := NewPartitionVisitMarker(g.ringLifecyclerID, partitionedGroupID, partitionID)
-		visitMarkerManager := NewVisitMarkerManager(g.bkt, g.logger, g.ringLifecyclerID, partitionVisitMarker)
+		visitMarker := newPartitionVisitMarker(g.ringLifecyclerID, partitionedGroupID, partitionID)
+		visitMarkerManager := NewVisitMarkerManager(g.bkt, g.logger, g.ringLifecyclerID, visitMarker)
 		if isVisited, err := g.isGroupVisited(partitionID, visitMarkerManager); err != nil {
 			level.Warn(partitionedGroupLogger).Log("msg", "unable to check if partition is visited", "err", err, "group", partitionedGroup.String())
 			continue
@@ -721,8 +715,8 @@ func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompact
 }
 
 func (g *PartitionCompactionGrouper) isGroupVisited(partitionID int, visitMarkerManager *VisitMarkerManager) (bool, error) {
-	partitionVisitMarker := &PartitionVisitMarker{}
-	err := visitMarkerManager.ReadVisitMarker(g.ctx, partitionVisitMarker)
+	visitMarker := &partitionVisitMarker{}
+	err := visitMarkerManager.ReadVisitMarker(g.ctx, visitMarker)
 	if err != nil {
 		if errors.Is(err, errorVisitMarkerNotFound) {
 			level.Warn(g.logger).Log("msg", "no visit marker file for partition", "partition_visit_marker_file", visitMarkerManager.visitMarker.GetVisitMarkerFilePath())
@@ -731,12 +725,12 @@ func (g *PartitionCompactionGrouper) isGroupVisited(partitionID int, visitMarker
 		level.Error(g.logger).Log("msg", "unable to read partition visit marker file", "partition_visit_marker_file", visitMarkerManager.visitMarker.GetVisitMarkerFilePath(), "err", err)
 		return true, err
 	}
-	if partitionVisitMarker.GetStatus() == Completed {
-		level.Info(g.logger).Log("msg", "partition visit marker with partition ID is completed", "partition_visit_marker", partitionVisitMarker.String())
+	if visitMarker.GetStatus() == Completed {
+		level.Info(g.logger).Log("msg", "partition visit marker with partition ID is completed", "partition_visit_marker", visitMarker.String())
 		return true, nil
 	}
-	if partitionVisitMarker.IsVisited(g.partitionVisitMarkerTimeout, partitionID) {
-		level.Info(g.logger).Log("msg", "visited partition with partition ID", "partition_visit_marker", partitionVisitMarker.String())
+	if visitMarker.IsVisited(g.partitionVisitMarkerTimeout, partitionID) {
+		level.Info(g.logger).Log("msg", "visited partition with partition ID", "partition_visit_marker", visitMarker.String())
 		return true, nil
 	}
 	return false, nil
@@ -886,6 +880,14 @@ type blocksGroupWithPartition struct {
 
 func (g blocksGroupWithPartition) rangeDuration() time.Duration {
 	return g.rangeEndTime().Sub(g.rangeStartTime())
+}
+
+func (g blocksGroupWithPartition) getBlockIDs() []string {
+	blockIDs := make([]string, len(g.blocks))
+	for i, block := range g.blocks {
+		blockIDs[i] = block.ULID.String()
+	}
+	return blockIDs
 }
 
 func createGroupKeyWithPartition(groupHash uint32, group blocksGroupWithPartition) string {

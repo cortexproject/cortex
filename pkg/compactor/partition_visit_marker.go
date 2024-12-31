@@ -24,7 +24,7 @@ var (
 	errorNotPartitionVisitMarker = errors.New("file is not partition visit marker")
 )
 
-type PartitionVisitMarker struct {
+type partitionVisitMarker struct {
 	CompactorID        string      `json:"compactorID"`
 	Status             VisitStatus `json:"status"`
 	PartitionedGroupID uint32      `json:"partitionedGroupID"`
@@ -35,41 +35,41 @@ type PartitionVisitMarker struct {
 	Version int `json:"version"`
 }
 
-func NewPartitionVisitMarker(compactorID string, partitionedGroupID uint32, partitionID int) *PartitionVisitMarker {
-	return &PartitionVisitMarker{
+func newPartitionVisitMarker(compactorID string, partitionedGroupID uint32, partitionID int) *partitionVisitMarker {
+	return &partitionVisitMarker{
 		CompactorID:        compactorID,
 		PartitionedGroupID: partitionedGroupID,
 		PartitionID:        partitionID,
 	}
 }
 
-func (b *PartitionVisitMarker) IsExpired(partitionVisitMarkerTimeout time.Duration) bool {
+func (b *partitionVisitMarker) IsExpired(partitionVisitMarkerTimeout time.Duration) bool {
 	return !time.Now().Before(time.Unix(b.VisitTime, 0).Add(partitionVisitMarkerTimeout))
 }
 
-func (b *PartitionVisitMarker) IsVisited(partitionVisitMarkerTimeout time.Duration, partitionID int) bool {
+func (b *partitionVisitMarker) IsVisited(partitionVisitMarkerTimeout time.Duration, partitionID int) bool {
 	return b.GetStatus() == Completed || (partitionID == b.PartitionID && !b.IsExpired(partitionVisitMarkerTimeout))
 }
 
-func (b *PartitionVisitMarker) IsPendingByCompactor(partitionVisitMarkerTimeout time.Duration, partitionID int, compactorID string) bool {
+func (b *partitionVisitMarker) IsPendingByCompactor(partitionVisitMarkerTimeout time.Duration, partitionID int, compactorID string) bool {
 	return b.CompactorID == compactorID && partitionID == b.PartitionID && b.GetStatus() == Pending && !b.IsExpired(partitionVisitMarkerTimeout)
 }
 
-func (b *PartitionVisitMarker) GetStatus() VisitStatus {
+func (b *partitionVisitMarker) GetStatus() VisitStatus {
 	return b.Status
 }
 
-func (b *PartitionVisitMarker) GetVisitMarkerFilePath() string {
+func (b *partitionVisitMarker) GetVisitMarkerFilePath() string {
 	return GetPartitionVisitMarkerFilePath(b.PartitionedGroupID, b.PartitionID)
 }
 
-func (b *PartitionVisitMarker) UpdateStatus(ownerIdentifier string, status VisitStatus) {
+func (b *partitionVisitMarker) UpdateStatus(ownerIdentifier string, status VisitStatus) {
 	b.CompactorID = ownerIdentifier
 	b.Status = status
 	b.VisitTime = time.Now().Unix()
 }
 
-func (b *PartitionVisitMarker) String() string {
+func (b *partitionVisitMarker) String() string {
 	return fmt.Sprintf("visit_marker_partitioned_group_id=%d visit_marker_partition_id=%d visit_marker_compactor_id=%s visit_marker_status=%s visit_marker_visit_time=%s",
 		b.PartitionedGroupID,
 		b.PartitionID,

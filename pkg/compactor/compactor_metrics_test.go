@@ -130,11 +130,11 @@ func TestSyncerMetrics(t *testing.T) {
 			cortex_compactor_compaction_error_total{type="unauthorized",user="aaa"} 477730
 			cortex_compactor_compaction_error_total{type="unauthorized",user="bbb"} 488840
 			cortex_compactor_compaction_error_total{type="unauthorized",user="ccc"} 499950
-			# HELP cortex_compact_group_partition_count Number of partitions.
-			# TYPE cortex_compact_group_partition_count gauge
-			cortex_compact_group_partition_count{user="aaa"} 511060
-			cortex_compact_group_partition_count{user="bbb"} 522170
-			cortex_compact_group_partition_count{user="ccc"} 533280
+			# HELP cortex_compactor_group_partition_count Number of partitions for each compaction group.
+			# TYPE cortex_compactor_group_partition_count gauge
+			cortex_compactor_group_partition_count{user="aaa"} 511060
+			cortex_compactor_group_partition_count{user="bbb"} 522170
+			cortex_compactor_group_partition_count{user="ccc"} 533280
 	`))
 	require.NoError(t, err)
 

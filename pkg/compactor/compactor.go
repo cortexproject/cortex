@@ -205,8 +205,8 @@ type PlannerFactory func(
 // Limits defines limits used by the Compactor.
 type Limits interface {
 	CompactorTenantShardSize(userID string) int
-	CompactorPartitionIndexSizeLimitInBytes(userID string) int64
-	CompactorPartitionSeriesCountLimit(userID string) int64
+	CompactorPartitionIndexSizeBytes(userID string) int64
+	CompactorPartitionSeriesCount(userID string) int64
 }
 
 // Config holds the Compactor config.

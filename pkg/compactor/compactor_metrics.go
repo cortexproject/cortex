@@ -171,8 +171,8 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 		Help: "Total number of errors from compactions.",
 	}, append(commonLabels, compactionErrorTypesLabelName))
 	m.partitionCount = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cortex_compact_group_partition_count",
-		Help: "Number of partitions.",
+		Name: "cortex_compactor_group_partition_count",
+		Help: "Number of partitions for each compaction group.",
 	}, compactionLabels)
 
 	return &m

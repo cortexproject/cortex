@@ -194,8 +194,8 @@ type Limits struct {
 	// Compactor.
 	CompactorBlocksRetentionPeriod   model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
 	CompactorTenantShardSize         int            `yaml:"compactor_tenant_shard_size" json:"compactor_tenant_shard_size"`
-	CompactorPartitionIndexSizeBytes int64          `yaml:"compactor_partition_index_size_limit_in_bytes" json:"compactor_partition_index_size_limit_in_bytes"`
-	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count_limit" json:"compactor_partition_series_count_limit"`
+	CompactorPartitionIndexSizeBytes int64          `yaml:"compactor_partition_index_size_bytes" json:"compactor_partition_index_size_bytes"`
+	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.

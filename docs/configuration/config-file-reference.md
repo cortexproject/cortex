@@ -3591,11 +3591,11 @@ query_rejection:
 
 # Index size limit in bytes for each compaction partition. 0 means no limit
 # CLI flag: -compactor.partition-index-size-bytes
-[compactor_partition_index_size_limit_in_bytes: <int> | default = 68719476736]
+[compactor_partition_index_size_bytes: <int> | default = 68719476736]
 
 # Time series count limit for each compaction partition. 0 means no limit
 # CLI flag: -compactor.partition-series-count
-[compactor_partition_series_count_limit: <int> | default = 0]
+[compactor_partition_series_count: <int> | default = 0]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

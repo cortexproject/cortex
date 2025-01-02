@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
@@ -210,7 +211,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResponseBodySizeExceeded, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResponseBodySizeExceeded, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusRequestEntityTooLarge,
@@ -226,7 +227,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManyRequests, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManyRequests, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusTooManyRequests,
@@ -242,7 +243,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManySamples, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManySamples, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -258,7 +259,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTimeRangeExceeded, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTimeRangeExceeded, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -274,7 +275,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesFetched, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesFetched, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -290,7 +291,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksFetched, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksFetched, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -306,7 +307,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunkBytesFetched, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunkBytesFetched, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -322,7 +323,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonDataBytesFetched, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonDataBytesFetched, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -338,7 +339,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesLimitStoreGateway, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesLimitStoreGateway, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -354,7 +355,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksLimitStoreGateway, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksLimitStoreGateway, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -370,7 +371,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonBytesLimitStoreGateway, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonBytesLimitStoreGateway, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -498,7 +499,7 @@ func TestReportQueryStatsFormat(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			req.Header = testData.header
-			handler.reportQueryStats(req, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
+			handler.reportQueryStats(req, tripperware.SourceAPI, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
 			data, err := io.ReadAll(outputBuf)
 			require.NoError(t, err)
 			require.Equal(t, testData.expectedLog+"\n", string(data))

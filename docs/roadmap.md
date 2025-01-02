@@ -15,10 +15,10 @@ Cortex was accepted to the CNCF on September 20, 2018 and moved to the Incubatin
 
 ## Support for Prometheus Remote Write 2.0
 
-[Prometheus Remote Write 2.0](https://prometheus.io/docs/specs/remote_write_spec_2_0/) adds 
+[Prometheus Remote Write 2.0](https://prometheus.io/docs/specs/remote_write_spec_2_0/)
 
-* a new Protobuf Message with new features enabling more use cases and wider adoption on top of performance and cost savings
+* adds a new Protobuf Message with new features enabling more use cases and wider adoption on top of performance and cost savings
 * deprecates the previous Protobuf Message from a 1.0 Remote-Write specification
-* mandatory X-Prometheus-Remote-Write-*-Written HTTP response headers for reliability purposes
+* adds mandatory X-Prometheus-Remote-Write-*-Written HTTP response headers for reliability purposes
 
 For more information tracking this, please see [issue #6116](https://github.com/cortexproject/cortex/issues/6116).

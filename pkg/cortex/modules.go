@@ -607,6 +607,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 			queryEngine = engine.New(engine.Opts{
 				EngineOpts:        opts,
 				LogicalOptimizers: logicalplan.AllOptimizers,
+				EnableAnalysis:    true,
 			})
 		} else {
 			queryEngine = promql.NewEngine(opts)

@@ -225,6 +225,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		queryEngine = engine.New(engine.Opts{
 			EngineOpts:        opts,
 			LogicalOptimizers: logicalplan.AllOptimizers,
+			EnableAnalysis:    true,
 		})
 	} else {
 		queryEngine = promql.NewEngine(opts)

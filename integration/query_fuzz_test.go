@@ -801,7 +801,46 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		const fraction = 1.e-10 // 0.00000001%
 		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(fraction, epsilon))
 	}
+	// count_values returns a metrics with one label {"value": "1.012321"}
+	compareValueMetrics := func(l, r model.Metric) (valueMetric bool, equals bool) {
+		lLabels := model.LabelSet(l).Clone()
+		rLabels := model.LabelSet(r).Clone()
+		var (
+			lVal, rVal     model.LabelValue
+			lFloat, rFloat float64
+			ok             bool
+			err            error
+		)
+
+		if lVal, ok = lLabels["value"]; !ok {
+			return false, false
+		}
+
+		if rVal, ok = rLabels["value"]; !ok {
+			return false, false
+		}
+
+		if lFloat, err = strconv.ParseFloat(string(lVal), 64); err != nil {
+			return false, false
+		}
+		if rFloat, err = strconv.ParseFloat(string(rVal), 64); err != nil {
+			return false, false
+		}
+
+		// Exclude the value label in comparison.
+		delete(lLabels, "value")
+		delete(rLabels, "value")
+
+		if !lLabels.Equal(rLabels) {
+			return false, false
+		}
+
+		return true, compareFloats(lFloat, rFloat)
+	}
 	compareMetrics := func(l, r model.Metric) bool {
+		if valueMetric, equals := compareValueMetrics(l, r); valueMetric {
+			return equals
+		}
 		return l.Equal(r)
 	}
 

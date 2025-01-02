@@ -1673,7 +1673,8 @@ func TestRulerEvalWithQueryFrontend(t *testing.T) {
 	for _, format := range []string{"protobuf", "json"} {
 		t.Run(fmt.Sprintf("format:%s", format), func(t *testing.T) {
 			queryFrontendFlag := mergeFlags(flags, map[string]string{
-				"-ruler.query-response-format": format,
+				"-ruler.query-response-format":  format,
+				"-frontend.query-stats-enabled": "true",
 			})
 			queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", queryFrontendFlag, "")
 			require.NoError(t, s.Start(queryFrontend))
@@ -1726,6 +1727,14 @@ func TestRulerEvalWithQueryFrontend(t *testing.T) {
 			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_ruler_write_requests_failed_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
 			// Check that cortex_query_frontend_queries_total went up
 			require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_query_frontend_queries_total"}, e2e.WithLabelMatchers(matcher, sourceMatcher), e2e.WaitMissingMetrics))
+			// check query stat metrics
+			require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(0), []string{"cortex_query_seconds_total"}, e2e.WithLabelMatchers(matcher, sourceMatcher), e2e.WaitMissingMetrics))
+			require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(0), []string{"cortex_query_fetched_series_total"}, e2e.WithLabelMatchers(matcher, sourceMatcher), e2e.WaitMissingMetrics))
+			require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(0), []string{"cortex_query_samples_total"}, e2e.WithLabelMatchers(matcher, sourceMatcher), e2e.WaitMissingMetrics))
+			require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(0), []string{"cortex_query_samples_scanned_total"}, e2e.WithLabelMatchers(matcher, sourceMatcher), e2e.WaitMissingMetrics))
+			require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(0), []string{"cortex_query_peak_samples"}, e2e.WithLabelMatchers(matcher, sourceMatcher), e2e.WaitMissingMetrics))
+			require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(0), []string{"cortex_query_fetched_chunks_bytes_total"}, e2e.WithLabelMatchers(matcher, sourceMatcher), e2e.WaitMissingMetrics))
+			require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(0), []string{"cortex_query_fetched_data_bytes_total"}, e2e.WithLabelMatchers(matcher, sourceMatcher), e2e.WaitMissingMetrics))
 		})
 	}
 }

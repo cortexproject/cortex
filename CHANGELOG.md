@@ -22,6 +22,7 @@
 * [ENHANCEMENT] Querier: Add a `-tenant-federation.max-concurrent` flags to configure the number of worker processing federated query and add a `cortex_querier_federated_tenants_per_query` histogram to track the number of tenants per query. #6449
 * [ENHANCEMENT] Query Frontend: Add a number of series in the query response to the query stat log. #6423
 * [ENHANCEMENT] Store Gateway: Add a hedged request to reduce the tail latency. #6388
+* [ENHANCEMENT] Distributor: Add a `cortex_distributor_push_requests_uncompressed_size_bytes` native histogram to track uncompressed push requests in bytes for tenant and format. #6384
 * [ENHANCEMENT] Ingester: Add metrics to track succeed/failed native histograms. #6370
 * [ENHANCEMENT] Query Frontend/Querier: Add an experimental flag `-querier.enable-promql-experimental-functions` to enable experimental promQL functions. #6355
 * [ENHANCEMENT] OTLP: Add `-distributor.otlp-max-recv-msg-size` flag to limit OTLP request size in bytes. #6333

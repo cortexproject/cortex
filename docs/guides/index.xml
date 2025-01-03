@@ -638,7 +638,35 @@ emitted.&lt;/p>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_samples_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_series_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>With these metrics, you can set up alerts to know when tenants are close to hitting their limits
-before they exceed them.&lt;/p></description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/guides/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tls/</guid><description>
+before they exceed them.&lt;/p></description></item><item><title>Docs: Rule evaluations via query frontend</title><link>/docs/guides/rule-evalutions-via-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/rule-evalutions-via-query-frontend/</guid><description>
+&lt;p>This guide explains how to configure the Ruler to evaluate rules via Query Frontends instead of the Ingester/Store Gateway, and the pros and cons of rule evaluation via Query Frontend.&lt;/p>
+&lt;h2 id="how-to-enable">How to enable&lt;/h2>
+&lt;p>By default, the Ruler queries both Ingesters and Store Gateway depending on the Rule time range for evaluating rules (alerting rules or recording rules). If you have set &lt;code>-ruler.frontend-address&lt;/code>, then the Ruler queries the Query Frontend for evaluation rules.
+The address should be the gRPC listen address in host:port format.&lt;/p>
+&lt;p>You can configure via args:&lt;/p>
+&lt;pre tabindex="0">&lt;code>-ruler.frontend-address=query-frontend.svc.cluster.local:9095
+&lt;/code>&lt;/pre>&lt;p>And via yaml:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">ruler&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">frontend_address&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">query-frontend.svc.cluster.local:9095&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>In addition, you can configure gRPC client (Ruler -&amp;gt; Query Frontend) config, please refer to frontend_client section in &lt;a href="/docs/configuration/configuration-file/#ruler_config">ruler config&lt;/a>.&lt;/p>
+&lt;h2 id="configure-query-response-format">Configure query response format&lt;/h2>
+&lt;p>You can configure the query response format via &lt;code>-ruler.query-response-format&lt;/code>. It is used to retrieve query results from the Query Frontend.
+The supported values are &lt;code>protobuf&lt;/code> and &lt;code>json&lt;/code>. We recommend using &lt;code>protobuf&lt;/code>(default) because the retrieved query results containing native histograms are only supported on &lt;code>protobuf&lt;/code>.&lt;/p>
+&lt;h2 id="pros-and-cons">Pros and Cons&lt;/h2>
+&lt;p>If this feature is enabled, the query execute path is as follows:&lt;/p>
+&lt;p>Ruler -&amp;gt; Query Frontend -&amp;gt; Query Scheduler -&amp;gt; Querier -&amp;gt; Ingester/Store Gateway&lt;/p>
+&lt;p>There are pros and cons regarding query performance as more hops than before (Ruler -&amp;gt; Ingester/Store Gateway).&lt;/p>
+&lt;h3 id="pros">Pros&lt;/h3>
+&lt;ul>
+&lt;li>The rule evaluation performance could be improved in such a situation where the number of Queriers pulling queries from the Query Scheduler is good enough.
+If then, the queries in Query Scheduler are fetched in a reasonable time (i.e. a lot of hops are not a defect for query performance). In this environment, query performance could be improved as we can use Query Frontend features like the vertical query sharding.&lt;/li>
+&lt;li>The Ruler can use fewer resources as it doesn&amp;rsquo;t need to run a query engine to evaluate rules.&lt;/li>
+&lt;/ul>
+&lt;h3 id="cons">Cons&lt;/h3>
+&lt;ul>
+&lt;li>If there are not enough Queriers, adding rule queries to Query Scheduler could cause query starvation problem (queries in Query Scheduler could not be fetched in a reasonable time), so rules cannot be evaluated in time.&lt;/li>
+&lt;/ul>
+&lt;p>You can utilize the &lt;code>cortex_prometheus_rule_evaluation_duration_seconds&lt;/code> metric whether to use &lt;code>-ruler.frontend-address&lt;/code>.&lt;/p></description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/guides/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tls/</guid><description>
 &lt;p>Cortex is a distributed system with significant traffic between its services.
 To allow for secure communication, Cortex supports TLS between all its
 components. This guide describes the process of setting up TLS.&lt;/p>

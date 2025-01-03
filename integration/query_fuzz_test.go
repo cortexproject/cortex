@@ -378,8 +378,9 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			"-blocks-storage.expanded_postings_cache.head.enabled":  "true",
 			"-blocks-storage.expanded_postings_cache.block.enabled": "true",
 			// Ingester.
-			"-ring.store":      "consul",
-			"-consul.hostname": consul2.NetworkHTTPEndpoint(),
+			"-ring.store":                        "consul",
+			"-consul.hostname":                   consul2.NetworkHTTPEndpoint(),
+			"-ingester.matchers-cache-max-items": "10000",
 			// Distributor.
 			"-distributor.replication-factor": "1",
 			// Store-gateway.

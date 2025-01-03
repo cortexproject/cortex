@@ -311,6 +311,7 @@ type Cortex struct {
 	RuntimeConfig            *runtimeconfig.Manager
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
+	MetadataQuerier          querier.MetadataQuerier
 	QuerierEngine            promql.QueryEngine
 	QueryFrontendTripperware tripperware.Tripperware
 

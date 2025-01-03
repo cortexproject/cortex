@@ -1,10 +1,17 @@
 package querier
 
 import (
+	"context"
 	"net/http"
+
+	"github.com/prometheus/prometheus/scrape"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
+
+type MetadataQuerier interface {
+	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
+}
 
 type metricMetadata struct {
 	Type string `json:"type"`
@@ -25,9 +32,9 @@ type metadataResult struct {
 
 // MetadataHandler returns metric metadata held by Cortex for a given tenant.
 // It is kept and returned as a set.
-func MetadataHandler(d Distributor) http.Handler {
+func MetadataHandler(m MetadataQuerier) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp, err := d.MetricsMetadata(r.Context())
+		resp, err := m.MetricsMetadata(r.Context())
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			util.WriteJSONResponse(w, metadataResult{Status: statusError, Error: err.Error()})

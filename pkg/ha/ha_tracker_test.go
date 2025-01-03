@@ -795,3 +795,36 @@ func checkReplicaDeletionState(t *testing.T, duration time.Duration, c *HATracke
 		require.Equal(t, expectedMarkedForDeletion, markedForDeletion, "KV entry marked for deletion")
 	}
 }
+func TestHATracker_UserReplicaGroupMetrics(t *testing.T) {
+	t.Parallel()
+	reg := prometheus.NewPedanticRegistry()
+	tracker := &HATracker{
+		userReplicaGroupCount: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "ha_tracker_user_replica_group_count",
+			Help: "Number of HA replica groups tracked for each user.",
+		}, []string{"user"}),
+		replicaGroups: map[string]map[string]struct{}{
+			"user1": {"group1": {}, "group2": {}},
+			"user2": {"groupA": {}, "groupB": {}, "groupC": {}},
+		},
+	}
+	reg.MustRegister(tracker.userReplicaGroupCount)
+	tracker.updateUserReplicaGroupCount()
+	expectedMetrics := `
+		# HELP ha_tracker_user_replica_group_count Number of HA replica groups tracked for each user.
+		# TYPE ha_tracker_user_replica_group_count gauge
+		ha_tracker_user_replica_group_count{user="user1"} 2
+		ha_tracker_user_replica_group_count{user="user2"} 3
+	`
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expectedMetrics), "ha_tracker_user_replica_group_count"))
+	delete(tracker.replicaGroups, "user1")
+	tracker.userReplicaGroupCount.WithLabelValues("user1").Set(0)
+	tracker.updateUserReplicaGroupCount()
+	expectedMetricsAfterCleanup := `
+		# HELP ha_tracker_user_replica_group_count Number of HA replica groups tracked for each user.
+		# TYPE ha_tracker_user_replica_group_count gauge
+		ha_tracker_user_replica_group_count{user="user2"} 3
+		ha_tracker_user_replica_group_count{user="user1"} 0
+	`
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expectedMetricsAfterCleanup), "ha_tracker_user_replica_group_count"))
+}

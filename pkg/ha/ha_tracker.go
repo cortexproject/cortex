@@ -23,6 +23,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+const (
+	userReplicaGroupUpdateInterval = 30 * time.Second
+)
+
 var (
 	errNegativeUpdateTimeoutJitterMax = errors.New("HA tracker max update timeout jitter shouldn't be negative")
 	errInvalidFailoverTimeout         = "HA Tracker failover timeout (%v) must be at least 1s greater than update timeout - max jitter (%v)"
@@ -218,12 +222,6 @@ func NewHATracker(cfg HATrackerConfig, limits HATrackerLimits, trackerStatusConf
 		}
 		t.client = client
 	}
-	go func() {
-		for {
-			time.Sleep(10 * time.Second)
-			t.updateUserReplicaGroupCount()
-		}
-	}()
 
 	t.Service = services.NewBasicService(nil, t.loop, nil)
 	return t, nil
@@ -239,10 +237,25 @@ func (c *HATracker) loop(ctx context.Context) error {
 
 	// Start cleanup loop. It will stop when context is done.
 	wg := sync.WaitGroup{}
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		c.cleanupOldReplicasLoop(ctx)
+	}()
+	// Start periodic update of user replica group count.
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(userReplicaGroupUpdateInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				c.updateUserReplicaGroupCount()
+			case <-ctx.Done():
+				return
+			}
+		}
 	}()
 
 	// The KVStore config we gave when creating c should have contained a prefix,
@@ -515,6 +528,9 @@ func (c *HATracker) CleanupHATrackerMetricsForUser(userID string) {
 	}
 	if err := util.DeleteMatchingLabels(c.kvCASCalls, filter); err != nil {
 		level.Warn(c.logger).Log("msg", "failed to remove cortex_ha_tracker_kv_store_cas_total metric for user", "user", userID, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(c.userReplicaGroupCount, filter); err != nil {
+		level.Warn(c.logger).Log("msg", "failed to remove ha_tracker_user_replica_group_count metric for user", "user", userID, "err", err)
 	}
 }
 

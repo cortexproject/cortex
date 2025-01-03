@@ -3374,7 +3374,7 @@ func (i *mockIngester) Query(ctx context.Context, req *client.QueryRequest, opts
 		return nil, errFail
 	}
 
-	_, _, matchers, err := client.FromQueryRequest(req)
+	_, _, matchers, err := client.FromQueryRequest(req, labels.NewMatcher)
 	if err != nil {
 		return nil, err
 	}
@@ -3400,7 +3400,7 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 		return nil, errFail
 	}
 
-	_, _, matchers, err := client.FromQueryRequest(req)
+	_, _, matchers, err := client.FromQueryRequest(req, labels.NewMatcher)
 	if err != nil {
 		return nil, err
 	}
@@ -3459,7 +3459,7 @@ func (i *mockIngester) MetricsForLabelMatchersStream(ctx context.Context, req *c
 		return nil, errFail
 	}
 
-	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req, labels.NewMatcher)
 	if err != nil {
 		return nil, err
 	}
@@ -3491,7 +3491,7 @@ func (i *mockIngester) MetricsForLabelMatchers(ctx context.Context, req *client.
 		return nil, errFail
 	}
 
-	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req, labels.NewMatcher)
 	if err != nil {
 		return nil, err
 	}

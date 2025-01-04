@@ -2,7 +2,6 @@ package tsdb
 
 import (
 	"flag"
-
 	"time"
 
 	"github.com/pkg/errors"
@@ -60,7 +59,7 @@ func (cfg *RedisClientConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix st
 	f.StringVar(&cfg.MasterName, prefix+"master-name", "", "Specifies the master's name. Must be not empty for Redis Sentinel.")
 	f.IntVar(&cfg.CacheSize, prefix+"cache-size", 0, "If not zero then client-side caching is enabled. Client-side caching is when data is stored in memory instead of fetching data each time. See https://redis.io/docs/manual/client-side-caching/ for more info.")
 	f.BoolVar(&cfg.TLSEnabled, prefix+"tls-enabled", false, "Whether to enable tls for redis connection.")
-	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
+	cfg.TLS.RegisterFlagsWithPrefix(prefix[:len(prefix)-1], f)
 	cfg.SetAsyncCircuitBreaker.RegisterFlagsWithPrefix(f, prefix+"set-async.")
 }
 

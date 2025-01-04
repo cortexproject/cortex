@@ -755,25 +755,25 @@ blocks_storage:
         # Path to the client certificate file, which will be used for
         # authenticating with the server. Also requires the key path to be
         # configured.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-cert-path
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-cert-path
         [tls_cert_path: <string> | default = ""]
 
         # Path to the key file for the client certificate. Also requires the
         # client certificate to be configured.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-key-path
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-key-path
         [tls_key_path: <string> | default = ""]
 
         # Path to the CA certificates file to validate server certificate
         # against. If not set, the host's root CA certificates are used.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-ca-path
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-ca-path
         [tls_ca_path: <string> | default = ""]
 
         # Override the expected name on the server certificate.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-server-name
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-server-name
         [tls_server_name: <string> | default = ""]
 
         # Skip validating server certificate.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-insecure-skip-verify
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-insecure-skip-verify
         [tls_insecure_skip_verify: <boolean> | default = false]
 
         # If not zero then client-side caching is enabled. Client-side caching
@@ -990,25 +990,25 @@ blocks_storage:
         # Path to the client certificate file, which will be used for
         # authenticating with the server. Also requires the key path to be
         # configured.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-cert-path
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-cert-path
         [tls_cert_path: <string> | default = ""]
 
         # Path to the key file for the client certificate. Also requires the
         # client certificate to be configured.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-key-path
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-key-path
         [tls_key_path: <string> | default = ""]
 
         # Path to the CA certificates file to validate server certificate
         # against. If not set, the host's root CA certificates are used.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-ca-path
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-ca-path
         [tls_ca_path: <string> | default = ""]
 
         # Override the expected name on the server certificate.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-server-name
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-server-name
         [tls_server_name: <string> | default = ""]
 
         # Skip validating server certificate.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-insecure-skip-verify
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-insecure-skip-verify
         [tls_insecure_skip_verify: <boolean> | default = false]
 
         # If not zero then client-side caching is enabled. Client-side caching
@@ -1231,25 +1231,25 @@ blocks_storage:
         # Path to the client certificate file, which will be used for
         # authenticating with the server. Also requires the key path to be
         # configured.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-cert-path
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-cert-path
         [tls_cert_path: <string> | default = ""]
 
         # Path to the key file for the client certificate. Also requires the
         # client certificate to be configured.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-key-path
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-key-path
         [tls_key_path: <string> | default = ""]
 
         # Path to the CA certificates file to validate server certificate
         # against. If not set, the host's root CA certificates are used.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-ca-path
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-ca-path
         [tls_ca_path: <string> | default = ""]
 
         # Override the expected name on the server certificate.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-server-name
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-server-name
         [tls_server_name: <string> | default = ""]
 
         # Skip validating server certificate.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-insecure-skip-verify
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-insecure-skip-verify
         [tls_insecure_skip_verify: <boolean> | default = false]
 
         # If not zero then client-side caching is enabled. Client-side caching

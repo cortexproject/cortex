@@ -130,8 +130,9 @@ func TestMatcherCache(t *testing.T) {
 	blocksDir := filepath.Join(dir, "blocks")
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
-
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry, true)
+	cfg := defaultIngesterTestConfig(t)
+	cfg.MatchersCacheMaxItems = 50
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry, true)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -142,7 +143,8 @@ func TestMatcherCache(t *testing.T) {
 		return ing.lifecycler.GetState()
 	})
 	ctx := user.InjectOrgID(context.Background(), userID)
-	numberOfDifferentMatchers := 50
+	// Lets have 1 key evicted
+	numberOfDifferentMatchers := cfg.MatchersCacheMaxItems + 1
 	callPerMatcher := 10
 	for j := 0; j < numberOfDifferentMatchers; j++ {
 		for i := 0; i < callPerMatcher; i++ {
@@ -159,7 +161,7 @@ func TestMatcherCache(t *testing.T) {
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(fmt.Sprintf(`
 				# HELP ingester_matchers_cache_evicted_total Total number of items evicted from the cache
 				# TYPE ingester_matchers_cache_evicted_total counter
-				ingester_matchers_cache_evicted_total 0
+				ingester_matchers_cache_evicted_total 1
 				# HELP ingester_matchers_cache_hits_total Total number of cache hits for series matchers
 				# TYPE ingester_matchers_cache_hits_total counter
 				ingester_matchers_cache_hits_total %v
@@ -172,7 +174,7 @@ func TestMatcherCache(t *testing.T) {
 				# HELP ingester_matchers_cache_requests_total Total number of cache requests for series matchers
 				# TYPE ingester_matchers_cache_requests_total counter
 				ingester_matchers_cache_requests_total %v
-	`, callPerMatcher*numberOfDifferentMatchers-numberOfDifferentMatchers, numberOfDifferentMatchers, callPerMatcher*numberOfDifferentMatchers)), "ingester_matchers_cache_requests_total", "ingester_matchers_cache_hits_total", "ingester_matchers_cache_items", "ingester_matchers_cache_max_items", "ingester_matchers_cache_evicted_total"))
+	`, callPerMatcher*numberOfDifferentMatchers-numberOfDifferentMatchers, cfg.MatchersCacheMaxItems, callPerMatcher*numberOfDifferentMatchers)), "ingester_matchers_cache_requests_total", "ingester_matchers_cache_hits_total", "ingester_matchers_cache_items", "ingester_matchers_cache_max_items", "ingester_matchers_cache_evicted_total"))
 }
 
 func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {

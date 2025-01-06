@@ -1,13 +1,13 @@
 package ingester
 
 import (
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 )
 
@@ -680,7 +680,8 @@ func (sm *tsdbMetrics) removeRegistryForUser(userID string) {
 }
 
 type matcherCacheMetrics struct {
-	r *prometheus.Registry
+	r      *prometheus.Registry
+	logger log.Logger
 
 	requestsTotal *prometheus.Desc
 	hitsTotal     *prometheus.Desc
@@ -689,9 +690,10 @@ type matcherCacheMetrics struct {
 	evicted       *prometheus.Desc
 }
 
-func newMatchCacheMetrics(r *prometheus.Registry) *matcherCacheMetrics {
+func newMatchCacheMetrics(r *prometheus.Registry, l log.Logger) *matcherCacheMetrics {
 	m := &matcherCacheMetrics{
-		r: r,
+		r:      r,
+		logger: l,
 		requestsTotal: prometheus.NewDesc(
 			"ingester_matchers_cache_requests_total",
 			"Total number of cache requests for series matchers",
@@ -727,14 +729,14 @@ func (m *matcherCacheMetrics) Describe(out chan<- *prometheus.Desc) {
 func (m *matcherCacheMetrics) Collect(out chan<- prometheus.Metric) {
 	gm, err := m.r.Gather()
 	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "failed to gather metrics from registry", "err", err)
+		level.Warn(m.logger).Log("msg", "failed to gather metrics from registry", "err", err)
 		return
 	}
 
 	mfm, err := util.NewMetricFamilyMap(gm)
 
 	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "failed to create metric family map", "err", err)
+		level.Warn(m.logger).Log("msg", "failed to create metric family map", "err", err)
 		return
 	}
 
@@ -742,5 +744,5 @@ func (m *matcherCacheMetrics) Collect(out chan<- prometheus.Metric) {
 	out <- prometheus.MustNewConstMetric(m.hitsTotal, prometheus.CounterValue, mfm.SumCounters("thanos_matchers_cache_hits_total"))
 	out <- prometheus.MustNewConstMetric(m.numItems, prometheus.GaugeValue, mfm.SumGauges("thanos_matchers_cache_items"))
 	out <- prometheus.MustNewConstMetric(m.maxItems, prometheus.GaugeValue, mfm.SumGauges("thanos_matchers_cache_max_items"))
-	out <- prometheus.MustNewConstMetric(m.evicted, prometheus.CounterValue, mfm.SumCounters("thanos_matchers_cache_max_items"))
+	out <- prometheus.MustNewConstMetric(m.evicted, prometheus.CounterValue, mfm.SumCounters("thanos_matchers_cache_evicted_total"))
 }

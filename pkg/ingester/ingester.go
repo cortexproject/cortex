@@ -719,7 +719,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 
 	if cfg.MatchersCacheMaxItems > 0 {
 		r := prometheus.NewRegistry()
-		registerer.MustRegister(newMatchCacheMetrics(r))
+		registerer.MustRegister(newMatchCacheMetrics(r, logger))
 		i.matchersCache, err = storecache.NewMatchersCache(storecache.WithSize(cfg.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
 		if err != nil {
 			return nil, err

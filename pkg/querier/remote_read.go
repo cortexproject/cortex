@@ -1,12 +1,12 @@
 package querier
 
 import (
-	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"net/http"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/storage"
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"

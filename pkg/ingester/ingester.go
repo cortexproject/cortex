@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"html"
 	"io"
 	"math"
@@ -38,6 +37,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/shipper"
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
@@ -721,6 +721,9 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		r := prometheus.NewRegistry()
 		registerer.MustRegister(newMatchCacheMetrics(r))
 		i.matchersCache, err = storecache.NewMatchersCache(storecache.WithSize(cfg.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	i.metrics = newIngesterMetrics(registerer,

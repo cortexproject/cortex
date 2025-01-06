@@ -3,12 +3,13 @@ package client
 import (
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 // ToQueryRequest builds a QueryRequest proto.

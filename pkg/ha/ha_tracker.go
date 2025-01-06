@@ -530,7 +530,7 @@ func (c *HATracker) CleanupHATrackerMetricsForUser(userID string) {
 		level.Warn(c.logger).Log("msg", "failed to remove cortex_ha_tracker_kv_store_cas_total metric for user", "user", userID, "err", err)
 	}
 	if err := util.DeleteMatchingLabels(c.userReplicaGroupCount, filter); err != nil {
-		level.Warn(c.logger).Log("msg", "failed to remove ha_tracker_user_replica_group_count metric for user", "user", userID, "err", err)
+		level.Warn(c.logger).Log("msg", "failed to remove cortex_ha_tracker_user_replica_group_count metric for user", "user", userID, "err", err)
 	}
 }
 

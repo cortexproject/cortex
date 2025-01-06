@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 )
 
 func TestQueryRequest(t *testing.T) {
@@ -41,7 +42,7 @@ func TestQueryRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	haveFrom, haveTo, haveMatchers, err := FromQueryRequest(req)
+	haveFrom, haveTo, haveMatchers, err := FromQueryRequest(storecache.NewNoopMatcherCache(), req)
 	if err != nil {
 		t.Fatal(err)
 	}

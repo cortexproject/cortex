@@ -119,6 +119,64 @@ func seriesSetFromResponseStream(s *mockQueryStreamServer) (storage.SeriesSet, e
 	return set, nil
 }
 
+func TestMatcherCache(t *testing.T) {
+	limits := defaultLimitsTestConfig()
+	userID := "1"
+	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
+	registry := prometheus.NewRegistry()
+
+	dir := t.TempDir()
+	chunksDir := filepath.Join(dir, "chunks")
+	blocksDir := filepath.Join(dir, "blocks")
+	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
+	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
+	cfg := defaultIngesterTestConfig(t)
+	cfg.MatchersCacheMaxItems = 50
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry, true)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+		return ing.lifecycler.GetState()
+	})
+	ctx := user.InjectOrgID(context.Background(), userID)
+	// Lets have 1 key evicted
+	numberOfDifferentMatchers := cfg.MatchersCacheMaxItems + 1
+	callPerMatcher := 10
+	for j := 0; j < numberOfDifferentMatchers; j++ {
+		for i := 0; i < callPerMatcher; i++ {
+			s := &mockQueryStreamServer{ctx: ctx}
+			err = ing.QueryStream(&client.QueryRequest{
+				StartTimestampMs: math.MinInt64,
+				EndTimestampMs:   math.MaxInt64,
+				Matchers:         []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: fmt.Sprintf("%d", j)}},
+			}, s)
+			require.NoError(t, err)
+		}
+	}
+
+	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(fmt.Sprintf(`
+				# HELP ingester_matchers_cache_evicted_total Total number of items evicted from the cache
+				# TYPE ingester_matchers_cache_evicted_total counter
+				ingester_matchers_cache_evicted_total 1
+				# HELP ingester_matchers_cache_hits_total Total number of cache hits for series matchers
+				# TYPE ingester_matchers_cache_hits_total counter
+				ingester_matchers_cache_hits_total %v
+				# HELP ingester_matchers_cache_items Total number of cached items
+				# TYPE ingester_matchers_cache_items gauge
+				ingester_matchers_cache_items %v
+				# HELP ingester_matchers_cache_max_items Maximum number of items that can be cached
+				# TYPE ingester_matchers_cache_max_items gauge
+				ingester_matchers_cache_max_items 0
+				# HELP ingester_matchers_cache_requests_total Total number of cache requests for series matchers
+				# TYPE ingester_matchers_cache_requests_total counter
+				ingester_matchers_cache_requests_total %v
+	`, callPerMatcher*numberOfDifferentMatchers-numberOfDifferentMatchers, cfg.MatchersCacheMaxItems, callPerMatcher*numberOfDifferentMatchers)), "ingester_matchers_cache_requests_total", "ingester_matchers_cache_hits_total", "ingester_matchers_cache_items", "ingester_matchers_cache_max_items", "ingester_matchers_cache_evicted_total"))
+}
+
 func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	userID := "1"

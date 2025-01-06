@@ -6,6 +6,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/storage"
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -34,7 +35,7 @@ func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 		errors := make(chan error)
 		for i, qr := range req.Queries {
 			go func(i int, qr *client.QueryRequest) {
-				from, to, matchers, err := client.FromQueryRequest(qr)
+				from, to, matchers, err := client.FromQueryRequest(storecache.NewNoopMatcherCache(), qr)
 				if err != nil {
 					errors <- err
 					return

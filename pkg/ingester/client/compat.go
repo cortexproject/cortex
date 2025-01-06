@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
@@ -26,8 +27,8 @@ func ToQueryRequest(from, to model.Time, matchers []*labels.Matcher) (*QueryRequ
 }
 
 // FromQueryRequest unpacks a QueryRequest proto.
-func FromQueryRequest(req *QueryRequest) (model.Time, model.Time, []*labels.Matcher, error) {
-	matchers, err := FromLabelMatchers(req.Matchers)
+func FromQueryRequest(cache storecache.MatchersCache, req *QueryRequest) (model.Time, model.Time, []*labels.Matcher, error) {
+	matchers, err := FromLabelMatchers(cache, req.Matchers)
 	if err != nil {
 		return 0, 0, nil, err
 	}
@@ -55,10 +56,10 @@ func ToExemplarQueryRequest(from, to model.Time, matchers ...[]*labels.Matcher) 
 }
 
 // FromExemplarQueryRequest unpacks a ExemplarQueryRequest proto.
-func FromExemplarQueryRequest(req *ExemplarQueryRequest) (int64, int64, [][]*labels.Matcher, error) {
+func FromExemplarQueryRequest(cache storecache.MatchersCache, req *ExemplarQueryRequest) (int64, int64, [][]*labels.Matcher, error) {
 	var result [][]*labels.Matcher
 	for _, m := range req.Matchers {
-		matchers, err := FromLabelMatchers(m.Matchers)
+		matchers, err := FromLabelMatchers(cache, m.Matchers)
 		if err != nil {
 			return 0, 0, nil, err
 		}
@@ -175,10 +176,10 @@ func SeriesSetToQueryResponse(s storage.SeriesSet) (*QueryResponse, error) {
 }
 
 // FromMetricsForLabelMatchersRequest unpacks a MetricsForLabelMatchersRequest proto
-func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (model.Time, model.Time, int, [][]*labels.Matcher, error) {
+func FromMetricsForLabelMatchersRequest(cache storecache.MatchersCache, req *MetricsForLabelMatchersRequest) (model.Time, model.Time, int, [][]*labels.Matcher, error) {
 	matchersSet := make([][]*labels.Matcher, 0, len(req.MatchersSet))
 	for _, matchers := range req.MatchersSet {
-		matchers, err := FromLabelMatchers(matchers.Matchers)
+		matchers, err := FromLabelMatchers(cache, matchers.Matchers)
 		if err != nil {
 			return 0, 0, 0, nil, err
 		}
@@ -206,12 +207,12 @@ func ToLabelValuesRequest(labelName model.LabelName, from, to model.Time, limit 
 }
 
 // FromLabelValuesRequest unpacks a LabelValuesRequest proto
-func FromLabelValuesRequest(req *LabelValuesRequest) (string, int64, int64, int, []*labels.Matcher, error) {
+func FromLabelValuesRequest(cache storecache.MatchersCache, req *LabelValuesRequest) (string, int64, int64, int, []*labels.Matcher, error) {
 	var err error
 	var matchers []*labels.Matcher
 
 	if req.Matchers != nil {
-		matchers, err = FromLabelMatchers(req.Matchers.Matchers)
+		matchers, err = FromLabelMatchers(cache, req.Matchers.Matchers)
 		if err != nil {
 			return "", 0, 0, 0, nil, err
 		}
@@ -236,12 +237,12 @@ func ToLabelNamesRequest(from, to model.Time, limit int, matchers []*labels.Matc
 }
 
 // FromLabelNamesRequest unpacks a LabelNamesRequest proto
-func FromLabelNamesRequest(req *LabelNamesRequest) (int64, int64, int, []*labels.Matcher, error) {
+func FromLabelNamesRequest(cache storecache.MatchersCache, req *LabelNamesRequest) (int64, int64, int, []*labels.Matcher, error) {
 	var err error
 	var matchers []*labels.Matcher
 
 	if req.Matchers != nil {
-		matchers, err = FromLabelMatchers(req.Matchers.Matchers)
+		matchers, err = FromLabelMatchers(cache, req.Matchers.Matchers)
 		if err != nil {
 			return 0, 0, 0, nil, err
 		}
@@ -275,27 +276,31 @@ func toLabelMatchers(matchers []*labels.Matcher) ([]*LabelMatcher, error) {
 	return result, nil
 }
 
-func FromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
+func FromLabelMatchers(cache storecache.MatchersCache, matchers []*LabelMatcher) ([]*labels.Matcher, error) {
 	result := make([]*labels.Matcher, 0, len(matchers))
 	for _, matcher := range matchers {
-		var mtype labels.MatchType
-		switch matcher.Type {
-		case EQUAL:
-			mtype = labels.MatchEqual
-		case NOT_EQUAL:
-			mtype = labels.MatchNotEqual
-		case REGEX_MATCH:
-			mtype = labels.MatchRegexp
-		case REGEX_NO_MATCH:
-			mtype = labels.MatchNotRegexp
-		default:
-			return nil, fmt.Errorf("invalid matcher type")
-		}
-		matcher, err := labels.NewMatcher(mtype, matcher.Name, matcher.Value)
+		m, err := cache.GetOrSet(matcher.String(), func() (*labels.Matcher, error) {
+			var mtype labels.MatchType
+			switch matcher.Type {
+			case EQUAL:
+				mtype = labels.MatchEqual
+			case NOT_EQUAL:
+				mtype = labels.MatchNotEqual
+			case REGEX_MATCH:
+				mtype = labels.MatchRegexp
+			case REGEX_NO_MATCH:
+				mtype = labels.MatchNotRegexp
+			default:
+				return nil, fmt.Errorf("invalid matcher type")
+			}
+			return labels.NewMatcher(mtype, matcher.GetName(), matcher.GetValue())
+		})
+
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, matcher)
+
+		result = append(result, m)
 	}
 	return result, nil
 }

@@ -37,6 +37,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/shipper"
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
@@ -145,6 +146,9 @@ type Config struct {
 	// When disabled, the result may contain samples outside the queried time range but Select() performances
 	// may be improved.
 	DisableChunkTrimming bool `yaml:"disable_chunk_trimming"`
+
+	// Maximum number of entries in the matchers cache. 0 to disable.
+	MatchersCacheMaxItems int `yaml:"matchers_cache_max_items"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -173,6 +177,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
 
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
+	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the matchers cache. 0 to disable.")
 }
 
 func (cfg *Config) Validate() error {
@@ -243,6 +248,7 @@ type Ingester struct {
 	inflightQueryRequests    atomic.Int64
 	maxInflightQueryRequests util_math.MaxTracker
 
+	matchersCache                storecache.MatchersCache
 	expandedPostingsCacheFactory *cortex_tsdb.ExpandedPostingsCacheFactory
 }
 
@@ -708,7 +714,18 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		logger:                       logger,
 		ingestionRate:                util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 		expandedPostingsCacheFactory: cortex_tsdb.NewExpandedPostingsCacheFactory(cfg.BlocksStorageConfig.TSDB.PostingsCache),
+		matchersCache:                storecache.NewNoopMatcherCache(),
 	}
+
+	if cfg.MatchersCacheMaxItems > 0 {
+		r := prometheus.NewRegistry()
+		registerer.MustRegister(newMatchCacheMetrics(r, logger))
+		i.matchersCache, err = storecache.NewMatchersCache(storecache.WithSize(cfg.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	i.metrics = newIngesterMetrics(registerer,
 		false,
 		cfg.ActiveSeriesMetricsEnabled,
@@ -1474,7 +1491,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
-	from, through, matchers, err := client.FromExemplarQueryRequest(req)
+	from, through, matchers, err := client.FromExemplarQueryRequest(i.matchersCache, req)
 	if err != nil {
 		return nil, err
 	}
@@ -1564,7 +1581,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	labelName, startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelValuesRequest(req)
+	labelName, startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelValuesRequest(i.matchersCache, req)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1654,7 +1671,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelNamesRequest(req)
+	startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelNamesRequest(i.matchersCache, req)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1768,7 +1785,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 	}
 
 	// Parse the request
-	_, _, limit, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, limit, matchersSet, err := client.FromMetricsForLabelMatchersRequest(i.matchersCache, req)
 	if err != nil {
 		return cleanup, err
 	}
@@ -1982,7 +1999,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
-	from, through, matchers, err := client.FromQueryRequest(req)
+	from, through, matchers, err := client.FromQueryRequest(i.matchersCache, req)
 	if err != nil {
 		return err
 	}

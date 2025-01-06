@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -34,7 +35,7 @@ func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 		errors := make(chan error)
 		for i, qr := range req.Queries {
 			go func(i int, qr *client.QueryRequest) {
-				from, to, matchers, err := client.FromQueryRequest(qr)
+				from, to, matchers, err := client.FromQueryRequest(qr, labels.NewMatcher)
 				if err != nil {
 					errors <- err
 					return

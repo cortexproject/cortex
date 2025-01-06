@@ -627,6 +627,11 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		store.WithLazyExpandedPostings(u.cfg.BucketStore.LazyExpandedPostingsEnabled),
 		store.WithPostingGroupMaxKeySeriesRatio(u.cfg.BucketStore.LazyExpandedPostingGroupMaxKeySeriesRatio),
 		store.WithDontResort(true), // Cortex doesn't need to resort series in store gateway.
+		store.WithBlockLifecycleCallback(&shardingBlockLifecycleCallbackAdapter{
+			userID:   userID,
+			strategy: u.shardingStrategy,
+			logger:   userLogger,
+		}),
 	}
 	if u.logLevel.String() == "debug" {
 		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())

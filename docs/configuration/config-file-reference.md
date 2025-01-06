@@ -3181,6 +3181,10 @@ instance_limits:
 # change by changing this option.
 # CLI flag: -ingester.disable-chunk-trimming
 [disable_chunk_trimming: <boolean> | default = false]
+
+# Maximum number of entries in the matchers cache. 0 to disable.
+# CLI flag: -ingester.matchers-cache-max-items
+[matchers_cache_max_items: <int> | default = 0]
 ```
 
 ### `ingester_client_config`

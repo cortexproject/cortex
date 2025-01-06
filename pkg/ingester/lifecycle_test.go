@@ -43,6 +43,7 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 	cfg.LifecyclerConfig.FinalSleep = 0
 	cfg.ActiveSeriesMetricsEnabled = true
 	cfg.LabelsStringInterningEnabled = true
+	cfg.MatchersCacheMaxItems = 1024
 	return cfg
 }
 

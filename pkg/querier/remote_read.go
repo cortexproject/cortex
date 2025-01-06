@@ -1,6 +1,7 @@
 package querier
 
 import (
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -34,7 +35,7 @@ func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 		errors := make(chan error)
 		for i, qr := range req.Queries {
 			go func(i int, qr *client.QueryRequest) {
-				from, to, matchers, err := client.FromQueryRequest(qr)
+				from, to, matchers, err := client.FromQueryRequest(storecache.NewNoopMatcherCache(), qr)
 				if err != nil {
 					errors <- err
 					return

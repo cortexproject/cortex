@@ -62,6 +62,7 @@
 * [BUGFIX] Ingester: Fix regression on usage of cortex_ingester_queried_chunks. #6398
 * [BUGFIX] Ingester: Fix possible race condition when `active series per LabelSet` is configured. #6409
 * [BUGFIX] Query Frontend: Fix @ modifier not being applied correctly on sub queries. #6450
+* [BUGFIX] Cortex Redis flags with multiple dots #6476
 
 ## 1.18.1 2024-10-14
 

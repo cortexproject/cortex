@@ -656,7 +656,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
-				assert.Equal(t, wrapWithUser(makeLimitError(perUserSeriesLimit, ing.limiter.FormatError(userID, errMaxSeriesPerUserLimitExceeded)), userID).Error(), string(httpResp.Body))
+				assert.Equal(t, wrapWithUser(makeLimitError(perUserSeriesLimit, ing.limiter.FormatError(userID, errMaxSeriesPerUserLimitExceeded, labels1)), userID).Error(), string(httpResp.Body))
 
 				// Append two metadata, expect no error since metadata is a best effort approach.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, nil, cortexpb.API))
@@ -778,7 +778,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
-				assert.Equal(t, wrapWithUser(makeMetricLimitError(perMetricSeriesLimit, labels3, ing.limiter.FormatError(userID, errMaxSeriesPerMetricLimitExceeded)), userID).Error(), string(httpResp.Body))
+				assert.Equal(t, wrapWithUser(makeMetricLimitError(perMetricSeriesLimit, labels3, ing.limiter.FormatError(userID, errMaxSeriesPerMetricLimitExceeded, labels1)), userID).Error(), string(httpResp.Body))
 
 				// Append two metadata for the same metric. Drop the second one, and expect no error since metadata is a best effort approach.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, nil, cortexpb.API))
@@ -3073,6 +3073,12 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 			res, err := i.MetricsForLabelMatchers(ctx, req)
 			require.NoError(t, err)
 			assert.ElementsMatch(t, testData.expected, res.Metric)
+
+			// Stream
+			ss := mockMetricsForLabelMatchersStreamServer{ctx: ctx}
+			err = i.MetricsForLabelMatchersStream(req, &ss)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, testData.expected, ss.res.Metric)
 		})
 	}
 }
@@ -3407,6 +3413,21 @@ func writeRequestSingleSeries(lbls labels.Labels, samples []cortexpb.Sample) *co
 	return req
 }
 
+type mockMetricsForLabelMatchersStreamServer struct {
+	grpc.ServerStream
+	ctx context.Context
+	res client.MetricsForLabelMatchersStreamResponse
+}
+
+func (m *mockMetricsForLabelMatchersStreamServer) Send(response *client.MetricsForLabelMatchersStreamResponse) error {
+	m.res.Metric = append(m.res.Metric, response.Metric...)
+	return nil
+}
+
+func (m *mockMetricsForLabelMatchersStreamServer) Context() context.Context {
+	return m.ctx
+}
+
 type mockQueryStreamServer struct {
 	grpc.ServerStream
 	ctx context.Context
@@ -3424,10 +3445,25 @@ func (m *mockQueryStreamServer) Context() context.Context {
 }
 
 func BenchmarkIngester_QueryStream_Chunks(b *testing.B) {
-	benchmarkQueryStream(b)
+	tc := []struct {
+		samplesCount, seriesCount int
+	}{
+		{samplesCount: 10, seriesCount: 10},
+		{samplesCount: 10, seriesCount: 50},
+		{samplesCount: 10, seriesCount: 100},
+		{samplesCount: 50, seriesCount: 10},
+		{samplesCount: 50, seriesCount: 50},
+		{samplesCount: 50, seriesCount: 100},
+	}
+
+	for _, c := range tc {
+		b.Run(fmt.Sprintf("samplesCount=%v; seriesCount=%v", c.samplesCount, c.seriesCount), func(b *testing.B) {
+			benchmarkQueryStream(b, c.samplesCount, c.seriesCount)
+		})
+	}
 }
 
-func benchmarkQueryStream(b *testing.B) {
+func benchmarkQueryStream(b *testing.B, samplesCount, seriesCount int) {
 	cfg := defaultIngesterTestConfig(b)
 
 	// Create ingester.
@@ -3444,7 +3480,6 @@ func benchmarkQueryStream(b *testing.B) {
 	// Push series.
 	ctx := user.InjectOrgID(context.Background(), userID)
 
-	const samplesCount = 1000
 	samples := make([]cortexpb.Sample, 0, samplesCount)
 
 	for i := 0; i < samplesCount; i++ {
@@ -3454,7 +3489,6 @@ func benchmarkQueryStream(b *testing.B) {
 		})
 	}
 
-	const seriesCount = 100
 	for s := 0; s < seriesCount; s++ {
 		_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: strconv.Itoa(s)}}, samples))
 		require.NoError(b, err)
@@ -3462,7 +3496,7 @@ func benchmarkQueryStream(b *testing.B) {
 
 	req := &client.QueryRequest{
 		StartTimestampMs: 0,
-		EndTimestampMs:   samplesCount + 1,
+		EndTimestampMs:   int64(samplesCount + 1),
 
 		Matchers: []*client.LabelMatcher{{
 			Type:  client.EQUAL,
@@ -3474,6 +3508,7 @@ func benchmarkQueryStream(b *testing.B) {
 	mockStream := &mockQueryStreamServer{ctx: ctx}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 
 	for ix := 0; ix < b.N; ix++ {
 		err := i.QueryStream(req, mockStream)

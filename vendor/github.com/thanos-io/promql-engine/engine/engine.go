@@ -75,6 +75,9 @@ type Opts struct {
 	// EnableAnalysis enables query analysis.
 	EnableAnalysis bool
 
+	// EnablePartialResponses enables partial responses in distributed mode.
+	EnablePartialResponses bool
+
 	// SelectorBatchSize specifies the maximum number of samples to be returned by selectors in a single batch.
 	SelectorBatchSize int64
 
@@ -94,6 +97,33 @@ func (o Opts) getLogicalOptimizers() []logicalplan.Optimizer {
 		copy(optimizers, o.LogicalOptimizers)
 	}
 	return optimizers
+}
+
+// QueryOpts implements promql.QueryOpts but allows to override more engine default options.
+type QueryOpts struct {
+	// These values are used to implement promql.QueryOpts, they have weird "Param" suffix because
+	// they are accessed by methods of the same name.
+	LookbackDeltaParam      time.Duration
+	EnablePerStepStatsParam bool
+
+	// DecodingConcurrency can be used to override the DecodingConcurrency engine setting.
+	DecodingConcurrency int
+
+	// EnablePartialResponses can be used to override the EnablePartialResponses engine setting.
+	EnablePartialResponses bool
+}
+
+func (opts QueryOpts) LookbackDelta() time.Duration { return opts.LookbackDeltaParam }
+func (opts QueryOpts) EnablePerStepStats() bool     { return opts.EnablePerStepStatsParam }
+
+func fromPromQLOpts(opts promql.QueryOpts) *QueryOpts {
+	if opts == nil {
+		return &QueryOpts{}
+	}
+	return &QueryOpts{
+		LookbackDeltaParam:      opts.LookbackDelta(),
+		EnablePerStepStatsParam: opts.EnablePerStepStats(),
+	}
 }
 
 // New creates a new query engine with the given options. The query engine will
@@ -184,14 +214,15 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 		disableDuplicateLabelChecks: opts.DisableDuplicateLabelChecks,
 		disableFallback:             opts.DisableFallback,
 
-		logger:             opts.Logger,
-		lookbackDelta:      opts.LookbackDelta,
-		enablePerStepStats: opts.EnablePerStepStats,
-		logicalOptimizers:  opts.getLogicalOptimizers(),
-		timeout:            opts.Timeout,
-		metrics:            metrics,
-		extLookbackDelta:   opts.ExtLookbackDelta,
-		enableAnalysis:     opts.EnableAnalysis,
+		logger:                 opts.Logger,
+		lookbackDelta:          opts.LookbackDelta,
+		enablePerStepStats:     opts.EnablePerStepStats,
+		logicalOptimizers:      opts.getLogicalOptimizers(),
+		timeout:                opts.Timeout,
+		metrics:                metrics,
+		extLookbackDelta:       opts.ExtLookbackDelta,
+		enableAnalysis:         opts.EnableAnalysis,
+		enablePartialResponses: opts.EnablePartialResponses,
 		noStepSubqueryIntervalFn: func(d time.Duration) time.Duration {
 			return time.Duration(opts.NoStepSubqueryIntervalFn(d.Milliseconds()) * 1000000)
 		},
@@ -225,45 +256,21 @@ type Engine struct {
 	extLookbackDelta         time.Duration
 	decodingConcurrency      int
 	enableAnalysis           bool
+	enablePartialResponses   bool
 	noStepSubqueryIntervalFn func(time.Duration) time.Duration
 }
 
-func (e *Engine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
-	idx, err := e.activeQueryTracker.Insert(ctx, qs)
-	if err != nil {
-		return nil, err
-	}
-	defer e.activeQueryTracker.Delete(idx)
-
+func (e *Engine) MakeInstantQuery(ctx context.Context, q storage.Queryable, opts *QueryOpts, qs string, ts time.Time) (promql.Query, error) {
 	expr, err := parser.NewParser(qs, parser.WithFunctions(e.functions)).ParseExpr()
 	if err != nil {
 		return nil, err
 	}
-
-	if opts == nil {
-		opts = promql.NewPrometheusQueryOpts(false, e.lookbackDelta)
-	}
-	if opts.LookbackDelta() <= 0 {
-		opts = promql.NewPrometheusQueryOpts(opts.EnablePerStepStats(), e.lookbackDelta)
-	}
-
 	// determine sorting order before optimizers run, we do this by looking for "sort"
 	// and "sort_desc" and optimize them away afterwards since they are only needed at
 	// the presentation layer and not when computing the results.
 	resultSort := newResultSort(expr)
 
-	qOpts := &query.Options{
-		Start:                    ts,
-		End:                      ts,
-		Step:                     0,
-		StepsBatch:               stepsBatch,
-		LookbackDelta:            opts.LookbackDelta(),
-		EnablePerStepStats:       e.enablePerStepStats && opts.EnablePerStepStats(),
-		ExtLookbackDelta:         e.extLookbackDelta,
-		EnableAnalysis:           e.enableAnalysis,
-		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
-		DecodingConcurrency:      e.decodingConcurrency,
-	}
+	qOpts := e.makeQueryOpts(ts, ts, 0, opts)
 	if qOpts.StepsBatch > 64 {
 		return nil, ErrStepsBatchTooLarge
 	}
@@ -301,19 +308,12 @@ func (e *Engine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts 
 	}, nil
 }
 
-func (e *Engine) NewInstantQueryFromPlan(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, root logicalplan.Node, ts time.Time) (promql.Query, error) {
+func (e *Engine) MakeInstantQueryFromPlan(ctx context.Context, q storage.Queryable, opts *QueryOpts, root logicalplan.Node, ts time.Time) (promql.Query, error) {
 	idx, err := e.activeQueryTracker.Insert(ctx, root.String())
 	if err != nil {
 		return nil, err
 	}
 	defer e.activeQueryTracker.Delete(idx)
-
-	if opts == nil {
-		opts = promql.NewPrometheusQueryOpts(false, e.lookbackDelta)
-	}
-	if opts.LookbackDelta() <= 0 {
-		opts = promql.NewPrometheusQueryOpts(opts.EnablePerStepStats(), e.lookbackDelta)
-	}
 
 	qOpts := e.makeQueryOpts(ts, ts, 0, opts)
 	if qOpts.StepsBatch > 64 {
@@ -355,7 +355,7 @@ func (e *Engine) NewInstantQueryFromPlan(ctx context.Context, q storage.Queryabl
 	}, nil
 }
 
-func (e *Engine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, step time.Duration) (promql.Query, error) {
+func (e *Engine) MakeRangeQuery(ctx context.Context, q storage.Queryable, opts *QueryOpts, qs string, start, end time.Time, step time.Duration) (promql.Query, error) {
 	idx, err := e.activeQueryTracker.Insert(ctx, qs)
 	if err != nil {
 		return nil, err
@@ -370,12 +370,6 @@ func (e *Engine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts pr
 	// Use same check as Prometheus for range queries.
 	if expr.Type() != parser.ValueTypeVector && expr.Type() != parser.ValueTypeScalar {
 		return nil, errors.Newf("invalid expression type %q for range query, must be Scalar or instant Vector", parser.DocumentedType(expr.Type()))
-	}
-	if opts == nil {
-		opts = promql.NewPrometheusQueryOpts(false, e.lookbackDelta)
-	}
-	if opts.LookbackDelta() <= 0 {
-		opts = promql.NewPrometheusQueryOpts(opts.EnablePerStepStats(), e.lookbackDelta)
 	}
 	qOpts := e.makeQueryOpts(start, end, step, opts)
 	if qOpts.StepsBatch > 64 {
@@ -413,19 +407,13 @@ func (e *Engine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts pr
 	}, nil
 }
 
-func (e *Engine) NewRangeQueryFromPlan(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, root logicalplan.Node, start, end time.Time, step time.Duration) (promql.Query, error) {
+func (e *Engine) MakeRangeQueryFromPlan(ctx context.Context, q storage.Queryable, opts *QueryOpts, root logicalplan.Node, start, end time.Time, step time.Duration) (promql.Query, error) {
 	idx, err := e.activeQueryTracker.Insert(ctx, root.String())
 	if err != nil {
 		return nil, err
 	}
 	defer e.activeQueryTracker.Delete(idx)
 
-	if opts == nil {
-		opts = promql.NewPrometheusQueryOpts(false, e.lookbackDelta)
-	}
-	if opts.LookbackDelta() <= 0 {
-		opts = promql.NewPrometheusQueryOpts(opts.EnablePerStepStats(), e.lookbackDelta)
-	}
 	qOpts := e.makeQueryOpts(start, end, step, opts)
 	if qOpts.StepsBatch > 64 {
 		return nil, ErrStepsBatchTooLarge
@@ -461,20 +449,50 @@ func (e *Engine) NewRangeQueryFromPlan(ctx context.Context, q storage.Queryable,
 	}, nil
 }
 
-func (e *Engine) makeQueryOpts(start time.Time, end time.Time, step time.Duration, opts promql.QueryOpts) *query.Options {
-	qOpts := &query.Options{
+// PromQL compatibility constructors
+
+// NewInstantQuery implements the promql.Engine interface.
+func (e *Engine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
+	return e.MakeInstantQuery(ctx, q, fromPromQLOpts(opts), qs, ts)
+}
+
+// NewRangeQuery implements the promql.Engine interface.
+func (e *Engine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, step time.Duration) (promql.Query, error) {
+	return e.MakeRangeQuery(ctx, q, fromPromQLOpts(opts), qs, start, end, step)
+}
+
+func (e *Engine) makeQueryOpts(start time.Time, end time.Time, step time.Duration, opts *QueryOpts) *query.Options {
+	res := &query.Options{
 		Start:                    start,
 		End:                      end,
 		Step:                     step,
 		StepsBatch:               stepsBatch,
-		LookbackDelta:            opts.LookbackDelta(),
-		EnablePerStepStats:       e.enablePerStepStats && opts.EnablePerStepStats(),
+		LookbackDelta:            e.lookbackDelta,
+		EnablePerStepStats:       e.enablePerStepStats,
 		ExtLookbackDelta:         e.extLookbackDelta,
 		EnableAnalysis:           e.enableAnalysis,
+		EnablePartialResponses:   e.enablePartialResponses,
 		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
 		DecodingConcurrency:      e.decodingConcurrency,
 	}
-	return qOpts
+	if opts == nil {
+		return res
+	}
+
+	if opts.LookbackDelta() > 0 {
+		res.LookbackDelta = opts.LookbackDelta()
+	}
+	if opts.EnablePerStepStats() {
+		res.EnablePerStepStats = opts.EnablePerStepStats()
+	}
+
+	if opts.DecodingConcurrency != 0 {
+		res.DecodingConcurrency = opts.DecodingConcurrency
+	}
+	if opts.EnablePartialResponses {
+		res.EnablePartialResponses = opts.EnablePartialResponses
+	}
+	return res
 }
 
 func (e *Engine) storageScanners(queryable storage.Queryable, qOpts *query.Options, lplan logicalplan.Plan) (engstorage.Scanners, error) {

@@ -1299,25 +1299,25 @@ bucket_store:
       # Path to the client certificate file, which will be used for
       # authenticating with the server. Also requires the key path to be
       # configured.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-cert-path
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-cert-path
       [tls_cert_path: <string> | default = ""]
 
       # Path to the key file for the client certificate. Also requires the
       # client certificate to be configured.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-key-path
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-key-path
       [tls_key_path: <string> | default = ""]
 
       # Path to the CA certificates file to validate server certificate against.
       # If not set, the host's root CA certificates are used.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-ca-path
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-ca-path
       [tls_ca_path: <string> | default = ""]
 
       # Override the expected name on the server certificate.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-server-name
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-server-name
       [tls_server_name: <string> | default = ""]
 
       # Skip validating server certificate.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-insecure-skip-verify
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-insecure-skip-verify
       [tls_insecure_skip_verify: <boolean> | default = false]
 
       # If not zero then client-side caching is enabled. Client-side caching is
@@ -1532,25 +1532,25 @@ bucket_store:
       # Path to the client certificate file, which will be used for
       # authenticating with the server. Also requires the key path to be
       # configured.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-cert-path
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-cert-path
       [tls_cert_path: <string> | default = ""]
 
       # Path to the key file for the client certificate. Also requires the
       # client certificate to be configured.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-key-path
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-key-path
       [tls_key_path: <string> | default = ""]
 
       # Path to the CA certificates file to validate server certificate against.
       # If not set, the host's root CA certificates are used.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-ca-path
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-ca-path
       [tls_ca_path: <string> | default = ""]
 
       # Override the expected name on the server certificate.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-server-name
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-server-name
       [tls_server_name: <string> | default = ""]
 
       # Skip validating server certificate.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-insecure-skip-verify
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-insecure-skip-verify
       [tls_insecure_skip_verify: <boolean> | default = false]
 
       # If not zero then client-side caching is enabled. Client-side caching is
@@ -1770,25 +1770,25 @@ bucket_store:
       # Path to the client certificate file, which will be used for
       # authenticating with the server. Also requires the key path to be
       # configured.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-cert-path
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-cert-path
       [tls_cert_path: <string> | default = ""]
 
       # Path to the key file for the client certificate. Also requires the
       # client certificate to be configured.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-key-path
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-key-path
       [tls_key_path: <string> | default = ""]
 
       # Path to the CA certificates file to validate server certificate against.
       # If not set, the host's root CA certificates are used.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-ca-path
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-ca-path
       [tls_ca_path: <string> | default = ""]
 
       # Override the expected name on the server certificate.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-server-name
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-server-name
       [tls_server_name: <string> | default = ""]
 
       # Skip validating server certificate.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-insecure-skip-verify
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-insecure-skip-verify
       [tls_insecure_skip_verify: <boolean> | default = false]
 
       # If not zero then client-side caching is enabled. Client-side caching is
@@ -2331,17 +2331,18 @@ sharding_ring:
   [wait_active_instance_timeout: <duration> | default = 10m]
 
 # The compaction strategy to use. Supported values are: default, partitioning.
-# CLI flag: -compactor.compaction-mode
-[compaction_mode: <string> | default = "default"]
+# CLI flag: -compactor.compaction-strategy
+[compaction_strategy: <string> | default = "default"]
 
-# How long block visit marker file should be considered as expired and able to
-# be picked up by compactor again.
-# CLI flag: -compactor.block-visit-marker-timeout
-[block_visit_marker_timeout: <duration> | default = 5m]
+# How long compaction visit marker file should be considered as expired and able
+# to be picked up by compactor again.
+# CLI flag: -compactor.compaction-visit-marker-timeout
+[compaction_visit_marker_timeout: <duration> | default = 10m]
 
-# How frequently block visit marker file should be updated duration compaction.
-# CLI flag: -compactor.block-visit-marker-file-update-interval
-[block_visit_marker_file_update_interval: <duration> | default = 1m]
+# How frequently compaction visit marker file should be updated duration
+# compaction.
+# CLI flag: -compactor.compaction-visit-marker-file-update-interval
+[compaction_visit_marker_file_update_interval: <duration> | default = 1m]
 
 # How long cleaner visit marker file should be considered as expired and able to
 # be picked up by cleaner again. The value should be smaller than
@@ -3592,6 +3593,14 @@ query_rejection:
 # CLI flag: -compactor.tenant-shard-size
 [compactor_tenant_shard_size: <int> | default = 0]
 
+# Index size limit in bytes for each compaction partition. 0 means no limit
+# CLI flag: -compactor.partition-index-size-bytes
+[compactor_partition_index_size_bytes: <int> | default = 68719476736]
+
+# Time series count limit for each compaction partition. 0 means no limit
+# CLI flag: -compactor.partition-series-count
+[compactor_partition_series_count: <int> | default = 0]
+
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
 # are used.
@@ -4316,6 +4325,12 @@ The `ruler_config` configures the Cortex ruler.
 # to Ingesters directly.
 # CLI flag: -ruler.frontend-address
 [frontend_address: <string> | default = ""]
+
+# [Experimental] Query response format to get query results from Query Frontend
+# when the rule evaluation. It will only take effect when
+# `-ruler.frontend-address` is configured. Supported values: json,protobuf
+# CLI flag: -ruler.query-response-format
+[query_response_format: <string> | default = "protobuf"]
 
 frontend_client:
   # gRPC client max receive message size (bytes).

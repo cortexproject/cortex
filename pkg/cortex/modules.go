@@ -278,7 +278,7 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 		byPassForSingleQuerier := true
 		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer))
 		t.MetadataQuerier = tenantfederation.NewMetadataQuerier(t.MetadataQuerier, t.Cfg.TenantFederation.MaxConcurrent, prometheus.DefaultRegisterer)
-
+		t.ExemplarQueryable = tenantfederation.NewExemplarQueryable(t.ExemplarQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer)
 	}
 	return nil, nil
 }
@@ -612,6 +612,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 			queryEngine = engine.New(engine.Opts{
 				EngineOpts:        opts,
 				LogicalOptimizers: logicalplan.AllOptimizers,
+				EnableAnalysis:    true,
 			})
 		} else {
 			queryEngine = promql.NewEngine(opts)
@@ -689,8 +690,9 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
+	ingestionReplicationFactor := t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor
 
-	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
+	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides, ingestionReplicationFactor)
 	if err != nil {
 		return
 	}

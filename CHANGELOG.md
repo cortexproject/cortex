@@ -19,6 +19,7 @@
 * [FEATURE] Chunk Cache: Support multi level cache and add metrics. #6249
 * [FEATURE] Distributor: Accept multiple HA Tracker pairs in the same request. #6256
 * [FEATURE] Ruler: Add support for per-user external labels #6340
+* [FEATURE] Query Frontend: Support a metadata federated query when `-tenant-federation.enabled=true`. #6461
 * [FEATURE] Query Frontend: Support an exemplar federated query when `-tenant-federation.enabled=true`. #6455
 * [FEATURE] Ingester: Add support for cache query matchers via `-ingester.matchers-cache-max-items. #6477
 * [ENHANCEMENT] Querier: Add a `-tenant-federation.max-concurrent` flags to configure the number of worker processing federated query and add a `cortex_querier_federated_tenants_per_query` histogram to track the number of tenants per query. #6449

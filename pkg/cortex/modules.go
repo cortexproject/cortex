@@ -260,6 +260,9 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	// Create a querier queryable and PromQL engine
 	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger)
 
+	// Use distributor as default MetadataQuerier
+	t.MetadataQuerier = t.Distributor
+
 	// Register the default endpoints that are always enabled for the querier module
 	t.API.RegisterQueryable(t.QuerierQueryable, t.Distributor)
 
@@ -274,6 +277,7 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 		// federation.
 		byPassForSingleQuerier := true
 		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer))
+		t.MetadataQuerier = tenantfederation.NewMetadataQuerier(t.MetadataQuerier, t.Cfg.TenantFederation.MaxConcurrent, prometheus.DefaultRegisterer)
 		t.ExemplarQueryable = tenantfederation.NewExemplarQueryable(t.ExemplarQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer)
 	}
 	return nil, nil
@@ -336,7 +340,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		t.QuerierQueryable,
 		t.ExemplarQueryable,
 		t.QuerierEngine,
-		t.Distributor,
+		t.MetadataQuerier,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
 	)

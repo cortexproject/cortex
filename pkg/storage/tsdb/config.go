@@ -275,6 +275,7 @@ type BucketStoreConfig struct {
 	IndexCache               IndexCacheConfig    `yaml:"index_cache"`
 	ChunksCache              ChunksCacheConfig   `yaml:"chunks_cache"`
 	MetadataCache            MetadataCacheConfig `yaml:"metadata_cache"`
+	MatchersCacheMaxItems    int                 `yaml:"matchers_cache_max_items"`
 	IgnoreDeletionMarksDelay time.Duration       `yaml:"ignore_deletion_mark_delay"`
 	IgnoreBlocksWithin       time.Duration       `yaml:"ignore_blocks_within"`
 	BucketIndex              BucketIndexConfig   `yaml:"bucket_index"`
@@ -373,6 +374,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.TokenBucketBytesLimiter.TouchedSeriesTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.touched-series-token-factor", 25, "Multiplication factor used for touched series token")
 	f.Float64Var(&cfg.TokenBucketBytesLimiter.FetchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.fetched-chunks-token-factor", 0, "Multiplication factor used for fetched chunks token")
 	f.Float64Var(&cfg.TokenBucketBytesLimiter.TouchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.touched-chunks-token-factor", 1, "Multiplication factor used for touched chunks token")
+	f.IntVar(&cfg.MatchersCacheMaxItems, "blocks-storage.bucket-store.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
 }
 
 // Validate the config.

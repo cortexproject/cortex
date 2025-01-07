@@ -1445,6 +1445,10 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes
       [bucket_index_max_size_bytes: <int> | default = 1048576]
 
+    # Maximum number of entries in the regex matchers cache. 0 to disable.
+    # CLI flag: -blocks-storage.bucket-store.matchers-cache-max-items
+    [matchers_cache_max_items: <int> | default = 0]
+
     # Duration after which the blocks marked for deletion will be filtered out
     # while fetching blocks. The idea of ignore-deletion-marks-delay is to
     # ignore blocks that are marked for deletion with some delay. This ensures

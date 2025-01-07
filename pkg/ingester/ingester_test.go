@@ -159,21 +159,21 @@ func TestMatcherCache(t *testing.T) {
 	}
 
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(fmt.Sprintf(`
-				# HELP ingester_matchers_cache_evicted_total Total number of items evicted from the cache
-				# TYPE ingester_matchers_cache_evicted_total counter
-				ingester_matchers_cache_evicted_total 1
-				# HELP ingester_matchers_cache_hits_total Total number of cache hits for series matchers
-				# TYPE ingester_matchers_cache_hits_total counter
-				ingester_matchers_cache_hits_total %v
-				# HELP ingester_matchers_cache_items Total number of cached items
-				# TYPE ingester_matchers_cache_items gauge
-				ingester_matchers_cache_items %v
-				# HELP ingester_matchers_cache_max_items Maximum number of items that can be cached
-				# TYPE ingester_matchers_cache_max_items gauge
-				ingester_matchers_cache_max_items 50
-				# HELP ingester_matchers_cache_requests_total Total number of cache requests for series matchers
-				# TYPE ingester_matchers_cache_requests_total counter
-				ingester_matchers_cache_requests_total %v
+				# HELP cortex_ingester_matchers_cache_evicted_total Total number of items evicted from the cache
+				# TYPE cortex_ingester_matchers_cache_evicted_total counter
+				cortex_ingester_matchers_cache_evicted_total 1
+				# HELP cortex_ingester_matchers_cache_hits_total Total number of cache hits for series matchers
+				# TYPE cortex_ingester_matchers_cache_hits_total counter
+				cortex_ingester_matchers_cache_hits_total %v
+				# HELP cortex_ingester_matchers_cache_items Total number of cached items
+				# TYPE cortex_ingester_matchers_cache_items gauge
+				cortex_ingester_matchers_cache_items %v
+				# HELP cortex_ingester_matchers_cache_max_items Maximum number of items that can be cached
+				# TYPE cortex_ingester_matchers_cache_max_items gauge
+				cortex_ingester_matchers_cache_max_items 50
+				# HELP cortex_ingester_matchers_cache_requests_total Total number of cache requests for series matchers
+				# TYPE cortex_ingester_matchers_cache_requests_total counter
+				cortex_ingester_matchers_cache_requests_total %v
 	`, callPerMatcher*numberOfDifferentMatchers-numberOfDifferentMatchers, cfg.MatchersCacheMaxItems, callPerMatcher*numberOfDifferentMatchers)), "ingester_matchers_cache_requests_total", "ingester_matchers_cache_hits_total", "ingester_matchers_cache_items", "ingester_matchers_cache_max_items", "ingester_matchers_cache_evicted_total"))
 }
 

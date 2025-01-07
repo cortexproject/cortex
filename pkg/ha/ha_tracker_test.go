@@ -629,6 +629,7 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 		"cortex_ha_tracker_elected_replica_changes_total",
 		"cortex_ha_tracker_elected_replica_timestamp_seconds",
 		"cortex_ha_tracker_kv_store_cas_total",
+		"cortex_ha_tracker_user_replica_group_count",
 	}
 
 	tr.electedReplicaChanges.WithLabelValues("userA", "replicaGroup1").Add(5)
@@ -640,6 +641,7 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 	tr.kvCASCalls.WithLabelValues("userA", "replicaGroup1").Add(5)
 	tr.kvCASCalls.WithLabelValues("userA", "replicaGroup2").Add(8)
 	tr.kvCASCalls.WithLabelValues("userB", "replicaGroup").Add(10)
+	tr.userReplicaGroupCount.WithLabelValues("userA").Add(5)
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_ha_tracker_elected_replica_changes_total The total number of times the elected replica has changed for a user ID/cluster.
@@ -659,6 +661,10 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 		cortex_ha_tracker_kv_store_cas_total{cluster="replicaGroup",user="userB"} 10
 		cortex_ha_tracker_kv_store_cas_total{cluster="replicaGroup1",user="userA"} 5
 		cortex_ha_tracker_kv_store_cas_total{cluster="replicaGroup2",user="userA"} 8
+		
+		# HELP cortex_ha_tracker_user_replica_group_count Number of HA replica groups tracked for each user.
+		# TYPE cortex_ha_tracker_user_replica_group_count gauge
+		cortex_ha_tracker_user_replica_group_count{user="userA"} 5
 	`), metrics...))
 
 	tr.CleanupHATrackerMetricsForUser("userA")
@@ -794,21 +800,4 @@ func checkReplicaDeletionState(t *testing.T, duration time.Duration, c *HATracke
 		markedForDeletion := val.(*ReplicaDesc).DeletedAt > 0
 		require.Equal(t, expectedMarkedForDeletion, markedForDeletion, "KV entry marked for deletion")
 	}
-}
-func TestHATracker_UserReplicaGroupMetrics(t *testing.T) {
-	t.Parallel()
-	reg := prometheus.NewPedanticRegistry()
-	tr, err := NewHATracker(HATrackerConfig{EnableHATracker: false}, nil, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "test-ha-tracker", log.NewNopLogger())
-	require.NoError(t, err)
-	metrics := []string{
-		"cortex_ha_tracker_user_replica_group_count",
-	}
-	tr.userReplicaGroupCount.WithLabelValues("userA").Add(2)
-	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-	# HELP cortex_ha_tracker_user_replica_group_count Number of HA replica groups tracked for each user.
-	# TYPE cortex_ha_tracker_user_replica_group_count gauge
-	cortex_ha_tracker_user_replica_group_count{user="userA"} 2
-	`), metrics...))
-
-	tr.CleanupHATrackerMetricsForUser("userA")
 }

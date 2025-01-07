@@ -152,7 +152,7 @@ func TestMatcherCache(t *testing.T) {
 			err = ing.QueryStream(&client.QueryRequest{
 				StartTimestampMs: math.MinInt64,
 				EndTimestampMs:   math.MaxInt64,
-				Matchers:         []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: fmt.Sprintf("%d", j)}},
+				Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: fmt.Sprintf("%d", j)}},
 			}, s)
 			require.NoError(t, err)
 		}
@@ -170,7 +170,7 @@ func TestMatcherCache(t *testing.T) {
 				ingester_matchers_cache_items %v
 				# HELP ingester_matchers_cache_max_items Maximum number of items that can be cached
 				# TYPE ingester_matchers_cache_max_items gauge
-				ingester_matchers_cache_max_items 0
+				ingester_matchers_cache_max_items 50
 				# HELP ingester_matchers_cache_requests_total Total number of cache requests for series matchers
 				# TYPE ingester_matchers_cache_requests_total counter
 				ingester_matchers_cache_requests_total %v

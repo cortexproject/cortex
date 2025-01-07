@@ -95,25 +95,6 @@ func MatrixFromSeriesSet(set storage.SeriesSet) (model.Matrix, error) {
 	return m, set.Err()
 }
 
-// ToQueryResponse builds a QueryResponse proto.
-func ToQueryResponse(matrix model.Matrix) *QueryResponse {
-	resp := &QueryResponse{}
-	for _, ss := range matrix {
-		ts := cortexpb.TimeSeries{
-			Labels:  cortexpb.FromMetricsToLabelAdapters(ss.Metric),
-			Samples: make([]cortexpb.Sample, 0, len(ss.Values)),
-		}
-		for _, s := range ss.Values {
-			ts.Samples = append(ts.Samples, cortexpb.Sample{
-				Value:       float64(s.Value),
-				TimestampMs: int64(s.Timestamp),
-			})
-		}
-		resp.Timeseries = append(resp.Timeseries, ts)
-	}
-	return resp
-}
-
 // ToMetricsForLabelMatchersRequest builds a MetricsForLabelMatchersRequest proto
 func ToMetricsForLabelMatchersRequest(from, to model.Time, limit int, matchers []*labels.Matcher) (*MetricsForLabelMatchersRequest, error) {
 	ms, err := toLabelMatchers(matchers)
@@ -279,7 +260,7 @@ func toLabelMatchers(matchers []*labels.Matcher) ([]*LabelMatcher, error) {
 func FromLabelMatchers(cache storecache.MatchersCache, matchers []*LabelMatcher) ([]*labels.Matcher, error) {
 	result := make([]*labels.Matcher, 0, len(matchers))
 	for _, matcher := range matchers {
-		m, err := cache.GetOrSet(matcher.String(), func() (*labels.Matcher, error) {
+		m, err := cache.GetOrSet(matcher, func() (*labels.Matcher, error) {
 			var mtype labels.MatchType
 			switch matcher.Type {
 			case EQUAL:

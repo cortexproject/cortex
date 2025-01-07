@@ -1657,8 +1657,8 @@ github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97 h1:VjG0mwhN1Dkn
 github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97/go.mod h1:vyzFrBXgP+fGNG2FopEGWOO/zrIuoy7zt3LpLeezRsw=
 github.com/thanos-io/promql-engine v0.0.0-20241217103156-9dbff30059cf h1:JFh4PjC9yQidiFi4qMWbPddIgsLWPIsSEbXs75+tLxs=
 github.com/thanos-io/promql-engine v0.0.0-20241217103156-9dbff30059cf/go.mod h1:wx0JlRZtsB2S10JYUgeg5GqLfMxw31SzArP+28yyE00=
-github.com/thanos-io/thanos v0.37.3-0.20250106173420-0e95c464dd42 h1:UagJirP9rmR/m5ne4DyPZvAa+Yvkc5qiiPGl+jVVK9M=
-github.com/thanos-io/thanos v0.37.3-0.20250106173420-0e95c464dd42/go.mod h1:VOu1neDpx4n/2OCQmfT/0RMU85UzhO35ce0S3Ew+NSk=
+github.com/thanos-io/thanos v0.37.3-0.20250107220537-0d426361672a h1:VdOsK6zhseRVfpkOxCJ3b2MKhuP1sBjTnC7Bib7DLws=
+github.com/thanos-io/thanos v0.37.3-0.20250107220537-0d426361672a/go.mod h1:VOu1neDpx4n/2OCQmfT/0RMU85UzhO35ce0S3Ew+NSk=
 github.com/tjhop/slog-gokit v0.1.2 h1:pmQI4SvU9h4gA0vIQsdhJQSqQg4mOmsPykG2/PM3j1I=
 github.com/tjhop/slog-gokit v0.1.2/go.mod h1:8fhlcp8C8ELbg3GCyKv06tgt4B5sDq2P1r2DQAu1HuM=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=

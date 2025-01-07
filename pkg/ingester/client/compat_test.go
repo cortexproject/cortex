@@ -42,7 +42,7 @@ func TestQueryRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	haveFrom, haveTo, haveMatchers, err := FromQueryRequest(storecache.NewNoopMatcherCache(), req)
+	haveFrom, haveTo, haveMatchers, err := FromQueryRequest(storecache.NoopMatchersCache, req)
 	if err != nil {
 		t.Fatal(err)
 	}

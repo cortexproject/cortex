@@ -714,7 +714,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		logger:                       logger,
 		ingestionRate:                util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 		expandedPostingsCacheFactory: cortex_tsdb.NewExpandedPostingsCacheFactory(cfg.BlocksStorageConfig.TSDB.PostingsCache),
-		matchersCache:                storecache.NewNoopMatcherCache(),
+		matchersCache:                storecache.NoopMatchersCache,
 	}
 
 	if cfg.MatchersCacheMaxItems > 0 {

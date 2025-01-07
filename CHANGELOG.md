@@ -21,7 +21,7 @@
 * [FEATURE] Ruler: Add support for per-user external labels #6340
 * [FEATURE] Query Frontend: Support a metadata federated query when `-tenant-federation.enabled=true`. #6461
 * [FEATURE] Query Frontend: Support an exemplar federated query when `-tenant-federation.enabled=true`. #6455
-* [FEATURE] Ingester: Add support for cache query matchers via `-ingester.matchers-cache-max-items. #6477
+* [FEATURE] Ingester/StoreGateway: Add support for cache regex query matchers via `-ingester.matchers-cache-max-items` and `-blocks-storage.bucket-store.matchers-cache-max-items`. #6477 #6491
 * [ENHANCEMENT] Querier: Add a `-tenant-federation.max-concurrent` flags to configure the number of worker processing federated query and add a `cortex_querier_federated_tenants_per_query` histogram to track the number of tenants per query. #6449
 * [ENHANCEMENT] Query Frontend: Add a number of series in the query response to the query stat log. #6423
 * [ENHANCEMENT] Store Gateway: Add a hedged request to reduce the tail latency. #6388

@@ -56,6 +56,9 @@ type BucketStores struct {
 	// Index cache shared across all tenants.
 	indexCache storecache.IndexCache
 
+	// Matchers cache shared across all tenants
+	matcherCache storecache.MatchersCache
+
 	// Chunks bytes pool shared across all tenants.
 	chunksPool pool.Pool[byte]
 
@@ -138,6 +141,17 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 			Name: "cortex_bucket_stores_tenants_synced",
 			Help: "Number of tenants synced.",
 		}),
+	}
+
+	u.matcherCache = storecache.NoopMatchersCache
+
+	if cfg.BucketStore.MatchersCacheMaxItems > 0 {
+		r := prometheus.NewRegistry()
+		reg.MustRegister(tsdb.NewMatchCacheMetrics("cortex_storegateway", r, logger))
+		u.matcherCache, err = storecache.NewMatchersCache(storecache.WithSize(cfg.BucketStore.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Init the index cache.
@@ -600,8 +614,10 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	}
 
 	bucketStoreReg := prometheus.NewRegistry()
+
 	bucketStoreOpts := []store.BucketStoreOption{
 		store.WithLogger(userLogger),
+		store.WithMatchersCache(u.matcherCache),
 		store.WithRequestLoggerFunc(func(ctx context.Context, logger log.Logger) log.Logger {
 			return util_log.HeadersFromContext(ctx, logger)
 		}),

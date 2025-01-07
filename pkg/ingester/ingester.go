@@ -177,7 +177,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
 
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
-	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the matchers cache. 0 to disable.")
+	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
 }
 
 func (cfg *Config) Validate() error {
@@ -719,7 +719,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 
 	if cfg.MatchersCacheMaxItems > 0 {
 		r := prometheus.NewRegistry()
-		registerer.MustRegister(newMatchCacheMetrics(r, logger))
+		registerer.MustRegister(cortex_tsdb.NewMatchCacheMetrics("cortex_ingester", r, logger))
 		i.matchersCache, err = storecache.NewMatchersCache(storecache.WithSize(cfg.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
 		if err != nil {
 			return nil, err

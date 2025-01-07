@@ -35,7 +35,7 @@ func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 		errors := make(chan error)
 		for i, qr := range req.Queries {
 			go func(i int, qr *client.QueryRequest) {
-				from, to, matchers, err := client.FromQueryRequest(storecache.NewNoopMatcherCache(), qr)
+				from, to, matchers, err := client.FromQueryRequest(storecache.NoopMatchersCache, qr)
 				if err != nil {
 					errors <- err
 					return

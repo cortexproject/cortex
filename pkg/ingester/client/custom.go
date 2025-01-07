@@ -3,6 +3,9 @@ package client
 import (
 	"encoding/binary"
 
+	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
@@ -44,4 +47,21 @@ func (m *QueryStreamResponse) SamplesCount() (count int) {
 		}
 	}
 	return
+}
+
+func (m *LabelMatcher) MatcherType() (labels.MatchType, error) {
+	var t labels.MatchType
+	switch m.Type {
+	case EQUAL:
+		t = labels.MatchEqual
+	case NOT_EQUAL:
+		t = labels.MatchNotEqual
+	case REGEX_MATCH:
+		t = labels.MatchRegexp
+	case REGEX_NO_MATCH:
+		t = labels.MatchNotRegexp
+	default:
+		return 0, errors.Errorf("unrecognized label matcher type %d", m.Type)
+	}
+	return t, nil
 }

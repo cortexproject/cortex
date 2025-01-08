@@ -12,11 +12,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/labelset"
 )
 
 const (
@@ -79,6 +81,9 @@ type ValidateMetrics struct {
 	DiscardedMetadata                 *prometheus.CounterVec
 	HistogramSamplesReducedResolution *prometheus.CounterVec
 	LabelSizeBytes                    *prometheus.HistogramVec
+
+	DiscardedSamplesPerLabelSet *prometheus.CounterVec
+	LabelSetTracker             *labelset.LabelSetTracker
 }
 
 func registerCollector(r prometheus.Registerer, c prometheus.Collector) {
@@ -97,6 +102,14 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		[]string{discardReasonLabel, "user"},
 	)
 	registerCollector(r, discardedSamples)
+	discardedSamplesPerLabelSet := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cortex_discarded_samples_per_labelset_total",
+			Help: "The total number of samples that were discarded for each labelset.",
+		},
+		[]string{discardReasonLabel, "user", "labelset"},
+	)
+	registerCollector(r, discardedSamplesPerLabelSet)
 	discardedExemplars := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "cortex_discarded_exemplars_total",
@@ -132,13 +145,48 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 
 	m := &ValidateMetrics{
 		DiscardedSamples:                  discardedSamples,
+		DiscardedSamplesPerLabelSet:       discardedSamplesPerLabelSet,
 		DiscardedExemplars:                discardedExemplars,
 		DiscardedMetadata:                 discardedMetadata,
 		HistogramSamplesReducedResolution: histogramSamplesReducedResolution,
 		LabelSizeBytes:                    labelSizeBytes,
+		LabelSetTracker:                   labelset.NewLabelSetTracker(),
 	}
 
 	return m
+}
+
+// UpdateSamplesDiscardedForSeries updates discarded samples and discarded samples per labelset for the provided reason and series.
+// Used in test only for now.
+func (m *ValidateMetrics) updateSamplesDiscardedForSeries(userID, reason string, labelSetLimits []LimitsPerLabelSet, lbls labels.Labels, count int) {
+	matchedLimits := LimitsPerLabelSetsForSeries(labelSetLimits, lbls)
+	m.updateSamplesDiscarded(userID, reason, matchedLimits, count)
+}
+
+// updateSamplesDiscarded updates discarded samples and discarded samples per labelset for the provided reason.
+// The provided label set needs to be pre-filtered to match the series if applicable.
+// Used in test only for now.
+func (m *ValidateMetrics) updateSamplesDiscarded(userID, reason string, labelSetLimits []LimitsPerLabelSet, count int) {
+	m.DiscardedSamples.WithLabelValues(reason, userID).Add(float64(count))
+	for _, limit := range labelSetLimits {
+		m.LabelSetTracker.Track(userID, limit.Hash, limit.LabelSet)
+		m.DiscardedSamplesPerLabelSet.WithLabelValues(reason, userID, limit.LabelSet.String()).Add(float64(count))
+	}
+}
+
+func (m *ValidateMetrics) UpdateLabelSet(userSet map[string]map[uint64]struct{}, logger log.Logger) {
+	m.LabelSetTracker.UpdateMetrics(userSet, func(user, labelSetStr string, removeUser bool) {
+		if removeUser {
+			// No need to clean up discarded samples per user here as it will be cleaned up elsewhere.
+			if err := util.DeleteMatchingLabels(m.DiscardedSamplesPerLabelSet, map[string]string{"user": user}); err != nil {
+				level.Warn(logger).Log("msg", "failed to remove cortex_discarded_samples_per_labelset_total metric for user", "user", user, "err", err)
+			}
+			return
+		}
+		if err := util.DeleteMatchingLabels(m.DiscardedSamplesPerLabelSet, map[string]string{"user": user, "labelset": labelSetStr}); err != nil {
+			level.Warn(logger).Log("msg", "failed to remove cortex_discarded_samples_per_labelset_total metric", "user", user, "labelset", labelSetStr, "err", err)
+		}
+	})
 }
 
 // ValidateSampleTimestamp returns an err if the sample timestamp is invalid.
@@ -354,6 +402,9 @@ func DeletePerUserValidationMetrics(validateMetrics *ValidateMetrics, userID str
 
 	if err := util.DeleteMatchingLabels(validateMetrics.DiscardedSamples, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_discarded_samples_total metric for user", "user", userID, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(validateMetrics.DiscardedSamplesPerLabelSet, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_discarded_samples_per_labelset_total metric for user", "user", userID, "err", err)
 	}
 	if err := util.DeleteMatchingLabels(validateMetrics.DiscardedExemplars, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_discarded_exemplars_total metric for user", "user", userID, "err", err)

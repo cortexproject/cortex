@@ -92,6 +92,8 @@ const (
 
 	// Period at which we should reset the max inflight query requests counter.
 	maxInflightRequestResetPeriod = 1 * time.Minute
+
+	labelSetMetricsTickInterval = 30 * time.Second
 )
 
 var (
@@ -942,6 +944,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	maxTrackerResetTicker := time.NewTicker(maxInflightRequestResetPeriod)
 	defer maxTrackerResetTicker.Stop()
 
+	labelSetMetricsTicker := time.NewTicker(labelSetMetricsTickInterval)
+	defer labelSetMetricsTicker.Stop()
+
 	for {
 		select {
 		case <-metadataPurgeTicker.C:
@@ -963,6 +968,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.maxInflightPushRequests.Tick()
 		case <-userTSDBConfigTicker.C:
 			i.updateUserTSDBConfigs()
+		case <-labelSetMetricsTicker.C:
+			i.updateLabelSetMetrics()
 		case <-ctx.Done():
 			return nil
 		case err := <-i.subservicesWatcher.Chan():
@@ -1025,6 +1032,25 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
 		}
 	}
+}
+
+func (i *Ingester) updateLabelSetMetrics() {
+	activeUserSet := make(map[string]map[uint64]struct{})
+	for _, userID := range i.getTSDBUsers() {
+		userDB := i.getTSDB(userID)
+		if userDB == nil {
+			continue
+		}
+
+		limits := i.limits.LimitsPerLabelSet(userID)
+		activeUserSet[userID] = make(map[uint64]struct{}, len(limits))
+		for _, l := range limits {
+			activeUserSet[userID][l.Hash] = struct{}{}
+		}
+	}
+
+	// Update label set metrics in validate metrics.
+	i.validateMetrics.UpdateLabelSet(activeUserSet, i.logger)
 }
 
 func (i *Ingester) RenewTokenHandler(w http.ResponseWriter, r *http.Request) {
@@ -1140,6 +1166,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// process it before samples. Otherwise, we risk returning an error before ingestion.
 	ingestedMetadata := i.pushMetadata(ctx, userID, req.GetMetadata())
 
+	reasonCounter := newLabelSetReasonCounters()
+
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
@@ -1165,7 +1193,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			}
 		}
 
-		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels) (rollback bool) {
+		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels, matchedLabelSetLimits []validation.LimitsPerLabelSet) (rollback bool) {
 			// Check if the error is a soft error we can proceed on. If so, we keep track
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
@@ -1201,6 +1229,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
 				perLabelSetSeriesLimitCount++
+				// We only track per labelset discarded samples for throttling by labelset limit.
+				reasonCounter.increment(matchedLabelSetLimits, perLabelsetSeriesLimit)
 				updateFirstPartial(func() error {
 					return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
@@ -1245,6 +1275,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		// To find out if any histogram was added to this series, we keep old value.
 		oldSucceededHistogramsCount := succeededHistogramsCount
 
+		// Copied labels will be empty if ref is 0.
+		if ref == 0 {
+			// Copy the label set because both TSDB and the active series tracker may retain it.
+			copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
+		}
+		matchedLabelSetLimits := i.limiter.limitsPerLabelSets(userID, copiedLabels)
+
 		for _, s := range ts.Samples {
 			var err error
 
@@ -1256,8 +1293,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				}
 
 			} else {
-				// Copy the label set because both TSDB and the active series tracker may retain it.
-				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 				// Retain the reference in case there are multiple samples for the series.
 				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					// Keep track of what series needs to be expired on the postings cache
@@ -1271,7 +1306,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			failedSamplesCount++
 
-			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels); !rollback {
+			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
 				continue
 			}
 			// The error looks an issue on our side, so we should rollback
@@ -1316,7 +1351,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 				failedHistogramsCount++
 
-				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels); !rollback {
+				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
 					continue
 				}
 				// The error looks an issue on our side, so we should rollback
@@ -1429,6 +1464,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && discardedNativeHistogramCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
+	}
+
+	for h, counter := range reasonCounter.counters {
+		labelStr := counter.lbls.String()
+		i.validateMetrics.LabelSetTracker.Track(userID, h, counter.lbls)
+		for reason, count := range counter.reasonCounter {
+			i.validateMetrics.DiscardedSamplesPerLabelSet.WithLabelValues(reason, userID, labelStr).Add(float64(count))
+		}
 	}
 
 	// Distributor counts both samples, metadata and histograms, so for consistency ingester does the same.
@@ -3188,5 +3231,33 @@ func getTimeSeriesChunksSlice() []client.TimeSeriesChunk {
 func putTimeSeriesChunksSlice(p []client.TimeSeriesChunk) {
 	if p != nil {
 		tsChunksPool.Put(p[:0])
+	}
+}
+
+type labelSetReasonCounters struct {
+	counters map[uint64]*labelSetReasonCounter
+}
+
+type labelSetReasonCounter struct {
+	reasonCounter map[string]int
+	lbls          labels.Labels
+}
+
+func newLabelSetReasonCounters() *labelSetReasonCounters {
+	return &labelSetReasonCounters{counters: make(map[uint64]*labelSetReasonCounter)}
+}
+
+func (c *labelSetReasonCounters) increment(matchedLabelSetLimits []validation.LimitsPerLabelSet, reason string) {
+	for _, l := range matchedLabelSetLimits {
+		if rc, exists := c.counters[l.Hash]; exists {
+			rc.reasonCounter[reason]++
+		} else {
+			c.counters[l.Hash] = &labelSetReasonCounter{
+				reasonCounter: map[string]int{
+					reason: 1,
+				},
+				lbls: l.LabelSet,
+			}
+		}
 	}
 }

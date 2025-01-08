@@ -1064,7 +1064,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		matchedLabelSetLimits := validation.LimitsPerLabelSetsForSeries(limitsPerLabelSet, cortexpb.FromLabelAdaptersToLabels(validatedSeries.Labels))
 		if len(matchedLabelSetLimits) > 0 && labelSetCounters == nil {
 			// TODO: use pool.
-			labelSetCounters = make(map[uint64]*samplesLabelSetEntry, len(limitsPerLabelSet))
+			labelSetCounters = make(map[uint64]*samplesLabelSetEntry, len(matchedLabelSetLimits))
 		}
 		for _, l := range matchedLabelSetLimits {
 			if c, exists := labelSetCounters[l.Hash]; exists {

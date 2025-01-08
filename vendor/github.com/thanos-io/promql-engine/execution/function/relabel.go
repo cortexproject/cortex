@@ -47,7 +47,7 @@ func (o *relabelOperator) String() string {
 }
 
 func (o *relabelOperator) Explain() (next []model.VectorOperator) {
-	return []model.VectorOperator{}
+	return []model.VectorOperator{o.next}
 }
 
 func (o *relabelOperator) Series(ctx context.Context) ([]labels.Labels, error) {

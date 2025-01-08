@@ -1655,8 +1655,8 @@ github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e h1:f1
 github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e/go.mod h1:jXcofnrSln/cLI6/dhlBxPQZEEQHVPCcFaH75M+nSzM=
 github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97 h1:VjG0mwhN1DkncwDHFvrpd12/2TLfgYNRmEQA48ikp+0=
 github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97/go.mod h1:vyzFrBXgP+fGNG2FopEGWOO/zrIuoy7zt3LpLeezRsw=
-github.com/thanos-io/promql-engine v0.0.0-20241217103156-9dbff30059cf h1:JFh4PjC9yQidiFi4qMWbPddIgsLWPIsSEbXs75+tLxs=
-github.com/thanos-io/promql-engine v0.0.0-20241217103156-9dbff30059cf/go.mod h1:wx0JlRZtsB2S10JYUgeg5GqLfMxw31SzArP+28yyE00=
+github.com/thanos-io/promql-engine v0.0.0-20250104120320-2414c3d2ab47 h1:vIIrz8fm3ptR7/rJK8J5lJQwYoKd35qGO0ZmKiqDOSI=
+github.com/thanos-io/promql-engine v0.0.0-20250104120320-2414c3d2ab47/go.mod h1:wx0JlRZtsB2S10JYUgeg5GqLfMxw31SzArP+28yyE00=
 github.com/thanos-io/thanos v0.37.3-0.20250107220537-0d426361672a h1:VdOsK6zhseRVfpkOxCJ3b2MKhuP1sBjTnC7Bib7DLws=
 github.com/thanos-io/thanos v0.37.3-0.20250107220537-0d426361672a/go.mod h1:VOu1neDpx4n/2OCQmfT/0RMU85UzhO35ce0S3Ew+NSk=
 github.com/tjhop/slog-gokit v0.1.2 h1:pmQI4SvU9h4gA0vIQsdhJQSqQg4mOmsPykG2/PM3j1I=

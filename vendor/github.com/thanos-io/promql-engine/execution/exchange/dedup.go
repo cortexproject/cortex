@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -31,7 +33,7 @@ type dedupCache []dedupSample
 // if multiple samples with the same ID are present in a StepVector, dedupOperator
 // will keep the last sample in that vector.
 type dedupOperator struct {
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 
 	once   sync.Once
 	series []labels.Labels
@@ -48,7 +50,7 @@ func NewDedupOperator(pool *model.VectorPool, next model.VectorOperator, opts *q
 		next: next,
 		pool: pool,
 	}
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 
 	return oper
 }

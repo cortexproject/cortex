@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/efficientgo/core/errors"
 	prommodel "github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -20,7 +22,7 @@ import (
 )
 
 type relabelOperator struct {
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 
 	next     model.VectorOperator
 	funcExpr *logicalplan.FunctionCall
@@ -37,7 +39,7 @@ func newRelabelOperator(
 		next:     next,
 		funcExpr: funcExpr,
 	}
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 
 	return oper
 }

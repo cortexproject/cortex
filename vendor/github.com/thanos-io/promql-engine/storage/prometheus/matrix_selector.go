@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -34,7 +36,7 @@ type matrixScanner struct {
 }
 
 type matrixSelector struct {
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 
 	vectorPool *model.VectorPool
 	storage    SeriesSelector
@@ -109,7 +111,7 @@ func NewMatrixSelector(
 
 		extLookbackDelta: opts.ExtLookbackDelta.Milliseconds(),
 	}
-	m.OperatorTelemetry = model.NewTelemetry(m, opts)
+	m.OperatorTelemetry = telemetry.NewTelemetry(m, opts)
 
 	// For instant queries, set the step to a positive value
 	// so that the operator can terminate.

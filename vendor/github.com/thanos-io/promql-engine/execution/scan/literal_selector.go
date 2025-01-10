@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -28,7 +30,7 @@ type numberLiteralSelector struct {
 	once        sync.Once
 
 	val float64
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 }
 
 func NewNumberLiteralSelector(pool *model.VectorPool, opts *query.Options, val float64) *numberLiteralSelector {
@@ -42,7 +44,7 @@ func NewNumberLiteralSelector(pool *model.VectorPool, opts *query.Options, val f
 		val:         val,
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 	return oper
 }
 

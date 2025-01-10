@@ -10,6 +10,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -305,6 +307,9 @@ func (e *Engine) MakeInstantQuery(ctx context.Context, q storage.Queryable, opts
 		t:          InstantQuery,
 		resultSort: resultSort,
 		scanners:   scanners,
+		start:      ts,
+		end:        ts,
+		step:       0,
 	}, nil
 }
 
@@ -352,6 +357,9 @@ func (e *Engine) MakeInstantQueryFromPlan(ctx context.Context, q storage.Queryab
 		// TODO(fpetkovski): Infer the sort order from the plan, ideally without copying the newResultSort function.
 		resultSort: noSortResultSort{},
 		scanners:   scnrs,
+		start:      ts,
+		end:        ts,
+		step:       0,
 	}, nil
 }
 
@@ -404,6 +412,9 @@ func (e *Engine) MakeRangeQuery(ctx context.Context, q storage.Queryable, opts *
 		warns:    warns,
 		t:        RangeQuery,
 		scanners: scnrs,
+		start:    start,
+		end:      end,
+		step:     step,
 	}, nil
 }
 
@@ -446,6 +457,9 @@ func (e *Engine) MakeRangeQueryFromPlan(ctx context.Context, q storage.Queryable
 		warns:    warns,
 		t:        RangeQuery,
 		scanners: scnrs,
+		start:    start,
+		end:      end,
+		step:     step,
 	}, nil
 }
 
@@ -522,7 +536,7 @@ func (q *Query) Explain() *ExplainOutputNode {
 }
 
 func (q *Query) Analyze() *AnalyzeOutputNode {
-	if observableRoot, ok := q.exec.(model.ObservableVectorOperator); ok {
+	if observableRoot, ok := q.exec.(telemetry.ObservableVectorOperator); ok {
 		return analyzeQuery(observableRoot)
 	}
 	return nil
@@ -534,6 +548,9 @@ type compatibilityQuery struct {
 	plan   logicalplan.Plan
 	ts     time.Time // Empty for range queries.
 	warns  annotations.Annotations
+	start  time.Time
+	end    time.Time
+	step   time.Duration
 
 	t          QueryType
 	resultSort resultSorter
@@ -707,6 +724,10 @@ func (q *compatibilityQuery) Stats() *stats.Statistics {
 
 	analysis := q.Analyze()
 	samples := stats.NewQuerySamples(enablePerStepStats)
+	if enablePerStepStats {
+		samples.InitStepTracking(q.start.UnixMilli(), q.end.UnixMilli(), telemetry.StepTrackingInterval(q.step))
+	}
+
 	if analysis != nil {
 		samples.PeakSamples = int(analysis.PeakSamples())
 		samples.TotalSamples = analysis.TotalSamples()

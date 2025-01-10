@@ -8,6 +8,8 @@ import (
 	"math"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -17,7 +19,7 @@ import (
 type scalarOperator struct {
 	pool *model.VectorPool
 	next model.VectorOperator
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 }
 
 func newScalarOperator(pool *model.VectorPool, next model.VectorOperator, opts *query.Options) *scalarOperator {
@@ -26,7 +28,7 @@ func newScalarOperator(pool *model.VectorPool, next model.VectorOperator, opts *
 		next: next,
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 	return oper
 }
 

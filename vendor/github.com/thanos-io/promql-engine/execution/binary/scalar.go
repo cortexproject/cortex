@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -28,7 +30,7 @@ const (
 
 // scalarOperator evaluates expressions where one operand is a scalarOperator.
 type scalarOperator struct {
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 
 	seriesOnce sync.Once
 	series     []labels.Labels
@@ -84,7 +86,7 @@ func NewScalar(
 		bothScalars:   scalarSide == ScalarSideBoth,
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(op, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(op, opts)
 
 	return oper, nil
 

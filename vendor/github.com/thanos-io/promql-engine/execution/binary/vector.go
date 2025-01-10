@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/efficientgo/core/errors"
 	"github.com/zhangyunhao116/umap"
@@ -55,7 +57,7 @@ type vectorOperator struct {
 	// If true then 1/0 needs to be returned instead of the value.
 	returnBool bool
 
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 }
 
 func NewVectorOperator(
@@ -77,7 +79,7 @@ func NewVectorOperator(
 		sigFunc:    signatureFunc(matching.On, matching.MatchingLabels...),
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 
 	return oper, nil
 }

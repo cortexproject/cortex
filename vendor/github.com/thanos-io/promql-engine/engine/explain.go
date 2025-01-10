@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 type ExplainableQuery interface {
@@ -19,8 +21,8 @@ type ExplainableQuery interface {
 }
 
 type AnalyzeOutputNode struct {
-	OperatorTelemetry model.OperatorTelemetry `json:"telemetry,omitempty"`
-	Children          []*AnalyzeOutputNode    `json:"children,omitempty"`
+	OperatorTelemetry telemetry.OperatorTelemetry `json:"telemetry,omitempty"`
+	Children          []*AnalyzeOutputNode        `json:"children,omitempty"`
 
 	once                sync.Once
 	totalSamples        int64
@@ -61,22 +63,31 @@ func (a *AnalyzeOutputNode) aggregateSamples() {
 		for _, child := range a.Children {
 			childPeak := child.PeakSamples()
 			a.peakSamples = max(a.peakSamples, childPeak)
-			for i, s := range child.TotalSamplesPerStep() {
-				a.totalSamplesPerStep[i] += s
-			}
-			// Aggregate only if the node is not a subquery to avoid double counting samples from children.
-			if !a.OperatorTelemetry.SubQuery() {
+
+			switch a.OperatorTelemetry.LogicalNode().(type) {
+			case *logicalplan.Subquery:
+				// Skip aggregating samples for subquery
+			case *logicalplan.StepInvariantExpr:
+				childSamples := child.TotalSamples()
+				for i := 0; i < len(a.totalSamplesPerStep); i++ {
+					a.totalSamples += childSamples
+					a.totalSamplesPerStep[i] += childSamples
+				}
+			default:
 				a.totalSamples += child.TotalSamples()
+				for i, s := range child.TotalSamplesPerStep() {
+					a.totalSamplesPerStep[i] += s
+				}
 			}
 		}
 	})
 }
 
-func analyzeQuery(obsv model.ObservableVectorOperator) *AnalyzeOutputNode {
+func analyzeQuery(obsv telemetry.ObservableVectorOperator) *AnalyzeOutputNode {
 	children := obsv.Explain()
 	var childTelemetry []*AnalyzeOutputNode
 	for _, child := range children {
-		if obsChild, ok := child.(model.ObservableVectorOperator); ok {
+		if obsChild, ok := child.(telemetry.ObservableVectorOperator); ok {
 			childTelemetry = append(childTelemetry, analyzeQuery(obsChild))
 		}
 	}

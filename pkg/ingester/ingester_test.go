@@ -5525,6 +5525,7 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 
 func TestExpendedPostingsCache(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
+	cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval = time.Second
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
 
 	runQuery := func(t *testing.T, ctx context.Context, i *Ingester, matchers []*client.LabelMatcher) []client.TimeSeriesChunk {
@@ -5540,9 +5541,10 @@ func TestExpendedPostingsCache(t *testing.T) {
 	}
 
 	tc := map[string]struct {
-		cacheConfig              cortex_tsdb.TSDBPostingsCacheConfig
-		expectedBlockPostingCall int
-		expectedHeadPostingCall  int
+		cacheConfig               cortex_tsdb.TSDBPostingsCacheConfig
+		expectedBlockPostingCall  int
+		expectedHeadPostingCall   int
+		shouldExpireDueInactivity bool
 	}{
 		"cacheDisabled": {
 			expectedBlockPostingCall: 0,
@@ -5589,6 +5591,23 @@ func TestExpendedPostingsCache(t *testing.T) {
 				},
 				Head: cortex_tsdb.PostingsCacheConfig{
 					Ttl:      time.Hour,
+					MaxBytes: 1024 * 1024 * 1024,
+					Enabled:  true,
+				},
+			},
+		},
+		"expire due inactivity": {
+			expectedBlockPostingCall:  1,
+			expectedHeadPostingCall:   1,
+			shouldExpireDueInactivity: true,
+			cacheConfig: cortex_tsdb.TSDBPostingsCacheConfig{
+				Blocks: cortex_tsdb.PostingsCacheConfig{
+					Ttl:      time.Second,
+					MaxBytes: 1024 * 1024 * 1024,
+					Enabled:  true,
+				},
+				Head: cortex_tsdb.PostingsCacheConfig{
+					Ttl:      time.Second,
 					MaxBytes: 1024 * 1024 * 1024,
 					Enabled:  true,
 				},
@@ -5790,6 +5809,17 @@ func TestExpendedPostingsCache(t *testing.T) {
 			require.Len(t, runQuery(t, ctx, i, []*client.LabelMatcher{{Type: client.EQUAL, Name: "extra", Value: "1"}}), 1)
 			// Return cached value from block and bypass head
 			require.Equal(t, int64(0), postingsForMatchersCalls.Load())
+
+			if c.shouldExpireDueInactivity {
+				test.Poll(t, c.cacheConfig.Blocks.Ttl+c.cacheConfig.Head.Ttl+cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval, 0, func() interface{} {
+					size := 0
+					for _, userID := range i.getTSDBUsers() {
+						userDB := i.getTSDB(userID)
+						size += userDB.postingCache.Size()
+					}
+					return size
+				})
+			}
 		})
 	}
 }

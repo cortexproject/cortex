@@ -878,6 +878,14 @@ func (i *Ingester) starting(ctx context.Context) error {
 		servs = append(servs, closeIdleService)
 	}
 
+	if i.expandedPostingsCacheFactory != nil {
+		interval := i.cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval
+		if interval == 0 {
+			interval = cortex_tsdb.ExpandedCachingExpireInterval
+		}
+		servs = append(servs, services.NewTimerService(interval, nil, i.expirePostingsCache, nil))
+	}
+
 	var err error
 	i.TSDBState.subservices, err = services.NewManager(servs...)
 	if err == nil {
@@ -2789,6 +2797,18 @@ func (i *Ingester) closeAndDeleteIdleUserTSDBs(ctx context.Context) error {
 		result := i.closeAndDeleteUserTSDBIfIdle(userID)
 
 		i.TSDBState.idleTsdbChecks.WithLabelValues(string(result)).Inc()
+	}
+
+	return nil
+}
+
+func (i *Ingester) expirePostingsCache(ctx context.Context) error {
+	for _, userID := range i.getTSDBUsers() {
+		if ctx.Err() != nil {
+			return nil
+		}
+		userDB := i.getTSDB(userID)
+		userDB.postingCache.PurgeExpiredItems()
 	}
 
 	return nil

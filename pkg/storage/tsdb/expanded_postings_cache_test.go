@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 )
 
 func TestCacheKey(t *testing.T) {
@@ -52,14 +52,14 @@ func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
 		MaxBytes: 10 << 20,
 	}
 	m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
-	cache := newFifoCache[int](cfg, "test", m, time.Now)
+	cache := newFifoCache[int](cfg, &atomic.Int64{}, "test", m, time.Now)
 	calls := atomic.Int64{}
 	concurrency := 100
 	wg := sync.WaitGroup{}
 	wg.Add(concurrency)
 
 	fetchFunc := func() (int, int64, error) {
-		calls.Inc()
+		calls.Add(1)
 		time.Sleep(100 * time.Millisecond)
 		return 0, 0, nil
 	}
@@ -81,7 +81,7 @@ func TestFifoCacheDisabled(t *testing.T) {
 	cfg.Enabled = false
 	m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
 	timeNow := time.Now
-	cache := newFifoCache[int](cfg, "test", m, timeNow)
+	cache := newFifoCache[int](cfg, &atomic.Int64{}, "test", m, timeNow)
 	old, loaded := cache.getPromiseForKey("key1", func() (int, int64, error) {
 		return 1, 0, nil
 	})
@@ -124,7 +124,8 @@ func TestFifoCacheExpire(t *testing.T) {
 			r := prometheus.NewPedanticRegistry()
 			m := NewPostingCacheMetrics(r)
 			timeNow := time.Now
-			cache := newFifoCache[int](c.cfg, "test", m, timeNow)
+			cachedBytes := atomic.Int64{}
+			cache := newFifoCache[int](c.cfg, &cachedBytes, "test", m, timeNow)
 
 			for i := 0; i < numberOfKeys; i++ {
 				key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
@@ -169,7 +170,7 @@ func TestFifoCacheExpire(t *testing.T) {
 
 				for i := 0; i < numberOfKeys; i++ {
 					key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
-					originalSize := cache.cachedBytes
+					originalSize := cache.cachedBytes.Load()
 					p, loaded := cache.getPromiseForKey(key, func() (int, int64, error) {
 						return 2, 18, nil
 					})
@@ -177,7 +178,7 @@ func TestFifoCacheExpire(t *testing.T) {
 					// New value
 					require.Equal(t, 2, p.v)
 					// Total Size Updated
-					require.Equal(t, originalSize+10, cache.cachedBytes)
+					require.Equal(t, originalSize+10, cache.cachedBytes.Load())
 				}
 
 				err := testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`

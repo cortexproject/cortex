@@ -5523,6 +5523,90 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 	wg.Wait()
 }
 
+func TestExpendedPostingsCacheGlobalLimit(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	maxBytes := int64(1024)
+	users := []string{"test1", "test2"}
+	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
+	cfg.BlocksStorageConfig.TSDB.PostingsCache = cortex_tsdb.TSDBPostingsCacheConfig{
+		Blocks: cortex_tsdb.PostingsCacheConfig{
+			Ttl:      time.Hour,
+			MaxBytes: maxBytes,
+			Enabled:  true,
+		},
+		Head: cortex_tsdb.PostingsCacheConfig{
+			Ttl:      time.Hour,
+			MaxBytes: maxBytes,
+			Enabled:  true,
+		},
+	}
+
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	r := prometheus.NewRegistry()
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, r)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	metricNames := []string{"metric1", "metric2"}
+
+	// Generate 4 hours of data so we have 1 block + head
+	totalSamples := 4 * 60
+	var samples = make([]cortexpb.Sample, 0, totalSamples)
+
+	for i := 0; i < totalSamples; i++ {
+		samples = append(samples, cortexpb.Sample{
+			Value:       float64(i),
+			TimestampMs: int64(i * 60 * 1000),
+		})
+	}
+
+	lbls := make([]labels.Labels, 0, len(samples))
+	for j := 0; j < 10; j++ {
+		for i := 0; i < len(samples); i++ {
+			lbls = append(lbls, labels.FromStrings(labels.MetricName, metricNames[i%len(metricNames)], "a", fmt.Sprintf("aaa%v", j)))
+		}
+	}
+
+	for i := len(samples); i < len(lbls); i++ {
+		samples = append(samples, samples[i%len(samples)])
+	}
+
+	for _, u := range users {
+		ctx := user.InjectOrgID(context.Background(), u)
+		req := cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
+		_, err = i.Push(ctx, req)
+		require.NoError(t, err)
+
+		i.compactBlocks(ctx, false, nil)
+
+		s := &mockQueryStreamServer{ctx: ctx}
+
+		err = i.QueryStream(&client.QueryRequest{
+			StartTimestampMs: 0,
+			EndTimestampMs:   math.MaxInt64,
+			Matchers: []*client.LabelMatcher{
+				{
+					Type:  client.EQUAL,
+					Name:  "__name__",
+					Value: strings.Repeat("a", int(maxBytes/2)), // make sure the size it bigger than the max size
+				},
+			},
+		}, s)
+
+		require.NoError(t, err)
+	}
+
+	err = testutil.GatherAndCompare(r, bytes.NewBufferString(`
+		# HELP cortex_ingester_expanded_postings_cache_evicts_total Total number of evictions in the cache, excluding items that got evicted due to TTL.
+		# TYPE cortex_ingester_expanded_postings_cache_evicts_total counter
+		cortex_ingester_expanded_postings_cache_evicts_total{cache="block",reason="full"} 1
+		cortex_ingester_expanded_postings_cache_evicts_total{cache="head",reason="full"} 1
+`), "cortex_ingester_expanded_postings_cache_evicts_total")
+	require.NoError(t, err)
+}
+
 func TestExpendedPostingsCache(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}

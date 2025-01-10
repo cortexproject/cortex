@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/oklog/ulid"
@@ -19,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/segmentio/fasthash/fnv1a"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"

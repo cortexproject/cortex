@@ -30,6 +30,9 @@ const (
 	// How often are open TSDBs checked for being idle and closed.
 	DefaultCloseIdleTSDBInterval = 5 * time.Minute
 
+	// How often expired items are cleaned from the PostingsCache
+	ExpandedCachingExpireInterval = 5 * time.Minute
+
 	// How often to check for tenant deletion mark.
 	DeletionMarkCheckInterval = 1 * time.Hour
 
@@ -155,6 +158,9 @@ type TSDBConfig struct {
 
 	// How often to check for idle TSDBs for closing. DefaultCloseIdleTSDBInterval is not suitable for testing, so tests can override.
 	CloseIdleTSDBInterval time.Duration `yaml:"-"`
+
+	// How often expired items are cleaned from the PostingsCache. ExpandedCachingExpireInterval is not suitable for testing, so tests can override.
+	ExpandedCachingExpireInterval time.Duration `yaml:"-"`
 
 	// Positive value enables experimental support for exemplars. 0 or less to disable.
 	MaxExemplars int `yaml:"max_exemplars"`

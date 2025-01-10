@@ -112,23 +112,23 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 		h.querySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_seconds_total",
 			Help: "Total amount of wall clock time spend processing queries.",
-		}, []string{"user"})
+		}, []string{"source", "user"})
 
 		h.queryFetchedSeries = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_fetched_series_total",
 			Help: "Number of series fetched to execute a query.",
-		}, []string{"user"})
+		}, []string{"source", "user"})
 
 		h.queryFetchedSamples = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_samples_total",
 			Help: "Number of samples fetched to execute a query.",
-		}, []string{"user"})
+		}, []string{"source", "user"})
 
 		// It tracks TotalSamples in https://github.com/prometheus/prometheus/blob/main/util/stats/query_stats.go#L237 for each user.
 		h.queryScannedSamples = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_samples_scanned_total",
 			Help: "Number of samples scanned to execute a query.",
-		}, []string{"user"})
+		}, []string{"source", "user"})
 
 		h.queryPeakSamples = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:                            "cortex_query_peak_samples",
@@ -136,24 +136,24 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
-		}, []string{"user"})
+		}, []string{"source", "user"})
 
 		h.queryChunkBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_fetched_chunks_bytes_total",
 			Help: "Size of all chunks fetched to execute a query in bytes.",
-		}, []string{"user"})
+		}, []string{"source", "user"})
 
 		h.queryDataBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_fetched_data_bytes_total",
 			Help: "Size of all data fetched to execute a query in bytes.",
-		}, []string{"user"})
+		}, []string{"source", "user"})
 
 		h.rejectedQueries = promauto.With(reg).NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "cortex_rejected_queries_total",
 				Help: "The total number of queries that were rejected.",
 			},
-			[]string{"reason", "user"},
+			[]string{"reason", "source", "user"},
 		)
 
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
@@ -218,7 +218,8 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			http.Error(w, err.Error(), statusCode)
 			if f.cfg.QueryStatsEnabled && util.IsRequestBodyTooLarge(err) {
-				f.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, userID).Inc()
+				source := tripperware.GetSource(r.Header.Get("User-Agent"))
+				f.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, source, userID).Inc()
 			}
 			return
 		}
@@ -261,7 +262,8 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		f.reportQueryStats(r, userID, queryString, queryResponseTime, stats, err, statusCode, resp)
+		source := tripperware.GetSource(r.Header.Get("User-Agent"))
+		f.reportQueryStats(r, source, userID, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
 	hs := w.Header()
@@ -335,7 +337,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, resp *http.Response) {
+func (f *Handler) reportQueryStats(r *http.Request, source, userID string, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, resp *http.Response) {
 	wallTime := stats.LoadWallTime()
 	queryStorageWallTime := stats.LoadQueryStorageWallTime()
 	numResponseSeries := stats.LoadResponseSeries()
@@ -353,13 +355,13 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	dataSelectMinTime := stats.LoadDataSelectMinTime()
 
 	// Track stats.
-	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
-	f.queryFetchedSeries.WithLabelValues(userID).Add(float64(numFetchedSeries))
-	f.queryFetchedSamples.WithLabelValues(userID).Add(float64(numFetchedSamples))
-	f.queryScannedSamples.WithLabelValues(userID).Add(float64(numScannedSamples))
-	f.queryPeakSamples.WithLabelValues(userID).Observe(float64(numPeakSamples))
-	f.queryChunkBytes.WithLabelValues(userID).Add(float64(numChunkBytes))
-	f.queryDataBytes.WithLabelValues(userID).Add(float64(numDataBytes))
+	f.querySeconds.WithLabelValues(source, userID).Add(wallTime.Seconds())
+	f.queryFetchedSeries.WithLabelValues(source, userID).Add(float64(numFetchedSeries))
+	f.queryFetchedSamples.WithLabelValues(source, userID).Add(float64(numFetchedSamples))
+	f.queryScannedSamples.WithLabelValues(source, userID).Add(float64(numScannedSamples))
+	f.queryPeakSamples.WithLabelValues(source, userID).Observe(float64(numPeakSamples))
+	f.queryChunkBytes.WithLabelValues(source, userID).Add(float64(numChunkBytes))
+	f.queryDataBytes.WithLabelValues(source, userID).Add(float64(numDataBytes))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	var (
@@ -468,7 +470,7 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 		}
 	}
 	if len(reason) > 0 {
-		f.rejectedQueries.WithLabelValues(reason, userID).Inc()
+		f.rejectedQueries.WithLabelValues(reason, source, userID).Inc()
 		stats.LimitHit = reason
 	}
 }

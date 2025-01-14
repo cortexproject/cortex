@@ -153,7 +153,7 @@ var (
 		plannerFactory := func(ctx context.Context, bkt objstore.InstrumentedBucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, userID string, blockVisitMarkerReadFailed prometheus.Counter, blockVisitMarkerWriteFailed prometheus.Counter, compactorMetrics *compactorMetrics) compact.Planner {
 
 			if cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
-				return NewPartitionCompactionPlanner(ctx, bkt, logger)
+				return NewPartitionCompactionPlanner(ctx, bkt, logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter.NoCompactMarkedBlocks, ringLifecycle.ID, userID, cfg.ShardingPlannerDelay, cfg.CompactionVisitMarkerTimeout, cfg.CompactionVisitMarkerFileUpdateInterval, compactorMetrics)
 			} else {
 				return NewShuffleShardingPlanner(ctx, bkt, logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter.NoCompactMarkedBlocks, ringLifecycle.ID, cfg.CompactionVisitMarkerTimeout, cfg.CompactionVisitMarkerFileUpdateInterval, blockVisitMarkerReadFailed, blockVisitMarkerWriteFailed)
 			}
@@ -234,9 +234,10 @@ type Config struct {
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
 
 	// Compactors sharding.
-	ShardingEnabled  bool       `yaml:"sharding_enabled"`
-	ShardingStrategy string     `yaml:"sharding_strategy"`
-	ShardingRing     RingConfig `yaml:"sharding_ring"`
+	ShardingEnabled      bool          `yaml:"sharding_enabled"`
+	ShardingStrategy     string        `yaml:"sharding_strategy"`
+	ShardingRing         RingConfig    `yaml:"sharding_ring"`
+	ShardingPlannerDelay time.Duration `yaml:"sharding_planner_delay"`
 
 	// Compaction strategy.
 	CompactionStrategy string `yaml:"compaction_strategy"`
@@ -304,6 +305,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.AcceptMalformedIndex, "compactor.accept-malformed-index", false, "When enabled, index verification will ignore out of order label names.")
 	f.BoolVar(&cfg.CachingBucketEnabled, "compactor.caching-bucket-enabled", false, "When enabled, caching bucket will be used for compactor, except cleaner service, which serves as the source of truth for block status")
+
+	f.DurationVar(&cfg.ShardingPlannerDelay, "compactor.sharding-planner-delay", 10*time.Second, "How long shuffle sharding planner would wait before running planning code. This delay would prevent double compaction when two compactors claimed same partition in grouper at same time.")
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {

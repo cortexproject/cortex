@@ -39,6 +39,7 @@ type compactorMetrics struct {
 	remainingPlannedCompactions *prometheus.GaugeVec
 	compactionErrorsCount       *prometheus.CounterVec
 	partitionCount              *prometheus.GaugeVec
+	compactionsNotPlanned       *prometheus.CounterVec
 }
 
 const (
@@ -174,6 +175,10 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 		Name: "cortex_compactor_group_partition_count",
 		Help: "Number of partitions for each compaction group.",
 	}, compactionLabels)
+	m.compactionsNotPlanned = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_compactions_not_planned_total",
+		Help: "Total number of group compaction not planned due to error.",
+	}, compactionLabels)
 
 	return &m
 }
@@ -225,6 +230,7 @@ func (m *compactorMetrics) initMetricWithCompactionLabelValues(labelValue ...str
 	m.compactionFailures.WithLabelValues(labelValue...)
 	m.verticalCompactions.WithLabelValues(labelValue...)
 	m.partitionCount.WithLabelValues(labelValue...)
+	m.compactionsNotPlanned.WithLabelValues(labelValue...)
 }
 
 func (m *compactorMetrics) deleteMetricsForDeletedTenant(userID string) {
@@ -236,4 +242,5 @@ func (m *compactorMetrics) deleteMetricsForDeletedTenant(userID string) {
 	m.compactionFailures.DeleteLabelValues(userID)
 	m.verticalCompactions.DeleteLabelValues(userID)
 	m.partitionCount.DeleteLabelValues(userID)
+	m.compactionsNotPlanned.DeleteLabelValues(userID)
 }

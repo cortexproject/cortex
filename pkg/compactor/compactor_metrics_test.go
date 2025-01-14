@@ -135,6 +135,11 @@ func TestSyncerMetrics(t *testing.T) {
 			cortex_compactor_group_partition_count{user="aaa"} 511060
 			cortex_compactor_group_partition_count{user="bbb"} 522170
 			cortex_compactor_group_partition_count{user="ccc"} 533280
+			# HELP cortex_compactor_group_compactions_not_planned_total Total number of group compaction not planned due to error.
+			# TYPE cortex_compactor_group_compactions_not_planned_total counter
+			cortex_compactor_group_compactions_not_planned_total{user="aaa"} 544390
+			cortex_compactor_group_compactions_not_planned_total{user="bbb"} 555500
+			cortex_compactor_group_compactions_not_planned_total{user="ccc"} 566610
 	`))
 	require.NoError(t, err)
 
@@ -191,4 +196,7 @@ func generateTestData(cm *compactorMetrics, base float64) {
 	cm.partitionCount.WithLabelValues("aaa").Add(46 * base)
 	cm.partitionCount.WithLabelValues("bbb").Add(47 * base)
 	cm.partitionCount.WithLabelValues("ccc").Add(48 * base)
+	cm.compactionsNotPlanned.WithLabelValues("aaa").Add(49 * base)
+	cm.compactionsNotPlanned.WithLabelValues("bbb").Add(50 * base)
+	cm.compactionsNotPlanned.WithLabelValues("ccc").Add(51 * base)
 }

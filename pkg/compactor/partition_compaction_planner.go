@@ -130,6 +130,8 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 		}
 
 		if b.MinTime < rangeStart || b.MaxTime > rangeEnd {
+			p.compactorMetrics.compactionsNotPlanned.WithLabelValues(p.userID, cortexMetaExtensions.TimeRangeStr()).Inc()
+			level.Warn(p.logger).Log("msg", "block is outside the largest expected range", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "block_id", blockID, "block_min_time", b.MinTime, "block_max_time", b.MaxTime, "range_start", rangeStart, "range_end", rangeEnd)
 			return nil, fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", blockID, b.MinTime, b.MaxTime, rangeStart, rangeEnd)
 		}
 

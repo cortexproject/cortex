@@ -94,17 +94,16 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 		if errors.Is(err, errorVisitMarkerNotFound) {
 			visitMarkerExists = false
 		} else {
+			p.compactorMetrics.compactionsNotPlanned.WithLabelValues(p.userID, cortexMetaExtensions.TimeRangeStr()).Inc()
 			return nil, fmt.Errorf("unable to get visit marker file for partition with partition ID %d, partitioned group ID %d: %s", partitionID, partitionedGroupID, err.Error())
 		}
 	}
 	if visitMarkerExists {
 		if existingPartitionVisitMarker.GetStatus() == Completed {
-			p.compactorMetrics.compactionsNotPlanned.WithLabelValues(p.userID, cortexMetaExtensions.TimeRangeStr()).Inc()
 			level.Warn(p.logger).Log("msg", "partition is in completed status", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "compactor_id", p.ringLifecyclerID, existingPartitionVisitMarker.String())
 			return nil, plannerCompletedPartitionError
 		}
 		if !existingPartitionVisitMarker.IsPendingByCompactor(p.partitionVisitMarkerTimeout, partitionID, p.ringLifecyclerID) {
-			p.compactorMetrics.compactionsNotPlanned.WithLabelValues(p.userID, cortexMetaExtensions.TimeRangeStr()).Inc()
 			level.Warn(p.logger).Log("msg", "partition is not visited by current compactor", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "compactor_id", p.ringLifecyclerID, existingPartitionVisitMarker.String())
 			return nil, plannerVisitedPartitionError
 		}
@@ -139,7 +138,8 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 	}
 
 	if len(resultMetas) < 1 {
-		level.Info(p.logger).Log("msg", "result meta size is empty", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "size", len(resultMetas))
+		p.compactorMetrics.compactionsNotPlanned.WithLabelValues(p.userID, cortexMetaExtensions.TimeRangeStr()).Inc()
+		level.Warn(p.logger).Log("msg", "result meta size is empty", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "group_size", len(metasByMinTime))
 		return nil, nil
 	}
 

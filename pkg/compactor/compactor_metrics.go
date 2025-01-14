@@ -176,8 +176,8 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 		Help: "Number of partitions for each compaction group.",
 	}, compactionLabels)
 	m.compactionsNotPlanned = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_compactor_group_compactions_not_planned",
-		Help: "Total number of group compaction not planned due to non-critical error (ie. group is currently visited by other compactor).",
+		Name: "cortex_compactor_group_compactions_not_planned_total",
+		Help: "Total number of group compaction not planned due to error.",
 	}, compactionLabels)
 
 	return &m

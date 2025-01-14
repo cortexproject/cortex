@@ -2331,6 +2331,8 @@ sharding_ring:
   [wait_active_instance_timeout: <duration> | default = 10m]
 
 # How long shuffle sharding planner would wait before running planning code.
+# This delay would prevent double compaction when two compactors claimed same
+# partition in grouper at same time.
 # CLI flag: -compactor.sharding-planner-delay
 [sharding_planner_delay: <duration> | default = 10s]
 

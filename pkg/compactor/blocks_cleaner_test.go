@@ -838,6 +838,7 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
 		ShardingStrategy:   util.ShardingStrategyShuffle,
+		CompactionStrategy: util.CompactionStrategyPartitioning,
 	}
 
 	ctx := context.Background()

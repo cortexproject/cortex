@@ -99,14 +99,14 @@ func NewBlocksCleaner(
 
 	var inProgressCompactions *prometheus.GaugeVec
 	var oldestPartitionGroupOffset *prometheus.GaugeVec
-	if cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 		inProgressCompactions = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_compactor_in_progress_compactions",
-			Help: "Total number of in progress compactions. Only available with shuffle-sharding strategy",
+			Help: "Total number of in progress compactions. Only available with shuffle-sharding strategy and partitioning compaction strategy",
 		}, commonLabels)
 		oldestPartitionGroupOffset = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_compactor_oldest_partition_offset",
-			Help: "Time in seconds between now and the oldest created partition group not completed.",
+			Help: "Time in seconds between now and the oldest created partition group not completed. Only available with shuffle-sharding strategy and partitioning compaction strategy",
 		}, commonLabels)
 	}
 
@@ -355,9 +355,11 @@ func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, erro
 			c.tenantPartialBlocks.DeleteLabelValues(userID)
 			c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
 			if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-				c.inProgressCompactions.DeleteLabelValues(userID)
 				c.remainingPlannedCompactions.DeleteLabelValues(userID)
-				c.oldestPartitionGroupOffset.DeleteLabelValues(userID)
+				if c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
+					c.inProgressCompactions.DeleteLabelValues(userID)
+					c.oldestPartitionGroupOffset.DeleteLabelValues(userID)
+				}
 			}
 		}
 	}

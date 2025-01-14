@@ -29,7 +29,8 @@ func ForEachUser(ctx context.Context, userIDs []string, concurrency int, userFun
 	errsMx := sync.Mutex{}
 
 	wg := sync.WaitGroup{}
-	for ix := 0; ix < min(concurrency, len(userIDs)); ix++ {
+	routines := min(concurrency, len(userIDs))
+	for ix := 0; ix < routines; ix++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -75,7 +76,8 @@ func ForEach(ctx context.Context, jobs []interface{}, concurrency int, jobFunc f
 
 	// Start workers to process jobs.
 	g, ctx := errgroup.WithContext(ctx)
-	for ix := 0; ix < min(concurrency, len(jobs)); ix++ {
+	routines := min(concurrency, len(jobs))
+	for ix := 0; ix < routines; ix++ {
 		g.Go(func() error {
 			for job := range ch {
 				if err := ctx.Err(); err != nil {

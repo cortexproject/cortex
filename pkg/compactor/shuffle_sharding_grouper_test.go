@@ -794,6 +794,11 @@ func (r *RingMock) ShuffleShardWithZoneStability(identifier string, size int) ri
 	return args.Get(0).(ring.ReadRing)
 }
 
+func (r *RingMock) ShuffleShardWithOperation(identifier string, size int, op ring.Operation) ring.ReadRing {
+	args := r.Called(identifier, size, op)
+	return args.Get(0).(ring.ReadRing)
+}
+
 func (r *RingMock) GetInstanceState(instanceID string) (ring.InstanceState, error) {
 	args := r.Called(instanceID)
 	return args.Get(0).(ring.InstanceState), args.Error(1)

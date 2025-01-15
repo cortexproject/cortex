@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -19,14 +18,13 @@ import (
 )
 
 type ShardedCompactionLifecycleCallback struct {
-	ctx                            context.Context
-	userBucket                     objstore.InstrumentedBucket
-	logger                         log.Logger
-	metaSyncConcurrency            int
-	compactDir                     string
-	userID                         string
-	partitionedGroupInfoReadFailed prometheus.Counter
-	compactorMetrics               *compactorMetrics
+	ctx                 context.Context
+	userBucket          objstore.InstrumentedBucket
+	logger              log.Logger
+	metaSyncConcurrency int
+	compactDir          string
+	userID              string
+	compactorMetrics    *compactorMetrics
 
 	startTime time.Time
 }

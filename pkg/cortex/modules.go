@@ -536,7 +536,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	// Wrap roundtripper into Tripperware.
 	roundTripper = t.QueryFrontendTripperware(roundTripper)
 
-	handler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
+	handler := transport.NewHandler(t.Cfg.Frontend.Handler, t.Cfg.TenantFederation, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
 	t.API.RegisterQueryFrontendHandler(handler)
 
 	if frontendV1 != nil {

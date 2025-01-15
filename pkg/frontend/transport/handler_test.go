@@ -20,11 +20,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/codes"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
@@ -178,6 +181,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		}, nil
 	})
 	userID := "12345"
+	tenantFederationCfg := tenantfederation.Config{}
 	for _, tt := range []struct {
 		name                       string
 		cfg                        HandlerConfig
@@ -379,7 +383,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
-			handler := NewHandler(tt.cfg, tt.roundTripperFunc, log.NewNopLogger(), reg)
+			handler := NewHandler(tt.cfg, tenantFederationCfg, tt.roundTripperFunc, log.NewNopLogger(), reg)
 
 			ctx := user.InjectOrgID(context.Background(), userID)
 			req := httptest.NewRequest("GET", "/", nil)
@@ -413,7 +417,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 func TestReportQueryStatsFormat(t *testing.T) {
 	outputBuf := bytes.NewBuffer(nil)
 	logger := log.NewSyncLogger(log.NewLogfmtLogger(outputBuf))
-	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, http.DefaultTransport, logger, nil)
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
 	userID := "fake"
 	req, _ := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
 	resp := &http.Response{ContentLength: 1000}
@@ -503,6 +507,104 @@ func TestReportQueryStatsFormat(t *testing.T) {
 			data, err := io.ReadAll(outputBuf)
 			require.NoError(t, err)
 			require.Equal(t, testData.expectedLog+"\n", string(data))
+		})
+	}
+}
+
+func Test_TenantFederation_MaxTenant(t *testing.T) {
+	// set a multi tenant resolver
+	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("{}")),
+		}, nil
+	})
+
+	tests := []struct {
+		name               string
+		cfg                tenantfederation.Config
+		orgId              string
+		expectedStatusCode int
+		expectedErrMsg     string
+	}{
+		{
+			name: "one tenant",
+			cfg: tenantfederation.Config{
+				Enabled:   true,
+				MaxTenant: 0,
+			},
+			orgId:              "org1",
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name: "less than max tenant",
+			cfg: tenantfederation.Config{
+				Enabled:   true,
+				MaxTenant: 3,
+			},
+			orgId:              "org1|org2",
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name: "equal to max tenant",
+			cfg: tenantfederation.Config{
+				Enabled:   true,
+				MaxTenant: 2,
+			},
+			orgId:              "org1|org2",
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name: "exceeds max tenant",
+			cfg: tenantfederation.Config{
+				Enabled:   true,
+				MaxTenant: 2,
+			},
+			orgId:              "org1|org2|org3",
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrMsg:     "too many tenants, max: 2, actual: 3",
+		},
+		{
+			name: "no org Id",
+			cfg: tenantfederation.Config{
+				Enabled:   true,
+				MaxTenant: 0,
+			},
+			orgId:              "",
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedErrMsg:     "no org id",
+		},
+		{
+			name: "no limit",
+			cfg: tenantfederation.Config{
+				Enabled:   true,
+				MaxTenant: 0,
+			},
+			orgId:              "org1|org2|org3",
+			expectedStatusCode: http.StatusOK,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler := NewHandler(HandlerConfig{}, test.cfg, roundTripper, log.NewNopLogger(), nil)
+			handlerWithAuth := middleware.Merge(middleware.AuthenticateUser).Wrap(handler)
+
+			req := httptest.NewRequest("GET", "http://fake", nil)
+			req.Header.Set("X-Scope-OrgId", test.orgId)
+			resp := httptest.NewRecorder()
+
+			handlerWithAuth.ServeHTTP(resp, req)
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, test.expectedStatusCode, resp.Code)
+
+			if test.expectedErrMsg != "" {
+				require.Contains(t, string(body), test.expectedErrMsg)
+			}
 		})
 	}
 }

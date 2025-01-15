@@ -161,6 +161,10 @@ tenant_federation:
   # CLI flag: -tenant-federation.max-concurrent
   [max_concurrent: <int> | default = 16]
 
+  # A maximum number of tenants to query at once. 0 means no limit.
+  # CLI flag: -tenant-federation.max-tenant
+  [max_tenant: <int> | default = 0]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 

@@ -650,7 +650,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 }
 
 func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, userID string) {
-	deletePartitionedGroupInfo := make(map[*PartitionedGroupInfo]struct {
+	existentPartitionedGroupInfo := make(map[*PartitionedGroupInfo]struct {
 		path   string
 		status PartitionedGroupStatus
 	})
@@ -666,7 +666,7 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 
 		status := partitionedGroupInfo.getPartitionedGroupStatus(ctx, userBucket, c.compactionVisitMarkerTimeout, userLogger)
 		level.Info(userLogger).Log("msg", "got partitioned group status", "partitioned_group_status", status.String())
-		deletePartitionedGroupInfo[partitionedGroupInfo] = struct {
+		existentPartitionedGroupInfo[partitionedGroupInfo] = struct {
 			path   string
 			status PartitionedGroupStatus
 		}{
@@ -695,7 +695,7 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 			}
 		}
 	}()
-	for partitionedGroupInfo, extraInfo := range deletePartitionedGroupInfo {
+	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {
 		partitionedGroupInfoFile := extraInfo.path
 
 		remainingCompactions += extraInfo.status.PendingPartitions

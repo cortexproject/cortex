@@ -665,7 +665,7 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 		}
 
 		status := partitionedGroupInfo.getPartitionedGroupStatus(ctx, userBucket, c.compactionVisitMarkerTimeout, userLogger)
-		level.Info(userLogger).Log("msg", "got partitioned group status", "partitioned_group_status", status.String())
+		level.Debug(userLogger).Log("msg", "got partitioned group status", "partitioned_group_status", status.String())
 		existentPartitionedGroupInfo[partitionedGroupInfo] = struct {
 			path   string
 			status PartitionedGroupStatus
@@ -689,7 +689,7 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 		if c.oldestPartitionGroupOffset != nil {
 			if oldestPartitionGroup != nil {
 				c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(float64(time.Now().Unix() - oldestPartitionGroup.CreationTime))
-				level.Info(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTime)
+				level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTime)
 			} else {
 				c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(0)
 			}

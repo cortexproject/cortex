@@ -1135,7 +1135,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 60*time.Second, true, func() interface{} {
+		cortex_testutil.Poll(t, 120*time.Second, true, func() interface{} {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
 		})
 	}

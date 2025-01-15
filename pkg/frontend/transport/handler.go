@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -33,6 +34,8 @@ const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of a http request
 	StatusClientClosedRequest = 499
 	ServiceTimingHeaderName   = "Server-Timing"
+
+	errTooManyTenants = "too many tenants, max: %d, actual: %d"
 )
 
 var (
@@ -84,9 +87,10 @@ func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 // Handler accepts queries and forwards them to RoundTripper. It can log slow queries,
 // but all other logic is inside the RoundTripper.
 type Handler struct {
-	cfg          HandlerConfig
-	log          log.Logger
-	roundTripper http.RoundTripper
+	cfg                 HandlerConfig
+	tenantFederationCfg tenantfederation.Config
+	log                 log.Logger
+	roundTripper        http.RoundTripper
 
 	// Metrics.
 	querySeconds        *prometheus.CounterVec
@@ -101,11 +105,12 @@ type Handler struct {
 }
 
 // NewHandler creates a new frontend handler.
-func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) *Handler {
+func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) *Handler {
 	h := &Handler{
-		cfg:          cfg,
-		log:          log,
-		roundTripper: roundTripper,
+		cfg:                 cfg,
+		tenantFederationCfg: tenantFederationCfg,
+		log:                 log,
+		roundTripper:        roundTripper,
 	}
 
 	if cfg.QueryStatsEnabled {
@@ -185,6 +190,15 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+
+	if f.tenantFederationCfg.Enabled {
+		maxTenant := f.tenantFederationCfg.MaxTenant
+		if maxTenant > 0 && len(tenantIDs) > maxTenant {
+			http.Error(w, fmt.Errorf(errTooManyTenants, maxTenant, len(tenantIDs)).Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
 	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Initialise the stats in the context and make sure it's propagated

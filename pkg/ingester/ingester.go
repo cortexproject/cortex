@@ -2808,6 +2808,9 @@ func (i *Ingester) expirePostingsCache(ctx context.Context) error {
 			return nil
 		}
 		userDB := i.getTSDB(userID)
+		if userDB == nil || userDB.postingCache == nil {
+			continue
+		}
 		userDB.postingCache.PurgeExpiredItems()
 	}
 

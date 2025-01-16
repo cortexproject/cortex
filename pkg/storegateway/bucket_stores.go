@@ -642,7 +642,8 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		}),
 		store.WithLazyExpandedPostings(u.cfg.BucketStore.LazyExpandedPostingsEnabled),
 		store.WithPostingGroupMaxKeySeriesRatio(u.cfg.BucketStore.LazyExpandedPostingGroupMaxKeySeriesRatio),
-		store.WithDontResort(true), // Cortex doesn't need to resort series in store gateway.
+		store.WithSeriesMatchRatio(0.5), // TODO: expose this as a config.
+		store.WithDontResort(true),      // Cortex doesn't need to resort series in store gateway.
 		store.WithBlockLifecycleCallback(&shardingBlockLifecycleCallbackAdapter{
 			userID:   userID,
 			strategy: u.shardingStrategy,

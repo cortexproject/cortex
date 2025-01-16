@@ -351,6 +351,7 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	splitQueries := stats.LoadSplitQueries()
 	dataSelectMaxTime := stats.LoadDataSelectMaxTime()
 	dataSelectMinTime := stats.LoadDataSelectMinTime()
+	splitInterval := stats.LoadSplitInterval()
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
@@ -423,6 +424,10 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 		// Only include query storage wall time field if set. This value can be 0
 		// for query APIs that don't call `Querier` interface.
 		logMessage = append(logMessage, "query_storage_wall_time_seconds", sws)
+	}
+
+	if splitInterval > 0 {
+		logMessage = append(logMessage, "split_interval", splitInterval.String())
 	}
 
 	if error != nil {

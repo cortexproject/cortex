@@ -21,6 +21,7 @@ type QueryStats struct {
 	Priority            int64
 	DataSelectMaxTime   int64
 	DataSelectMinTime   int64
+	SplitInterval       time.Duration
 	m                   sync.Mutex
 }
 
@@ -285,6 +286,14 @@ func (s *QueryStats) LoadDataSelectMinTime() int64 {
 	}
 
 	return atomic.LoadInt64(&s.DataSelectMinTime)
+}
+
+func (s *QueryStats) LoadSplitInterval() time.Duration {
+	if s == nil {
+		return 0
+	}
+
+	return s.SplitInterval
 }
 
 func (s *QueryStats) AddStoreGatewayTouchedPostings(count uint64) {

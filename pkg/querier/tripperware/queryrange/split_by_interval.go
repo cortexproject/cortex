@@ -177,7 +177,6 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 		}
 
 		queryDayRange := int((r.GetEnd() / dayMillis) - (r.GetStart() / dayMillis) + 1)
-		baseInterval := int(cfg.SplitQueriesByInterval / day)
 		analysis, err := queryAnalyzer.Analyze(r.GetQuery())
 		if err != nil {
 			return cfg.SplitQueriesByInterval, err
@@ -211,21 +210,23 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 			maxSplitsByConfig = cfg.SplitQueriesByIntervalMaxSplits / queryVerticalShardSize
 		}
 
-		var maxSplits int
+		var maxSplits time.Duration
 		switch {
 		case maxSplitsByFetchedDaysOfData <= 0 && maxSplitsByConfig <= 0:
-			maxSplits = 1
+			return cfg.SplitQueriesByInterval, nil
 		case maxSplitsByFetchedDaysOfData <= 0:
-			maxSplits = maxSplitsByConfig
+			maxSplits = time.Duration(maxSplitsByConfig)
 		case maxSplitsByConfig <= 0:
-			maxSplits = maxSplitsByFetchedDaysOfData
+			maxSplits = time.Duration(maxSplitsByFetchedDaysOfData)
 		default:
 			// Use the more restricting shard limit
-			maxSplits = min(maxSplitsByConfig, maxSplitsByFetchedDaysOfData)
+			maxSplits = time.Duration(min(maxSplitsByConfig, maxSplitsByFetchedDaysOfData))
 		}
 
-		n := (queryDayRange + baseInterval*maxSplits - 1) / (baseInterval * maxSplits)
-		return time.Duration(n) * cfg.SplitQueriesByInterval, nil
+		queryRange := time.Duration((r.GetEnd() - r.GetStart()) * int64(time.Millisecond))
+		baseInterval := cfg.SplitQueriesByInterval
+		n := (queryRange + baseInterval*maxSplits - 1) / (baseInterval * maxSplits)
+		return n * cfg.SplitQueriesByInterval, nil
 	}
 }
 

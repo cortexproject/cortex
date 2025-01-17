@@ -177,6 +177,67 @@ func TestMatcherCache(t *testing.T) {
 	`, callPerMatcher*numberOfDifferentMatchers-numberOfDifferentMatchers, cfg.MatchersCacheMaxItems, callPerMatcher*numberOfDifferentMatchers)), "ingester_matchers_cache_requests_total", "ingester_matchers_cache_hits_total", "ingester_matchers_cache_items", "ingester_matchers_cache_max_items", "ingester_matchers_cache_evicted_total"))
 }
 
+func TestIngesterDeletionRace(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	limits := defaultLimitsTestConfig()
+	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
+	cfg := defaultIngesterTestConfig(t)
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 1 * time.Millisecond
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 10 * time.Second
+	cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval = 1 * time.Millisecond
+	cfg.BlocksStorageConfig.TSDB.PostingsCache = cortex_tsdb.TSDBPostingsCacheConfig{
+		SeedSize: 3, // lets make sure all metric names collide
+		Head: cortex_tsdb.PostingsCacheConfig{
+			Enabled:  true,
+			Ttl:      time.Hour,
+			MaxBytes: 1024 * 1024 * 1024,
+		},
+		Blocks: cortex_tsdb.PostingsCacheConfig{
+			Enabled:  true,
+			Ttl:      time.Hour,
+			MaxBytes: 1024 * 1024 * 1024,
+		},
+	}
+
+	dir := t.TempDir()
+	chunksDir := filepath.Join(dir, "chunks")
+	blocksDir := filepath.Join(dir, "blocks")
+	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
+	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
+
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry, true)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+	// Wait until it's ACTIVE
+	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+		return ing.lifecycler.GetState()
+	})
+
+	numberOfTenants := 500
+	wg := sync.WaitGroup{}
+	wg.Add(numberOfTenants)
+
+	for i := 0; i < numberOfTenants; i++ {
+		go func() {
+			defer wg.Done()
+			u := fmt.Sprintf("userId_%v", i)
+			ctx := user.InjectOrgID(context.Background(), u)
+			samples := []cortexpb.Sample{{Value: 2, TimestampMs: 10}}
+			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "name")}, samples, nil, nil, cortexpb.API))
+			require.NoError(t, err)
+			s := &mockQueryStreamServer{ctx: ctx}
+			err = ing.QueryStream(&client.QueryRequest{
+				StartTimestampMs: math.MinInt64,
+				EndTimestampMs:   math.MaxInt64,
+				Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
+			}, s)
+			require.NoError(t, err)
+			ing.getTSDB(u).deletionMarkFound.Store(true) // lets force close the tenant
+		}()
+	}
+	wg.Wait()
+}
+
 func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	userID := "1"

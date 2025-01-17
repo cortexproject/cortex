@@ -51,6 +51,7 @@ func TestConfig(t *testing.T) {
 endpoint: test-endpoint
 region: test-region
 bucket_name: test-bucket-name
+disable_dualstack: true
 secret_access_key: test-secret-access-key
 access_key_id: test-access-key-id
 insecure: true
@@ -74,6 +75,7 @@ http:
 				Endpoint:         "test-endpoint",
 				Region:           "test-region",
 				BucketName:       "test-bucket-name",
+				DisableDualstack: true,
 				SecretAccessKey:  flagext.Secret{Value: "test-secret-access-key"},
 				AccessKeyID:      "test-access-key-id",
 				Insecure:         true,

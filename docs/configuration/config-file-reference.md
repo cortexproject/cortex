@@ -541,6 +541,10 @@ s3:
   # CLI flag: -alertmanager-storage.s3.bucket-name
   [bucket_name: <string> | default = ""]
 
+  # If enabled, S3 endpoint will use the non-dualstack variant.
+  # CLI flag: -alertmanager-storage.s3.disable-dualstack
+  [disable_dualstack: <boolean> | default = false]
+
   # S3 secret access key
   # CLI flag: -alertmanager-storage.s3.secret-access-key
   [secret_access_key: <string> | default = ""]
@@ -835,6 +839,10 @@ s3:
   # S3 bucket name
   # CLI flag: -blocks-storage.s3.bucket-name
   [bucket_name: <string> | default = ""]
+
+  # If enabled, S3 endpoint will use the non-dualstack variant.
+  # CLI flag: -blocks-storage.s3.disable-dualstack
+  [disable_dualstack: <boolean> | default = false]
 
   # S3 secret access key
   # CLI flag: -blocks-storage.s3.secret-access-key
@@ -4771,6 +4779,10 @@ s3:
   # CLI flag: -ruler-storage.s3.bucket-name
   [bucket_name: <string> | default = ""]
 
+  # If enabled, S3 endpoint will use the non-dualstack variant.
+  # CLI flag: -ruler-storage.s3.disable-dualstack
+  [disable_dualstack: <boolean> | default = false]
+
   # S3 secret access key
   # CLI flag: -ruler-storage.s3.secret-access-key
   [secret_access_key: <string> | default = ""]
@@ -5073,6 +5085,10 @@ s3:
   # S3 bucket name
   # CLI flag: -runtime-config.s3.bucket-name
   [bucket_name: <string> | default = ""]
+
+  # If enabled, S3 endpoint will use the non-dualstack variant.
+  # CLI flag: -runtime-config.s3.disable-dualstack
+  [disable_dualstack: <boolean> | default = false]
 
   # S3 secret access key
   # CLI flag: -runtime-config.s3.secret-access-key

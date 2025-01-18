@@ -152,23 +152,23 @@ func NewBlocksCleaner(
 		tenantBlocks: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_count",
 			Help: "Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.",
-		}, []string{"user"}),
+		}, commonLabels),
 		tenantBlocksMarkedForDelete: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_marked_for_deletion_count",
 			Help: "Total number of blocks marked for deletion in the bucket.",
-		}, []string{"user"}),
+		}, commonLabels),
 		tenantBlocksMarkedForNoCompaction: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_marked_for_no_compaction_count",
 			Help: "Total number of blocks marked for no compaction in the bucket.",
-		}, []string{"user"}),
+		}, commonLabels),
 		tenantPartialBlocks: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_partials_count",
 			Help: "Total number of partial blocks.",
-		}, []string{"user"}),
+		}, commonLabels),
 		tenantBucketIndexLastUpdate: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_index_last_successful_update_timestamp_seconds",
 			Help: "Timestamp of the last successful update of a tenant's bucket index.",
-		}, []string{"user"}),
+		}, commonLabels),
 		tenantBlocksCleanedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_bucket_blocks_cleaned_total",
 			Help: "Total number of blocks deleted for a tenant.",

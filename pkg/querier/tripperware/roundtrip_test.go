@@ -34,6 +34,10 @@ const (
 	querySubqueryStepSizeTooSmall = "/api/v1/query?query=up%5B30d%3A%5D"
 	queryExceedsMaxQueryLength    = "/api/v1/query?query=up%5B90d%5D"
 	seriesQuery                   = "/api/v1/series?match[]"
+	remoteReadQuery               = "/api/v1/read"
+	labelNamesQuery               = "/api/v1/labels"
+	labelValuesQuery              = "/api/v1/label/label/values"
+	metadataQuery                 = "/api/v1/metadata"
 
 	responseBody        = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 	instantResponseBody = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
@@ -153,7 +157,7 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 			expectedMetric: `
 # HELP cortex_query_frontend_queries_total Total queries sent per tenant.
 # TYPE cortex_query_frontend_queries_total counter
-cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
+cortex_query_frontend_queries_total{op="query_exemplars", source="api", user="1"} 1
 `,
 		},
 		{
@@ -166,6 +170,54 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 # HELP cortex_query_frontend_queries_total Total queries sent per tenant.
 # TYPE cortex_query_frontend_queries_total counter
 cortex_query_frontend_queries_total{op="series", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             labelNamesQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="label_names", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             labelValuesQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="label_values", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             metadataQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="metadata", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             remoteReadQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="remote_read", source="api", user="1"} 1
 `,
 		},
 		{

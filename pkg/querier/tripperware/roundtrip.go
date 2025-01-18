@@ -37,6 +37,17 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
+const (
+	opTypeQuery          = "query"
+	opTypeQueryRange     = "query_range"
+	opTypeSeries         = "series"
+	opTypeRemoteRead     = "remote_read"
+	opTypeLabelNames     = "label_names"
+	opTypeLabelValues    = "label_values"
+	opTypeMetadata       = "metadata"
+	opTypeQueryExemplars = "query_exemplars"
+)
+
 // HandlerFunc is like http.HandlerFunc, but for Handler.
 type HandlerFunc func(context.Context, Request) (Response, error)
 
@@ -140,12 +151,28 @@ func NewQueryTripperware(
 				isQuery := strings.HasSuffix(r.URL.Path, "/query")
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
 				isSeries := strings.HasSuffix(r.URL.Path, "/series")
+				isRemoteRead := strings.HasSuffix(r.URL.Path, "/read")
+				isLabelNames := strings.HasSuffix(r.URL.Path, "/labels")
+				isLabelValues := strings.HasSuffix(r.URL.Path, "/values")
+				isMetadata := strings.HasSuffix(r.URL.Path, "/metadata")
+				isQueryExemplars := strings.HasSuffix(r.URL.Path, "/query_exemplars")
 
-				op := "query"
-				if isQueryRange {
-					op = "query_range"
-				} else if isSeries {
-					op = "series"
+				op := opTypeQuery
+				switch {
+				case isQueryRange:
+					op = opTypeQueryRange
+				case isSeries:
+					op = opTypeSeries
+				case isRemoteRead:
+					op = opTypeRemoteRead
+				case isLabelNames:
+					op = opTypeLabelNames
+				case isLabelValues:
+					op = opTypeLabelValues
+				case isMetadata:
+					op = opTypeMetadata
+				case isQueryExemplars:
+					op = opTypeQueryExemplars
 				}
 
 				tenantIDs, err := tenant.TenantIDs(r.Context())

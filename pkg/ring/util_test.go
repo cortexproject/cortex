@@ -63,6 +63,11 @@ func (r *RingMock) ShuffleShard(identifier string, size int) ReadRing {
 	return args.Get(0).(ReadRing)
 }
 
+func (r *RingMock) ShuffleShardWithOperation(identifier string, size int, op Operation) ReadRing {
+	args := r.Called(identifier, size, op)
+	return args.Get(0).(ReadRing)
+}
+
 func (r *RingMock) ShuffleShardWithZoneStability(identifier string, size int) ReadRing {
 	args := r.Called(identifier, size)
 	return args.Get(0).(ReadRing)

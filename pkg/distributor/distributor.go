@@ -130,6 +130,9 @@ type Distributor struct {
 
 	asyncExecutor util.AsyncExecutor
 
+	// metrics passed to push handler
+	PushHandlerMetrics *PushHandlerMetrics
+
 	// Map to track label sets from user.
 	labelSetTracker *labelset.LabelSetTracker
 }
@@ -179,6 +182,32 @@ type Config struct {
 
 	// OTLPConfig
 	OTLPConfig OTLPConfig `yaml:"otlp"`
+}
+
+type PushHandlerMetrics struct {
+	pushRequestSizeBytes *prometheus.HistogramVec
+}
+
+func NewPushHandlerMetrics(reg prometheus.Registerer) *PushHandlerMetrics {
+	return &PushHandlerMetrics{
+		pushRequestSizeBytes: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "cortex_distributor_push_requests_uncompressed_size_bytes",
+			Help:                            "Histogram of push request's uncompressed size in bytes",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+		}, []string{"user", "format"}),
+	}
+}
+
+func (m *PushHandlerMetrics) ObservePushRequestSize(user, format string, size float64) {
+	if m != nil {
+		m.pushRequestSizeBytes.WithLabelValues(user, format).Observe(size)
+	}
+}
+
+func (m *PushHandlerMetrics) deleteUserMetrics(user string) {
+	m.pushRequestSizeBytes.DeleteLabelValues(user)
 }
 
 type InstanceLimits struct {
@@ -385,8 +414,9 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Help: "Unix timestamp of latest received sample per user.",
 		}, []string{"user"}),
 
-		validateMetrics: validation.NewValidateMetrics(reg),
-		asyncExecutor:   util.NewNoOpExecutor(),
+		validateMetrics:    validation.NewValidateMetrics(reg),
+		PushHandlerMetrics: NewPushHandlerMetrics(reg),
+		asyncExecutor:      util.NewNoOpExecutor(),
 	}
 
 	d.labelSetTracker = labelset.NewLabelSetTracker()
@@ -501,6 +531,8 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 	d.incomingMetadata.DeleteLabelValues(userID)
 	d.nonHASamples.DeleteLabelValues(userID)
 	d.latestSeenSampleTimestampPerUser.DeleteLabelValues(userID)
+
+	d.PushHandlerMetrics.deleteUserMetrics(userID)
 
 	if err := util.DeleteMatchingLabels(d.dedupedSamples, map[string]string{"user": userID}); err != nil {
 		level.Warn(d.log).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)

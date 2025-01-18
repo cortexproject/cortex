@@ -43,9 +43,9 @@ func TestMarshall(t *testing.T) {
 			plentySize   = 1024 * 1024
 		)
 		req := cortexpb.WriteRequest{}
-		err := util.ParseProtoReader(context.Background(), recorder.Body, recorder.Body.Len(), tooSmallSize, &req, util.RawSnappy)
+		_, err := util.ParseProtoReader(context.Background(), recorder.Body, recorder.Body.Len(), tooSmallSize, &req, util.RawSnappy)
 		require.Error(t, err)
-		err = util.ParseProtoReader(context.Background(), recorder.Body, recorder.Body.Len(), plentySize, &req, util.RawSnappy)
+		_, err = util.ParseProtoReader(context.Background(), recorder.Body, recorder.Body.Len(), plentySize, &req, util.RawSnappy)
 		require.NoError(t, err)
 		require.Equal(t, numSeries, len(req.Timeseries))
 	}

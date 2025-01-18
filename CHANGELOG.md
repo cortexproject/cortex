@@ -22,6 +22,7 @@
 * [FEATURE] Query Frontend: Support a metadata federated query when `-tenant-federation.enabled=true`. #6461
 * [FEATURE] Query Frontend: Support an exemplar federated query when `-tenant-federation.enabled=true`. #6455
 * [FEATURE] Ingester/StoreGateway: Add support for cache regex query matchers via `-ingester.matchers-cache-max-items` and `-blocks-storage.bucket-store.matchers-cache-max-items`. #6477 #6491
+* [FEATURE] Compactor: Partition Compaction. #6096 #6112 #6111 #6113 #6097 #6141 #6172 #6469 #6507 #6510 #6512
 * [ENHANCEMENT] Query Frontend: Add a `source` label to query stat metrics. #6470
 * [ENHANCEMENT] Query Frontend: Add a flag `-tenant-federation.max-tenant` to limit the number of tenants for federated query. #6493
 * [ENHANCEMENT] Querier: Add a `-tenant-federation.max-concurrent` flags to configure the number of worker processing federated query and add a `cortex_querier_federated_tenants_per_query` histogram to track the number of tenants per query. #6449

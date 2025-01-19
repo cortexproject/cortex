@@ -390,6 +390,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.bucket-name
     [bucket_name: <string> | default = ""]
 
+    # If enabled, S3 endpoint will use the non-dualstack variant.
+    # CLI flag: -blocks-storage.s3.disable-dualstack
+    [disable_dualstack: <boolean> | default = false]
+
     # S3 secret access key
     # CLI flag: -blocks-storage.s3.secret-access-key
     [secret_access_key: <string> | default = ""]

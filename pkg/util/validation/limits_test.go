@@ -638,6 +638,36 @@ tenant2:
 	require.Equal(t, 5, ov.MaxDownloadedBytesPerRequest("tenant3"))
 }
 
+func TestQueryPartialDataOverridesPerTenant(t *testing.T) {
+	SetDefaultLimitsForYAMLUnmarshalling(Limits{})
+
+	baseYAML := `
+query_partial_data: false`
+	overridesYAML := `
+tenant1:
+  query_partial_data: true
+tenant2:
+  query_partial_data: false
+`
+
+	l := Limits{}
+	err := yaml.UnmarshalStrict([]byte(baseYAML), &l)
+	require.NoError(t, err)
+
+	overrides := map[string]*Limits{}
+	err = yaml.Unmarshal([]byte(overridesYAML), &overrides)
+	require.NoError(t, err, "parsing overrides")
+
+	tl := newMockTenantLimits(overrides)
+
+	ov, err := NewOverrides(l, tl)
+	require.NoError(t, err)
+
+	require.True(t, ov.QueryPartialData("tenant1"))
+	require.False(t, ov.QueryPartialData("tenant2"))
+	require.False(t, ov.QueryPartialData("tenant3"))
+}
+
 func TestHasQueryAttributeRegexChanged(t *testing.T) {
 	l := Limits{
 		QueryPriority: QueryPriority{

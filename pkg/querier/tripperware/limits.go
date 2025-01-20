@@ -30,4 +30,7 @@ type Limits interface {
 	QueryPriority(userID string) validation.QueryPriority
 
 	QueryRejection(userID string) validation.QueryRejection
+
+	// QueryPartialData returns whether query result from a single zone is returned as a possible partial result.
+	QueryPartialData(userID string) bool
 }

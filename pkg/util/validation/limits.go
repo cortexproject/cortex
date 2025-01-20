@@ -171,6 +171,7 @@ type Limits struct {
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
+	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable query to return partial data with warning message.|default=false"`
 
 	// Query Frontend / Scheduler enforced limits.
 	MaxOutstandingPerTenant     int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
@@ -724,6 +725,11 @@ func (o *Overrides) MaxQueriersPerUser(userID string) float64 {
 // QueryVerticalShardSize returns the number of shards to use when distributing shardable PromQL queries.
 func (o *Overrides) QueryVerticalShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).QueryVerticalShardSize
+}
+
+// QueryPartialData returns whether query result from a single zone is returned as a possible partial result.
+func (o *Overrides) QueryPartialData(userID string) bool {
+	return o.GetOverridesForUser(userID).QueryPartialData
 }
 
 // MaxQueryParallelism returns the limit to the number of split queries the

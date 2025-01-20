@@ -266,6 +266,11 @@ query_scheduler:
     # CLI flag: -query-scheduler.grpc-client-config.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
 
+    # The maximum amount of time to establish a connection. A value of 0 means
+    # using default gRPC client connect timeout 20s.
+    # CLI flag: -query-scheduler.grpc-client-config.connect-timeout
+    [connect_timeout: <duration> | default = 5s]
+
 # The tracing_config configures backends cortex uses.
 [tracing: <tracing_config>]
 ```
@@ -2972,6 +2977,11 @@ grpc_client_config:
   # Skip validating server certificate.
   # CLI flag: -querier.frontend-client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 20s.
+  # CLI flag: -querier.frontend-client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
 ```
 
 ### `ingester_config`
@@ -3281,6 +3291,11 @@ grpc_client_config:
   # Skip validating server certificate.
   # CLI flag: -ingester.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 20s.
+  # CLI flag: -ingester.client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
 
   # EXPERIMENTAL: If enabled, gRPC clients perform health checks for each target
   # and fail the request if the target is marked as unhealthy.
@@ -4200,6 +4215,11 @@ grpc_client_config:
   # CLI flag: -frontend.grpc-client-config.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 20s.
+  # CLI flag: -frontend.grpc-client-config.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
+
 # When multiple query-schedulers are available, re-enqueue queries that were
 # rejected due to too many outstanding requests.
 # CLI flag: -frontend.retry-on-too-many-outstanding-requests
@@ -4426,6 +4446,11 @@ frontend_client:
   # CLI flag: -ruler.frontendClient.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 20s.
+  # CLI flag: -ruler.frontendClient.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
+
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
@@ -4500,6 +4525,11 @@ ruler_client:
   # Skip validating server certificate.
   # CLI flag: -ruler.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 20s.
+  # CLI flag: -ruler.client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
 
   # Timeout for downstream rulers.
   # CLI flag: -ruler.client.remote-timeout

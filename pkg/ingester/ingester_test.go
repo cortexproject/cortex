@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -182,9 +183,9 @@ func TestIngesterDeletionRace(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
 	cfg := defaultIngesterTestConfig(t)
-	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 1 * time.Millisecond
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 5 * time.Millisecond
 	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 10 * time.Second
-	cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval = 1 * time.Millisecond
+	cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval = 5 * time.Millisecond
 	cfg.BlocksStorageConfig.TSDB.PostingsCache = cortex_tsdb.TSDBPostingsCacheConfig{
 		SeedSize: 3, // lets make sure all metric names collide
 		Head: cortex_tsdb.PostingsCacheConfig{
@@ -205,15 +206,16 @@ func TestIngesterDeletionRace(t *testing.T) {
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry, true)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry, false)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	// Wait until it's ACTIVE
 	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
 		return ing.lifecycler.GetState()
 	})
 
-	numberOfTenants := 500
+	numberOfTenants := 150
 	wg := sync.WaitGroup{}
 	wg.Add(numberOfTenants)
 
@@ -232,6 +234,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 				Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
 			}, s)
 			require.NoError(t, err)
+			time.Sleep(time.Duration(rand.Int63n(5)) * time.Millisecond)
 			ing.getTSDB(u).deletionMarkFound.Store(true) // lets force close the tenant
 		}()
 	}

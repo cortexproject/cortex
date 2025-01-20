@@ -295,6 +295,11 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.R
 	if !s.isOffsetCachable(ctx, req) {
 		return false
 	}
+	if res, ok := r.(*tripperware.PrometheusResponse); ok {
+		if len(res.Warnings) > 0 {
+			return false
+		}
+	}
 
 	return true
 }

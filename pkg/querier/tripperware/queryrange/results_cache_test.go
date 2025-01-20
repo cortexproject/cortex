@@ -554,6 +554,20 @@ func TestShouldCache(t *testing.T) {
 			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
+		{
+			name:    "contains warning",
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{
+						Name:   "meaninglessheader",
+						Values: []string{},
+					},
+				},
+				Warnings: []string{"some warning"},
+			}),
+			expected: false,
+		},
 	} {
 		{
 			t.Run(tc.name, func(t *testing.T) {

@@ -1174,8 +1174,8 @@ func TestPartitionCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEn
 		cfg.ShardingEnabled = true
 		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
-		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
-		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
+		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		c, _, tsdbPlanner, l, _ := prepareForPartitioning(t, cfg, bucketClient, nil, nil)
@@ -1314,8 +1314,8 @@ func TestPartitionCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingE
 		cfg.ShardingStrategy = util.ShardingStrategyShuffle
 		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
-		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
-		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
+		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		limits := &validation.Limits{}
@@ -1550,8 +1550,8 @@ func TestPartitionCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		cfg.ShardingEnabled = true
 		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
-		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
-		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
+		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		// Each compactor will get its own temp dir for storing local files.

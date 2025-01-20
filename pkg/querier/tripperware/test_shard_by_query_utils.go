@@ -509,6 +509,8 @@ func (m mockLimits) QueryRejection(userID string) validation.QueryRejection {
 	return m.queryRejection
 }
 
+func (m mockLimits) QueryPartialData(string) bool { return false }
+
 type singleHostRoundTripper struct {
 	host string
 	next http.RoundTripper

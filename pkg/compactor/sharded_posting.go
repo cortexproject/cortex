@@ -8,12 +8,11 @@ import (
 )
 
 func NewShardedPosting(postings index.Postings, partitionCount uint64, partitionID uint64, labelsFn func(ref storage.SeriesRef, builder *labels.ScratchBuilder, chks *[]chunks.Meta) error) (index.Postings, map[string]struct{}, error) {
-	bufChks := make([]chunks.Meta, 0)
 	series := make([]storage.SeriesRef, 0)
 	symbols := make(map[string]struct{})
 	var builder labels.ScratchBuilder
 	for postings.Next() {
-		err := labelsFn(postings.At(), &builder, &bufChks)
+		err := labelsFn(postings.At(), &builder, nil)
 		if err != nil {
 			return nil, nil, err
 		}

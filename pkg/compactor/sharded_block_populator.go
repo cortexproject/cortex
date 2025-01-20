@@ -36,11 +36,10 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 	}
 
 	var (
-		sets        []storage.ChunkSeriesSet
-		setsMtx     sync.Mutex
-		symbols     map[string]struct{}
-		closers     []io.Closer
-		overlapping bool
+		sets    []storage.ChunkSeriesSet
+		setsMtx sync.Mutex
+		symbols map[string]struct{}
+		closers []io.Closer
 	)
 	symbols = make(map[string]struct{})
 	defer func() {
@@ -56,22 +55,15 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 	globalMaxt := blocks[0].Meta().MaxTime
 	g, _ := errgroup.WithContext(ctx)
 	g.SetLimit(8)
-	for i, b := range blocks {
+	for _, b := range blocks {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		if !overlapping {
-			if i > 0 && b.Meta().MinTime < globalMaxt {
-				metrics.OverlappingBlocks.Inc()
-				overlapping = true
-				level.Info(c.logger).Log("msg", "Found overlapping blocks during compaction", "ulid", meta.ULID)
-			}
-			if b.Meta().MaxTime > globalMaxt {
-				globalMaxt = b.Meta().MaxTime
-			}
+		if b.Meta().MaxTime > globalMaxt {
+			globalMaxt = b.Meta().MaxTime
 		}
 
 		indexr, err := b.Index()

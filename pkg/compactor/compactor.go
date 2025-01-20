@@ -968,7 +968,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	// blocks that fully submatches the source blocks of the older blocks.
 	var deduplicateBlocksFilter CortexMetadataFilter
 	if c.compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle && c.compactorCfg.CompactionStrategy == util.CompactionStrategyPartitioning {
-		deduplicateBlocksFilter = &DisabledDeduplicateFilter{}
+		deduplicateBlocksFilter = &disabledDeduplicateFilter{}
 	} else {
 		deduplicateBlocksFilter = block.NewDeduplicateFilter(c.compactorCfg.BlockSyncConcurrency)
 	}
@@ -1230,14 +1230,18 @@ type CortexMetadataFilter interface {
 	block.MetadataFilter
 }
 
-type DisabledDeduplicateFilter struct {
+// disabledDeduplicateFilter is only used by Partitioning Compaction. Because Partitioning Compaction
+// would always generate multiple result blocks (different partitions) for the same time range compaction.
+// Those result blocks would always have same source blocks. Those result blocks should not be marked
+// as duplicates when grouping for the next level of compaction. So DeduplicateFilter is disabled.
+type disabledDeduplicateFilter struct {
 }
 
-func (f *DisabledDeduplicateFilter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced block.GaugeVec, modified block.GaugeVec) error {
+func (f *disabledDeduplicateFilter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced block.GaugeVec, modified block.GaugeVec) error {
 	// don't do any deduplicate filtering
 	return nil
 }
 
-func (f *DisabledDeduplicateFilter) DuplicateIDs() []ulid.ULID {
+func (f *disabledDeduplicateFilter) DuplicateIDs() []ulid.ULID {
 	return nil
 }

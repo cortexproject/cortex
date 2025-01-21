@@ -1,17 +1,25 @@
 package compactor
 
 import (
+	"context"
+
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/index"
 )
 
-func NewShardedPosting(postings index.Postings, partitionCount uint64, partitionID uint64, labelsFn func(ref storage.SeriesRef, builder *labels.ScratchBuilder, chks *[]chunks.Meta) error) (index.Postings, map[string]struct{}, error) {
+func NewShardedPosting(ctx context.Context, postings index.Postings, partitionCount uint64, partitionID uint64, labelsFn func(ref storage.SeriesRef, builder *labels.ScratchBuilder, chks *[]chunks.Meta) error) (index.Postings, map[string]struct{}, error) {
 	series := make([]storage.SeriesRef, 0)
 	symbols := make(map[string]struct{})
 	var builder labels.ScratchBuilder
+	cnt := 0
 	for postings.Next() {
+		cnt++
+		if cnt%util.CheckContextEveryNIterations == 0 && ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
 		err := labelsFn(postings.At(), &builder, nil)
 		if err != nil {
 			return nil, nil, err

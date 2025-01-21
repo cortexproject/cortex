@@ -53,12 +53,12 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 	metrics.PopulatingBlocks.Set(1)
 
 	globalMaxt := blocks[0].Meta().MaxTime
-	g, _ := errgroup.WithContext(ctx)
+	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(8)
 	for _, b := range blocks {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-gCtx.Done():
+			return gCtx.Err()
 		default:
 		}
 
@@ -84,10 +84,10 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 		}
 		closers = append(closers, tombsr)
 
-		all := postingsFunc(ctx, indexr)
+		all := postingsFunc(gCtx, indexr)
 		g.Go(func() error {
 			shardStart := time.Now()
-			shardedPosting, syms, err := NewShardedPosting(all, uint64(c.partitionCount), uint64(c.partitionID), indexr.Series)
+			shardedPosting, syms, err := NewShardedPosting(gCtx, all, uint64(c.partitionCount), uint64(c.partitionID), indexr.Series)
 			if err != nil {
 				return err
 			}

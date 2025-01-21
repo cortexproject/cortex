@@ -72,7 +72,7 @@ func TestShardPostingAndSymbolBasedOnPartitionID(t *testing.T) {
 		postings, err := ir.Postings(context.Background(), k, v)
 		require.NoError(t, err)
 		postings = ir.SortedPostings(postings)
-		shardedPostings, syms, err := NewShardedPosting(postings, uint64(partitionCount), uint64(partitionID), ir.Series)
+		shardedPostings, syms, err := NewShardedPosting(context.Background(), postings, uint64(partitionCount), uint64(partitionID), ir.Series)
 		require.NoError(t, err)
 		bufChks := make([]chunks.Meta, 0)
 		expectedShardedSymbols := make(map[string]struct{})

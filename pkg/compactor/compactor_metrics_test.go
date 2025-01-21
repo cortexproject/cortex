@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSyncerMetrics(t *testing.T) {
+func TestCompactorMetrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	cm := newCompactorMetricsWithLabels(reg, commonLabels, commonLabels)
 
@@ -140,6 +140,11 @@ func TestSyncerMetrics(t *testing.T) {
 			cortex_compactor_group_compactions_not_planned_total{user="aaa"} 544390
 			cortex_compactor_group_compactions_not_planned_total{user="bbb"} 555500
 			cortex_compactor_group_compactions_not_planned_total{user="ccc"} 566610
+			# HELP cortex_compact_group_compaction_duration_seconds Duration of completed compactions in seconds
+			# TYPE cortex_compact_group_compaction_duration_seconds gauge
+			cortex_compact_group_compaction_duration_seconds{user="aaa"} 577720
+			cortex_compact_group_compaction_duration_seconds{user="bbb"} 588830
+			cortex_compact_group_compaction_duration_seconds{user="ccc"} 599940
 	`))
 	require.NoError(t, err)
 
@@ -199,4 +204,7 @@ func generateTestData(cm *compactorMetrics, base float64) {
 	cm.compactionsNotPlanned.WithLabelValues("aaa").Add(49 * base)
 	cm.compactionsNotPlanned.WithLabelValues("bbb").Add(50 * base)
 	cm.compactionsNotPlanned.WithLabelValues("ccc").Add(51 * base)
+	cm.compactionDuration.WithLabelValues("aaa").Add(52 * base)
+	cm.compactionDuration.WithLabelValues("bbb").Add(53 * base)
+	cm.compactionDuration.WithLabelValues("ccc").Add(54 * base)
 }

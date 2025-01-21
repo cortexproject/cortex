@@ -762,7 +762,11 @@ func (c *Compactor) running(ctx context.Context) error {
 
 	// Run an initial compaction before starting the interval.
 	// Insert jitter right before compaction starts to avoid multiple starting compactor to be in sync
-	time.Sleep(time.Duration(rand.Int63n(int64(float64(c.compactorCfg.CompactionInterval) * 0.1))))
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(time.Duration(rand.Int63n(int64(float64(c.compactorCfg.CompactionInterval) * 0.1)))):
+	}
 	c.compactUsers(ctx)
 
 	ticker := time.NewTicker(c.compactorCfg.CompactionInterval)

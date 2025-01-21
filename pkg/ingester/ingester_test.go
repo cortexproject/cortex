@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -183,11 +182,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
 	cfg := defaultIngesterTestConfig(t)
-	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 5 * time.Millisecond
-	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 10 * time.Second
-	cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval = 5 * time.Millisecond
 	cfg.BlocksStorageConfig.TSDB.PostingsCache = cortex_tsdb.TSDBPostingsCacheConfig{
-		SeedSize: 3, // lets make sure all metric names collide
 		Head: cortex_tsdb.PostingsCacheConfig{
 			Enabled:  true,
 			Ttl:      time.Hour,
@@ -215,7 +210,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 		return ing.lifecycler.GetState()
 	})
 
-	numberOfTenants := 150
+	numberOfTenants := 50
 	wg := sync.WaitGroup{}
 	wg.Add(numberOfTenants)
 
@@ -227,18 +222,30 @@ func TestIngesterDeletionRace(t *testing.T) {
 			samples := []cortexpb.Sample{{Value: 2, TimestampMs: 10}}
 			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "name")}, samples, nil, nil, cortexpb.API))
 			require.NoError(t, err)
-			s := &mockQueryStreamServer{ctx: ctx}
-			err = ing.QueryStream(&client.QueryRequest{
-				StartTimestampMs: math.MinInt64,
-				EndTimestampMs:   math.MaxInt64,
-				Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
-			}, s)
-			require.NoError(t, err)
-			time.Sleep(time.Duration(rand.Int63n(5)) * time.Millisecond)
+			ing.getTSDB(u).postingCache = &wrappedExpandedPostingsCache{ExpandedPostingsCache: ing.getTSDB(u).postingCache, purgeDelay: 10 * time.Millisecond}
 			ing.getTSDB(u).deletionMarkFound.Store(true) // lets force close the tenant
 		}()
 	}
+
 	wg.Wait()
+
+	ctx, c := context.WithCancel(context.Background())
+	defer c()
+
+	wg.Add(1)
+	go func() {
+		wg.Done()
+		ing.expirePostingsCache(ctx) //nolint:errcheck
+	}()
+
+	go func() {
+		wg.Wait()                            // make sure we clean after we started the purge go routine
+		ing.closeAndDeleteIdleUserTSDBs(ctx) //nolint:errcheck
+	}()
+
+	test.Poll(t, 5*time.Second, 0, func() interface{} {
+		return len(ing.getTSDBUsers())
+	})
 }
 
 func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
@@ -3590,6 +3597,17 @@ func (m *mockMetricsForLabelMatchersStreamServer) Send(response *client.MetricsF
 
 func (m *mockMetricsForLabelMatchersStreamServer) Context() context.Context {
 	return m.ctx
+}
+
+type wrappedExpandedPostingsCache struct {
+	cortex_tsdb.ExpandedPostingsCache
+
+	purgeDelay time.Duration
+}
+
+func (w *wrappedExpandedPostingsCache) PurgeExpiredItems() {
+	time.Sleep(w.purgeDelay)
+	w.ExpandedPostingsCache.PurgeExpiredItems()
 }
 
 type mockQueryStreamServer struct {

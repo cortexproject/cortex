@@ -3545,7 +3545,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <float> | default = 0]
 
-# Enable query to return partial data with warning message.
+# Enable to allow partial query data from 1 zone to be returned with a warning
+# message.
 [query_partial_data: <boolean> | default = false]
 
 # Maximum number of outstanding requests per tenant per request queue (either

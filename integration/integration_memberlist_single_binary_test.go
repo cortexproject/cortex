@@ -132,6 +132,8 @@ func newSingleBinary(name string, servername string, join string, testFlags map[
 			"-memberlist.left-ingesters-timeout": "600s", // effectively disable
 			// alert manager
 			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+			// compactor
+			"-compactor.compaction-interval": "1s", // allow stopping quickly
 		},
 	)
 

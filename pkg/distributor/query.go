@@ -14,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -222,8 +223,9 @@ func mergeExemplarQueryResponses(results []interface{}) *ingester_client.Exempla
 // queryIngesterStream queries the ingesters using the new streaming API.
 func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
 	var (
-		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
-		reqStats     = stats.FromContext(ctx)
+		queryLimiter       = limiter.QueryLimiterFromContextWithFallback(ctx)
+		reqStats           = stats.FromContext(ctx)
+		partialDataEnabled = partialdata.FromContext(ctx)
 	)
 
 	// Fetch samples from multiple ingesters
@@ -287,7 +289,8 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		}
 		return result, nil
 	})
-	if err != nil {
+	returnPartialData := partialdata.ReturnPartialData(err, partialDataEnabled)
+	if err != nil && !returnPartialData {
 		return nil, err
 	}
 
@@ -327,6 +330,11 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	reqStats.AddFetchedDataBytes(uint64(respSize))
 	reqStats.AddFetchedChunks(uint64(chksCount))
 	reqStats.AddFetchedSamples(uint64(resp.SamplesCount()))
+
+	if returnPartialData {
+		level.Info(d.log).Log("msg", "returning partial data")
+		return resp, partialdata.Error{}
+	}
 
 	return resp, nil
 }

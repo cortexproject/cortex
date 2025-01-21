@@ -2,6 +2,8 @@
 
 ## master / unreleased
 
+* [FEATURE] Distributor/Querier: Add `query_partial_data` to allow partial query data from 1 zone to be returned with a warning message. #6526
+
 ## 1.19.0 in progress
 
 * [CHANGE] Deprecate `-blocks-storage.tsdb.wal-compression-enabled` flag (use `blocks-storage.tsdb.wal-compression-type` instead). #6529

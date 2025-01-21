@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	ctxKey              string = "partialDataCtxKey"
+	partialDataCtxKey   string = "partialDataCtxKey"
 	partialDataErrorMsg string = "Query result may contain partial data."
 )
 
@@ -18,13 +18,13 @@ func (e Error) Error() string {
 
 func ContextWithPartialData(ctx context.Context, isEnabled bool) context.Context {
 	if isEnabled {
-		return context.WithValue(ctx, ctxKey, isEnabled)
+		return context.WithValue(ctx, partialDataCtxKey, isEnabled)
 	}
 	return ctx
 }
 
 func FromContext(ctx context.Context) bool {
-	o := ctx.Value(ctxKey)
+	o := ctx.Value(partialDataCtxKey)
 	if o == nil {
 		return false
 	}

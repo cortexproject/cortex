@@ -86,7 +86,6 @@ func TestReplicationSet_GetAddressesWithout(t *testing.T) {
 var (
 	errFailure     = errors.New("failed")
 	errZoneFailure = errors.New("zone failed")
-	errPartialData = errors.New("query result may contain partial data")
 )
 
 // Return a function that fails starting from failAfter times

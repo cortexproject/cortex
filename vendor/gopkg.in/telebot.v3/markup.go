@@ -220,7 +220,7 @@ type ReplyButton struct {
 	Contact  bool            `json:"request_contact,omitempty"`
 	Location bool            `json:"request_location,omitempty"`
 	Poll     PollType        `json:"request_poll,omitempty"`
-	User     *ReplyRecipient `json:"request_user,omitempty"`
+	User     *ReplyRecipient `json:"request_users,omitempty"`
 	Chat     *ReplyRecipient `json:"request_chat,omitempty"`
 	WebApp   *WebApp         `json:"web_app,omitempty"`
 }
@@ -244,8 +244,9 @@ func (pt PollType) MarshalJSON() ([]byte, error) {
 type ReplyRecipient struct {
 	ID int32 `json:"request_id"`
 
-	Bot     *bool `json:"user_is_bot,omitempty"`     // user only, optional
-	Premium *bool `json:"user_is_premium,omitempty"` // user only, optional
+	Bot      *bool `json:"user_is_bot,omitempty"`     // user only, optional
+	Premium  *bool `json:"user_is_premium,omitempty"` // user only, optional
+	Quantity int   `json:"max_quantity,omitempty"`    // user only, optional
 
 	Channel      bool    `json:"chat_is_channel,omitempty"`           // chat only, required
 	Forum        *bool   `json:"chat_is_forum,omitempty"`             // chat only, optional
@@ -271,13 +272,14 @@ type InlineButton struct {
 	// It will be used as a callback endpoint.
 	Unique string `json:"unique,omitempty"`
 
-	Text            string  `json:"text"`
-	URL             string  `json:"url,omitempty"`
-	Data            string  `json:"callback_data,omitempty"`
-	InlineQuery     string  `json:"switch_inline_query,omitempty"`
-	InlineQueryChat string  `json:"switch_inline_query_current_chat"`
-	Login           *Login  `json:"login_url,omitempty"`
-	WebApp          *WebApp `json:"web_app,omitempty"`
+	Text                  string             `json:"text"`
+	URL                   string             `json:"url,omitempty"`
+	Data                  string             `json:"callback_data,omitempty"`
+	InlineQuery           string             `json:"switch_inline_query,omitempty"`
+	InlineQueryChat       string             `json:"switch_inline_query_current_chat"`
+	InlineQueryChosenChat *SwitchInlineQuery `json:"switch_inline_query_chosen_chat,omitempty"`
+	Login                 *Login             `json:"login_url,omitempty"`
+	WebApp                *WebApp            `json:"web_app,omitempty"`
 }
 
 // MarshalJSON implements json.Marshaler interface.

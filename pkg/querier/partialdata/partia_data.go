@@ -7,7 +7,7 @@ import (
 
 const (
 	ctxKey              string = "partialDataCtxKey"
-	partialDataErrorMsg string = "This query result may contain partial data."
+	partialDataErrorMsg string = "Query result may contain partial data."
 )
 
 type Error struct{}

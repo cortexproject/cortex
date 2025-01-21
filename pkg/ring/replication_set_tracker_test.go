@@ -399,6 +399,29 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.False(t, tracker.failed())
 			},
 		},
+		"failInAllZones should return true only if all zones have failed, regardless of max unavailable zones": {
+			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
+			maxUnavailableZones: 1,
+			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
+				// Zone-a
+				tracker.done(&instance1, nil, errors.New("test"))
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+				assert.False(t, tracker.failedInAllZones())
+
+				// Zone-b
+				tracker.done(&instance3, nil, errors.New("test"))
+				assert.False(t, tracker.succeeded())
+				assert.True(t, tracker.failed())
+				assert.False(t, tracker.failedInAllZones())
+
+				// Zone-c
+				tracker.done(&instance5, nil, errors.New("test"))
+				assert.False(t, tracker.succeeded())
+				assert.True(t, tracker.failed())
+				assert.True(t, tracker.failedInAllZones())
+			},
+		},
 	}
 
 	for testName, testCase := range tests {

@@ -5,9 +5,11 @@ import (
 	"errors"
 )
 
-const (
-	partialDataCtxKey   string = "partialDataCtxKey"
-	partialDataErrorMsg string = "Query result may contain partial data."
+type partialDataCtxKey struct{}
+
+var (
+	ctxKey              = &partialDataCtxKey{}
+	partialDataErrorMsg = "Query result may contain partial data."
 )
 
 type Error struct{}
@@ -18,13 +20,13 @@ func (e Error) Error() string {
 
 func ContextWithPartialData(ctx context.Context, isEnabled bool) context.Context {
 	if isEnabled {
-		return context.WithValue(ctx, partialDataCtxKey, isEnabled)
+		return context.WithValue(ctx, ctxKey, isEnabled)
 	}
 	return ctx
 }
 
 func FromContext(ctx context.Context) bool {
-	o := ctx.Value(partialDataCtxKey)
+	o := ctx.Value(ctxKey)
 	if o == nil {
 		return false
 	}

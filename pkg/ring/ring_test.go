@@ -2619,7 +2619,7 @@ func TestRing_ShuffleShardWithReadOnlyIngesters(t *testing.T) {
 				KVClient:            &MockClient{},
 			}
 
-			shardRing := ring.ShuffleShardWithOperation(userID, testData.shardSize)
+			shardRing := ring.ShuffleShard(userID, testData.shardSize)
 			assert.Equal(t, testData.expectedSize, shardRing.InstancesCount())
 			for _, expectedInstance := range testData.expectedToBePresent {
 				assert.True(t, shardRing.HasInstance(expectedInstance))

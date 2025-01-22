@@ -787,7 +787,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	// Obtain a subring if required.
 	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		subRing = d.ingestersRing.ShuffleShardWithOperation(userID, limits.IngestionTenantShardSize, ring.WriteShard)
+		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize)
 	}
 
 	keys := append(seriesKeys, metadataKeys...)

@@ -761,11 +761,6 @@ func (r *RingMock) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error)
 	return args.Get(0).(ring.ReplicationSet), args.Error(1)
 }
 
-func (r *RingMock) GetInstanceDescsForOperation(op ring.Operation) (map[string]ring.InstanceDesc, error) {
-	args := r.Called(op)
-	return args.Get(0).(map[string]ring.InstanceDesc), args.Error(1)
-}
-
 func (r *RingMock) GetAllInstanceDescs(op ring.Operation) ([]ring.InstanceDesc, []ring.InstanceDesc, error) {
 	args := r.Called(op)
 	return args.Get(0).([]ring.InstanceDesc), make([]ring.InstanceDesc, 0), args.Error(1)

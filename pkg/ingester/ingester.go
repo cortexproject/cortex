@@ -3122,7 +3122,7 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ModeHandler Change mode of ingester. It will also update set unregisterOnShutdown to true if READONLY mode
+// ModeHandler Change mode of ingester.
 func (i *Ingester) ModeHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {

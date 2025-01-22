@@ -1005,6 +1005,12 @@ func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error
 
 	level.Info(i.logger).Log("msg", "changing instance state from", "old_state", currState, "new_state", state, "ring", i.RingName)
 	i.setState(state)
+
+	//The instances is rejoining the ring. It should reset its registered time.
+	if currState == READONLY && state == ACTIVE {
+		registeredAt := time.Now()
+		i.setRegisteredAt(registeredAt)
+	}
 	return i.updateConsul(ctx)
 }
 

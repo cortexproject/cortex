@@ -70,10 +70,6 @@ type ReadRing interface {
 	// and size (number of instances).
 	ShuffleShard(identifier string, size int) ReadRing
 
-	// ShuffleShardWithOperation returns a subring for the provided identifier (eg. a tenant ID)
-	// and size (number of instances) filtered for a given operation.
-	ShuffleShardWithOperation(identifier string, size int, op Operation) ReadRing
-
 	// ShuffleShardWithZoneStability does the same as ShuffleShard but using a different shuffle sharding algorithm.
 	// It doesn't round up shard size to be divisible to number of zones and make sure when scaling up/down one
 	// shard size at a time, at most 1 instance can be changed.
@@ -115,8 +111,6 @@ var (
 		// for the key
 		return s == READONLY
 	})
-
-	WriteShard = NewOp([]InstanceState{ACTIVE, PENDING, LEAVING, JOINING}, func(s InstanceState) bool { return false })
 
 	// Read operation that extends the replica set if an instance is not ACTIVE, PENDING, LEAVING, JOINING OR READONLY
 	Read = NewOp([]InstanceState{ACTIVE, PENDING, LEAVING, JOINING, READONLY}, func(s InstanceState) bool {
@@ -228,7 +222,6 @@ type subringCacheKey struct {
 	shardSize  int
 
 	zoneStableSharding bool
-	operation          Operation
 }
 
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
@@ -743,15 +736,15 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 // - Shuffling: probabilistically, for a large enough cluster each identifier gets a different
 // set of instances, with a reduced number of overlapping instances between two identifiers.
 func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
-	return r.shuffleShardWithCache(identifier, size, false, Reporting)
+	return r.shuffleShardWithCache(identifier, size, false)
 }
 
-func (r *Ring) ShuffleShardWithOperation(identifier string, size int, op Operation) ReadRing {
-	return r.shuffleShardWithCache(identifier, size, false, op)
+func (r *Ring) ShuffleShardWithOperation(identifier string, size int) ReadRing {
+	return r.shuffleShardWithCache(identifier, size, false)
 }
 
 func (r *Ring) ShuffleShardWithZoneStability(identifier string, size int) ReadRing {
-	return r.shuffleShardWithCache(identifier, size, true, Reporting)
+	return r.shuffleShardWithCache(identifier, size, true)
 }
 
 // ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes all instances
@@ -767,26 +760,26 @@ func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPer
 		return r
 	}
 
-	return r.shuffleShard(identifier, size, lookbackPeriod, now, false, Reporting)
+	return r.shuffleShard(identifier, size, lookbackPeriod, now, false)
 }
 
-func (r *Ring) shuffleShardWithCache(identifier string, size int, zoneStableSharding bool, op Operation) ReadRing {
+func (r *Ring) shuffleShardWithCache(identifier string, size int, zoneStableSharding bool) ReadRing {
 	// Nothing to do if the shard size is not smaller than the actual ring.
-	if size <= 0 || (op == Reporting && r.InstancesCount() <= size) {
+	if size <= 0 || r.InstancesCount() <= size {
 		return r
 	}
 
-	if cached := r.getCachedShuffledSubring(identifier, size, zoneStableSharding, op); cached != nil {
+	if cached := r.getCachedShuffledSubring(identifier, size, zoneStableSharding); cached != nil {
 		return cached
 	}
 
-	result := r.shuffleShard(identifier, size, 0, time.Now(), zoneStableSharding, op)
+	result := r.shuffleShard(identifier, size, 0, time.Now(), zoneStableSharding)
 
-	r.setCachedShuffledSubring(identifier, size, zoneStableSharding, op, result)
+	r.setCachedShuffledSubring(identifier, size, zoneStableSharding, result)
 	return result
 }
 
-func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time, zoneStableSharding bool, op Operation) *Ring {
+func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time, zoneStableSharding bool) *Ring {
 	lookbackUntil := now.Add(-lookbackPeriod).Unix()
 
 	r.mtx.RLock()
@@ -798,16 +791,14 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		zonesWithExtraInstance int
 	)
 
-	ro := r.getRingForOperation(op)
-
 	if r.cfg.ZoneAwarenessEnabled {
 		if zoneStableSharding {
-			numInstancesPerZone = size / len(ro.ringZones)
-			zonesWithExtraInstance = size % len(ro.ringZones)
+			numInstancesPerZone = size / len(r.ringZones)
+			zonesWithExtraInstance = size % len(r.ringZones)
 		} else {
-			numInstancesPerZone = shardUtil.ShuffleShardExpectedInstancesPerZone(size, len(ro.ringZones))
+			numInstancesPerZone = shardUtil.ShuffleShardExpectedInstancesPerZone(size, len(r.ringZones))
 		}
-		actualZones = ro.ringZones
+		actualZones = r.ringZones
 	} else {
 		numInstancesPerZone = size
 		actualZones = []string{""}
@@ -819,12 +810,12 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 	for _, zone := range actualZones {
 		var tokens []uint32
 
-		if ro.cfg.ZoneAwarenessEnabled {
-			tokens = ro.ringTokensByZone[zone]
+		if r.cfg.ZoneAwarenessEnabled {
+			tokens = r.ringTokensByZone[zone]
 		} else {
 			// When zone-awareness is disabled, we just iterate over 1 single fake zone
 			// and use all tokens in the ring.
-			tokens = ro.ringTokens
+			tokens = r.ringTokens
 		}
 
 		// Initialise the random generator used to select instances in the ring.
@@ -852,7 +843,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 				// Wrap p around in the ring.
 				p %= len(tokens)
 
-				info, ok := ro.ringInstanceByToken[tokens[p]]
+				info, ok := r.ringInstanceByToken[tokens[p]]
 				if !ok {
 					// This should never happen unless a bug in the ring code.
 					panic(ErrInconsistentTokensInfo)
@@ -864,12 +855,14 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 				}
 
 				instanceID := info.InstanceID
-				instance := ro.ringDesc.Ingesters[instanceID]
+				instance := r.ringDesc.Ingesters[instanceID]
 				shard[instanceID] = instance
 
 				// If the lookback is enabled and this instance has been registered within the lookback period
 				// then we should include it in the subring but continuing selecting instances.
-				if lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil {
+				// If an instance is in READONLY we should always extend. The write path will filter it out when GetRing.
+				// The read path should extend to get new ingester used on write
+				if (lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil) || instance.State == READONLY {
 					continue
 				}
 
@@ -923,7 +916,7 @@ func (r *Ring) HasInstance(instanceID string) bool {
 	return ok
 }
 
-func (r *Ring) getCachedShuffledSubring(identifier string, size int, zoneStableSharding bool, op Operation) *Ring {
+func (r *Ring) getCachedShuffledSubring(identifier string, size int, zoneStableSharding bool) *Ring {
 	if r.cfg.SubringCacheDisabled {
 		return nil
 	}
@@ -932,7 +925,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int, zoneStableS
 	defer r.mtx.RUnlock()
 
 	// if shuffledSubringCache map is nil, reading it returns default value (nil pointer).
-	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding, operation: op}]
+	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding}]
 	if cached == nil {
 		return nil
 	}
@@ -951,7 +944,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int, zoneStableS
 	return cached
 }
 
-func (r *Ring) setCachedShuffledSubring(identifier string, size int, zoneStableSharding bool, op Operation, subring *Ring) {
+func (r *Ring) setCachedShuffledSubring(identifier string, size int, zoneStableSharding bool, subring *Ring) {
 	if subring == nil || r.cfg.SubringCacheDisabled {
 		return
 	}
@@ -963,7 +956,7 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, zoneStableS
 	// (which can happen between releasing the read lock and getting read-write lock).
 	// Note that shuffledSubringCache can be only nil when set by test.
 	if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(subring.lastTopologyChange) {
-		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding, operation: op}] = subring
+		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding}] = subring
 	}
 }
 

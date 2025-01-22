@@ -547,7 +547,7 @@ const (
 	Different                                        // Rings have different set of instances, or their information don't match.
 )
 
-// RingCompare compares this ring against another one and returns one of Equal, EqualButStatesAndTimestamps or Different.
+// RingCompare compares this ring against another one and returns one of Equal, EqualButStatesAndTimestamps, EqualButReadOnly or Different.
 func (d *Desc) RingCompare(o *Desc) CompareResult {
 	if d == nil {
 		if o == nil || len(o.Ingesters) == 0 {

@@ -739,10 +739,6 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 	return r.shuffleShardWithCache(identifier, size, false)
 }
 
-func (r *Ring) ShuffleShardWithOperation(identifier string, size int) ReadRing {
-	return r.shuffleShardWithCache(identifier, size, false)
-}
-
 func (r *Ring) ShuffleShardWithZoneStability(identifier string, size int) ReadRing {
 	return r.shuffleShardWithCache(identifier, size, true)
 }
@@ -879,7 +875,27 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		}
 	}
 
-	return r.copyWithNewDesc(shard)
+	// Build a read-only ring for the shard.
+	shardDesc := &Desc{Ingesters: shard}
+	shardTokensByZone := shardDesc.getTokensByZone()
+
+	return &Ring{
+		cfg:              r.cfg,
+		strategy:         r.strategy,
+		ringDesc:         shardDesc,
+		ringTokens:       shardDesc.GetTokens(),
+		ringTokensByZone: shardTokensByZone,
+		ringZones:        getZones(shardTokensByZone),
+		KVClient:         r.KVClient,
+
+		// We reference the original map as is in order to avoid copying. It's safe to do
+		// because this map is immutable by design and it's a superset of the actual instances
+		// with the subring.
+		ringInstanceByToken: r.ringInstanceByToken,
+
+		// For caching to work, remember these values.
+		lastTopologyChange: r.lastTopologyChange,
+	}
 }
 
 // GetInstanceState returns the current state of an instance or an error if the
@@ -957,48 +973,6 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, zoneStableS
 	// Note that shuffledSubringCache can be only nil when set by test.
 	if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(subring.lastTopologyChange) {
 		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding}] = subring
-	}
-}
-
-// getRingForOperation Returns a new ring filtered for operation.
-// The ring read lock must be already taken when calling this function.
-func (r *Ring) getRingForOperation(op Operation) *Ring {
-	//Avoid filtering if we are receiving default operation or empty ring
-	if r.ringDesc == nil || len(r.ringDesc.Ingesters) == 0 || op == Reporting {
-		return r
-	}
-
-	instanceDescs := make(map[string]InstanceDesc)
-	for id, instance := range r.ringDesc.Ingesters {
-		if op.IsInstanceInStateHealthy(instance.State) {
-			instanceDescs[id] = instance
-		}
-	}
-
-	return r.copyWithNewDesc(instanceDescs)
-}
-
-// copyWithNewDesc Return a new ring with updated data for different InstanceDesc
-func (r *Ring) copyWithNewDesc(desc map[string]InstanceDesc) *Ring {
-	shardDesc := &Desc{Ingesters: desc}
-	shardTokensByZone := shardDesc.getTokensByZone()
-
-	return &Ring{
-		cfg:              r.cfg,
-		strategy:         r.strategy,
-		ringDesc:         shardDesc,
-		ringTokens:       shardDesc.GetTokens(),
-		ringTokensByZone: shardTokensByZone,
-		ringZones:        getZones(shardTokensByZone),
-		KVClient:         r.KVClient,
-
-		// We reference the original map as is in order to avoid copying. It's safe to do
-		// because this map is immutable by design and it's a superset of the actual instances
-		// with the subring.
-		ringInstanceByToken: r.ringInstanceByToken,
-
-		// For caching to work, remember these values.
-		lastTopologyChange: r.lastTopologyChange,
 	}
 }
 

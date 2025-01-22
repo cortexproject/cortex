@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [CHANGE] Deprecate `-blocks-storage.tsdb.wal-compression-enabled` flag (use `blocks-storage.tsdb.wal-compression-type` instead). #6529
 * [CHANGE] OTLP: Change OTLP handler to be consistent with the Prometheus OTLP handler. #6272
 - `target_info` metric is enabled by default and can be disabled via `-distributor.otlp.disable-target-info=true` flag
 - Convert all attributes to labels is disabled by default and can be enabled via `-distributor.otlp.convert-all-attributes=true` flag

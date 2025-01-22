@@ -1612,11 +1612,6 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.stripe-size
     [stripe_size: <int> | default = 16384]
 
-    # Deprecated (use blocks-storage.tsdb.wal-compression-type instead): True to
-    # enable TSDB WAL compression.
-    # CLI flag: -blocks-storage.tsdb.wal-compression-enabled
-    [wal_compression_enabled: <boolean> | default = false]
-
     # TSDB WAL type. Supported values are: 'snappy', 'zstd' and '' (disable
     # compression)
     # CLI flag: -blocks-storage.tsdb.wal-compression-type

@@ -4205,7 +4205,8 @@ dynamic_query_splits:
   # [EXPERIMENTAL] Max total duration of data fetched by all query shards from
   # storage, 0 disables it. Dynamically uses a multiple of
   # `split-queries-by-interval` to ensure the total fetched duration of data is
-  # lower than the value set.
+  # lower than the value set. It takes into account additional data fetched by
+  # matrix selectors and subqueries.
   # CLI flag: -querier.max-duration-of-data-fetched-from-storage-per-query
   [max_duration_of_data_fetched_from_storage_per_query: <duration> | default = 0s]
 

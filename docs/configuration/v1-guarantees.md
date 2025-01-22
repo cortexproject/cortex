@@ -118,3 +118,6 @@ Currently experimental features are:
   - Enable string interning for metrics labels by setting `-ingester.labels-string-interning-enabled` on Ingester.
 - Query-frontend: query rejection (`-frontend.query-rejection.enabled`)
 - Querier: protobuf codec (`-api.querier-default-codec`)
+- Query-frontend: dynamic query splits
+  - `querier.max-shards-per-query` (int) CLI flag
+  - `querier.max-duration-of-data-fetched-from-storage-per-query` (duration) CLI flag

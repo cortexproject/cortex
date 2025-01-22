@@ -57,7 +57,7 @@ func (s splitByInterval) Do(ctx context.Context, r tripperware.Request) (tripper
 	// to line up the boundaries with step.
 	interval, err := s.interval(ctx, r)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, err.Error())
 	}
 	reqs, err := splitQuery(r, interval)
 	if err != nil {

@@ -416,13 +416,13 @@ func Test_evaluateAtModifier(t *testing.T) {
 
 func TestDynamicIntervalFn(t *testing.T) {
 	for _, tc := range []struct {
-		name                   string
-		baseSplitInterval      time.Duration
-		req                    tripperware.Request
-		expectedInterval       time.Duration
-		expectedError          bool
-		maxQueryIntervalSplits int
-		maxDaysOfDataFetched   int
+		name                     string
+		baseSplitInterval        time.Duration
+		req                      tripperware.Request
+		expectedInterval         time.Duration
+		expectedError            bool
+		maxQueryIntervalSplits   int
+		maxDurationOfDataFetched time.Duration
 	}{
 		{
 			baseSplitInterval: day,
@@ -433,14 +433,49 @@ func TestDynamicIntervalFn(t *testing.T) {
 				End:   10 * 24 * 3600 * seconds,
 				Step:  5 * 60 * seconds,
 			},
-			maxQueryIntervalSplits: 30,
-			maxDaysOfDataFetched:   200,
-			expectedInterval:       day,
-			expectedError:          true,
+			maxQueryIntervalSplits:   30,
+			maxDurationOfDataFetched: 200 * day,
+			expectedInterval:         day,
+			expectedError:            true,
+		},
+		{
+			baseSplitInterval: time.Hour,
+			name:              "48 hour, expect split by 1 hour",
+			req: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   2 * 24 * 3600 * seconds,
+				Step:  60 * seconds,
+				Query: "up",
+			},
+			expectedInterval: time.Hour,
+		},
+		{
+			baseSplitInterval: time.Hour,
+			name:              "5 days with 15 max splits, expect split by 8 hours",
+			req: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   5 * 24 * 3600 * seconds,
+				Step:  5 * 60 * seconds,
+				Query: "up",
+			},
+			maxQueryIntervalSplits: 15,
+			expectedInterval:       8 * time.Hour,
+		},
+		{
+			baseSplitInterval: 2 * time.Hour,
+			name:              "4 days with 200 hour max duration fetched, expect split by 4 hours",
+			req: &tripperware.PrometheusRequest{
+				Start: (3 * 24 * 3600 * seconds) - (4*3600*seconds + 240*seconds),
+				End:   7*24*3600*seconds + (2*3600*seconds + 60*seconds),
+				Step:  5 * 60 * seconds,
+				Query: "up[5m]",
+			},
+			maxDurationOfDataFetched: 200 * time.Hour,
+			expectedInterval:         4 * time.Hour,
 		},
 		{
 			baseSplitInterval: day,
-			name:              "30 day range no limits, expect split by 1 day",
+			name:              "30 day range, expect split by 1 day",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   30 * 24 * 3600 * seconds,
@@ -463,7 +498,7 @@ func TestDynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "60 day range, expect split by 4 day",
+			name:              "60 day range with 15 max splits, expect split by 4 day",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   60 * 24 * 3600 * seconds,
@@ -475,7 +510,7 @@ func TestDynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "61 day range, expect split by 5 day",
+			name:              "61 day range with 15 max splits, expect split by 5 day",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   61 * 24 * 3600 * seconds,
@@ -487,61 +522,76 @@ func TestDynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "30 day range short matrix selector with 200 days fetched limit, expect split by 1 day",
+			name:              "30 day range short matrix selector with 200 days max duration fetched, expect split by 1 day",
 			req: &tripperware.PrometheusRequest{
 				Start: 30 * 24 * 3600 * seconds,
 				End:   60 * 24 * 3600 * seconds,
 				Step:  5 * 60 * seconds,
 				Query: "avg_over_time(up[1h])",
 			},
-			maxDaysOfDataFetched: 200,
-			expectedInterval:     day,
+			maxDurationOfDataFetched: 200 * day,
+			expectedInterval:         day,
 		},
 		{
 			baseSplitInterval: day,
-			name:              "30 day range long matrix selector with 200 days fetched limit, expect split by 1 day",
+			name:              "30 day range long matrix selector with 200 days max duration fetched, expect split by 4 days",
 			req: &tripperware.PrometheusRequest{
 				Start: 30 * 24 * 3600 * seconds,
 				End:   60 * 24 * 3600 * seconds,
 				Step:  5 * 60 * seconds,
 				Query: "avg_over_time(up[20d])",
 			},
-			maxDaysOfDataFetched: 200,
-			expectedInterval:     4 * day,
+			maxDurationOfDataFetched: 200 * day,
+			expectedInterval:         4 * day,
 		},
 		{
 			baseSplitInterval: day,
-			name:              "60 day range, expect split by 7 day",
+			name:              "query with multiple matrix selectors, expect split by 10 day",
 			req: &tripperware.PrometheusRequest{
-				Start: (2 * 24 * 3600 * seconds) + (3600*seconds - 120),
-				End:   (61 * 24 * 3600 * seconds) + (2*3600*seconds + 500),
-				Step:  30 * 60 * seconds,
-				Query: "rate(up[1d]) + rate(up[2d]) + rate(up[5d]) + rate(up[15d])",
+				Start: (14 * 24 * 3600 * seconds) + (3600*seconds - 120*seconds),
+				End:   (52 * 24 * 3600 * seconds) + (2*3600*seconds + 500*seconds),
+				Step:  60 * seconds,
+				Query: "rate(up[2d]) + rate(up[5d]) + rate(up[7d])",
 			},
-			maxDaysOfDataFetched: 200,
-			expectedInterval:     7 * day,
+			maxDurationOfDataFetched: 200 * day,
+			expectedInterval:         10 * day,
 		},
 		{
 			baseSplitInterval: day,
-			name:              "30 day range, expect split by 7 day",
+			name:              "30 day range with subquery, expect split by 13 day",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100 * 24 * 3600 * seconds,
 				Step:  60 * 60 * seconds,
 				Query: "up[5d:10m]",
 			},
-			maxQueryIntervalSplits: 100,
-			maxDaysOfDataFetched:   300,
-			expectedInterval:       4 * day,
+			maxQueryIntervalSplits:   100,
+			maxDurationOfDataFetched: 150 * day,
+			expectedInterval:         13 * day,
+		},
+		{
+			baseSplitInterval: 2 * time.Hour,
+			name:              "duration of data fetched is much larger than config, expect large interval and no sharding",
+			req: &tripperware.PrometheusRequest{
+				Start: (3 * 24 * 3600 * seconds) - (4*3600*seconds + 240*seconds),
+				End:   7*24*3600*seconds + (1*3600*seconds + 60*seconds),
+				Step:  5 * 60 * seconds,
+				Query: "up[5m]",
+			},
+			maxDurationOfDataFetched: 50 * time.Hour,
+			expectedInterval:         170 * time.Hour,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := Config{
-				SplitQueriesByInterval:          tc.baseSplitInterval,
-				SplitQueriesByIntervalMaxSplits: tc.maxQueryIntervalSplits,
+				SplitQueriesByInterval: tc.baseSplitInterval,
+				DynamicQuerySplitsConfig: DynamicQuerySplitsConfig{
+					MaxShardsPerQuery: tc.maxQueryIntervalSplits,
+					MaxDurationOfDataFetchedFromStoragePerQuery: tc.maxDurationOfDataFetched,
+				},
 			}
 			ctx := user.InjectOrgID(context.Background(), "1")
-			interval, err := dynamicIntervalFn(cfg, mockLimits{}, querysharding.NewQueryAnalyzer(), queryStoreAfter, lookbackDelta, tc.maxDaysOfDataFetched)(ctx, tc.req)
+			interval, err := dynamicIntervalFn(cfg, mockLimits{}, querysharding.NewQueryAnalyzer(), queryStoreAfter, lookbackDelta)(ctx, tc.req)
 			require.Equal(t, tc.expectedInterval, interval)
 			if !tc.expectedError {
 				require.Nil(t, err)

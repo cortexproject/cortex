@@ -3,7 +3,6 @@ package queryrange
 import (
 	"context"
 	"net/http"
-	"sort"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,15 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-// dayMillis is the L4 block range in milliseconds.
-var dayMillis = util.DurationMilliseconds(24 * time.Hour)
-
 type IntervalFn func(ctx context.Context, r tripperware.Request) (time.Duration, error)
-
-type dayRange struct {
-	startDay int64
-	endDay   int64
-}
 
 // SplitByIntervalMiddleware creates a new Middleware that splits requests by a given interval.
 func SplitByIntervalMiddleware(interval IntervalFn, limits tripperware.Limits, merger tripperware.Merger, registerer prometheus.Registerer, queryStoreAfter time.Duration, lookbackDelta time.Duration) tripperware.Middleware {
@@ -169,14 +160,13 @@ func staticIntervalFn(cfg Config) func(ctx context.Context, r tripperware.Reques
 	}
 }
 
-func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer querysharding.Analyzer, queryStoreAfter time.Duration, lookbackDelta time.Duration, maxDaysOfDataFetched int) func(ctx context.Context, r tripperware.Request) (time.Duration, error) {
+func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer querysharding.Analyzer, queryStoreAfter time.Duration, lookbackDelta time.Duration) func(ctx context.Context, r tripperware.Request) (time.Duration, error) {
 	return func(ctx context.Context, r tripperware.Request) (time.Duration, error) {
 		tenantIDs, err := tenant.TenantIDs(ctx)
 		if err != nil {
 			return cfg.SplitQueriesByInterval, err
 		}
 
-		queryDayRange := int((r.GetEnd() / dayMillis) - (r.GetStart() / dayMillis) + 1)
 		analysis, err := queryAnalyzer.Analyze(r.GetQuery())
 		if err != nil {
 			return cfg.SplitQueriesByInterval, err
@@ -191,23 +181,35 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 		if err != nil {
 			return cfg.SplitQueriesByInterval, err
 		}
-		daysFetchedWithoutSharding := getDaysFetchedByQuery(queryExpr, []tripperware.Request{r}, queryStoreAfter, lookbackDelta, time.Now())
-		extraDaysFetchedPerShard := daysFetchedWithoutSharding - queryDayRange
 
-		// if lookbackDelta is configured and the query start time is not 00:00 UTC, we need to account for 1 fetched day of data per split except for the first split
-		lookbackDeltaCompensation := 0
-		if lookbackDelta > 0 && (r.GetStart()-util.DurationMilliseconds(lookbackDelta))/dayMillis == r.GetStart()/dayMillis {
-			lookbackDeltaCompensation = 1
-		}
+		// Calculates: duration of data fetched if the query was not sharded, the original range covered by the query start and end times,
+		// and the duration of data fetched by lookbackDelta for the first split
+		durationFetchedWithoutSharding, originalRangeCount, firstSplitLookbackDeltaCompensation := durationFetchedByQuery(queryExpr, r, queryStoreAfter, lookbackDelta, cfg.SplitQueriesByInterval, time.Now())
+		extraDaysFetchedPerShard := durationFetchedWithoutSharding - originalRangeCount
+
+		// Calculate the extra duration of data fetched by lookbackDelta per each split except the first split
+		nextIntervalStart := nextIntervalBoundary(r.GetStart(), r.GetStep(), cfg.SplitQueriesByInterval) + r.GetStep()
+		nextIntervalReq := r.WithStartEnd(nextIntervalStart, r.GetEnd())
+		_, _, lookbackDeltaCompensation := durationFetchedByQuery(queryExpr, nextIntervalReq, queryStoreAfter, lookbackDelta, cfg.SplitQueriesByInterval, time.Now())
 
 		var maxSplitsByFetchedDaysOfData int
-		if maxDaysOfDataFetched > 0 {
-			maxSplitsByFetchedDaysOfData = ((maxDaysOfDataFetched / queryVerticalShardSize) - queryDayRange - lookbackDeltaCompensation) / (extraDaysFetchedPerShard + lookbackDeltaCompensation)
+		if cfg.DynamicQuerySplitsConfig.MaxDurationOfDataFetchedFromStoragePerQuery > 0 {
+			if extraDaysFetchedPerShard == 0 {
+				extraDaysFetchedPerShard = 1 // prevent division by 0
+			}
+			maxIntervalsFetchedByQuery := int(cfg.DynamicQuerySplitsConfig.MaxDurationOfDataFetchedFromStoragePerQuery / cfg.SplitQueriesByInterval)
+			maxSplitsByFetchedDaysOfData = ((maxIntervalsFetchedByQuery / queryVerticalShardSize) - originalRangeCount + firstSplitLookbackDeltaCompensation) / (extraDaysFetchedPerShard + lookbackDeltaCompensation)
+			if maxSplitsByFetchedDaysOfData <= 0 {
+				maxSplitsByFetchedDaysOfData = 1
+			}
 		}
 
 		var maxSplitsByConfig int
-		if cfg.SplitQueriesByIntervalMaxSplits > 0 {
-			maxSplitsByConfig = cfg.SplitQueriesByIntervalMaxSplits / queryVerticalShardSize
+		if cfg.DynamicQuerySplitsConfig.MaxShardsPerQuery > 0 {
+			maxSplitsByConfig = cfg.DynamicQuerySplitsConfig.MaxShardsPerQuery / queryVerticalShardSize
+			if maxSplitsByConfig <= 0 {
+				maxSplitsByConfig = 1
+			}
 		}
 
 		var maxSplits time.Duration
@@ -225,70 +227,64 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 
 		queryRange := time.Duration((r.GetEnd() - r.GetStart()) * int64(time.Millisecond))
 		baseInterval := cfg.SplitQueriesByInterval
-		n := (queryRange + baseInterval*maxSplits - 1) / (baseInterval * maxSplits)
+
+		// Calculate the multiple of interval needed to shard query to <= maxSplits
+		n1 := (queryRange + baseInterval*maxSplits - 1) / (baseInterval * maxSplits)
+		if n1 <= 0 {
+			n1 = 1
+		}
+
+		// The first split can be truncated and not cover the full length of n*interval.
+		// So we remove it and calculate the multiple of interval needed to shard <= maxSplits-1
+		nextSplitStart := nextIntervalBoundary(r.GetStart(), r.GetStep(), n1*baseInterval) + r.GetStep()
+		queryRangeWithoutFirstSplit := time.Duration((r.GetEnd() - nextSplitStart) * int64(time.Millisecond))
+		var n2 time.Duration
+		if maxSplits > 1 {
+			n2 = (queryRangeWithoutFirstSplit + baseInterval*(maxSplits-1) - 1) / (baseInterval * (maxSplits - 1))
+		} else {
+			// If maxSplits is <= 1 then we should not shard at all
+			n1 += (queryRangeWithoutFirstSplit + baseInterval - 1) / baseInterval
+		}
+		n := max(n1, n2)
 		return n * cfg.SplitQueriesByInterval, nil
 	}
 }
 
-// calculates the total number of days the query will have to fetch during execution, considering the query itself,
-// queryStoreAfter and lookbackDelta.
-func getDaysFetchedByQuery(expr parser.Expr, reqs []tripperware.Request, queryStoreAfter, lookbackDelta time.Duration, now time.Time) int {
-	count := 0
+// calculates the total duration of data the query will have to fetch from storage as a multiple of baseInterval.
+// also returns the total time range fetched by the original query start and end times
+func durationFetchedByQuery(expr parser.Expr, req tripperware.Request, queryStoreAfter, lookbackDelta time.Duration, baseInterval time.Duration, now time.Time) (durationFetchedCount int, originalRangeCount int, lookbackDeltaCount int) {
+	durationFetchedCount = 0
+	originalRangeCount = 0
+	lookbackDeltaCount = 0
+	baseIntervalMillis := util.DurationMilliseconds(baseInterval)
 	queryStoreMaxT := util.TimeToMillis(now.Add(-queryStoreAfter))
 	var evalRange time.Duration
 
-	for _, req := range reqs {
-		var ranges []dayRange
-		parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
-			switch n := node.(type) {
-			case *parser.VectorSelector:
-				start, end := util.GetTimeRangesForSelector(req.GetStart(), req.GetEnd(), lookbackDelta, n, path, evalRange)
-				// Query shouldn't touch Store Gateway.
-				if start > queryStoreMaxT {
-					return nil
-				} else {
-					// If the query split needs to query store, cap the max time to now - queryStoreAfter.
-					end = min(end, queryStoreMaxT)
-				}
-
-				startDay := start / dayMillis
-				endDay := end / dayMillis
-				ranges = append(ranges, dayRange{startDay: startDay, endDay: endDay})
-				evalRange = 0
-			case *parser.MatrixSelector:
-				evalRange = n.Range
+	parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
+		switch n := node.(type) {
+		case *parser.VectorSelector:
+			originalRangeCount += int((req.GetEnd()/baseIntervalMillis)-(req.GetStart()/baseIntervalMillis)) + 1
+			start, end := util.GetTimeRangesForSelector(req.GetStart(), req.GetEnd(), 0, n, path, evalRange)
+			// Query shouldn't touch Store Gateway.
+			if start > queryStoreMaxT {
+				return nil
+			} else {
+				// If the query split needs to query store, cap the max time to now - queryStoreAfter.
+				end = min(end, queryStoreMaxT)
 			}
-			return nil
-		})
-		nonOverlappingRanges := mergeDayRanges(ranges)
-		for _, dayRange := range nonOverlappingRanges {
-			count += int(dayRange.endDay-dayRange.startDay) + 1
+
+			startIntervalIndex := start / baseIntervalMillis
+			endIntervalIndex := end / baseIntervalMillis
+			durationFetchedCount += int(endIntervalIndex-startIntervalIndex) + 1
+
+			if evalRange == 0 && (start-util.DurationMilliseconds(lookbackDelta))/baseIntervalMillis == start/baseIntervalMillis {
+				lookbackDeltaCount += 1
+			}
+			evalRange = 0
+		case *parser.MatrixSelector:
+			evalRange = n.Range
 		}
-	}
-	return count
-}
-
-func mergeDayRanges(ranges []dayRange) []dayRange {
-	if len(ranges) == 0 {
-		return ranges
-	}
-
-	// Sort ranges by their startDay
-	sort.Slice(ranges, func(i, j int) bool {
-		return ranges[i].startDay < ranges[j].startDay
+		return nil
 	})
-
-	// Merge overlapping ranges
-	merged := []dayRange{ranges[0]}
-	for _, current := range ranges {
-		last := &merged[len(merged)-1]
-		if current.startDay <= last.endDay {
-			if current.endDay > last.endDay {
-				last.endDay = current.endDay
-			}
-		} else {
-			merged = append(merged, current)
-		}
-	}
-	return merged
+	return durationFetchedCount, originalRangeCount, lookbackDeltaCount
 }

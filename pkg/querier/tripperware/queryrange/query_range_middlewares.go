@@ -34,12 +34,14 @@ const day = 24 * time.Hour
 
 // Config for query_range middleware chain.
 type Config struct {
-	SplitQueriesByInterval          time.Duration `yaml:"split_queries_by_interval"`
-	SplitQueriesByIntervalMaxSplits int           `yaml:"split_queries_by_interval_max_splits"`
-	AlignQueriesWithStep            bool          `yaml:"align_queries_with_step"`
-	ResultsCacheConfig              `yaml:"results_cache"`
-	CacheResults                    bool `yaml:"cache_results"`
-	MaxRetries                      int  `yaml:"max_retries"`
+	// Query splits config
+	SplitQueriesByInterval   time.Duration            `yaml:"split_queries_by_interval"`
+	DynamicQuerySplitsConfig DynamicQuerySplitsConfig `yaml:"dynamic_query_splits"`
+
+	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
+	ResultsCacheConfig   `yaml:"results_cache"`
+	CacheResults         bool `yaml:"cache_results"`
+	MaxRetries           int  `yaml:"max_retries"`
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
 
@@ -51,11 +53,11 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
 	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks. This also determines how cache keys are chosen when result caching is enabled")
-	f.IntVar(&cfg.SplitQueriesByIntervalMaxSplits, "querier.split-queries-by-interval-max-splits", 0, "Maximum number of splits for a range query, 0 disables it. Uses a multiple of `split-queries-by-interval` to maintain the number of splits below the limit. If vertical sharding is enabled for a query, the combined total number of vertical and interval shards is kept below this limit")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
+	cfg.DynamicQuerySplitsConfig.RegisterFlags(f)
 }
 
 // Validate validates the config.
@@ -68,8 +70,10 @@ func (cfg *Config) Validate(qCfg querier.Config) error {
 			return errors.Wrap(err, "invalid ResultsCache config")
 		}
 	}
-	if cfg.SplitQueriesByIntervalMaxSplits > 0 && cfg.SplitQueriesByInterval <= 0 {
-		return errors.New("split-queries-by-interval-max-splits requires that a value for split-queries-by-interval is set.")
+	if cfg.DynamicQuerySplitsConfig.MaxShardsPerQuery > 0 || cfg.DynamicQuerySplitsConfig.MaxDurationOfDataFetchedFromStoragePerQuery > 0 {
+		if cfg.SplitQueriesByInterval <= 0 {
+			return errors.New("configs under dynamic-query-splits requires that a value for split-queries-by-interval is set.")
+		}
 	}
 	return nil
 }
@@ -86,7 +90,6 @@ func Middlewares(
 	shardedPrometheusCodec tripperware.Codec,
 	lookbackDelta time.Duration,
 	queryStoreAfter time.Duration,
-	maxDaysOfDataFetched int,
 ) ([]tripperware.Middleware, cache.Cache, error) {
 	// Metric used to keep track of each middleware execution duration.
 	metrics := tripperware.NewInstrumentMiddlewareMetrics(registerer)
@@ -97,8 +100,8 @@ func Middlewares(
 	}
 	if cfg.SplitQueriesByInterval != 0 {
 		intervalFn := staticIntervalFn(cfg)
-		if cfg.SplitQueriesByIntervalMaxSplits > 0 || maxDaysOfDataFetched > 0 {
-			intervalFn = dynamicIntervalFn(cfg, limits, queryAnalyzer, queryStoreAfter, lookbackDelta, maxDaysOfDataFetched)
+		if cfg.DynamicQuerySplitsConfig.MaxShardsPerQuery > 0 || cfg.DynamicQuerySplitsConfig.MaxDurationOfDataFetchedFromStoragePerQuery > 0 {
+			intervalFn = dynamicIntervalFn(cfg, limits, queryAnalyzer, queryStoreAfter, lookbackDelta)
 		}
 		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(intervalFn, limits, prometheusCodec, registerer, queryStoreAfter, lookbackDelta))
 	}

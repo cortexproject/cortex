@@ -245,6 +245,7 @@ func DurationMilliseconds(d time.Duration) int64 {
 	return int64(d / (time.Millisecond / time.Nanosecond))
 }
 
+// Copied from https://github.com/prometheus/prometheus/blob/dfae954dc1137568f33564e8cffda321f2867925/promql/engine.go#L811
 func GetTimeRangesForSelector(start, end int64, lookbackDelta time.Duration, n *parser.VectorSelector, path []parser.Node, evalRange time.Duration) (int64, int64) {
 	subqOffset, subqRange, subqTs := subqueryTimes(path)
 
@@ -279,6 +280,7 @@ func GetTimeRangesForSelector(start, end int64, lookbackDelta time.Duration, n *
 	return start, end
 }
 
+// Copied from https://github.com/prometheus/prometheus/blob/dfae954dc1137568f33564e8cffda321f2867925/promql/engine.go#L754
 // subqueryTimes returns the sum of offsets and ranges of all subqueries in the path.
 // If the @ modifier is used, then the offset and range is w.r.t. that timestamp
 // (i.e. the sum is reset when we have @ modifier).

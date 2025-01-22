@@ -62,9 +62,6 @@ type Config struct {
 	// Limit of number of steps allowed for every subquery expression in a query.
 	MaxSubQuerySteps int64 `yaml:"max_subquery_steps"`
 
-	// Max number of days of data fetched for a query, used to calculate appropriate interval and vertical shard size.
-	MaxDaysOfDataFetched int `yaml:"max_days_of_data_fetched"`
-
 	// Directory for ActiveQueryTracker. If empty, ActiveQueryTracker will be disabled and MaxConcurrent will not be applied (!).
 	// ActiveQueryTracker logs queries that were active during the last crash, but logs them on the next startup.
 	// However, we need to use active query tracker, otherwise we cannot limit Max Concurrent queries in the PromQL
@@ -134,7 +131,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.MaxSubQuerySteps, "querier.max-subquery-steps", 0, "Max number of steps allowed for every subquery expression in query. Number of steps is calculated using subquery range / step. A value > 0 enables it.")
 	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
 	f.BoolVar(&cfg.EnablePromQLExperimentalFunctions, "querier.enable-promql-experimental-functions", false, "[Experimental] If true, experimental promQL functions are enabled.")
-	f.IntVar(&cfg.MaxDaysOfDataFetched, "querier.max-days-of-data-fetched", 0, "Max number of days of data fetched for a query. This can be used to calculate appropriate interval and vertical shard size dynamically.")
 }
 
 // Validate the config

@@ -4193,12 +4193,21 @@ The `query_range_config` configures the query splitting and caching in the Corte
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
-# Maximum number of splits for a range query, 0 disables it. Uses a multiple of
-# `split-queries-by-interval` to maintain the number of splits below the limit.
-# If vertical sharding is enabled for a query, the combined total number of
-# vertical and interval shards is kept below this limit
-# CLI flag: -querier.split-queries-by-interval-max-splits
-[split_queries_by_interval_max_splits: <int> | default = 0]
+dynamic_query_splits:
+  # [EXPERIMENTAL] Maximum number of shards for a query, 0 disables it.
+  # Dynamically uses a multiple of `split-queries-by-interval` to maintain the
+  # number of splits below the limit. If vertical sharding is enabled for a
+  # query, the combined total number of vertical and interval shards is kept
+  # below this limit.
+  # CLI flag: -querier.max-shards-per-query
+  [max_shards_per_query: <int> | default = 0]
+
+  # [EXPERIMENTAL] Max total duration of data fetched by all query shards from
+  # storage, 0 disables it. Dynamically uses a multiple of
+  # `split-queries-by-interval` to ensure the total fetched duration of data is
+  # lower than the value set.
+  # CLI flag: -querier.max-duration-of-data-fetched-from-storage-per-query
+  [max_duration_of_data_fetched_from_storage_per_query: <duration> | default = 0s]
 
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step

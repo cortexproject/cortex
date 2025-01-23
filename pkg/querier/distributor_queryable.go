@@ -22,7 +22,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Distributor is the read interface to the distributor, made an interface here
@@ -39,14 +38,14 @@ type Distributor interface {
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, limits *validation.Overrides) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, isPartialDataEnabled partialdata.IsCfgEnabledFunc) QueryableWithFilter {
 	return distributorQueryable{
 		distributor:            distributor,
 		streamingMetdata:       streamingMetdata,
 		labelNamesWithMatchers: labelNamesWithMatchers,
 		iteratorFn:             iteratorFn,
 		queryIngestersWithin:   queryIngestersWithin,
-		limits:                 limits,
+		isPartialDataEnabled:   isPartialDataEnabled,
 	}
 }
 
@@ -56,7 +55,7 @@ type distributorQueryable struct {
 	labelNamesWithMatchers bool
 	iteratorFn             chunkIteratorFunc
 	queryIngestersWithin   time.Duration
-	limits                 *validation.Overrides
+	isPartialDataEnabled   partialdata.IsCfgEnabledFunc
 }
 
 func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
@@ -68,7 +67,7 @@ func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error)
 		labelNamesMatchers:   d.labelNamesWithMatchers,
 		chunkIterFn:          d.iteratorFn,
 		queryIngestersWithin: d.queryIngestersWithin,
-		limits:               d.limits,
+		isPartialDataEnabled: d.isPartialDataEnabled,
 	}, nil
 }
 
@@ -84,7 +83,7 @@ type distributorQuerier struct {
 	labelNamesMatchers   bool
 	chunkIterFn          chunkIteratorFunc
 	queryIngestersWithin time.Duration
-	limits               *validation.Overrides
+	isPartialDataEnabled partialdata.IsCfgEnabledFunc
 }
 
 // Select implements storage.Querier interface.
@@ -117,7 +116,7 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 		}
 	}
 
-	partialDataEnabled := q.isPartialDataEnabled(ctx)
+	partialDataEnabled := q.partialDataEnabled(ctx)
 
 	// In the recent versions of Prometheus, we pass in the hint but with Func set to "series".
 	// See: https://github.com/prometheus/prometheus/pull/8050
@@ -191,7 +190,7 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 		err error
 	)
 
-	partialDataEnabled := q.isPartialDataEnabled(ctx)
+	partialDataEnabled := q.partialDataEnabled(ctx)
 
 	if q.streamingMetadata {
 		lvs, err = q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
@@ -203,8 +202,10 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 }
 
 func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	partialDataEnabled := q.partialDataEnabled(ctx)
+
 	if len(matchers) > 0 && !q.labelNamesMatchers {
-		return q.labelNamesWithMatchers(ctx, hints, q.isPartialDataEnabled(ctx), matchers...)
+		return q.labelNamesWithMatchers(ctx, hints, partialDataEnabled, matchers...)
 	}
 
 	log, ctx := spanlogger.New(ctx, "distributorQuerier.LabelNames")
@@ -214,8 +215,6 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 		ln  []string
 		err error
 	)
-
-	partialDataEnabled := q.isPartialDataEnabled(ctx)
 
 	if q.streamingMetadata {
 		ln, err = q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
@@ -266,13 +265,13 @@ func (q *distributorQuerier) Close() error {
 	return nil
 }
 
-func (q *distributorQuerier) isPartialDataEnabled(ctx context.Context) bool {
+func (q *distributorQuerier) partialDataEnabled(ctx context.Context) bool {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return false
 	}
 
-	return q.limits != nil && q.limits.QueryPartialData(userID)
+	return q.isPartialDataEnabled != nil && q.isPartialDataEnabled(userID)
 }
 
 type distributorExemplarQueryable struct {

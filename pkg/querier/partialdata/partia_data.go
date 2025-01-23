@@ -4,6 +4,8 @@ import (
 	"errors"
 )
 
+type IsCfgEnabledFunc func(userID string) bool
+
 const ErrorMsg string = "Query result may contain partial data."
 
 type Error struct{}

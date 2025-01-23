@@ -179,11 +179,9 @@ func TestIngesterStreaming(t *testing.T) {
 				d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(queryResponse, partialdata.Error{})
 			}
 
-			limits := validation.Limits{QueryPartialData: partialDataEnabled}
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
-
-			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, overrides)
+			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+				return partialDataEnabled
+			})
 			querier, err := queryable.Querier(mint, maxt)
 			require.NoError(t, err)
 

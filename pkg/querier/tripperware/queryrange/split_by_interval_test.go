@@ -451,7 +451,7 @@ func TestDynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: time.Hour,
-			name:              "5 days with 15 max splits, expect split by 8 hours",
+			name:              "120 hour with 15 max splits, expect split by 8 hours",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   5 * 24 * 3600 * seconds,
@@ -463,10 +463,10 @@ func TestDynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: 2 * time.Hour,
-			name:              "4 days with 200 hour max duration fetched, expect split by 4 hours",
+			name:              "102 hours with 200 hour max duration fetched, expect split by 4 hours",
 			req: &tripperware.PrometheusRequest{
 				Start: (3 * 24 * 3600 * seconds) - (4*3600*seconds + 240*seconds),
-				End:   7*24*3600*seconds + (2*3600*seconds + 60*seconds),
+				End:   (7 * 24 * 3600 * seconds) + (2*3600*seconds + 60*seconds),
 				Step:  5 * 60 * seconds,
 				Query: "up[5m]",
 			},
@@ -558,7 +558,7 @@ func TestDynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "30 day range with subquery, expect split by 13 day",
+			name:              "100 day range with subquery, expect split by 13 day",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   100 * 24 * 3600 * seconds,
@@ -574,9 +574,9 @@ func TestDynamicIntervalFn(t *testing.T) {
 			name:              "duration of data fetched is much larger than config, expect large interval and no sharding",
 			req: &tripperware.PrometheusRequest{
 				Start: (3 * 24 * 3600 * seconds) - (4*3600*seconds + 240*seconds),
-				End:   7*24*3600*seconds + (1*3600*seconds + 60*seconds),
+				End:   (7 * 24 * 3600 * seconds) + (1*3600*seconds + 60*seconds),
 				Step:  5 * 60 * seconds,
-				Query: "up[5m]",
+				Query: "up[5h]",
 			},
 			maxDurationOfDataFetched: 50 * time.Hour,
 			expectedInterval:         170 * time.Hour,

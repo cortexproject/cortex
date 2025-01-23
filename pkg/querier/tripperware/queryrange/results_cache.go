@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -296,8 +297,11 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.R
 		return false
 	}
 	if res, ok := r.(*tripperware.PrometheusResponse); ok {
-		if len(res.Warnings) > 0 {
-			return false
+		partialDataErr := partialdata.Error{}
+		for _, warning := range res.Warnings {
+			if warning == partialDataErr.Error() {
+				return false
+			}
 		}
 	}
 

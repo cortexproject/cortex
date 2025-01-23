@@ -18,6 +18,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -555,7 +556,7 @@ func TestShouldCache(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:    "contains warning",
+			name:    "contains partial data warning",
 			request: &tripperware.PrometheusRequest{Query: "metric"},
 			input: tripperware.Response(&tripperware.PrometheusResponse{
 				Headers: []*tripperware.PrometheusResponseHeader{
@@ -564,9 +565,23 @@ func TestShouldCache(t *testing.T) {
 						Values: []string{},
 					},
 				},
-				Warnings: []string{"some warning"},
+				Warnings: []string{partialdata.ErrorMsg},
 			}),
 			expected: false,
+		},
+		{
+			name:    "contains other warning",
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{
+						Name:   "meaninglessheader",
+						Values: []string{},
+					},
+				},
+				Warnings: []string{"other warning"},
+			}),
+			expected: true,
 		},
 	} {
 		{

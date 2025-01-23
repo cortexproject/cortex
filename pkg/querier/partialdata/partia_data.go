@@ -8,14 +8,15 @@ import (
 type partialDataCtxKey struct{}
 
 var (
-	ctxKey              = &partialDataCtxKey{}
-	partialDataErrorMsg = "Query result may contain partial data."
+	ctxKey = &partialDataCtxKey{}
 )
+
+const ErrorMsg string = "Query result may contain partial data."
 
 type Error struct{}
 
 func (e Error) Error() string {
-	return partialDataErrorMsg
+	return ErrorMsg
 }
 
 func ContextWithPartialData(ctx context.Context, isEnabled bool) context.Context {

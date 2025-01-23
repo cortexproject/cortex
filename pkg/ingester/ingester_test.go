@@ -6376,6 +6376,8 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, reg, false)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
 	// Wait until it's ACTIVE
 	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()

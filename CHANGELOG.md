@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Ruler: Add rule information (group name, namespace, name, and kind) to query parameters sent to the Query Frontend to leave rule information logs on query stats. #6539
 * [FEATURE] Querier/Ruler: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
 
 ## 1.19.0 in progress

@@ -185,7 +185,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 	seriesSet := series.NewConcreteSeriesSet(sortSeries, serieses)
 
 	if returnPartialData {
-		warning := annotations.Annotations(nil)
+		warning := seriesSet.Warnings()
 		return series.NewSeriesSetWithWarnings(seriesSet, warning.Add(err))
 	}
 

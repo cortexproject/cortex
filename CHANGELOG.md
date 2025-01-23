@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-* [FEATURE] Distributor/Querier: Add `query_partial_data` to allow partial query data from 1 zone to be returned with a warning message. #6526
+* [FEATURE] Distributor/Querier: Add `query_partial_data` and `rules_partial_data` to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
 
 ## 1.19.0 in progress
 

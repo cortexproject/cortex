@@ -22,32 +22,31 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Distributor is the read interface to the distributor, made an interface here
 // to reduce package coupling.
 type Distributor interface {
-	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
+	QueryStream(ctx context.Context, from, to model.Time, partialDataEnabled bool, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
 	QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error)
-	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName, hint *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error)
-	LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, label model.LabelName, hint *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error)
-	LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error)
-	LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error)
-	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error)
-	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error)
+	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName, hint *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error)
+	LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, label model.LabelName, hint *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error)
+	LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error)
+	LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error)
+	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error)
+	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error)
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
-type partialDataEnabledFunc func(userID string) bool
-
-func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, partialDataEnabled partialDataEnabledFunc) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, limits *validation.Overrides) QueryableWithFilter {
 	return distributorQueryable{
 		distributor:            distributor,
 		streamingMetdata:       streamingMetdata,
 		labelNamesWithMatchers: labelNamesWithMatchers,
 		iteratorFn:             iteratorFn,
 		queryIngestersWithin:   queryIngestersWithin,
-		partialDataEnabled:     partialDataEnabled,
+		limits:                 limits,
 	}
 }
 
@@ -57,7 +56,7 @@ type distributorQueryable struct {
 	labelNamesWithMatchers bool
 	iteratorFn             chunkIteratorFunc
 	queryIngestersWithin   time.Duration
-	partialDataEnabled     partialDataEnabledFunc
+	limits                 *validation.Overrides
 }
 
 func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
@@ -69,7 +68,7 @@ func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error)
 		labelNamesMatchers:   d.labelNamesWithMatchers,
 		chunkIterFn:          d.iteratorFn,
 		queryIngestersWithin: d.queryIngestersWithin,
-		partialDataEnabled:   d.partialDataEnabled,
+		limits:               d.limits,
 	}, nil
 }
 
@@ -85,7 +84,7 @@ type distributorQuerier struct {
 	labelNamesMatchers   bool
 	chunkIterFn          chunkIteratorFunc
 	queryIngestersWithin time.Duration
-	partialDataEnabled   partialDataEnabledFunc
+	limits               *validation.Overrides
 }
 
 // Select implements storage.Querier interface.
@@ -118,6 +117,8 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 		}
 	}
 
+	partialDataEnabled := q.isPartialDataEnabled(ctx)
+
 	// In the recent versions of Prometheus, we pass in the hint but with Func set to "series".
 	// See: https://github.com/prometheus/prometheus/pull/8050
 	if sp != nil && sp.Func == "series" {
@@ -127,9 +128,9 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 		)
 
 		if q.streamingMetadata {
-			ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(minT), model.Time(maxT), sp, matchers...)
+			ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(minT), model.Time(maxT), sp, partialDataEnabled, matchers...)
 		} else {
-			ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(minT), model.Time(maxT), sp, matchers...)
+			ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(minT), model.Time(maxT), sp, partialDataEnabled, matchers...)
 		}
 
 		if err != nil {
@@ -138,20 +139,13 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 		return series.MetricsToSeriesSet(ctx, sortSeries, ms)
 	}
 
-	return q.streamingSelect(ctx, sortSeries, minT, maxT, matchers)
+	return q.streamingSelect(ctx, sortSeries, partialDataEnabled, minT, maxT, matchers)
 }
 
-func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries bool, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return storage.ErrSeriesSet(err)
-	}
+func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, partialDataEnabled bool, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
+	results, err := q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), partialDataEnabled, matchers...)
 
-	partialDataEnabled := q.partialDataEnabled(userID) // TODO: jungjust
-	results, err := q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
-
-	returnPartialData := partialdata.ReturnPartialData(err, partialDataEnabled)
-	if err != nil && !returnPartialData {
+	if err != nil && !partialdata.IsPartialDataError(err) {
 		return storage.ErrSeriesSet(err)
 	}
 
@@ -183,7 +177,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 
 	seriesSet := series.NewConcreteSeriesSet(sortSeries, serieses)
 
-	if returnPartialData {
+	if partialdata.IsPartialDataError(err) {
 		warning := seriesSet.Warnings()
 		return series.NewSeriesSetWithWarnings(seriesSet, warning.Add(err))
 	}
@@ -197,10 +191,12 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 		err error
 	)
 
+	partialDataEnabled := q.isPartialDataEnabled(ctx)
+
 	if q.streamingMetadata {
-		lvs, err = q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, matchers...)
+		lvs, err = q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
 	} else {
-		lvs, err = q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, matchers...)
+		lvs, err = q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
 	}
 
 	return lvs, nil, err
@@ -219,10 +215,12 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 		err error
 	)
 
+	partialDataEnabled := q.isPartialDataEnabled(ctx)
+
 	if q.streamingMetadata {
-		ln, err = q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt), hints, matchers...)
+		ln, err = q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
 	} else {
-		ln, err = q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt), hints, matchers...)
+		ln, err = q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
 	}
 
 	return ln, nil, err
@@ -239,9 +237,9 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *
 	)
 
 	if q.streamingMetadata {
-		ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), matchers...)
+		ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), false, matchers...)
 	} else {
-		ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), matchers...)
+		ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), false, matchers...)
 	}
 
 	if err != nil {
@@ -266,6 +264,19 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *
 
 func (q *distributorQuerier) Close() error {
 	return nil
+}
+
+func (q *distributorQuerier) isPartialDataEnabled(ctx context.Context) bool {
+	if q.limits != nil {
+		return false
+	}
+
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return false
+	}
+
+	return q.limits.QueryPartialData(userID)
 }
 
 type distributorExemplarQueryable struct {

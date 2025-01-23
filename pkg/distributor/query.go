@@ -53,7 +53,7 @@ func (d *Distributor) QueryExemplars(ctx context.Context, from, to model.Time, m
 }
 
 // QueryStream multiple ingesters via the streaming interface and returns big ol' set of chunks.
-func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*ingester_client.QueryStreamResponse, error) {
+func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, partialDataEnabled bool, matchers ...*labels.Matcher) (*ingester_client.QueryStreamResponse, error) {
 	var result *ingester_client.QueryStreamResponse
 	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
@@ -66,7 +66,7 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 			return err
 		}
 
-		result, err = d.queryIngesterStream(ctx, replicationSet, req)
+		result, err = d.queryIngesterStream(ctx, replicationSet, req, partialDataEnabled)
 		if err != nil {
 			return err
 		}
@@ -161,7 +161,7 @@ func mergeExemplarSets(a, b []cortexpb.Exemplar) []cortexpb.Exemplar {
 func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.ExemplarQueryRequest) (*ingester_client.ExemplarQueryResponse, error) {
 	// Fetch exemplars from multiple ingesters in parallel, using the replicationSet
 	// to deal with consistency.
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, false, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
@@ -221,16 +221,14 @@ func mergeExemplarQueryResponses(results []interface{}) *ingester_client.Exempla
 }
 
 // queryIngesterStream queries the ingesters using the new streaming API.
-func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
+func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest, partialDataEnabled bool) (*ingester_client.QueryStreamResponse, error) {
 	var (
 		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
 		reqStats     = stats.FromContext(ctx)
 	)
 
-	partialDataEnabled := false // TODO: jungjust
-
 	// Fetch samples from multiple ingesters
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, partialDataEnabled, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
@@ -290,8 +288,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		}
 		return result, nil
 	})
-	returnPartialData := partialdata.ReturnPartialData(err, partialDataEnabled)
-	if err != nil && !returnPartialData {
+	if err != nil && !partialdata.IsPartialDataError(err) {
 		return nil, err
 	}
 
@@ -332,7 +329,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	reqStats.AddFetchedChunks(uint64(chksCount))
 	reqStats.AddFetchedSamples(uint64(resp.SamplesCount()))
 
-	if returnPartialData {
+	if partialdata.IsPartialDataError(err) {
 		level.Info(d.log).Log("msg", "returning partial data")
 		return resp, partialdata.Error{}
 	}

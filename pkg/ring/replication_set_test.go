@@ -262,7 +262,7 @@ func TestReplicationSet_Do(t *testing.T) {
 					cancel()
 				})
 			}
-			got, err := r.Do(ctx, tt.delay, tt.zoneResultsQuorum, tt.f)
+			got, err := r.Do(ctx, tt.delay, tt.zoneResultsQuorum, tt.queryPartialData, tt.f)
 			if tt.expectedError != nil {
 				assert.Equal(t, tt.expectedError, err)
 			} else {

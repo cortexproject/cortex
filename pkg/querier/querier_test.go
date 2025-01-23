@@ -298,7 +298,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		}
 
 		distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
-		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, queryPartialDataDisabledFn)
+		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil)
 
 		tCases := []struct {
 			name                 string
@@ -1365,28 +1365,28 @@ type errDistributor struct{}
 
 var errDistributorError = fmt.Errorf("errDistributorError")
 
-func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
+func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, partialDataEnabled bool, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	return nil, errDistributorError
 }
 func (m *errDistributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (m *errDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (m *errDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, errDistributorError
 }
 
@@ -1414,7 +1414,7 @@ func (c *emptyChunkStore) IsCalled() bool {
 
 type emptyDistributor struct{}
 
-func (d *emptyDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
+func (d *emptyDistributor) QueryStream(ctx context.Context, from, to model.Time, partialDataEnabled bool, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	return &client.QueryStreamResponse{}, nil
 }
 
@@ -1422,27 +1422,27 @@ func (d *emptyDistributor) QueryExemplars(ctx context.Context, from, to model.Ti
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (d *emptyDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (d *emptyDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (d *emptyDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, nil
 }
 
@@ -1701,4 +1701,29 @@ func (m *mockQueryableWithFilter) Querier(_, _ int64) (storage.Querier, error) {
 func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
 	m.useQueryableCalled = true
 	return true
+}
+
+type mockChunkStore struct {
+	chunks []chunk.Chunk
+}
+
+func (m mockChunkStore) Get() ([]chunk.Chunk, error) {
+	return m.chunks, nil
+}
+
+func makeMockChunkStore(t require.TestingT, numChunks int, enc promchunk.Encoding) (mockChunkStore, model.Time) {
+	chks, from := makeMockChunks(t, numChunks, enc, 0)
+	return mockChunkStore{chks}, from
+}
+
+func makeMockChunks(t require.TestingT, numChunks int, enc promchunk.Encoding, from model.Time, additionalLabels ...labels.Label) ([]chunk.Chunk, model.Time) {
+	var (
+		chunks = make([]chunk.Chunk, 0, numChunks)
+	)
+	for i := 0; i < numChunks; i++ {
+		c := util.GenerateChunk(t, sampleRate, from, int(samplesPerChunk), enc, additionalLabels...)
+		chunks = append(chunks, c)
+		from = from.Add(chunkOffset)
+	}
+	return chunks, from
 }

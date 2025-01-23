@@ -7,7 +7,7 @@ slug: partition-compaction
 
 ## Context
 
-Compactor is bonded by maximum 64GB of index file size. If compaction failed due to exceeding index file size limit, partition compaction can be enabled to allow compactor compacting into multiple blocks that have index file size stays within limit.
+Compactor is bounded by maximum 64GB of index file size. If compaction failed due to exceeding index file size limit, partition compaction can be enabled to allow compactor compacting into multiple blocks that have index file size stays within limit.
 
 ## Enable Partition Compaction
 

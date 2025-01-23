@@ -41,12 +41,13 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 	}
 
 	var (
-		ch                 = make(chan instanceResult, len(r.Instances))
-		forceStart         = make(chan struct{}, r.MaxErrors)
-		partialDataEnabled = partialdata.FromContext(ctx)
+		ch         = make(chan instanceResult, len(r.Instances))
+		forceStart = make(chan struct{}, r.MaxErrors)
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	partialDataEnabled := false // TODO: jungjust
 
 	// Spawn a goroutine for each instance.
 	for i := range r.Instances {

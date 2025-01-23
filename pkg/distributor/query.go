@@ -223,10 +223,11 @@ func mergeExemplarQueryResponses(results []interface{}) *ingester_client.Exempla
 // queryIngesterStream queries the ingesters using the new streaming API.
 func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
 	var (
-		queryLimiter       = limiter.QueryLimiterFromContextWithFallback(ctx)
-		reqStats           = stats.FromContext(ctx)
-		partialDataEnabled = partialdata.FromContext(ctx)
+		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
+		reqStats     = stats.FromContext(ctx)
 	)
+
+	partialDataEnabled := false // TODO: jungjust
 
 	// Fetch samples from multiple ingesters
 	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {

@@ -254,7 +254,7 @@ func TestReplicationSet_Do(t *testing.T) {
 				MaxErrors:           tt.maxErrors,
 				MaxUnavailableZones: tt.maxUnavailableZones,
 			}
-			ctx := partialdata.ContextWithPartialData(context.Background(), tt.queryPartialData)
+			ctx := context.Background()
 			if tt.cancelContextDelay > 0 {
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithCancel(ctx)

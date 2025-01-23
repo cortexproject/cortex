@@ -147,8 +147,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 		return storage.ErrSeriesSet(err)
 	}
 
-	partialDataEnabled := q.partialDataEnabled(userID)
-	ctx = partialdata.ContextWithPartialData(ctx, partialDataEnabled)
+	partialDataEnabled := q.partialDataEnabled(userID) // TODO: jungjust
 	results, err := q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
 
 	returnPartialData := partialdata.ReturnPartialData(err, partialDataEnabled)

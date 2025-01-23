@@ -12,10 +12,6 @@ func (e Error) Error() string {
 	return ErrorMsg
 }
 
-func ReturnPartialData(err error, isEnabled bool) bool {
-	return isEnabled && errors.As(err, &Error{})
-}
-
 func IsPartialDataError(err error) bool {
 	return errors.As(err, &Error{})
 }

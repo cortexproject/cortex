@@ -90,7 +90,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]model.Metric{}, nil)
 
 				ctx := user.InjectOrgID(context.Background(), "test")
-				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, testData.queryIngestersWithin, queryPartialDataDisabledFn)
+				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, testData.queryIngestersWithin, nil)
 				querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
 
@@ -129,7 +129,7 @@ func TestDistributorQueryableFilter(t *testing.T) {
 	t.Parallel()
 
 	d := &MockDistributor{}
-	dq := newDistributorQueryable(d, false, true, nil, 1*time.Hour, queryPartialDataDisabledFn)
+	dq := newDistributorQueryable(d, false, true, nil, 1*time.Hour, nil)
 
 	now := time.Now()
 
@@ -174,13 +174,16 @@ func TestIngesterStreaming(t *testing.T) {
 			d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(queryResponse, nil)
 
 			ctx := user.InjectOrgID(context.Background(), "0")
-			partialDataFn := queryPartialDataDisabledFn
 			if partialDataEnabled {
-				partialDataFn = queryPartialDataEnabledFn
 				d = &MockDistributor{}
 				d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(queryResponse, partialdata.Error{})
 			}
-			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, partialDataFn)
+
+			limits := validation.Limits{QueryPartialData: partialDataEnabled}
+			overrides, err := validation.NewOverrides(limits, nil)
+			require.NoError(t, err)
+
+			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, overrides)
 			querier, err := queryable.Querier(mint, maxt)
 			require.NoError(t, err)
 
@@ -253,12 +256,4 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 			})
 		}
 	}
-}
-
-func queryPartialDataEnabledFn(string) bool {
-	return true
-}
-
-func queryPartialDataDisabledFn(string) bool {
-	return false
 }

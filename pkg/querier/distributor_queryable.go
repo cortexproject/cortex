@@ -204,7 +204,7 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 
 func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	if len(matchers) > 0 && !q.labelNamesMatchers {
-		return q.labelNamesWithMatchers(ctx, hints, matchers...)
+		return q.labelNamesWithMatchers(ctx, hints, q.isPartialDataEnabled(ctx), matchers...)
 	}
 
 	log, ctx := spanlogger.New(ctx, "distributorQuerier.LabelNames")
@@ -227,7 +227,7 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 }
 
 // labelNamesWithMatchers performs the LabelNames call by calling ingester's MetricsForLabelMatchers method
-func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	log, ctx := spanlogger.New(ctx, "distributorQuerier.labelNamesWithMatchers")
 	defer log.Span.Finish()
 
@@ -237,9 +237,9 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *
 	)
 
 	if q.streamingMetadata {
-		ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), false, matchers...)
+		ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), partialDataEnabled, matchers...)
 	} else {
-		ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), false, matchers...)
+		ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), partialDataEnabled, matchers...)
 	}
 
 	if err != nil {
@@ -267,16 +267,12 @@ func (q *distributorQuerier) Close() error {
 }
 
 func (q *distributorQuerier) isPartialDataEnabled(ctx context.Context) bool {
-	if q.limits != nil {
-		return false
-	}
-
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return false
 	}
 
-	return q.limits.QueryPartialData(userID)
+	return q.limits != nil && q.limits.QueryPartialData(userID)
 }
 
 type distributorExemplarQueryable struct {

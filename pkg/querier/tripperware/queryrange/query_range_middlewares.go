@@ -89,7 +89,6 @@ func Middlewares(
 	prometheusCodec tripperware.Codec,
 	shardedPrometheusCodec tripperware.Codec,
 	lookbackDelta time.Duration,
-	queryStoreAfter time.Duration,
 ) ([]tripperware.Middleware, cache.Cache, error) {
 	// Metric used to keep track of each middleware execution duration.
 	metrics := tripperware.NewInstrumentMiddlewareMetrics(registerer)
@@ -101,9 +100,9 @@ func Middlewares(
 	if cfg.SplitQueriesByInterval != 0 {
 		intervalFn := staticIntervalFn(cfg)
 		if cfg.DynamicQuerySplitsConfig.MaxShardsPerQuery > 0 || cfg.DynamicQuerySplitsConfig.MaxDurationOfDataFetchedFromStoragePerQuery > 0 {
-			intervalFn = dynamicIntervalFn(cfg, limits, queryAnalyzer, queryStoreAfter, lookbackDelta)
+			intervalFn = dynamicIntervalFn(cfg, limits, queryAnalyzer, lookbackDelta)
 		}
-		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(intervalFn, limits, prometheusCodec, registerer, queryStoreAfter, lookbackDelta))
+		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(intervalFn, limits, prometheusCodec, registerer, lookbackDelta))
 	}
 
 	var c cache.Cache

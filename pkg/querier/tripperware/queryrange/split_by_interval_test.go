@@ -314,7 +314,7 @@ func TestSplitByDay(t *testing.T) {
 			roundtripper := tripperware.NewRoundTripper(singleHostRoundTripper{
 				host: u.Host,
 				next: http.DefaultTransport,
-			}, PrometheusCodec, nil, NewLimitsMiddleware(mockLimits{}, 5*time.Minute), SplitByIntervalMiddleware(interval, mockLimits{}, PrometheusCodec, nil, queryStoreAfter, lookbackDelta))
+			}, PrometheusCodec, nil, NewLimitsMiddleware(mockLimits{}, 5*time.Minute), SplitByIntervalMiddleware(interval, mockLimits{}, PrometheusCodec, nil, lookbackDelta))
 
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)
@@ -591,7 +591,7 @@ func TestDynamicIntervalFn(t *testing.T) {
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), "1")
-			interval, err := dynamicIntervalFn(cfg, mockLimits{}, querysharding.NewQueryAnalyzer(), queryStoreAfter, lookbackDelta)(ctx, tc.req)
+			interval, err := dynamicIntervalFn(cfg, mockLimits{}, querysharding.NewQueryAnalyzer(), lookbackDelta)(ctx, tc.req)
 			require.Equal(t, tc.expectedInterval, interval)
 			if !tc.expectedError {
 				require.Nil(t, err)

@@ -487,7 +487,6 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		prometheusCodec,
 		shardedPrometheusCodec,
 		t.Cfg.Querier.LookbackDelta,
-		t.Cfg.Querier.QueryStoreAfter,
 	)
 	if err != nil {
 		return nil, err

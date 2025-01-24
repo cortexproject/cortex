@@ -3549,10 +3549,6 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # zones are not available.
 [query_partial_data: <boolean> | default = false]
 
-# Enable to allow rules to be evaluated with data from a single zone, if other
-# zones are not available.
-[rules_partial_data: <boolean> | default = false]
-
 # Maximum number of outstanding requests per tenant per request queue (either
 # query frontend or query scheduler); requests beyond this error with HTTP 429.
 # CLI flag: -frontend.max-outstanding-requests-per-tenant
@@ -3612,6 +3608,10 @@ query_rejection:
 
 # external labels for alerting rules
 [ruler_external_labels: <map of string (labelName) to string (labelValue)> | default = []]
+
+# Enable to allow rules to be evaluated with data from a single zone, if other
+# zones are not available.
+[rules_partial_data: <boolean> | default = false]
 
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the

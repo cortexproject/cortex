@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -297,12 +298,7 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.R
 		return false
 	}
 	if res, ok := r.(*tripperware.PrometheusResponse); ok {
-		partialDataErr := partialdata.ErrPartialData
-		for _, warning := range res.Warnings {
-			if warning == partialDataErr.Error() {
-				return false
-			}
-		}
+		return !slices.Contains(res.Warnings, partialdata.ErrPartialData.Error())
 	}
 
 	return true

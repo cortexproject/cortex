@@ -84,6 +84,58 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				{blocks: []ulid.ULID{block3, block4}, partitionCount: 1, partitionID: 0, rangeStart: 2 * H, rangeEnd: 4 * H},
 			},
 		},
+		"only level 1 blocks with replication factor 3": {
+			ranges: []time.Duration{2 * time.Hour, 12 * time.Hour, 24 * time.Hour},
+			blocks: map[ulid.ULID]mockBlock{
+				block1: {
+					meta: &metadata.Meta{
+						BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 1}},
+					},
+					timeRange:        2 * time.Hour,
+					hasNoCompactMark: false,
+				},
+				block2: {
+					meta: &metadata.Meta{
+						BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 1}},
+					},
+					timeRange:        2 * time.Hour,
+					hasNoCompactMark: false,
+				},
+				block3: {
+					meta: &metadata.Meta{
+						BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 1}},
+					},
+					timeRange:        2 * time.Hour,
+					hasNoCompactMark: false,
+				},
+				block4: {
+					meta: &metadata.Meta{
+						BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 1}},
+					},
+					timeRange:        2 * time.Hour,
+					hasNoCompactMark: false,
+				},
+				block5: {
+					meta: &metadata.Meta{
+						BlockMeta: tsdb.BlockMeta{ULID: block5, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 1}},
+					},
+					timeRange:        2 * time.Hour,
+					hasNoCompactMark: false,
+				},
+				block6: {
+					meta: &metadata.Meta{
+						BlockMeta: tsdb.BlockMeta{ULID: block6, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 1}},
+					},
+					timeRange:        2 * time.Hour,
+					hasNoCompactMark: false,
+				},
+			},
+			existingPartitionedGroups: []mockExistingPartitionedGroup{},
+			expected: []expectedCompactionJob{
+				{blocks: []ulid.ULID{block1, block2, block3, block4, block5, block6}, partitionCount: 1, partitionID: 0, rangeStart: 0 * H, rangeEnd: 2 * H},
+			},
+			replicationFactor: 3,
+		},
 		"only level 1 blocks, there is existing partitioned group file": {
 			ranges: []time.Duration{2 * time.Hour, 12 * time.Hour, 24 * time.Hour},
 			blocks: map[ulid.ULID]mockBlock{
@@ -1966,6 +2018,10 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+			replicationFactor := 1
+			if testCase.replicationFactor > 1 {
+				replicationFactor = testCase.replicationFactor
+			}
 			g := NewPartitionCompactionGrouper(
 				ctx,
 				nil,
@@ -1988,7 +2044,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				false,
 				visitMarkerTimeout,
 				noCompactFilter,
-				1,
+				replicationFactor,
 			)
 			actual, err := g.generateCompactionJobs(testCase.getBlocks())
 			require.NoError(t, err)
@@ -2015,6 +2071,7 @@ type generateCompactionJobsTestCase struct {
 	blocks                    map[ulid.ULID]mockBlock
 	existingPartitionedGroups []mockExistingPartitionedGroup
 	expected                  []expectedCompactionJob
+	replicationFactor         int
 }
 
 func (g *generateCompactionJobsTestCase) setupBucketStore(t *testing.T, bkt *bucket.ClientMock, userID string, visitMarkerTimeout time.Duration) {

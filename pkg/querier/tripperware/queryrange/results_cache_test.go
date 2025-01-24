@@ -565,7 +565,7 @@ func TestShouldCache(t *testing.T) {
 						Values: []string{},
 					},
 				},
-				Warnings: []string{partialdata.ErrorMsg},
+				Warnings: []string{partialdata.ErrPartialData.Error()},
 			}),
 			expected: false,
 		},

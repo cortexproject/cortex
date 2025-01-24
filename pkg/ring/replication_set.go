@@ -102,7 +102,7 @@ track:
 	}
 
 	if partialDataEnabled && trackerFailed {
-		return tracker.getResults(), partialdata.Error{}
+		return tracker.getResults(), partialdata.ErrPartialData
 	}
 
 	return tracker.getResults(), nil

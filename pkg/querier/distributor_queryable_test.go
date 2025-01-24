@@ -173,7 +173,7 @@ func TestIngesterStreaming(t *testing.T) {
 			}
 			var partialDataErr error
 			if partialDataEnabled {
-				partialDataErr = partialdata.Error{}
+				partialDataErr = partialdata.ErrPartialData
 			}
 			d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(queryResponse, partialDataErr)
 
@@ -204,7 +204,7 @@ func TestIngesterStreaming(t *testing.T) {
 			require.NoError(t, seriesSet.Err())
 
 			if partialDataEnabled {
-				require.Contains(t, seriesSet.Warnings(), partialdata.ErrorMsg)
+				require.Contains(t, seriesSet.Warnings(), partialdata.ErrPartialData.Error())
 			}
 		}
 	}
@@ -233,7 +233,7 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 
 					var partialDataErr error
 					if partialDataEnabled {
-						partialDataErr = partialdata.Error{}
+						partialDataErr = partialdata.ErrPartialData
 					}
 					if labelNamesWithMatchers {
 						d.On("LabelNames", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
@@ -257,7 +257,7 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 					names, warnings, err := querier.LabelNames(ctx, nil, someMatchers...)
 					require.NoError(t, err)
 					if partialDataEnabled {
-						assert.Contains(t, warnings, partialdata.ErrorMsg)
+						assert.Contains(t, warnings, partialdata.ErrPartialData.Error())
 					} else {
 						assert.Empty(t, warnings)
 					}

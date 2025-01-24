@@ -297,7 +297,7 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.R
 		return false
 	}
 	if res, ok := r.(*tripperware.PrometheusResponse); ok {
-		partialDataErr := partialdata.Error{}
+		partialDataErr := partialdata.ErrPartialData
 		for _, warning := range res.Warnings {
 			if warning == partialDataErr.Error() {
 				return false

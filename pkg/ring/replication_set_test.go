@@ -201,7 +201,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			maxUnavailableZones: 1,
 			queryPartialData:    true,
 			want:                []interface{}{1},
-			expectedError:       partialdata.Error{},
+			expectedError:       partialdata.ErrPartialData,
 		},
 		{
 			name:                "with partial data enabled, should fail on instances failing in all zones",

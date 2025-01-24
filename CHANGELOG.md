@@ -14,15 +14,6 @@
 * [CHANGE] Enable Compactor and Alertmanager in target all. #6204
 * [CHANGE] Update the `cortex_ingester_inflight_push_requests` metric to represent the maximum number of inflight requests recorded in the last minute. #6437
 * [CHANGE] gRPC Client: Expose connection timeout and set default to value to 5s. #6523
-* [CHANGE] Enable analysis on Thanos PromQL engine #6472
-* [CHANGE] Log grafana headers along with query request before query execution #6391
-* [CHANGE] Log query requests in QFE before query execution #6390
-* [CHANGE] Log when a request starts running in querier #6525
-* [CHANGE] Remove openstack swfit experimental in blocks storage #6322
-* [CHANGE] Remove openstack swift experimental #6316
-* [CHANGE] Replace `cespare/xxhash` with `cespare/xxhash/v2` #6467
-* [CHANGE] Stop using global instant query codec #6328
-* [CHANGE] Unify query frontend instant and range protos #6180
 * [FEATURE] Ruler: Add an experimental flag `-ruler.query-response-format` to retrieve query response as a proto format. #6345
 * [FEATURE] Ruler: Pagination support for List Rules API. #6299
 * [FEATURE] Query Frontend/Querier: Add protobuf codec `-api.querier-default-codec` and the option to choose response compression type `-querier.response-compression`. #5527
@@ -35,13 +26,6 @@
 * [FEATURE] Query Frontend: Support a metadata federated query when `-tenant-federation.enabled=true`. #6461
 * [FEATURE] Query Frontend: Support an exemplar federated query when `-tenant-federation.enabled=true`. #6455
 * [FEATURE] Ingester/StoreGateway: Add support for cache regex query matchers via `-ingester.matchers-cache-max-items` and `-blocks-storage.bucket-store.matchers-cache-max-items`. #6477 #6491
-* [FEATURE] Add reason why the key was evicted in the `cortex_ingester_expanded_postings_cache_evicts` metric #6318
-* [FEATURE] Create feature flag to switch between current shuffle sharding group planner and partition compaction group planner #6141
-* [FEATURE] Hook up partition compaction end to end implementation #6510
-* [FEATURE] Implement partition compaction grouper #6172
-* [FEATURE] Implement partition compaction planner #6469
-* [FEATURE] Make LivenessCheck Timeout Configurable #6227
-* [FEATURE] Querier: Add day range limit for LabelNames and LabelValues #6233
 * [ENHANCEMENT] Query Frontend: Add more operation label values to the `cortex_query_frontend_queries_total` metric. #6519
 * [ENHANCEMENT] Query Frontend: Add a `source` label to query stat metrics. #6470
 * [ENHANCEMENT] Query Frontend: Add a flag `-tenant-federation.max-tenant` to limit the number of tenants for federated query. #6493
@@ -82,50 +66,14 @@
 * [ENHANCEMENT] Distributor: Added `cortex_distributor_received_samples_per_labelset_total` metric to calculate ingestion rate per label set. #6443
 * [ENHANCEMENT] Added metric name in limiter per-metric exceeded errors. #6416
 * [ENHANCEMENT] StoreGateway: Added `cortex_bucket_store_indexheader_load_duration_seconds` and `cortex_bucket_store_indexheader_download_duration_seconds` metrics for time of downloading and loading index header files. #6445
-* [ENHANCEMENT] Add cleaner logic to clean partition compaction blocks and related files #6507
-* [ENHANCEMENT] Add support for native histograms in querier protobuf codec #6368
-* [ENHANCEMENT] Add timeout on lifecycler heartbeat #6212
-* [ENHANCEMENT] Added UserReplicaGroupMetrics #6463
 * [ENHANCEMENT] Blocks Storage: Allow use of non-dualstack endpoints for S3 blocks storage via `-blocks-storage.s3.disable-dualstack`. #6522
-* [ENHANCEMENT] Discarded samples per labelset metrics for throttle by labelset #6492
-* [ENHANCEMENT] Expanded Postings Cache can cache results without the nearly created series under high load. #6417
-* [ENHANCEMENT] Ingester: Disable chunk trimming. #6270
-* [ENHANCEMENT] Improve consistency check warn log #6366
-* [ENHANCEMENT] Improve streaming on MetricsForLabelMatchersStream method #6436
-* [ENHANCEMENT] Improve validation metrics for discarded samples and exemplars #6218
-* [ENHANCEMENT] Query Frontend: add new field for dense native histogram format #6199
-* [ENHANCEMENT] Return 503 on hitting distributor instance limits #6387
-* [ENHANCEMENT] Reusing Batch Iterators #6403
-* [ENHANCEMENT] Reusing the grpc client to peform healthcheck #6260
-* [ENHANCEMENT] Store Gateway: Add pre add block ownership check #6483
-* [ENHANCEMENT] Use slice pooling to populate the query stream response #6466
-* [ENHANCEMENT] Using a single seed array for expanded postings cache on ingesters #6365
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 * [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
-* [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled. #6271
+* [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled.  #6271
 * [BUGFIX] Ingester: Fix regression on usage of cortex_ingester_queried_chunks. #6398
 * [BUGFIX] Ingester: Fix possible race condition when `active series per LabelSet` is configured. #6409
 * [BUGFIX] Query Frontend: Fix @ modifier not being applied correctly on sub queries. #6450
 * [BUGFIX] Cortex Redis flags with multiple dots #6476
-* [BUGFIX] Bug fix on JSON Tag #6339
-* [BUGFIX] Calculate # of concurrency only once at the runner #6506
-* [BUGFIX] Clean up ingester per labelset metrics #6439
-* [BUGFIX] Cleanup dangling request queue metrics #6433
-* [BUGFIX] Fix BenchmarkDistributor_Push benchmark #6309
-* [BUGFIX] Fix data race on expanded postings Cache #6369
-* [BUGFIX] Fix lazy postings merge bug #6415
-* [BUGFIX] Fix race on chunks multilevel cache + Optimize to avoid refetching already found keys. #6312
-* [BUGFIX] Fix race on the string interning #6408
-* [BUGFIX] Fix race that can cause nil reference when using expanded postings #6518
-* [BUGFIX] Fix regression of query range result cache unable to parse old cached results #6196
-* [BUGFIX] Fix typo in usage message for querier.split-queries-by-interval flag #6305
-* [BUGFIX] Fix: PostingCache promise should fetch data only once #6314
-* [BUGFIX] Fix: fix slice init length #6237
-* [BUGFIX] Fixed bug that blocks cannot be fully deleted from TSDB #6231
-* [BUGFIX] Fixed ingester ReadOnly state related bugs #6208
-* [BUGFIX] Preserve ingester state on restart #6301
-* [BUGFIX] Purge expired postings cache items due inactivity #6502
-* [BUGFIX] Util: Check context every N iterations #6250
 
 ## 1.18.1 2024-10-14
 
@@ -1225,7 +1173,7 @@ Note the blocks storage compactor runs a migration task at startup in this versi
 * [ENHANCEMENT] Improve performance of QueryStream() in ingesters. #3177
 * [ENHANCEMENT] Modules included in "All" target are now visible in output of `-modules` CLI flag. #3155
 * [ENHANCEMENT] Added `/debug/fgprof` endpoint to debug running Cortex process using `fgprof`. This adds up to the existing `/debug/...` endpoints. #3131
-* [ENHANCEMENT] Blocks storage: optimised `/api/v1/series` for blocks storage. #2976
+* [ENHANCEMENT] Blocks storage: optimised `/api/v1/series` for blocks storage. (#2976)
 * [BUGFIX] Ruler: when loading rules from "local" storage, check for directory after resolving symlink. #3137
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 * [BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. #3013

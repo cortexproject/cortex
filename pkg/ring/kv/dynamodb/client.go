@@ -26,6 +26,7 @@ type Config struct {
 	TTL            time.Duration `yaml:"ttl"`
 	PullerSyncTime time.Duration `yaml:"puller_sync_time"`
 	MaxCasRetries  int           `yaml:"max_cas_retries"`
+	Timeout        time.Duration `yaml:"timeout"`
 }
 
 type Client struct {
@@ -69,8 +70,13 @@ func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometh
 		MaxRetries: cfg.MaxCasRetries,
 	}
 
+	var kv dynamoDbClient
+	kv = dynamodbInstrumentation{kv: dynamoDB, ddbMetrics: ddbMetrics}
+	if cfg.Timeout > 0 {
+		kv = newDynamoDbKVWithTimeout(kv, cfg.Timeout)
+	}
 	c := &Client{
-		kv:             dynamodbInstrumentation{kv: dynamoDB, ddbMetrics: ddbMetrics},
+		kv:             kv,
 		codec:          cc,
 		logger:         ddbLog(logger),
 		ddbMetrics:     ddbMetrics,

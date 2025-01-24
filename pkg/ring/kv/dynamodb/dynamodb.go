@@ -259,6 +259,45 @@ func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, data []byte) map[st
 	return item
 }
 
+type dynamoDbKVWithTimeout struct {
+	ddbClient dynamoDbClient
+	timeout   time.Duration
+}
+
+func newDynamoDbKVWithTimeout(client dynamoDbClient, timeout time.Duration) *dynamoDbKVWithTimeout {
+	return &dynamoDbKVWithTimeout{ddbClient: client, timeout: timeout}
+}
+
+func (d *dynamoDbKVWithTimeout) List(ctx context.Context, key dynamodbKey) ([]string, float64, error) {
+	ctx, cancel := context.WithTimeout(ctx, d.timeout)
+	defer cancel()
+	return d.ddbClient.List(ctx, key)
+}
+
+func (d *dynamoDbKVWithTimeout) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string][]byte, float64, error) {
+	ctx, cancel := context.WithTimeout(ctx, d.timeout)
+	defer cancel()
+	return d.ddbClient.Query(ctx, key, isPrefix)
+}
+
+func (d *dynamoDbKVWithTimeout) Delete(ctx context.Context, key dynamodbKey) error {
+	ctx, cancel := context.WithTimeout(ctx, d.timeout)
+	defer cancel()
+	return d.ddbClient.Delete(ctx, key)
+}
+
+func (d *dynamoDbKVWithTimeout) Put(ctx context.Context, key dynamodbKey, data []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, d.timeout)
+	defer cancel()
+	return d.ddbClient.Put(ctx, key, data)
+}
+
+func (d *dynamoDbKVWithTimeout) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
+	ctx, cancel := context.WithTimeout(ctx, d.timeout)
+	defer cancel()
+	return d.ddbClient.Batch(ctx, put, delete)
+}
+
 func generateItemKey(key dynamodbKey) map[string]*dynamodb.AttributeValue {
 	resp := map[string]*dynamodb.AttributeValue{
 		primaryKey: {

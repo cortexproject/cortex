@@ -171,13 +171,13 @@ func TestIngesterStreaming(t *testing.T) {
 					},
 				},
 			}
-			d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(queryResponse, nil)
+			var partialDataErr error
+			if partialDataEnabled {
+				partialDataErr = partialdata.Error{}
+			}
+			d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(queryResponse, partialDataErr)
 
 			ctx := user.InjectOrgID(context.Background(), "0")
-			if partialDataEnabled {
-				d = &MockDistributor{}
-				d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(queryResponse, partialdata.Error{})
-			}
 
 			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
 				return partialDataEnabled
@@ -204,7 +204,7 @@ func TestIngesterStreaming(t *testing.T) {
 			require.NoError(t, seriesSet.Err())
 
 			if partialDataEnabled {
-				require.NotEmpty(t, seriesSet.Warnings())
+				require.Contains(t, seriesSet.Warnings(), partialdata.ErrorMsg)
 			}
 		}
 	}
@@ -218,40 +218,52 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 
 	for _, labelNamesWithMatchers := range []bool{false, true} {
 		for _, streamingEnabled := range []bool{false, true} {
-			streamingEnabled := streamingEnabled
-			labelNamesWithMatchers := labelNamesWithMatchers
-			t.Run("with matchers", func(t *testing.T) {
-				t.Parallel()
+			for _, partialDataEnabled := range []bool{false, true} {
+				streamingEnabled := streamingEnabled
+				labelNamesWithMatchers := labelNamesWithMatchers
+				t.Run("with matchers", func(t *testing.T) {
+					t.Parallel()
 
-				metrics := []model.Metric{
-					{"foo": "bar"},
-					{"job": "baz"},
-					{"job": "baz", "foo": "boom"},
-				}
-				d := &MockDistributor{}
+					metrics := []model.Metric{
+						{"foo": "bar"},
+						{"job": "baz"},
+						{"job": "baz", "foo": "boom"},
+					}
+					d := &MockDistributor{}
 
-				if labelNamesWithMatchers {
-					d.On("LabelNames", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-						Return(labelNames, nil)
-					d.On("LabelNamesStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-						Return(labelNames, nil)
-				} else {
-					d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-						Return(metrics, nil)
-					d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-						Return(metrics, nil)
-				}
+					var partialDataErr error
+					if partialDataEnabled {
+						partialDataErr = partialdata.Error{}
+					}
+					if labelNamesWithMatchers {
+						d.On("LabelNames", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+							Return(labelNames, partialDataErr)
+						d.On("LabelNamesStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+							Return(labelNames, partialDataErr)
+					} else {
+						d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+							Return(metrics, partialDataErr)
+						d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+							Return(metrics, partialDataErr)
+					}
 
-				queryable := newDistributorQueryable(d, streamingEnabled, labelNamesWithMatchers, nil, 0, nil)
-				querier, err := queryable.Querier(mint, maxt)
-				require.NoError(t, err)
+					queryable := newDistributorQueryable(d, streamingEnabled, labelNamesWithMatchers, nil, 0, func(string) bool {
+						return partialDataEnabled
+					})
+					querier, err := queryable.Querier(mint, maxt)
+					require.NoError(t, err)
 
-				ctx := context.Background()
-				names, warnings, err := querier.LabelNames(ctx, nil, someMatchers...)
-				require.NoError(t, err)
-				assert.Empty(t, warnings)
-				assert.Equal(t, labelNames, names)
-			})
+					ctx := context.Background()
+					names, warnings, err := querier.LabelNames(ctx, nil, someMatchers...)
+					require.NoError(t, err)
+					if partialDataEnabled {
+						assert.Contains(t, warnings, partialdata.ErrorMsg)
+					} else {
+						assert.Empty(t, warnings)
+					}
+					assert.Equal(t, labelNames, names)
+				})
+			}
 		}
 	}
 }

@@ -132,9 +132,17 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 			ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(minT), model.Time(maxT), sp, partialDataEnabled, matchers...)
 		}
 
-		if err != nil {
+		if err != nil && !partialdata.IsPartialDataError(err) {
 			return storage.ErrSeriesSet(err)
 		}
+
+		seriesSet := series.MetricsToSeriesSet(ctx, sortSeries, ms)
+
+		if partialdata.IsPartialDataError(err) {
+			warning := seriesSet.Warnings()
+			return series.NewSeriesSetWithWarnings(seriesSet, warning.Add(err))
+		}
+
 		return series.MetricsToSeriesSet(ctx, sortSeries, ms)
 	}
 
@@ -177,8 +185,8 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, pa
 	seriesSet := series.NewConcreteSeriesSet(sortSeries, serieses)
 
 	if partialdata.IsPartialDataError(err) {
-		warning := seriesSet.Warnings()
-		return series.NewSeriesSetWithWarnings(seriesSet, warning.Add(err))
+		warnings := seriesSet.Warnings()
+		return series.NewSeriesSetWithWarnings(seriesSet, warnings.Add(err))
 	}
 
 	return seriesSet
@@ -196,6 +204,11 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 		lvs, err = q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
 	} else {
 		lvs, err = q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
+	}
+
+	if partialdata.IsPartialDataError(err) {
+		warnings := annotations.Annotations(nil)
+		return lvs, warnings.Add(err), nil
 	}
 
 	return lvs, nil, err
@@ -222,6 +235,11 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 		ln, err = q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
 	}
 
+	if partialdata.IsPartialDataError(err) {
+		warnings := annotations.Annotations(nil)
+		return ln, warnings.Add(err), nil
+	}
+
 	return ln, nil, err
 }
 
@@ -241,7 +259,7 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *
 		ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), labelHintsToSelectHints(hints), partialDataEnabled, matchers...)
 	}
 
-	if err != nil {
+	if err != nil && !partialdata.IsPartialDataError(err) {
 		return nil, nil, err
 	}
 	namesMap := make(map[string]struct{})
@@ -257,6 +275,11 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *
 		names = append(names, name)
 	}
 	sort.Strings(names)
+
+	if partialdata.IsPartialDataError(err) {
+		warnings := annotations.Annotations(nil)
+		return names, warnings.Add(err), nil
+	}
 
 	return names, nil, nil
 }

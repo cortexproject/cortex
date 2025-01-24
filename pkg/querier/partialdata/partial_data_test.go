@@ -9,5 +9,5 @@ import (
 
 func TestPartialData_ReturnPartialData(t *testing.T) {
 	assert.False(t, IsPartialDataError(fmt.Errorf("")))
-	assert.True(t, IsPartialDataError(Error{}))
+	assert.True(t, IsPartialDataError(ErrPartialData))
 }

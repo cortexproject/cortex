@@ -204,7 +204,7 @@ func Test_stripEvaluationFields(t *testing.T) {
 	require.JSONEq(t, expected, string(output))
 }
 
-// stripEvaluationFields removes sets evaluation-related fields of a rules API response to zero values.
+// stripEvaluationFields sets evaluation-related fields of a rules API response to zero values.
 func stripEvaluationFields(t *testing.T, r util_api.Response) {
 	dataMap, ok := r.Data.(map[string]interface{})
 	if !ok {

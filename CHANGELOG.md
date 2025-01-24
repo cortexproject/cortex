@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-* [FEATURE] Querier: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
+* [FEATURE] Querier/Ruler: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
 
 ## 1.19.0 in progress
 

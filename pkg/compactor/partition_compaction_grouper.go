@@ -499,9 +499,11 @@ func (g *PartitionCompactionGrouper) partitionBlocksGroup(partitionCount int, bl
 	addToPartitionedGroups := func(blocks []*metadata.Meta, partitionID int) {
 		if _, ok := partitionedGroups[partitionID]; !ok {
 			partitionedGroups[partitionID] = blocksGroupWithPartition{
-				rangeStart: rangeStart,
-				rangeEnd:   rangeEnd,
-				blocks:     []*metadata.Meta{},
+				blocksGroup: blocksGroup{
+					rangeStart: rangeStart,
+					rangeEnd:   rangeEnd,
+					blocks:     []*metadata.Meta{},
+				},
 			}
 		}
 		partitionedGroup := partitionedGroups[partitionID]
@@ -868,9 +870,6 @@ func (t *timeRangeStatus) previousTimeRangeDuration() time.Duration {
 
 type blocksGroupWithPartition struct {
 	blocksGroup
-	rangeStart           int64 // Included.
-	rangeEnd             int64 // Excluded.
-	blocks               []*metadata.Meta
 	groupHash            uint32
 	partitionedGroupInfo *PartitionedGroupInfo
 	partition            Partition

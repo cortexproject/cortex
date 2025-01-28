@@ -67,6 +67,7 @@
 * [ENHANCEMENT] Added metric name in limiter per-metric exceeded errors. #6416
 * [ENHANCEMENT] StoreGateway: Added `cortex_bucket_store_indexheader_load_duration_seconds` and `cortex_bucket_store_indexheader_download_duration_seconds` metrics for time of downloading and loading index header files. #6445
 * [ENHANCEMENT] Blocks Storage: Allow use of non-dualstack endpoints for S3 blocks storage via `-blocks-storage.s3.disable-dualstack`. #6522
+* [ENHANCEMENT] Add `auto_forget_unhealthy_periods` for ring to auto forget unhealthy compactors. #6533
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 * [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
 * [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled.  #6271

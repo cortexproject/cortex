@@ -27,6 +27,12 @@ var (
 	errInvalidTokensGeneratorStrategy = errors.New("invalid token generator strategy")
 )
 
+type LifecyclerDelegate interface {
+	// OnRingInstanceHeartbeat is called while the instance is updating its heartbeat
+	// in the ring.
+	OnRingInstanceHeartbeat(lifecycler *Lifecycler, ctx context.Context)
+}
+
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring"`
@@ -108,6 +114,7 @@ type Lifecycler struct {
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
 	KVStore         kv.Client
+	delegate        LifecyclerDelegate
 
 	actorChan    chan func()
 	autojoinChan chan struct{}
@@ -148,6 +155,22 @@ type Lifecycler struct {
 	logger            log.Logger
 
 	tg TokenGenerator
+}
+
+func NewLifecyclerWithDelegate(
+	cfg LifecyclerConfig,
+	flushTransferer FlushTransferer,
+	ringName, ringKey string,
+	autoJoinOnStartup, flushOnShutdown bool,
+	logger log.Logger,
+	reg prometheus.Registerer,
+	delegate LifecyclerDelegate,
+) (*Lifecycler, error) {
+	l, err := NewLifecycler(cfg, flushTransferer, ringName, ringKey, autoJoinOnStartup, flushOnShutdown, logger, reg)
+	if l != nil {
+		l.delegate = delegate
+	}
+	return l, err
 }
 
 // NewLifecycler creates new Lifecycler. It must be started via StartAsync.
@@ -601,6 +624,9 @@ func (i *Lifecycler) heartbeat(ctx context.Context) {
 	i.lifecyclerMetrics.consulHeartbeats.Inc()
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.HeartbeatPeriod)
 	defer cancel()
+	if i.delegate != nil {
+		i.delegate.OnRingInstanceHeartbeat(i, ctx)
+	}
 	if err := i.updateConsul(ctx); err != nil {
 		level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 	}

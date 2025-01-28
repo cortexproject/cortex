@@ -142,12 +142,13 @@ var (
 
 // Config for a Ring
 type Config struct {
-	KVStore                kv.Config              `yaml:"kvstore"`
-	HeartbeatTimeout       time.Duration          `yaml:"heartbeat_timeout"`
-	ReplicationFactor      int                    `yaml:"replication_factor"`
-	ZoneAwarenessEnabled   bool                   `yaml:"zone_awareness_enabled"`
-	ExcludedZones          flagext.StringSliceCSV `yaml:"excluded_zones"`
-	DetailedMetricsEnabled bool                   `yaml:"detailed_metrics_enabled"`
+	KVStore                    kv.Config              `yaml:"kvstore"`
+	HeartbeatTimeout           time.Duration          `yaml:"heartbeat_timeout"`
+	ReplicationFactor          int                    `yaml:"replication_factor"`
+	ZoneAwarenessEnabled       bool                   `yaml:"zone_awareness_enabled"`
+	ExcludedZones              flagext.StringSliceCSV `yaml:"excluded_zones"`
+	DetailedMetricsEnabled     bool                   `yaml:"detailed_metrics_enabled"`
+	AutoForgetUnhealthyPeriods int                    `yaml:"auto_forget_unhealthy_periods"`
 
 	// Whether the shuffle-sharding subring cache is disabled. This option is set
 	// internally and never exposed to the user.
@@ -168,6 +169,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.ReplicationFactor, prefix+"distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, prefix+"distributor.zone-awareness-enabled", false, "True to enable the zone-awareness and replicate ingested samples across different availability zones.")
 	f.Var(&cfg.ExcludedZones, prefix+"distributor.excluded-zones", "Comma-separated list of zones to exclude from the ring. Instances in excluded zones will be filtered out from the ring.")
+	f.IntVar(&cfg.AutoForgetUnhealthyPeriods, prefix+"ring.auto-forget-unhealthy-periods", -1, "The number of heartbeat periods to occur after an ingester becomes unhealthy before it is forgotten from the ring. -1 to disable")
 }
 
 type instanceInfo struct {
@@ -213,6 +215,7 @@ type Ring struct {
 	numTokensGaugeVec       *prometheus.GaugeVec
 	oldestTimestampGaugeVec *prometheus.GaugeVec
 	reportedOwners          map[string]struct{}
+	unhealthyPeriodsCount   map[string]int
 
 	logger log.Logger
 }
@@ -277,7 +280,8 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 			Help:        "Timestamp of the oldest member in the ring.",
 			ConstLabels: map[string]string{"name": name}},
 			[]string{"state"}),
-		logger: logger,
+		logger:                logger,
+		unhealthyPeriodsCount: make(map[string]int),
 	}
 
 	r.Service = services.NewBasicService(r.starting, r.loop, nil).WithName(fmt.Sprintf("%s ring client", name))
@@ -653,6 +657,43 @@ func (r *Ring) countTokens() (map[string]uint32, map[string]int64) {
 	}
 
 	return numTokens, owned
+}
+
+// autoForgetUnhealthy forgets unhealthy ingesters from the ring.
+func (r *Ring) AutoForgetUnhealthy(ctx context.Context) {
+	if r.cfg.AutoForgetUnhealthyPeriods < 0 {
+		return
+	}
+
+	//remove counts for ingesters no longer in the ring
+	for id := range r.unhealthyPeriodsCount {
+		if _, ok := r.ringDesc.Ingesters[id]; !ok {
+			delete(r.unhealthyPeriodsCount, id)
+		}
+	}
+
+	//update counts for ingesters in the ring and forget ingesters
+	for id, instance := range r.ringDesc.Ingesters {
+		if r.IsHealthy(&instance, Reporting, r.KVClient.LastUpdateTime(r.key)) {
+			delete(r.unhealthyPeriodsCount, id)
+		} else {
+			if _, ok := r.unhealthyPeriodsCount[id]; !ok {
+				r.unhealthyPeriodsCount[id] = 0
+			}
+			r.unhealthyPeriodsCount[id] += 1
+
+			if r.unhealthyPeriodsCount[id] > r.cfg.AutoForgetUnhealthyPeriods {
+				unregister := func(in interface{}) (out interface{}, retry bool, err error) {
+					ringDesc := in.(*Desc)
+					ringDesc.RemoveIngester(id)
+					level.Info(r.logger).Log("msg", "Forgetting from ring", id)
+					return ringDesc, true, nil
+				}
+				r.KVClient.CAS(ctx, r.key, unregister)
+				delete(r.unhealthyPeriodsCount, id)
+			}
+		}
+	}
 }
 
 // updateRingMetrics updates ring metrics. Caller must be holding the Write lock!

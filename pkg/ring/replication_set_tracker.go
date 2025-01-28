@@ -12,6 +12,9 @@ type replicationSetResultTracker interface {
 	// Returns true if the maximum number of failed executions have been reached.
 	failed() bool
 
+	// Returns true if executions failed in all zones. Only relevant for zoneAwareResultTracker.
+	failedInAllZones() bool
+
 	// Returns recorded results.
 	getResults() []interface{}
 }
@@ -51,6 +54,10 @@ func (t *defaultResultTracker) failed() bool {
 	return t.numErrors > t.maxErrors
 }
 
+func (t *defaultResultTracker) failedInAllZones() bool {
+	return false
+}
+
 func (t *defaultResultTracker) getResults() []interface{} {
 	return t.results
 }
@@ -65,6 +72,7 @@ type zoneAwareResultTracker struct {
 	resultsPerZone      map[string][]interface{}
 	numInstances        int
 	zoneResultsQuorum   bool
+	zoneCount           int
 }
 
 func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int, zoneResultsQuorum bool) *zoneAwareResultTracker {
@@ -81,6 +89,7 @@ func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int
 	}
 	t.minSuccessfulZones = len(t.waitingByZone) - maxUnavailableZones
 	t.resultsPerZone = make(map[string][]interface{}, len(t.waitingByZone))
+	t.zoneCount = len(t.waitingByZone)
 
 	return t
 }
@@ -117,6 +126,11 @@ func (t *zoneAwareResultTracker) succeeded() bool {
 func (t *zoneAwareResultTracker) failed() bool {
 	failedZones := len(t.failuresByZone)
 	return failedZones > t.maxUnavailableZones
+}
+
+func (t *zoneAwareResultTracker) failedInAllZones() bool {
+	failedZones := len(t.failuresByZone)
+	return failedZones == t.zoneCount
 }
 
 func (t *zoneAwareResultTracker) getResults() []interface{} {

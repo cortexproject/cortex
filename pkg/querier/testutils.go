@@ -29,31 +29,31 @@ func (m *MockDistributor) QueryExemplars(ctx context.Context, from, to model.Tim
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(*client.ExemplarQueryResponse), args.Error(1)
 }
-func (m *MockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
+func (m *MockDistributor) QueryStream(ctx context.Context, from, to model.Time, partialDataEnabled bool, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(*client.QueryStreamResponse), args.Error(1)
 }
-func (m *MockDistributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, lbl model.LabelName, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
+func (m *MockDistributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, lbl model.LabelName, hints *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error) {
 	args := m.Called(ctx, from, to, lbl, hints, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, lbl model.LabelName, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
+func (m *MockDistributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, lbl model.LabelName, hints *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error) {
 	args := m.Called(ctx, from, to, lbl, hints, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) LabelNames(ctx context.Context, from, to model.Time, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
+func (m *MockDistributor) LabelNames(ctx context.Context, from model.Time, to model.Time, hints *storage.LabelHints, b bool, matchers ...*labels.Matcher) ([]string, error) {
 	args := m.Called(ctx, from, to, hints, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) LabelNamesStream(ctx context.Context, from, to model.Time, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
+func (m *MockDistributor) LabelNamesStream(ctx context.Context, from model.Time, to model.Time, hints *storage.LabelHints, b bool, matchers ...*labels.Matcher) ([]string, error) {
 	args := m.Called(ctx, from, to, hints, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (m *MockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, hints *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	args := m.Called(ctx, from, to, hints, matchers)
 	return args.Get(0).([]model.Metric), args.Error(1)
 }
-func (m *MockDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, to model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (m *MockDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, to model.Time, hints *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	args := m.Called(ctx, from, to, hints, matchers)
 	return args.Get(0).([]model.Metric), args.Error(1)
 }
@@ -68,7 +68,7 @@ type MockLimitingDistributor struct {
 	response *client.QueryStreamResponse
 }
 
-func (m *MockLimitingDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
+func (m *MockLimitingDistributor) QueryStream(ctx context.Context, from, to model.Time, partialDataEnabled bool, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	var (
 		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)

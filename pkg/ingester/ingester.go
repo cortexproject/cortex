@@ -2291,6 +2291,11 @@ func (i *Ingester) blockChunkQuerierFunc(userId string) tsdb.BlockChunkQuerierFu
 		if db != nil {
 			postingCache = db.postingCache
 		}
+
+		// Caching expanded postings for queries that are "in the future" may lead to incorrect results being cached.
+		// This occurs because the tsdb.PostingsForMatchers function can return invalid data in such scenarios.
+		// For more details, see: https://github.com/cortexproject/cortex/issues/6556
+		// TODO: alanprot: Consider removing this logic when prometheus is updated as this logic is "fixed" upstream.
 		if postingCache == nil || mint > db.Head().MaxTime() {
 			return tsdb.NewBlockChunkQuerier(b, mint, maxt)
 		}

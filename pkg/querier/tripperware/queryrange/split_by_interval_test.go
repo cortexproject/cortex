@@ -603,7 +603,7 @@ func Test_dynamicIntervalFn(t *testing.T) {
 				Step:  5 * 60 * seconds,
 				Query: "sum by (pod) (up)",
 			},
-			verticalShardSize: 3,
+			verticalShardSize:      3,
 			maxQueryIntervalSplits: 15,
 			expectedInterval:       12 * day,
 		},
@@ -616,7 +616,7 @@ func Test_dynamicIntervalFn(t *testing.T) {
 				Step:  60 * seconds,
 				Query: "rate(up[2d]) + rate(up[5d]) + rate(up[7d])",
 			},
-			verticalShardSize: 3,
+			verticalShardSize:        3,
 			maxDurationOfDataFetched: 200 * day,
 			expectedInterval:         33 * day,
 		},
@@ -759,6 +759,168 @@ func Test_getIntervalFromMaxSplits(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			interval := getIntervalFromMaxSplits(tc.req, tc.baseSplitInterval, tc.maxSplits)
 			require.Equal(t, tc.expectedInterval, interval)
+		})
+	}
+}
+
+func Test_analyzeDurationFetchedByQuery(t *testing.T) {
+	for _, tc := range []struct {
+		name                           string
+		baseSplitInterval              time.Duration
+		lookbackDelta                  time.Duration
+		req                            tripperware.Request
+		expectedQueryRangeIntervals    int
+		expectedExtraIntervalsPerSplit int
+		expectedLookbackDeltaIntervals int
+	}{
+		{
+			name:              "query range 00:00 to 23:59",
+			baseSplitInterval: time.Hour,
+			lookbackDelta:     0,
+			req: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   24*3600*seconds - 1,
+				Step:  60 * seconds,
+				Query: "up",
+			},
+			expectedQueryRangeIntervals:    24,
+			expectedExtraIntervalsPerSplit: 0,
+			expectedLookbackDeltaIntervals: 0,
+		},
+		{
+			name:              "query range 00:00 to 00:00 next day",
+			baseSplitInterval: time.Hour,
+			lookbackDelta:     0,
+			req: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   24 * 3600 * seconds,
+				Step:  60 * seconds,
+				Query: "up",
+			},
+			expectedQueryRangeIntervals:    25,
+			expectedExtraIntervalsPerSplit: 0,
+			expectedLookbackDeltaIntervals: 0,
+		},
+		{
+			name:              "query range 00:00 to 23:59, with 5 min lookback",
+			baseSplitInterval: time.Hour,
+			lookbackDelta:     lookbackDelta,
+			req: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   24*3600*seconds - 1,
+				Step:  60 * seconds,
+				Query: "up",
+			},
+			expectedQueryRangeIntervals:    24,
+			expectedExtraIntervalsPerSplit: 0,
+			expectedLookbackDeltaIntervals: 1,
+		},
+		{
+			name:              "query range 00:00 to 23:59, with 5 hour subquery",
+			baseSplitInterval: time.Hour,
+			lookbackDelta:     lookbackDelta,
+			req: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   24*3600*seconds - 1,
+				Step:  60 * seconds,
+				Query: "up[5h:10m]",
+			},
+			expectedQueryRangeIntervals:    24,
+			expectedExtraIntervalsPerSplit: 5,
+			expectedLookbackDeltaIntervals: 1,
+		},
+		{
+			name:              "query range 00:00 to 23:59, with 2 hour matrix selector",
+			baseSplitInterval: time.Hour,
+			lookbackDelta:     lookbackDelta,
+			req: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   24*3600*seconds - 1,
+				Step:  60 * seconds,
+				Query: "rate(up[2h])",
+			},
+			expectedQueryRangeIntervals:    24,
+			expectedExtraIntervalsPerSplit: 2,
+			expectedLookbackDeltaIntervals: 0,
+		},
+		{
+			name:              "query range 00:00 to 23:59, with multiple matrix selectors",
+			baseSplitInterval: time.Hour,
+			lookbackDelta:     lookbackDelta,
+			req: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   24*3600*seconds - 1,
+				Step:  60 * seconds,
+				Query: "rate(up[2h]) + rate(up[5h]) + rate(up[7h])",
+			},
+			expectedQueryRangeIntervals:    72,
+			expectedExtraIntervalsPerSplit: 14,
+			expectedLookbackDeltaIntervals: 0,
+		},
+		{
+			name:              "query range 60 day with 20 day subquery",
+			baseSplitInterval: day,
+			lookbackDelta:     lookbackDelta,
+			req: &tripperware.PrometheusRequest{
+				Start: 0 * 24 * 3600 * seconds,
+				End:   60 * 24 * 3600 * seconds,
+				Step:  5 * 60 * seconds,
+				Query: "up[20d:1h]",
+			},
+			expectedQueryRangeIntervals:    61,
+			expectedExtraIntervalsPerSplit: 20,
+			expectedLookbackDeltaIntervals: 1,
+		},
+		{
+			name:              "query range 35 day, with 15 day subquery and 1 week offset",
+			baseSplitInterval: day,
+			lookbackDelta:     lookbackDelta,
+			req: &tripperware.PrometheusRequest{
+				Start: 0 * 24 * 3600 * seconds,
+				End:   35 * 24 * 3600 * seconds,
+				Step:  5 * 60 * seconds,
+				Query: "up[15d:1h] offset 1w",
+			},
+			expectedQueryRangeIntervals:    36,
+			expectedExtraIntervalsPerSplit: 15,
+			expectedLookbackDeltaIntervals: 1,
+		},
+		{
+			name:              "query range 10 days, with multiple subqueries and offsets",
+			baseSplitInterval: day,
+			lookbackDelta:     lookbackDelta,
+			req: &tripperware.PrometheusRequest{
+				Start: 10 * 24 * 3600 * seconds,
+				End:   20 * 24 * 3600 * seconds,
+				Step:  5 * 60 * seconds,
+				Query: "rate(up[2d:1h] offset 1w) + rate(up[5d:1h] offset 2w) + rate(up[7d:1h] offset 3w)",
+			},
+			expectedQueryRangeIntervals:    33,
+			expectedExtraIntervalsPerSplit: 14,
+			expectedLookbackDeltaIntervals: 3,
+		},
+		{
+			name:              "query range spans 40 days with 4 day matrix selector",
+			baseSplitInterval: day,
+			lookbackDelta:     lookbackDelta,
+			req: &tripperware.PrometheusRequest{
+				Start: (13 * 24 * 3600 * seconds) - (7*3600*seconds - 1300*seconds),
+				End:   (51 * 24 * 3600 * seconds) + (1*3600*seconds + 4900*seconds),
+				Step:  5 * 60 * seconds,
+				Query: "up[4d]",
+			},
+			expectedQueryRangeIntervals:    40,
+			expectedExtraIntervalsPerSplit: 4,
+			expectedLookbackDeltaIntervals: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := parser.ParseExpr(tc.req.GetQuery())
+			require.Nil(t, err)
+			queryRangeIntervals, extraIntervalsPerSplit, lookbackDeltaIntervals := analyzeDurationFetchedByQuery(expr, tc.req.GetStart(), tc.req.GetEnd(), tc.baseSplitInterval, tc.lookbackDelta)
+			require.Equal(t, tc.expectedQueryRangeIntervals, queryRangeIntervals)
+			require.Equal(t, tc.expectedExtraIntervalsPerSplit, extraIntervalsPerSplit)
+			require.Equal(t, tc.expectedLookbackDeltaIntervals, lookbackDeltaIntervals)
 		})
 	}
 }

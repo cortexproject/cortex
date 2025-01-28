@@ -174,9 +174,9 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 		}
 
 		// First analyze the query using original start-end time. Additional duration fetched by lookbackDelta here only reflects the start time of first split
-		queryRangeIntervalsCount, extraIntervalsPerSplitCount, firstSplitLookbackDeltaIntervals := analyzeDurationFetchedByQuery(queryExpr, r.GetStart(), r.GetEnd(), baseInterval, lookbackDelta)
-		if extraIntervalsPerSplitCount == 0 {
-			extraIntervalsPerSplitCount = 1 // avoid division by 0
+		queryRangeIntervals, extraIntervalsPerSplit, firstSplitLookbackDeltaIntervals := analyzeDurationFetchedByQuery(queryExpr, r.GetStart(), r.GetEnd(), baseInterval, lookbackDelta)
+		if extraIntervalsPerSplit == 0 {
+			extraIntervalsPerSplit = 1 // avoid division by 0
 		}
 
 		// Next analyze the query using the next split start time to find the additional duration fetched by lookbackDelta for other subsequent splits
@@ -194,10 +194,10 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 		var maxSplitsByDurationFetched int
 		if maxDurationFetchedConfig > 0 {
 			maxIntervalsFetchedByQuery := int(maxDurationFetchedConfig / baseInterval)
-			// Equation for max duration fetched by example query: up[15d:1h] with a range of 30 days, a base split interval of 24 hours, and 5 min lookbackDelta
+			// Example equation for duration fetched by query: up[15d:1h] with a range of 30 days, a base split interval of 24 hours, and 5 min lookbackDelta
 			// MaxFetchedStorageDataDurationPerQuery > (30 + ((15 + 1) x horizontal splits)) x vertical shards
 			// Rearranging the equation to find the max horizontal splits
-			maxSplitsByDurationFetched = ((maxIntervalsFetchedByQuery / queryVerticalShardSize) - queryRangeIntervalsCount - firstSplitLookbackDeltaIntervals) / (extraIntervalsPerSplitCount + otherSplitsLookbackDeltaIntervals)
+			maxSplitsByDurationFetched = ((maxIntervalsFetchedByQuery / queryVerticalShardSize) - queryRangeIntervals - firstSplitLookbackDeltaIntervals) / (extraIntervalsPerSplit + otherSplitsLookbackDeltaIntervals)
 			if maxSplitsByDurationFetched <= 0 {
 				maxSplitsByDurationFetched = 1
 			}
@@ -287,42 +287,42 @@ func getIntervalFromMaxSplits(r tripperware.Request, baseInterval time.Duration,
 // of the base split interval.
 //
 // Returns:
-//   - queryRangeIntervalsCount: The total count of intervals fetched by the original start-end
+//   - queryRangeIntervals: The total number of intervals fetched by the original start-end
 //     range of the query. This value is constant and does not depend on the number of splits.
-//   - extraIntervalsPerSplitCount: The count of additional intervals fetched by matrix selectors
+//   - extraIntervalsPerSplit: The number of additional intervals fetched by matrix selectors
 //     or subqueries. This value will be fetched once for every split.
-//   - lookbackDeltaIntervalsCount: The count of additional intervals fetched by the lookbackDelta
+//   - lookbackDeltaIntervals: The number of additional intervals fetched by the lookbackDelta
 //     for the specified start time.
 //
 // Example:
 // Query up[15d:1h] with a range of 30 days, a base split interval of 24 hours, and 5 min lookbackDelta
-// - queryRangeIntervalsCount = 30
-// - extraIntervalsPerSplitCount = 15
-// - lookbackDeltaIntervalsCount = 1
-func analyzeDurationFetchedByQuery(expr parser.Expr, queryStart int64, queryEnd int64, baseInterval time.Duration, lookbackDelta time.Duration) (queryRangeIntervalsCount int, extraIntervalsPerSplitCount int, lookbackDeltaIntervalsCount int) {
-	queryRangeIntervalsCount = 0
-	lookbackDeltaIntervalsCount = 0
+// - queryRangeIntervals = 30
+// - extraIntervalsPerSplit = 15
+// - lookbackDeltaIntervals = 1
+func analyzeDurationFetchedByQuery(expr parser.Expr, queryStart int64, queryEnd int64, baseInterval time.Duration, lookbackDelta time.Duration) (queryRangeIntervals int, extraIntervalsPerSplit int, lookbackDeltaIntervals int) {
+	queryRangeIntervals = 0
+	lookbackDeltaIntervals = 0
 	baseIntervalMillis := util.DurationMilliseconds(baseInterval)
 
-	totalDurationFetchedCount := 0
+	totalDurationFetched := 0
 	var evalRange time.Duration
 	parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
 		switch n := node.(type) {
 		case *parser.VectorSelector:
-			// Increment count of intervals fetched by the original start-end time range
-			queryRangeIntervalsCount += int((queryEnd/baseIntervalMillis)-(queryStart/baseIntervalMillis)) + 1
+			// Increment  of intervals fetched by the original start-end time range
+			queryRangeIntervals += int((queryEnd/baseIntervalMillis)-(queryStart/baseIntervalMillis)) + 1
 
 			// Adjust start and end time based on matrix selectors or subquery, this excludes lookbackDelta
 			start, end := util.GetTimeRangesForSelector(queryStart, queryEnd, 0, n, path, evalRange)
 			startIntervalIndex := floorDiv(start, baseIntervalMillis)
 			endIntervalIndex := floorDiv(end, baseIntervalMillis)
-			totalDurationFetchedCount += int(endIntervalIndex-startIntervalIndex) + 1
+			totalDurationFetched += int(endIntervalIndex-startIntervalIndex) + 1
 
-			// Adjust start time based on lookbackDelta and increment the additional count of intervals fetched by it
+			// Adjust start time based on lookbackDelta and increment the additional  of intervals fetched by it
 			startLookbackDelta := start - util.DurationMilliseconds(lookbackDelta)
 			startLookbackDeltaIntervalIndex := floorDiv(startLookbackDelta, baseIntervalMillis)
 			if evalRange == 0 && startLookbackDeltaIntervalIndex < startIntervalIndex {
-				lookbackDeltaIntervalsCount += int(startIntervalIndex - startLookbackDeltaIntervalIndex)
+				lookbackDeltaIntervals += int(startIntervalIndex - startLookbackDeltaIntervalIndex)
 			}
 			evalRange = 0
 		case *parser.MatrixSelector:
@@ -330,9 +330,9 @@ func analyzeDurationFetchedByQuery(expr parser.Expr, queryStart int64, queryEnd 
 		}
 		return nil
 	})
-	extraIntervalsPerSplitCount = totalDurationFetchedCount - queryRangeIntervalsCount
+	extraIntervalsPerSplit = totalDurationFetched - queryRangeIntervals
 
-	return queryRangeIntervalsCount, extraIntervalsPerSplitCount, lookbackDeltaIntervalsCount
+	return queryRangeIntervals, extraIntervalsPerSplit, lookbackDeltaIntervals
 }
 
 func floorDiv(a, b int64) int64 {

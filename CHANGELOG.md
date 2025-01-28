@@ -2,6 +2,9 @@
 
 ## master / unreleased
 
+## 1.17.2 2025-01-28
+* [BUGFIX] Fix single distributor latency
+
 ## 1.17.1 2024-05-20
 
 * [CHANGE] Query Frontend/Ruler: Omit empty data, errorType and error fields in API response. #5953 #5954

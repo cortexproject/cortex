@@ -9,7 +9,7 @@ require (
 	github.com/armon/go-metrics v0.4.1
 	github.com/aws/aws-sdk-go v1.55.5
 	github.com/bradfitz/gomemcache v0.0.0-20230905024940-24af94b03874
-	github.com/cortexproject/promqlsmith v0.0.0-20241121054008-8b48fe2471ef
+	github.com/cortexproject/promqlsmith v0.0.0-20250128002239-eaf3e57157fc
 	github.com/dustin/go-humanize v1.0.1
 	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb

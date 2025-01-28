@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/segmentio/fasthash/fnv1a"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
@@ -100,6 +101,9 @@ func (cfg *PostingsCacheConfig) RegisterFlagsWithPrefix(prefix, block string, f 
 type ExpandedPostingsCacheFactory struct {
 	seedByHash *seedByHash
 	cfg        TSDBPostingsCacheConfig
+
+	headCachedBytes   atomic.Int64
+	blocksCachedBytes atomic.Int64
 }
 
 func NewExpandedPostingsCacheFactory(cfg TSDBPostingsCacheConfig) *ExpandedPostingsCacheFactory {
@@ -118,7 +122,7 @@ func NewExpandedPostingsCacheFactory(cfg TSDBPostingsCacheConfig) *ExpandedPosti
 }
 
 func (f *ExpandedPostingsCacheFactory) NewExpandedPostingsCache(userId string, metrics *ExpandedPostingsCacheMetrics) ExpandedPostingsCache {
-	return newBlocksPostingsForMatchersCache(userId, f.cfg, metrics, f.seedByHash)
+	return newBlocksPostingsForMatchersCache(userId, f.cfg, metrics, f.seedByHash, &f.headCachedBytes, &f.blocksCachedBytes)
 }
 
 type ExpandedPostingsCache interface {
@@ -140,7 +144,7 @@ type blocksPostingsForMatchersCache struct {
 	seedByHash *seedByHash
 }
 
-func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfig, metrics *ExpandedPostingsCacheMetrics, seedByHash *seedByHash) ExpandedPostingsCache {
+func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfig, metrics *ExpandedPostingsCacheMetrics, seedByHash *seedByHash, headCachedBytes, blocksCachedBytes *atomic.Int64) ExpandedPostingsCache {
 	if cfg.PostingsForMatchers == nil {
 		cfg.PostingsForMatchers = tsdb.PostingsForMatchers
 	}
@@ -150,8 +154,8 @@ func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfi
 	}
 
 	return &blocksPostingsForMatchersCache{
-		headCache:               newFifoCache[[]storage.SeriesRef](cfg.Head, "head", metrics, cfg.timeNow),
-		blocksCache:             newFifoCache[[]storage.SeriesRef](cfg.Blocks, "block", metrics, cfg.timeNow),
+		headCache:               newFifoCache[[]storage.SeriesRef](cfg.Head, headCachedBytes, "head", metrics, cfg.timeNow),
+		blocksCache:             newFifoCache[[]storage.SeriesRef](cfg.Blocks, blocksCachedBytes, "block", metrics, cfg.timeNow),
 		postingsForMatchersFunc: cfg.PostingsForMatchers,
 		timeNow:                 cfg.timeNow,
 		metrics:                 metrics,
@@ -344,10 +348,10 @@ type fifoCache[V any] struct {
 	// Fields from here should be locked
 	cachedMtx   sync.RWMutex
 	cached      *list.List
-	cachedBytes int64
+	cachedBytes *atomic.Int64
 }
 
-func newFifoCache[V any](cfg PostingsCacheConfig, name string, metrics *ExpandedPostingsCacheMetrics, timeNow func() time.Time) *fifoCache[V] {
+func newFifoCache[V any](cfg PostingsCacheConfig, cachedBytes *atomic.Int64, name string, metrics *ExpandedPostingsCacheMetrics, timeNow func() time.Time) *fifoCache[V] {
 	return &fifoCache[V]{
 		cachedValues: new(sync.Map),
 		cached:       list.New(),
@@ -355,6 +359,7 @@ func newFifoCache[V any](cfg PostingsCacheConfig, name string, metrics *Expanded
 		timeNow:      timeNow,
 		name:         name,
 		metrics:      *metrics,
+		cachedBytes:  cachedBytes,
 	}
 }
 
@@ -434,7 +439,7 @@ func (c *fifoCache[V]) shouldEvictHead() (string, bool) {
 		return "", false
 	}
 
-	if c.cachedBytes > c.cfg.MaxBytes {
+	if c.cachedBytes.Load() > c.cfg.MaxBytes {
 		return "full", true
 	}
 
@@ -454,7 +459,7 @@ func (c *fifoCache[V]) evictHead() {
 	c.cached.Remove(front)
 	oldestKey := front.Value.(string)
 	if oldest, loaded := c.cachedValues.LoadAndDelete(oldestKey); loaded {
-		c.cachedBytes -= oldest.(*cacheEntryPromise[V]).sizeBytes
+		c.cachedBytes.Add(-oldest.(*cacheEntryPromise[V]).sizeBytes)
 	}
 }
 
@@ -466,7 +471,7 @@ func (c *fifoCache[V]) created(key string, sizeBytes int64) {
 	c.cachedMtx.Lock()
 	defer c.cachedMtx.Unlock()
 	c.cached.PushBack(key)
-	c.cachedBytes += sizeBytes
+	c.cachedBytes.Add(sizeBytes)
 }
 
 func (c *fifoCache[V]) updateSize(oldSize, newSizeBytes int64) {
@@ -476,7 +481,7 @@ func (c *fifoCache[V]) updateSize(oldSize, newSizeBytes int64) {
 
 	c.cachedMtx.Lock()
 	defer c.cachedMtx.Unlock()
-	c.cachedBytes += newSizeBytes - oldSize
+	c.cachedBytes.Add(newSizeBytes - oldSize)
 }
 
 type cacheEntryPromise[V any] struct {

@@ -156,6 +156,9 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
 	var ingesters []ingesterDesc
+	numTokens, ownedByAz := r.countTokensByAz()
+	_, owned := r.countTokens()
+
 	for _, id := range ingesterIDs {
 		ing := r.ringDesc.Ingesters[id]
 		heartbeatTimestamp := time.Unix(ing.Timestamp, 0)
@@ -174,12 +177,10 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		var deltaOwnership float64
 
 		if r.cfg.ZoneAwarenessEnabled {
-			numTokens, ownedByAz := r.countTokensByAz()
 			ownership = (float64(ownedByAz[id]) / float64(math.MaxUint32+1)) * 100
 			expectedOwnership := 1 / float64(len(numTokens[ing.Zone])) * 100
 			deltaOwnership = (1 - expectedOwnership/ownership) * 100
 		} else {
-			_, owned := r.countTokens()
 			ownership = (float64(owned[id]) / float64(math.MaxUint32+1)) * 100
 			expectedOwnership := 1 / float64(len(owned)) * 100
 			deltaOwnership = (1 - expectedOwnership/ownership) * 100

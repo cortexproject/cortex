@@ -4,6 +4,8 @@ import (
 	"context"
 	"sort"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 )
 
 // ReplicationSet describes the instances to talk to for a given key, and how
@@ -23,7 +25,7 @@ type ReplicationSet struct {
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise. zoneResultsQuorum allows only include
 // results from zones that already reach quorum to improve performance.
-func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResultsQuorum bool, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
+func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResultsQuorum bool, partialDataEnabled bool, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
 	type instanceResult struct {
 		res      interface{}
 		err      error
@@ -68,13 +70,20 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 		}(i, &r.Instances[i])
 	}
 
+	trackerFailed := false
+	cnt := 0
+
+track:
 	for !tracker.succeeded() {
 		select {
 		case res := <-ch:
 			tracker.done(res.instance, res.res, res.err)
 			if res.err != nil {
 				if tracker.failed() {
-					return nil, res.err
+					if !partialDataEnabled || tracker.failedInAllZones() {
+						return nil, res.err
+					}
+					trackerFailed = true
 				}
 
 				// force one of the delayed requests to start
@@ -82,10 +91,18 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 					forceStart <- struct{}{}
 				}
 			}
+			cnt++
+			if cnt == len(r.Instances) {
+				break track
+			}
 
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+
+	if partialDataEnabled && trackerFailed {
+		return tracker.getResults(), partialdata.ErrPartialData
 	}
 
 	return tracker.getResults(), nil

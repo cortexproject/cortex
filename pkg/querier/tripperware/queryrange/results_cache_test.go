@@ -18,6 +18,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -553,6 +554,34 @@ func TestShouldCache(t *testing.T) {
 			request:  &tripperware.PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] offset -10ms)", End: 125000},
 			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
+		},
+		{
+			name:    "contains partial data warning",
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{
+						Name:   "meaninglessheader",
+						Values: []string{},
+					},
+				},
+				Warnings: []string{partialdata.ErrPartialData.Error()},
+			}),
+			expected: false,
+		},
+		{
+			name:    "contains other warning",
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{
+						Name:   "meaninglessheader",
+						Values: []string{},
+					},
+				},
+				Warnings: []string{"other warning"},
+			}),
+			expected: true,
 		},
 	} {
 		{

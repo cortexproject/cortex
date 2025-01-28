@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -294,6 +296,9 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.R
 	}
 	if !s.isOffsetCachable(ctx, req) {
 		return false
+	}
+	if res, ok := r.(*tripperware.PrometheusResponse); ok {
+		return !slices.Contains(res.Warnings, partialdata.ErrPartialData.Error())
 	}
 
 	return true

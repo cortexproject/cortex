@@ -298,7 +298,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		}
 
 		distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
-		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil)
 
 		tCases := []struct {
 			name                 string
@@ -444,7 +444,7 @@ func TestLimits(t *testing.T) {
 			response: &streamResponse,
 		}
 
-		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil)
 
 		tCases := []struct {
 			name                 string
@@ -580,7 +580,7 @@ func TestQuerier(t *testing.T) {
 					require.NoError(t, err)
 
 					queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
 					testRangeQuery(t, queryable, queryEngine, through, query, enc)
 				})
 			}
@@ -602,7 +602,7 @@ func TestQuerierMetric(t *testing.T) {
 	queryables := []QueryableWithFilter{}
 	r := prometheus.NewRegistry()
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, r)
-	New(cfg, overrides, distributor, queryables, reg, log.NewNopLogger())
+	New(cfg, overrides, distributor, queryables, reg, log.NewNopLogger(), nil)
 	assert.NoError(t, promutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_max_concurrent_queries The maximum number of concurrent queries.
 		# TYPE cortex_max_concurrent_queries gauge
@@ -684,7 +684,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 					require.NoError(t, err)
 
 					ctx := user.InjectOrgID(context.Background(), "0")
-					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger(), nil)
 					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 					require.NoError(t, err)
 
@@ -778,7 +778,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 
 			ctx := user.InjectOrgID(context.Background(), "0")
 			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
-			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
 			query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
 			require.NoError(t, err)
 
@@ -871,7 +871,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			distributor := &emptyDistributor{}
 
 			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
-			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
 
 			queryEngine := promql.NewEngine(opts)
 			ctx := user.InjectOrgID(context.Background(), "test")
@@ -910,7 +910,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Series(t *testing.T) {
 	distributor := &emptyDistributor{}
 
 	queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
-	queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+	queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
 	now := time.Now()
@@ -969,7 +969,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Labels(t *testing.T) {
 			distributor := &emptyDistributor{}
 
 			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
-			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
 
 			ctx := user.InjectOrgID(context.Background(), "test")
 
@@ -1120,7 +1120,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor := &MockDistributor{}
 					distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
 					require.NoError(t, err)
 
 					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
@@ -1149,7 +1149,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]model.Metric{}, nil)
 					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]model.Metric{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1190,7 +1190,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 					distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1218,7 +1218,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, matchers).Return([]model.Metric{}, nil)
 					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, matchers).Return([]model.Metric{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1245,7 +1245,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 					distributor.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1365,28 +1365,28 @@ type errDistributor struct{}
 
 var errDistributorError = fmt.Errorf("errDistributorError")
 
-func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
+func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, partialDataEnabled bool, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	return nil, errDistributorError
 }
 func (m *errDistributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (m *errDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (m *errDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, errDistributorError
 }
 
@@ -1414,7 +1414,7 @@ func (c *emptyChunkStore) IsCalled() bool {
 
 type emptyDistributor struct{}
 
-func (d *emptyDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
+func (d *emptyDistributor) QueryStream(ctx context.Context, from, to model.Time, partialDataEnabled bool, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	return &client.QueryStreamResponse{}, nil
 }
 
@@ -1422,27 +1422,27 @@ func (d *emptyDistributor) QueryExemplars(ctx context.Context, from, to model.Ti
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (d *emptyDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, ...*labels.Matcher) ([]string, error) {
+func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (d *emptyDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hints *storage.SelectHints, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (d *emptyDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	return nil, nil
 }
 
@@ -1582,7 +1582,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 			overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 			require.NoError(t, err)
 
-			queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger())
+			queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger(), nil)
 			ctx := user.InjectOrgID(context.Background(), "0")
 			query, err := engine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 			require.NoError(t, err)

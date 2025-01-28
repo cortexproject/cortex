@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -89,7 +90,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]model.Metric{}, nil)
 
 				ctx := user.InjectOrgID(context.Background(), "test")
-				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, testData.queryIngestersWithin)
+				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, testData.queryIngestersWithin, nil)
 				querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
 
@@ -128,7 +129,7 @@ func TestDistributorQueryableFilter(t *testing.T) {
 	t.Parallel()
 
 	d := &MockDistributor{}
-	dq := newDistributorQueryable(d, false, true, nil, 1*time.Hour)
+	dq := newDistributorQueryable(d, false, true, nil, 1*time.Hour, nil)
 
 	now := time.Now()
 
@@ -146,14 +147,15 @@ func TestIngesterStreaming(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	for _, enc := range encodings {
-		promChunk := util.GenerateChunk(t, time.Second, model.TimeFromUnix(now.Unix()), 10, enc)
-		clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{promChunk})
-		require.NoError(t, err)
 
-		d := &MockDistributor{}
-		d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-			&client.QueryStreamResponse{
+	for _, enc := range encodings {
+		for _, partialDataEnabled := range []bool{false, true} {
+			promChunk := util.GenerateChunk(t, time.Second, model.TimeFromUnix(now.Unix()), 10, enc)
+			clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{promChunk})
+			require.NoError(t, err)
+
+			d := &MockDistributor{}
+			queryResponse := &client.QueryStreamResponse{
 				Chunkseries: []client.TimeSeriesChunk{
 					{
 						Labels: []cortexpb.LabelAdapter{
@@ -168,31 +170,43 @@ func TestIngesterStreaming(t *testing.T) {
 						Chunks: clientChunks,
 					},
 				},
-			},
-			nil)
+			}
+			var partialDataErr error
+			if partialDataEnabled {
+				partialDataErr = partialdata.ErrPartialData
+			}
+			d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(queryResponse, partialDataErr)
 
-		ctx := user.InjectOrgID(context.Background(), "0")
-		queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0)
-		querier, err := queryable.Querier(mint, maxt)
-		require.NoError(t, err)
+			ctx := user.InjectOrgID(context.Background(), "0")
 
-		seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
-		require.NoError(t, seriesSet.Err())
+			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+				return partialDataEnabled
+			})
+			querier, err := queryable.Querier(mint, maxt)
+			require.NoError(t, err)
 
-		require.True(t, seriesSet.Next())
-		series := seriesSet.At()
-		require.Equal(t, labels.Labels{{Name: "bar", Value: "baz"}}, series.Labels())
-		chkIter := series.Iterator(nil)
-		require.Equal(t, enc.ChunkValueType(), chkIter.Next())
+			seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
+			require.NoError(t, seriesSet.Err())
 
-		require.True(t, seriesSet.Next())
-		series = seriesSet.At()
-		require.Equal(t, labels.Labels{{Name: "foo", Value: "bar"}}, series.Labels())
-		chkIter = series.Iterator(chkIter)
-		require.Equal(t, enc.ChunkValueType(), chkIter.Next())
+			require.True(t, seriesSet.Next())
+			series := seriesSet.At()
+			require.Equal(t, labels.Labels{{Name: "bar", Value: "baz"}}, series.Labels())
+			chkIter := series.Iterator(nil)
+			require.Equal(t, enc.ChunkValueType(), chkIter.Next())
 
-		require.False(t, seriesSet.Next())
-		require.NoError(t, seriesSet.Err())
+			require.True(t, seriesSet.Next())
+			series = seriesSet.At()
+			require.Equal(t, labels.Labels{{Name: "foo", Value: "bar"}}, series.Labels())
+			chkIter = series.Iterator(chkIter)
+			require.Equal(t, enc.ChunkValueType(), chkIter.Next())
+
+			require.False(t, seriesSet.Next())
+			require.NoError(t, seriesSet.Err())
+
+			if partialDataEnabled {
+				require.Contains(t, seriesSet.Warnings(), partialdata.ErrPartialData.Error())
+			}
+		}
 	}
 }
 
@@ -204,40 +218,52 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 
 	for _, labelNamesWithMatchers := range []bool{false, true} {
 		for _, streamingEnabled := range []bool{false, true} {
-			streamingEnabled := streamingEnabled
-			labelNamesWithMatchers := labelNamesWithMatchers
-			t.Run("with matchers", func(t *testing.T) {
-				t.Parallel()
+			for _, partialDataEnabled := range []bool{false, true} {
+				streamingEnabled := streamingEnabled
+				labelNamesWithMatchers := labelNamesWithMatchers
+				t.Run("with matchers", func(t *testing.T) {
+					t.Parallel()
 
-				metrics := []model.Metric{
-					{"foo": "bar"},
-					{"job": "baz"},
-					{"job": "baz", "foo": "boom"},
-				}
-				d := &MockDistributor{}
+					metrics := []model.Metric{
+						{"foo": "bar"},
+						{"job": "baz"},
+						{"job": "baz", "foo": "boom"},
+					}
+					d := &MockDistributor{}
 
-				if labelNamesWithMatchers {
-					d.On("LabelNames", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-						Return(labelNames, nil)
-					d.On("LabelNamesStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-						Return(labelNames, nil)
-				} else {
-					d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-						Return(metrics, nil)
-					d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-						Return(metrics, nil)
-				}
+					var partialDataErr error
+					if partialDataEnabled {
+						partialDataErr = partialdata.ErrPartialData
+					}
+					if labelNamesWithMatchers {
+						d.On("LabelNames", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+							Return(labelNames, partialDataErr)
+						d.On("LabelNamesStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+							Return(labelNames, partialDataErr)
+					} else {
+						d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+							Return(metrics, partialDataErr)
+						d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+							Return(metrics, partialDataErr)
+					}
 
-				queryable := newDistributorQueryable(d, streamingEnabled, labelNamesWithMatchers, nil, 0)
-				querier, err := queryable.Querier(mint, maxt)
-				require.NoError(t, err)
+					queryable := newDistributorQueryable(d, streamingEnabled, labelNamesWithMatchers, nil, 0, func(string) bool {
+						return partialDataEnabled
+					})
+					querier, err := queryable.Querier(mint, maxt)
+					require.NoError(t, err)
 
-				ctx := context.Background()
-				names, warnings, err := querier.LabelNames(ctx, nil, someMatchers...)
-				require.NoError(t, err)
-				assert.Empty(t, warnings)
-				assert.Equal(t, labelNames, names)
-			})
+					ctx := context.Background()
+					names, warnings, err := querier.LabelNames(ctx, nil, someMatchers...)
+					require.NoError(t, err)
+					if partialDataEnabled {
+						assert.Contains(t, warnings, partialdata.ErrPartialData.Error())
+					} else {
+						assert.Empty(t, warnings)
+					}
+					assert.Equal(t, labelNames, names)
+				})
+			}
 		}
 	}
 }

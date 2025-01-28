@@ -302,6 +302,29 @@ func Test_UpdateStaleData(t *testing.T) {
 
 }
 
+func Test_DynamodbKVWithTimeout(t *testing.T) {
+	ddbMock := NewDynamodbClientMock()
+	// Backend has delay of 5s while the client timeout is 1s.
+	ddbWithDelay := newDynamodbKVWithDelay(ddbMock, time.Second*5)
+	dbWithTimeout := newDynamodbKVWithTimeout(ddbWithDelay, time.Second)
+
+	ctx := context.Background()
+	_, _, err := dbWithTimeout.List(ctx, dynamodbKey{primaryKey: key})
+	require.True(t, errors.Is(err, context.DeadlineExceeded))
+
+	err = dbWithTimeout.Delete(ctx, dynamodbKey{primaryKey: key})
+	require.True(t, errors.Is(err, context.DeadlineExceeded))
+
+	_, _, err = dbWithTimeout.Query(ctx, dynamodbKey{primaryKey: key}, true)
+	require.True(t, errors.Is(err, context.DeadlineExceeded))
+
+	err = dbWithTimeout.Put(ctx, dynamodbKey{primaryKey: key}, []byte{})
+	require.True(t, errors.Is(err, context.DeadlineExceeded))
+
+	err = dbWithTimeout.Batch(ctx, nil, nil)
+	require.True(t, errors.Is(err, context.DeadlineExceeded))
+}
+
 // NewClientMock makes a new local dynamodb client.
 func NewClientMock(ddbClient dynamoDbClient, cc codec.Codec, logger log.Logger, registerer prometheus.Registerer, time time.Duration, config backoff.Config) *Client {
 	return &Client{
@@ -428,4 +451,58 @@ func (m *DescMock) FindDifference(that codec.MultiKey) (interface{}, []string, e
 		err = args.Get(2).(error)
 	}
 	return args.Get(0), args.Get(1).([]string), err
+}
+
+type dynamodbKVWithDelayAndContextCheck struct {
+	ddbClient dynamoDbClient
+	delay     time.Duration
+}
+
+func newDynamodbKVWithDelay(client dynamoDbClient, delay time.Duration) *dynamodbKVWithDelayAndContextCheck {
+	return &dynamodbKVWithDelayAndContextCheck{ddbClient: client, delay: delay}
+}
+
+func (d *dynamodbKVWithDelayAndContextCheck) List(ctx context.Context, key dynamodbKey) ([]string, float64, error) {
+	select {
+	case <-ctx.Done():
+		return nil, 0, ctx.Err()
+	case <-time.After(d.delay):
+		return d.ddbClient.List(ctx, key)
+	}
+}
+
+func (d *dynamodbKVWithDelayAndContextCheck) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string][]byte, float64, error) {
+	select {
+	case <-ctx.Done():
+		return nil, 0, ctx.Err()
+	case <-time.After(d.delay):
+		return d.ddbClient.Query(ctx, key, isPrefix)
+	}
+}
+
+func (d *dynamodbKVWithDelayAndContextCheck) Delete(ctx context.Context, key dynamodbKey) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d.delay):
+		return d.ddbClient.Delete(ctx, key)
+	}
+}
+
+func (d *dynamodbKVWithDelayAndContextCheck) Put(ctx context.Context, key dynamodbKey, data []byte) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d.delay):
+		return d.ddbClient.Put(ctx, key, data)
+	}
+}
+
+func (d *dynamodbKVWithDelayAndContextCheck) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d.delay):
+		return d.ddbClient.Batch(ctx, put, delete)
+	}
 }

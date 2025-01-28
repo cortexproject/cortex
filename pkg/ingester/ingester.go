@@ -2283,6 +2283,22 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 	return db, nil
 }
 
+func (i *Ingester) blockChunkQuerierFunc(userId string) tsdb.BlockChunkQuerierFunc {
+	return func(b tsdb.BlockReader, mint, maxt int64) (storage.ChunkQuerier, error) {
+		db := i.getTSDB(userId)
+
+		var postingCache cortex_tsdb.ExpandedPostingsCache
+		if db != nil {
+			postingCache = db.postingCache
+		}
+		if postingCache == nil || mint > db.Head().MaxTime() {
+			return tsdb.NewBlockChunkQuerier(b, mint, maxt)
+		}
+
+		return cortex_tsdb.NewCachedBlockChunkQuerier(postingCache, b, mint, maxt)
+	}
+}
+
 // createTSDB creates a TSDB for a given userID, and returns the created db.
 func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	tsdbPromReg := prometheus.NewRegistry()
@@ -2346,12 +2362,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
-		BlockChunkQuerierFunc: func(b tsdb.BlockReader, mint, maxt int64) (storage.ChunkQuerier, error) {
-			if postingCache != nil {
-				return cortex_tsdb.NewCachedBlockChunkQuerier(postingCache, b, mint, maxt)
-			}
-			return tsdb.NewBlockChunkQuerier(b, mint, maxt)
-		},
+		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

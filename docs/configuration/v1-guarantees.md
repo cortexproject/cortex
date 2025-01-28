@@ -119,5 +119,5 @@ Currently experimental features are:
 - Query-frontend: query rejection (`-frontend.query-rejection.enabled`)
 - Querier: protobuf codec (`-api.querier-default-codec`)
 - Query-frontend: dynamic query splits
-  - `querier.max-shards-per-query` (int) CLI flag
-  - `querier.max-duration-of-data-fetched-from-storage-per-query` (duration) CLI flag
+  - `querier.max-splits-per-query` (int) CLI flag
+  - `querier.max-fetched-storage-data-duration-per-query` (duration) CLI flag

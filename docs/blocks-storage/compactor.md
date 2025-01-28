@@ -225,8 +225,7 @@ compactor:
         # CLI flag: -compactor.ring.dynamodb.max-cas-retries
         [max_cas_retries: <int> | default = 10]
 
-        # Timeout of dynamoDbClient requests. By default it is 2 times of
-        # dynamodb.puller-sync-time.
+        # Timeout of dynamoDbClient requests. Default is 2m.
         # CLI flag: -compactor.ring.dynamodb.timeout
         [timeout: <duration> | default = 2m]
 

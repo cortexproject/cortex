@@ -54,7 +54,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.TTL, prefix+"dynamodb.ttl-time", 0, "Time to expire items on dynamodb.")
 	f.DurationVar(&cfg.PullerSyncTime, prefix+"dynamodb.puller-sync-time", 60*time.Second, "Time to refresh local ring with information on dynamodb.")
 	f.IntVar(&cfg.MaxCasRetries, prefix+"dynamodb.max-cas-retries", maxCasRetries, "Maximum number of retries for DDB KV CAS.")
-	f.DurationVar(&cfg.Timeout, prefix+"dynamodb.timeout", 2*cfg.PullerSyncTime, "Timeout of dynamoDbClient requests. By default it is 2 times of dynamodb.puller-sync-time.")
+	f.DurationVar(&cfg.Timeout, prefix+"dynamodb.timeout", 2*time.Minute, "Timeout of dynamoDbClient requests. Default is 2m.")
 }
 
 func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometheus.Registerer) (*Client, error) {

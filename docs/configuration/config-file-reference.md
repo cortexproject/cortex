@@ -341,8 +341,7 @@ sharding_ring:
       # CLI flag: -alertmanager.sharding-ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
-      # Timeout of dynamoDbClient requests. By default it is 2 times of
-      # dynamodb.puller-sync-time.
+      # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -alertmanager.sharding-ring.dynamodb.timeout
       [timeout: <duration> | default = 2m]
 
@@ -2291,8 +2290,7 @@ sharding_ring:
       # CLI flag: -compactor.ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
-      # Timeout of dynamoDbClient requests. By default it is 2 times of
-      # dynamodb.puller-sync-time.
+      # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -compactor.ring.dynamodb.timeout
       [timeout: <duration> | default = 2m]
 
@@ -2605,8 +2603,7 @@ ha_tracker:
       # CLI flag: -distributor.ha-tracker.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
-      # Timeout of dynamoDbClient requests. By default it is 2 times of
-      # dynamodb.puller-sync-time.
+      # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -distributor.ha-tracker.dynamodb.timeout
       [timeout: <duration> | default = 2m]
 
@@ -2704,8 +2701,7 @@ ring:
       # CLI flag: -distributor.ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
-      # Timeout of dynamoDbClient requests. By default it is 2 times of
-      # dynamodb.puller-sync-time.
+      # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -distributor.ring.dynamodb.timeout
       [timeout: <duration> | default = 2m]
 
@@ -3037,8 +3033,7 @@ lifecycler:
         # CLI flag: -dynamodb.max-cas-retries
         [max_cas_retries: <int> | default = 10]
 
-        # Timeout of dynamoDbClient requests. By default it is 2 times of
-        # dynamodb.puller-sync-time.
+        # Timeout of dynamoDbClient requests. Default is 2m.
         # CLI flag: -dynamodb.timeout
         [timeout: <duration> | default = 2m]
 
@@ -4691,8 +4686,7 @@ ring:
       # CLI flag: -ruler.ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
-      # Timeout of dynamoDbClient requests. By default it is 2 times of
-      # dynamodb.puller-sync-time.
+      # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -ruler.ring.dynamodb.timeout
       [timeout: <duration> | default = 2m]
 
@@ -5687,8 +5681,7 @@ sharding_ring:
       # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
-      # Timeout of dynamoDbClient requests. By default it is 2 times of
-      # dynamodb.puller-sync-time.
+      # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -store-gateway.sharding-ring.dynamodb.timeout
       [timeout: <duration> | default = 2m]
 

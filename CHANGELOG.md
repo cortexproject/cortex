@@ -3,7 +3,7 @@
 ## master / unreleased
 
 ## 1.17.2 2025-01-28
-* [BUGFIX] Fix single distributor latency
+* [BUGFIX] Fix single distributor latency #5921
 
 ## 1.17.1 2024-05-20
 

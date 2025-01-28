@@ -240,6 +240,11 @@ store_gateway:
         # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
         [max_cas_retries: <int> | default = 10]
 
+        # Timeout of dynamoDbClient requests. By default it is 2 times of
+        # dynamodb.puller-sync-time.
+        # CLI flag: -store-gateway.sharding-ring.dynamodb.timeout
+        [timeout: <duration> | default = 2m]
+
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is:
       # store-gateway.sharding-ring

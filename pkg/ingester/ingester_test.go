@@ -5611,6 +5611,7 @@ func TestExpendedPostingsCacheMatchers(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
 	cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled = true
 	cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled = true
+	cfg.QueryIngestersWithin = 24 * time.Hour
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 
@@ -5729,26 +5730,43 @@ func TestExpendedPostingsCacheMatchers(t *testing.T) {
 	}
 
 	verify := func(t *testing.T, tc testCase, startTs, endTs int64, hasSamples bool) {
+
+		expectedCount := len(seriesCreated)
+		matchers, err := client.FromLabelMatchers(ing.matchersCache, tc.matchers)
+		require.NoError(t, err)
+		for _, s := range seriesCreated {
+			for _, m := range matchers {
+				if !m.Matches(s.Get(m.Name)) {
+					expectedCount--
+					break
+				}
+			}
+		}
+
+		seriesResponse, err := ing.MetricsForLabelMatchers(ctx, &client.MetricsForLabelMatchersRequest{
+			StartTimestampMs: startTs,
+			EndTimestampMs:   endTs,
+			MatchersSet: []*client.LabelMatchers{
+				{
+					Matchers: tc.matchers,
+				},
+			},
+		})
+		require.NoError(t, err)
+		if hasSamples {
+			require.Len(t, seriesResponse.Metric, expectedCount)
+		} else {
+			require.Len(t, seriesResponse.Metric, 0)
+		}
+
 		s := &mockQueryStreamServer{ctx: ctx}
-		err := ing.QueryStream(&client.QueryRequest{
+		err = ing.QueryStream(&client.QueryRequest{
 			StartTimestampMs: startTs,
 			EndTimestampMs:   endTs,
 			Matchers:         tc.matchers,
 		}, s)
 		require.NoError(t, err)
 		if hasSamples {
-			expectedCount := len(seriesCreated)
-			matchers, err := client.FromLabelMatchers(ing.matchersCache, tc.matchers)
-			require.NoError(t, err)
-			for _, s := range seriesCreated {
-				for _, m := range matchers {
-					if !m.Matches(s.Get(m.Name)) {
-						expectedCount--
-						break
-					}
-				}
-			}
-
 			require.Equal(t, expectedCount, len(s.series))
 		} else {
 			require.Equal(t, 0, len(s.series))

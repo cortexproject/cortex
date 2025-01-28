@@ -79,7 +79,7 @@ func (cfg *Config) Validate(qCfg querier.Config) error {
 }
 
 type DynamicQuerySplitsConfig struct {
-	MaxSplitsPerQuery                           int           `yaml:"max_splits_per_query"`
+	MaxSplitsPerQuery                     int           `yaml:"max_splits_per_query"`
 	MaxFetchedStorageDataDurationPerQuery time.Duration `yaml:"max_fetched_storage_data_duration_per_query"`
 }
 

@@ -192,8 +192,10 @@ type Limits struct {
 	MaxDownloadedBytesPerRequest int     `yaml:"max_downloaded_bytes_per_request" json:"max_downloaded_bytes_per_request"`
 
 	// Compactor.
-	CompactorBlocksRetentionPeriod model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
-	CompactorTenantShardSize       int            `yaml:"compactor_tenant_shard_size" json:"compactor_tenant_shard_size"`
+	CompactorBlocksRetentionPeriod   model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
+	CompactorTenantShardSize         int            `yaml:"compactor_tenant_shard_size" json:"compactor_tenant_shard_size"`
+	CompactorPartitionIndexSizeBytes int64          `yaml:"compactor_partition_index_size_bytes" json:"compactor_partition_index_size_bytes"`
+	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -282,6 +284,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.Var(&l.CompactorBlocksRetentionPeriod, "compactor.blocks-retention-period", "Delete blocks containing samples older than the specified retention period. 0 to disable.")
 	f.IntVar(&l.CompactorTenantShardSize, "compactor.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the compactor. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	// Default to 64GB because this is the hard limit of index size in Cortex
+	f.Int64Var(&l.CompactorPartitionIndexSizeBytes, "compactor.partition-index-size-bytes", 68719476736, "Index size limit in bytes for each compaction partition. 0 means no limit")
+	f.Int64Var(&l.CompactorPartitionSeriesCount, "compactor.partition-series-count", 0, "Time series count limit for each compaction partition. 0 means no limit")
 
 	// Store-gateway.
 	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
@@ -797,6 +802,16 @@ func (o *Overrides) CompactorBlocksRetentionPeriod(userID string) time.Duration 
 // CompactorTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) CompactorTenantShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).CompactorTenantShardSize
+}
+
+// CompactorPartitionIndexSizeBytes returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
+func (o *Overrides) CompactorPartitionIndexSizeBytes(userID string) int64 {
+	return o.GetOverridesForUser(userID).CompactorPartitionIndexSizeBytes
+}
+
+// CompactorPartitionSeriesCount returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
+func (o *Overrides) CompactorPartitionSeriesCount(userID string) int64 {
+	return o.GetOverridesForUser(userID).CompactorPartitionSeriesCount
 }
 
 // MetricRelabelConfigs returns the metric relabel configs for a given user.

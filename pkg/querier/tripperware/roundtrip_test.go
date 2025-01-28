@@ -3,6 +3,7 @@ package tripperware
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +13,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/version"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
@@ -30,6 +34,10 @@ const (
 	querySubqueryStepSizeTooSmall = "/api/v1/query?query=up%5B30d%3A%5D"
 	queryExceedsMaxQueryLength    = "/api/v1/query?query=up%5B90d%5D"
 	seriesQuery                   = "/api/v1/series?match[]"
+	remoteReadQuery               = "/api/v1/read"
+	labelNamesQuery               = "/api/v1/labels"
+	labelValuesQuery              = "/api/v1/label/label/values"
+	metadataQuery                 = "/api/v1/metadata"
 
 	responseBody        = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 	instantResponseBody = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
@@ -59,7 +67,7 @@ func (c mockCodec) DecodeRequest(_ context.Context, r *http.Request, _ []string)
 	return mockRequest{}, nil
 }
 
-func (c mockCodec) EncodeResponse(_ context.Context, resp Response) (*http.Response, error) {
+func (c mockCodec) EncodeResponse(_ context.Context, _ *http.Request, resp Response) (*http.Response, error) {
 	r := resp.(*mockResponse)
 	return &http.Response{
 		Header: http.Header{
@@ -125,48 +133,140 @@ func TestRoundTrip(t *testing.T) {
 		expectedErr        error
 		limits             Limits
 		maxSubQuerySteps   int64
+		userAgent          string
+		expectedMetric     string
 	}{
 		{
 			path:             "/foo",
 			expectedBody:     "bar",
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.0",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
+`,
 		},
 		{
 			path:             queryExemplar,
 			expectedBody:     "bar",
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.1",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="query_exemplars", source="api", user="1"} 1
+`,
 		},
 		{
 			path:             seriesQuery,
 			expectedBody:     "bar",
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="series", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             labelNamesQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="label_names", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             labelValuesQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="label_values", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             metadataQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="metadata", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             remoteReadQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="remote_read", source="api", user="1"} 1
+`,
 		},
 		{
 			path:             queryRange,
 			expectedBody:     responseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.0",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="query_range", source="api", user="1"} 1
+`,
 		},
 		{
 			path:             query,
 			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.1",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
+`,
 		},
 		{
 			path:             queryNonShardable,
 			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
+`,
 		},
 		{
 			path:             query,
 			expectedBody:     instantResponseBody,
 			limits:           shardingOverrides,
 			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.0",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
+`,
 		},
 		// Shouldn't hit subquery step limit because max steps is set to 0 so this check is disabled.
 		{
@@ -174,6 +274,12 @@ func TestRoundTrip(t *testing.T) {
 			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 0,
+			userAgent:        "dummyUserAgent/1.0",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
+`,
 		},
 		// Shouldn't hit subquery step limit because max steps is higher, which is 100K.
 		{
@@ -181,12 +287,24 @@ func TestRoundTrip(t *testing.T) {
 			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 100000,
+			userAgent:        "dummyUserAgent/1.0",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
+`,
 		},
 		{
 			path:             querySubqueryStepSizeTooSmall,
 			expectedErr:      httpgrpc.Errorf(http.StatusBadRequest, ErrSubQueryStepTooSmall, 11000),
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
+			userAgent:        fmt.Sprintf("%s/%s", RulerUserAgent, version.Version),
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="query", source="ruler", user="1"} 1
+`,
 		},
 		{
 			// The query should go to instant query middlewares rather than forwarding to next.
@@ -194,6 +312,12 @@ func TestRoundTrip(t *testing.T) {
 			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/2.0",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
+`,
 		},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
@@ -209,8 +333,11 @@ func TestRoundTrip(t *testing.T) {
 			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 			require.NoError(t, err)
 
+			req.Header.Set("User-Agent", tc.userAgent)
+
+			reg := prometheus.NewPedanticRegistry()
 			tw := NewQueryTripperware(log.NewNopLogger(),
-				nil,
+				reg,
 				nil,
 				rangeMiddlewares,
 				instantMiddlewares,
@@ -231,6 +358,7 @@ func TestRoundTrip(t *testing.T) {
 				bs, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedBody, string(bs))
+				require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetric), "cortex_query_frontend_queries_total"))
 			} else {
 				require.Equal(t, tc.expectedErr, err)
 			}

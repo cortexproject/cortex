@@ -37,6 +37,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/shipper"
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
@@ -91,6 +92,8 @@ const (
 
 	// Period at which we should reset the max inflight query requests counter.
 	maxInflightRequestResetPeriod = 1 * time.Minute
+
+	labelSetMetricsTickInterval = 30 * time.Second
 )
 
 var (
@@ -145,6 +148,9 @@ type Config struct {
 	// When disabled, the result may contain samples outside the queried time range but Select() performances
 	// may be improved.
 	DisableChunkTrimming bool `yaml:"disable_chunk_trimming"`
+
+	// Maximum number of entries in the matchers cache. 0 to disable.
+	MatchersCacheMaxItems int `yaml:"matchers_cache_max_items"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -173,6 +179,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
 
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
+	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
 }
 
 func (cfg *Config) Validate() error {
@@ -243,6 +250,7 @@ type Ingester struct {
 	inflightQueryRequests    atomic.Int64
 	maxInflightQueryRequests util_math.MaxTracker
 
+	matchersCache                storecache.MatchersCache
 	expandedPostingsCacheFactory *cortex_tsdb.ExpandedPostingsCacheFactory
 }
 
@@ -708,7 +716,18 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		logger:                       logger,
 		ingestionRate:                util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 		expandedPostingsCacheFactory: cortex_tsdb.NewExpandedPostingsCacheFactory(cfg.BlocksStorageConfig.TSDB.PostingsCache),
+		matchersCache:                storecache.NoopMatchersCache,
 	}
+
+	if cfg.MatchersCacheMaxItems > 0 {
+		r := prometheus.NewRegistry()
+		registerer.MustRegister(cortex_tsdb.NewMatchCacheMetrics("cortex_ingester", r, logger))
+		i.matchersCache, err = storecache.NewMatchersCache(storecache.WithSize(cfg.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	i.metrics = newIngesterMetrics(registerer,
 		false,
 		cfg.ActiveSeriesMetricsEnabled,
@@ -859,6 +878,14 @@ func (i *Ingester) starting(ctx context.Context) error {
 		servs = append(servs, closeIdleService)
 	}
 
+	if i.expandedPostingsCacheFactory != nil {
+		interval := i.cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval
+		if interval == 0 {
+			interval = cortex_tsdb.ExpandedCachingExpireInterval
+		}
+		servs = append(servs, services.NewTimerService(interval, nil, i.expirePostingsCache, nil))
+	}
+
 	var err error
 	i.TSDBState.subservices, err = services.NewManager(servs...)
 	if err == nil {
@@ -925,6 +952,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	maxTrackerResetTicker := time.NewTicker(maxInflightRequestResetPeriod)
 	defer maxTrackerResetTicker.Stop()
 
+	labelSetMetricsTicker := time.NewTicker(labelSetMetricsTickInterval)
+	defer labelSetMetricsTicker.Stop()
+
 	for {
 		select {
 		case <-metadataPurgeTicker.C:
@@ -946,6 +976,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.maxInflightPushRequests.Tick()
 		case <-userTSDBConfigTicker.C:
 			i.updateUserTSDBConfigs()
+		case <-labelSetMetricsTicker.C:
+			i.updateLabelSetMetrics()
 		case <-ctx.Done():
 			return nil
 		case err := <-i.subservicesWatcher.Chan():
@@ -1008,6 +1040,25 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
 		}
 	}
+}
+
+func (i *Ingester) updateLabelSetMetrics() {
+	activeUserSet := make(map[string]map[uint64]struct{})
+	for _, userID := range i.getTSDBUsers() {
+		userDB := i.getTSDB(userID)
+		if userDB == nil {
+			continue
+		}
+
+		limits := i.limits.LimitsPerLabelSet(userID)
+		activeUserSet[userID] = make(map[uint64]struct{}, len(limits))
+		for _, l := range limits {
+			activeUserSet[userID][l.Hash] = struct{}{}
+		}
+	}
+
+	// Update label set metrics in validate metrics.
+	i.validateMetrics.UpdateLabelSet(activeUserSet, i.logger)
 }
 
 func (i *Ingester) RenewTokenHandler(w http.ResponseWriter, r *http.Request) {
@@ -1123,6 +1174,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// process it before samples. Otherwise, we risk returning an error before ingestion.
 	ingestedMetadata := i.pushMetadata(ctx, userID, req.GetMetadata())
 
+	reasonCounter := newLabelSetReasonCounters()
+
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
@@ -1148,7 +1201,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			}
 		}
 
-		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels) (rollback bool) {
+		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels, matchedLabelSetLimits []validation.LimitsPerLabelSet) (rollback bool) {
 			// Check if the error is a soft error we can proceed on. If so, we keep track
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
@@ -1184,6 +1237,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
 				perLabelSetSeriesLimitCount++
+				// We only track per labelset discarded samples for throttling by labelset limit.
+				reasonCounter.increment(matchedLabelSetLimits, perLabelsetSeriesLimit)
 				updateFirstPartial(func() error {
 					return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
@@ -1228,6 +1283,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		// To find out if any histogram was added to this series, we keep old value.
 		oldSucceededHistogramsCount := succeededHistogramsCount
 
+		// Copied labels will be empty if ref is 0.
+		if ref == 0 {
+			// Copy the label set because both TSDB and the active series tracker may retain it.
+			copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
+		}
+		matchedLabelSetLimits := i.limiter.limitsPerLabelSets(userID, copiedLabels)
+
 		for _, s := range ts.Samples {
 			var err error
 
@@ -1239,8 +1301,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				}
 
 			} else {
-				// Copy the label set because both TSDB and the active series tracker may retain it.
-				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 				// Retain the reference in case there are multiple samples for the series.
 				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					// Keep track of what series needs to be expired on the postings cache
@@ -1254,7 +1314,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			failedSamplesCount++
 
-			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels); !rollback {
+			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
 				continue
 			}
 			// The error looks an issue on our side, so we should rollback
@@ -1299,7 +1359,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 				failedHistogramsCount++
 
-				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels); !rollback {
+				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
 					continue
 				}
 				// The error looks an issue on our side, so we should rollback
@@ -1414,6 +1474,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
 	}
 
+	for h, counter := range reasonCounter.counters {
+		labelStr := counter.lbls.String()
+		i.validateMetrics.LabelSetTracker.Track(userID, h, counter.lbls)
+		for reason, count := range counter.reasonCounter {
+			i.validateMetrics.DiscardedSamplesPerLabelSet.WithLabelValues(reason, userID, labelStr).Add(float64(count))
+		}
+	}
+
 	// Distributor counts both samples, metadata and histograms, so for consistency ingester does the same.
 	i.ingestionRate.Add(int64(succeededSamplesCount + succeededHistogramsCount + ingestedMetadata))
 
@@ -1474,7 +1542,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
-	from, through, matchers, err := client.FromExemplarQueryRequest(req)
+	from, through, matchers, err := client.FromExemplarQueryRequest(i.matchersCache, req)
 	if err != nil {
 		return nil, err
 	}
@@ -1564,7 +1632,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	labelName, startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelValuesRequest(req)
+	labelName, startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelValuesRequest(i.matchersCache, req)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1654,7 +1722,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelNamesRequest(req)
+	startTimestampMs, endTimestampMs, limit, matchers, err := client.FromLabelNamesRequest(i.matchersCache, req)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1768,7 +1836,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 	}
 
 	// Parse the request
-	_, _, limit, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, limit, matchersSet, err := client.FromMetricsForLabelMatchersRequest(i.matchersCache, req)
 	if err != nil {
 		return cleanup, err
 	}
@@ -1982,7 +2050,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
-	from, through, matchers, err := client.FromQueryRequest(req)
+	from, through, matchers, err := client.FromQueryRequest(i.matchersCache, req)
 	if err != nil {
 		return err
 	}
@@ -2734,6 +2802,21 @@ func (i *Ingester) closeAndDeleteIdleUserTSDBs(ctx context.Context) error {
 	return nil
 }
 
+func (i *Ingester) expirePostingsCache(ctx context.Context) error {
+	for _, userID := range i.getTSDBUsers() {
+		if ctx.Err() != nil {
+			return nil
+		}
+		userDB := i.getTSDB(userID)
+		if userDB == nil || userDB.postingCache == nil {
+			continue
+		}
+		userDB.postingCache.PurgeExpiredItems()
+	}
+
+	return nil
+}
+
 func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckResult {
 	userDB := i.getTSDB(userID)
 	if userDB == nil || userDB.shipper == nil {
@@ -3171,5 +3254,33 @@ func getTimeSeriesChunksSlice() []client.TimeSeriesChunk {
 func putTimeSeriesChunksSlice(p []client.TimeSeriesChunk) {
 	if p != nil {
 		tsChunksPool.Put(p[:0])
+	}
+}
+
+type labelSetReasonCounters struct {
+	counters map[uint64]*labelSetReasonCounter
+}
+
+type labelSetReasonCounter struct {
+	reasonCounter map[string]int
+	lbls          labels.Labels
+}
+
+func newLabelSetReasonCounters() *labelSetReasonCounters {
+	return &labelSetReasonCounters{counters: make(map[uint64]*labelSetReasonCounter)}
+}
+
+func (c *labelSetReasonCounters) increment(matchedLabelSetLimits []validation.LimitsPerLabelSet, reason string) {
+	for _, l := range matchedLabelSetLimits {
+		if rc, exists := c.counters[l.Hash]; exists {
+			rc.reasonCounter[reason]++
+		} else {
+			c.counters[l.Hash] = &labelSetReasonCounter{
+				reasonCounter: map[string]int{
+					reason: 1,
+				},
+				lbls: l.LabelSet,
+			}
+		}
 	}
 }

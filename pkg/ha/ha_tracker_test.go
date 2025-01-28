@@ -629,6 +629,7 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 		"cortex_ha_tracker_elected_replica_changes_total",
 		"cortex_ha_tracker_elected_replica_timestamp_seconds",
 		"cortex_ha_tracker_kv_store_cas_total",
+		"cortex_ha_tracker_user_replica_group_count",
 	}
 
 	tr.electedReplicaChanges.WithLabelValues("userA", "replicaGroup1").Add(5)
@@ -640,6 +641,7 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 	tr.kvCASCalls.WithLabelValues("userA", "replicaGroup1").Add(5)
 	tr.kvCASCalls.WithLabelValues("userA", "replicaGroup2").Add(8)
 	tr.kvCASCalls.WithLabelValues("userB", "replicaGroup").Add(10)
+	tr.userReplicaGroupCount.WithLabelValues("userA").Add(5)
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_ha_tracker_elected_replica_changes_total The total number of times the elected replica has changed for a user ID/cluster.
@@ -659,6 +661,10 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 		cortex_ha_tracker_kv_store_cas_total{cluster="replicaGroup",user="userB"} 10
 		cortex_ha_tracker_kv_store_cas_total{cluster="replicaGroup1",user="userA"} 5
 		cortex_ha_tracker_kv_store_cas_total{cluster="replicaGroup2",user="userA"} 8
+		
+		# HELP cortex_ha_tracker_user_replica_group_count Number of HA replica groups tracked for each user.
+		# TYPE cortex_ha_tracker_user_replica_group_count gauge
+		cortex_ha_tracker_user_replica_group_count{user="userA"} 5
 	`), metrics...))
 
 	tr.CleanupHATrackerMetricsForUser("userA")

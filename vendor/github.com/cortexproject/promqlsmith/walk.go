@@ -2,6 +2,7 @@ package promqlsmith
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"strings"
@@ -452,7 +453,7 @@ func (s *PromQLSmith) walkLabelMatchers() []*labels.Matcher {
 	}
 	series := s.seriesSet[s.rnd.Intn(len(s.seriesSet))]
 	orders := s.rnd.Perm(series.Len())
-	items := s.rnd.Intn((series.Len() + 1) / 2)
+	items := s.rnd.Intn(int(math.Ceil(float64(series.Len()+1) / 2)))
 	matchers := make([]*labels.Matcher, 0, items)
 	containsName := false
 	lbls := make([]labels.Label, 0, series.Len())
@@ -460,12 +461,49 @@ func (s *PromQLSmith) walkLabelMatchers() []*labels.Matcher {
 		lbls = append(lbls, l)
 	})
 
+	valF := func(v string) string {
+		val := s.rnd.Float64()
+		switch {
+		case val > 0.95:
+			return ""
+		case val > 0.90:
+			return ".*"
+		case val > 0.85:
+			return ".+"
+		case val > 0.75:
+			return fmt.Sprintf(".*%v", v[len(v)/2:])
+		default:
+			return fmt.Sprintf("%v.*", v[:len(v)/2])
+		}
+	}
+
 	for i := 0; i < items; i++ {
+
+		var matcher *labels.Matcher
 
 		if lbls[orders[i]].Name == labels.MetricName {
 			containsName = true
+			matcher = labels.MustNewMatcher(labels.MatchEqual, lbls[orders[i]].Name, lbls[orders[i]].Value)
+		} else {
+			res := s.rnd.Intn(4)
+			matchType := labels.MatchType(res)
+			switch matchType {
+			case labels.MatchEqual:
+				matcher = labels.MustNewMatcher(labels.MatchEqual, lbls[orders[i]].Name, lbls[orders[i]].Value)
+			case labels.MatchNotEqual:
+				val := lbls[orders[i]].Value
+				if s.rnd.Float64() > 0.9 {
+					val = ""
+				}
+				matcher = labels.MustNewMatcher(labels.MatchNotEqual, lbls[orders[i]].Name, val)
+			case labels.MatchRegexp:
+				matcher = labels.MustNewMatcher(labels.MatchRegexp, lbls[orders[i]].Name, valF(lbls[orders[i]].Value))
+			case labels.MatchNotRegexp:
+				matcher = labels.MustNewMatcher(labels.MatchNotRegexp, lbls[orders[i]].Name, valF(lbls[orders[i]].Value))
+			}
 		}
-		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, lbls[orders[i]].Name, lbls[orders[i]].Value))
+
+		matchers = append(matchers, matcher)
 	}
 
 	if !containsName {
@@ -482,8 +520,8 @@ func (s *PromQLSmith) walkLabelMatchers() []*labels.Matcher {
 	return matchers
 }
 
-// walkSelectors is similar to walkLabelMatchers, but used for generating various
-// types of matchers more than simple equal matcher.
+// walkSelectors is similar to walkLabelMatchers, but does not guarantee the equal
+// matcher on the metric name
 func (s *PromQLSmith) walkSelectors() []*labels.Matcher {
 	if len(s.seriesSet) == 0 {
 		return nil
@@ -685,13 +723,6 @@ func keepValueTypes(input []parser.ValueType, keep []parser.ValueType) []parser.
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
-}
-
-func min(a, b int) int {
-	if a > b {
-		return b
-	}
-	return a
 }
 
 // generate a non-zero float64 value randomly.

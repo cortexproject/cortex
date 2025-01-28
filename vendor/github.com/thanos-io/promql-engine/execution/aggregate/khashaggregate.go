@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/efficientgo/core/errors"
 	"golang.org/x/exp/slices"
 
@@ -23,7 +25,7 @@ import (
 )
 
 type kAggregate struct {
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 
 	next    model.VectorOperator
 	paramOp model.VectorOperator
@@ -78,7 +80,7 @@ func NewKHashAggregate(
 		params:      make([]float64, opts.StepsBatch),
 	}
 
-	op.OperatorTelemetry = model.NewTelemetry(op, opts)
+	op.OperatorTelemetry = telemetry.NewTelemetry(op, opts)
 
 	return op, nil
 }

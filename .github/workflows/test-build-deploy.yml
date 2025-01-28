@@ -17,7 +17,7 @@ jobs:
   lint:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-0ddced051
+      image: quay.io/cortexproject/build-image:master-03a8f8c98
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -46,7 +46,7 @@ jobs:
   test:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-0ddced051
+      image: quay.io/cortexproject/build-image:master-03a8f8c98
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -64,7 +64,7 @@ jobs:
   test-no-race:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-0ddced051
+      image: quay.io/cortexproject/build-image:master-03a8f8c98
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -93,21 +93,21 @@ jobs:
 
       # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@48ab28a6f5dbc2a99bf1e0131198dd8f1df78169 # v3.28.0
+        uses: github/codeql-action/init@b6a472f63d85b9c78a3ac5e89422239fc15e9b3c # v3.28.1
         with:
           languages: go
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@48ab28a6f5dbc2a99bf1e0131198dd8f1df78169 # v3.28.0
+        uses: github/codeql-action/autobuild@b6a472f63d85b9c78a3ac5e89422239fc15e9b3c # v3.28.1
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@48ab28a6f5dbc2a99bf1e0131198dd8f1df78169 # v3.28.0
+        uses: github/codeql-action/analyze@b6a472f63d85b9c78a3ac5e89422239fc15e9b3c # v3.28.1
 
   
   build:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-0ddced051
+      image: quay.io/cortexproject/build-image:master-03a8f8c98
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -131,7 +131,7 @@ jobs:
           touch build-image/.uptodate
           make BUILD_IN_CONTAINER=false web-build
       - name: Upload Website Artifact
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: website public
           path: website/public/
@@ -143,7 +143,7 @@ jobs:
       - name: Create Docker Images Archive
         run: tar -cvf images.tar /tmp/images
       - name: Upload Docker Images Artifact
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: Docker Images
           path: ./images.tar
@@ -247,14 +247,14 @@ jobs:
         run: |
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
-          make BUILD_IMAGE=quay.io/cortexproject/build-image:master-0ddced051 TTY='' configs-integration-test
+          make BUILD_IMAGE=quay.io/cortexproject/build-image:master-03a8f8c98 TTY='' configs-integration-test
 
   deploy_website:
     needs: [build, test]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-0ddced051
+      image: quay.io/cortexproject/build-image:master-03a8f8c98
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -296,7 +296,7 @@ jobs:
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:master-0ddced051
+      image: quay.io/cortexproject/build-image:master-03a8f8c98
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

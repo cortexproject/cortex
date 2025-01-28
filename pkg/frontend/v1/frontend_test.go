@@ -29,6 +29,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
+	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -264,6 +265,8 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 
 	// Default HTTP handler config.
 	handlerCfg := transport.HandlerConfig{}
+	tenantFederationCfg := tenantfederation.Config{}
+
 	flagext.DefaultValues(&handlerCfg)
 
 	rt := transport.AdaptGrpcRoundTripperToHTTPRoundTripper(v1)
@@ -271,7 +274,7 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	r.PathPrefix("/").Handler(middleware.Merge(
 		middleware.AuthenticateUser,
 		middleware.Tracer{},
-	).Wrap(transport.NewHandler(handlerCfg, rt, logger, nil)))
+	).Wrap(transport.NewHandler(handlerCfg, tenantFederationCfg, rt, logger, nil)))
 
 	httpServer := http.Server{
 		Handler: r,

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"gonum.org/v1/gonum/floats"
 
@@ -20,14 +22,14 @@ type unaryNegation struct {
 	once sync.Once
 
 	series []labels.Labels
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 }
 
 func NewUnaryNegation(next model.VectorOperator, opts *query.Options) (model.VectorOperator, error) {
 	u := &unaryNegation{
 		next: next,
 	}
-	u.OperatorTelemetry = model.NewTelemetry(u, opts)
+	u.OperatorTelemetry = telemetry.NewTelemetry(u, opts)
 
 	return u, nil
 }

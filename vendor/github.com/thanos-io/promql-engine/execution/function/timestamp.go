@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -17,7 +19,7 @@ import (
 
 type timestampOperator struct {
 	next model.VectorOperator
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 
 	series []labels.Labels
 	once   sync.Once
@@ -27,7 +29,7 @@ func newTimestampOperator(next model.VectorOperator, opts *query.Options) *times
 	oper := &timestampOperator{
 		next: next,
 	}
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 
 	return oper
 }

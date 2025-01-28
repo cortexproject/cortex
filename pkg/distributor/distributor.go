@@ -36,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/labelset"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
@@ -130,7 +131,7 @@ type Distributor struct {
 	asyncExecutor util.AsyncExecutor
 
 	// Map to track label sets from user.
-	labelSetTracker *labelSetTracker
+	labelSetTracker *labelset.LabelSetTracker
 }
 
 // Config contains the configuration required to
@@ -388,7 +389,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		asyncExecutor:   util.NewNoOpExecutor(),
 	}
 
-	d.labelSetTracker = newLabelSetTracker(d.receivedSamplesPerLabelSet)
+	d.labelSetTracker = labelset.NewLabelSetTracker()
 
 	if cfg.NumPushWorkers > 0 {
 		util_log.WarnExperimentalUse("Distributor: using goroutine worker pool")
@@ -810,7 +811,16 @@ func (d *Distributor) updateLabelSetMetrics() {
 		}
 	}
 
-	d.labelSetTracker.updateMetrics(activeUserSet)
+	d.labelSetTracker.UpdateMetrics(activeUserSet, func(user, labelSetStr string, removeUser bool) {
+		if removeUser {
+			if err := util.DeleteMatchingLabels(d.receivedSamplesPerLabelSet, map[string]string{"user": user}); err != nil {
+				level.Warn(d.log).Log("msg", "failed to remove cortex_distributor_received_samples_per_labelset_total metric for user", "user", user, "err", err)
+			}
+			return
+		}
+		d.receivedSamplesPerLabelSet.DeleteLabelValues(user, sampleMetricTypeFloat, labelSetStr)
+		d.receivedSamplesPerLabelSet.DeleteLabelValues(user, sampleMetricTypeHistogram, labelSetStr)
+	})
 }
 
 func (d *Distributor) cleanStaleIngesterMetrics() {
@@ -911,6 +921,12 @@ func (d *Distributor) prepareMetadataKeys(req *cortexpb.WriteRequest, limits *va
 		validatedMetadata = append(validatedMetadata, m)
 	}
 	return metadataKeys, validatedMetadata, firstPartialErr
+}
+
+type samplesLabelSetEntry struct {
+	floatSamples     int64
+	histogramSamples int64
+	labels           labels.Labels
 }
 
 func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []cortexpb.PreallocTimeseries, int, int, int, error, error) {
@@ -1070,8 +1086,16 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		validatedExemplars += len(ts.Exemplars)
 	}
 	for h, counter := range labelSetCounters {
-		d.labelSetTracker.increaseSamplesLabelSet(userID, h, counter.labels, counter.floatSamples, counter.histogramSamples)
+		d.labelSetTracker.Track(userID, h, counter.labels)
+		labelSetStr := counter.labels.String()
+		if counter.floatSamples > 0 {
+			d.receivedSamplesPerLabelSet.WithLabelValues(userID, sampleMetricTypeFloat, labelSetStr).Add(float64(counter.floatSamples))
+		}
+		if counter.histogramSamples > 0 {
+			d.receivedSamplesPerLabelSet.WithLabelValues(userID, sampleMetricTypeHistogram, labelSetStr).Add(float64(counter.histogramSamples))
+		}
 	}
+
 	return seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
 }
 

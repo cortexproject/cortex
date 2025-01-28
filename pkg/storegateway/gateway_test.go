@@ -1307,6 +1307,11 @@ func (m *mockShardingStrategy) FilterBlocks(ctx context.Context, userID string, 
 	return args.Error(0)
 }
 
+func (m *mockShardingStrategy) OwnBlock(userID string, meta metadata.Meta) (bool, error) {
+	args := m.Called(userID, meta)
+	return args.Bool(0), args.Error(1)
+}
+
 func createBucketIndex(t *testing.T, bkt objstore.Bucket, userID string) *bucketindex.Index {
 	updater := bucketindex.NewUpdater(bkt, userID, nil, log.NewNopLogger())
 	idx, _, _, err := updater.UpdateIndex(context.Background(), nil)

@@ -38,6 +38,9 @@ type compactorMetrics struct {
 	verticalCompactions         *prometheus.CounterVec
 	remainingPlannedCompactions *prometheus.GaugeVec
 	compactionErrorsCount       *prometheus.CounterVec
+	partitionCount              *prometheus.GaugeVec
+	compactionsNotPlanned       *prometheus.CounterVec
+	compactionDuration          *prometheus.GaugeVec
 }
 
 const (
@@ -169,6 +172,18 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 		Name: "cortex_compactor_compaction_error_total",
 		Help: "Total number of errors from compactions.",
 	}, append(commonLabels, compactionErrorTypesLabelName))
+	m.partitionCount = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_compactor_group_partition_count",
+		Help: "Number of partitions for each compaction group.",
+	}, compactionLabels)
+	m.compactionsNotPlanned = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_compactions_not_planned_total",
+		Help: "Total number of group compaction not planned due to error.",
+	}, compactionLabels)
+	m.compactionDuration = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_compact_group_compaction_duration_seconds",
+		Help: "Duration of completed compactions in seconds",
+	}, compactionLabels)
 
 	return &m
 }
@@ -206,4 +221,33 @@ func (m *compactorMetrics) getCommonLabelValues(userID string) []string {
 		labelValues = append(labelValues, userID)
 	}
 	return labelValues
+}
+
+func (m *compactorMetrics) initMetricWithCompactionLabelValues(labelValue ...string) {
+	if len(m.compactionLabels) != len(commonLabels)+len(compactionLabels) {
+		return
+	}
+
+	m.compactions.WithLabelValues(labelValue...)
+	m.compactionPlanned.WithLabelValues(labelValue...)
+	m.compactionRunsStarted.WithLabelValues(labelValue...)
+	m.compactionRunsCompleted.WithLabelValues(labelValue...)
+	m.compactionFailures.WithLabelValues(labelValue...)
+	m.verticalCompactions.WithLabelValues(labelValue...)
+	m.partitionCount.WithLabelValues(labelValue...)
+	m.compactionsNotPlanned.WithLabelValues(labelValue...)
+	m.compactionDuration.WithLabelValues(labelValue...)
+}
+
+func (m *compactorMetrics) deleteMetricsForDeletedTenant(userID string) {
+	m.syncerBlocksMarkedForDeletion.DeleteLabelValues(userID)
+	m.compactions.DeleteLabelValues(userID)
+	m.compactionPlanned.DeleteLabelValues(userID)
+	m.compactionRunsStarted.DeleteLabelValues(userID)
+	m.compactionRunsCompleted.DeleteLabelValues(userID)
+	m.compactionFailures.DeleteLabelValues(userID)
+	m.verticalCompactions.DeleteLabelValues(userID)
+	m.partitionCount.DeleteLabelValues(userID)
+	m.compactionsNotPlanned.DeleteLabelValues(userID)
+	m.compactionDuration.DeleteLabelValues(userID)
 }

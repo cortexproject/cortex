@@ -1111,8 +1111,8 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		cfg.ShardingEnabled = true
 		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
-		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
-		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
+		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		c, _, tsdbPlanner, l, _ := prepare(t, cfg, bucketClient, nil)
@@ -1135,8 +1135,8 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
-			return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
+		cortex_testutil.Poll(t, 120*time.Second, true, func() interface{} {
+			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
 		})
 	}
 
@@ -1244,8 +1244,8 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		cfg.ShardingStrategy = util.ShardingStrategyShuffle
 		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
-		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
-		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
+		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		limits := &validation.Limits{}
@@ -1521,6 +1521,9 @@ func prepareConfig() Config {
 	compactorCfg.retryMinBackoff = 0
 	compactorCfg.retryMaxBackoff = 0
 
+	//Avoid jitter in startup
+	compactorCfg.CompactionInterval = 5 * time.Second
+
 	// The migration is tested in a dedicated test.
 	compactorCfg.BlockDeletionMarksMigrationEnabled = false
 
@@ -1578,7 +1581,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Instrument
 		blocksGrouperFactory = DefaultBlocksGrouperFactory
 	}
 
-	c, err := newCompactor(compactorCfg, storageCfg, logger, registry, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, overrides)
+	c, err := newCompactor(compactorCfg, storageCfg, logger, registry, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, DefaultBlockDeletableCheckerFactory, DefaultCompactionLifecycleCallbackFactory, overrides, 1)
 	require.NoError(t, err)
 
 	return c, tsdbCompactor, tsdbPlanner, logs, registry
@@ -1748,13 +1751,12 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	for i := 1; i <= 2; i++ {
 		cfg := prepareConfig()
-		cfg.CompactionInterval = 10 * time.Minute // We will only call compaction manually.
 
 		cfg.ShardingEnabled = true
 		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
-		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
-		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
+		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		// Each compactor will get its own temp dir for storing local files.

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -20,7 +22,7 @@ import (
 )
 
 type subqueryOperator struct {
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 
 	next    model.VectorOperator
 	paramOp model.VectorOperator
@@ -74,7 +76,7 @@ func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOpera
 		lastCollected: -1,
 		params:        make([]float64, opts.StepsBatch),
 	}
-	o.OperatorTelemetry = model.NewSubqueryTelemetry(o, opts)
+	o.OperatorTelemetry = telemetry.NewSubqueryTelemetry(o, opts)
 
 	return o, nil
 }
@@ -179,8 +181,8 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 				} else {
 					sv.AppendSample(o.pool, uint64(sampleId), f)
 				}
-				o.IncrementSamplesAtTimestamp(rangeSamples.Len(), sv.T)
 			}
+			o.IncrementSamplesAtTimestamp(rangeSamples.Len(), sv.T)
 		}
 		res = append(res, sv)
 

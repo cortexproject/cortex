@@ -390,6 +390,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.bucket-name
     [bucket_name: <string> | default = ""]
 
+    # If enabled, S3 endpoint will use the non-dualstack variant.
+    # CLI flag: -blocks-storage.s3.disable-dualstack
+    [disable_dualstack: <boolean> | default = false]
+
     # S3 secret access key
     # CLI flag: -blocks-storage.s3.secret-access-key
     [secret_access_key: <string> | default = ""]
@@ -859,25 +863,25 @@ blocks_storage:
         # Path to the client certificate file, which will be used for
         # authenticating with the server. Also requires the key path to be
         # configured.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-cert-path
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-cert-path
         [tls_cert_path: <string> | default = ""]
 
         # Path to the key file for the client certificate. Also requires the
         # client certificate to be configured.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-key-path
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-key-path
         [tls_key_path: <string> | default = ""]
 
         # Path to the CA certificates file to validate server certificate
         # against. If not set, the host's root CA certificates are used.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-ca-path
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-ca-path
         [tls_ca_path: <string> | default = ""]
 
         # Override the expected name on the server certificate.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-server-name
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-server-name
         [tls_server_name: <string> | default = ""]
 
         # Skip validating server certificate.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-insecure-skip-verify
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-insecure-skip-verify
         [tls_insecure_skip_verify: <boolean> | default = false]
 
         # If not zero then client-side caching is enabled. Client-side caching
@@ -1094,25 +1098,25 @@ blocks_storage:
         # Path to the client certificate file, which will be used for
         # authenticating with the server. Also requires the key path to be
         # configured.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-cert-path
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-cert-path
         [tls_cert_path: <string> | default = ""]
 
         # Path to the key file for the client certificate. Also requires the
         # client certificate to be configured.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-key-path
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-key-path
         [tls_key_path: <string> | default = ""]
 
         # Path to the CA certificates file to validate server certificate
         # against. If not set, the host's root CA certificates are used.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-ca-path
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-ca-path
         [tls_ca_path: <string> | default = ""]
 
         # Override the expected name on the server certificate.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-server-name
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-server-name
         [tls_server_name: <string> | default = ""]
 
         # Skip validating server certificate.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-insecure-skip-verify
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-insecure-skip-verify
         [tls_insecure_skip_verify: <boolean> | default = false]
 
         # If not zero then client-side caching is enabled. Client-side caching
@@ -1335,25 +1339,25 @@ blocks_storage:
         # Path to the client certificate file, which will be used for
         # authenticating with the server. Also requires the key path to be
         # configured.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-cert-path
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-cert-path
         [tls_cert_path: <string> | default = ""]
 
         # Path to the key file for the client certificate. Also requires the
         # client certificate to be configured.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-key-path
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-key-path
         [tls_key_path: <string> | default = ""]
 
         # Path to the CA certificates file to validate server certificate
         # against. If not set, the host's root CA certificates are used.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-ca-path
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-ca-path
         [tls_ca_path: <string> | default = ""]
 
         # Override the expected name on the server certificate.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-server-name
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-server-name
         [tls_server_name: <string> | default = ""]
 
         # Skip validating server certificate.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-insecure-skip-verify
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-insecure-skip-verify
         [tls_insecure_skip_verify: <boolean> | default = false]
 
         # If not zero then client-side caching is enabled. Client-side caching
@@ -1444,6 +1448,10 @@ blocks_storage:
       # this limit to the same limit in the caching backend).
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes
       [bucket_index_max_size_bytes: <int> | default = 1048576]
+
+    # Maximum number of entries in the regex matchers cache. 0 to disable.
+    # CLI flag: -blocks-storage.bucket-store.matchers-cache-max-items
+    [matchers_cache_max_items: <int> | default = 0]
 
     # Duration after which the blocks marked for deletion will be filtered out
     # while fetching blocks. The idea of ignore-deletion-marks-delay is to
@@ -1603,11 +1611,6 @@ blocks_storage:
     # performance.
     # CLI flag: -blocks-storage.tsdb.stripe-size
     [stripe_size: <int> | default = 16384]
-
-    # Deprecated (use blocks-storage.tsdb.wal-compression-type instead): True to
-    # enable TSDB WAL compression.
-    # CLI flag: -blocks-storage.tsdb.wal-compression-enabled
-    [wal_compression_enabled: <boolean> | default = false]
 
     # TSDB WAL type. Supported values are: 'snappy', 'zstd' and '' (disable
     # compression)

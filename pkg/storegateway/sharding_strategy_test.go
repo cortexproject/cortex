@@ -2,6 +2,7 @@ package storegateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"testing"
@@ -11,7 +12,9 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
@@ -272,6 +275,11 @@ func TestDefaultShardingStrategy(t *testing.T) {
 
 			for instanceAddr, expectedBlocks := range testData.expectedBlocks {
 				filter := NewDefaultShardingStrategy(r, instanceAddr, log.NewNopLogger(), nil)
+				for _, block := range expectedBlocks {
+					owned, err := filter.OwnBlock("user-1", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block}})
+					require.NoError(t, err)
+					require.True(t, owned)
+				}
 				synced := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"state"})
 				synced.WithLabelValues(shardExcludedMeta).Set(0)
 
@@ -657,6 +665,11 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				// Assert on filter blocks.
 				for _, expected := range testData.expectedBlocks {
 					filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger(), allowedTenants, zoneStableShuffleSharding) //nolint:govet
+					for _, block := range expected.blocks {
+						owned, err := filter.OwnBlock(userID, metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block}})
+						require.NoError(t, err)
+						require.True(t, owned)
+					}
 					synced := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"state"})
 					synced.WithLabelValues(shardExcludedMeta).Set(0)
 
@@ -692,4 +705,160 @@ type shardingLimitsMock struct {
 
 func (m *shardingLimitsMock) StoreGatewayTenantShardSize(_ string) float64 {
 	return m.storeGatewayTenantShardSize
+}
+
+func TestDefaultShardingStrategy_OwnBlock(t *testing.T) {
+	t.Parallel()
+	// The following block IDs have been picked to have increasing hash values
+	// in order to simplify the tests.
+	block1 := ulid.MustNew(1, nil) // hash: 283204220
+	block2 := ulid.MustNew(2, nil)
+	block1Hash := cortex_tsdb.HashBlockID(block1)
+	registeredAt := time.Now()
+	block2Hash := cortex_tsdb.HashBlockID(block2)
+
+	ctx := context.Background()
+	store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	// Initialize the ring state.
+	require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+		d := ring.NewDesc()
+		d.AddIngester("instance-1", "127.0.0.1", "zone-a", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
+		d.AddIngester("instance-2", "127.0.0.2", "zone-b", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+		return d, true, nil
+	}))
+
+	cfg := ring.Config{
+		ReplicationFactor:    1,
+		HeartbeatTimeout:     time.Minute,
+		ZoneAwarenessEnabled: true,
+	}
+
+	r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, r))
+	defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
+
+	// Wait until the ring client has synced.
+	require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE))
+	filter := NewDefaultShardingStrategy(r, "127.0.0.1", log.NewNopLogger(), nil)
+	owned, err := filter.OwnBlock("", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}})
+	require.NoError(t, err)
+	require.True(t, owned)
+	// Owned by 127.0.0.2
+	owned, err = filter.OwnBlock("", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}})
+	require.NoError(t, err)
+	require.False(t, owned)
+
+	filter2 := NewDefaultShardingStrategy(r, "127.0.0.2", log.NewNopLogger(), nil)
+	owned, err = filter2.OwnBlock("", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}})
+	require.NoError(t, err)
+	require.True(t, owned)
+}
+
+func TestShuffleShardingStrategy_OwnBlock(t *testing.T) {
+	t.Parallel()
+	// The following block IDs have been picked to have increasing hash values
+	// in order to simplify the tests.
+	block1 := ulid.MustNew(1, nil) // hash: 283204220
+	block2 := ulid.MustNew(2, nil)
+	block1Hash := cortex_tsdb.HashBlockID(block1)
+	registeredAt := time.Now()
+	block2Hash := cortex_tsdb.HashBlockID(block2)
+
+	ctx := context.Background()
+	store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	// Initialize the ring state.
+	require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+		d := ring.NewDesc()
+		d.AddIngester("instance-1", "127.0.0.1", "zone-a", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
+		d.AddIngester("instance-2", "127.0.0.2", "zone-b", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+		d.AddIngester("instance-3", "127.0.0.3", "zone-c", []uint32{block2Hash + 2}, ring.ACTIVE, registeredAt)
+		return d, true, nil
+	}))
+
+	cfg := ring.Config{
+		ReplicationFactor:    1,
+		HeartbeatTimeout:     time.Minute,
+		ZoneAwarenessEnabled: true,
+	}
+	limits := &shardingLimitsMock{storeGatewayTenantShardSize: 2}
+
+	r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, r))
+	defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
+
+	// Wait until the ring client has synced.
+	require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE))
+	filter := NewShuffleShardingStrategy(r, "instance-1", "127.0.0.1", limits, log.NewNopLogger(), nil, true)
+	filter2 := NewShuffleShardingStrategy(r, "instance-2", "127.0.0.2", limits, log.NewNopLogger(), nil, true)
+
+	owned, err := filter.OwnBlock("user-1", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}})
+	require.NoError(t, err)
+	require.True(t, owned)
+	// Owned by 127.0.0.2
+	owned, err = filter.OwnBlock("user-1", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}})
+	require.NoError(t, err)
+	require.False(t, owned)
+
+	owned, err = filter2.OwnBlock("user-1", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}})
+	require.NoError(t, err)
+	require.True(t, owned)
+}
+
+func TestShardingBlockLifecycleCallbackAdapter(t *testing.T) {
+	userID := "user-1"
+	logger := log.NewNopLogger()
+	block := ulid.MustNew(1, nil)
+	meta := metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block}}
+
+	for _, tc := range []struct {
+		name             string
+		shardingStrategy func() ShardingStrategy
+		expectErr        bool
+	}{
+		{
+			name: "own block",
+			shardingStrategy: func() ShardingStrategy {
+				s := &mockShardingStrategy{}
+				s.On("OwnBlock", mock.Anything, mock.Anything).Return(true, nil)
+				return s
+			},
+		},
+		{
+			name: "own block has error, still own block",
+			shardingStrategy: func() ShardingStrategy {
+				s := &mockShardingStrategy{}
+				s.On("OwnBlock", mock.Anything, mock.Anything).Return(false, errors.New("some error"))
+				return s
+			},
+		},
+		{
+			name: "not own block",
+			shardingStrategy: func() ShardingStrategy {
+				s := &mockShardingStrategy{}
+				s.On("OwnBlock", mock.Anything, mock.Anything).Return(false, nil)
+				return s
+			},
+			expectErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &shardingBlockLifecycleCallbackAdapter{
+				userID:   userID,
+				logger:   logger,
+				strategy: tc.shardingStrategy(),
+			}
+			err := a.PreAdd(meta)
+			if tc.expectErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

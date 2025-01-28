@@ -11,9 +11,11 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/munnerz/goautoneg"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
 
@@ -29,6 +31,9 @@ var (
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: false,
 	}.Froze()
+
+	rulerMIMEType = v1.MIMEType{Type: "application", SubType: tripperware.QueryResponseCortexMIMESubType}
+	jsonMIMEType  = v1.MIMEType{Type: "application", SubType: "json"}
 )
 
 type instantQueryCodec struct {
@@ -68,12 +73,18 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 	result.Stats = r.FormValue("stats")
 	result.Path = r.URL.Path
 
-	// Include the specified headers from http request in prometheusRequest.
-	for _, header := range forwardHeaders {
-		for h, hv := range r.Header {
-			if strings.EqualFold(h, header) {
-				result.Headers[h] = hv
-				break
+	isSourceRuler := strings.Contains(r.Header.Get("User-Agent"), tripperware.RulerUserAgent)
+	if isSourceRuler {
+		// When the source is the Ruler, then forward whole headers
+		result.Headers = r.Header
+	} else {
+		// Include the specified headers from http request in prometheusRequest.
+		for _, header := range forwardHeaders {
+			for h, hv := range r.Header {
+				if strings.EqualFold(h, header) {
+					result.Headers[h] = hv
+					break
+				}
 			}
 		}
 	}
@@ -155,7 +166,11 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 		}
 	}
 
-	tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
+	isSourceRuler := strings.Contains(h.Get("User-Agent"), tripperware.RulerUserAgent)
+	if !isSourceRuler {
+		// When the source is the Ruler, skip set header
+		tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
+	}
 
 	req := &http.Request{
 		Method:     "GET",
@@ -168,7 +183,7 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 	return req.WithContext(ctx), nil
 }
 
-func (instantQueryCodec) EncodeResponse(ctx context.Context, res tripperware.Response) (*http.Response, error) {
+func (c instantQueryCodec) EncodeResponse(ctx context.Context, req *http.Request, res tripperware.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
 	defer sp.Finish()
 
@@ -180,7 +195,7 @@ func (instantQueryCodec) EncodeResponse(ctx context.Context, res tripperware.Res
 	queryStats := stats.FromContext(ctx)
 	tripperware.SetQueryResponseStats(a, queryStats)
 
-	b, err := json.Marshal(a)
+	contentType, b, err := marshalResponse(a, req.Header.Get("Accept"))
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error encoding response: %v", err)
 	}
@@ -189,7 +204,7 @@ func (instantQueryCodec) EncodeResponse(ctx context.Context, res tripperware.Res
 
 	resp := http.Response{
 		Header: http.Header{
-			"Content-Type": []string{tripperware.ApplicationJson},
+			"Content-Type": []string{contentType},
 		},
 		Body:          io.NopCloser(bytes.NewBuffer(b)),
 		StatusCode:    http.StatusOK,
@@ -216,4 +231,19 @@ func decorateWithParamName(err error, field string) error {
 		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
 	}
 	return fmt.Errorf(errTmpl, field, err)
+}
+
+func marshalResponse(resp *tripperware.PrometheusResponse, acceptHeader string) (string, []byte, error) {
+	for _, clause := range goautoneg.ParseAccept(acceptHeader) {
+		if jsonMIMEType.Satisfies(clause) {
+			b, err := json.Marshal(resp)
+			return tripperware.ApplicationJson, b, err
+		} else if rulerMIMEType.Satisfies(clause) {
+			b, err := resp.Marshal()
+			return tripperware.QueryResponseCortexMIMEType, b, err
+		}
+	}
+
+	b, err := json.Marshal(resp)
+	return tripperware.ApplicationJson, b, err
 }

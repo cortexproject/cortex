@@ -260,6 +260,9 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	// Create a querier queryable and PromQL engine
 	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger)
 
+	// Use distributor as default MetadataQuerier
+	t.MetadataQuerier = t.Distributor
+
 	// Register the default endpoints that are always enabled for the querier module
 	t.API.RegisterQueryable(t.QuerierQueryable, t.Distributor)
 
@@ -274,6 +277,8 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 		// federation.
 		byPassForSingleQuerier := true
 		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer))
+		t.MetadataQuerier = tenantfederation.NewMetadataQuerier(t.MetadataQuerier, t.Cfg.TenantFederation.MaxConcurrent, prometheus.DefaultRegisterer)
+		t.ExemplarQueryable = tenantfederation.NewExemplarQueryable(t.ExemplarQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer)
 	}
 	return nil, nil
 }
@@ -335,7 +340,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		t.QuerierQueryable,
 		t.ExemplarQueryable,
 		t.QuerierEngine,
-		t.Distributor,
+		t.MetadataQuerier,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
 	)
@@ -531,7 +536,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	// Wrap roundtripper into Tripperware.
 	roundTripper = t.QueryFrontendTripperware(roundTripper)
 
-	handler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
+	handler := transport.NewHandler(t.Cfg.Frontend.Handler, t.Cfg.TenantFederation, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
 	t.API.RegisterQueryFrontendHandler(handler)
 
 	if frontendV1 != nil {
@@ -607,6 +612,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 			queryEngine = engine.New(engine.Opts{
 				EngineOpts:        opts,
 				LogicalOptimizers: logicalplan.AllOptimizers,
+				EnableAnalysis:    true,
 			})
 		} else {
 			queryEngine = promql.NewEngine(opts)
@@ -684,8 +690,9 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
+	ingestionReplicationFactor := t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor
 
-	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
+	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides, ingestionReplicationFactor)
 	if err != nil {
 		return
 	}

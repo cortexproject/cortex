@@ -12,10 +12,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/golang/snappy"
-
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -48,6 +47,13 @@ const (
 	ProtobufCodecType   CodecType   = "protobuf"
 	ApplicationProtobuf string      = "application/x-protobuf"
 	ApplicationJson     string      = "application/json"
+
+	QueryResponseCortexMIMEType    = "application/" + QueryResponseCortexMIMESubType
+	QueryResponseCortexMIMESubType = "x-cortex-query+proto"
+	RulerUserAgent                 = "CortexRuler"
+
+	SourceRuler = "ruler"
+	SourceAPI   = "api"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
@@ -62,7 +68,7 @@ type Codec interface {
 	// EncodeRequest encodes a Request into an http request.
 	EncodeRequest(context.Context, Request) (*http.Request, error)
 	// EncodeResponse encodes a Response into an http response.
-	EncodeResponse(context.Context, Response) (*http.Response, error)
+	EncodeResponse(context.Context, *http.Request, Response) (*http.Response, error)
 }
 
 // Merger is used by middlewares making multiple requests to merge back all responses into a single one.
@@ -763,7 +769,12 @@ func SetRequestHeaders(h http.Header, defaultCodecType CodecType, compression Co
 }
 
 func UnmarshalResponse(r *http.Response, buf []byte, resp *PrometheusResponse) error {
-	if r.Header != nil && r.Header.Get("Content-Type") == ApplicationProtobuf {
+	if r.Header == nil {
+		return json.Unmarshal(buf, resp)
+	}
+
+	contentType := r.Header.Get("Content-Type")
+	if contentType == ApplicationProtobuf || contentType == QueryResponseCortexMIMEType {
 		return proto.Unmarshal(buf, resp)
 	} else {
 		return json.Unmarshal(buf, resp)

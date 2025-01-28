@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -27,7 +29,7 @@ type Execution struct {
 	opts            *query.Options
 	queryRangeStart time.Time
 	vectorSelector  model.VectorOperator
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 }
 
 func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart time.Time, engineLabels []labels.Labels, opts *query.Options, _ storage.SelectHints) *Execution {
@@ -40,7 +42,7 @@ func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart ti
 		vectorSelector:  promstorage.NewVectorSelector(pool, storage, opts, 0, 0, false, 0, 1),
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 
 	return oper
 }

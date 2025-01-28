@@ -156,6 +156,9 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 				ctx = spanCtx
 			}
 			logger := util_log.WithContext(ctx, sp.log)
+			if request.StatsEnabled {
+				level.Info(logger).Log("msg", "started running request")
+			}
 			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
 
 			if err = ctx.Err(); err != nil {

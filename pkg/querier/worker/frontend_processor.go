@@ -142,6 +142,9 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 	}
 	ctx = util_log.ContextWithHeaderMap(ctx, headerMap)
 	logger := util_log.WithContext(ctx, fp.log)
+	if statsEnabled {
+		level.Info(logger).Log("msg", "started running request")
+	}
 
 	response, err := fp.handler.Handle(ctx, request)
 	if err != nil {

@@ -4,7 +4,7 @@
 &lt;p>The Cortex project employs voting to ensure no single member can dominate the project. Any maintainer may cast a vote. To avoid having a single company dominate the project, at most two votes from maintainers working for the same company will count.&lt;/p>
 &lt;p>For formal votes, a specific statement of what is being voted on should be added to the relevant github issue or PR, and a link to that issue or PR added to the maintainers meeting agenda document.&lt;/p>
 &lt;p>Maintainers should indicate their yes/no vote on that issue or PR, and after a suitable period of time (minimum 2 business weeks), the votes will be tallied and the outcome noted. Maintainers who do not cast a vote, after a suitable period of time, are not included in the majority calculation.&lt;/p>
-&lt;h2 id="maintainer-role">Maintainer Role&lt;/h2>
+&lt;h2 id="maintainer-duties">Maintainer duties&lt;/h2>
 &lt;p>Maintainers are required to participate in the project, by joining discussions, submitting and reviewing pull requests, answering user questions, among others.&lt;/p>
 &lt;p>Besides that, we have one concrete activity in which maintainers have to engage from time to time: releasing new versions of Cortex. This process ideally takes only a couple of hours, but requires coordination on different fronts. Even though the process is well documented, it is not without eventual glitches, so, each release needs a &amp;ldquo;Release shepherd&amp;rdquo;. How it works is described in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/RELEASE.md">RELEASE.md&lt;/a> file.&lt;/p>
 &lt;h2 id="changes-in-maintainership">Changes in Maintainership&lt;/h2>
@@ -22,82 +22,11 @@ of maintainers via one of the following ways:&lt;/p>
 listed in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/README.md">README&lt;/a> as a form of gratitude for their contributions.&lt;/p>
 &lt;h2 id="approving-prs">Approving PRs&lt;/h2>
 &lt;p>PRs may be merged after receiving at least two positive votes. If the PR author is a maintainer, this counts as a vote.&lt;/p>
-&lt;h2 id="triage-role">Triage Role&lt;/h2>
-&lt;p>Triagers are contributors who assist in managing and organizing issues and pull requests. See &lt;a href="https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization#repository-roles-for-organizations">here&lt;/a> for details about the role’s permission.&lt;/p>
 &lt;h2 id="github-project-administration">Github Project Administration&lt;/h2>
-&lt;p>Maintainers will be added to the collaborators list of the Cortex repository with &amp;ldquo;Write&amp;rdquo; access while Triagers will be added to the collaborators list of the Cortex repository with &amp;ldquo;Triage&amp;rdquo; access.&lt;/p>
+&lt;p>Maintainers will be added to the collaborators list of the Cortex repository with &amp;ldquo;Write&amp;rdquo; access.&lt;/p>
 &lt;p>After 6 months a maintainer will be given &amp;ldquo;Admin&amp;rdquo; access to the Cortex repository.&lt;/p>
 &lt;h2 id="changes-in-governance">Changes in Governance&lt;/h2>
 &lt;p>All changes in Governance require a 2/3 majority vote.&lt;/p>
-&lt;h2 id="cortex-team">Cortex Team&lt;/h2>
-&lt;h3 id="maintainers">Maintainers&lt;/h3>
-&lt;table>
-&lt;thead>
-&lt;tr>
-&lt;th>Name&lt;/th>
-&lt;th>Email&lt;/th>
-&lt;th>GitHub&lt;/th>
-&lt;th>Company&lt;/th>
-&lt;/tr>
-&lt;/thead>
-&lt;tbody>
-&lt;tr>
-&lt;td>Alan Protasio&lt;/td>
-&lt;td>&lt;a href="mailto:alanprot@gmail.com">alanprot@gmail.com&lt;/a>&lt;/td>
-&lt;td>@alanprot&lt;/td>
-&lt;td>Amazon Web Services&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Ben Ye&lt;/td>
-&lt;td>&lt;a href="mailto:yb532204897@gmail.com">yb532204897@gmail.com&lt;/a>&lt;/td>
-&lt;td>@yeya24&lt;/td>
-&lt;td>Amazon Web Services&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Charlie Le&lt;/td>
-&lt;td>&lt;a href="mailto:chtle4@gmail.com">chtle4@gmail.com&lt;/a>&amp;gt;&lt;/td>
-&lt;td>@CharlieTLe&lt;/td>
-&lt;td>Apple&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Daniel Blando&lt;/td>
-&lt;td>&lt;a href="mailto:daniel@blando.com.br">daniel@blando.com.br&lt;/a>&lt;/td>
-&lt;td>@danielblando&lt;/td>
-&lt;td>Amazon Web Services&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Friedrich Gonzalez&lt;/td>
-&lt;td>&lt;a href="mailto:friedrichg@gmail.com">friedrichg@gmail.com&lt;/a>&lt;/td>
-&lt;td>@friedrichg&lt;/td>
-&lt;td>Adobe&lt;/td>
-&lt;/tr>
-&lt;/tbody>
-&lt;/table>
-&lt;h3 id="triaggers">Triaggers&lt;/h3>
-&lt;table>
-&lt;thead>
-&lt;tr>
-&lt;th>Name&lt;/th>
-&lt;th>Email&lt;/th>
-&lt;th>GitHub&lt;/th>
-&lt;th>Company&lt;/th>
-&lt;/tr>
-&lt;/thead>
-&lt;tbody>
-&lt;tr>
-&lt;td>Sungjin Lee&lt;/td>
-&lt;td>&lt;a href="mailto:tjdwls1201@gmail.com">tjdwls1201@gmail.com&lt;/a>&lt;/td>
-&lt;td>@SungJin1212&lt;/td>
-&lt;td>KakaoEnterprise&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Anand Rajagopal&lt;/td>
-&lt;td>&lt;a href="mailto:anand.rajagopal@icloud.com">anand.rajagopal@icloud.com&lt;/a>&lt;/td>
-&lt;td>@rajagopalanand&lt;/td>
-&lt;td>Amazon Web Services&lt;/td>
-&lt;/tr>
-&lt;/tbody>
-&lt;/table>
 &lt;h2 id="other-changes">Other Changes&lt;/h2>
 &lt;p>Unless specified above, all other changes to the project require a 2/3 majority vote.
 Additionally, any maintainer may request that any change require a 2/3 majority vote.&lt;/p></description></item><item><title>Docs: Design patterns and Code conventions</title><link>/docs/contributing/design-patterns-and-code-conventions/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/design-patterns-and-code-conventions/</guid><description>
@@ -189,11 +118,13 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;p>Integration tests have &lt;code>requires_docker&lt;/code> tag (&lt;code>// +build requires_docker&lt;/code> line followed by empty line on top of Go files), to avoid running them unintentionally as they require Docker, e.g. by running &lt;code>go test ./...&lt;/code> in main Cortex package.&lt;/p>
 &lt;h2 id="isolation">Isolation&lt;/h2>
 &lt;p>Each integration test runs in isolation. For each integration test, we do create a Docker network, start Cortex and its dependencies containers, push/query series to/from Cortex and run assertions on it. Once the test has done, both the Docker network and containers are terminated and deleted.&lt;/p></description></item><item><title>Docs: How to update the build image</title><link>/docs/contributing/how-to-update-the-build-image/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-update-the-build-image/</guid><description>
-&lt;p>The procedure is:&lt;/p>
+&lt;p>The build image currently can only be updated by a Cortex maintainer. If you&amp;rsquo;re not a maintainer you can still open a PR with the changes, asking a maintainer to assist you publishing the updated image. The procedure is:&lt;/p>
 &lt;ol>
 &lt;li>Update &lt;code>build-image/Dockerfile&lt;/code>&lt;/li>
-&lt;li>Create a PR to master with that changed, after the PR is merged to master, the new build image is available in the quay.io repository. Check github action logs &lt;a href="https://github.com/cortexproject/cortex/actions/workflows/build-image.yml">here&lt;/a> for to find the image tag.&lt;/li>
-&lt;li>Create another PR to replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
+&lt;li>Run &lt;code>go env&lt;/code> and make sure &lt;code>GOPROXY=https://proxy.golang.org,direct&lt;/code> (Go&amp;rsquo;s default). Some environment may required &lt;code>GOPROXY=direct&lt;/code>, and if you push a build image with this, build workflow on GitHub will take a lot longer to download modules.&lt;/li>
+&lt;li>&lt;code>docker login quay.io&lt;/code>. Note that pushing to &lt;code>quay.io/cortexproject/build-image&lt;/code> repository can only be done by a maintainer.&lt;/li>
+&lt;li>Build the and publish the image by using &lt;code>make push-multiarch-build-image&lt;/code>. This will build and push multi-platform docker image (for linux/amd64 and linux/arm64). Running this step successfully requires &lt;a href="https://docs.docker.com/buildx/working-with-buildx/">Docker Buildx&lt;/a>, but does not require a specific platform.&lt;/li>
+&lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
 &lt;li>If you are updating Go&amp;rsquo;s runtime version be sure to change &lt;code>actions/setup-go&lt;/code>&amp;rsquo;s &lt;code>go-version&lt;/code> in ``.github/workflows/*`.&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: How to add a maintainer</title><link>/docs/contributing/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-add-a-maintainer/</guid><description>

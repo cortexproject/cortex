@@ -453,7 +453,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
 	// Create the queries with the original labels
-	testRun := 100
+	testRun := 300
 	queries := make([]string, testRun)
 	for i := 0; i < testRun; i++ {
 		expr := ps.WalkRangeQuery()

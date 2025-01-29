@@ -125,6 +125,7 @@ type ExpandedPostingsCache interface {
 	PostingsForMatchers(ctx context.Context, blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error)
 	ExpireSeries(metric labels.Labels)
 	PurgeExpiredItems()
+	Clear()
 	Size() int
 }
 
@@ -138,6 +139,11 @@ type blocksPostingsForMatchersCache struct {
 
 	metrics    *ExpandedPostingsCacheMetrics
 	seedByHash *seedByHash
+}
+
+func (c *blocksPostingsForMatchersCache) Clear() {
+	c.headCache.clear()
+	c.blocksCache.clear()
 }
 
 func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfig, metrics *ExpandedPostingsCacheMetrics, seedByHash *seedByHash) ExpandedPostingsCache {
@@ -356,6 +362,14 @@ func newFifoCache[V any](cfg PostingsCacheConfig, name string, metrics *Expanded
 		name:         name,
 		metrics:      *metrics,
 	}
+}
+
+func (c *fifoCache[V]) clear() {
+	c.cachedMtx.Lock()
+	defer c.cachedMtx.Unlock()
+	c.cached = list.New()
+	c.cachedBytes = 0
+	c.cachedValues = new(sync.Map)
 }
 
 func (c *fifoCache[V]) expire() {

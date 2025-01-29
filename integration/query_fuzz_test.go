@@ -455,9 +455,16 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	// Create the queries with the original labels
 	testRun := 300
 	queries := make([]string, testRun)
+	matchers := make([]string, testRun)
 	for i := 0; i < testRun; i++ {
 		expr := ps.WalkRangeQuery()
 		queries[i] = expr.Pretty(0)
+		matchers[i] = storepb.PromMatchersToString(
+			append(
+				ps.WalkSelectors(),
+				labels.MustNewMatcher(labels.MatchEqual, "__name__", fmt.Sprintf("test_series_%d", i%numSeries)),
+			)...,
+		)
 	}
 
 	// Lets run multiples iterations and create new series every iteration
@@ -485,13 +492,14 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 		}
 
 		type testCase struct {
-			query      string
-			qt         string
-			res1, res2 model.Value
-			err1, err2 error
+			query        string
+			qt           string
+			res1, res2   model.Value
+			sres1, sres2 []model.LabelSet
+			err1, err2   error
 		}
 
-		cases := make([]*testCase, 0, len(queries)*2)
+		cases := make([]*testCase, 0, len(queries)*3)
 
 		for _, query := range queries {
 			fuzzyTime := time.Duration(rand.Int63n(time.Now().UnixMilli() - start.UnixMilli()))
@@ -518,6 +526,21 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			})
 		}
 
+		for _, m := range matchers {
+			fuzzyTime := time.Duration(rand.Int63n(time.Now().UnixMilli() - start.UnixMilli()))
+			queryEnd := start.Add(fuzzyTime * time.Millisecond)
+			res1, err := c1.Series([]string{m}, start, queryEnd)
+			require.NoError(t, err)
+			res2, err := c2.Series([]string{m}, start, queryEnd)
+			require.NoError(t, err)
+			cases = append(cases, &testCase{
+				query: m,
+				qt:    "get series",
+				sres1: res1,
+				sres2: res2,
+			})
+		}
+
 		failures := 0
 		for i, tc := range cases {
 			if tc.err1 != nil || tc.err2 != nil {
@@ -532,6 +555,9 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 				}
 			} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
 				t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
+				failures++
+			} else if !cmp.Equal(tc.sres1, tc.sres1, labelSetsComparer) {
+				t.Logf("case %d results mismatch.\n%s: %s\nsres1: %s\nsres2: %s\n", i, tc.qt, tc.query, tc.sres1, tc.sres2)
 				failures++
 			}
 		}

@@ -1,0 +1,16 @@
+{
+  "identities": [
+    {
+      "name": "cortex",
+      "credentials": [
+        {
+          "accessKey": "any",
+          "secretKey": "any"
+        }
+      ],
+      "actions": [
+        "Admin"
+      ]
+    }
+  ]
+}

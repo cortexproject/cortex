@@ -1,0 +1,103 @@
+# Configuration for running Cortex in single-process mode.
+# This should not be used in production.  It is only for getting started
+# and development.
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#supported-contents-and-default-values-of-the-config-file
+target: all,compactor,alertmanager
+
+# Disable the requirement that every request to Cortex has an
+# X-Scope-OrgID header. `fake` will be substituted in instead.
+auth_enabled: true
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#server_config
+server:
+  http_listen_port: 9009
+
+  # Configure the server to allow messages up to 100MB.
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  grpc_server_max_concurrent_streams: 1000
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#distributor_config
+distributor:
+  shard_by_all_labels: true
+  pool:
+    health_check_ingesters: true
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#ingester_client_config
+ingester_client:
+  grpc_client_config:
+    # Configure the client to allow messages up to 100MB.
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    grpc_compression: gzip
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#ingester_config
+ingester:
+  lifecycler:
+    # The address to advertise for this ingester.  Will be autodiscovered by
+    # looking up address on eth0 or en0; can be specified if this fails.
+    # address: 127.0.0.1
+
+    # We want to start immediately and flush on shutdown.
+    min_ready_duration: 0s
+    final_sleep: 0s
+    num_tokens: 512
+
+    # Use an in memory ring store, so we don't need to launch a Consul.
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#blocks_storage_config
+blocks_storage:
+  backend: s3
+  s3: &s3
+    endpoint: seaweedfs:8333
+    region: local
+    bucket_name: cortex-blocks
+    access_key_id: any
+    secret_access_key: any
+    insecure: true
+  tsdb:
+    dir: /data/tsdb
+  bucket_store:
+    sync_dir: /data/tsdb-sync
+    bucket_index:
+      enabled: true
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#compactor_config
+compactor:
+  data_dir: /tmp/cortex/compactor
+  sharding_ring:
+    kvstore:
+      store: inmemory
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#frontend_worker_config
+frontend_worker:
+  match_max_concurrent: true
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#ruler_config
+ruler:
+  enable_api: true
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#ruler_storage_config
+ruler_storage:
+  backend: s3
+  s3:
+    <<: *s3
+    bucket_name: cortex-ruler
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#alertmanager_config
+alertmanager:
+  external_url: /alertmanager
+  enable_api: true
+  data_dir: /data/alertmanager
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/#alertmanager_storage_config
+alertmanager_storage:
+  backend: s3
+  s3:
+    <<: *s3
+    bucket_name: cortex-alertmanager

@@ -1,4 +1,65 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Proposals</title><link>/docs/proposals/</link><description>Recent content in Proposals on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/proposals/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Blocks storage bucket index</title><link>/docs/proposals/blocks-storage-bucket-index/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/blocks-storage-bucket-index/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Proposals</title><link>/docs/proposals/</link><description>Recent content in Proposals on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/proposals/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Authentication Gateway</title><link>/docs/proposals/auth-gateway/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/auth-gateway/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/dogukanteber">Doğukan Teber&lt;/a>&lt;/li>
+&lt;li>Date: March 2023&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;h2 id="overview">Overview&lt;/h2>
+&lt;p>If you run Cortex for multiple tenants you need to identify your tenants every time they send metrics or query them.
+This is needed to ensure that metrics can be ingested and queried separately from each other. For this purpose, the Cortex microservices require you to pass a Header called &lt;code>X-Scope-OrgID&lt;/code>.
+The Cortex k8s manifests suggest deploying an NGINX server inside of each tenant which acts as a reverse proxy.
+Its sole purpose is proxying the traffic and setting the &lt;code>X-Scope-OrgID&lt;/code> header for your tenant.&lt;/p>
+&lt;h2 id="proposal">Proposal&lt;/h2>
+&lt;p>We propose to solve this problem by adding a gateway that can be considered the entry point for all requests towards Cortex.
+This gateway will be responsible for handling multi-tenancy features without complicated proxy configuration.&lt;/p>
+&lt;p>This gateway will be located in another repository, &lt;a href="https://github.com/cortexproject/auth-gateway">cortexproject/auth-gateway&lt;/a>.
+For the first version, basic authentication will be supported.
+However, as the project grows, it is planned to support different authentication mechanisms according to the needs of the users.&lt;/p>
+&lt;p>We would like to have a simple configuration format.
+The following is the proposed configuration:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">server&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">address&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">localhost&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">port&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">8080&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">debug&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">address&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">localhost&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">port&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">8090&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">tenants&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">authentication&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">basic&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">username&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">username1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">password&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">password1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">id&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">orgid&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">authentication&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">basic&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">username&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">username2&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">password&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">password2&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">id&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">orgid&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">distributor&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">dns_refresh_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">3s&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">http://distributor:9009&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">paths&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">/api/v1/push&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">/api/prom/push&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">http_client_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">20&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">read_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">5&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">write_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">5&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">idle_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">7&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">frontend&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">http://frontend:9010&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">read_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">5&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">write_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">5&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">idle_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">7&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>debug&lt;/code> will be used for endpoints that do not require authentication, ie. /metrics, /ready, /pprof.
+If no paths are given in the component, such as &lt;code>frontend&lt;/code>, the default API paths of that component will be registered.
+If paths are provided, then the provided API paths will override the default API paths.
+Additionally, the users will be able to specify custom timeouts for each component similar to &lt;a href="https://github.com/cortexproject/cortex-helm-chart/blob/571fc2a5f184b6b7c243bac3727503264249bfd1/templates/nginx/nginx-config.yaml#L50-L55">NGINX&lt;/a>.&lt;/p>
+&lt;p>Note that only the distributor and query-frontend are mentioned in the example configuration.
+However, in addition to the distributor and query-frontend, alertmanager and ruler will be supported.
+The same configurations can be done for these components as well.&lt;/p>
+&lt;p>The time values that are specified in the above configuration are not tested and are only given as an example.
+The default values for these fields will be decided later when comprehensive tests are conducted.&lt;/p>
+&lt;p>Finally, we will ensure the load is balanced between the targets similar to NGINX in which there is a configurable dns refresh parameter and a round-robin between all the hosts.&lt;/p></description></item><item><title>Docs: Blocks storage bucket index</title><link>/docs/proposals/blocks-storage-bucket-index/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/blocks-storage-bucket-index/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/pracucci">Marco Pracucci&lt;/a>&lt;/li>
 &lt;li>Date: November 2020&lt;/li>
@@ -807,10 +868,11 @@ decode the data stored in the kv store.&lt;/p>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/soonping-amzn">Soon-Ping Phang&lt;/a>&lt;/li>
 &lt;li>Date: June 2022&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
+&lt;li>Status: Deprecated&lt;/li>
 &lt;/ul>
 &lt;hr>
 &lt;h2 id="introduction">Introduction&lt;/h2>
+&lt;p>&lt;em>This proposal is deprecated in favor of the new &lt;a href="/docs/proposals/ruler-high-availability/">proposal&lt;/a>&lt;/em>&lt;/p>
 &lt;p>This proposal consolidates multiple existing PRs from the AWS team working on this feature, as well as future work needed to complete support. The hope is that a more holistic view will make for more productive discussion and review of the individual changes, as well as provide better tracking of overall progress.&lt;/p>
 &lt;p>The original issue is &lt;a href="https://github.com/cortexproject/cortex/issues/4435">#4435&lt;/a>.&lt;/p>
 &lt;h2 id="problem">Problem&lt;/h2>
@@ -862,7 +924,51 @@ decode the data stored in the kv store.&lt;/p>
 &lt;h4 id="alternatives-to-a-quorum-api-parameter">Alternatives to a quorum API parameter&lt;/h4>
 &lt;h5 id="weak-or-strong-quorum-by-default">Weak or strong quorum by default&lt;/h5>
 &lt;p>Another option for making ListRules work in HA mode is to implement one of the quorum rules (weak or strong) as the default, with no control to select between the two, outside of maybe a configuration parameter. AWS itself runs multitenant Cortex instances, and we have an internal use-case for the strong quorum implementation, but we do not want to impose the subsequent availability hit on our customers, particularly given that replication_factor is not currently a tenant-specific parameter in Cortex, for ingesters, alert manager, or ruler.&lt;/p>
-&lt;p>Making HA availability the default, while giving users the choice to knowingly request for more consistency at the cost of more error-handling seems like a good balance.&lt;/p></description></item><item><title>Docs: Ruler Tenant Federation</title><link>/docs/proposals/ruler-tenant-federation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/ruler-tenant-federation/</guid><description>
+&lt;p>Making HA availability the default, while giving users the choice to knowingly request for more consistency at the cost of more error-handling seems like a good balance.&lt;/p></description></item><item><title>Docs: Ruler High Availability</title><link>/docs/proposals/ruler-high-availability/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/ruler-high-availability/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/rajagopalanand">Anand Rajagopal&lt;/a>&lt;/li>
+&lt;li>Date: Aug 2024&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;hr>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;p>Rulers in Cortex currently run with a replication factor of 1, wherein each RuleGroup is assigned to exactly 1 ruler. This lack of redundancy creates the following risks:&lt;/p>
+&lt;ul>
+&lt;li>Rule group evaluation
+&lt;ul>
+&lt;li>Missed evaluations due to a ruler outage, possibly caused by a deployment, noisy neighbour, hardware failure, etc.&lt;/li>
+&lt;li>Missed evaluations due to a ruler brownout due to other tenant rule groups sharing the same ruler (noisy neighbour)&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>API
+&lt;ul>
+&lt;li>Inconsistent API results during resharding (e.g. due to a deployment) when rulers are in a transition state loading rule groups&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>This proposal attempts to mitigate the above risks by enabling a ruler replication factor of greater than 1, allowing multiple rulers to evaluate the same rule group — effectively.&lt;/p>
+&lt;h2 id="proposal">Proposal&lt;/h2>
+&lt;h3 id="make-replicationfactor-configurable">Make ReplicationFactor configurable&lt;/h3>
+&lt;p>ReplicationFactor in Ruler is currently hardcoded to 1. Making this a configurable parameter is the first step to enabling HA in ruler. The parameter value will be 1 by default. To enable Ruler HA for rule group evaluation, a new flag will be created&lt;/p>
+&lt;p>A replication factor greater than 1 will result in the following&lt;/p>
+&lt;ul>
+&lt;li>Ring will pick R rulers for a rule group where R=RF&lt;/li>
+&lt;li>The primary ruler (R1), when active, will take ownership of the rule group&lt;/li>
+&lt;li>Non-primary ruler R2 will check if R1 is active. If R1 is not active, R2 will take ownership of the rule group&lt;/li>
+&lt;li>Non-primary ruler R3 (if RF=3) will check if R1 and R2 are active. If they are both inactive/unhealthy, then R3 will take owership of the rule group&lt;/li>
+&lt;li>Non-primary rulers will drop their ownership when R1 becomes active after an outage&lt;/li>
+&lt;/ul>
+&lt;p>With this redundancy, the maximum duration of missed evaluations will be limited to the sync interval of the rule groups, reducing the impact of primary Ruler unavailability.&lt;/p>
+&lt;h3 id="prometheus-change">Prometheus change&lt;/h3>
+&lt;p>No Prometheus change is required for this proposal&lt;/p>
+&lt;h3 id="api-ha">API HA&lt;/h3>
+&lt;p>An interim solution is addressed in this &lt;a href="https://github.com/cortexproject/cortex/issues/5773">#5773&lt;/a> PR. This will be modified such that the replicas will return both active and passive rule groups and the API handler will continue to de-duplicate the results.
+The difference is that after Ruler HA, the replicas could potentially return proper rule group state if those replicas evaluated the rule group&lt;/p>
+&lt;p>PRs:&lt;/p>
+&lt;ul>
+&lt;li>For Rule evaluation &lt;a href="https://github.com/cortexproject/cortex/pull/6129">#6129&lt;/a>&lt;/li>
+&lt;li>For API HA &lt;a href="https://github.com/cortexproject/cortex/issues/5773">#5773&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Ruler Tenant Federation</title><link>/docs/proposals/ruler-tenant-federation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/ruler-tenant-federation/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/rdooley">Rees Dooley&lt;/a>&lt;/li>
 &lt;li>Date: November 2021&lt;/li>

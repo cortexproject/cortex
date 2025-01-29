@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: seaweedfs-config
+data:
+  seaweedfs-config.json: |-
+    {
+      "identities": [
+        {
+          "name": "cortex",
+          "credentials": [
+            {
+              "accessKey": "any",
+              "secretKey": "any"
+            }
+          ],
+          "actions": [
+            "Admin"
+          ]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seaweedfs
+  labels:
+    app: seaweedfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seaweedfs
+  template:
+    metadata:
+      name: seaweedfs
+      labels:
+        app: seaweedfs
+    spec:
+      containers:
+        - name: seaweedfs
+          image: chrislusf/seaweedfs:3.67
+          imagePullPolicy: IfNotPresent
+          args:
+            - "server"
+            - "-s3"
+            - "-s3.config=/workspace/seaweedfs-config.json"
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: 8333
+          ports:
+            - containerPort: 8333
+              name: seaweedfs
+          volumeMounts:
+            - name: seaweedfs-config
+              mountPath: /workspace
+      volumes:
+        - name: seaweedfs-config
+          configMap:
+            name: seaweedfs-config
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs
+spec:
+  selector:
+    app: seaweedfs
+  ports:
+    - protocol: TCP
+      port: 8333
+      targetPort: 8333
+  type: ClusterIP

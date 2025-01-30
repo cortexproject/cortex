@@ -30,7 +30,12 @@ var (
 type LifecyclerDelegate interface {
 	// OnRingInstanceHeartbeat is called while the instance is updating its heartbeat
 	// in the ring.
-	OnRingInstanceHeartbeat(lifecycler *Lifecycler, ctx context.Context)
+	OnRingInstanceHeartbeat(lifecycler *Lifecycler, ringDesc *Desc)
+}
+
+type DefaultLifecyclerDelegate struct{}
+
+func (d DefaultLifecyclerDelegate) OnRingInstanceHeartbeat(lifecycler *Lifecycler, ringDesc *Desc) {
 }
 
 // LifecyclerConfig is the config to build a Lifecycler.
@@ -232,6 +237,7 @@ func NewLifecycler(
 		lifecyclerMetrics:    NewLifecyclerMetrics(ringName, reg),
 		logger:               logger,
 		tg:                   tg,
+		delegate:             &DefaultLifecyclerDelegate{},
 	}
 
 	l.lifecyclerMetrics.tokensToOwn.Set(float64(cfg.NumTokens))
@@ -624,9 +630,6 @@ func (i *Lifecycler) heartbeat(ctx context.Context) {
 	i.lifecyclerMetrics.consulHeartbeats.Inc()
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.HeartbeatPeriod)
 	defer cancel()
-	if i.delegate != nil {
-		i.delegate.OnRingInstanceHeartbeat(i, ctx)
-	}
 	if err := i.updateConsul(ctx); err != nil {
 		level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 	}
@@ -998,6 +1001,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			instanceDesc.Zone = i.Zone
 			instanceDesc.RegisteredTimestamp = i.getRegisteredAt().Unix()
 			ringDesc.Ingesters[i.ID] = instanceDesc
+			i.delegate.OnRingInstanceHeartbeat(i, ringDesc)
 		}
 
 		return ringDesc, true, nil

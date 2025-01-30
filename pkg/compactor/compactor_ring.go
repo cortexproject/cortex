@@ -18,10 +18,9 @@ import (
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore                    kv.Config     `yaml:"kvstore"`
-	HeartbeatPeriod            time.Duration `yaml:"heartbeat_period"`
-	HeartbeatTimeout           time.Duration `yaml:"heartbeat_timeout"`
-	AutoForgetUnhealthyPeriods int           `yaml:"auto_forget_unhealthy_periods"`
+	KVStore          kv.Config     `yaml:"kvstore"`
+	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout"`
 
 	// Wait ring stability.
 	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`
@@ -55,7 +54,6 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix("compactor.ring.", "collectors/", f)
 	f.DurationVar(&cfg.HeartbeatPeriod, "compactor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "compactor.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which compactors are considered unhealthy within the ring. 0 = never (timeout disabled).")
-	f.IntVar(&cfg.AutoForgetUnhealthyPeriods, "compactor.auto-forget-unhealthy-periods", -1, "The number of heartbeat periods to occur after an ingester becomes unhealthy before it is forgotten from the ring. -1 to disable")
 
 	// Wait stability flags.
 	f.DurationVar(&cfg.WaitStabilityMinDuration, "compactor.ring.wait-stability-min-duration", time.Minute, "Minimum time to wait for ring stability at startup. 0 to disable.")
@@ -89,7 +87,6 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 	rc.KVStore = cfg.KVStore
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
 	rc.ReplicationFactor = 1
-	rc.AutoForgetUnhealthyPeriods = cfg.AutoForgetUnhealthyPeriods
 
 	// Configure lifecycler
 	lc.RingConfig = rc

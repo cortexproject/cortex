@@ -24,7 +24,6 @@ func TestRingConfig_DefaultConfigToLifecyclerConfig(t *testing.T) {
 	expected.NumTokens = 512
 	expected.MinReadyDuration = 0
 	expected.FinalSleep = 0
-	expected.RingConfig.AutoForgetUnhealthyPeriods = -1
 
 	assert.Equal(t, expected, cfg.ToLifecyclerConfig())
 }
@@ -43,7 +42,6 @@ func TestRingConfig_CustomConfigToLifecyclerConfig(t *testing.T) {
 	cfg.InstanceAddr = "1.2.3.4"
 	cfg.ListenPort = 10
 	cfg.TokensFilePath = "testFilePath"
-	cfg.AutoForgetUnhealthyPeriods = 5
 
 	// The lifecycler config should be generated based upon the compactor
 	// ring config
@@ -56,7 +54,6 @@ func TestRingConfig_CustomConfigToLifecyclerConfig(t *testing.T) {
 	expected.Addr = cfg.InstanceAddr
 	expected.ListenPort = cfg.ListenPort
 	expected.TokensFilePath = cfg.TokensFilePath
-	expected.RingConfig.AutoForgetUnhealthyPeriods = cfg.AutoForgetUnhealthyPeriods
 
 	// Hardcoded config
 	expected.RingConfig.ReplicationFactor = 1

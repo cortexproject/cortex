@@ -1,7 +1,7 @@
 # Changelog
 
 ## master / unreleased
-* [ENHANCEMENT] Add `auto_forget_unhealthy_periods` for ring to auto forget unhealthy compactors. #6533
+* [ENHANCEMENT] Add `compactor.auto-forget-delay` for compactor to auto forget compactors after X minutes without heartbeat. #6533
 
 ## 1.19.0 in progress
 

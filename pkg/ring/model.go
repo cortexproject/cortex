@@ -543,10 +543,11 @@ type CompareResult int
 const (
 	Equal                       CompareResult = iota // Both rings contain same exact instances.
 	EqualButStatesAndTimestamps                      // Both rings contain the same instances with the same data except states and timestamps (may differ).
+	EqualButReadOnly                                 // Both rings contain the same instances but Write ring can change due to ReadOnly update
 	Different                                        // Rings have different set of instances, or their information don't match.
 )
 
-// RingCompare compares this ring against another one and returns one of Equal, EqualButStatesAndTimestamps or Different.
+// RingCompare compares this ring against another one and returns one of Equal, EqualButStatesAndTimestamps, EqualButReadOnly or Different.
 func (d *Desc) RingCompare(o *Desc) CompareResult {
 	if d == nil {
 		if o == nil || len(o.Ingesters) == 0 {
@@ -566,6 +567,7 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 	}
 
 	equalStatesAndTimestamps := true
+	equalReadOnly := true
 
 	for name, ing := range d.Ingesters {
 		oing, ok := o.Ingesters[name]
@@ -600,14 +602,21 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 		}
 
 		if ing.State != oing.State {
-			equalStatesAndTimestamps = false
+			if ing.State == READONLY || oing.State == READONLY {
+				equalReadOnly = false
+			} else {
+				equalStatesAndTimestamps = false
+			}
 		}
 	}
 
-	if equalStatesAndTimestamps {
-		return Equal
+	if !equalReadOnly {
+		return EqualButReadOnly
 	}
-	return EqualButStatesAndTimestamps
+	if !equalStatesAndTimestamps {
+		return EqualButStatesAndTimestamps
+	}
+	return Equal
 }
 
 func GetOrCreateRingDesc(d interface{}) *Desc {

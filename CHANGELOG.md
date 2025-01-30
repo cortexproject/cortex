@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [FEATURE] Querier/Ruler: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
+* [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 
 ## 1.19.0 in progress
 

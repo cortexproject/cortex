@@ -2523,6 +2523,111 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 	}
 }
 
+func TestRing_ShuffleShardWithReadOnlyIngesters(t *testing.T) {
+	g := NewRandomTokenGenerator()
+
+	const (
+		userID = "user-1"
+	)
+
+	tests := map[string]struct {
+		ringInstances         map[string]InstanceDesc
+		ringReplicationFactor int
+		shardSize             int
+		expectedSize          int
+		op                    Operation
+		expectedToBePresent   []string
+	}{
+		"single zone, shard size = 1, default scenario": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE, Tokens: g.GenerateTokens(NewDesc(), "instance-1", "zone-a", 128, true)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", State: ACTIVE, Tokens: g.GenerateTokens(NewDesc(), "instance-2", "zone-a", 128, true)},
+			},
+			ringReplicationFactor: 1,
+			shardSize:             1,
+			expectedSize:          1,
+		},
+		"single zone, shard size = 1, not filter ReadOnly": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE, Tokens: g.GenerateTokens(NewDesc(), "instance-1", "zone-a", 128, true)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", State: READONLY, Tokens: g.GenerateTokens(NewDesc(), "instance-2", "zone-a", 128, true)},
+			},
+			ringReplicationFactor: 1,
+			shardSize:             2,
+			expectedSize:          2,
+		},
+		"single zone, shard size = 4, do not filter other states": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE, Tokens: g.GenerateTokens(NewDesc(), "instance-1", "zone-a", 128, true)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", State: JOINING, Tokens: g.GenerateTokens(NewDesc(), "instance-2", "zone-a", 128, true)},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-a", State: LEAVING, Tokens: g.GenerateTokens(NewDesc(), "instance-3", "zone-a", 128, true)},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-a", State: PENDING, Tokens: g.GenerateTokens(NewDesc(), "instance-4", "zone-a", 128, true)},
+			},
+			ringReplicationFactor: 1,
+			shardSize:             4,
+			expectedSize:          4,
+		},
+		"single zone, shard size = 4, extend on readOnly": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{2}},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{4}},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{6}},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-a", State: READONLY, Tokens: []uint32{1, 3, 5}},
+			},
+			ringReplicationFactor: 1,
+			shardSize:             2,
+			expectedSize:          3,
+			expectedToBePresent:   []string{"instance-4"},
+		},
+		"rf = 3, shard size = 4, extend readOnly from different zones": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{2}},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{12}},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", State: ACTIVE, Tokens: []uint32{22}},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{4}},
+				"instance-5": {Addr: "127.0.0.5", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{14}},
+				"instance-6": {Addr: "127.0.0.6", Zone: "zone-c", State: ACTIVE, Tokens: []uint32{24}},
+				"instance-7": {Addr: "127.0.0.7", Zone: "zone-a", State: READONLY, Tokens: []uint32{1, 3}},
+				"instance-8": {Addr: "127.0.0.8", Zone: "zone-b", State: READONLY, Tokens: []uint32{11, 13}},
+				"instance-9": {Addr: "127.0.0.9", Zone: "zone-c", State: READONLY, Tokens: []uint32{21, 23}},
+			},
+			ringReplicationFactor: 3,
+			shardSize:             6,
+			expectedSize:          9,
+			expectedToBePresent:   []string{"instance-7", "instance-8", "instance-9"},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Init the ring.
+			ringDesc := &Desc{Ingesters: testData.ringInstances}
+			for id, instance := range ringDesc.Ingesters {
+				ringDesc.Ingesters[id] = instance
+			}
+
+			ring := Ring{
+				cfg: Config{
+					ReplicationFactor: testData.ringReplicationFactor,
+				},
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
+			}
+
+			shardRing := ring.ShuffleShard(userID, testData.shardSize)
+			assert.Equal(t, testData.expectedSize, shardRing.InstancesCount())
+			for _, expectedInstance := range testData.expectedToBePresent {
+				assert.True(t, shardRing.HasInstance(expectedInstance))
+			}
+		})
+	}
+}
+
 func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 	// The goal of this test is NOT to ensure that the minimum required number of instances
 	// are returned at any given time, BUT at least all required instances are returned.

@@ -827,6 +827,86 @@ func TestTokenFileOnDisk(t *testing.T) {
 	}
 }
 
+func TestRegisteredAtOnBackToActive(t *testing.T) {
+	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = ringStore
+
+	r, err := New(ringConfig, "ingester", ringKey, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	tokenDir := t.TempDir()
+
+	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
+	lifecyclerConfig.NumTokens = 512
+	lifecyclerConfig.TokensFilePath = tokenDir + "/tokens"
+
+	// Start first ingester.
+	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", ringKey, true, true, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
+
+	// Check this ingester joined, is active.
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		return ok &&
+			len(desc.Ingesters) == 1 &&
+			desc.Ingesters["ing1"].State == ACTIVE
+	})
+
+	//Get original registeredTime
+	d, err := r.KVClient.Get(context.Background(), ringKey)
+	require.NoError(t, err)
+	desc, ok := d.(*Desc)
+	require.True(t, ok)
+	originalRegisterTime := desc.Ingesters["ing1"].RegisteredTimestamp
+
+	// Change state from ACTIVE to READONLY
+	err = l1.ChangeState(context.Background(), READONLY)
+	require.NoError(t, err)
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		return ok &&
+			desc.Ingesters["ing1"].State == READONLY
+	})
+
+	//Guarantee 1s diff for RegisteredTimestamp
+	time.Sleep(1 * time.Second)
+
+	// Change state from READONLY to ACTIVE
+	err = l1.ChangeState(context.Background(), ACTIVE)
+	require.NoError(t, err)
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		return ok &&
+			desc.Ingesters["ing1"].State == ACTIVE
+	})
+
+	d, err = r.KVClient.Get(context.Background(), ringKey)
+	require.NoError(t, err)
+
+	desc, ok = d.(*Desc)
+	require.True(t, ok)
+	ing := desc.Ingesters["ing1"]
+	require.True(t, ing.RegisteredTimestamp > originalRegisterTime)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l1))
+}
+
 func TestTokenFileOnDisk_WithoutAutoJoinOnStartup(t *testing.T) {
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })

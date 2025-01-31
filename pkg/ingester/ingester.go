@@ -99,6 +99,7 @@ const (
 var (
 	errExemplarRef      = errors.New("exemplars not ingested because series not already present")
 	errIngesterStopping = errors.New("ingester stopping")
+	errNoUserDb         = errors.New("no user db")
 
 	tsChunksPool zeropool.Pool[[]client.TimeSeriesChunk]
 )
@@ -988,8 +989,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 
 func (i *Ingester) updateUserTSDBConfigs() {
 	for _, userID := range i.getTSDBUsers() {
-		userDB := i.getTSDB(userID)
-		if userDB == nil {
+		userDB, err := i.getTSDB(userID)
+		if err != nil || userDB == nil {
 			continue
 		}
 
@@ -1005,7 +1006,7 @@ func (i *Ingester) updateUserTSDBConfigs() {
 		}
 
 		// This method currently updates the MaxExemplars and OutOfOrderTimeWindow.
-		err := userDB.db.ApplyConfig(cfg)
+		err = userDB.db.ApplyConfig(cfg)
 		if err != nil {
 			level.Error(logutil.WithUserID(userID, i.logger)).Log("msg", "failed to update user tsdb configuration.")
 		}
@@ -1029,8 +1030,8 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 	purgeTime := time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout)
 
 	for _, userID := range i.getTSDBUsers() {
-		userDB := i.getTSDB(userID)
-		if userDB == nil {
+		userDB, err := i.getTSDB(userID)
+		if err != nil || userDB == nil {
 			continue
 		}
 
@@ -1045,8 +1046,8 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 func (i *Ingester) updateLabelSetMetrics() {
 	activeUserSet := make(map[string]map[uint64]struct{})
 	for _, userID := range i.getTSDBUsers() {
-		userDB := i.getTSDB(userID)
-		if userDB == nil {
+		userDB, err := i.getTSDB(userID)
+		if err != nil || userDB == nil {
 			continue
 		}
 
@@ -1549,8 +1550,8 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 
 	i.metrics.queries.Inc()
 
-	db := i.getTSDB(userID)
-	if db == nil {
+	db, err := i.getTSDB(userID)
+	if err != nil || db == nil {
 		return &client.ExemplarQueryResponse{}, nil
 	}
 
@@ -1642,8 +1643,8 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	db := i.getTSDB(userID)
-	if db == nil {
+	db, err := i.getTSDB(userID)
+	if err != nil || db == nil {
 		return &client.LabelValuesResponse{}, cleanup, nil
 	}
 
@@ -1732,8 +1733,8 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	db := i.getTSDB(userID)
-	if db == nil {
+	db, err := i.getTSDB(userID)
+	if err != nil || db == nil {
 		return &client.LabelNamesResponse{}, cleanup, nil
 	}
 
@@ -1830,8 +1831,8 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return cleanup, err
 	}
 
-	db := i.getTSDB(userID)
-	if db == nil {
+	db, err := i.getTSDB(userID)
+	if err != nil || db == nil {
 		return cleanup, nil
 	}
 
@@ -1944,8 +1945,8 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return nil, err
 	}
 
-	db := i.getTSDB(userID)
-	if db == nil {
+	db, err := i.getTSDB(userID)
+	if err != nil || db == nil {
 		return &client.UserStatsResponse{}, nil
 	}
 
@@ -2064,8 +2065,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	i.metrics.queries.Inc()
 
-	db := i.getTSDB(userID)
-	if db == nil {
+	db, err := i.getTSDB(userID)
+	if err != nil || db == nil {
 		return nil
 	}
 
@@ -2216,11 +2217,14 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	return numSeries, numSamples, totalBatchSizeBytes, numChunks, nil
 }
 
-func (i *Ingester) getTSDB(userID string) *userTSDB {
+func (i *Ingester) getTSDB(userID string) (*userTSDB, error) {
 	i.stoppedMtx.RLock()
 	defer i.stoppedMtx.RUnlock()
 	db := i.TSDBState.dbs[userID]
-	return db
+	if db == nil {
+		return nil, errNoUserDb
+	}
+	return db, nil
 }
 
 // List all users for which we have a TSDB. We do it here in order
@@ -2238,8 +2242,11 @@ func (i *Ingester) getTSDBUsers() []string {
 }
 
 func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error) {
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
 	if db != nil {
+		if err != nil {
+			level.Warn(i.logger).Log("msg", "error getting user DB but userDB is not null", "err", err, "userID", userID)
+		}
 		return db, nil
 	}
 
@@ -2271,7 +2278,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 	}
 
 	// Create the database and a shipper for a user
-	db, err := i.createTSDB(userID)
+	db, err = i.createTSDB(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -2285,10 +2292,10 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 
 func (i *Ingester) blockChunkQuerierFunc(userId string) tsdb.BlockChunkQuerierFunc {
 	return func(b tsdb.BlockReader, mint, maxt int64) (storage.ChunkQuerier, error) {
-		db := i.getTSDB(userId)
+		db, err := i.getTSDB(userId)
 
 		var postingCache cortex_tsdb.ExpandedPostingsCache
-		if db != nil {
+		if err == nil && db != nil {
 			postingCache = db.postingCache
 		}
 
@@ -2650,8 +2657,8 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 		}
 
 		// Get the user's DB. If the user doesn't exist, we skip it.
-		userDB := i.getTSDB(userID)
-		if userDB == nil || userDB.shipper == nil {
+		userDB, err := i.getTSDB(userID)
+		if err != nil || userDB == nil || userDB.shipper == nil {
 			return nil
 		}
 
@@ -2762,8 +2769,8 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.
 			return nil
 		}
 
-		userDB := i.getTSDB(userID)
-		if userDB == nil {
+		userDB, err := i.getTSDB(userID)
+		if err != nil || userDB == nil {
 			return nil
 		}
 
@@ -2772,8 +2779,6 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.
 		if h.NumSeries() == 0 {
 			return nil
 		}
-
-		var err error
 
 		i.TSDBState.compactionsTriggered.Inc()
 
@@ -2823,8 +2828,8 @@ func (i *Ingester) expirePostingsCache(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		userDB := i.getTSDB(userID)
-		if userDB == nil || userDB.postingCache == nil {
+		userDB, err := i.getTSDB(userID)
+		if err != nil || userDB == nil || userDB.postingCache == nil {
 			continue
 		}
 		userDB.postingCache.PurgeExpiredItems()
@@ -2834,8 +2839,8 @@ func (i *Ingester) expirePostingsCache(ctx context.Context) error {
 }
 
 func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckResult {
-	userDB := i.getTSDB(userID)
-	if userDB == nil || userDB.shipper == nil {
+	userDB, err := i.getTSDB(userID)
+	if err != nil || userDB == nil || userDB.shipper == nil {
 		// We will not delete local data when not using shipping to storage.
 		return tsdbShippingDisabled
 	}

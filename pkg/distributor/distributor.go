@@ -1400,15 +1400,15 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 			defer stream.CloseSend() //nolint:errcheck
 			for {
 				resp, err := stream.Recv()
-				if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
-					return nil, validation.LimitError(err.Error())
-				}
-
 				if err == io.EOF {
 					break
 				} else if err != nil {
 					return nil, err
 				}
+				if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
+					return nil, validation.LimitError(err.Error())
+				}
+
 				s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
 				for _, metric := range resp.Metric {
 					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)

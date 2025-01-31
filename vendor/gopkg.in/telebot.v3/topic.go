@@ -6,10 +6,10 @@ import (
 )
 
 type Topic struct {
-	Name              string `json:"name"`
-	IconColor         int    `json:"icon_color"`
-	IconCustomEmojiID string `json:"icon_custom_emoji_id"`
-	ThreadID          int    `json:"message_thread_id"`
+	Name            string `json:"name"`
+	IconColor       int    `json:"icon_color"`
+	IconCustomEmoji string `json:"icon_custom_emoji_id"`
+	ThreadID        int    `json:"message_thread_id"`
 }
 
 // CreateTopic creates a topic in a forum supergroup chat.
@@ -22,8 +22,8 @@ func (b *Bot) CreateTopic(chat *Chat, topic *Topic) (*Topic, error) {
 	if topic.IconColor != 0 {
 		params["icon_color"] = strconv.Itoa(topic.IconColor)
 	}
-	if topic.IconCustomEmojiID != "" {
-		params["icon_custom_emoji_id"] = topic.IconCustomEmojiID
+	if topic.IconCustomEmoji != "" {
+		params["icon_custom_emoji_id"] = topic.IconCustomEmoji
 	}
 
 	data, err := b.Raw("createForumTopic", params)
@@ -50,8 +50,8 @@ func (b *Bot) EditTopic(chat *Chat, topic *Topic) error {
 	if topic.Name != "" {
 		params["name"] = topic.Name
 	}
-	if topic.IconCustomEmojiID != "" {
-		params["icon_custom_emoji_id"] = topic.IconCustomEmojiID
+	if topic.IconCustomEmoji != "" {
+		params["icon_custom_emoji_id"] = topic.IconCustomEmoji
 	}
 
 	_, err := b.Raw("editForumTopic", params)
@@ -168,5 +168,17 @@ func (b *Bot) UnhideGeneralTopic(chat *Chat) error {
 	}
 
 	_, err := b.Raw("unhideGeneralForumTopic", params)
+	return err
+}
+
+// UnpinAllGeneralTopicMessages clears the list of pinned messages in a General forum topic.
+// The bot must be an administrator in the chat for this to work and must have the
+// can_pin_messages administrator right in the supergroup.
+func (b *Bot) UnpinAllGeneralTopicMessages(chat *Chat) error {
+	params := map[string]interface{}{
+		"chat_id": chat.Recipient(),
+	}
+
+	_, err := b.Raw("unpinAllGeneralForumTopicMessages", params)
 	return err
 }

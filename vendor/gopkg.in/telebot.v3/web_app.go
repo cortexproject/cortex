@@ -20,5 +20,7 @@ type WebAppData struct {
 // WebAppAccessAllowed represents a service message about a user allowing
 // a bot to write messages after adding the bot to the attachment menu or launching a Web App from a link.
 type WriteAccessAllowed struct {
-	WebAppName string `json:"web_app_name,omitempty"`
+	WebAppName         string `json:"web_app_name,omitempty"`
+	FromRequest        bool   `json:"from_request,omitempty"`
+	FromAttachmentMenu bool   `json:"from_attachment_menu,omitempty"`
 }

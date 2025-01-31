@@ -45,6 +45,7 @@ var (
 )
 
 const (
+	reasonTooManyTenants           = "too_many_tenants"
 	reasonRequestBodySizeExceeded  = "request_body_size_exceeded"
 	reasonResponseBodySizeExceeded = "response_body_size_exceeded"
 	reasonTooManyRequests          = "too_many_requests"
@@ -191,15 +192,19 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := tenant.JoinTenantIDs(tenantIDs)
+
 	if f.tenantFederationCfg.Enabled {
 		maxTenant := f.tenantFederationCfg.MaxTenant
 		if maxTenant > 0 && len(tenantIDs) > maxTenant {
+			source := tripperware.GetSource(r.Header.Get("User-Agent"))
+			if f.cfg.QueryStatsEnabled {
+				f.rejectedQueries.WithLabelValues(reasonTooManyTenants, source, userID).Inc()
+			}
 			http.Error(w, fmt.Errorf(errTooManyTenants, maxTenant, len(tenantIDs)).Error(), http.StatusBadRequest)
 			return
 		}
 	}
-
-	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Initialise the stats in the context and make sure it's propagated
 	// down the request chain.

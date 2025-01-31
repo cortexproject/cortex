@@ -589,7 +589,7 @@ func Test_TenantFederation_MaxTenant(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			handler := NewHandler(HandlerConfig{}, test.cfg, roundTripper, log.NewNopLogger(), nil)
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, test.cfg, roundTripper, log.NewNopLogger(), nil)
 			handlerWithAuth := middleware.Merge(middleware.AuthenticateUser).Wrap(handler)
 
 			req := httptest.NewRequest("GET", "http://fake", nil)
@@ -604,6 +604,11 @@ func Test_TenantFederation_MaxTenant(t *testing.T) {
 
 			if test.expectedErrMsg != "" {
 				require.Contains(t, string(body), test.expectedErrMsg)
+
+				if strings.Contains(test.expectedErrMsg, "too many tenants") {
+					v := promtest.ToFloat64(handler.rejectedQueries.WithLabelValues(reasonTooManyTenants, tripperware.SourceAPI, test.orgId))
+					assert.Equal(t, float64(1), v)
+				}
 			}
 		})
 	}

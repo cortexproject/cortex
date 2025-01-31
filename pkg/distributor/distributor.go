@@ -1188,7 +1188,7 @@ func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring
 	})
 }
 
-func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, to model.Time, labelName model.LabelName, hints *storage.LabelHints, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error), matchers ...*labels.Matcher) ([]string, error) {
+func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, to model.Time, labelName model.LabelName, hints *storage.LabelHints, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest, limiter *limiter.QueryLimiter) ([]interface{}, error), matchers ...*labels.Matcher) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelValues", opentracing.Tags{
 		"name":  labelName,
 		"start": from.Unix(),
@@ -1205,7 +1205,8 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 		return nil, err
 	}
 
-	resps, err := f(ctx, replicationSet, req)
+	queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
+	resps, err := f(ctx, replicationSet, req, queryLimiter)
 	if err != nil {
 		return nil, err
 	}
@@ -1229,11 +1230,14 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 
 // LabelValuesForLabelName returns all the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName, hint *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error) {
-	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error) {
+	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest, queryLimiter *limiter.QueryLimiter) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			resp, err := client.LabelValues(ctx, req)
 			if err != nil {
 				return nil, err
+			}
+			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
+				return nil, validation.LimitError(err.Error())
 			}
 			return resp.LabelValues, nil
 		})
@@ -1242,7 +1246,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to mode
 
 // LabelValuesForLabelNameStream returns all the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, labelName model.LabelName, hint *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error) {
-	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error) {
+	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest, queryLimiter *limiter.QueryLimiter) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			stream, err := client.LabelValuesStream(ctx, req)
 			if err != nil {
@@ -1252,12 +1256,15 @@ func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, t
 			allLabelValues := []string{}
 			for {
 				resp, err := stream.Recv()
-
 				if err == io.EOF {
 					break
 				} else if err != nil {
 					return nil, err
 				}
+				if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
+					return nil, validation.LimitError(err.Error())
+				}
+
 				allLabelValues = append(allLabelValues, resp.LabelValues...)
 			}
 
@@ -1266,7 +1273,7 @@ func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, t
 	}, matchers...)
 }
 
-func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time, hints *storage.LabelHints, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error), matchers ...*labels.Matcher) ([]string, error) {
+func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time, hints *storage.LabelHints, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest, limiter *limiter.QueryLimiter) ([]interface{}, error), matchers ...*labels.Matcher) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelNames", opentracing.Tags{
 		"start": from.Unix(),
 		"end":   to.Unix(),
@@ -1283,7 +1290,8 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 		return nil, err
 	}
 
-	resps, err := f(ctx, replicationSet, req)
+	queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
+	resps, err := f(ctx, replicationSet, req, queryLimiter)
 	if err != nil {
 		return nil, err
 	}
@@ -1308,7 +1316,7 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 }
 
 func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time, hints *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error) {
-	return d.LabelNamesCommon(ctx, from, to, hints, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error) {
+	return d.LabelNamesCommon(ctx, from, to, hints, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest, queryLimiter *limiter.QueryLimiter) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			stream, err := client.LabelNamesStream(ctx, req)
 			if err != nil {
@@ -1318,12 +1326,15 @@ func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time,
 			allLabelNames := []string{}
 			for {
 				resp, err := stream.Recv()
-
 				if err == io.EOF {
 					break
 				} else if err != nil {
 					return nil, err
 				}
+				if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
+					return nil, validation.LimitError(err.Error())
+				}
+
 				allLabelNames = append(allLabelNames, resp.LabelNames...)
 			}
 
@@ -1334,12 +1345,16 @@ func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time,
 
 // LabelNames returns all the label names.
 func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time, hint *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error) {
-	return d.LabelNamesCommon(ctx, from, to, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error) {
+	return d.LabelNamesCommon(ctx, from, to, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest, queryLimiter *limiter.QueryLimiter) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			resp, err := client.LabelNames(ctx, req)
 			if err != nil {
 				return nil, err
 			}
+			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
+				return nil, validation.LimitError(err.Error())
+			}
+
 			return resp.LabelNames, nil
 		})
 	}, matchers...)
@@ -1385,15 +1400,15 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 			defer stream.CloseSend() //nolint:errcheck
 			for {
 				resp, err := stream.Recv()
-				if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
-					return nil, validation.LimitError(err.Error())
-				}
-
 				if err == io.EOF {
 					break
 				} else if err != nil {
 					return nil, err
 				}
+				if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
+					return nil, validation.LimitError(err.Error())
+				}
+
 				s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
 				for _, metric := range resp.Metric {
 					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)

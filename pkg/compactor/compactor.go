@@ -266,7 +266,6 @@ type Config struct {
 	SkipBlocksWithOutOfOrderChunksEnabled bool                     `yaml:"skip_blocks_with_out_of_order_chunks_enabled"`
 	BlockFilesConcurrency                 int                      `yaml:"block_files_concurrency"`
 	BlocksFetchConcurrency                int                      `yaml:"blocks_fetch_concurrency"`
-	AutoForgetDelay                       time.Duration            `yaml:"auto_forget_delay"`
 
 	// Whether the migration of block deletion marks to the global markers location is enabled.
 	BlockDeletionMarksMigrationEnabled bool `yaml:"block_deletion_marks_migration_enabled"`
@@ -334,7 +333,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SkipBlocksWithOutOfOrderChunksEnabled, "compactor.skip-blocks-with-out-of-order-chunks-enabled", false, "When enabled, mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction.")
 	f.IntVar(&cfg.BlockFilesConcurrency, "compactor.block-files-concurrency", 10, "Number of goroutines to use when fetching/uploading block files from object storage.")
 	f.IntVar(&cfg.BlocksFetchConcurrency, "compactor.blocks-fetch-concurrency", 3, "Number of goroutines to use when fetching blocks from object storage when compacting.")
-	f.DurationVar(&cfg.AutoForgetDelay, "compactor.auto-forget-delay", 15*time.Minute, "Time since last heartbeat before compactor will be removed from ring. 0 to disable")
 
 	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "compactor.disabled-tenants", "Comma separated list of tenants that cannot be compacted by this compactor. If specified, and compactor would normally pick given tenant for compaction (via -compactor.enabled-tenants or sharding), it will be ignored instead.")
@@ -660,8 +658,8 @@ func (c *Compactor) starting(ctx context.Context) error {
 		lifecyclerCfg := c.compactorCfg.ShardingRing.ToLifecyclerConfig()
 		var delegate ring.LifecyclerDelegate
 		delegate = &ring.DefaultLifecyclerDelegate{}
-		if c.compactorCfg.AutoForgetDelay > 0 {
-			delegate = ring.NewLifecyclerAutoForgetDelegate(c.compactorCfg.AutoForgetDelay, delegate, c.logger)
+		if c.ring.cfg.AutoForgetDelay > 0 {
+			delegate = ring.NewLifecyclerAutoForgetDelegate(c.ring.cfg.AutoForgetDelay, delegate, c.logger)
 		}
 		c.ringLifecycler, err = ring.NewLifecyclerWithDelegate(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.registerer), delegate)
 		if err != nil {

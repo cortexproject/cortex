@@ -1001,8 +1001,8 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			instanceDesc.Zone = i.Zone
 			instanceDesc.RegisteredTimestamp = i.getRegisteredAt().Unix()
 			ringDesc.Ingesters[i.ID] = instanceDesc
-			i.delegate.OnRingInstanceHeartbeat(i, ringDesc)
 		}
+		i.delegate.OnRingInstanceHeartbeat(i, ringDesc)
 
 		return ringDesc, true, nil
 	})

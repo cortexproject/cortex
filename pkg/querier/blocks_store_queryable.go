@@ -854,6 +854,7 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 		spanLog       = spanlogger.FromContext(ctx)
 		merrMtx       = sync.Mutex{}
 		merr          = multierror.MultiError{}
+		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -893,6 +894,9 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 					return validation.AccessDeniedError(s.Message())
 				}
 				return errors.Wrapf(err, "failed to fetch label names from %s", c.RemoteAddress())
+			}
+			if dataBytesLimitErr := queryLimiter.AddDataBytes(namesResp.Size()); dataBytesLimitErr != nil {
+				return validation.LimitError(dataBytesLimitErr.Error())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
@@ -957,6 +961,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 		spanLog       = spanlogger.FromContext(ctx)
 		merrMtx       = sync.Mutex{}
 		merr          = multierror.MultiError{}
+		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -996,6 +1001,9 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 					}
 				}
 				return errors.Wrapf(err, "failed to fetch label values from %s", c.RemoteAddress())
+			}
+			if dataBytesLimitErr := queryLimiter.AddDataBytes(valuesResp.Size()); dataBytesLimitErr != nil {
+				return validation.LimitError(dataBytesLimitErr.Error())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)

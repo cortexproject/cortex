@@ -148,14 +148,14 @@ const (
 )
 
 // ParseProtoReader parses a compressed proto from an io.Reader.
-func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) error {
+func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) (int, error) {
 	sp := opentracing.SpanFromContext(ctx)
 	if sp != nil {
 		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[start reading]"))
 	}
 	body, err := decompressRequest(reader, expectedSize, maxSize, compression, sp)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if sp != nil {
@@ -171,10 +171,10 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 		err = proto.NewBuffer(body).Unmarshal(req)
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	return len(body), nil
 }
 
 func decompressRequest(reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp opentracing.Span) (body []byte, err error) {

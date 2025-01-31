@@ -500,6 +500,17 @@ func Test_dynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
+			name:              "10 hour range, expect split by 1 day",
+			req: &tripperware.PrometheusRequest{
+				Start: 0,
+				End:   19 * 3600 * seconds,
+				Step:  60 * seconds,
+				Query: "up",
+			},
+			expectedInterval: day,
+		},
+		{
+			baseSplitInterval: day,
 			name:              "30 day range, expect split by 1 day",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
@@ -694,6 +705,18 @@ func Test_getIntervalFromMaxSplits(t *testing.T) {
 			},
 			maxSplits:        20,
 			expectedInterval: 6 * time.Hour,
+		},
+		{
+			name:              "23h with 10 max splits, expected to split by 1 day",
+			baseSplitInterval: day,
+			req: &tripperware.PrometheusRequest{
+				Start: 12 * 3600 * seconds,
+				End:   35 * 3600 * seconds,
+				Step:  5 * 60 * seconds,
+				Query: "foo",
+			},
+			maxSplits:        10,
+			expectedInterval: 1 * day,
 		},
 		{
 			name:              "30 days with 10 max splits, expected to split by 3 days",

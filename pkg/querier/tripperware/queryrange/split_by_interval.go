@@ -258,7 +258,7 @@ func getIntervalFromMaxSplits(r tripperware.Request, baseInterval time.Duration,
 		n = 1
 	}
 
-	if maxSplits == 1 || queryRange < baseInterval {
+	if maxSplits == 1 {
 		// No splitting, interval should be long enough to result in 1 split only
 		nextSplitStart := nextIntervalBoundary(r.GetStart(), r.GetStep(), n*baseInterval) + r.GetStep()
 		if nextSplitStart < r.GetEnd() {
@@ -266,7 +266,7 @@ func getIntervalFromMaxSplits(r tripperware.Request, baseInterval time.Duration,
 			n += (queryRangeWithoutFirstSplit + baseInterval - 1) / baseInterval
 		}
 	} else {
-		for n <= 2*(queryRange/baseInterval) {
+		for n <= 2*((queryRange+baseInterval-1)/baseInterval) {
 			// The first split can be truncated and shorter than other splits.
 			// So it is removed to check if a larger interval is needed to shard <= maxSplits-1
 			nextSplitStart := nextIntervalBoundary(r.GetStart(), r.GetStep(), n*baseInterval) + r.GetStep()

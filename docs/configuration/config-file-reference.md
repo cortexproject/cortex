@@ -4481,6 +4481,9 @@ frontend_client:
 # Labels to add to all alerts.
 [external_labels: <map of string (labelName) to string (labelValue)> | default = []]
 
+# Labels to drop from all alerts.
+[drop_labels: <list of string> | default = []]
+
 ruler_client:
   # gRPC client max receive message size (bytes).
   # CLI flag: -ruler.client.grpc-max-recv-msg-size

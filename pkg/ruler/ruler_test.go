@@ -2657,8 +2657,9 @@ func (s senderFunc) Send(alerts ...*notifier.Alert) {
 
 func TestSendAlerts(t *testing.T) {
 	testCases := []struct {
-		in  []*promRules.Alert
-		exp []*notifier.Alert
+		in         []*promRules.Alert
+		exp        []*notifier.Alert
+		dropLabels []string
 	}{
 		{
 			in: []*promRules.Alert{
@@ -2701,6 +2702,27 @@ func TestSendAlerts(t *testing.T) {
 			},
 		},
 		{
+			dropLabels: []string{"l2"},
+			in: []*promRules.Alert{
+				{
+					Labels:      []labels.Label{{Name: "l1", Value: "v1"}, {Name: "l2", Value: "v2"}, {Name: "l3", Value: "v3"}},
+					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					ActiveAt:    time.Unix(1, 0),
+					FiredAt:     time.Unix(2, 0),
+					ResolvedAt:  time.Unix(4, 0),
+				},
+			},
+			exp: []*notifier.Alert{
+				{
+					Labels:       []labels.Label{{Name: "l1", Value: "v1"}, {Name: "l3", Value: "v3"}},
+					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					StartsAt:     time.Unix(2, 0),
+					EndsAt:       time.Unix(4, 0),
+					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
+				},
+			},
+		},
+		{
 			in: []*promRules.Alert{},
 		},
 	}
@@ -2714,7 +2736,7 @@ func TestSendAlerts(t *testing.T) {
 				}
 				require.Equal(t, tc.exp, alerts)
 			})
-			SendAlerts(senderFunc, "http://localhost:9090")(context.TODO(), "up", tc.in...)
+			SendAlerts(senderFunc, "http://localhost:9090", tc.dropLabels)(context.TODO(), "up", tc.in...)
 		})
 	}
 }

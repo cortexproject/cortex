@@ -114,6 +114,8 @@ type Config struct {
 	ExternalURL flagext.URLValue `yaml:"external_url"`
 	// Labels to add to all alerts
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"nocli|description=Labels to add to all alerts."`
+	// Labels to drop from all alerts
+	DropLabels []string `yaml:"drop_labels,omitempty" doc:"nocli|description=Labels to drop from all alerts."`
 	// GRPC Client configuration.
 	ClientTLSConfig ClientConfig `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
@@ -488,14 +490,19 @@ type sender interface {
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n sender, externalURL string, dropLabels []string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
+			b := labels.NewBuilder(alert.Labels)
+			for _, k := range dropLabels {
+				b.Del(k)
+			}
+
 			a := &notifier.Alert{
 				StartsAt:     alert.FiredAt,
-				Labels:       alert.Labels,
+				Labels:       b.Labels(),
 				Annotations:  alert.Annotations,
 				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
 			}

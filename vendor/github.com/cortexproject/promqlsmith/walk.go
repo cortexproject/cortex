@@ -462,6 +462,11 @@ func (s *PromQLSmith) walkLabelMatchers() []*labels.Matcher {
 	})
 
 	valF := func(v string) string {
+		// If a label value contains + such as +Inf it will cause parse error for regex.
+		// Always hardcode to .+ for simplicity.
+		if strings.Contains(v, "+") {
+			return ".+"
+		}
 		val := s.rnd.Float64()
 		switch {
 		case val > 0.95:
@@ -489,7 +494,11 @@ func (s *PromQLSmith) walkLabelMatchers() []*labels.Matcher {
 			matchType := labels.MatchType(res)
 			switch matchType {
 			case labels.MatchEqual:
-				matcher = labels.MustNewMatcher(labels.MatchEqual, lbls[orders[i]].Name, lbls[orders[i]].Value)
+				val := lbls[orders[i]].Value
+				if s.rnd.Float64() > 0.9 {
+					val = ""
+				}
+				matcher = labels.MustNewMatcher(labels.MatchEqual, lbls[orders[i]].Name, val)
 			case labels.MatchNotEqual:
 				val := lbls[orders[i]].Value
 				if s.rnd.Float64() > 0.9 {

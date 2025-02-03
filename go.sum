@@ -934,8 +934,8 @@ github.com/coreos/go-semver v0.3.0/go.mod h1:nnelYz7RCh+5ahJtPPxZlU+153eP4D4r3Ee
 github.com/coreos/go-systemd/v22 v22.3.2/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
 github.com/coreos/go-systemd/v22 v22.5.0 h1:RrqgGjYQKalulkV8NGVIfkXQf6YYmOyiJKk8iXXhfZs=
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
-github.com/cortexproject/promqlsmith v0.0.0-20250128002239-eaf3e57157fc h1:paM+YXwcIaz108+bFrm5aCepwVSxBfq48gb3Zc1z/nQ=
-github.com/cortexproject/promqlsmith v0.0.0-20250128002239-eaf3e57157fc/go.mod h1:xbYQa0KX6Eh6YWbTBfZ9kK3N4hRxX+ZPIfVIY2U/y00=
+github.com/cortexproject/promqlsmith v0.0.0-20250203072244-cbb5738d00ca h1:TvKuPFRUQ39O07xv3b+TO6GBRhchYKyBCCXrlmmDE3Y=
+github.com/cortexproject/promqlsmith v0.0.0-20250203072244-cbb5738d00ca/go.mod h1:xbYQa0KX6Eh6YWbTBfZ9kK3N4hRxX+ZPIfVIY2U/y00=
 github.com/cortexproject/weaveworks-common v0.0.0-20241129212437-96019edf21f1 h1:UoSixdl0sBUhfEOMpIGxFnJjp3/y/+nkw6Du7su05FE=
 github.com/cortexproject/weaveworks-common v0.0.0-20241129212437-96019edf21f1/go.mod h1:7cl8fS/nivXe2DmBUUmr/3UGTJG2jVU2NRaIayR2Zjs=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
@@ -1657,8 +1657,8 @@ github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97 h1:VjG0mwhN1Dkn
 github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97/go.mod h1:vyzFrBXgP+fGNG2FopEGWOO/zrIuoy7zt3LpLeezRsw=
 github.com/thanos-io/promql-engine v0.0.0-20250110162513-14f995518af3 h1:feQKBuPhRE/+xd4Ru6Jv48EzVatpXg2mnpl0x0f5OWY=
 github.com/thanos-io/promql-engine v0.0.0-20250110162513-14f995518af3/go.mod h1:wx0JlRZtsB2S10JYUgeg5GqLfMxw31SzArP+28yyE00=
-github.com/thanos-io/thanos v0.37.3-0.20250115144759-236777732278 h1:HkZohVruRD0ENAXZIl2qDcpblbMok++jb3zHvjUeQfg=
-github.com/thanos-io/thanos v0.37.3-0.20250115144759-236777732278/go.mod h1:DvlfyJhdYeufGbw3z6VQuDpGh2Q46/XvalnmEtQOf/0=
+github.com/thanos-io/thanos v0.37.3-0.20250203070737-57efc2aacd6f h1:Q8lYAyPHlQsMCwBu1UVr15dXb4CdsqKOf0Hx/tWx90g=
+github.com/thanos-io/thanos v0.37.3-0.20250203070737-57efc2aacd6f/go.mod h1:Y86Y7QT3nlYNC1bGCPYBHDn2ecDzblYBJRhs41u8qcY=
 github.com/tjhop/slog-gokit v0.1.2 h1:pmQI4SvU9h4gA0vIQsdhJQSqQg4mOmsPykG2/PM3j1I=
 github.com/tjhop/slog-gokit v0.1.2/go.mod h1:8fhlcp8C8ELbg3GCyKv06tgt4B5sDq2P1r2DQAu1HuM=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=

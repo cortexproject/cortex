@@ -303,7 +303,7 @@ github.com/coreos/go-semver/semver
 ## explicit; go 1.12
 github.com/coreos/go-systemd/v22/activation
 github.com/coreos/go-systemd/v22/journal
-# github.com/cortexproject/promqlsmith v0.0.0-20250128002239-eaf3e57157fc
+# github.com/cortexproject/promqlsmith v0.0.0-20250203072244-cbb5738d00ca
 ## explicit; go 1.22.0
 github.com/cortexproject/promqlsmith
 # github.com/cristalhq/hedgedhttp v0.9.1
@@ -988,7 +988,7 @@ github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
-# github.com/thanos-io/thanos v0.37.3-0.20250115144759-236777732278
+# github.com/thanos-io/thanos v0.37.3-0.20250203070737-57efc2aacd6f
 ## explicit; go 1.23.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block

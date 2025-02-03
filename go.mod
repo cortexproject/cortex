@@ -9,7 +9,7 @@ require (
 	github.com/armon/go-metrics v0.4.1
 	github.com/aws/aws-sdk-go v1.55.5
 	github.com/bradfitz/gomemcache v0.0.0-20230905024940-24af94b03874
-	github.com/cortexproject/promqlsmith v0.0.0-20250128002239-eaf3e57157fc
+	github.com/cortexproject/promqlsmith v0.0.0-20250203072244-cbb5738d00ca
 	github.com/dustin/go-humanize v1.0.1
 	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
@@ -52,7 +52,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97
 	github.com/thanos-io/promql-engine v0.0.0-20250110162513-14f995518af3
-	github.com/thanos-io/thanos v0.37.3-0.20250115144759-236777732278
+	github.com/thanos-io/thanos v0.37.3-0.20250203070737-57efc2aacd6f
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 	go.etcd.io/etcd/api/v3 v3.5.17

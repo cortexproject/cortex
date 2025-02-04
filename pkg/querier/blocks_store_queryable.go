@@ -123,7 +123,7 @@ func newBlocksStoreQueryableMetrics(reg prometheus.Registerer) *blocksStoreQuery
 			Namespace: "cortex",
 			Name:      "querier_storegateway_refetches_per_query",
 			Help:      "Number of re-fetches attempted while querying store-gateway instances due to missing blocks.",
-			Buckets:   []float64{0, 1, 2},
+			Buckets:   []float64{0, 1, 2, 4, 8},
 		}),
 	}
 }

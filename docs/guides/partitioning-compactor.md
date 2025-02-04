@@ -21,7 +21,7 @@ In order to enable partition compaction, the following flag needs to be set:
 
 ### Migration
 
-There is no special migration process needed to enable partition compaction. End user could enable it by setting the above configurations all at once. 
+There is no special migration process needed to enable partition compaction. End user could enable it by setting the above configurations all at once.
 
 Enabling partition compaction would group previously compacted blocks (only those have time range smaller than the largest configured compaction time ranges) with uncompacted blocks and generate new compaction plans. This would group blocks having duplicated series together and those series would be deduped after compaction.
 
@@ -40,7 +40,7 @@ The default value should start partitioning result blocks when sum of index file
 
 Both configurations support to be set per tenant.
 
-Note: `compactor.partition-series-count` is using sum of series count of all parent blocks. If parent blocks were not deduped, the result block could have fewer series than the configuration value. 
+Note: `compactor.partition-series-count` is using sum of series count of all parent blocks. If parent blocks were not deduped, the result block could have fewer series than the configuration value.
 
 ## Useful Metrics
 

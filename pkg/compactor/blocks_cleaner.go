@@ -505,6 +505,8 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 	c.blocksMarkedForDeletion.WithLabelValues(userID, reasonValueRetention)
 	startTime := time.Now()
 
+	bucketIndexDeleted := false
+
 	level.Info(userLogger).Log("msg", "started blocks cleanup and maintenance")
 	defer func() {
 		if returnErr != nil {
@@ -540,7 +542,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 	idx, err := bucketindex.ReadIndex(ctx, c.bucketClient, userID, c.cfgProvider, c.logger)
 
 	defer func() {
-		if idx.IsEmpty() {
+		if bucketIndexDeleted {
 			level.Info(userLogger).Log("msg", "deleting bucket index sync status since bucket index is empty")
 			if err := bucketindex.DeleteIndexSyncStatus(ctx, c.bucketClient, userID); err != nil {
 				level.Warn(userLogger).Log("msg", "error deleting index sync status when index is empty", "err", err)
@@ -635,11 +637,12 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		level.Info(userLogger).Log("msg", "finish cleaning partial blocks", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
 
-	if idx.IsEmpty() {
+	if idx.IsEmpty() && len(partials) == 0 {
 		level.Info(userLogger).Log("msg", "deleting bucket index since it is empty")
 		if err := bucketindex.DeleteIndex(ctx, c.bucketClient, userID, c.cfgProvider); err != nil {
 			return err
 		}
+		bucketIndexDeleted = true
 	} else {
 		// Upload the updated index to the storage.
 		begin = time.Now()

@@ -73,6 +73,7 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 			path.Join(userID, "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
 		},
 	}
+	createTSDBBlock(t, bkt, userID, 10, 20, nil)
 
 	cfg := BlocksCleanerConfig{
 		DeletionDelay:      deletionDelay,

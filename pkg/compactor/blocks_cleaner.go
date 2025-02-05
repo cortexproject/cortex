@@ -540,7 +540,14 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 	idx, err := bucketindex.ReadIndex(ctx, c.bucketClient, userID, c.cfgProvider, c.logger)
 
 	defer func() {
-		bucketindex.WriteSyncStatus(ctx, c.bucketClient, userID, idxs, userLogger)
+		if idx.IsEmpty() {
+			level.Info(userLogger).Log("msg", "deleting bucket index sync status since bucket index is empty")
+			if err := bucketindex.DeleteIndexSyncStatus(ctx, c.bucketClient, userID); err != nil {
+				level.Warn(userLogger).Log("msg", "error deleting index sync status when index is empty", "err", err)
+			}
+		} else {
+			bucketindex.WriteSyncStatus(ctx, c.bucketClient, userID, idxs, userLogger)
+		}
 	}()
 
 	if errors.Is(err, bucketindex.ErrIndexCorrupted) {
@@ -628,12 +635,19 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		level.Info(userLogger).Log("msg", "finish cleaning partial blocks", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
 
-	// Upload the updated index to the storage.
-	begin = time.Now()
-	if err := bucketindex.WriteIndex(ctx, c.bucketClient, userID, c.cfgProvider, idx); err != nil {
-		return err
+	if idx.IsEmpty() {
+		level.Info(userLogger).Log("msg", "deleting bucket index since it is empty")
+		if err := bucketindex.DeleteIndex(ctx, c.bucketClient, userID, c.cfgProvider); err != nil {
+			return err
+		}
+	} else {
+		// Upload the updated index to the storage.
+		begin = time.Now()
+		if err := bucketindex.WriteIndex(ctx, c.bucketClient, userID, c.cfgProvider, idx); err != nil {
+			return err
+		}
+		level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
-	level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 		begin = time.Now()

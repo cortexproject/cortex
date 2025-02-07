@@ -10,12 +10,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
-	"github.com/weaveworks/common/user"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -111,12 +111,8 @@ func (c *closableHealthAndIngesterClient) PushStreamConnection(ctx context.Conte
 			cancel: reqCancel,
 		}
 		c.streamPushChan <- job
-		for {
-			select {
-			case <-reqCtx.Done():
-				return job.resp, job.err
-			}
-		}
+		<-reqCtx.Done()
+		return job.resp, job.err
 	})
 }
 

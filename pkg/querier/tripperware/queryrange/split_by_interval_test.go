@@ -315,7 +315,7 @@ func TestSplitByDay(t *testing.T) {
 			path:               longQuery,
 			expectedBody:       string(mergedHTTPResponseBody),
 			expectedQueryCount: 8,
-			intervalFn:         dynamicIntervalFn(Config{SplitQueriesByInterval: day, DynamicQuerySplitsConfig: DynamicQuerySplitsConfig{MaxSplitsPerQuery: 10}}, mockLimits{}, querysharding.NewQueryAnalyzer(), lookbackDelta),
+			intervalFn:         dynamicIntervalFn(Config{SplitQueriesByInterval: day, DynamicQuerySplitsConfig: DynamicQuerySplitsConfig{MaxShardsPerQuery: 10}}, mockLimits{}, querysharding.NewQueryAnalyzer(), lookbackDelta),
 		},
 	} {
 		tc := tc
@@ -648,8 +648,8 @@ func Test_dynamicIntervalFn(t *testing.T) {
 			cfg := Config{
 				SplitQueriesByInterval: tc.baseSplitInterval,
 				DynamicQuerySplitsConfig: DynamicQuerySplitsConfig{
-					MaxSplitsPerQuery:                     tc.maxQueryIntervalSplits,
-					MaxFetchedStorageDataDurationPerQuery: tc.maxDurationOfDataFetched,
+					MaxShardsPerQuery:              tc.maxQueryIntervalSplits,
+					MaxFetchedDataDurationPerQuery: tc.maxDurationOfDataFetched,
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), "1")
@@ -788,13 +788,13 @@ func Test_getIntervalFromMaxSplits(t *testing.T) {
 
 func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 	for _, tc := range []struct {
-		name                                    string
-		baseSplitInterval                       time.Duration
-		lookbackDelta                           time.Duration
-		req                                     tripperware.Request
-		expectedIntervalsFetchedByQueryRange    int
-		expectedExtraIntervalsFetchedPerSplit   int
-		expectedIntervalsFetchedByLookbackDelta int
+		name                                   string
+		baseSplitInterval                      time.Duration
+		lookbackDelta                          time.Duration
+		req                                    tripperware.Request
+		expectedDurationFetchedByRange         time.Duration
+		expectedDurationFetchedBySelectors     time.Duration
+		expectedDurationFetchedByLookbackDelta time.Duration
 	}{
 		{
 			name:              "query range 00:00 to 23:59",
@@ -806,9 +806,9 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 				Step:  60 * seconds,
 				Query: "up",
 			},
-			expectedIntervalsFetchedByQueryRange:    24,
-			expectedExtraIntervalsFetchedPerSplit:   0,
-			expectedIntervalsFetchedByLookbackDelta: 0,
+			expectedDurationFetchedByRange:         24 * time.Hour,
+			expectedDurationFetchedBySelectors:     0 * time.Hour,
+			expectedDurationFetchedByLookbackDelta: 0 * time.Hour,
 		},
 		{
 			name:              "query range 00:00 to 00:00 next day",
@@ -820,9 +820,9 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 				Step:  60 * seconds,
 				Query: "up",
 			},
-			expectedIntervalsFetchedByQueryRange:    25,
-			expectedExtraIntervalsFetchedPerSplit:   0,
-			expectedIntervalsFetchedByLookbackDelta: 0,
+			expectedDurationFetchedByRange:         25 * time.Hour,
+			expectedDurationFetchedBySelectors:     0 * time.Hour,
+			expectedDurationFetchedByLookbackDelta: 0 * time.Hour,
 		},
 		{
 			name:              "query range 00:00 to 23:59, with 5 min lookback",
@@ -834,9 +834,9 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 				Step:  60 * seconds,
 				Query: "up",
 			},
-			expectedIntervalsFetchedByQueryRange:    24,
-			expectedExtraIntervalsFetchedPerSplit:   0,
-			expectedIntervalsFetchedByLookbackDelta: 1,
+			expectedDurationFetchedByRange:         24 * time.Hour,
+			expectedDurationFetchedBySelectors:     0 * time.Hour,
+			expectedDurationFetchedByLookbackDelta: 1 * time.Hour,
 		},
 		{
 			name:              "query range 00:00 to 23:59, with 5 hour subquery",
@@ -848,9 +848,9 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 				Step:  60 * seconds,
 				Query: "up[5h:10m]",
 			},
-			expectedIntervalsFetchedByQueryRange:    24,
-			expectedExtraIntervalsFetchedPerSplit:   5,
-			expectedIntervalsFetchedByLookbackDelta: 1,
+			expectedDurationFetchedByRange:         24 * time.Hour,
+			expectedDurationFetchedBySelectors:     5 * time.Hour,
+			expectedDurationFetchedByLookbackDelta: 1 * time.Hour,
 		},
 		{
 			name:              "query range 00:00 to 23:59, with 2 hour matrix selector",
@@ -862,9 +862,9 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 				Step:  60 * seconds,
 				Query: "rate(up[2h])",
 			},
-			expectedIntervalsFetchedByQueryRange:    24,
-			expectedExtraIntervalsFetchedPerSplit:   2,
-			expectedIntervalsFetchedByLookbackDelta: 0,
+			expectedDurationFetchedByRange:         24 * time.Hour,
+			expectedDurationFetchedBySelectors:     2 * time.Hour,
+			expectedDurationFetchedByLookbackDelta: 0 * time.Hour,
 		},
 		{
 			name:              "query range 00:00 to 23:59, with multiple matrix selectors",
@@ -876,9 +876,9 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 				Step:  60 * seconds,
 				Query: "rate(up[2h]) + rate(up[5h]) + rate(up[7h])",
 			},
-			expectedIntervalsFetchedByQueryRange:    72,
-			expectedExtraIntervalsFetchedPerSplit:   14,
-			expectedIntervalsFetchedByLookbackDelta: 0,
+			expectedDurationFetchedByRange:         72 * time.Hour,
+			expectedDurationFetchedBySelectors:     14 * time.Hour,
+			expectedDurationFetchedByLookbackDelta: 0 * time.Hour,
 		},
 		{
 			name:              "query range 60 day with 20 day subquery",
@@ -890,9 +890,9 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 				Step:  5 * 60 * seconds,
 				Query: "up[20d:1h]",
 			},
-			expectedIntervalsFetchedByQueryRange:    61,
-			expectedExtraIntervalsFetchedPerSplit:   20,
-			expectedIntervalsFetchedByLookbackDelta: 1,
+			expectedDurationFetchedByRange:         61 * day,
+			expectedDurationFetchedBySelectors:     20 * day,
+			expectedDurationFetchedByLookbackDelta: 1 * day,
 		},
 		{
 			name:              "query range 35 day, with 15 day subquery and 1 week offset",
@@ -904,9 +904,9 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 				Step:  5 * 60 * seconds,
 				Query: "up[15d:1h] offset 1w",
 			},
-			expectedIntervalsFetchedByQueryRange:    36,
-			expectedExtraIntervalsFetchedPerSplit:   15,
-			expectedIntervalsFetchedByLookbackDelta: 1,
+			expectedDurationFetchedByRange:         36 * day,
+			expectedDurationFetchedBySelectors:     15 * day,
+			expectedDurationFetchedByLookbackDelta: 1 * day,
 		},
 		{
 			name:              "query range 10 days, with multiple subqueries and offsets",
@@ -918,9 +918,9 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 				Step:  5 * 60 * seconds,
 				Query: "rate(up[2d:1h] offset 1w) + rate(up[5d:1h] offset 2w) + rate(up[7d:1h] offset 3w)",
 			},
-			expectedIntervalsFetchedByQueryRange:    33,
-			expectedExtraIntervalsFetchedPerSplit:   14,
-			expectedIntervalsFetchedByLookbackDelta: 3,
+			expectedDurationFetchedByRange:         33 * day,
+			expectedDurationFetchedBySelectors:     14 * day,
+			expectedDurationFetchedByLookbackDelta: 3 * day,
 		},
 		{
 			name:              "query range spans 40 days with 4 day matrix selector",
@@ -932,18 +932,18 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 				Step:  5 * 60 * seconds,
 				Query: "up[4d]",
 			},
-			expectedIntervalsFetchedByQueryRange:    40,
-			expectedExtraIntervalsFetchedPerSplit:   4,
-			expectedIntervalsFetchedByLookbackDelta: 0,
+			expectedDurationFetchedByRange:         40 * day,
+			expectedDurationFetchedBySelectors:     4 * day,
+			expectedDurationFetchedByLookbackDelta: 0 * day,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, err := parser.ParseExpr(tc.req.GetQuery())
 			require.Nil(t, err)
 			queryRangeIntervals, extraIntervalsPerSplit, lookbackDeltaIntervals := analyzeDurationFetchedByQueryExpr(expr, tc.req.GetStart(), tc.req.GetEnd(), tc.baseSplitInterval, tc.lookbackDelta)
-			require.Equal(t, tc.expectedIntervalsFetchedByQueryRange, queryRangeIntervals)
-			require.Equal(t, tc.expectedExtraIntervalsFetchedPerSplit, extraIntervalsPerSplit)
-			require.Equal(t, tc.expectedIntervalsFetchedByLookbackDelta, lookbackDeltaIntervals)
+			require.Equal(t, tc.expectedDurationFetchedByRange, queryRangeIntervals)
+			require.Equal(t, tc.expectedDurationFetchedBySelectors, extraIntervalsPerSplit)
+			require.Equal(t, tc.expectedDurationFetchedByLookbackDelta, lookbackDeltaIntervals)
 		})
 	}
 }

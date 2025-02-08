@@ -70,7 +70,7 @@ func (cfg *Config) Validate(qCfg querier.Config) error {
 			return errors.Wrap(err, "invalid ResultsCache config")
 		}
 	}
-	if cfg.DynamicQuerySplitsConfig.MaxSplitsPerQuery > 0 || cfg.DynamicQuerySplitsConfig.MaxFetchedStorageDataDurationPerQuery > 0 {
+	if cfg.DynamicQuerySplitsConfig.MaxShardsPerQuery > 0 || cfg.DynamicQuerySplitsConfig.MaxFetchedDataDurationPerQuery > 0 {
 		if cfg.SplitQueriesByInterval <= 0 {
 			return errors.New("configs under dynamic-query-splits requires that a value for split-queries-by-interval is set.")
 		}
@@ -79,14 +79,14 @@ func (cfg *Config) Validate(qCfg querier.Config) error {
 }
 
 type DynamicQuerySplitsConfig struct {
-	MaxSplitsPerQuery                     int           `yaml:"max_splits_per_query"`
-	MaxFetchedStorageDataDurationPerQuery time.Duration `yaml:"max_fetched_storage_data_duration_per_query"`
+	MaxShardsPerQuery              int           `yaml:"max_shards_per_query"`
+	MaxFetchedDataDurationPerQuery time.Duration `yaml:"max_fetched_data_duration_per_query"`
 }
 
 // RegisterFlags registers flags foy dynamic query splits
 func (cfg *DynamicQuerySplitsConfig) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxSplitsPerQuery, "querier.max-splits-per-query", 0, "[EXPERIMENTAL] Maximum number of splits for a query, 0 disables it. Dynamically uses a multiple of split interval to maintain a total number of splits below the set value. If vertical sharding is enabled for a query, the combined total number of vertical and interval splits is kept below this value.")
-	f.DurationVar(&cfg.MaxFetchedStorageDataDurationPerQuery, "querier.max-fetched-storage-data-duration-per-query", 0, "[EXPERIMENTAL] Max total duration of data fetched from storage by all query splits, 0 disables it. Dynamically uses a multiple of split interval to maintain a total fetched duration of data lower than the value set. It takes into account additional duration fetched by matrix selectors and subqueries.")
+	f.IntVar(&cfg.MaxShardsPerQuery, "querier.max-shards-per-query", 0, "[EXPERIMENTAL] Maximum number of shards for a query, 0 disables it. Dynamically uses a multiple of split interval to maintain a total number of shards below the set value. If vertical sharding is enabled for a query, the combined total number of interval splits and vertical shards is kept below this value.")
+	f.DurationVar(&cfg.MaxFetchedDataDurationPerQuery, "querier.max-fetched-data-duration-per-query", 0, "[EXPERIMENTAL] Max total duration of data fetched from storage by all query shards, 0 disables it. Dynamically uses a multiple of split interval to maintain a total fetched duration of data lower than the value set. It takes into account additional duration fetched by matrix selectors and subqueries.")
 }
 
 // Middlewares returns list of middlewares that should be applied for range query.
@@ -110,7 +110,7 @@ func Middlewares(
 	}
 	if cfg.SplitQueriesByInterval != 0 {
 		intervalFn := staticIntervalFn(cfg)
-		if cfg.DynamicQuerySplitsConfig.MaxSplitsPerQuery > 0 || cfg.DynamicQuerySplitsConfig.MaxFetchedStorageDataDurationPerQuery > 0 {
+		if cfg.DynamicQuerySplitsConfig.MaxShardsPerQuery > 0 || cfg.DynamicQuerySplitsConfig.MaxFetchedDataDurationPerQuery > 0 {
 			intervalFn = dynamicIntervalFn(cfg, limits, queryAnalyzer, lookbackDelta)
 		}
 		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(intervalFn, limits, prometheusCodec, registerer, lookbackDelta))

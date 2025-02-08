@@ -832,6 +832,8 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	startTime := ts(-10)
 	endTime := ts(-8)
 	block1 := createTSDBBlock(t, bucketClient, userID, startTime, endTime, nil)
+	block2 := createTSDBBlock(t, bucketClient, userID, startTime, endTime, nil)
+	createNoCompactionMark(t, bucketClient, userID, block2)
 
 	cfg := BlocksCleanerConfig{
 		DeletionDelay:      time.Hour,
@@ -862,7 +864,7 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 		Partitions: []Partition{
 			{
 				PartitionID: 0,
-				Blocks:      []ulid.ULID{block1},
+				Blocks:      []ulid.ULID{block1, block2},
 			},
 		},
 		RangeStart:   startTime,
@@ -892,6 +894,10 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	block1DeletionMarkerExists, err := userBucket.Exists(ctx, path.Join(block1.String(), metadata.DeletionMarkFilename))
 	require.NoError(t, err)
 	require.True(t, block1DeletionMarkerExists)
+
+	block2DeletionMarkerExists, err := userBucket.Exists(ctx, path.Join(block2.String(), metadata.DeletionMarkFilename))
+	require.NoError(t, err)
+	require.False(t, block2DeletionMarkerExists)
 
 }
 

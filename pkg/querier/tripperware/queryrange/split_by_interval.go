@@ -218,30 +218,34 @@ func getMaxVerticalShardSize(ctx context.Context, r tripperware.Request, limits 
 func getIntervalFromMaxSplits(r tripperware.Request, baseInterval time.Duration, maxSplitsInt int) time.Duration {
 	maxSplits := time.Duration(maxSplitsInt)
 	queryRange := time.Duration((r.GetEnd() - r.GetStart()) * int64(time.Millisecond))
-	// Calculate the multiple n of interval needed to shard query into <= maxSplits
-	n := (queryRange + baseInterval*maxSplits - 1) / (baseInterval * maxSplits)
+	// Calculate the multiple (n) of base interval needed to shard query into <= maxSplits
+	// Divide query range by base interval and max splits. Round up by adding (baseInterval*maxSplits - 1)
+	n := (queryRange + (baseInterval*maxSplits - 1)) / (baseInterval * maxSplits)
 	if n <= 0 {
 		n = 1
 	}
 
+	// Loop to handle cases where first split is truncated and shorter than remaining splits.
+	// Exits loop if interval (n) is sufficient after removing first split
+	// If no suitable interval was found terminates at a maximum of interval = 2 * query range
 	for n <= 2*((queryRange+baseInterval-1)/baseInterval) {
-		// The first split could be truncated and shorter than other splits.
-		// So it is removed to check if a larger interval is needed
+		// Find new start time for query after removing first split
 		nextSplitStart := nextIntervalBoundary(r.GetStart(), r.GetStep(), n*baseInterval) + r.GetStep()
 		if maxSplits == 1 {
-			// No splitting. Exit loop if first split is long enough to cover the full query range
+			// If maxSplits == 1, the removed first split should cover the full query range.
 			if nextSplitStart >= r.GetEnd() {
 				break
 			}
 		} else {
-			// Recalculate n for remaining query range after removing first split.
-			// Exit loop if a larger n is not needed to split into <= maxSplits-1
 			queryRangeWithoutFirstSplit := time.Duration((r.GetEnd() - nextSplitStart) * int64(time.Millisecond))
+			// Recalculate n for the remaining query range with maxSplits-1.
 			n_temp := (queryRangeWithoutFirstSplit + baseInterval*(maxSplits-1) - 1) / (baseInterval * (maxSplits - 1))
+			// If a larger interval is needed after removing the first split, the initial n was insufficient.
 			if n >= n_temp {
 				break
 			}
 		}
+		// Increment n to check if larger interval fits the maxSplits constraint.
 		n++
 	}
 	return n * baseInterval

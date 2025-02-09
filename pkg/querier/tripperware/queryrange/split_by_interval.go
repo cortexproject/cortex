@@ -219,8 +219,7 @@ func getIntervalFromMaxSplits(r tripperware.Request, baseInterval time.Duration,
 	maxSplits := time.Duration(maxSplitsInt)
 	queryRange := time.Duration((r.GetEnd() - r.GetStart()) * int64(time.Millisecond))
 	// Calculate the multiple (n) of base interval needed to shard query into <= maxSplits
-	// Divide query range by base interval and max splits. Round up by adding (baseInterval*maxSplits - 1)
-	n := (queryRange + (baseInterval*maxSplits - 1)) / (baseInterval * maxSplits)
+	n := ceilDiv(queryRange, baseInterval*maxSplits)
 	if n <= 0 {
 		n = 1
 	}
@@ -228,7 +227,7 @@ func getIntervalFromMaxSplits(r tripperware.Request, baseInterval time.Duration,
 	// Loop to handle cases where first split is truncated and shorter than remaining splits.
 	// Exits loop if interval (n) is sufficient after removing first split
 	// If no suitable interval was found terminates at a maximum of interval = 2 * query range
-	for n <= 2*((queryRange+baseInterval-1)/baseInterval) {
+	for n <= 2*ceilDiv(queryRange, baseInterval) {
 		// Find new start time for query after removing first split
 		nextSplitStart := nextIntervalBoundary(r.GetStart(), r.GetStep(), n*baseInterval) + r.GetStep()
 		if maxSplits == 1 {
@@ -239,7 +238,7 @@ func getIntervalFromMaxSplits(r tripperware.Request, baseInterval time.Duration,
 		} else {
 			queryRangeWithoutFirstSplit := time.Duration((r.GetEnd() - nextSplitStart) * int64(time.Millisecond))
 			// Recalculate n for the remaining query range with maxSplits-1.
-			n_temp := (queryRangeWithoutFirstSplit + baseInterval*(maxSplits-1) - 1) / (baseInterval * (maxSplits - 1))
+			n_temp := ceilDiv(queryRangeWithoutFirstSplit, baseInterval*(maxSplits-1))
 			// If a larger interval is needed after removing the first split, the initial n was insufficient.
 			if n >= n_temp {
 				break
@@ -368,6 +367,13 @@ func analyzeDurationFetchedByQueryExpr(expr parser.Expr, queryStart int64, query
 func floorDiv(a, b int64) int64 {
 	if a < 0 && a%b != 0 {
 		return a/b - 1
+	}
+	return a / b
+}
+
+func ceilDiv(a, b time.Duration) time.Duration {
+	if a > 0 && a%b != 0 {
+		return a/b + 1
 	}
 	return a / b
 }

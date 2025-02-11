@@ -73,6 +73,7 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 			path.Join(userID, "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
 		},
 	}
+	createTSDBBlock(t, bkt, userID, 10, 20, nil)
 
 	cfg := BlocksCleanerConfig{
 		DeletionDelay:      deletionDelay,
@@ -899,6 +900,43 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, block2DeletionMarkerExists)
 
+}
+
+func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	userID := "user-1"
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      time.Hour,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+	}
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	reg := prometheus.NewPedanticRegistry()
+	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(commonLabels, reasonLabelName))
+	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 60*time.Second, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
+
+	userBucket := bucket.NewUserBucketClient(userID, bucketClient, cfgProvider)
+
+	err := cleaner.cleanUser(ctx, logger, userBucket, userID, false)
+	require.NoError(t, err)
+
+	_, err = bucketindex.ReadIndex(ctx, bucketClient, userID, cfgProvider, logger)
+	require.ErrorIs(t, err, bucketindex.ErrIndexNotFound)
+
+	_, err = userBucket.WithExpectedErrs(userBucket.IsObjNotFoundErr).Get(ctx, bucketindex.SyncStatusFile)
+	require.True(t, userBucket.IsObjNotFoundErr(err))
 }
 
 type mockConfigProvider struct {

@@ -266,13 +266,13 @@ func getMaxSplitsFromConfig(maxSplitsConfigValue int, queryVerticalShardSize int
 func getMaxSplitsByDurationFetched(maxFetchedDataDurationPerQuery time.Duration, queryVerticalShardSize int, expr parser.Expr, queryStart int64, queryEnd int64, queryStep int64, baseInterval time.Duration, lookbackDelta time.Duration) int {
 	fixedDurationFetched, perSplitDurationFetched := getDurationFetchedByQuerySplitting(expr, queryStart, queryEnd, queryStep, baseInterval, lookbackDelta)
 	if perSplitDurationFetched == 0 {
-		perSplitDurationFetched = baseInterval // should always divide by a multiple of base interval to get max splits
+		return int(maxFetchedDataDurationPerQuery / baseInterval) // Total duration fetched does not increase with number of splits, return default max splits
 	}
 
 	var maxSplitsByDurationFetched int
 	if maxFetchedDataDurationPerQuery > 0 {
 		// Duration fetched by query after splitting = fixedDurationFetched + perSplitDurationFetched x numOfShards
-		// Rearranging the equation to find the max horizontal splits
+		// Rearranging the equation to find the max horizontal splits after accounting for vertical shards
 		maxSplitsByDurationFetched = int(((maxFetchedDataDurationPerQuery / time.Duration(queryVerticalShardSize)) - fixedDurationFetched) / perSplitDurationFetched)
 	}
 	if maxSplitsByDurationFetched <= 0 {

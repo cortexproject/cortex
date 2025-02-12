@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,10 +17,13 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/ringbuffer"
@@ -67,6 +71,7 @@ type matrixSelector struct {
 
 	// Lookback delta for extended range functions.
 	extLookbackDelta int64
+	inputSeries      []SignedSeries
 }
 
 var ErrNativeHistogramsNotSupported = errors.New("native histograms are not supported in extended range functions")
@@ -184,7 +189,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			// Also, allow operator to exist independently without being nested
 			// under parser.Call by implementing new data model.
 			// https://github.com/thanos-io/promql-engine/issues/39
-			f, h, ok, err := scanner.buffer.Eval(o.scalarArg, scanner.metricAppearedTs)
+			f, h, ok, err := scanner.buffer.Eval(ctx, o.scalarArg, scanner.metricAppearedTs)
 			if err != nil {
 				return nil, err
 			}
@@ -192,8 +197,21 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 				vectors[currStep].T = seriesTs
 				if h != nil {
 					vectors[currStep].AppendHistogram(o.vectorPool, scanner.signature, h)
-				} else {
-					vectors[currStep].AppendSample(o.vectorPool, scanner.signature, f)
+				} else if f != nil {
+					if o.functionName == "rate" || o.functionName == "increase" {
+						if len(o.inputSeries) > 0 {
+							metricName := o.inputSeries[0].Labels().Get(labels.MetricName)
+							if metricName != "" &&
+								!strings.HasSuffix(metricName, "_total") &&
+								!strings.HasSuffix(metricName, "_sum") &&
+								!strings.HasSuffix(metricName, "_count") &&
+								!strings.HasSuffix(metricName, "_bucket") {
+								warnings.AddToContext(annotations.NewPossibleNonCounterInfo(metricName, posrange.PositionRange{}), ctx)
+							}
+						}
+					}
+
+					vectors[currStep].AppendSample(o.vectorPool, scanner.signature, *f)
 				}
 			}
 			o.IncrementSamplesAtTimestamp(scanner.buffer.Len(), seriesTs)
@@ -216,9 +234,12 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 			return
 		}
 
+		o.inputSeries = series
+
 		o.scanners = make([]matrixScanner, len(series))
 		o.series = make([]labels.Labels, len(series))
 		b := labels.ScratchBuilder{}
+
 		for i, s := range series {
 			lbls := s.Labels()
 			if o.functionName != "last_over_time" {
@@ -234,7 +255,7 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 				signature:  s.Signature,
 				iterator:   s.Iterator(nil),
 				lastSample: ringbuffer.Sample{T: math.MinInt64},
-				buffer:     o.newBuffer(),
+				buffer:     o.newBuffer(ctx),
 			}
 			o.series[i] = lbls
 		}
@@ -247,20 +268,20 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 	return err
 }
 
-func (o *matrixSelector) newBuffer() ringbuffer.Buffer {
+func (o *matrixSelector) newBuffer(ctx context.Context) ringbuffer.Buffer {
 	switch o.functionName {
 	case "rate":
-		return ringbuffer.NewRateBuffer(*o.opts, true, true, o.selectRange, o.offset)
+		return ringbuffer.NewRateBuffer(ctx, *o.opts, true, true, o.selectRange, o.offset)
 	case "increase":
-		return ringbuffer.NewRateBuffer(*o.opts, true, false, o.selectRange, o.offset)
+		return ringbuffer.NewRateBuffer(ctx, *o.opts, true, false, o.selectRange, o.offset)
 	case "delta":
-		return ringbuffer.NewRateBuffer(*o.opts, false, false, o.selectRange, o.offset)
+		return ringbuffer.NewRateBuffer(ctx, *o.opts, false, false, o.selectRange, o.offset)
 	}
 
 	if o.isExtFunction {
-		return ringbuffer.NewWithExtLookback(8, o.selectRange, o.offset, o.opts.ExtLookbackDelta.Milliseconds(), o.call)
+		return ringbuffer.NewWithExtLookback(ctx, 8, o.selectRange, o.offset, o.opts.ExtLookbackDelta.Milliseconds()-1, o.call)
 	}
-	return ringbuffer.New(8, o.selectRange, o.offset, o.call)
+	return ringbuffer.New(ctx, 8, o.selectRange, o.offset, o.call)
 
 }
 
@@ -295,7 +316,7 @@ func (m *matrixScanner) selectPoints(
 		mint = bufMaxt
 	}
 	mint = maxInt64(mint, m.buffer.MaxT()+1)
-	if m.lastSample.T >= mint {
+	if m.lastSample.T > mint {
 		m.buffer.Push(m.lastSample.T, m.lastSample.V)
 		m.lastSample.T = math.MinInt64
 		mint = maxInt64(mint, m.buffer.MaxT()+1)
@@ -322,7 +343,7 @@ func (m *matrixScanner) selectPoints(
 				}
 				return nil
 			}
-			if t >= mint {
+			if t > mint {
 				m.buffer.Push(t, ringbuffer.Value{H: fh})
 			}
 		case chunkenc.ValFloat:
@@ -339,7 +360,7 @@ func (m *matrixScanner) selectPoints(
 				return nil
 			}
 			if isExtFunction {
-				if t >= mint || !appendedPointBeforeMint {
+				if t > mint || !appendedPointBeforeMint {
 					m.buffer.Push(t, ringbuffer.Value{F: v})
 					appendedPointBeforeMint = true
 				} else {
@@ -348,7 +369,7 @@ func (m *matrixScanner) selectPoints(
 					})
 				}
 			} else {
-				if t >= mint {
+				if t > mint {
 					m.buffer.Push(t, ringbuffer.Value{F: v})
 				}
 			}

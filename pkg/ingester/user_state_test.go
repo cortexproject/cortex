@@ -321,6 +321,18 @@ type mockIndexReader struct {
 	postings map[string]map[string]index.Postings
 }
 
+func (ir *mockIndexReader) PostingsForAllLabelValues(ctx context.Context, name string) index.Postings {
+	var postings []index.Postings
+	if entries, ok := ir.postings[name]; ok {
+		for _, entry := range entries {
+			postings = append(postings, entry)
+		}
+		return index.Intersect(postings...)
+	} else {
+		return index.EmptyPostings()
+	}
+}
+
 func (ir *mockIndexReader) Postings(ctx context.Context, name string, values ...string) (index.Postings, error) {
 	if entries, ok := ir.postings[name]; ok {
 		if postings, ok2 := entries[values[0]]; ok2 {

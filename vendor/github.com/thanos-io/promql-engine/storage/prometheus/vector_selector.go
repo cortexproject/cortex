@@ -237,7 +237,7 @@ func selectPoint(it *storage.MemoizedSeriesIterator, ts, lookbackDelta, offset i
 	if valueType == chunkenc.ValNone || t > refTime {
 		var ok bool
 		t, v, fh, ok = it.PeekPrev()
-		if !ok || t < refTime-lookbackDelta {
+		if !ok || t <= refTime-lookbackDelta {
 			return 0, 0, nil, false, nil
 		}
 	}

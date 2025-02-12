@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/logutil"
 	"gopkg.in/yaml.v3"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -95,7 +96,7 @@ func TestParseLegacyAlerts(t *testing.T) {
 		nil,
 		"",
 		true,
-		log.With(util_log.Logger, "alert", "TestAlert"),
+		logutil.GoKitLogToSlog(log.With(util_log.Logger, "alert", "TestAlert")),
 	)
 
 	for i, tc := range []struct {
@@ -138,7 +139,8 @@ groups:
 				require.Equal(t, err, tc.err)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expected, rules)
+				require.Equal(t, 1, len(rules["example;alerts.yaml"]))
+				require.Equal(t, tc.expected["example;alerts.yaml"][0].String(), rules["example;alerts.yaml"][0].String())
 			}
 		})
 	}

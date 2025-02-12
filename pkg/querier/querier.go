@@ -209,7 +209,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 
 	var queryEngine promql.QueryEngine
 	opts := promql.EngineOpts{
-		Logger:               logger,
+		Logger:               util_log.GoKitLogToSlog(logger),
 		Reg:                  reg,
 		ActiveQueryTracker:   createActiveQueryTracker(cfg, logger),
 		MaxSamples:           cfg.MaxSamples,
@@ -252,7 +252,7 @@ func createActiveQueryTracker(cfg Config, logger log.Logger) promql.QueryTracker
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
-		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util_log.GoKitLogToSlog(logger))
 	}
 
 	return nil
@@ -436,7 +436,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		}
 	}
 
-	return storage.NewMergeSeriesSet(result, storage.ChainedSeriesMerge)
+	return storage.NewMergeSeriesSet(result, 0, storage.ChainedSeriesMerge)
 }
 
 // LabelValues implements storage.Querier.

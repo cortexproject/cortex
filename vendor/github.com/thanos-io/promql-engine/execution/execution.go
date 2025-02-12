@@ -376,7 +376,7 @@ func newDeduplication(ctx context.Context, e logicalplan.Deduplicate, scanners s
 
 func newRemoteExecution(ctx context.Context, e logicalplan.RemoteExecution, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
 	// Create a new remote query scoped to the calculated start time.
-	qry, err := e.Engine.NewRangeQuery(ctx, promql.NewPrometheusQueryOpts(false, opts.LookbackDelta), e.Query, e.QueryRangeStart, opts.End, opts.Step)
+	qry, err := e.Engine.NewRangeQuery(ctx, promql.NewPrometheusQueryOpts(false, opts.LookbackDelta), e.Query, e.QueryRangeStart, e.QueryRangeEnd, opts.Step)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +386,7 @@ func newRemoteExecution(ctx context.Context, e logicalplan.RemoteExecution, opts
 	// We need to set the lookback for the selector to 0 since the remote query already applies one lookback.
 	selectorOpts := *opts
 	selectorOpts.LookbackDelta = 0
-	remoteExec := remote.NewExecution(qry, model.NewVectorPool(opts.StepsBatch), e.QueryRangeStart, e.Engine.LabelSets(), &selectorOpts, hints)
+	remoteExec := remote.NewExecution(qry, model.NewVectorPool(opts.StepsBatch), e.QueryRangeStart, e.QueryRangeEnd, e.Engine.LabelSets(), &selectorOpts, hints)
 	return exchange.NewConcurrent(remoteExec, 2, opts), nil
 }
 
@@ -407,9 +407,9 @@ func getTimeRangesForVectorSelector(n *logicalplan.VectorSelector, opts *query.O
 		end = *n.Timestamp
 	}
 	if evalRange == 0 {
-		start -= opts.LookbackDelta.Milliseconds()
+		start -= opts.LookbackDelta.Milliseconds() - 1
 	} else {
-		start -= evalRange
+		start -= evalRange - 1
 	}
 	offset := n.OriginalOffset.Milliseconds()
 	return start - offset, end - offset

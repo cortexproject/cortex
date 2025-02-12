@@ -486,7 +486,7 @@ func (q *blocksStoreQuerier) selectSorted(ctx context.Context, sp *storage.Selec
 
 	// TODO(johrry): pass limit when merging.
 	return series.NewSeriesSetWithWarnings(
-		storage.NewMergeSeriesSet(resSeriesSets, storage.ChainedSeriesMerge),
+		storage.NewMergeSeriesSet(resSeriesSets, 0, storage.ChainedSeriesMerge),
 		resWarnings)
 }
 

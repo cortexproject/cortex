@@ -129,7 +129,7 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 
 	res := o.pool.GetVectorBatch()
 	for i := 0; o.currentStep <= o.maxt && i < o.stepsBatch; i++ {
-		mint := o.currentStep - o.subQuery.Range.Milliseconds() - o.subQuery.OriginalOffset.Milliseconds()
+		mint := o.currentStep - o.subQuery.Range.Milliseconds() - o.subQuery.OriginalOffset.Milliseconds() + 1
 		maxt := o.currentStep - o.subQuery.OriginalOffset.Milliseconds()
 		for _, b := range o.buffers {
 			b.Reset(mint, maxt+o.subQuery.Offset.Milliseconds())
@@ -171,15 +171,15 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 
 		sv := o.pool.GetStepVector(o.currentStep)
 		for sampleId, rangeSamples := range o.buffers {
-			f, h, ok, err := rangeSamples.Eval(o.params[i], nil)
+			f, h, ok, err := rangeSamples.Eval(ctx, o.params[i], nil)
 			if err != nil {
 				return nil, err
 			}
 			if ok {
 				if h != nil {
 					sv.AppendHistogram(o.pool, uint64(sampleId), h)
-				} else {
-					sv.AppendSample(o.pool, uint64(sampleId), f)
+				} else if f != nil {
+					sv.AppendSample(o.pool, uint64(sampleId), *f)
 				}
 			}
 			o.IncrementSamplesAtTimestamp(rangeSamples.Len(), sv.T)
@@ -235,7 +235,7 @@ func (o *subqueryOperator) initSeries(ctx context.Context) error {
 		o.series = make([]labels.Labels, len(series))
 		o.buffers = make([]*ringbuffer.GenericRingBuffer, len(series))
 		for i := range o.buffers {
-			o.buffers[i] = ringbuffer.New(8, o.subQuery.Range.Milliseconds(), o.subQuery.Offset.Milliseconds(), o.call)
+			o.buffers[i] = ringbuffer.New(ctx, 8, o.subQuery.Range.Milliseconds(), o.subQuery.Offset.Milliseconds(), o.call)
 		}
 		var b labels.ScratchBuilder
 		for i, s := range series {

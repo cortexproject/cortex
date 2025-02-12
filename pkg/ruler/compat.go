@@ -70,6 +70,13 @@ func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v
 	return 0, nil
 }
 
+func (a *PusherAppender) SetOptions(opts *storage.AppendOptions) {}
+
+func (a *PusherAppender) AppendHistogramCTZeroSample(ref storage.SeriesRef, l labels.Labels, t, ct int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// AppendHistogramCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
+	return 0, nil
+}
+
 func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _, _ int64) (storage.SeriesRef, error) {
 	// AppendCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
 	return 0, nil
@@ -353,7 +360,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			Context:                prometheusContext,
 			ExternalURL:            cfg.ExternalURL.URL,
 			NotifyFunc:             SendAlerts(notifier, cfg.ExternalURL.URL.String()),
-			Logger:                 log.With(logger, "user", userID),
+			Logger:                 util_log.GoKitLogToSlog(log.With(logger, "user", userID)),
 			Registerer:             reg,
 			OutageTolerance:        cfg.OutageTolerance,
 			ForGracePeriod:         cfg.ForGracePeriod,

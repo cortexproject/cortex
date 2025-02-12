@@ -658,8 +658,8 @@ func (c *Compactor) starting(ctx context.Context) error {
 		lifecyclerCfg := c.compactorCfg.ShardingRing.ToLifecyclerConfig()
 		var delegate ring.LifecyclerDelegate
 		delegate = &ring.DefaultLifecyclerDelegate{}
-		if c.ring.cfg.AutoForgetDelay > 0 {
-			delegate = ring.NewLifecyclerAutoForgetDelegate(c.ring.cfg.AutoForgetDelay, delegate, c.logger)
+		if c.compactorCfg.ShardingRing.AutoForgetDelay > 0 {
+			delegate = ring.NewLifecyclerAutoForgetDelegate(c.compactorCfg.ShardingRing.AutoForgetDelay, delegate, c.logger)
 		}
 		c.ringLifecycler, err = ring.NewLifecyclerWithDelegate(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.registerer), delegate)
 		if err != nil {

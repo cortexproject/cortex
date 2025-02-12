@@ -2112,3 +2112,61 @@ func TestCompactor_FailedWithHaltError(t *testing.T) {
 		"cortex_compactor_compaction_error_total",
 	))
 }
+
+func TestCompactor_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
+	// Setup user IDs
+	userID := "user-0"
+	inmem := objstore.WithNoopInstr(objstore.NewInMemBucket())
+
+	id, err := ulid.New(ulid.Now(), rand.Reader)
+	require.NoError(t, err)
+	require.NoError(t, inmem.Upload(context.Background(), userID+"/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+
+	// Create a shared KV Store
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	// Setup config
+	cfg := prepareConfig()
+
+	cfg.ShardingEnabled = true
+	cfg.ShardingRing.InstanceID = "compactor-0"
+	cfg.ShardingRing.InstanceAddr = "127.0.0.0"
+	cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+	cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
+	cfg.ShardingRing.KVStore.Mock = kvstore
+	cfg.ShardingRing.AutoForgetDelay = 10 * time.Millisecond
+
+	// Compactor will get its own temp dir for storing local files.
+	compactor, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil)
+	compactor.logger = log.NewNopLogger()
+
+	// Mock the planner as if there's no compaction to do,
+	// in order to simplify tests (all in all, we just want to
+	// test our logic and not TSDB compactor which we expect to
+	// be already tested).
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+
+	// Start compactor
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), compactor))
+
+	healthy, unhealthy, err := compactor.ring.GetAllInstanceDescs(ring.Reporting)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(healthy))
+	assert.Equal(t, 0, len(unhealthy))
+
+	// Start lifecycler
+	lifecyclerCfg := compactor.compactorCfg.ShardingRing.ToLifecyclerConfig()
+	lifecyclerCfg.HeartbeatPeriod = 100 * time.Millisecond
+	var delegate ring.LifecyclerDelegate
+	delegate = &ring.DefaultLifecyclerDelegate{}
+	delegate = ring.NewLifecyclerAutoForgetDelegate(compactor.compactorCfg.ShardingRing.AutoForgetDelay, delegate, compactor.logger)
+	compactor.ringLifecycler, _ = ring.NewLifecyclerWithDelegate(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", "compactor", true, true, compactor.logger, nil, delegate)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), compactor.ringLifecycler))
+	defer services.StopAndAwaitTerminated(context.Background(), compactor.ringLifecycler) // nolint:errcheck
+
+	time.Sleep(250 * time.Millisecond)
+
+	healthy, unhealthy, err = compactor.ring.GetAllInstanceDescs(ring.Reporting)
+	assert.EqualError(t, err, fmt.Sprint(ring.ErrEmptyRing))
+}

@@ -2113,3 +2113,74 @@ func TestCompactor_FailedWithHaltError(t *testing.T) {
 		"cortex_compactor_compaction_error_total",
 	))
 }
+
+func TestCompactor_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
+	// Setup user IDs
+	userID := "user-0"
+	inmem := objstore.WithNoopInstr(objstore.NewInMemBucket())
+
+	id, err := ulid.New(ulid.Now(), rand.Reader)
+	require.NoError(t, err)
+	require.NoError(t, inmem.Upload(context.Background(), userID+"/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+
+	// Create a shared KV Store
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	// Create two compactors
+	var compactors []*Compactor
+
+	for i := 0; i < 2; i++ {
+		// Setup config
+		cfg := prepareConfig()
+
+		cfg.ShardingEnabled = true
+		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
+		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
+		cfg.ShardingRing.KVStore.Mock = kvstore
+		cfg.ShardingRing.HeartbeatPeriod = 200 * time.Millisecond
+		cfg.ShardingRing.UnregisterOnShutdown = false
+		cfg.ShardingRing.AutoForgetDelay = 400 * time.Millisecond
+
+		// Compactor will get its own temp dir for storing local files.
+		compactor, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil)
+		compactor.logger = log.NewNopLogger()
+
+		compactors = append(compactors, compactor)
+
+		// Mock the planner as if there's no compaction to do,
+		// in order to simplify tests (all in all, we just want to
+		// test our logic and not TSDB compactor which we expect to
+		// be already tested).
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	}
+
+	require.Equal(t, 2, len(compactors))
+	compactor := compactors[0]
+	compactor2 := compactors[1]
+
+	// Start compactors
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), compactor))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), compactor2))
+
+	// Wait until a run has completed.
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(compactor2.CompactionRunsCompleted)
+	})
+
+	cortex_testutil.Poll(t, 5000*time.Millisecond, true, func() interface{} {
+		healthy, unhealthy, _ := compactor.ring.GetAllInstanceDescs(ring.Reporting)
+		return len(healthy) == 2 && len(unhealthy) == 0
+	})
+
+	// Make one compactor unhealthy in ring by stopping the
+	// compactor service while UnregisterOnShutdown is false
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), compactor2))
+
+	cortex_testutil.Poll(t, 5000*time.Millisecond, true, func() interface{} {
+		healthy, unhealthy, _ := compactor.ring.GetAllInstanceDescs(ring.Reporting)
+		return len(healthy) == 1 && len(unhealthy) == 0
+	})
+}

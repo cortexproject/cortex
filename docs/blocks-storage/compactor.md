@@ -263,6 +263,11 @@ compactor:
     # CLI flag: -compactor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
+    # Time since last heartbeat before compactor will be removed from ring. 0 to
+    # disable
+    # CLI flag: -compactor.auto-forget-delay
+    [auto_forget_delay: <duration> | default = 2m]
+
     # Minimum time to wait for ring stability at startup. 0 to disable.
     # CLI flag: -compactor.ring.wait-stability-min-duration
     [wait_stability_min_duration: <duration> | default = 1m]

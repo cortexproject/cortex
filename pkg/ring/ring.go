@@ -1029,3 +1029,14 @@ func (op Operation) ShouldExtendReplicaSetOnState(s InstanceState) bool {
 
 // All states are healthy, no states extend replica set.
 var allStatesRingOperation = Operation(0x0000ffff)
+
+func AutoForgetFromRing(ringDesc *Desc, forgetPeriod time.Duration, logger log.Logger) {
+	for id, instance := range ringDesc.Ingesters {
+		lastHeartbeat := time.Unix(instance.GetTimestamp(), 0)
+
+		if time.Since(lastHeartbeat) > forgetPeriod {
+			level.Warn(logger).Log("msg", "auto-forgetting instance from the ring because it is unhealthy for a long time", "instance", id, "last_heartbeat", lastHeartbeat.String(), "forget_period", forgetPeriod)
+			ringDesc.RemoveIngester(id)
+		}
+	}
+}

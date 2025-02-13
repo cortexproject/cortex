@@ -53,7 +53,7 @@ func init() {
 }
 
 func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
-	prometheusLatestImage := "quay.io/prometheus/prometheus:v2.55.1"
+	prometheusLatestImage := "quay.io/prometheus/prometheus:v3.1.0"
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -1421,7 +1421,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 
 // TestPrometheusCompatibilityQueryFuzz compares Cortex with latest Prometheus release.
 func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
-	prometheusLatestImage := "quay.io/prometheus/prometheus:v2.55.1"
+	prometheusLatestImage := "quay.io/prometheus/prometheus:v3.1.0"
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()

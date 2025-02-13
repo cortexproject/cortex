@@ -210,8 +210,9 @@ func GenerateSeriesWithSamples(
 	startTMillis := tsMillis
 	samples := make([]prompb.Sample, numSamples)
 	for i := 0; i < numSamples; i++ {
+		scrapeJitter := rand.Int63n(10) + 1 // add a jitter to simulate real-world scenarios, refer to: https://github.com/prometheus/prometheus/issues/13213
 		samples[i] = prompb.Sample{
-			Timestamp: startTMillis,
+			Timestamp: startTMillis + scrapeJitter,
 			Value:     float64(i + startValue),
 		}
 		startTMillis += durMillis

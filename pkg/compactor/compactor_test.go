@@ -2166,7 +2166,7 @@ func TestCompactor_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(compactor.CompactionRunsCompleted)
+		return prom_testutil.ToFloat64(compactor2.CompactionRunsCompleted)
 	})
 
 	cortex_testutil.Poll(t, 5000*time.Millisecond, true, func() interface{} {

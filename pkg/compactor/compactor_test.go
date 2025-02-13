@@ -2171,7 +2171,7 @@ func TestCompactor_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T
 
 	// Make one compactor unhealthy in ring by stopping the
 	// compactor service while UnregisterOnShutdown is false
-	services.StopAndAwaitTerminated(context.Background(), compactor2)
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), compactor2))
 	time.Sleep(5000 * time.Millisecond)
 
 	cortex_testutil.Poll(t, 5000*time.Millisecond, true, func() interface{} {

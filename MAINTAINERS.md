@@ -15,4 +15,4 @@
 |-----------------|----------------------------|-----------------|---------------------|
 | Anand Rajagopal | anand.rajagopal@icloud.com | @rajagopalanand | Amazon Web Services |
 | Sungjin Lee     | tjdwls1201@gmail.com       | @SungJin1212    | KakaoEnterprise     |
-| Daniel Sabsay   | dsabsay@adobe.com          | @dsabsay        | Adobe               |
+| Daniel Sabsay   | danielsabsay.sofware@gmail.com          | @dsabsay        | Adobe               |

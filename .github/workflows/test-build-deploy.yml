@@ -15,7 +15,7 @@ on:
 
 jobs:
   lint:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     container:
       image: quay.io/cortexproject/build-image:master-582c03a76
     steps:
@@ -44,7 +44,7 @@ jobs:
         run: make BUILD_IN_CONTAINER=false check-white-noise
 
   test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     container:
       image: quay.io/cortexproject/build-image:master-582c03a76
     steps:
@@ -64,7 +64,7 @@ jobs:
 
   security:
     name: CodeQL
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     permissions:
       actions: read
       contents: read
@@ -87,7 +87,7 @@ jobs:
 
   
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     container:
       image: quay.io/cortexproject/build-image:master-582c03a76
     steps:
@@ -132,7 +132,7 @@ jobs:
 
   integration:
     needs: build
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -206,7 +206,7 @@ jobs:
 
   integration-configs-db:
     needs: build
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
@@ -228,7 +228,7 @@ jobs:
   deploy_website:
     needs: [build, test]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     container:
       image: quay.io/cortexproject/build-image:master-582c03a76
     steps:
@@ -270,7 +270,7 @@ jobs:
   deploy:
     needs: [build, test, lint, integration, integration-configs-db]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     container:
       image: quay.io/cortexproject/build-image:master-582c03a76
     steps:

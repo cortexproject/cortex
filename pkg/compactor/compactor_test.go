@@ -2126,47 +2126,56 @@ func TestCompactor_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T
 	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
-	// Setup config
-	cfg := prepareConfig()
+	// Create two compactors
+	var compactors []*Compactor
 
-	cfg.ShardingEnabled = true
-	cfg.ShardingRing.InstanceID = "compactor-0"
-	cfg.ShardingRing.InstanceAddr = "127.0.0.0"
-	cfg.ShardingRing.WaitStabilityMinDuration = time.Second
-	cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
-	cfg.ShardingRing.KVStore.Mock = kvstore
-	cfg.ShardingRing.AutoForgetDelay = 10 * time.Millisecond
+	for i := 0; i < 2; i++ {
+		// Setup config
+		cfg := prepareConfig()
 
-	// Compactor will get its own temp dir for storing local files.
-	compactor, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil)
-	compactor.logger = log.NewNopLogger()
+		cfg.ShardingEnabled = true
+		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
+		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
+		cfg.ShardingRing.KVStore.Mock = kvstore
+		cfg.ShardingRing.HeartbeatPeriod = 200 * time.Millisecond
+		cfg.ShardingRing.UnregisterOnShutdown = false
+		cfg.ShardingRing.AutoForgetDelay = 400 * time.Millisecond
 
-	// Mock the planner as if there's no compaction to do,
-	// in order to simplify tests (all in all, we just want to
-	// test our logic and not TSDB compactor which we expect to
-	// be already tested).
-	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+		// Compactor will get its own temp dir for storing local files.
+		compactor, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil)
+		compactor.logger = log.NewNopLogger()
 
-	// Start compactor
+		compactors = append(compactors, compactor)
+
+		// Mock the planner as if there's no compaction to do,
+		// in order to simplify tests (all in all, we just want to
+		// test our logic and not TSDB compactor which we expect to
+		// be already tested).
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	}
+
+	require.Equal(t, 2, len(compactors))
+	compactor := compactors[0]
+	compactor2 := compactors[1]
+
+	// Start compactors
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), compactor))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), compactor2))
 
-	healthy, unhealthy, err := compactor.ring.GetAllInstanceDescs(ring.Reporting)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(healthy))
-	assert.Equal(t, 0, len(unhealthy))
+	cortex_testutil.Poll(t, 5000*time.Millisecond, true, func() interface{} {
+		healthy, unhealthy, _ := compactor.ring.GetAllInstanceDescs(ring.Reporting)
+		return len(healthy) == 2 && len(unhealthy) == 0
+	})
 
-	// Start lifecycler
-	lifecyclerCfg := compactor.compactorCfg.ShardingRing.ToLifecyclerConfig()
-	lifecyclerCfg.HeartbeatPeriod = 100 * time.Millisecond
-	var delegate ring.LifecyclerDelegate
-	delegate = &ring.DefaultLifecyclerDelegate{}
-	delegate = ring.NewLifecyclerAutoForgetDelegate(compactor.compactorCfg.ShardingRing.AutoForgetDelay, delegate, compactor.logger)
-	compactor.ringLifecycler, _ = ring.NewLifecyclerWithDelegate(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", "compactor", true, true, compactor.logger, nil, delegate)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), compactor.ringLifecycler))
-	defer services.StopAndAwaitTerminated(context.Background(), compactor.ringLifecycler) // nolint:errcheck
+	// Make one compactor unhealthy in ring by stopping the
+	// compactor service while UnregisterOnShutdown is false
+	services.StopAndAwaitTerminated(context.Background(), compactor2)
+	time.Sleep(5000 * time.Millisecond)
 
-	time.Sleep(250 * time.Millisecond)
-
-	healthy, unhealthy, err = compactor.ring.GetAllInstanceDescs(ring.Reporting)
-	assert.EqualError(t, err, fmt.Sprint(ring.ErrEmptyRing))
+	cortex_testutil.Poll(t, 5000*time.Millisecond, true, func() interface{} {
+		healthy, unhealthy, _ := compactor.ring.GetAllInstanceDescs(ring.Reporting)
+		return len(healthy) == 1 && len(unhealthy) == 0
+	})
 }

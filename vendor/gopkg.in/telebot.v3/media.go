@@ -19,7 +19,7 @@ type InputMedia struct {
 	Type                 string   `json:"type"`
 	Media                string   `json:"media"`
 	Caption              string   `json:"caption"`
-	Thumbnail            string   `json:"thumb,omitempty"`
+	Thumbnail            string   `json:"thumbnail,omitempty"`
 	ParseMode            string   `json:"parse_mode,omitempty"`
 	Entities             Entities `json:"caption_entities,omitempty"`
 	Width                int      `json:"width,omitempty"`
@@ -44,6 +44,24 @@ type Inputtable interface {
 
 // Album lets you group multiple media into a single message.
 type Album []Inputtable
+
+func (a Album) SetCaption(caption string) {
+	if len(a) < 1 {
+		return
+	}
+	switch a[0].MediaType() {
+	case "audio":
+		a[0].(*Audio).Caption = caption
+	case "video":
+		a[0].(*Video).Caption = caption
+	case "document":
+		a[0].(*Document).Caption = caption
+	case "photo":
+		a[0].(*Photo).Caption = caption
+	case "animation":
+		a[0].(*Animation).Caption = caption
+	}
+}
 
 // Photo object represents a single photo file.
 type Photo struct {
@@ -113,7 +131,7 @@ type Audio struct {
 
 	// (Optional)
 	Caption   string `json:"caption,omitempty"`
-	Thumbnail *Photo `json:"thumb,omitempty"`
+	Thumbnail *Photo `json:"thumbnail,omitempty"`
 	Title     string `json:"title,omitempty"`
 	Performer string `json:"performer,omitempty"`
 	MIME      string `json:"mime_type,omitempty"`
@@ -145,7 +163,7 @@ type Document struct {
 	File
 
 	// (Optional)
-	Thumbnail            *Photo `json:"thumb,omitempty"`
+	Thumbnail            *Photo `json:"thumbnail,omitempty"`
 	Caption              string `json:"caption,omitempty"`
 	MIME                 string `json:"mime_type"`
 	FileName             string `json:"file_name,omitempty"`
@@ -179,7 +197,7 @@ type Video struct {
 
 	// (Optional)
 	Caption   string `json:"caption,omitempty"`
-	Thumbnail *Photo `json:"thumb,omitempty"`
+	Thumbnail *Photo `json:"thumbnail,omitempty"`
 	Streaming bool   `json:"supports_streaming,omitempty"`
 	MIME      string `json:"mime_type,omitempty"`
 	FileName  string `json:"file_name,omitempty"`
@@ -215,7 +233,7 @@ type Animation struct {
 
 	// (Optional)
 	Caption   string `json:"caption,omitempty"`
-	Thumbnail *Photo `json:"thumb,omitempty"`
+	Thumbnail *Photo `json:"thumbnail,omitempty"`
 	MIME      string `json:"mime_type,omitempty"`
 	FileName  string `json:"file_name,omitempty"`
 }
@@ -265,7 +283,7 @@ type VideoNote struct {
 	Duration int `json:"duration"`
 
 	// (Optional)
-	Thumbnail *Photo `json:"thumb,omitempty"`
+	Thumbnail *Photo `json:"thumbnail,omitempty"`
 	Length    int    `json:"length,omitempty"`
 }
 
@@ -280,17 +298,18 @@ func (v *VideoNote) MediaFile() *File {
 // Sticker object represents a WebP image, so-called sticker.
 type Sticker struct {
 	File
+	Type             StickerSetType `json:"type"`
 	Width            int            `json:"width"`
 	Height           int            `json:"height"`
 	Animated         bool           `json:"is_animated"`
 	Video            bool           `json:"is_video"`
-	Thumbnail        *Photo         `json:"thumb"`
+	Thumbnail        *Photo         `json:"thumbnail"`
 	Emoji            string         `json:"emoji"`
 	SetName          string         `json:"set_name"`
-	MaskPosition     *MaskPosition  `json:"mask_position"`
 	PremiumAnimation *File          `json:"premium_animation"`
-	Type             StickerSetType `json:"type"`
+	MaskPosition     *MaskPosition  `json:"mask_position"`
 	CustomEmoji      string         `json:"custom_emoji_id"`
+	Repaint          bool           `json:"needs_repainting"`
 }
 
 func (s *Sticker) MediaType() string {

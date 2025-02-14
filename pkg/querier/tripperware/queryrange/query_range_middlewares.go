@@ -124,7 +124,12 @@ func Middlewares(
 			}
 			return false
 		}
+
 		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, prometheusCodec, cacheExtractor, shouldCache, registerer)
+		if cfg.DynamicQuerySplitsConfig.MaxShardsPerQuery > 0 || cfg.DynamicQuerySplitsConfig.MaxFetchedDataDurationPerQuery > 0 {
+			queryCacheMiddleware, cache, err = NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, dynamicIntervalSplitter{cfg, limits, queryAnalyzer, lookbackDelta}, limits, prometheusCodec, cacheExtractor, shouldCache, registerer)
+		}
+
 		if err != nil {
 			return nil, nil, err
 		}

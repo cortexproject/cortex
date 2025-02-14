@@ -141,16 +141,16 @@ func (PrometheusResponseExtractor) ResponseWithoutStats(resp tripperware.Respons
 // CacheSplitter generates cache keys. This is a useful interface for downstream
 // consumers who wish to implement their own strategies.
 type CacheSplitter interface {
-	GenerateCacheKey(userID string, r tripperware.Request) string
+	GenerateCacheKey(userID string, ctx context.Context, r tripperware.Request) (string, error)
 }
 
 // constSplitter is a utility for using a constant split interval when determining cache keys
 type constSplitter time.Duration
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (t constSplitter) GenerateCacheKey(userID string, r tripperware.Request) string {
+func (t constSplitter) GenerateCacheKey(userID string, ctx context.Context, r tripperware.Request) (string, error) {
 	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
-	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
+	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval), nil
 }
 
 // ShouldCacheFn checks whether the current request should go to cache
@@ -232,8 +232,12 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 		return s.next.Do(ctx, r)
 	}
 
+	key, err := s.splitter.GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), ctx, r)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
 	var (
-		key      = s.splitter.GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), r)
 		extents  []tripperware.Extent
 		response tripperware.Response
 	)

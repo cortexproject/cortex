@@ -1381,7 +1381,9 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
 
 			// fill cache
-			key := constSplitter(day).GenerateCacheKey("1", req)
+			key, err := constSplitter(day).GenerateCacheKey("1", ctx, req)
+			require.NoError(t, err)
+
 			rc.(*resultsCache).put(ctx, key, []tripperware.Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
 
 			resp, err := rc.Do(ctx, req)
@@ -1460,7 +1462,11 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 		tt := tt
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
 			t.Parallel()
-			if got := constSplitter(tt.interval).GenerateCacheKey("fake", tt.r); got != tt.want {
+			ctx := user.InjectOrgID(context.Background(), "1")
+			got, err := constSplitter(tt.interval).GenerateCacheKey("fake", ctx, tt.r)
+			require.NoError(t, err)
+
+			if got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
 		})
@@ -1563,7 +1569,10 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 	// Check cache and make sure we write response in old format even though the response is new format.
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	require.NoError(t, err)
-	cacheKey := cache.HashKey(constSplitter(day).GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), parsedRequest))
+	key, err := constSplitter(day).GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), ctx, parsedRequest)
+	require.NoError(t, err)
+
+	cacheKey := cache.HashKey(key)
 	found, bufs, _ := c.Fetch(ctx, []string{cacheKey})
 	require.Equal(t, []string{cacheKey}, found)
 	require.Len(t, bufs, 1)

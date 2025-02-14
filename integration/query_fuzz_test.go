@@ -378,8 +378,9 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			"-blocks-storage.expanded_postings_cache.head.enabled":  "true",
 			"-blocks-storage.expanded_postings_cache.block.enabled": "true",
 			// Ingester.
-			"-ring.store":      "consul",
-			"-consul.hostname": consul2.NetworkHTTPEndpoint(),
+			"-ring.store":                        "consul",
+			"-consul.hostname":                   consul2.NetworkHTTPEndpoint(),
+			"-ingester.matchers-cache-max-items": "10000",
 			// Distributor.
 			"-distributor.replication-factor": "1",
 			// Store-gateway.
@@ -432,7 +433,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 				scrapeInterval,
 				i*numSamples,
 				numSamples,
-				prompb.Label{Name: "j", Value: fmt.Sprintf("%d", j)},
+				prompb.Label{Name: "test_label", Value: fmt.Sprintf("test_label_value_%d", j)},
 			)
 			ss[i*numberOfLabelsPerSeries+j] = series
 
@@ -452,11 +453,18 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
 	// Create the queries with the original labels
-	testRun := 100
+	testRun := 300
 	queries := make([]string, testRun)
+	matchers := make([]string, testRun)
 	for i := 0; i < testRun; i++ {
 		expr := ps.WalkRangeQuery()
 		queries[i] = expr.Pretty(0)
+		matchers[i] = storepb.PromMatchersToString(
+			append(
+				ps.WalkSelectors(),
+				labels.MustNewMatcher(labels.MatchEqual, "__name__", fmt.Sprintf("test_series_%d", i%numSeries)),
+			)...,
+		)
 	}
 
 	// Lets run multiples iterations and create new series every iteration
@@ -471,7 +479,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 					scrapeInterval,
 					i*numSamples,
 					numSamples,
-					prompb.Label{Name: "j", Value: fmt.Sprintf("%d", j)},
+					prompb.Label{Name: "test_label", Value: fmt.Sprintf("test_label_value_%d", j)},
 					prompb.Label{Name: "k", Value: fmt.Sprintf("%d", k)},
 				)
 			}
@@ -484,20 +492,33 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 		}
 
 		type testCase struct {
-			query      string
-			res1, res2 model.Value
-			err1, err2 error
+			query        string
+			qt           string
+			res1, res2   model.Value
+			sres1, sres2 []model.LabelSet
+			err1, err2   error
 		}
 
-		queryStart := time.Now().Add(-time.Hour * 24)
-		queryEnd := time.Now()
-		cases := make([]*testCase, 0, 200)
+		cases := make([]*testCase, 0, len(queries)*3)
 
 		for _, query := range queries {
-			res1, err1 := c1.QueryRange(query, queryStart, queryEnd, scrapeInterval)
-			res2, err2 := c2.QueryRange(query, queryStart, queryEnd, scrapeInterval)
+			fuzzyTime := time.Duration(rand.Int63n(time.Now().UnixMilli() - start.UnixMilli()))
+			queryEnd := start.Add(fuzzyTime * time.Millisecond)
+			res1, err1 := c1.Query(query, queryEnd)
+			res2, err2 := c2.Query(query, queryEnd)
 			cases = append(cases, &testCase{
 				query: query,
+				qt:    "instant",
+				res1:  res1,
+				res2:  res2,
+				err1:  err1,
+				err2:  err2,
+			})
+			res1, err1 = c1.QueryRange(query, start, queryEnd, scrapeInterval)
+			res2, err2 = c2.QueryRange(query, start, queryEnd, scrapeInterval)
+			cases = append(cases, &testCase{
+				query: query,
+				qt:    "range query",
 				res1:  res1,
 				res2:  res2,
 				err1:  err1,
@@ -505,21 +526,38 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			})
 		}
 
+		for _, m := range matchers {
+			fuzzyTime := time.Duration(rand.Int63n(time.Now().UnixMilli() - start.UnixMilli()))
+			queryEnd := start.Add(fuzzyTime * time.Millisecond)
+			res1, err := c1.Series([]string{m}, start, queryEnd)
+			require.NoError(t, err)
+			res2, err := c2.Series([]string{m}, start, queryEnd)
+			require.NoError(t, err)
+			cases = append(cases, &testCase{
+				query: m,
+				qt:    "get series",
+				sres1: res1,
+				sres2: res2,
+			})
+		}
+
 		failures := 0
 		for i, tc := range cases {
-			qt := "range query"
 			if tc.err1 != nil || tc.err2 != nil {
 				if !cmp.Equal(tc.err1, tc.err2) {
-					t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
+					t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, tc.qt, tc.query, tc.err1, tc.err2)
 					failures++
 				}
 			} else if shouldUseSampleNumComparer(tc.query) {
 				if !cmp.Equal(tc.res1, tc.res2, sampleNumComparer) {
-					t.Logf("case %d # of samples mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
+					t.Logf("case %d # of samples mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
 					failures++
 				}
 			} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
-				t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
+				t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
+				failures++
+			} else if !cmp.Equal(tc.sres1, tc.sres1, labelSetsComparer) {
+				t.Logf("case %d results mismatch.\n%s: %s\nsres1: %s\nsres2: %s\n", i, tc.qt, tc.query, tc.sres1, tc.sres2)
 				failures++
 			}
 		}
@@ -801,7 +839,46 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		const fraction = 1.e-10 // 0.00000001%
 		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(fraction, epsilon))
 	}
+	// count_values returns a metrics with one label {"value": "1.012321"}
+	compareValueMetrics := func(l, r model.Metric) (valueMetric bool, equals bool) {
+		lLabels := model.LabelSet(l).Clone()
+		rLabels := model.LabelSet(r).Clone()
+		var (
+			lVal, rVal     model.LabelValue
+			lFloat, rFloat float64
+			ok             bool
+			err            error
+		)
+
+		if lVal, ok = lLabels["value"]; !ok {
+			return false, false
+		}
+
+		if rVal, ok = rLabels["value"]; !ok {
+			return false, false
+		}
+
+		if lFloat, err = strconv.ParseFloat(string(lVal), 64); err != nil {
+			return false, false
+		}
+		if rFloat, err = strconv.ParseFloat(string(rVal), 64); err != nil {
+			return false, false
+		}
+
+		// Exclude the value label in comparison.
+		delete(lLabels, "value")
+		delete(rLabels, "value")
+
+		if !lLabels.Equal(rLabels) {
+			return false, false
+		}
+
+		return true, compareFloats(lFloat, rFloat)
+	}
 	compareMetrics := func(l, r model.Metric) bool {
+		if valueMetric, equals := compareValueMetrics(l, r); valueMetric {
+			return equals
+		}
 		return l.Equal(r)
 	}
 

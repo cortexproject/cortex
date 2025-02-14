@@ -293,9 +293,6 @@ github.com/caio/go-tdigest
 # github.com/cenkalti/backoff/v4 v4.3.0
 ## explicit; go 1.18
 github.com/cenkalti/backoff/v4
-# github.com/cespare/xxhash v1.1.0
-## explicit
-github.com/cespare/xxhash
 # github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
@@ -306,7 +303,7 @@ github.com/coreos/go-semver/semver
 ## explicit; go 1.12
 github.com/coreos/go-systemd/v22/activation
 github.com/coreos/go-systemd/v22/journal
-# github.com/cortexproject/promqlsmith v0.0.0-20241121054008-8b48fe2471ef
+# github.com/cortexproject/promqlsmith v0.0.0-20250203072244-cbb5738d00ca
 ## explicit; go 1.22.0
 github.com/cortexproject/promqlsmith
 # github.com/cristalhq/hedgedhttp v0.9.1
@@ -967,7 +964,7 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing/opentracing
-# github.com/thanos-io/promql-engine v0.0.0-20241203103240-2f49f80c7c68
+# github.com/thanos-io/promql-engine v0.0.0-20250110162513-14f995518af3
 ## explicit; go 1.22.0
 github.com/thanos-io/promql-engine/api
 github.com/thanos-io/promql-engine/engine
@@ -982,6 +979,7 @@ github.com/thanos-io/promql-engine/execution/parse
 github.com/thanos-io/promql-engine/execution/remote
 github.com/thanos-io/promql-engine/execution/scan
 github.com/thanos-io/promql-engine/execution/step_invariant
+github.com/thanos-io/promql-engine/execution/telemetry
 github.com/thanos-io/promql-engine/execution/unary
 github.com/thanos-io/promql-engine/execution/warnings
 github.com/thanos-io/promql-engine/extlabels
@@ -990,7 +988,7 @@ github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
-# github.com/thanos-io/thanos v0.37.2-0.20241210234302-0ea6bac096ce
+# github.com/thanos-io/thanos v0.37.3-0.20250203070737-57efc2aacd6f
 ## explicit; go 1.23.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block
@@ -1040,6 +1038,7 @@ github.com/thanos-io/thanos/pkg/store/storepb/prompb
 github.com/thanos-io/thanos/pkg/strutil
 github.com/thanos-io/thanos/pkg/targets/targetspb
 github.com/thanos-io/thanos/pkg/tenancy
+github.com/thanos-io/thanos/pkg/testutil/e2eutil
 github.com/thanos-io/thanos/pkg/tls
 github.com/thanos-io/thanos/pkg/tracing
 github.com/thanos-io/thanos/pkg/tracing/interceptors
@@ -1307,7 +1306,6 @@ golang.org/x/crypto/pkcs12/internal/rc2
 # golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
 ## explicit; go 1.20
 golang.org/x/exp/constraints
-golang.org/x/exp/maps
 golang.org/x/exp/slices
 # golang.org/x/mod v0.21.0
 ## explicit; go 1.22.0
@@ -1347,6 +1345,7 @@ golang.org/x/oauth2/jwt
 ## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
+golang.org/x/sync/singleflight
 # golang.org/x/sys v0.28.0
 ## explicit; go 1.18
 golang.org/x/sys/cpu

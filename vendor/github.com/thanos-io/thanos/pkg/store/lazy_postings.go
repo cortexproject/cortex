@@ -6,6 +6,7 @@ package store
 import (
 	"context"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/go-kit/log/level"
@@ -14,7 +15,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/index"
-	"golang.org/x/exp/slices"
 
 	"github.com/thanos-io/thanos/pkg/block/indexheader"
 )
@@ -166,6 +166,13 @@ func optimizePostingsFetchByDownloadedBytes(
 		if seriesMatched <= 0 {
 			break
 		}
+		// Only mark posting group as lazy due to too many keys when those keys are known to be existent.
+		if postingGroupMaxKeySeriesRatio > 0 && maxSeriesMatched > 0 &&
+			float64(pg.existentKeys)/float64(maxSeriesMatched) > postingGroupMaxKeySeriesRatio {
+			markPostingGroupLazy(pg, "keys_limit", lazyExpandedPostingSizeBytes, lazyExpandedPostingGroupsByReason)
+			i++
+			continue
+		}
 		if pg.addAll {
 			// For posting group that has negative matchers, we assume we can underfetch
 			// min(pg.cardinality, current_series_matched) * match ratio series.
@@ -177,13 +184,6 @@ func optimizePostingsFetchByDownloadedBytes(
 			seriesMatched -= underfetchedSeries
 			underfetchedSeriesSize = underfetchedSeries * seriesMaxSize
 		} else {
-			// Only mark posting group as lazy due to too many keys when those keys are known to be existent.
-			if postingGroupMaxKeySeriesRatio > 0 && maxSeriesMatched > 0 &&
-				float64(pg.existentKeys)/float64(maxSeriesMatched) > postingGroupMaxKeySeriesRatio {
-				markPostingGroupLazy(pg, "keys_limit", lazyExpandedPostingSizeBytes, lazyExpandedPostingGroupsByReason)
-				i++
-				continue
-			}
 			underfetchedSeriesSize = seriesMaxSize * int64(math.Ceil(float64(seriesMatched)*(1-seriesMatchRatio)))
 			seriesMatched = int64(math.Ceil(float64(seriesMatched) * seriesMatchRatio))
 		}
@@ -214,6 +214,7 @@ func fetchLazyExpandedPostings(
 	bytesLimiter BytesLimiter,
 	addAllPostings bool,
 	lazyExpandedPostingEnabled bool,
+	seriesMatchRatio float64,
 	postingGroupMaxKeySeriesRatio float64,
 	lazyExpandedPostingSizeBytes prometheus.Counter,
 	lazyExpandedPostingGroupsByReason *prometheus.CounterVec,
@@ -237,7 +238,7 @@ func fetchLazyExpandedPostings(
 			r,
 			postingGroups,
 			int64(r.block.estimatedMaxSeriesSize),
-			0.5, // TODO(yeya24): Expose this as a flag.
+			seriesMatchRatio,
 			postingGroupMaxKeySeriesRatio,
 			lazyExpandedPostingSizeBytes,
 			lazyExpandedPostingGroupsByReason,
@@ -310,6 +311,7 @@ func fetchAndExpandPostingGroups(ctx context.Context, r *bucketIndexReader, post
 		return nil, nil, err
 	}
 	ps, err := ExpandPostingsWithContext(ctx, result)
+	r.postings = ps
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "expand")
 	}

@@ -23,6 +23,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+const (
+	userReplicaGroupUpdateInterval = 30 * time.Second
+)
+
 var (
 	errNegativeUpdateTimeoutJitterMax = errors.New("HA tracker max update timeout jitter shouldn't be negative")
 	errInvalidFailoverTimeout         = "HA Tracker failover timeout (%v) must be at least 1s greater than update timeout - max jitter (%v)"
@@ -137,6 +141,7 @@ type HATracker struct {
 	electedReplicaTimestamp       *prometheus.GaugeVec
 	electedReplicaPropagationTime prometheus.Histogram
 	kvCASCalls                    *prometheus.CounterVec
+	userReplicaGroupCount         *prometheus.GaugeVec
 
 	cleanupRuns               prometheus.Counter
 	replicasMarkedForDeletion prometheus.Counter
@@ -181,6 +186,11 @@ func NewHATracker(cfg HATrackerConfig, limits HATrackerLimits, trackerStatusConf
 			Name: "ha_tracker_kv_store_cas_total",
 			Help: "The total number of CAS calls to the KV store for a user ID/cluster.",
 		}, []string{"user", "cluster"}),
+
+		userReplicaGroupCount: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "ha_tracker_user_replica_group_count",
+			Help: "Number of HA replica groups tracked for each user.",
+		}, []string{"user"}),
 
 		cleanupRuns: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "ha_tracker_replicas_cleanup_started_total",
@@ -227,10 +237,25 @@ func (c *HATracker) loop(ctx context.Context) error {
 
 	// Start cleanup loop. It will stop when context is done.
 	wg := sync.WaitGroup{}
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		c.cleanupOldReplicasLoop(ctx)
+	}()
+	// Start periodic update of user replica group count.
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(userReplicaGroupUpdateInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				c.updateUserReplicaGroupCount()
+			case <-ctx.Done():
+				return
+			}
+		}
 	}()
 
 	// The KVStore config we gave when creating c should have contained a prefix,
@@ -504,6 +529,9 @@ func (c *HATracker) CleanupHATrackerMetricsForUser(userID string) {
 	if err := util.DeleteMatchingLabels(c.kvCASCalls, filter); err != nil {
 		level.Warn(c.logger).Log("msg", "failed to remove cortex_ha_tracker_kv_store_cas_total metric for user", "user", userID, "err", err)
 	}
+	if err := util.DeleteMatchingLabels(c.userReplicaGroupCount, filter); err != nil {
+		level.Warn(c.logger).Log("msg", "failed to remove cortex_ha_tracker_user_replica_group_count metric for user", "user", userID, "err", err)
+	}
 }
 
 // Returns a snapshot of the currently elected replicas.  Useful for status display
@@ -520,4 +548,13 @@ func (c *HATracker) SnapshotElectedReplicas() map[string]ReplicaDesc {
 		}
 	}
 	return electedCopy
+}
+
+func (t *HATracker) updateUserReplicaGroupCount() {
+	t.electedLock.RLock()
+	defer t.electedLock.RUnlock()
+
+	for user, groups := range t.replicaGroups {
+		t.userReplicaGroupCount.WithLabelValues(user).Set(float64(len(groups)))
+	}
 }

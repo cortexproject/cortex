@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSyncerMetrics(t *testing.T) {
+func TestCompactorMetrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	cm := newCompactorMetricsWithLabels(reg, commonLabels, commonLabels)
 
@@ -130,6 +130,21 @@ func TestSyncerMetrics(t *testing.T) {
 			cortex_compactor_compaction_error_total{type="unauthorized",user="aaa"} 477730
 			cortex_compactor_compaction_error_total{type="unauthorized",user="bbb"} 488840
 			cortex_compactor_compaction_error_total{type="unauthorized",user="ccc"} 499950
+			# HELP cortex_compactor_group_partition_count Number of partitions for each compaction group.
+			# TYPE cortex_compactor_group_partition_count gauge
+			cortex_compactor_group_partition_count{user="aaa"} 511060
+			cortex_compactor_group_partition_count{user="bbb"} 522170
+			cortex_compactor_group_partition_count{user="ccc"} 533280
+			# HELP cortex_compactor_group_compactions_not_planned_total Total number of group compaction not planned due to error.
+			# TYPE cortex_compactor_group_compactions_not_planned_total counter
+			cortex_compactor_group_compactions_not_planned_total{user="aaa"} 544390
+			cortex_compactor_group_compactions_not_planned_total{user="bbb"} 555500
+			cortex_compactor_group_compactions_not_planned_total{user="ccc"} 566610
+			# HELP cortex_compact_group_compaction_duration_seconds Duration of completed compactions in seconds
+			# TYPE cortex_compact_group_compaction_duration_seconds gauge
+			cortex_compact_group_compaction_duration_seconds{user="aaa"} 577720
+			cortex_compact_group_compaction_duration_seconds{user="bbb"} 588830
+			cortex_compact_group_compaction_duration_seconds{user="ccc"} 599940
 	`))
 	require.NoError(t, err)
 
@@ -183,4 +198,13 @@ func generateTestData(cm *compactorMetrics, base float64) {
 	cm.compactionErrorsCount.WithLabelValues("aaa", unauthorizedError).Add(43 * base)
 	cm.compactionErrorsCount.WithLabelValues("bbb", unauthorizedError).Add(44 * base)
 	cm.compactionErrorsCount.WithLabelValues("ccc", unauthorizedError).Add(45 * base)
+	cm.partitionCount.WithLabelValues("aaa").Add(46 * base)
+	cm.partitionCount.WithLabelValues("bbb").Add(47 * base)
+	cm.partitionCount.WithLabelValues("ccc").Add(48 * base)
+	cm.compactionsNotPlanned.WithLabelValues("aaa").Add(49 * base)
+	cm.compactionsNotPlanned.WithLabelValues("bbb").Add(50 * base)
+	cm.compactionsNotPlanned.WithLabelValues("ccc").Add(51 * base)
+	cm.compactionDuration.WithLabelValues("aaa").Add(52 * base)
+	cm.compactionDuration.WithLabelValues("bbb").Add(53 * base)
+	cm.compactionDuration.WithLabelValues("ccc").Add(54 * base)
 }

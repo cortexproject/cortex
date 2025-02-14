@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
@@ -1315,7 +1316,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 			assert.Nil(t, err)
 
 			var response model.Matrix
-			series, err := ds[0].QueryStream(ctx, 0, 10, tc.matchers...)
+			series, err := ds[0].QueryStream(ctx, 0, 10, false, tc.matchers...)
 			assert.Equal(t, tc.expectedError, err)
 
 			if series == nil {
@@ -1377,7 +1378,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 
 		// Since the number of series (and thus chunks) is equal to the limit (but doesn't
 		// exceed it), we expect a query running on all series to succeed.
-		queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+		queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, false, allSeriesMatchers...)
 		require.NoError(t, err)
 		assert.Len(t, queryRes.Chunkseries, initialSeries)
 
@@ -1395,7 +1396,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 
 		// Since the number of series (and thus chunks) is exceeding to the limit, we expect
 		// a query running on all series to fail.
-		_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+		_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, false, allSeriesMatchers...)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "the query hit the max number of chunks limit")
 	}
@@ -1439,7 +1440,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 
 		// Since the number of series is equal to the limit (but doesn't
 		// exceed it), we expect a query running on all series to succeed.
-		queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+		queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, false, allSeriesMatchers...)
 		require.NoError(t, err)
 		assert.Len(t, queryRes.Chunkseries, initialSeries)
 
@@ -1455,7 +1456,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 
 		// Since the number of series is exceeding the limit, we expect
 		// a query running on all series to fail.
-		_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+		_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, false, allSeriesMatchers...)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "max number of series limit")
 	}
@@ -1493,7 +1494,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 		writeRes, err := ds[0].Push(ctx, writeReq)
 		assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
 		assert.Nil(t, err)
-		chunkSizeResponse, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+		chunkSizeResponse, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, false, allSeriesMatchers...)
 		require.NoError(t, err)
 
 		// Use the resulting chunks size to calculate the limit as (series to add + our test series) * the response chunk size.
@@ -1515,7 +1516,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 
 		// Since the number of chunk bytes is equal to the limit (but doesn't
 		// exceed it), we expect a query running on all series to succeed.
-		queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+		queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, false, allSeriesMatchers...)
 		require.NoError(t, err)
 		assert.Len(t, queryRes.Chunkseries, seriesToAdd)
 
@@ -1531,7 +1532,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 
 		// Since the aggregated chunk size is exceeding the limit, we expect
 		// a query running on all series to fail.
-		_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+		_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, false, allSeriesMatchers...)
 		require.Error(t, err)
 		assert.Equal(t, err, validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunkBytesHit, maxBytesLimit)))
 	}
@@ -1570,7 +1571,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimitIsR
 		writeRes, err := ds[0].Push(ctx, writeReq)
 		assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
 		assert.Nil(t, err)
-		dataSizeResponse, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+		dataSizeResponse, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, false, allSeriesMatchers...)
 		require.NoError(t, err)
 
 		// Use the resulting chunks size to calculate the limit as (series to add + our test series) * the response chunk size.
@@ -1592,7 +1593,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimitIsR
 
 		// Since the number of chunk bytes is equal to the limit (but doesn't
 		// exceed it), we expect a query running on all series to succeed.
-		queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+		queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, false, allSeriesMatchers...)
 		require.NoError(t, err)
 		assert.Len(t, queryRes.Chunkseries, seriesToAdd)
 
@@ -1608,7 +1609,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimitIsR
 
 		// Since the aggregated chunk size is exceeding the limit, we expect
 		// a query running on all series to fail.
-		_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+		_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, false, allSeriesMatchers...)
 		require.Error(t, err)
 		assert.Equal(t, err, validation.LimitError(fmt.Sprintf(limiter.ErrMaxDataBytesHit, maxBytesLimit)))
 	}
@@ -2064,7 +2065,7 @@ func BenchmarkDistributor_GetLabelsValues(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err := ds[0].LabelValuesForLabelName(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__", nil)
+				_, err := ds[0].LabelValuesForLabelName(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__", nil, false)
 				require.NoError(b, err)
 			}
 		})
@@ -2396,7 +2397,7 @@ func TestSlowQueries(t *testing.T) {
 					shardByAllLabels: shardByAllLabels,
 				})
 
-				_, err := ds[0].QueryStream(ctx, 0, 10, nameMatcher)
+				_, err := ds[0].QueryStream(ctx, 0, 10, false, nameMatcher)
 				assert.Equal(t, expectedErr, err)
 			})
 		}
@@ -2430,7 +2431,7 @@ func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
 		}
 
 		for i := 0; i < 50; i++ {
-			_, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test"))
+			_, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, false, mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test"))
 			require.NoError(t, err)
 		}
 	}
@@ -2599,7 +2600,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				}
 
 				{
-					metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, testData.matchers...)
+					metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, false, testData.matchers...)
 
 					if testData.expectedErr != nil {
 						assert.ErrorIs(t, err, testData.expectedErr)
@@ -2617,7 +2618,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				}
 
 				{
-					metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, nil, testData.matchers...)
+					metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, nil, false, testData.matchers...)
 					if testData.expectedErr != nil {
 						assert.ErrorIs(t, err, testData.expectedErr)
 						return
@@ -2704,7 +2705,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 
 			for n := 0; n < b.N; n++ {
 				now := model.Now()
-				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, testData.matchers...)
+				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, false, testData.matchers...)
 
 				if testData.expectedErr != nil {
 					assert.EqualError(b, err, testData.expectedErr.Error())
@@ -3374,7 +3375,7 @@ func (i *mockIngester) Query(ctx context.Context, req *client.QueryRequest, opts
 		return nil, errFail
 	}
 
-	_, _, matchers, err := client.FromQueryRequest(req)
+	_, _, matchers, err := client.FromQueryRequest(storecache.NoopMatchersCache, req)
 	if err != nil {
 		return nil, err
 	}
@@ -3400,7 +3401,7 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 		return nil, errFail
 	}
 
-	_, _, matchers, err := client.FromQueryRequest(req)
+	_, _, matchers, err := client.FromQueryRequest(storecache.NoopMatchersCache, req)
 	if err != nil {
 		return nil, err
 	}
@@ -3459,7 +3460,7 @@ func (i *mockIngester) MetricsForLabelMatchersStream(ctx context.Context, req *c
 		return nil, errFail
 	}
 
-	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(storecache.NoopMatchersCache, req)
 	if err != nil {
 		return nil, err
 	}
@@ -3491,7 +3492,7 @@ func (i *mockIngester) MetricsForLabelMatchers(ctx context.Context, req *client.
 		return nil, errFail
 	}
 
-	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(storecache.NoopMatchersCache, req)
 	if err != nil {
 		return nil, err
 	}

@@ -171,6 +171,7 @@ type Limits struct {
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
+	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Query Frontend / Scheduler enforced limits.
 	MaxOutstandingPerTenant     int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
@@ -186,14 +187,17 @@ type Limits struct {
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
 	RulerExternalLabels         labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
+	RulesPartialData            bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
 	MaxDownloadedBytesPerRequest int     `yaml:"max_downloaded_bytes_per_request" json:"max_downloaded_bytes_per_request"`
 
 	// Compactor.
-	CompactorBlocksRetentionPeriod model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
-	CompactorTenantShardSize       int            `yaml:"compactor_tenant_shard_size" json:"compactor_tenant_shard_size"`
+	CompactorBlocksRetentionPeriod   model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
+	CompactorTenantShardSize         int            `yaml:"compactor_tenant_shard_size" json:"compactor_tenant_shard_size"`
+	CompactorPartitionIndexSizeBytes int64          `yaml:"compactor_partition_index_size_bytes" json:"compactor_partition_index_size_bytes"`
+	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -282,6 +286,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.Var(&l.CompactorBlocksRetentionPeriod, "compactor.blocks-retention-period", "Delete blocks containing samples older than the specified retention period. 0 to disable.")
 	f.IntVar(&l.CompactorTenantShardSize, "compactor.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the compactor. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	// Default to 64GB because this is the hard limit of index size in Cortex
+	f.Int64Var(&l.CompactorPartitionIndexSizeBytes, "compactor.partition-index-size-bytes", 68719476736, "Index size limit in bytes for each compaction partition. 0 means no limit")
+	f.Int64Var(&l.CompactorPartitionSeriesCount, "compactor.partition-series-count", 0, "Time series count limit for each compaction partition. 0 means no limit")
 
 	// Store-gateway.
 	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
@@ -721,6 +728,11 @@ func (o *Overrides) QueryVerticalShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).QueryVerticalShardSize
 }
 
+// QueryPartialData returns whether query may be evaluated with data from a single zone, if other zones are not available.
+func (o *Overrides) QueryPartialData(userID string) bool {
+	return o.GetOverridesForUser(userID).QueryPartialData
+}
+
 // MaxQueryParallelism returns the limit to the number of split queries the
 // frontend will process in parallel.
 func (o *Overrides) MaxQueryParallelism(userID string) int {
@@ -799,6 +811,16 @@ func (o *Overrides) CompactorTenantShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).CompactorTenantShardSize
 }
 
+// CompactorPartitionIndexSizeBytes returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
+func (o *Overrides) CompactorPartitionIndexSizeBytes(userID string) int64 {
+	return o.GetOverridesForUser(userID).CompactorPartitionIndexSizeBytes
+}
+
+// CompactorPartitionSeriesCount returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
+func (o *Overrides) CompactorPartitionSeriesCount(userID string) int64 {
+	return o.GetOverridesForUser(userID).CompactorPartitionSeriesCount
+}
+
 // MetricRelabelConfigs returns the metric relabel configs for a given user.
 func (o *Overrides) MetricRelabelConfigs(userID string) []*relabel.Config {
 	return o.GetOverridesForUser(userID).MetricRelabelConfigs
@@ -828,6 +850,11 @@ func (o *Overrides) RulerQueryOffset(userID string) time.Duration {
 		return evaluationDelay
 	}
 	return ruleOffset
+}
+
+// RulesPartialData returns whether rule may be evaluated with data from a single zone, if other zones are not available.
+func (o *Overrides) RulesPartialData(userID string) bool {
+	return o.GetOverridesForUser(userID).RulesPartialData
 }
 
 // StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.

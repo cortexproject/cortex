@@ -26,6 +26,7 @@ type Config struct {
 	TTL            time.Duration `yaml:"ttl"`
 	PullerSyncTime time.Duration `yaml:"puller_sync_time"`
 	MaxCasRetries  int           `yaml:"max_cas_retries"`
+	Timeout        time.Duration `yaml:"timeout"`
 }
 
 type Client struct {
@@ -53,6 +54,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.TTL, prefix+"dynamodb.ttl-time", 0, "Time to expire items on dynamodb.")
 	f.DurationVar(&cfg.PullerSyncTime, prefix+"dynamodb.puller-sync-time", 60*time.Second, "Time to refresh local ring with information on dynamodb.")
 	f.IntVar(&cfg.MaxCasRetries, prefix+"dynamodb.max-cas-retries", maxCasRetries, "Maximum number of retries for DDB KV CAS.")
+	f.DurationVar(&cfg.Timeout, prefix+"dynamodb.timeout", 2*time.Minute, "Timeout of dynamoDbClient requests. Default is 2m.")
 }
 
 func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometheus.Registerer) (*Client, error) {
@@ -69,8 +71,13 @@ func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometh
 		MaxRetries: cfg.MaxCasRetries,
 	}
 
+	var kv dynamoDbClient
+	kv = dynamodbInstrumentation{kv: dynamoDB, ddbMetrics: ddbMetrics}
+	if cfg.Timeout > 0 {
+		kv = newDynamodbKVWithTimeout(kv, cfg.Timeout)
+	}
 	c := &Client{
-		kv:             dynamodbInstrumentation{kv: dynamoDB, ddbMetrics: ddbMetrics},
+		kv:             kv,
 		codec:          cc,
 		logger:         ddbLog(logger),
 		ddbMetrics:     ddbMetrics,

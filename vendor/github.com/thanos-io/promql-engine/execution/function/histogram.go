@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
@@ -31,7 +33,7 @@ type histogramSeries struct {
 
 // histogramOperator is a function operator that calculates percentiles.
 type histogramOperator struct {
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 	once   sync.Once
 	series []labels.Labels
 
@@ -66,7 +68,7 @@ func newHistogramOperator(
 		vectorOp:     vectorOp,
 		scalarPoints: make([]float64, opts.StepsBatch),
 	}
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 
 	return oper
 }

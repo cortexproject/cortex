@@ -17,6 +17,7 @@ type Options struct {
 	ExtLookbackDelta         time.Duration
 	NoStepSubqueryIntervalFn func(time.Duration) time.Duration
 	EnableAnalysis           bool
+	EnablePartialResponses   bool
 	DecodingConcurrency      int
 }
 

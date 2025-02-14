@@ -8,6 +8,7 @@ import (
 	middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/keepalive"
 
@@ -32,6 +33,8 @@ type Config struct {
 	TLSEnabled               bool             `yaml:"tls_enabled"`
 	TLS                      tls.ClientConfig `yaml:",inline"`
 	SignWriteRequestsEnabled bool             `yaml:"-"`
+
+	ConnectTimeout time.Duration `yaml:"connect_timeout"`
 }
 
 type ConfigWithHealthCheck struct {
@@ -58,6 +61,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix, defaultGrpcCompression string
 	f.IntVar(&cfg.RateLimitBurst, prefix+".grpc-client-rate-limit-burst", 0, "Rate limit burst for gRPC client.")
 	f.BoolVar(&cfg.BackoffOnRatelimits, prefix+".backoff-on-ratelimits", false, "Enable backoff and retry when we hit ratelimits.")
 	f.BoolVar(&cfg.TLSEnabled, prefix+".tls-enabled", cfg.TLSEnabled, "Enable TLS in the GRPC client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to gRPC server will be used.")
+	f.DurationVar(&cfg.ConnectTimeout, prefix+".connect-timeout", 5*time.Second, "The maximum amount of time to establish a connection. A value of 0 means using default gRPC client connect timeout 20s.")
 
 	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix, f)
 
@@ -109,6 +113,16 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 
 	if cfg.RateLimit > 0 {
 		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimiter(cfg)}, unaryClientInterceptors...)
+	}
+
+	if cfg.ConnectTimeout > 0 {
+		opts = append(
+			opts,
+			grpc.WithConnectParams(grpc.ConnectParams{
+				Backoff:           grpcbackoff.DefaultConfig,
+				MinConnectTimeout: cfg.ConnectTimeout,
+			}),
+		)
 	}
 
 	if cfg.SignWriteRequestsEnabled {

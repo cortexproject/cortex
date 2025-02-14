@@ -311,6 +311,7 @@ type Cortex struct {
 	RuntimeConfig            *runtimeconfig.Manager
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
+	MetadataQuerier          querier.MetadataQuerier
 	QuerierEngine            promql.QueryEngine
 	QueryFrontendTripperware tripperware.Tripperware
 
@@ -343,13 +344,10 @@ func New(cfg Config) (*Cortex, error) {
 		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	}
 
-	// Don't check auth header on TransferChunks, as we weren't originally
-	// sending it and this could cause transfers to fail on update.
 	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled,
 		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
 		[]string{
 			"/grpc.health.v1.Health/Check",
-			"/cortex.Ingester/TransferChunks",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",
 			"/schedulerpb.SchedulerForFrontend/FrontendLoop",

@@ -1,8 +1,20 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] Query Frontend: Add dynamic interval size for query splitting. This is enabled by configuring experimental flags `querier.max-shards-per-query` and/or `querier.max-fetched-data-duration-per-query`. The split interval size is dynamically increased to maintain a number of shards and total duration fetched below the configured values. #6458
+* [ENHANCEMENT] Add `compactor.auto-forget-delay` for compactor to auto forget compactors after X minutes without heartbeat. #6533
+* [FEATURE] Querier/Ruler: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
+* [ENHANCEMENT] StoreGateway: Emit more histogram buckets on the `cortex_querier_storegateway_refetches_per_query` metric. #6570
+* [ENHANCEMENT] Querier: Apply bytes limiter to LabelNames and LabelValuesForLabelNames. #6568
+* [ENHANCEMENT] Query Frontend: Add a `too_many_tenants` reason label value to `cortex_rejected_queries_total` metric to track the rejected query count due to the # of tenant limits. #6569
+* [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
+* [BUGFIX] Ingester: Fix labelset data race condition. #6573
+* [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576
+* [BUGFIX] Compactor: Cleaner would delete bucket index when there is no block in bucket store. #6577
 
-* [FEATURE] Query Frontend: Add dynamic interval size for query splitting. This is enabled by configuring experimental flags `querier.max-shards-per-query` and/or `querier.max-fetched-data-duration-per-query`. The split interval size is dynamically increased to maintain a number of shards and total duration fetched below the configured values #6458
+## 1.19.0 in progress
+
+* [CHANGE] Deprecate `-blocks-storage.tsdb.wal-compression-enabled` flag (use `blocks-storage.tsdb.wal-compression-type` instead). #6529
 * [CHANGE] OTLP: Change OTLP handler to be consistent with the Prometheus OTLP handler. #6272
 - `target_info` metric is enabled by default and can be disabled via `-distributor.otlp.disable-target-info=true` flag
 - Convert all attributes to labels is disabled by default and can be enabled via `-distributor.otlp.convert-all-attributes=true` flag
@@ -11,6 +23,8 @@
 * [CHANGE] Change default value of `-blocks-storage.bucket-store.index-cache.multilevel.max-async-concurrency` from `50` to `3` #6265
 * [CHANGE] Enable Compactor and Alertmanager in target all. #6204
 * [CHANGE] Update the `cortex_ingester_inflight_push_requests` metric to represent the maximum number of inflight requests recorded in the last minute. #6437
+* [CHANGE] gRPC Client: Expose connection timeout and set default to value to 5s. #6523
+* [FEATURE] Ruler: Add an experimental flag `-ruler.query-response-format` to retrieve query response as a proto format. #6345
 * [FEATURE] Ruler: Pagination support for List Rules API. #6299
 * [FEATURE] Query Frontend/Querier: Add protobuf codec `-api.querier-default-codec` and the option to choose response compression type `-querier.response-compression`. #5527
 * [FEATURE] Ruler: Experimental: Add `ruler.frontend-address` to allow query to query frontends instead of ingesters. #6151
@@ -19,6 +33,12 @@
 * [FEATURE] Chunk Cache: Support multi level cache and add metrics. #6249
 * [FEATURE] Distributor: Accept multiple HA Tracker pairs in the same request. #6256
 * [FEATURE] Ruler: Add support for per-user external labels #6340
+* [FEATURE] Query Frontend: Support a metadata federated query when `-tenant-federation.enabled=true`. #6461
+* [FEATURE] Query Frontend: Support an exemplar federated query when `-tenant-federation.enabled=true`. #6455
+* [FEATURE] Ingester/StoreGateway: Add support for cache regex query matchers via `-ingester.matchers-cache-max-items` and `-blocks-storage.bucket-store.matchers-cache-max-items`. #6477 #6491
+* [ENHANCEMENT] Query Frontend: Add more operation label values to the `cortex_query_frontend_queries_total` metric. #6519
+* [ENHANCEMENT] Query Frontend: Add a `source` label to query stat metrics. #6470
+* [ENHANCEMENT] Query Frontend: Add a flag `-tenant-federation.max-tenant` to limit the number of tenants for federated query. #6493
 * [ENHANCEMENT] Querier: Add a `-tenant-federation.max-concurrent` flags to configure the number of worker processing federated query and add a `cortex_querier_federated_tenants_per_query` histogram to track the number of tenants per query. #6449
 * [ENHANCEMENT] Query Frontend: Add a number of series in the query response to the query stat log. #6423
 * [ENHANCEMENT] Store Gateway: Add a hedged request to reduce the tail latency. #6388
@@ -54,13 +74,16 @@
 * [ENHANCEMENT] Ingester: If a limit per label set entry doesn't have any label, use it as the default partition to catch all series that doesn't match any other label sets entries. #6435
 * [ENHANCEMENT] Querier: Add new `cortex_querier_codec_response_size` metric to track the size of the encoded query responses from queriers. #6444
 * [ENHANCEMENT] Distributor: Added `cortex_distributor_received_samples_per_labelset_total` metric to calculate ingestion rate per label set. #6443
+* [ENHANCEMENT] Added metric name in limiter per-metric exceeded errors. #6416
 * [ENHANCEMENT] StoreGateway: Added `cortex_bucket_store_indexheader_load_duration_seconds` and `cortex_bucket_store_indexheader_download_duration_seconds` metrics for time of downloading and loading index header files. #6445
+* [ENHANCEMENT] Blocks Storage: Allow use of non-dualstack endpoints for S3 blocks storage via `-blocks-storage.s3.disable-dualstack`. #6522
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 * [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
 * [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled.  #6271
 * [BUGFIX] Ingester: Fix regression on usage of cortex_ingester_queried_chunks. #6398
 * [BUGFIX] Ingester: Fix possible race condition when `active series per LabelSet` is configured. #6409
 * [BUGFIX] Query Frontend: Fix @ modifier not being applied correctly on sub queries. #6450
+* [BUGFIX] Cortex Redis flags with multiple dots #6476
 
 ## 1.18.1 2024-10-14
 

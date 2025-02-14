@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/query"
 
@@ -25,7 +27,7 @@ type concurrencyOperator struct {
 	next       model.VectorOperator
 	buffer     chan maybeStepVector
 	bufferSize int
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 }
 
 func NewConcurrent(next model.VectorOperator, bufferSize int, opts *query.Options) model.VectorOperator {
@@ -35,7 +37,7 @@ func NewConcurrent(next model.VectorOperator, bufferSize int, opts *query.Option
 		bufferSize: bufferSize,
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 	return oper
 }
 

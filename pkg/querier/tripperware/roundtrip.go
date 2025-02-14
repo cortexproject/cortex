@@ -37,6 +37,17 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
+const (
+	opTypeQuery          = "query"
+	opTypeQueryRange     = "query_range"
+	opTypeSeries         = "series"
+	opTypeRemoteRead     = "remote_read"
+	opTypeLabelNames     = "label_names"
+	opTypeLabelValues    = "label_values"
+	opTypeMetadata       = "metadata"
+	opTypeQueryExemplars = "query_exemplars"
+)
+
 // HandlerFunc is like http.HandlerFunc, but for Handler.
 type HandlerFunc func(context.Context, Request) (Response, error)
 
@@ -115,7 +126,7 @@ func NewQueryTripperware(
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_query_frontend_queries_total",
 		Help: "Total queries sent per tenant.",
-	}, []string{"op", "user"})
+	}, []string{"op", "source", "user"})
 
 	rejectedQueriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_query_frontend_rejected_queries_total",
@@ -140,12 +151,28 @@ func NewQueryTripperware(
 				isQuery := strings.HasSuffix(r.URL.Path, "/query")
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
 				isSeries := strings.HasSuffix(r.URL.Path, "/series")
+				isRemoteRead := strings.HasSuffix(r.URL.Path, "/read")
+				isLabelNames := strings.HasSuffix(r.URL.Path, "/labels")
+				isLabelValues := strings.HasSuffix(r.URL.Path, "/values")
+				isMetadata := strings.HasSuffix(r.URL.Path, "/metadata")
+				isQueryExemplars := strings.HasSuffix(r.URL.Path, "/query_exemplars")
 
-				op := "query"
-				if isQueryRange {
-					op = "query_range"
-				} else if isSeries {
-					op = "series"
+				op := opTypeQuery
+				switch {
+				case isQueryRange:
+					op = opTypeQueryRange
+				case isSeries:
+					op = opTypeSeries
+				case isRemoteRead:
+					op = opTypeRemoteRead
+				case isLabelNames:
+					op = opTypeLabelNames
+				case isLabelValues:
+					op = opTypeLabelValues
+				case isMetadata:
+					op = opTypeMetadata
+				case isQueryExemplars:
+					op = opTypeQueryExemplars
 				}
 
 				tenantIDs, err := tenant.TenantIDs(r.Context())
@@ -156,7 +183,8 @@ func NewQueryTripperware(
 				now := time.Now()
 				userStr := tenant.JoinTenantIDs(tenantIDs)
 				activeUsers.UpdateUserTimestamp(userStr, now)
-				queriesPerTenant.WithLabelValues(op, userStr).Inc()
+				source := GetSource(r.Header.Get("User-Agent"))
+				queriesPerTenant.WithLabelValues(op, source, userStr).Inc()
 
 				if maxSubQuerySteps > 0 && (isQuery || isQueryRange) {
 					query := r.FormValue("query")
@@ -211,7 +239,7 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	return q.codec.EncodeResponse(r.Context(), response)
+	return q.codec.EncodeResponse(r.Context(), r, response)
 }
 
 // Do implements Handler.
@@ -239,4 +267,13 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}()
 
 	return q.codec.DecodeResponse(ctx, response, r)
+}
+
+func GetSource(userAgent string) string {
+	if strings.Contains(userAgent, RulerUserAgent) {
+		// caller is ruler
+		return SourceRuler
+	}
+
+	return SourceAPI
 }

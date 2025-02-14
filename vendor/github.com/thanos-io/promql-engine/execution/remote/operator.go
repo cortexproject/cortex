@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
+	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
@@ -26,11 +29,11 @@ type Execution struct {
 	opts            *query.Options
 	queryRangeStart time.Time
 	vectorSelector  model.VectorOperator
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 }
 
-func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart time.Time, opts *query.Options, _ storage.SelectHints) *Execution {
-	storage := newStorageFromQuery(query, opts)
+func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart time.Time, engineLabels []labels.Labels, opts *query.Options, _ storage.SelectHints) *Execution {
+	storage := newStorageFromQuery(query, opts, engineLabels)
 	oper := &Execution{
 		storage:         storage,
 		query:           query,
@@ -39,7 +42,7 @@ func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart ti
 		vectorSelector:  promstorage.NewVectorSelector(pool, storage, opts, 0, 0, false, 0, 1),
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 
 	return oper
 }
@@ -90,16 +93,18 @@ func (e *Execution) Samples() *stats.QuerySamples {
 type storageAdapter struct {
 	query promql.Query
 	opts  *query.Options
+	lbls  []labels.Labels
 
 	once   sync.Once
 	err    error
 	series []promstorage.SignedSeries
 }
 
-func newStorageFromQuery(query promql.Query, opts *query.Options) *storageAdapter {
+func newStorageFromQuery(query promql.Query, opts *query.Options, lbls []labels.Labels) *storageAdapter {
 	return &storageAdapter{
 		query: query,
 		opts:  opts,
+		lbls:  lbls,
 	}
 }
 
@@ -120,7 +125,12 @@ func (s *storageAdapter) executeQuery(ctx context.Context) {
 		warnings.AddToContext(w, ctx)
 	}
 	if result.Err != nil {
-		s.err = result.Err
+		err := errors.Wrapf(result.Err, "remote exec error [%s]", s.lbls)
+		if s.opts.EnablePartialResponses {
+			warnings.AddToContext(err, ctx)
+		} else {
+			s.err = err
+		}
 		return
 	}
 	switch val := result.Value.(type) {

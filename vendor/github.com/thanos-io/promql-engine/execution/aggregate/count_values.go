@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -18,7 +20,7 @@ import (
 )
 
 type countValuesOperator struct {
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 
 	pool  *model.VectorPool
 	next  model.VectorOperator
@@ -50,7 +52,7 @@ func NewCountValues(pool *model.VectorPool, next model.VectorOperator, param str
 		by:         by,
 		grouping:   grouping,
 	}
-	op.OperatorTelemetry = model.NewTelemetry(op, opts)
+	op.OperatorTelemetry = telemetry.NewTelemetry(op, opts)
 
 	return op
 }

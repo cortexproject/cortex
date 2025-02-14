@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -34,7 +36,7 @@ func (c errorChan) getError() error {
 // coalesce guarantees that samples from different input vectors will be added to the output in the same order
 // as the input vectors themselves are provided in NewCoalesce.
 type coalesce struct {
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 
 	once   sync.Once
 	series []labels.Labels
@@ -59,7 +61,7 @@ func NewCoalesce(pool *model.VectorPool, opts *query.Options, batchSize int64, o
 		batchSize:     batchSize,
 	}
 
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts)
+	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
 
 	return oper
 }

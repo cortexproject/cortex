@@ -225,6 +225,10 @@ compactor:
         # CLI flag: -compactor.ring.dynamodb.max-cas-retries
         [max_cas_retries: <int> | default = 10]
 
+        # Timeout of dynamoDbClient requests. Default is 2m.
+        # CLI flag: -compactor.ring.dynamodb.timeout
+        [timeout: <duration> | default = 2m]
+
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is: compactor.ring
       [consul: <consul_config>]
@@ -259,6 +263,11 @@ compactor:
     # CLI flag: -compactor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
+    # Time since last heartbeat before compactor will be removed from ring. 0 to
+    # disable
+    # CLI flag: -compactor.auto-forget-delay
+    [auto_forget_delay: <duration> | default = 2m]
+
     # Minimum time to wait for ring stability at startup. 0 to disable.
     # CLI flag: -compactor.ring.wait-stability-min-duration
     [wait_stability_min_duration: <duration> | default = 1m]
@@ -285,19 +294,25 @@ compactor:
     # CLI flag: -compactor.ring.wait-active-instance-timeout
     [wait_active_instance_timeout: <duration> | default = 10m]
 
+  # How long shuffle sharding planner would wait before running planning code.
+  # This delay would prevent double compaction when two compactors claimed same
+  # partition in grouper at same time.
+  # CLI flag: -compactor.sharding-planner-delay
+  [sharding_planner_delay: <duration> | default = 10s]
+
   # The compaction strategy to use. Supported values are: default, partitioning.
-  # CLI flag: -compactor.compaction-mode
-  [compaction_mode: <string> | default = "default"]
+  # CLI flag: -compactor.compaction-strategy
+  [compaction_strategy: <string> | default = "default"]
 
-  # How long block visit marker file should be considered as expired and able to
-  # be picked up by compactor again.
-  # CLI flag: -compactor.block-visit-marker-timeout
-  [block_visit_marker_timeout: <duration> | default = 5m]
+  # How long compaction visit marker file should be considered as expired and
+  # able to be picked up by compactor again.
+  # CLI flag: -compactor.compaction-visit-marker-timeout
+  [compaction_visit_marker_timeout: <duration> | default = 10m]
 
-  # How frequently block visit marker file should be updated duration
+  # How frequently compaction visit marker file should be updated duration
   # compaction.
-  # CLI flag: -compactor.block-visit-marker-file-update-interval
-  [block_visit_marker_file_update_interval: <duration> | default = 1m]
+  # CLI flag: -compactor.compaction-visit-marker-file-update-interval
+  [compaction_visit_marker_file_update_interval: <duration> | default = 1m]
 
   # How long cleaner visit marker file should be considered as expired and able
   # to be picked up by cleaner again. The value should be smaller than

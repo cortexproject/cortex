@@ -333,12 +333,16 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	}
 
 	rc := prevRing.RingCompare(ringDesc)
-	if rc == Equal || rc == EqualButStatesAndTimestamps {
+	if rc == Equal || rc == EqualButStatesAndTimestamps || rc == EqualButReadOnly {
 		// No need to update tokens or zones. Only states and timestamps
 		// have changed. (If Equal, nothing has changed, but that doesn't happen
 		// when watching the ring for updates).
 		r.mtx.Lock()
 		r.ringDesc = ringDesc
+		if rc == EqualButReadOnly && r.shuffledSubringCache != nil {
+			// Invalidate all cached subrings.
+			r.shuffledSubringCache = make(map[subringCacheKey]*Ring)
+		}
 		r.updateRingMetrics(rc)
 		r.mtx.Unlock()
 		return
@@ -852,7 +856,9 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 				// If the lookback is enabled and this instance has been registered within the lookback period
 				// then we should include it in the subring but continuing selecting instances.
-				if lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil {
+				// If an instance is in READONLY we should always extend. The write path will filter it out when GetRing.
+				// The read path should extend to get new ingester used on write
+				if (lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil) || instance.State == READONLY {
 					continue
 				}
 
@@ -1023,3 +1029,14 @@ func (op Operation) ShouldExtendReplicaSetOnState(s InstanceState) bool {
 
 // All states are healthy, no states extend replica set.
 var allStatesRingOperation = Operation(0x0000ffff)
+
+func AutoForgetFromRing(ringDesc *Desc, forgetPeriod time.Duration, logger log.Logger) {
+	for id, instance := range ringDesc.Ingesters {
+		lastHeartbeat := time.Unix(instance.GetTimestamp(), 0)
+
+		if time.Since(lastHeartbeat) > forgetPeriod {
+			level.Warn(logger).Log("msg", "auto-forgetting instance from the ring because it is unhealthy for a long time", "instance", id, "last_heartbeat", lastHeartbeat.String(), "forget_period", forgetPeriod)
+			ringDesc.RemoveIngester(id)
+		}
+	}
+}

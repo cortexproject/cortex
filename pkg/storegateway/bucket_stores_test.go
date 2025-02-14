@@ -889,6 +889,14 @@ func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, 
 	return nil
 }
 
+func (u *userShardingStrategy) OwnBlock(userID string, _ thanos_metadata.Meta) (bool, error) {
+	if util.StringsContain(u.users, userID) {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // failFirstGetBucket is an objstore.Bucket wrapper which fails the first Get() request with a mocked error.
 type failFirstGetBucket struct {
 	objstore.Bucket

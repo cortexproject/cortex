@@ -27,17 +27,33 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+docker_cmd() {
+    retries=3
+    for ((i=1; i<=retries; i++)); do
+        set +o errexit
+        docker $@
+        res=$?
+        set -o errexit
+        if [ $res -eq 0 ]; then
+            break
+        fi
+        echo "Docker command failed. Retrying in 5 seconds..."
+        sleep 5
+    done
+    return $res
+}
+
 push_image() {
     local image="$1"
 
     for arch in amd64 arm64; do \
       echo "Pushing ${image}-linux:${IMAGE_TAG}-$arch"
-      docker tag ${image}:${IMAGE_TAG}-$arch ${image}-linux:${IMAGE_TAG}-$arch
-      docker push ${image}-linux:${IMAGE_TAG}-$arch
+      docker_cmd tag ${image}:${IMAGE_TAG}-$arch ${image}-linux:${IMAGE_TAG}-$arch
+      docker_cmd push ${image}-linux:${IMAGE_TAG}-$arch
     done;
 
-    docker manifest create ${image}:${IMAGE_TAG} --amend ${image}-linux:${IMAGE_TAG}-amd64 --amend ${image}-linux:${IMAGE_TAG}-arm64
-    docker manifest push ${image}:${IMAGE_TAG}
+    docker_cmd manifest create ${image}:${IMAGE_TAG} --amend ${image}-linux:${IMAGE_TAG}-amd64 --amend ${image}-linux:${IMAGE_TAG}-arm64
+    docker_cmd manifest push ${image}:${IMAGE_TAG}
 
 
     if [ -n "${NO_QUAY}" ]; then
@@ -47,14 +63,14 @@ push_image() {
     # remove the quay prefix and push to docker hub
     docker_hub_image=${image#$QUAY_PREFIX}
     for arch in amd64 arm64; do \
-      docker tag ${image}:${IMAGE_TAG}-$arch ${docker_hub_image}-linux:${IMAGE_TAG}-$arch
+      docker_cmd tag ${image}:${IMAGE_TAG}-$arch ${docker_hub_image}-linux:${IMAGE_TAG}-$arch
 
       echo "Pushing ${docker_hub_image}-linux:${IMAGE_TAG}-$arch"
-      docker push ${docker_hub_image}-linux:${IMAGE_TAG}-$arch
+      docker_cmd push ${docker_hub_image}-linux:${IMAGE_TAG}-$arch
     done;
 
-    docker manifest create ${docker_hub_image}:${IMAGE_TAG} --amend ${docker_hub_image}-linux:${IMAGE_TAG}-amd64 --amend ${docker_hub_image}-linux:${IMAGE_TAG}-arm64
-    docker manifest push ${docker_hub_image}:${IMAGE_TAG}
+    docker_cmd manifest create ${docker_hub_image}:${IMAGE_TAG} --amend ${docker_hub_image}-linux:${IMAGE_TAG}-amd64 --amend ${docker_hub_image}-linux:${IMAGE_TAG}-arm64
+    docker_cmd manifest push ${docker_hub_image}:${IMAGE_TAG}
 }
 
 for image in ${IMAGES}; do

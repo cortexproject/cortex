@@ -161,6 +161,10 @@ tenant_federation:
   # CLI flag: -tenant-federation.max-concurrent
   [max_concurrent: <int> | default = 16]
 
+  # A maximum number of tenants to query at once. 0 means no limit.
+  # CLI flag: -tenant-federation.max-tenant
+  [max_tenant: <int> | default = 0]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 
@@ -262,6 +266,11 @@ query_scheduler:
     # CLI flag: -query-scheduler.grpc-client-config.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
 
+    # The maximum amount of time to establish a connection. A value of 0 means
+    # using default gRPC client connect timeout 20s.
+    # CLI flag: -query-scheduler.grpc-client-config.connect-timeout
+    [connect_timeout: <duration> | default = 5s]
+
 # The tracing_config configures backends cortex uses.
 [tracing: <tracing_config>]
 ```
@@ -331,6 +340,10 @@ sharding_ring:
       # Maximum number of retries for DDB KV CAS.
       # CLI flag: -alertmanager.sharding-ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
+
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: alertmanager.sharding-ring
@@ -536,6 +549,10 @@ s3:
   # S3 bucket name
   # CLI flag: -alertmanager-storage.s3.bucket-name
   [bucket_name: <string> | default = ""]
+
+  # If enabled, S3 endpoint will use the non-dualstack variant.
+  # CLI flag: -alertmanager-storage.s3.disable-dualstack
+  [disable_dualstack: <boolean> | default = false]
 
   # S3 secret access key
   # CLI flag: -alertmanager-storage.s3.secret-access-key
@@ -831,6 +848,10 @@ s3:
   # S3 bucket name
   # CLI flag: -blocks-storage.s3.bucket-name
   [bucket_name: <string> | default = ""]
+
+  # If enabled, S3 endpoint will use the non-dualstack variant.
+  # CLI flag: -blocks-storage.s3.disable-dualstack
+  [disable_dualstack: <boolean> | default = false]
 
   # S3 secret access key
   # CLI flag: -blocks-storage.s3.secret-access-key
@@ -1299,25 +1320,25 @@ bucket_store:
       # Path to the client certificate file, which will be used for
       # authenticating with the server. Also requires the key path to be
       # configured.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-cert-path
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-cert-path
       [tls_cert_path: <string> | default = ""]
 
       # Path to the key file for the client certificate. Also requires the
       # client certificate to be configured.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-key-path
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-key-path
       [tls_key_path: <string> | default = ""]
 
       # Path to the CA certificates file to validate server certificate against.
       # If not set, the host's root CA certificates are used.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-ca-path
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-ca-path
       [tls_ca_path: <string> | default = ""]
 
       # Override the expected name on the server certificate.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-server-name
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-server-name
       [tls_server_name: <string> | default = ""]
 
       # Skip validating server certificate.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-insecure-skip-verify
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-insecure-skip-verify
       [tls_insecure_skip_verify: <boolean> | default = false]
 
       # If not zero then client-side caching is enabled. Client-side caching is
@@ -1532,25 +1553,25 @@ bucket_store:
       # Path to the client certificate file, which will be used for
       # authenticating with the server. Also requires the key path to be
       # configured.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-cert-path
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-cert-path
       [tls_cert_path: <string> | default = ""]
 
       # Path to the key file for the client certificate. Also requires the
       # client certificate to be configured.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-key-path
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-key-path
       [tls_key_path: <string> | default = ""]
 
       # Path to the CA certificates file to validate server certificate against.
       # If not set, the host's root CA certificates are used.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-ca-path
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-ca-path
       [tls_ca_path: <string> | default = ""]
 
       # Override the expected name on the server certificate.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-server-name
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-server-name
       [tls_server_name: <string> | default = ""]
 
       # Skip validating server certificate.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-insecure-skip-verify
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-insecure-skip-verify
       [tls_insecure_skip_verify: <boolean> | default = false]
 
       # If not zero then client-side caching is enabled. Client-side caching is
@@ -1770,25 +1791,25 @@ bucket_store:
       # Path to the client certificate file, which will be used for
       # authenticating with the server. Also requires the key path to be
       # configured.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-cert-path
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-cert-path
       [tls_cert_path: <string> | default = ""]
 
       # Path to the key file for the client certificate. Also requires the
       # client certificate to be configured.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-key-path
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-key-path
       [tls_key_path: <string> | default = ""]
 
       # Path to the CA certificates file to validate server certificate against.
       # If not set, the host's root CA certificates are used.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-ca-path
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-ca-path
       [tls_ca_path: <string> | default = ""]
 
       # Override the expected name on the server certificate.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-server-name
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-server-name
       [tls_server_name: <string> | default = ""]
 
       # Skip validating server certificate.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-insecure-skip-verify
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-insecure-skip-verify
       [tls_insecure_skip_verify: <boolean> | default = false]
 
       # If not zero then client-side caching is enabled. Client-side caching is
@@ -1878,6 +1899,10 @@ bucket_store:
     # same limit in the caching backend).
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes
     [bucket_index_max_size_bytes: <int> | default = 1048576]
+
+  # Maximum number of entries in the regex matchers cache. 0 to disable.
+  # CLI flag: -blocks-storage.bucket-store.matchers-cache-max-items
+  [matchers_cache_max_items: <int> | default = 0]
 
   # Duration after which the blocks marked for deletion will be filtered out
   # while fetching blocks. The idea of ignore-deletion-marks-delay is to ignore
@@ -2036,11 +2061,6 @@ tsdb:
   # performance.
   # CLI flag: -blocks-storage.tsdb.stripe-size
   [stripe_size: <int> | default = 16384]
-
-  # Deprecated (use blocks-storage.tsdb.wal-compression-type instead): True to
-  # enable TSDB WAL compression.
-  # CLI flag: -blocks-storage.tsdb.wal-compression-enabled
-  [wal_compression_enabled: <boolean> | default = false]
 
   # TSDB WAL type. Supported values are: 'snappy', 'zstd' and '' (disable
   # compression)
@@ -2270,6 +2290,10 @@ sharding_ring:
       # CLI flag: -compactor.ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -compactor.ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: compactor.ring
     [consul: <consul_config>]
@@ -2304,6 +2328,11 @@ sharding_ring:
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
+  # Time since last heartbeat before compactor will be removed from ring. 0 to
+  # disable
+  # CLI flag: -compactor.auto-forget-delay
+  [auto_forget_delay: <duration> | default = 2m]
+
   # Minimum time to wait for ring stability at startup. 0 to disable.
   # CLI flag: -compactor.ring.wait-stability-min-duration
   [wait_stability_min_duration: <duration> | default = 1m]
@@ -2330,18 +2359,25 @@ sharding_ring:
   # CLI flag: -compactor.ring.wait-active-instance-timeout
   [wait_active_instance_timeout: <duration> | default = 10m]
 
+# How long shuffle sharding planner would wait before running planning code.
+# This delay would prevent double compaction when two compactors claimed same
+# partition in grouper at same time.
+# CLI flag: -compactor.sharding-planner-delay
+[sharding_planner_delay: <duration> | default = 10s]
+
 # The compaction strategy to use. Supported values are: default, partitioning.
-# CLI flag: -compactor.compaction-mode
-[compaction_mode: <string> | default = "default"]
+# CLI flag: -compactor.compaction-strategy
+[compaction_strategy: <string> | default = "default"]
 
-# How long block visit marker file should be considered as expired and able to
-# be picked up by compactor again.
-# CLI flag: -compactor.block-visit-marker-timeout
-[block_visit_marker_timeout: <duration> | default = 5m]
+# How long compaction visit marker file should be considered as expired and able
+# to be picked up by compactor again.
+# CLI flag: -compactor.compaction-visit-marker-timeout
+[compaction_visit_marker_timeout: <duration> | default = 10m]
 
-# How frequently block visit marker file should be updated duration compaction.
-# CLI flag: -compactor.block-visit-marker-file-update-interval
-[block_visit_marker_file_update_interval: <duration> | default = 1m]
+# How frequently compaction visit marker file should be updated duration
+# compaction.
+# CLI flag: -compactor.compaction-visit-marker-file-update-interval
+[compaction_visit_marker_file_update_interval: <duration> | default = 1m]
 
 # How long cleaner visit marker file should be considered as expired and able to
 # be picked up by cleaner again. The value should be smaller than
@@ -2572,6 +2608,10 @@ ha_tracker:
       # CLI flag: -distributor.ha-tracker.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -distributor.ha-tracker.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [consul: <consul_config>]
@@ -2665,6 +2705,10 @@ ring:
       # Maximum number of retries for DDB KV CAS.
       # CLI flag: -distributor.ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
+
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -distributor.ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ring
@@ -2949,6 +2993,11 @@ grpc_client_config:
   # Skip validating server certificate.
   # CLI flag: -querier.frontend-client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 20s.
+  # CLI flag: -querier.frontend-client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
 ```
 
 ### `ingester_config`
@@ -2988,6 +3037,10 @@ lifecycler:
         # Maximum number of retries for DDB KV CAS.
         # CLI flag: -dynamodb.max-cas-retries
         [max_cas_retries: <int> | default = 10]
+
+        # Timeout of dynamoDbClient requests. Default is 2m.
+        # CLI flag: -dynamodb.timeout
+        [timeout: <duration> | default = 2m]
 
       # The consul_config configures the consul client.
       [consul: <consul_config>]
@@ -3180,6 +3233,10 @@ instance_limits:
 # change by changing this option.
 # CLI flag: -ingester.disable-chunk-trimming
 [disable_chunk_trimming: <boolean> | default = false]
+
+# Maximum number of entries in the regex matchers cache. 0 to disable.
+# CLI flag: -ingester.matchers-cache-max-items
+[matchers_cache_max_items: <int> | default = 0]
 ```
 
 ### `ingester_client_config`
@@ -3254,6 +3311,11 @@ grpc_client_config:
   # Skip validating server certificate.
   # CLI flag: -ingester.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 20s.
+  # CLI flag: -ingester.client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
 
   # EXPERIMENTAL: If enabled, gRPC clients perform health checks for each target
   # and fail the request if the target is marked as unhealthy.
@@ -3508,6 +3570,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <float> | default = 0]
 
+# Enable to allow queries to be evaluated with data from a single zone, if other
+# zones are not available.
+[query_partial_data: <boolean> | default = false]
+
 # Maximum number of outstanding requests per tenant per request queue (either
 # query frontend or query scheduler); requests beyond this error with HTTP 429.
 # CLI flag: -frontend.max-outstanding-requests-per-tenant
@@ -3568,6 +3634,10 @@ query_rejection:
 # external labels for alerting rules
 [ruler_external_labels: <map of string (labelName) to string (labelValue)> | default = []]
 
+# Enable to allow rules to be evaluated with data from a single zone, if other
+# zones are not available.
+[rules_partial_data: <boolean> | default = false]
+
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the
 # shuffle-sharding strategy. When this setting is specified in the per-tenant
@@ -3591,6 +3661,14 @@ query_rejection:
 # value of 0 disables shuffle sharding for the tenant.
 # CLI flag: -compactor.tenant-shard-size
 [compactor_tenant_shard_size: <int> | default = 0]
+
+# Index size limit in bytes for each compaction partition. 0 means no limit
+# CLI flag: -compactor.partition-index-size-bytes
+[compactor_partition_index_size_bytes: <int> | default = 68719476736]
+
+# Time series count limit for each compaction partition. 0 means no limit
+# CLI flag: -compactor.partition-series-count
+[compactor_partition_series_count: <int> | default = 0]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
@@ -4165,6 +4243,11 @@ grpc_client_config:
   # CLI flag: -frontend.grpc-client-config.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 20s.
+  # CLI flag: -frontend.grpc-client-config.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
+
 # When multiple query-schedulers are available, re-enqueue queries that were
 # rejected due to too many outstanding requests.
 # CLI flag: -frontend.retry-on-too-many-outstanding-requests
@@ -4333,6 +4416,12 @@ The `ruler_config` configures the Cortex ruler.
 # CLI flag: -ruler.frontend-address
 [frontend_address: <string> | default = ""]
 
+# [Experimental] Query response format to get query results from Query Frontend
+# when the rule evaluation. It will only take effect when
+# `-ruler.frontend-address` is configured. Supported values: json,protobuf
+# CLI flag: -ruler.query-response-format
+[query_response_format: <string> | default = "protobuf"]
+
 frontend_client:
   # gRPC client max receive message size (bytes).
   # CLI flag: -ruler.frontendClient.grpc-max-recv-msg-size
@@ -4400,6 +4489,11 @@ frontend_client:
   # Skip validating server certificate.
   # CLI flag: -ruler.frontendClient.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 20s.
+  # CLI flag: -ruler.frontendClient.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
 
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
@@ -4475,6 +4569,11 @@ ruler_client:
   # Skip validating server certificate.
   # CLI flag: -ruler.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 20s.
+  # CLI flag: -ruler.client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
 
   # Timeout for downstream rulers.
   # CLI flag: -ruler.client.remote-timeout
@@ -4616,6 +4715,10 @@ ring:
       # CLI flag: -ruler.ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -ruler.ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: ruler.ring
     [consul: <consul_config>]
@@ -4753,6 +4856,10 @@ s3:
   # S3 bucket name
   # CLI flag: -ruler-storage.s3.bucket-name
   [bucket_name: <string> | default = ""]
+
+  # If enabled, S3 endpoint will use the non-dualstack variant.
+  # CLI flag: -ruler-storage.s3.disable-dualstack
+  [disable_dualstack: <boolean> | default = false]
 
   # S3 secret access key
   # CLI flag: -ruler-storage.s3.secret-access-key
@@ -5056,6 +5163,10 @@ s3:
   # S3 bucket name
   # CLI flag: -runtime-config.s3.bucket-name
   [bucket_name: <string> | default = ""]
+
+  # If enabled, S3 endpoint will use the non-dualstack variant.
+  # CLI flag: -runtime-config.s3.disable-dualstack
+  [disable_dualstack: <boolean> | default = false]
 
   # S3 secret access key
   # CLI flag: -runtime-config.s3.secret-access-key
@@ -5598,6 +5709,10 @@ sharding_ring:
       # Maximum number of retries for DDB KV CAS.
       # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
+
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: store-gateway.sharding-ring

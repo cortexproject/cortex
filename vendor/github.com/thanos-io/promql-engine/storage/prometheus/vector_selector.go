@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/efficientgo/core/errors"
 
 	"github.com/prometheus/prometheus/model/histogram"
@@ -28,7 +30,7 @@ type vectorScanner struct {
 }
 
 type vectorSelector struct {
-	model.OperatorTelemetry
+	telemetry.OperatorTelemetry
 
 	storage  SeriesSelector
 	scanners []vectorScanner
@@ -82,7 +84,7 @@ func NewVectorSelector(
 
 		selectTimestamp: selectTimestamp,
 	}
-	o.OperatorTelemetry = model.NewTelemetry(o, queryOpts)
+	o.OperatorTelemetry = telemetry.NewTelemetry(o, queryOpts)
 
 	// For instant queries, set the step to a positive value
 	// so that the operator can terminate.
@@ -242,6 +244,5 @@ func selectPoint(it *storage.MemoizedSeriesIterator, ts, lookbackDelta, offset i
 	if value.IsStaleNaN(v) || (fh != nil && value.IsStaleNaN(fh.Sum)) {
 		return 0, 0, nil, false, nil
 	}
-
 	return t, v, fh, true, nil
 }

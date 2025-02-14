@@ -124,6 +124,9 @@ func (f *ExpandedPostingsCacheFactory) NewExpandedPostingsCache(userId string, m
 type ExpandedPostingsCache interface {
 	PostingsForMatchers(ctx context.Context, blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error)
 	ExpireSeries(metric labels.Labels)
+	PurgeExpiredItems()
+	Clear()
+	Size() int
 }
 
 type blocksPostingsForMatchersCache struct {
@@ -136,6 +139,11 @@ type blocksPostingsForMatchersCache struct {
 
 	metrics    *ExpandedPostingsCacheMetrics
 	seedByHash *seedByHash
+}
+
+func (c *blocksPostingsForMatchersCache) Clear() {
+	c.headCache.clear()
+	c.blocksCache.clear()
 }
 
 func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfig, metrics *ExpandedPostingsCacheMetrics, seedByHash *seedByHash) ExpandedPostingsCache {
@@ -164,6 +172,15 @@ func (c *blocksPostingsForMatchersCache) ExpireSeries(metric labels.Labels) {
 		return
 	}
 	c.seedByHash.incrementSeed(c.userId, metricName)
+}
+
+func (c *blocksPostingsForMatchersCache) PurgeExpiredItems() {
+	c.headCache.expire()
+	c.blocksCache.expire()
+}
+
+func (c *blocksPostingsForMatchersCache) Size() int {
+	return c.headCache.size() + c.blocksCache.size()
 }
 
 func (c *blocksPostingsForMatchersCache) PostingsForMatchers(ctx context.Context, blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) {
@@ -347,6 +364,14 @@ func newFifoCache[V any](cfg PostingsCacheConfig, name string, metrics *Expanded
 	}
 }
 
+func (c *fifoCache[V]) clear() {
+	c.cachedMtx.Lock()
+	defer c.cachedMtx.Unlock()
+	c.cached = list.New()
+	c.cachedBytes = 0
+	c.cachedValues = new(sync.Map)
+}
+
 func (c *fifoCache[V]) expire() {
 	if c.cfg.Ttl <= 0 {
 		return
@@ -363,6 +388,12 @@ func (c *fifoCache[V]) expire() {
 		c.metrics.CacheEvicts.WithLabelValues(c.name, reason).Inc()
 		c.evictHead()
 	}
+}
+
+func (c *fifoCache[V]) size() int {
+	c.cachedMtx.RLock()
+	defer c.cachedMtx.RUnlock()
+	return c.cached.Len()
 }
 
 func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)) (*cacheEntryPromise[V], bool) {

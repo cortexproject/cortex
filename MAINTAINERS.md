@@ -11,6 +11,7 @@
 ### Triaggers
 
 
-| Name        | Email                | GitHub       | Company         |
-|-------------|----------------------|--------------|-----------------|
-| Sungjin Lee | tjdwls1201@gmail.com | @SungJin1212 | KakaoEnterprise |
+| Name            | Email                      | GitHub          | Company             |
+|-----------------|----------------------------|-----------------|---------------------|
+| Sungjin Lee     | tjdwls1201@gmail.com       | @SungJin1212    | KakaoEnterprise     |
+| Anand Rajagopal | anand.rajagopal@icloud.com | @rajagopalanand | Amazon Web Services |

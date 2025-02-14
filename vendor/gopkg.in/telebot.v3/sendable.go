@@ -115,6 +115,7 @@ func (d *Document) Send(b *Bot, to Recipient, opt *SendOptions) (*Message, error
 func (s *Sticker) Send(b *Bot, to Recipient, opt *SendOptions) (*Message, error) {
 	params := map[string]string{
 		"chat_id": to.Recipient(),
+		"emoji":   s.Emoji,
 	}
 	b.embedSendOptions(params, opt)
 
@@ -401,7 +402,7 @@ func (g *Game) Send(b *Bot, to Recipient, opt *SendOptions) (*Message, error) {
 
 func thumbnailToFilemap(thumb *Photo) map[string]File {
 	if thumb != nil {
-		return map[string]File{"thumb": thumb.File}
+		return map[string]File{"thumbnail": thumb.File}
 	}
 	return nil
 }

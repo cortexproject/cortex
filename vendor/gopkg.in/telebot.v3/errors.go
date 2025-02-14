@@ -1,6 +1,7 @@
 package telebot
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -132,6 +133,7 @@ var (
 	ErrKickedFromChannel    = NewError(403, "Forbidden: bot was kicked from the channel chat")
 	ErrNotStartedByUser     = NewError(403, "Forbidden: bot can't initiate conversation with a user")
 	ErrUserIsDeactivated    = NewError(403, "Forbidden: user is deactivated")
+	ErrNotChannelMember     = NewError(403, "Forbidden: bot is not a member of the channel chat")
 )
 
 // Err returns Error instance by given description.
@@ -249,9 +251,16 @@ func Err(s string) error {
 		return ErrChannelsTooMuch
 	case ErrChannelsTooMuchUser.ʔ():
 		return ErrChannelsTooMuchUser
+	case ErrNotChannelMember.ʔ():
+		return ErrNotChannelMember
 	default:
 		return nil
 	}
+}
+
+// ErrIs checks if the error with given description matches an error err.
+func ErrIs(s string, err error) bool {
+	return errors.Is(err, Err(s))
 }
 
 // wrapError returns new wrapped telebot-related error.

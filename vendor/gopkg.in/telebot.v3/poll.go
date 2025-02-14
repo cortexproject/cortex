@@ -49,6 +49,7 @@ type PollOption struct {
 type PollAnswer struct {
 	PollID  string `json:"poll_id"`
 	Sender  *User  `json:"user"`
+	Chat    *Chat  `json:"voter_chat"`
 	Options []int  `json:"option_ids"`
 }
 

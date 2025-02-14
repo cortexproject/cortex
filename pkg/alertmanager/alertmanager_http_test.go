@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/promslog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,7 +18,7 @@ func TestMultitenantAlertmanager_GetStatusHandler(t *testing.T) {
 	defer cancel()
 	var peer *cluster.Peer
 	{
-		logger := log.NewNopLogger()
+		logger := promslog.NewNopLogger()
 		createPeer := func(peers []string) (*cluster.Peer, error) {
 			return cluster.Create(
 				logger,

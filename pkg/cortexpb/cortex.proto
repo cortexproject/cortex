@@ -21,6 +21,11 @@ message WriteRequest {
   bool skip_label_name_validation = 1000; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
 }
 
+message StreamWriteRequest {
+  string TenantID = 1;
+  WriteRequest Request = 2;
+}
+
 message WriteResponse {}
 
 message TimeSeries {

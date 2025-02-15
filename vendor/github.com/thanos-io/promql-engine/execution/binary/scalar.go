@@ -164,7 +164,7 @@ func (o *scalarOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 		}
 
 		for i := range vector.HistogramIDs {
-			val := o.histOp(vector.Histograms[i], scalarVal)
+			val := o.histOp(ctx, vector.Histograms[i], scalarVal)
 			if val != nil {
 				step.AppendHistogram(o.pool, vector.HistogramIDs[i], val)
 			}

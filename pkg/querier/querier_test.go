@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/scrape"
@@ -89,7 +90,7 @@ var (
 		// Windowed rates with small step;  This will cause BufferedIterator to read
 		// all the samples.
 		{
-			query:  "rate(foo[1m])",
+			query:  "rate(foo[59s])",
 			step:   sampleRate * 4,
 			labels: labels.Labels{},
 			samples: func(from, through time.Time, step time.Duration) int {
@@ -142,7 +143,7 @@ var (
 					for i, point := range series.Histograms {
 						require.Equal(t, ts, point.T, strconv.Itoa(i))
 						// Convert expected value to float histogram.
-						expectedH := tsdbutil.GenerateTestGaugeFloatHistogram(int(ts))
+						expectedH := tsdbutil.GenerateTestGaugeFloatHistogram(ts)
 						require.Equal(t, expectedH, point.H, strconv.Itoa(i))
 						ts += int64(q.step / time.Millisecond)
 					}
@@ -152,7 +153,7 @@ var (
 
 		// Rates with large step; excersise everything.
 		{
-			query:  "rate(foo[1m])",
+			query:  "rate(foo[59s])",
 			step:   sampleRate * 4 * 10,
 			labels: labels.Labels{},
 			samples: func(from, through time.Time, step time.Duration) int {
@@ -204,7 +205,7 @@ var (
 					for i, point := range series.Histograms {
 						require.Equal(t, ts, point.T, strconv.Itoa(i))
 						// Convert expected value to float histogram.
-						expectedH := tsdbutil.GenerateTestGaugeFloatHistogram(int(ts))
+						expectedH := tsdbutil.GenerateTestGaugeFloatHistogram(ts)
 						require.Equal(t, expectedH, point.H, strconv.Itoa(i))
 						ts += int64(q.step / time.Millisecond)
 					}
@@ -224,7 +225,7 @@ var (
 				from, through := time.Unix(0, 0), end.Time()
 				require.Equal(t, q.samples(from, through, q.step), len(series.Floats))
 				for i, point := range series.Floats {
-					expectedFH := tsdbutil.GenerateTestFloatHistogram(int(ts))
+					expectedFH := tsdbutil.GenerateTestFloatHistogram(ts)
 					require.Equal(t, ts, point.T, strconv.Itoa(i))
 					require.Equal(t, expectedFH.Sum, point.F, strconv.Itoa(i))
 					ts += int64(q.step / time.Millisecond)
@@ -245,7 +246,7 @@ var (
 				from, through := time.Unix(0, 0), end.Time()
 				require.Equal(t, q.samples(from, through, q.step), len(series.Floats))
 				for i, point := range series.Floats {
-					expectedFH := tsdbutil.GenerateTestFloatHistogram(int(ts))
+					expectedFH := tsdbutil.GenerateTestFloatHistogram(ts)
 					require.Equal(t, ts, point.T, strconv.Itoa(i))
 					require.Equal(t, expectedFH.Count, point.F, strconv.Itoa(i))
 					ts += int64(q.step / time.Millisecond)
@@ -337,7 +338,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					}
 					queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides)
 					opts := promql.EngineOpts{
-						Logger:     log.NewNopLogger(),
+						Logger:     promslog.NewNopLogger(),
 						MaxSamples: 1e6,
 						Timeout:    1 * time.Minute,
 					}
@@ -525,7 +526,7 @@ func TestLimits(t *testing.T) {
 
 				queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides)
 				opts := promql.EngineOpts{
-					Logger:     log.NewNopLogger(),
+					Logger:     promslog.NewNopLogger(),
 					MaxSamples: 1e6,
 					Timeout:    1 * time.Minute,
 				}
@@ -549,7 +550,7 @@ func TestQuerier(t *testing.T) {
 	const chunks = 24
 
 	opts := promql.EngineOpts{
-		Logger:     log.NewNopLogger(),
+		Logger:     promslog.NewNopLogger(),
 		MaxSamples: 1e6,
 		Timeout:    1 * time.Minute,
 	}
@@ -655,7 +656,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	}
 
 	opts := promql.EngineOpts{
-		Logger:     log.NewNopLogger(),
+		Logger:     promslog.NewNopLogger(),
 		MaxSamples: 1e6,
 		Timeout:    1 * time.Minute,
 	}
@@ -753,7 +754,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 	}
 
 	opts := promql.EngineOpts{
-		Logger:        log.NewNopLogger(),
+		Logger:        promslog.NewNopLogger(),
 		MaxSamples:    1e6,
 		Timeout:       1 * time.Minute,
 		LookbackDelta: engineLookbackDelta,
@@ -830,13 +831,13 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			query:          "rate(foo[31d])",
 			queryStartTime: time.Now().Add(-time.Hour),
 			queryEndTime:   time.Now(),
-			expected:       errors.New("expanding series: the query time range exceeds the limit (query length: 745h0m0s, limit: 720h0m0s)"),
+			expected:       errors.New("expanding series: the query time range exceeds the limit (query length: 744h59m59.999s, limit: 720h0m0s)"),
 		},
 		"should forbid query on large time range over the limit and short rate time window": {
 			query:          "rate(foo[1m])",
 			queryStartTime: time.Now().Add(-maxQueryLength).Add(-time.Hour),
 			queryEndTime:   time.Now(),
-			expected:       errors.New("expanding series: the query time range exceeds the limit (query length: 721h1m0s, limit: 720h0m0s)"),
+			expected:       errors.New("expanding series: the query time range exceeds the limit (query length: 721h0m59.999s, limit: 720h0m0s)"),
 		},
 		"max query length check ignored, invalid query is still allowed": {
 			query:                "rate(foo[1m])",
@@ -848,7 +849,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 	}
 
 	opts := promql.EngineOpts{
-		Logger:             log.NewNopLogger(),
+		Logger:             promslog.NewNopLogger(),
 		ActiveQueryTracker: nil,
 		MaxSamples:         1e6,
 		Timeout:            1 * time.Minute,
@@ -1079,7 +1080,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 	}
 
 	opts := promql.EngineOpts{
-		Logger:             log.NewNopLogger(),
+		Logger:             promslog.NewNopLogger(),
 		ActiveQueryTracker: nil,
 		MaxSamples:         1e6,
 		LookbackDelta:      engineLookbackDelta,
@@ -1561,7 +1562,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 	}
 
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:     log.NewNopLogger(),
+		Logger:     promslog.NewNopLogger(),
 		MaxSamples: 1e6,
 		Timeout:    1 * time.Minute,
 	})

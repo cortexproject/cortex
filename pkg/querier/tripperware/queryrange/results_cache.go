@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -439,7 +440,7 @@ func (s resultsCache) handleHit(ctx context.Context, r tripperware.Request, exte
 
 	level.Debug(util_log.WithContext(ctx, log)).Log("msg", "handle hit", "start", r.GetStart(), "spanID", jaegerSpanID(ctx))
 
-	requests, responses, err := s.partition(r, extents)
+	requests, responses, err := s.partition(ctx, r, extents)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -636,7 +637,7 @@ func convertFromTripperwarePrometheusResponse(resp tripperware.Response) tripper
 
 // partition calculates the required requests to satisfy req given the cached data.
 // extents must be in order by start time.
-func (s resultsCache) partition(req tripperware.Request, extents []tripperware.Extent) ([]tripperware.Request, []tripperware.Response, error) {
+func (s resultsCache) partition(ctx context.Context, req tripperware.Request, extents []tripperware.Extent) ([]tripperware.Request, []tripperware.Response, error) {
 	var requests []tripperware.Request
 	var cachedResponses []tripperware.Response
 	start := req.GetStart()
@@ -667,7 +668,14 @@ func (s resultsCache) partition(req tripperware.Request, extents []tripperware.E
 			return nil, nil, err
 		}
 		// extract the overlap from the cached extent.
-		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res))
+		promRes := s.extractor.Extract(start, req.GetEnd(), res).(*tripperware.PrometheusResponse)
+		cachedResponses = append(cachedResponses, promRes)
+
+		if queryStats := stats.FromContext(ctx); queryStats != nil && promRes.Data.Stats != nil {
+			queryStats.AddScannedSamples(uint64(promRes.Data.Stats.Samples.TotalQueryableSamples))
+			queryStats.SetPeakSamples(max(queryStats.LoadPeakSamples(), uint64(promRes.Data.Stats.Samples.PeakSamples)))
+		}
+
 		start = extent.End
 	}
 
@@ -796,6 +804,7 @@ func extractStats(start, end int64, stats *tripperware.PrometheusResponseStats) 
 		if start <= s.TimestampMs && s.TimestampMs <= end {
 			result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, s)
 			result.Samples.TotalQueryableSamples += s.Value
+			result.Samples.PeakSamples = max(result.Samples.PeakSamples, s.Value)
 		}
 	}
 	return result

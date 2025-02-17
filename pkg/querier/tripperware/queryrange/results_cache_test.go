@@ -308,7 +308,7 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 			rcm, _, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
 				cfg,
-				constSplitter(day),
+				splitter(day),
 				mockLimits{},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
@@ -1258,7 +1258,7 @@ func TestResultsCache(t *testing.T) {
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		constSplitter(day),
+		splitter(day),
 		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -1299,7 +1299,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		constSplitter(day),
+		splitter(day),
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -1364,7 +1364,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			rcm, _, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
 				cfg,
-				constSplitter(day),
+				splitter(day),
 				fakeLimits,
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
@@ -1381,9 +1381,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
 
 			// fill cache
-			key, err := constSplitter(day).GenerateCacheKey("1", ctx, req)
-			require.NoError(t, err)
-
+			key := splitter(day).GenerateCacheKey(ctx, "1", req)
 			rc.(*resultsCache).put(ctx, key, []tripperware.Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
 
 			resp, err := rc.Do(ctx, req)
@@ -1403,7 +1401,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	rm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		constSplitter(day),
+		splitter(day),
 		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -1440,7 +1438,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	require.False(t, hit)
 }
 
-func TestConstSplitter_generateCacheKey(t *testing.T) {
+func TestSplitter_generateCacheKey(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1463,8 +1461,7 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
 			t.Parallel()
 			ctx := user.InjectOrgID(context.Background(), "1")
-			got, err := constSplitter(tt.interval).GenerateCacheKey("fake", ctx, tt.r)
-			require.NoError(t, err)
+			got := splitter(tt.interval).GenerateCacheKey(ctx, "fake", tt.r)
 
 			if got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
@@ -1519,7 +1516,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 			rcm, _, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
 				cfg,
-				constSplitter(day),
+				splitter(day),
 				mockLimits{maxCacheFreshness: 10 * time.Minute},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
@@ -1551,7 +1548,7 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		constSplitter(day),
+		splitter(day),
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -1569,8 +1566,7 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 	// Check cache and make sure we write response in old format even though the response is new format.
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	require.NoError(t, err)
-	key, err := constSplitter(day).GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), ctx, parsedRequest)
-	require.NoError(t, err)
+	key := splitter(day).GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), parsedRequest)
 
 	cacheKey := cache.HashKey(key)
 	found, bufs, _ := c.Fetch(ctx, []string{cacheKey})

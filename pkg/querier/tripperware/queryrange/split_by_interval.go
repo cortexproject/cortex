@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -363,24 +362,6 @@ func analyzeDurationFetchedByQueryExpr(expr parser.Expr, queryStart int64, query
 
 	durationFetchedBySelectorsCount := totalDurationFetchedCount - durationFetchedByRangeCount
 	return time.Duration(durationFetchedByRangeCount) * baseInterval, time.Duration(durationFetchedBySelectorsCount) * baseInterval, time.Duration(durationFetchedByLookbackDeltaCount) * baseInterval
-}
-
-// dynamicIntervalSplitter is a utility for using a dynamic split interval when determining cache keys
-type dynamicIntervalSplitter struct {
-	cfg           Config
-	limits        tripperware.Limits
-	queryAnalyzer querysharding.Analyzer
-	lookbackDelta time.Duration
-}
-
-// GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (c dynamicIntervalSplitter) GenerateCacheKey(userID string, ctx context.Context, r tripperware.Request) (string, error) {
-	interval, err := dynamicIntervalFn(c.cfg, c.limits, c.queryAnalyzer, c.lookbackDelta)(ctx, r)
-	if err != nil {
-		return "", err
-	}
-	currentInterval := r.GetStart() / int64(interval/time.Millisecond)
-	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval), nil
 }
 
 func floorDiv(a, b int64) int64 {

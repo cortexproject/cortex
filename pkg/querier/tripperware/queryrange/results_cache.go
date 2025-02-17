@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -141,15 +142,21 @@ func (PrometheusResponseExtractor) ResponseWithoutStats(resp tripperware.Respons
 // CacheSplitter generates cache keys. This is a useful interface for downstream
 // consumers who wish to implement their own strategies.
 type CacheSplitter interface {
-	GenerateCacheKey(userID string, r tripperware.Request) string
+	GenerateCacheKey(ctx context.Context, userID string, r tripperware.Request) string
 }
 
-// constSplitter is a utility for using a constant split interval when determining cache keys
-type constSplitter time.Duration
+// splitter is a utility for using split interval when determining cache keys
+type splitter time.Duration
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (t constSplitter) GenerateCacheKey(userID string, r tripperware.Request) string {
-	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
+func (t splitter) GenerateCacheKey(ctx context.Context, userID string, r tripperware.Request) string {
+	stats := querier_stats.FromContext(ctx)
+	interval := stats.LoadSplitInterval()
+	if interval == 0 {
+		interval = time.Duration(t)
+	}
+
+	currentInterval := r.GetStart() / int64(interval/time.Millisecond)
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
@@ -232,8 +239,12 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 		return s.next.Do(ctx, r)
 	}
 
+	key := s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
 	var (
-		key      = s.splitter.GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), r)
 		extents  []tripperware.Extent
 		response tripperware.Response
 	)

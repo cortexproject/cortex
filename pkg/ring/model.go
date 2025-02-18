@@ -479,7 +479,14 @@ func (d *Desc) Clone() interface{} {
 func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
 	out := map[uint32]instanceInfo{}
 
-	for instanceID, instance := range d.Ingesters {
+	instanceIDs := []string{}
+	for key := range d.Ingesters {
+		instanceIDs = append(instanceIDs, key)
+	}
+	sort.Strings(instanceIDs)
+
+	for _, instanceID := range instanceIDs {
+		instance := d.Ingesters[instanceID]
 		info := instanceInfo{
 			InstanceID: instanceID,
 			Zone:       instance.Zone,

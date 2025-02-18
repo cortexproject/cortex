@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -173,6 +174,7 @@ func mkAPIResponseWithStats(start, end, step int64, withStats bool, oldFormat bo
 			})
 
 			stats.Samples.TotalQueryableSamples += i
+			stats.Samples.PeakSamples = max(stats.Samples.PeakSamples, i)
 		}
 	}
 
@@ -597,11 +599,13 @@ func TestShouldCache(t *testing.T) {
 func TestPartition(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name                   string
-		input                  tripperware.Request
-		prevCachedResponse     []tripperware.Extent
-		expectedRequests       []tripperware.Request
-		expectedCachedResponse []tripperware.Response
+		name                                     string
+		input                                    tripperware.Request
+		prevCachedResponse                       []tripperware.Extent
+		expectedRequests                         []tripperware.Request
+		expectedCachedResponse                   []tripperware.Response
+		expectedScannedSamplesFromCachedResponse uint64
+		expectedPeakSamplesFromCachedResponse    uint64
 	}{
 		{
 			name: "Test a complete hit.",
@@ -822,6 +826,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(0, 100, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(0, 100, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(0, 100, 10),
 		},
 
 		{
@@ -836,6 +842,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(0, 100, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(0, 100, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(0, 100, 10),
 		},
 
 		{
@@ -886,6 +894,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(50, 100, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(50, 100, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(50, 100, 10),
 		},
 		{
 			name: "[stats] Test multiple partial hits.",
@@ -907,6 +917,8 @@ func TestPartition(t *testing.T) {
 				mkAPIResponseWithStats(100, 120, 10, true, false),
 				mkAPIResponseWithStats(160, 200, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    max(getPeakSamples(100, 120, 10), getPeakSamples(160, 200, 10)),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(100, 120, 10) + getScannedSamples(160, 200, 10),
 		},
 		{
 			name: "[stats] Partial hits with tiny gap.",
@@ -927,7 +939,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(100, 120, 10, true, false),
 			},
-		},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(100, 120, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(100, 120, 10)},
 		{
 			name: "[stats] Extent is outside the range and the request has a single step (same start and end).",
 			input: &tripperware.PrometheusRequest{
@@ -957,6 +970,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(100, 105, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(100, 105, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(100, 105, 10),
 		},
 		{
 			name: "[stats] Test when hit has a large step and only a single sample extent with old format.",
@@ -971,6 +986,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(100, 105, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(100, 105, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(100, 105, 10),
 		},
 	} {
 		tc := tc
@@ -980,10 +997,13 @@ func TestPartition(t *testing.T) {
 				extractor:      PrometheusResponseExtractor{},
 				minCacheExtent: 10,
 			}
-			reqs, resps, err := s.partition(tc.input, tc.prevCachedResponse)
+			stats, ctx := querier_stats.ContextWithEmptyStats(context.Background())
+			reqs, resps, err := s.partition(ctx, tc.input, tc.prevCachedResponse)
 			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)
+			require.Equal(t, tc.expectedScannedSamplesFromCachedResponse, stats.ScannedSamples)
+			require.Equal(t, tc.expectedPeakSamplesFromCachedResponse, stats.PeakSamples)
 		})
 	}
 }
@@ -1584,4 +1604,15 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 
 func toMs(t time.Duration) int64 {
 	return int64(t / time.Millisecond)
+}
+
+func getScannedSamples(start, end, step uint64) uint64 {
+	lastTerm := start + ((end-start)/step)*step
+	n := (lastTerm-start)/step + 1
+
+	return (n * (2*start + (n-1)*step)) / 2
+}
+
+func getPeakSamples(start, end, step uint64) uint64 {
+	return start + ((end-start)/step)*step
 }

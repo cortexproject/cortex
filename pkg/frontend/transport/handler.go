@@ -410,6 +410,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		"split_queries", splitQueries,
 		"status_code", statusCode,
 		"response_size", contentLength,
+		"samples_scanned", numScannedSamples,
 	}, stats.LoadExtraFields()...)
 
 	if numStoreGatewayTouchedPostings > 0 {

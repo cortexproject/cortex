@@ -11,6 +11,7 @@
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576
 * [BUGFIX] Compactor: Cleaner would delete bucket index when there is no block in bucket store. #6577
+* [BUGFIX] Querier: Fix marshal native histogram with empty bucket when protobuf codec is enabled. #6595
 
 ## 1.19.0 in progress
 

@@ -315,7 +315,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 	// We need to take this case into account to support our legacy upstream clustering.
 	if cfg.Cluster.ListenAddr != "" && !cfg.ShardingEnabled {
 		peer, err = cluster.Create(
-			log.With(logger, "component", "cluster"),
+			util_log.GoKitLogToSlog(log.With(logger, "component", "cluster")),
 			registerer,
 			cfg.Cluster.ListenAddr,
 			cfg.Cluster.AdvertiseAddr,

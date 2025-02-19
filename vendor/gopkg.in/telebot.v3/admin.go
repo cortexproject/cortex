@@ -36,6 +36,10 @@ type Rights struct {
 	CanSendVideoNotes bool `json:"can_send_video_notes"`
 	CanSendVoiceNotes bool `json:"can_send_voice_notes"`
 
+	CanPostStories   bool `json:"can_post_stories"`
+	CanEditStories   bool `json:"can_edit_stories"`
+	CanDeleteStories bool `json:"can_delete_stories"`
+
 	// Independent defines whether the chat permissions are set independently.
 	// If not, the can_send_other_messages and can_add_web_page_previews permissions
 	// will imply the can_send_messages, can_send_audios, can_send_documents, can_send_photos,
@@ -106,6 +110,9 @@ func AdminRights() Rights {
 		CanSendVideos:       true,
 		CanSendVideoNotes:   true,
 		CanSendVoiceNotes:   true,
+		CanPostStories:      true,
+		CanEditStories:      true,
+		CanDeleteStories:    true,
 	}
 }
 

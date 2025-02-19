@@ -14,6 +14,8 @@
 * [BUGFIX] Querier: Fix marshal native histogram with empty bucket when protobuf codec is enabled. #6595
 * [BUGFIX] Query Frontend: Fix samples scanned and peak samples query stats when query hits results cache. #6591
 
+* [ENHANCEMENT] Query Frontend: Add a `-frontend.enabled-ruler-query-stats` flag to configure whether to report the query stats log for queries coming from the Ruler. #6504
+
 ## 1.19.0 in progress
 
 * [CHANGE] Deprecate `-blocks-storage.tsdb.wal-compression-enabled` flag (use `blocks-storage.tsdb.wal-compression-type` instead). #6529

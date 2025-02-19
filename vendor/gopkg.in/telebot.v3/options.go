@@ -84,6 +84,8 @@ type SendOptions struct {
 	// HasSpoiler marks the message as containing a spoiler.
 	HasSpoiler bool
 
+	// ReplyParams Describes the message to reply to
+	ReplyParams *ReplyParams
 }
 
 func (og *SendOptions) copy() *SendOptions {
@@ -94,8 +96,10 @@ func (og *SendOptions) copy() *SendOptions {
 	return &cp
 }
 
-func extractOptions(how []interface{}) *SendOptions {
-	opts := &SendOptions{}
+func (b *Bot) extractOptions(how []interface{}) *SendOptions {
+	opts := &SendOptions{
+		ParseMode: b.parseMode,
+	}
 
 	for _, prop := range how {
 		switch opt := prop.(type) {
@@ -105,6 +109,8 @@ func extractOptions(how []interface{}) *SendOptions {
 			if opt != nil {
 				opts.ReplyMarkup = opt.copy()
 			}
+		case *ReplyParams:
+			opts.ReplyParams = opt
 		case Option:
 			switch opt {
 			case NoPreview:
@@ -146,10 +152,6 @@ func extractOptions(how []interface{}) *SendOptions {
 }
 
 func (b *Bot) embedSendOptions(params map[string]string, opt *SendOptions) {
-	if b.parseMode != ModeDefault {
-		params["parse_mode"] = b.parseMode
-	}
-
 	if opt == nil {
 		return
 	}
@@ -198,7 +200,7 @@ func (b *Bot) embedSendOptions(params map[string]string, opt *SendOptions) {
 	if opt.ThreadID != 0 {
 		params["message_thread_id"] = strconv.Itoa(opt.ThreadID)
 	}
-  
+
 	if opt.HasSpoiler {
 		params["spoiler"] = "true"
 	}
@@ -223,4 +225,46 @@ func processButtons(keys [][]InlineButton) {
 			}
 		}
 	}
+}
+
+// PreviewOptions describes the options used for link preview generation.
+type PreviewOptions struct {
+	// (Optional) True, if the link preview is disabled.
+	Disabled bool `json:"is_disabled"`
+
+	// (Optional) URL to use for the link preview. If empty, then the first URL
+	// found in the message text will be used.
+	URL string `json:"url"`
+
+	// (Optional) True, if the media in the link preview is supposed to be shrunk;
+	// ignored if the URL isn't explicitly specified or media size change.
+	// isn't supported for the preview.
+	SmallMedia bool `json:"prefer_small_media"`
+
+	// (Optional) True, if the media in the link preview is supposed to be enlarged;
+	// ignored if the URL isn't explicitly specified or media size change.
+	// isn't supported for the preview.
+	LargeMedia bool `json:"prefer_large_media"`
+
+	// (Optional) True, if the link preview must be shown above the message text;
+	// otherwise, the link preview will be shown below the message text.
+	AboveText bool `json:"show_above_text"`
+}
+
+func embedMessages(params map[string]string, msgs []Editable) {
+	ids := make([]string, 0, len(msgs))
+
+	_, chatID := msgs[0].MessageSig()
+	for _, msg := range msgs {
+		msgID, _ := msg.MessageSig()
+		ids = append(ids, msgID)
+	}
+
+	data, err := json.Marshal(ids)
+	if err != nil {
+		return
+	}
+
+	params["message_ids"] = string(data)
+	params["chat_id"] = strconv.FormatInt(chatID, 10)
 }

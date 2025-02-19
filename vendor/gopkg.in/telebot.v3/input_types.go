@@ -12,12 +12,12 @@ type InputTextMessageContent struct {
 	// Text of the message to be sent, 1-4096 characters.
 	Text string `json:"message_text"`
 
-	// Optional. Send Markdown or HTML, if you want Telegram apps to show
+	// (Optional) Send Markdown or HTML, if you want Telegram apps to show
 	// bold, italic, fixed-width text or inline URLs in your bot's message.
 	ParseMode string `json:"parse_mode,omitempty"`
 
-	// Optional. Disables link previews for links in the sent message.
-	DisablePreview bool `json:"disable_web_page_preview"`
+	// (Optional) Link preview generation options for the message.
+	PreviewOptions *PreviewOptions `json:"link_preview_options,omitempty"`
 }
 
 func (input *InputTextMessageContent) IsInputMessageContent() bool {

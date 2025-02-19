@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -81,7 +82,9 @@ type Bot struct {
 	parseMode   ParseMode
 	stop        chan chan struct{}
 	client      *http.Client
-	stopClient  chan struct{}
+
+	stopMu     sync.RWMutex
+	stopClient chan struct{}
 }
 
 // Settings represents a utility struct for passing certain
@@ -172,22 +175,33 @@ var (
 //
 //	b.Handle("/ban", onBan, middleware.Whitelist(ids...))
 func (b *Bot) Handle(endpoint interface{}, h HandlerFunc, m ...MiddlewareFunc) {
+	end := extractEndpoint(endpoint)
+	if end == "" {
+		panic("telebot: unsupported endpoint")
+	}
+
 	if len(b.group.middleware) > 0 {
 		m = appendMiddleware(b.group.middleware, m)
 	}
 
-	handler := func(c Context) error {
+	b.handlers[end] = func(c Context) error {
 		return applyMiddleware(h, m...)(c)
 	}
+}
 
-	switch end := endpoint.(type) {
-	case string:
-		b.handlers[end] = handler
-	case CallbackEndpoint:
-		b.handlers[end.CallbackUnique()] = handler
-	default:
-		panic("telebot: unsupported endpoint")
+// Trigger executes the registered handler by the endpoint.
+func (b *Bot) Trigger(endpoint interface{}, c Context) error {
+	end := extractEndpoint(endpoint)
+	if end == "" {
+		return fmt.Errorf("telebot: unsupported endpoint")
 	}
+
+	handler, ok := b.handlers[end]
+	if !ok {
+		return fmt.Errorf("telebot: no handler found for given endpoint")
+	}
+
+	return handler(c)
 }
 
 // Start brings bot into motion by consuming incoming
@@ -198,10 +212,14 @@ func (b *Bot) Start() {
 	}
 
 	// do nothing if called twice
+	b.stopMu.Lock()
 	if b.stopClient != nil {
+		b.stopMu.Unlock()
 		return
 	}
+
 	b.stopClient = make(chan struct{})
+	b.stopMu.Unlock()
 
 	stop := make(chan struct{})
 	stopConfirm := make(chan struct{})
@@ -221,7 +239,6 @@ func (b *Bot) Start() {
 			close(stop)
 			<-stopConfirm
 			close(confirm)
-			b.stopClient = nil
 			return
 		}
 	}
@@ -229,9 +246,13 @@ func (b *Bot) Start() {
 
 // Stop gracefully shuts the poller down.
 func (b *Bot) Stop() {
+	b.stopMu.Lock()
 	if b.stopClient != nil {
 		close(b.stopClient)
+		b.stopClient = nil
 	}
+	b.stopMu.Unlock()
+
 	confirm := make(chan struct{})
 	b.stop <- confirm
 	<-confirm
@@ -270,7 +291,7 @@ func (b *Bot) Send(to Recipient, what interface{}, opts ...interface{}) (*Messag
 		return nil, ErrBadRecipient
 	}
 
-	sendOpts := extractOptions(opts)
+	sendOpts := b.extractOptions(opts)
 
 	switch object := what.(type) {
 	case string:
@@ -290,26 +311,13 @@ func (b *Bot) SendAlbum(to Recipient, a Album, opts ...interface{}) ([]Message, 
 		return nil, ErrBadRecipient
 	}
 
-	sendOpts := extractOptions(opts)
+	sendOpts := b.extractOptions(opts)
 	media := make([]string, len(a))
 	files := make(map[string]File)
 
 	for i, x := range a {
-		var (
-			repr string
-			data []byte
-			file = x.MediaFile()
-		)
-
-		switch {
-		case file.InCloud():
-			repr = file.FileID
-		case file.FileURL != "":
-			repr = file.FileURL
-		case file.OnDisk() || file.FileReader != nil:
-			repr = "attach://" + strconv.Itoa(i)
-			files[strconv.Itoa(i)] = *file
-		default:
+		repr := x.MediaFile().process(strconv.Itoa(i), files)
+		if repr == "" {
 			return nil, fmt.Errorf("telebot: album entry #%d does not exist", i)
 		}
 
@@ -322,7 +330,7 @@ func (b *Bot) SendAlbum(to Recipient, a Album, opts ...interface{}) ([]Message, 
 			im.ParseMode = sendOpts.ParseMode
 		}
 
-		data, _ = json.Marshal(im)
+		data, _ := json.Marshal(im)
 		media[i] = string(data)
 	}
 
@@ -369,7 +377,7 @@ func (b *Bot) SendAlbum(to Recipient, a Album, opts ...interface{}) ([]Message, 
 // Reply behaves just like Send() with an exception of "reply-to" indicator.
 // This function will panic upon nil Message.
 func (b *Bot) Reply(to *Message, what interface{}, opts ...interface{}) (*Message, error) {
-	sendOpts := extractOptions(opts)
+	sendOpts := b.extractOptions(opts)
 	if sendOpts == nil {
 		sendOpts = &SendOptions{}
 	}
@@ -392,7 +400,7 @@ func (b *Bot) Forward(to Recipient, msg Editable, opts ...interface{}) (*Message
 		"message_id":   msgID,
 	}
 
-	sendOpts := extractOptions(opts)
+	sendOpts := b.extractOptions(opts)
 	b.embedSendOptions(params, sendOpts)
 
 	data, err := b.Raw("forwardMessage", params)
@@ -403,10 +411,21 @@ func (b *Bot) Forward(to Recipient, msg Editable, opts ...interface{}) (*Message
 	return extractMessage(data)
 }
 
+// ForwardMany method forwards multiple messages of any kind.
+// If some of the specified messages can't be found or forwarded, they are skipped.
+// Service messages and messages with protected content can't be forwarded.
+// Album grouping is kept for forwarded messages.
+func (b *Bot) ForwardMany(to Recipient, msgs []Editable, opts ...*SendOptions) ([]Message, error) {
+	if to == nil {
+		return nil, ErrBadRecipient
+	}
+	return b.forwardCopyMany(to, msgs, "forwardMessages", opts...)
+}
+
 // Copy behaves just like Forward() but the copied message doesn't have a link to the original message (see Bots API).
 //
 // This function will panic upon nil Editable.
-func (b *Bot) Copy(to Recipient, msg Editable, options ...interface{}) (*Message, error) {
+func (b *Bot) Copy(to Recipient, msg Editable, opts ...interface{}) (*Message, error) {
 	if to == nil {
 		return nil, ErrBadRecipient
 	}
@@ -418,7 +437,7 @@ func (b *Bot) Copy(to Recipient, msg Editable, options ...interface{}) (*Message
 		"message_id":   msgID,
 	}
 
-	sendOpts := extractOptions(options)
+	sendOpts := b.extractOptions(opts)
 	b.embedSendOptions(params, sendOpts)
 
 	data, err := b.Raw("copyMessage", params)
@@ -427,6 +446,20 @@ func (b *Bot) Copy(to Recipient, msg Editable, options ...interface{}) (*Message
 	}
 
 	return extractMessage(data)
+}
+
+// CopyMany this method makes a copy of messages of any kind.
+// If some of the specified messages can't be found or copied, they are skipped.
+// Service messages, giveaway messages, giveaway winners messages, and
+// invoice messages can't be copied. A quiz poll can be copied only if the value of the field
+// correct_option_id is known to the bot. The method is analogous
+// to the method forwardMessages, but the copied messages don't have a link to the original message.
+// Album grouping is kept for copied messages.
+func (b *Bot) CopyMany(to Recipient, msgs []Editable, opts ...*SendOptions) ([]Message, error) {
+	if to == nil {
+		return nil, ErrBadRecipient
+	}
+	return b.forwardCopyMany(to, msgs, "copyMessages", opts...)
 }
 
 // Edit is magic, it lets you change already sent message.
@@ -485,7 +518,7 @@ func (b *Bot) Edit(msg Editable, what interface{}, opts ...interface{}) (*Messag
 		params["message_id"] = msgID
 	}
 
-	sendOpts := extractOptions(opts)
+	sendOpts := b.extractOptions(opts)
 	b.embedSendOptions(params, sendOpts)
 
 	data, err := b.Raw(method, params)
@@ -549,7 +582,7 @@ func (b *Bot) EditCaption(msg Editable, caption string, opts ...interface{}) (*M
 		params["message_id"] = msgID
 	}
 
-	sendOpts := extractOptions(opts)
+	sendOpts := b.extractOptions(opts)
 	b.embedSendOptions(params, sendOpts)
 
 	data, err := b.Raw("editMessageCaption", params)
@@ -613,7 +646,7 @@ func (b *Bot) EditMedia(msg Editable, media Inputtable, opts ...interface{}) (*M
 	msgID, chatID := msg.MessageSig()
 	params := make(map[string]string)
 
-	sendOpts := extractOptions(opts)
+	sendOpts := b.extractOptions(opts)
 	b.embedSendOptions(params, sendOpts)
 
 	im := media.InputMedia()
@@ -668,6 +701,16 @@ func (b *Bot) Delete(msg Editable) error {
 	}
 
 	_, err := b.Raw("deleteMessage", params)
+	return err
+}
+
+// DeleteMany deletes multiple messages simultaneously.
+// If some of the specified messages can't be found, they are skipped.
+func (b *Bot) DeleteMany(msgs []Editable) error {
+	params := make(map[string]string)
+	embedMessages(params, msgs)
+
+	_, err := b.Raw("deleteMessages", params)
 	return err
 }
 
@@ -904,7 +947,7 @@ func (b *Bot) StopLiveLocation(msg Editable, opts ...interface{}) (*Message, err
 		"message_id": msgID,
 	}
 
-	sendOpts := extractOptions(opts)
+	sendOpts := b.extractOptions(opts)
 	b.embedSendOptions(params, sendOpts)
 
 	data, err := b.Raw("stopMessageLiveLocation", params)
@@ -928,7 +971,7 @@ func (b *Bot) StopPoll(msg Editable, opts ...interface{}) (*Poll, error) {
 		"message_id": msgID,
 	}
 
-	sendOpts := extractOptions(opts)
+	sendOpts := b.extractOptions(opts)
 	b.embedSendOptions(params, sendOpts)
 
 	data, err := b.Raw("stopPoll", params)
@@ -946,7 +989,7 @@ func (b *Bot) StopPoll(msg Editable, opts ...interface{}) (*Poll, error) {
 }
 
 // Leave makes bot leave a group, supergroup or channel.
-func (b *Bot) Leave(chat *Chat) error {
+func (b *Bot) Leave(chat Recipient) error {
 	params := map[string]string{
 		"chat_id": chat.Recipient(),
 	}
@@ -967,7 +1010,7 @@ func (b *Bot) Pin(msg Editable, opts ...interface{}) error {
 		"message_id": msgID,
 	}
 
-	sendOpts := extractOptions(opts)
+	sendOpts := b.extractOptions(opts)
 	b.embedSendOptions(params, sendOpts)
 
 	_, err := b.Raw("pinChatMessage", params)
@@ -976,7 +1019,7 @@ func (b *Bot) Pin(msg Editable, opts ...interface{}) error {
 
 // Unpin unpins a message in a supergroup or a channel.
 // It supports tb.Silent option.
-func (b *Bot) Unpin(chat *Chat, messageID ...int) error {
+func (b *Bot) Unpin(chat Recipient, messageID ...int) error {
 	params := map[string]string{
 		"chat_id": chat.Recipient(),
 	}
@@ -990,7 +1033,7 @@ func (b *Bot) Unpin(chat *Chat, messageID ...int) error {
 
 // UnpinAll unpins all messages in a supergroup or a channel.
 // It supports tb.Silent option.
-func (b *Bot) UnpinAll(chat *Chat) error {
+func (b *Bot) UnpinAll(chat Recipient) error {
 	params := map[string]string{
 		"chat_id": chat.Recipient(),
 	}
@@ -1150,4 +1193,90 @@ func (b *Bot) Close() (bool, error) {
 	}
 
 	return resp.Result, nil
+}
+
+// BotInfo represents a single object of BotName, BotDescription, BotShortDescription instances.
+type BotInfo struct {
+	Name             string `json:"name,omitempty"`
+	Description      string `json:"description,omitempty"`
+	ShortDescription string `json:"short_description,omitempty"`
+}
+
+// SetMyName change's the bot name.
+func (b *Bot) SetMyName(name, language string) error {
+	params := map[string]string{
+		"name":          name,
+		"language_code": language,
+	}
+
+	_, err := b.Raw("setMyName", params)
+	return err
+}
+
+// MyName returns the current bot name for the given user language.
+func (b *Bot) MyName(language string) (*BotInfo, error) {
+	return b.botInfo(language, "getMyName")
+}
+
+// SetMyDescription change's the bot description, which is shown in the chat
+// with the bot if the chat is empty.
+func (b *Bot) SetMyDescription(desc, language string) error {
+	params := map[string]string{
+		"description":   desc,
+		"language_code": language,
+	}
+
+	_, err := b.Raw("setMyDescription", params)
+	return err
+}
+
+// MyDescription the current bot description for the given user language.
+func (b *Bot) MyDescription(language string) (*BotInfo, error) {
+	return b.botInfo(language, "getMyDescription")
+}
+
+// SetMyShortDescription change's the bot short description, which is shown on
+// the bot's profile page and is sent together with the link when users share the bot.
+func (b *Bot) SetMyShortDescription(desc, language string) error {
+	params := map[string]string{
+		"short_description": desc,
+		"language_code":     language,
+	}
+
+	_, err := b.Raw("setMyShortDescription", params)
+	return err
+}
+
+// MyShortDescription the current bot short description for the given user language.
+func (b *Bot) MyShortDescription(language string) (*BotInfo, error) {
+	return b.botInfo(language, "getMyShortDescription")
+}
+
+func (b *Bot) botInfo(language, key string) (*BotInfo, error) {
+	params := map[string]string{
+		"language_code": language,
+	}
+
+	data, err := b.Raw(key, params)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Result *BotInfo
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, wrapError(err)
+	}
+	return resp.Result, nil
+}
+
+func extractEndpoint(endpoint interface{}) string {
+	switch end := endpoint.(type) {
+	case string:
+		return end
+	case CallbackEndpoint:
+		return end.CallbackUnique()
+	}
+	return ""
 }

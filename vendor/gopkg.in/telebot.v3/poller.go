@@ -2,12 +2,32 @@ package telebot
 
 import "time"
 
+var AllowedUpdates = []string{
+	"message",
+	"edited_message",
+	"channel_post",
+	"edited_channel_post",
+	"message_reaction",
+	"message_reaction_count",
+	"inline_query",
+	"chosen_inline_result",
+	"callback_query",
+	"shipping_query",
+	"pre_checkout_query",
+	"poll",
+	"poll_answer",
+	"my_chat_member",
+	"chat_member",
+	"chat_join_request",
+	"chat_boost",
+	"removed_chat_boost",
+}
+
 // Poller is a provider of Updates.
 //
 // All pollers must implement Poll(), which accepts bot
 // pointer and subscription channel and start polling
 // synchronously straight away.
-//
 type Poller interface {
 	// Poll is supposed to take the bot object
 	// subscription channel and start polling
@@ -70,7 +90,6 @@ func (p *LongPoller) Poll(b *Bot, dest chan Update, stop chan struct{}) {
 // handling, banning or whatever.
 //
 // For heavy middleware, use increased capacity.
-//
 type MiddlewarePoller struct {
 	Capacity int // Default: 1
 	Poller   Poller

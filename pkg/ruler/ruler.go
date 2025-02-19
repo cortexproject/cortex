@@ -586,6 +586,9 @@ func ownsRuleGroupOrDisable(g *rulespb.RuleGroupDesc, disabledRuleGroups validat
 }
 
 func (r *Ruler) LivenessCheck(_ context.Context, request *LivenessCheckRequest) (*LivenessCheckResponse, error) {
+	if r.lifecycler.ServiceContext() == nil {
+		return nil, errors.New("ruler is not yet ready")
+	}
 	if r.lifecycler.ServiceContext().Err() != nil || r.subservices.IsStopped() {
 		return nil, errors.New("ruler's context is canceled and might be stopping soon")
 	}

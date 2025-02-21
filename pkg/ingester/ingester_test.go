@@ -222,8 +222,9 @@ func TestIngesterDeletionRace(t *testing.T) {
 			samples := []cortexpb.Sample{{Value: 2, TimestampMs: 10}}
 			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "name")}, samples, nil, nil, cortexpb.API))
 			require.NoError(t, err)
-			ing.getTSDB(u).postingCache = &wrappedExpandedPostingsCache{ExpandedPostingsCache: ing.getTSDB(u).postingCache, purgeDelay: 10 * time.Millisecond}
-			ing.getTSDB(u).deletionMarkFound.Store(true) // lets force close the tenant
+			db, _ := ing.getTSDB(u)
+			db.postingCache = &wrappedExpandedPostingsCache{ExpandedPostingsCache: db.postingCache, purgeDelay: 10 * time.Millisecond}
+			db.deletionMarkFound.Store(true) // lets force close the tenant
 		}()
 	}
 
@@ -644,7 +645,8 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
 	// Force set tenant to be deleted.
-	ing.getTSDB(userID).deletionMarkFound.Store(true)
+	db, _ := ing.getTSDB(userID)
+	db.deletionMarkFound.Store(true)
 	require.Equal(t, tsdbTenantMarkedForDeletion, ing.closeAndDeleteUserTSDBIfIdle(userID))
 	// LabelSet metrics cleaned up.
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(``), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
@@ -716,7 +718,7 @@ func TestPushRace(t *testing.T) {
 
 	wg.Wait()
 
-	db := ing.getTSDB(userID)
+	db, _ := ing.getTSDB(userID)
 	ir, err := db.db.Head().Index()
 	require.NoError(t, err)
 
@@ -3833,7 +3835,9 @@ func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
 				require.NoError(t, os.Mkdir(filepath.Join(dir, "user0"), 0700))
 			},
 			check: func(t *testing.T, i *Ingester) {
-				require.Nil(t, i.getTSDB("user0"))
+				db, err := i.getTSDB("user0")
+				require.Nil(t, db)
+				require.ErrorIs(t, err, errNoUserDb)
 			},
 		},
 		"should not load any TSDB if the root directory is empty": {
@@ -3861,9 +3865,15 @@ func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
 			},
 			check: func(t *testing.T, i *Ingester) {
 				require.Equal(t, 2, len(i.TSDBState.dbs))
-				require.NotNil(t, i.getTSDB("user0"))
-				require.NotNil(t, i.getTSDB("user1"))
-				require.Nil(t, i.getTSDB("user2"))
+				db0, err := i.getTSDB("user0")
+				require.NotNil(t, db0)
+				require.Nil(t, err)
+				db1, err := i.getTSDB("user1")
+				require.NotNil(t, db1)
+				require.Nil(t, err)
+				db2, err := i.getTSDB("user2")
+				require.Nil(t, db2)
+				require.ErrorIs(t, err, errNoUserDb)
 			},
 		},
 		"should load all TSDBs on concurrency < number of TSDBs": {
@@ -3877,11 +3887,11 @@ func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
 			},
 			check: func(t *testing.T, i *Ingester) {
 				require.Equal(t, 5, len(i.TSDBState.dbs))
-				require.NotNil(t, i.getTSDB("user0"))
-				require.NotNil(t, i.getTSDB("user1"))
-				require.NotNil(t, i.getTSDB("user2"))
-				require.NotNil(t, i.getTSDB("user3"))
-				require.NotNil(t, i.getTSDB("user4"))
+				require.NotNil(t, getTSDB(t, i, "user0"))
+				require.NotNil(t, getTSDB(t, i, "user1"))
+				require.NotNil(t, getTSDB(t, i, "user2"))
+				require.NotNil(t, getTSDB(t, i, "user3"))
+				require.NotNil(t, getTSDB(t, i, "user4"))
 			},
 		},
 		"should fail and rollback if an error occur while loading a TSDB on concurrency > number of TSDBs": {
@@ -3898,8 +3908,12 @@ func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
 			},
 			check: func(t *testing.T, i *Ingester) {
 				require.Equal(t, 0, len(i.TSDBState.dbs))
-				require.Nil(t, i.getTSDB("user0"))
-				require.Nil(t, i.getTSDB("user1"))
+				db0, err := i.getTSDB("user0")
+				require.ErrorIs(t, err, errNoUserDb)
+				require.Nil(t, db0)
+				db1, err := i.getTSDB("user1")
+				require.ErrorIs(t, err, errNoUserDb)
+				require.Nil(t, db1)
 			},
 			expectedErr: "unable to open TSDB for user user0",
 		},
@@ -3920,11 +3934,21 @@ func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
 			},
 			check: func(t *testing.T, i *Ingester) {
 				require.Equal(t, 0, len(i.TSDBState.dbs))
-				require.Nil(t, i.getTSDB("user0"))
-				require.Nil(t, i.getTSDB("user1"))
-				require.Nil(t, i.getTSDB("user2"))
-				require.Nil(t, i.getTSDB("user3"))
-				require.Nil(t, i.getTSDB("user4"))
+				db, err := i.getTSDB("user0")
+				require.ErrorIs(t, err, errNoUserDb)
+				require.Nil(t, db)
+				db, err = i.getTSDB("user1")
+				require.ErrorIs(t, err, errNoUserDb)
+				require.Nil(t, db)
+				db, err = i.getTSDB("user2")
+				require.ErrorIs(t, err, errNoUserDb)
+				require.Nil(t, db)
+				db, err = i.getTSDB("user3")
+				require.ErrorIs(t, err, errNoUserDb)
+				require.Nil(t, db)
+				db, err = i.getTSDB("user4")
+				require.ErrorIs(t, err, errNoUserDb)
+				require.Nil(t, db)
 			},
 			expectedErr: "unable to open TSDB for user user2",
 		},
@@ -3966,6 +3990,12 @@ func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
 			testData.check(t, ingester)
 		})
 	}
+}
+
+func getTSDB(t *testing.T, i *Ingester, uId string) *userTSDB {
+	db, err := i.getTSDB(uId)
+	require.NoError(t, err)
+	return db
 }
 
 func TestIngester_shipBlocks(t *testing.T) {
@@ -4059,8 +4089,9 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
 	numObjects++ // For deletion marker
 
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
 	require.NotNil(t, db)
+	require.NoError(t, err)
 	db.lastDeletionMarkCheck.Store(0)
 
 	// After writing tenant deletion mark,
@@ -4106,8 +4137,9 @@ func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testin
 	i.shipBlocks(context.Background(), nil)
 
 	// Verify that tenant deletion mark was found.
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
 	require.NotNil(t, db)
+	require.NoError(t, err)
 	require.True(t, db.deletionMarkFound.Load())
 
 	// If we try to close TSDB now, it should succeed, even though TSDB is not idle and empty.
@@ -4139,7 +4171,8 @@ func TestIngester_sholdUpdateCacheShippedBlocks(t *testing.T) {
 	mockUserShipper(t, i)
 
 	// Mock the shipper meta (no blocks).
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
 	err = db.updateCachedShippedBlocks()
 	require.NoError(t, err)
 
@@ -4182,7 +4215,8 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 	}).Return(0, nil)
 
 	// Mock the shipper meta (no blocks).
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
 	require.NoError(t, shipper.WriteMetaFile(log.NewNopLogger(), db.shipperMetadataFilePath, &shipper.Meta{
 		Version: shipper.MetaVersion1,
 	}))
@@ -4281,7 +4315,8 @@ func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	require.Equal(t, tsdbIdleClosed, i.closeAndDeleteUserTSDBIfIdle(userID))
 
 	// Verify that it was closed.
-	db = i.getTSDB(userID)
+	db, err = i.getTSDB(userID)
+	require.ErrorIs(t, err, errNoUserDb)
 	require.Nil(t, db)
 
 	// And we can recreate it again, if needed.
@@ -4325,7 +4360,8 @@ func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
 	lastUpdate := db.lastUpdate.Load()
 
 	// Wait until 1 second passes.
@@ -4513,7 +4549,8 @@ func TestIngester_flushing(t *testing.T) {
 					cortex_ingester_shipper_uploads_total 3
 				`), "cortex_ingester_shipper_uploads_total"))
 
-				userDB := i.getTSDB(userID)
+				userDB, err := i.getTSDB(userID)
+				require.NoError(t, err)
 				require.NotNil(t, userDB)
 
 				blocks := userDB.Blocks()
@@ -5015,7 +5052,8 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 }
 
 func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
 	require.NotNil(t, db)
 
 	h := db.Head()
@@ -5095,7 +5133,8 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 
 	defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
 
-	db := ingester.getTSDB(userID)
+	db, err := ingester.getTSDB(userID)
+	require.NoError(t, err)
 	require.NotNil(t, db)
 
 	h := db.Head()
@@ -5126,14 +5165,16 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	// Push some data.
 	pushSingleSampleWithMetadata(t, i)
 
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
 	require.NotNil(t, db)
 
 	// Stop ingester.
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
 
 	// Verify that DB is no longer in memory, but was closed
-	db = i.getTSDB(userID)
+	db, err = i.getTSDB(userID)
+	require.ErrorIs(t, err, errNoUserDb)
 	require.Nil(t, db)
 }
 
@@ -5174,7 +5215,8 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
 	require.NotNil(t, db)
 	require.Nil(t, db.Compact(ctx))
 
@@ -5265,7 +5307,8 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	pushSingleSampleWithMetadata(t, i)
 
 	// We mock a flushing by setting the boolean.
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
 	require.NotNil(t, db)
 	require.True(t, db.casState(active, forceCompacting))
 
@@ -5303,7 +5346,8 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 	// Verifying that compaction won't happen when a request is in flight.
 
 	// This mocks a request in flight.
-	db := i.getTSDB(userID)
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
 	require.NoError(t, db.acquireAppendLock())
 
 	// Flush handler only triggers compactions, but doesn't wait for them to finish. We cannot use ?wait=true here,
@@ -5323,8 +5367,8 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 
 	// Let's wait until all head series have been flushed.
 	test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
-		db := i.getTSDB(userID)
-		if db == nil {
+		db, err := i.getTSDB(userID)
+		if err != nil || db == nil {
 			return false
 		}
 		return db.Head().NumSeries()
@@ -5603,6 +5647,202 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestExpendedPostingsCacheMatchers(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval = time.Second
+	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
+	cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled = true
+	cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled = true
+	cfg.QueryIngestersWithin = 24 * time.Hour
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	r := prometheus.NewRegistry()
+	ing, err := prepareIngesterWithBlocksStorage(t, cfg, r)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return ing.lifecycler.GetState()
+	})
+
+	numberOfMetricNames := 10
+	seriesPerMetricsNames := 25
+	timeStamp := int64(60 * 1000)
+	seriesCreated := map[string]labels.Labels{}
+
+	for i := 0; i < numberOfMetricNames; i++ {
+		metricName := fmt.Sprintf("metric_%v", i)
+		for j := 0; j < seriesPerMetricsNames; j++ {
+			s := labels.FromStrings(labels.MetricName, metricName, "labelA", fmt.Sprintf("series_%v", j))
+			_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{s}, []cortexpb.Sample{{Value: 2, TimestampMs: timeStamp}}, nil, nil, cortexpb.API))
+			seriesCreated[s.String()] = s
+			require.NoError(t, err)
+		}
+	}
+
+	db, err := ing.getTSDB(userID)
+	require.NoError(t, err)
+
+	type testCase struct {
+		matchers []*client.LabelMatcher
+	}
+
+	cases := []testCase{}
+
+	nameMatcher := &client.LabelMatcher{
+		Type:  client.EQUAL,
+		Name:  labels.MetricName,
+		Value: "metric_0",
+	}
+
+	for i := 0; i < 4; i++ {
+		tc := testCase{
+			matchers: []*client.LabelMatcher{nameMatcher},
+		}
+
+		switch client.MatchType(i) {
+		case client.EQUAL | client.NOT_EQUAL:
+			tc.matchers = append(tc.matchers, &client.LabelMatcher{
+				Type:  client.MatchType(i),
+				Name:  "labelA",
+				Value: "series_0",
+			})
+		default:
+			tc.matchers = append(tc.matchers, &client.LabelMatcher{
+				Type:  client.MatchType(i),
+				Name:  "labelA",
+				Value: "series_.*",
+			})
+		}
+		cases = append(cases, tc)
+	}
+
+	for _, v := range []string{".*", "", ".+"} {
+		cases = append(cases,
+			testCase{
+				matchers: []*client.LabelMatcher{
+					nameMatcher,
+					{
+						Type:  client.REGEX_MATCH,
+						Name:  "labelA",
+						Value: v,
+					},
+				},
+			},
+			testCase{
+				matchers: []*client.LabelMatcher{
+					nameMatcher,
+					{
+						Type:  client.REGEX_NO_MATCH,
+						Name:  "labelA",
+						Value: v,
+					},
+				},
+			},
+		)
+	}
+
+	ranges := []struct {
+		startTs, endTs int64
+		hasSamples     bool
+	}{
+		// Totally in the past
+		{
+			startTs:    0,
+			endTs:      timeStamp / 2,
+			hasSamples: false,
+		},
+		{
+			startTs:    timeStamp / 2,
+			endTs:      timeStamp,
+			hasSamples: true,
+		},
+		{
+			startTs:    timeStamp / 2,
+			endTs:      timeStamp * 2,
+			hasSamples: true,
+		},
+		{
+			startTs:    timeStamp + 1,
+			endTs:      timeStamp * 2,
+			hasSamples: false,
+		},
+	}
+
+	verify := func(t *testing.T, tc testCase, startTs, endTs int64, hasSamples bool) {
+
+		expectedCount := len(seriesCreated)
+		matchers, err := client.FromLabelMatchers(ing.matchersCache, tc.matchers)
+		require.NoError(t, err)
+		for _, s := range seriesCreated {
+			for _, m := range matchers {
+				if !m.Matches(s.Get(m.Name)) {
+					expectedCount--
+					break
+				}
+			}
+		}
+
+		seriesResponse, err := ing.MetricsForLabelMatchers(ctx, &client.MetricsForLabelMatchersRequest{
+			StartTimestampMs: startTs,
+			EndTimestampMs:   endTs,
+			MatchersSet: []*client.LabelMatchers{
+				{
+					Matchers: tc.matchers,
+				},
+			},
+		})
+		require.NoError(t, err)
+		if hasSamples {
+			require.Len(t, seriesResponse.Metric, expectedCount)
+		} else {
+			require.Len(t, seriesResponse.Metric, 0)
+		}
+
+		s := &mockQueryStreamServer{ctx: ctx}
+		err = ing.QueryStream(&client.QueryRequest{
+			StartTimestampMs: startTs,
+			EndTimestampMs:   endTs,
+			Matchers:         tc.matchers,
+		}, s)
+		require.NoError(t, err)
+		if hasSamples {
+			require.Equal(t, expectedCount, len(s.series))
+		} else {
+			require.Equal(t, 0, len(s.series))
+		}
+	}
+
+	for _, tc := range cases {
+		testName := ""
+		for _, matcher := range tc.matchers {
+			t, _ := matcher.MatcherType()
+			testName += matcher.Name + t.String() + matcher.Value + "|"
+
+		}
+		t.Run(fmt.Sprintf("%v", testName), func(t *testing.T) {
+			for _, r := range ranges {
+				t.Run(fmt.Sprintf("start=%v,end=%v", r.startTs, r.endTs), func(t *testing.T) {
+					db.postingCache.Clear()
+
+					// lets run 2 times to hit the cache
+					for i := 0; i < 2; i++ {
+						verify(t, tc, r.startTs, r.endTs, r.hasSamples)
+					}
+
+					// run the test again with all other ranges
+					for _, r1 := range ranges {
+						verify(t, tc, r1.startTs, r1.endTs, r1.hasSamples)
+					}
+				})
+			}
+		})
+	}
 }
 
 func TestExpendedPostingsCache(t *testing.T) {
@@ -5896,7 +6136,7 @@ func TestExpendedPostingsCache(t *testing.T) {
 				test.Poll(t, c.cacheConfig.Blocks.Ttl+c.cacheConfig.Head.Ttl+cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval, 0, func() interface{} {
 					size := 0
 					for _, userID := range i.getTSDBUsers() {
-						userDB := i.getTSDB(userID)
+						userDB, _ := i.getTSDB(userID)
 						size += userDB.postingCache.Size()
 					}
 					return size

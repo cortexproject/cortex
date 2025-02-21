@@ -106,6 +106,147 @@ func TestAPIResponseSerialization(t *testing.T) {
 	}
 }
 
+func Test_stripEvaluationFields(t *testing.T) {
+	input := `
+{
+    "data": {
+        "groups": [
+            {
+                "evaluationTime": 0.00119525,
+                "file": ")(_+?/|namespace1+/?",
+                "interval": 10,
+                "lastEvaluation": "2025-01-24T12:04:26.440399-08:00",
+                "limit": 0,
+                "name": ")(_+?/|group1+/?",
+                "rules": [
+                    {
+                        "evaluationTime": 0.000976083,
+                        "health": "ok",
+                        "labels": {},
+                        "lastError": "",
+                        "lastEvaluation": "2025-01-24T12:04:26.440437-08:00",
+                        "name": "UP_RULE",
+                        "query": "up",
+                        "type": "recording"
+                    },
+                    {
+                        "alerts": [],
+                        "annotations": {},
+                        "duration": 0,
+                        "evaluationTime": 0.000172375,
+                        "health": "ok",
+                        "keepFiringFor": 0,
+                        "labels": {},
+                        "lastError": "",
+                        "lastEvaluation": "2025-01-24T12:04:26.441418-08:00",
+                        "name": "UP_ALERT",
+                        "query": "up < 1",
+                        "state": "inactive",
+                        "type": "alerting"
+                    }
+                ]
+            }
+        ]
+    },
+    "status": "success"
+}`
+	inputResponse := util_api.Response{}
+	err := json.Unmarshal([]byte(input), &inputResponse)
+	require.NoError(t, err)
+	stripEvaluationFields(t, inputResponse)
+	output, err := json.Marshal(inputResponse)
+	require.NoError(t, err)
+
+	expected := `
+{
+    "data": {
+        "groups": [
+            {
+                "evaluationTime": 0,
+                "file": ")(_+?/|namespace1+/?",
+                "interval": 10,
+                "lastEvaluation": "0001-01-01T00:00:00Z",
+                "limit": 0,
+                "name": ")(_+?/|group1+/?",
+                "rules": [
+                    {
+                        "evaluationTime": 0,
+                        "health": "unknown",
+                        "labels": {},
+                        "lastError": "",
+                        "lastEvaluation": "0001-01-01T00:00:00Z",
+                        "name": "UP_RULE",
+                        "query": "up",
+                        "type": "recording"
+                    },
+                    {
+                        "alerts": [],
+                        "annotations": {},
+                        "duration": 0,
+                        "evaluationTime": 0,
+                        "health": "unknown",
+                        "keepFiringFor": 0,
+                        "labels": {},
+                        "lastError": "",
+                        "lastEvaluation": "0001-01-01T00:00:00Z",
+                        "name": "UP_ALERT",
+                        "query": "up < 1",
+                        "state": "inactive",
+                        "type": "alerting"
+                    }
+                ]
+            }
+        ]
+    },
+    "status": "success"
+}`
+
+	require.JSONEq(t, expected, string(output))
+}
+
+// stripEvaluationFields sets evaluation-related fields of a rules API response to zero values.
+func stripEvaluationFields(t *testing.T, r util_api.Response) {
+	dataMap, ok := r.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected map[string]interface{} got %T", r.Data)
+	}
+
+	groups, ok := dataMap["groups"].([]interface{})
+	if !ok {
+		t.Fatalf("expected []interface{} got %T", dataMap["groups"])
+	}
+
+	for i := range groups {
+		group, ok := groups[i].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected map[string]interface{} got %T", groups[i])
+		}
+		group["evaluationTime"] = 0
+		group["lastEvaluation"] = "0001-01-01T00:00:00Z"
+
+		rules, ok := group["rules"].([]interface{})
+		if !ok {
+			t.Fatalf("expected []interface{} got %T", group["rules"])
+		}
+
+		for i := range rules {
+			rule, ok := rules[i].(map[string]interface{})
+			if !ok {
+				t.Fatalf("expected map[string]interface{} got %T", rules[i])
+			}
+			rule["health"] = "unknown"
+			rule["evaluationTime"] = 0
+			rule["lastEvaluation"] = "0001-01-01T00:00:00Z"
+			rules[i] = rule
+		}
+		group["rules"] = rules
+		groups[i] = group
+	}
+
+	dataMap["groups"] = groups
+	r.Data = dataMap
+}
+
 func TestRuler_rules(t *testing.T) {
 	store := newMockRuleStore(mockRules, nil)
 	cfg := defaultRulerConfig(t)
@@ -128,6 +269,9 @@ func TestRuler_rules(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, responseJSON.Status, "success")
+	stripEvaluationFields(t, responseJSON)
+	actual, err := json.Marshal(responseJSON)
+	require.NoError(t, err)
 
 	// Testing the running rules for user1 in the mock store
 	expectedResponse, _ := json.Marshal(util_api.Response{
@@ -159,7 +303,7 @@ func TestRuler_rules(t *testing.T) {
 		},
 	})
 
-	require.Equal(t, string(expectedResponse), string(body))
+	require.JSONEq(t, string(expectedResponse), string(actual))
 }
 
 func TestRuler_rules_special_characters(t *testing.T) {
@@ -184,6 +328,9 @@ func TestRuler_rules_special_characters(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, responseJSON.Status, "success")
+	stripEvaluationFields(t, responseJSON)
+	actual, err := json.Marshal(responseJSON)
+	require.NoError(t, err)
 
 	// Testing the running rules for user1 in the mock store
 	expectedResponse, _ := json.Marshal(util_api.Response{
@@ -214,7 +361,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 			},
 		},
 	})
-	require.Equal(t, string(expectedResponse), string(body))
+	require.JSONEq(t, string(expectedResponse), string(actual))
 }
 
 func TestRuler_rules_limit(t *testing.T) {
@@ -238,6 +385,9 @@ func TestRuler_rules_limit(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, responseJSON.Status, "success")
+	stripEvaluationFields(t, responseJSON)
+	actual, err := json.Marshal(responseJSON)
+	require.NoError(t, err)
 
 	// Testing the running rules for user1 in the mock store
 	expectedResponse, _ := json.Marshal(util_api.Response{
@@ -269,8 +419,9 @@ func TestRuler_rules_limit(t *testing.T) {
 			},
 		},
 	})
-	require.Equal(t, string(expectedResponse), string(body))
+	require.JSONEq(t, string(expectedResponse), string(actual))
 }
+
 func TestRuler_alerts(t *testing.T) {
 	store := newMockRuleStore(mockRules, nil)
 	cfg := defaultRulerConfig(t)

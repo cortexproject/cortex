@@ -225,6 +225,10 @@ compactor:
         # CLI flag: -compactor.ring.dynamodb.max-cas-retries
         [max_cas_retries: <int> | default = 10]
 
+        # Timeout of dynamoDbClient requests. Default is 2m.
+        # CLI flag: -compactor.ring.dynamodb.timeout
+        [timeout: <duration> | default = 2m]
+
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is: compactor.ring
       [consul: <consul_config>]
@@ -258,6 +262,11 @@ compactor:
     # within the ring. 0 = never (timeout disabled).
     # CLI flag: -compactor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
+
+    # Time since last heartbeat before compactor will be removed from ring. 0 to
+    # disable
+    # CLI flag: -compactor.auto-forget-delay
+    [auto_forget_delay: <duration> | default = 2m]
 
     # Minimum time to wait for ring stability at startup. 0 to disable.
     # CLI flag: -compactor.ring.wait-stability-min-duration

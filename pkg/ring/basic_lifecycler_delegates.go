@@ -141,14 +141,6 @@ func (d *AutoForgetDelegate) OnRingInstanceStopping(lifecycler *BasicLifecycler)
 }
 
 func (d *AutoForgetDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *InstanceDesc) {
-	for id, instance := range ringDesc.Ingesters {
-		lastHeartbeat := time.Unix(instance.GetTimestamp(), 0)
-
-		if time.Since(lastHeartbeat) > d.forgetPeriod {
-			level.Warn(d.logger).Log("msg", "auto-forgetting instance from the ring because it is unhealthy for a long time", "instance", id, "last_heartbeat", lastHeartbeat.String(), "forget_period", d.forgetPeriod)
-			ringDesc.RemoveIngester(id)
-		}
-	}
-
+	AutoForgetFromRing(ringDesc, d.forgetPeriod, d.logger)
 	d.next.OnRingInstanceHeartbeat(lifecycler, ringDesc, instanceDesc)
 }

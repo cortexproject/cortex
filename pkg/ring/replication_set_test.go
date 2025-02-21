@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 )
 
 func TestReplicationSet_GetAddresses(t *testing.T) {
@@ -121,6 +123,7 @@ func TestReplicationSet_Do(t *testing.T) {
 		want                []interface{}
 		expectedError       error
 		zoneResultsQuorum   bool
+		queryPartialData    bool
 	}{
 		{
 			name: "max errors = 0, no errors no delay",
@@ -192,6 +195,23 @@ func TestReplicationSet_Do(t *testing.T) {
 			expectedError:       errZoneFailure,
 		},
 		{
+			name:                "with partial data enabled and max unavailable zones = 1, should succeed on instances failing in 2 out of 3 zones (3 instances)",
+			instances:           []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
+			f:                   failingFunctionOnZones("zone1", "zone2"),
+			maxUnavailableZones: 1,
+			queryPartialData:    true,
+			want:                []interface{}{1},
+			expectedError:       partialdata.ErrPartialData,
+		},
+		{
+			name:                "with partial data enabled, should fail on instances failing in all zones",
+			instances:           []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone2"}, {Zone: "zone3"}},
+			f:                   failingFunctionOnZones("zone1", "zone2", "zone3"),
+			maxUnavailableZones: 1,
+			expectedError:       errZoneFailure,
+			queryPartialData:    true,
+		},
+		{
 			name:                "max unavailable zones = 1, should succeed on instances failing in 1 out of 3 zones (6 instances)",
 			instances:           []InstanceDesc{{Zone: "zone1"}, {Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone3"}},
 			f:                   failingFunctionOnZones("zone1"),
@@ -242,7 +262,7 @@ func TestReplicationSet_Do(t *testing.T) {
 					cancel()
 				})
 			}
-			got, err := r.Do(ctx, tt.delay, tt.zoneResultsQuorum, tt.f)
+			got, err := r.Do(ctx, tt.delay, tt.zoneResultsQuorum, tt.queryPartialData, tt.f)
 			if tt.expectedError != nil {
 				assert.Equal(t, tt.expectedError, err)
 			} else {

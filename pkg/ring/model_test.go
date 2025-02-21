@@ -395,6 +395,21 @@ func TestDesc_RingsCompare(t *testing.T) {
 			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
 			expected: Equal,
 		},
+		"same number of instances, from active to readOnly": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: READONLY}}},
+			expected: EqualButReadOnly,
+		},
+		"same number of instances, from readOnly to active": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: READONLY}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE}}},
+			expected: EqualButReadOnly,
+		},
+		"same number of instances, prioritize readOnly than timestamp changes": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, Timestamp: 123456}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: READONLY, Timestamp: 789012}}},
+			expected: EqualButReadOnly,
+		},
 		"same single instance, different timestamp": {
 			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Timestamp: 123456}}},
 			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Timestamp: 789012}}},
@@ -438,6 +453,11 @@ func TestDesc_RingsCompare(t *testing.T) {
 		"same number of instances, using different IDs": {
 			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
 			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			expected: Different,
+		},
+		"same number of instances, prioritize diff than ReadOnly": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "one", State: ACTIVE}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "two", State: READONLY}}},
 			expected: Different,
 		},
 	}

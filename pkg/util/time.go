@@ -240,3 +240,72 @@ func ParseDurationMs(s string) (int64, error) {
 	}
 	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid duration", s)
 }
+
+func DurationMilliseconds(d time.Duration) int64 {
+	return int64(d / (time.Millisecond / time.Nanosecond))
+}
+
+// Copied from https://github.com/prometheus/prometheus/blob/dfae954dc1137568f33564e8cffda321f2867925/promql/engine.go#L811
+func GetTimeRangesForSelector(start, end int64, lookbackDelta time.Duration, n *parser.VectorSelector, path []parser.Node, evalRange time.Duration) (int64, int64) {
+	subqOffset, subqRange, subqTs := subqueryTimes(path)
+
+	if subqTs != nil {
+		// The timestamp on the subquery overrides the eval statement time ranges.
+		start = *subqTs
+		end = *subqTs
+	}
+
+	if n.Timestamp != nil {
+		// The timestamp on the selector overrides everything.
+		start = *n.Timestamp
+		end = *n.Timestamp
+	} else {
+		offsetMilliseconds := DurationMilliseconds(subqOffset)
+		start = start - offsetMilliseconds - DurationMilliseconds(subqRange)
+		end -= offsetMilliseconds
+	}
+
+	if evalRange == 0 {
+		start -= DurationMilliseconds(lookbackDelta)
+	} else {
+		// For all matrix queries we want to ensure that we have (end-start) + range selected
+		// this way we have `range` data before the start time
+		start -= DurationMilliseconds(evalRange)
+	}
+
+	offsetMilliseconds := DurationMilliseconds(n.OriginalOffset)
+	start -= offsetMilliseconds
+	end -= offsetMilliseconds
+
+	return start, end
+}
+
+// Copied from https://github.com/prometheus/prometheus/blob/dfae954dc1137568f33564e8cffda321f2867925/promql/engine.go#L754
+// subqueryTimes returns the sum of offsets and ranges of all subqueries in the path.
+// If the @ modifier is used, then the offset and range is w.r.t. that timestamp
+// (i.e. the sum is reset when we have @ modifier).
+// The returned *int64 is the closest timestamp that was seen. nil for no @ modifier.
+func subqueryTimes(path []parser.Node) (time.Duration, time.Duration, *int64) {
+	var (
+		subqOffset, subqRange time.Duration
+		ts                    int64 = math.MaxInt64
+	)
+	for _, node := range path {
+		if n, ok := node.(*parser.SubqueryExpr); ok {
+			subqOffset += n.OriginalOffset
+			subqRange += n.Range
+			if n.Timestamp != nil {
+				// The @ modifier on subquery invalidates all the offset and
+				// range till now. Hence resetting it here.
+				subqOffset = n.OriginalOffset
+				subqRange = n.Range
+				ts = *n.Timestamp
+			}
+		}
+	}
+	var tsp *int64
+	if ts != math.MaxInt64 {
+		tsp = &ts
+	}
+	return subqOffset, subqRange, tsp
+}

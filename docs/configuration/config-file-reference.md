@@ -341,6 +341,10 @@ sharding_ring:
       # CLI flag: -alertmanager.sharding-ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: alertmanager.sharding-ring
     [consul: <consul_config>]
@@ -2286,6 +2290,10 @@ sharding_ring:
       # CLI flag: -compactor.ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -compactor.ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: compactor.ring
     [consul: <consul_config>]
@@ -2319,6 +2327,11 @@ sharding_ring:
   # the ring. 0 = never (timeout disabled).
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+
+  # Time since last heartbeat before compactor will be removed from ring. 0 to
+  # disable
+  # CLI flag: -compactor.auto-forget-delay
+  [auto_forget_delay: <duration> | default = 2m]
 
   # Minimum time to wait for ring stability at startup. 0 to disable.
   # CLI flag: -compactor.ring.wait-stability-min-duration
@@ -2595,6 +2608,10 @@ ha_tracker:
       # CLI flag: -distributor.ha-tracker.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
 
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -distributor.ha-tracker.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [consul: <consul_config>]
@@ -2693,6 +2710,10 @@ ring:
       # Maximum number of retries for DDB KV CAS.
       # CLI flag: -distributor.ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
+
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -distributor.ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ring
@@ -3021,6 +3042,10 @@ lifecycler:
         # Maximum number of retries for DDB KV CAS.
         # CLI flag: -dynamodb.max-cas-retries
         [max_cas_retries: <int> | default = 10]
+
+        # Timeout of dynamoDbClient requests. Default is 2m.
+        # CLI flag: -dynamodb.timeout
+        [timeout: <duration> | default = 2m]
 
       # The consul_config configures the consul client.
       [consul: <consul_config>]
@@ -3550,6 +3575,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <float> | default = 0]
 
+# Enable to allow queries to be evaluated with data from a single zone, if other
+# zones are not available.
+[query_partial_data: <boolean> | default = false]
+
 # Maximum number of outstanding requests per tenant per request queue (either
 # query frontend or query scheduler); requests beyond this error with HTTP 429.
 # CLI flag: -frontend.max-outstanding-requests-per-tenant
@@ -3609,6 +3638,10 @@ query_rejection:
 
 # external labels for alerting rules
 [ruler_external_labels: <map of string (labelName) to string (labelValue)> | default = []]
+
+# Enable to allow rules to be evaluated with data from a single zone, if other
+# zones are not available.
+[rules_partial_data: <boolean> | default = false]
 
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the
@@ -4248,6 +4281,22 @@ The `query_range_config` configures the query splitting and caching in the Corte
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
+dynamic_query_splits:
+  # [EXPERIMENTAL] Maximum number of shards for a query, 0 disables it.
+  # Dynamically uses a multiple of split interval to maintain a total number of
+  # shards below the set value. If vertical sharding is enabled for a query, the
+  # combined total number of interval splits and vertical shards is kept below
+  # this value.
+  # CLI flag: -querier.max-shards-per-query
+  [max_shards_per_query: <int> | default = 0]
+
+  # [EXPERIMENTAL] Max total duration of data fetched from storage by all query
+  # shards, 0 disables it. Dynamically uses a multiple of split interval to
+  # maintain a total fetched duration of data lower than the value set. It takes
+  # into account additional duration fetched by matrix selectors and subqueries.
+  # CLI flag: -querier.max-fetched-data-duration-per-query
+  [max_fetched_data_duration_per_query: <duration> | default = 0s]
+
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step
 [align_queries_with_step: <boolean> | default = false]
@@ -4670,6 +4719,10 @@ ring:
       # Maximum number of retries for DDB KV CAS.
       # CLI flag: -ruler.ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
+
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -ruler.ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: ruler.ring
@@ -5661,6 +5714,10 @@ sharding_ring:
       # Maximum number of retries for DDB KV CAS.
       # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
       [max_cas_retries: <int> | default = 10]
+
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: store-gateway.sharding-ring

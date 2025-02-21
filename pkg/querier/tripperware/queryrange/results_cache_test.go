@@ -18,6 +18,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -172,6 +174,7 @@ func mkAPIResponseWithStats(start, end, step int64, withStats bool, oldFormat bo
 			})
 
 			stats.Samples.TotalQueryableSamples += i
+			stats.Samples.PeakSamples = max(stats.Samples.PeakSamples, i)
 		}
 	}
 
@@ -307,7 +310,7 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 			rcm, _, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
 				cfg,
-				constSplitter(day),
+				splitter(day),
 				mockLimits{},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
@@ -554,6 +557,34 @@ func TestShouldCache(t *testing.T) {
 			input:    tripperware.Response(&tripperware.PrometheusResponse{}),
 			expected: false,
 		},
+		{
+			name:    "contains partial data warning",
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{
+						Name:   "meaninglessheader",
+						Values: []string{},
+					},
+				},
+				Warnings: []string{partialdata.ErrPartialData.Error()},
+			}),
+			expected: false,
+		},
+		{
+			name:    "contains other warning",
+			request: &tripperware.PrometheusRequest{Query: "metric"},
+			input: tripperware.Response(&tripperware.PrometheusResponse{
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{
+						Name:   "meaninglessheader",
+						Values: []string{},
+					},
+				},
+				Warnings: []string{"other warning"},
+			}),
+			expected: true,
+		},
 	} {
 		{
 			t.Run(tc.name, func(t *testing.T) {
@@ -568,11 +599,13 @@ func TestShouldCache(t *testing.T) {
 func TestPartition(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name                   string
-		input                  tripperware.Request
-		prevCachedResponse     []tripperware.Extent
-		expectedRequests       []tripperware.Request
-		expectedCachedResponse []tripperware.Response
+		name                                     string
+		input                                    tripperware.Request
+		prevCachedResponse                       []tripperware.Extent
+		expectedRequests                         []tripperware.Request
+		expectedCachedResponse                   []tripperware.Response
+		expectedScannedSamplesFromCachedResponse uint64
+		expectedPeakSamplesFromCachedResponse    uint64
 	}{
 		{
 			name: "Test a complete hit.",
@@ -793,6 +826,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(0, 100, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(0, 100, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(0, 100, 10),
 		},
 
 		{
@@ -807,6 +842,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(0, 100, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(0, 100, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(0, 100, 10),
 		},
 
 		{
@@ -857,6 +894,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(50, 100, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(50, 100, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(50, 100, 10),
 		},
 		{
 			name: "[stats] Test multiple partial hits.",
@@ -878,6 +917,8 @@ func TestPartition(t *testing.T) {
 				mkAPIResponseWithStats(100, 120, 10, true, false),
 				mkAPIResponseWithStats(160, 200, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    max(getPeakSamples(100, 120, 10), getPeakSamples(160, 200, 10)),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(100, 120, 10) + getScannedSamples(160, 200, 10),
 		},
 		{
 			name: "[stats] Partial hits with tiny gap.",
@@ -898,7 +939,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(100, 120, 10, true, false),
 			},
-		},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(100, 120, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(100, 120, 10)},
 		{
 			name: "[stats] Extent is outside the range and the request has a single step (same start and end).",
 			input: &tripperware.PrometheusRequest{
@@ -928,6 +970,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(100, 105, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(100, 105, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(100, 105, 10),
 		},
 		{
 			name: "[stats] Test when hit has a large step and only a single sample extent with old format.",
@@ -942,6 +986,8 @@ func TestPartition(t *testing.T) {
 			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(100, 105, 10, true, false),
 			},
+			expectedPeakSamplesFromCachedResponse:    getPeakSamples(100, 105, 10),
+			expectedScannedSamplesFromCachedResponse: getScannedSamples(100, 105, 10),
 		},
 	} {
 		tc := tc
@@ -951,10 +997,13 @@ func TestPartition(t *testing.T) {
 				extractor:      PrometheusResponseExtractor{},
 				minCacheExtent: 10,
 			}
-			reqs, resps, err := s.partition(tc.input, tc.prevCachedResponse)
+			stats, ctx := querier_stats.ContextWithEmptyStats(context.Background())
+			reqs, resps, err := s.partition(ctx, tc.input, tc.prevCachedResponse)
 			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)
+			require.Equal(t, tc.expectedScannedSamplesFromCachedResponse, stats.ScannedSamples)
+			require.Equal(t, tc.expectedPeakSamplesFromCachedResponse, stats.PeakSamples)
 		})
 	}
 }
@@ -1229,7 +1278,7 @@ func TestResultsCache(t *testing.T) {
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		constSplitter(day),
+		splitter(day),
 		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -1270,7 +1319,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		constSplitter(day),
+		splitter(day),
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -1335,7 +1384,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			rcm, _, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
 				cfg,
-				constSplitter(day),
+				splitter(day),
 				fakeLimits,
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
@@ -1352,7 +1401,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
 
 			// fill cache
-			key := constSplitter(day).GenerateCacheKey("1", req)
+			key := splitter(day).GenerateCacheKey(ctx, "1", req)
 			rc.(*resultsCache).put(ctx, key, []tripperware.Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
 
 			resp, err := rc.Do(ctx, req)
@@ -1372,7 +1421,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	rm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		constSplitter(day),
+		splitter(day),
 		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -1409,7 +1458,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	require.False(t, hit)
 }
 
-func TestConstSplitter_generateCacheKey(t *testing.T) {
+func TestSplitter_generateCacheKey(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1431,7 +1480,10 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 		tt := tt
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
 			t.Parallel()
-			if got := constSplitter(tt.interval).GenerateCacheKey("fake", tt.r); got != tt.want {
+			ctx := user.InjectOrgID(context.Background(), "1")
+			got := splitter(tt.interval).GenerateCacheKey(ctx, "fake", tt.r)
+
+			if got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
 		})
@@ -1484,7 +1536,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 			rcm, _, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
 				cfg,
-				constSplitter(day),
+				splitter(day),
 				mockLimits{maxCacheFreshness: 10 * time.Minute},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
@@ -1516,7 +1568,7 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		constSplitter(day),
+		splitter(day),
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -1534,7 +1586,9 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 	// Check cache and make sure we write response in old format even though the response is new format.
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	require.NoError(t, err)
-	cacheKey := cache.HashKey(constSplitter(day).GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), parsedRequest))
+	key := splitter(day).GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), parsedRequest)
+
+	cacheKey := cache.HashKey(key)
 	found, bufs, _ := c.Fetch(ctx, []string{cacheKey})
 	require.Equal(t, []string{cacheKey}, found)
 	require.Len(t, bufs, 1)
@@ -1550,4 +1604,15 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 
 func toMs(t time.Duration) int64 {
 	return int64(t / time.Millisecond)
+}
+
+func getScannedSamples(start, end, step uint64) uint64 {
+	lastTerm := start + ((end-start)/step)*step
+	n := (lastTerm-start)/step + 1
+
+	return (n * (2*start + (n-1)*step)) / 2
+}
+
+func getPeakSamples(start, end, step uint64) uint64 {
+	return start + ((end-start)/step)*step
 }

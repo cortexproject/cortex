@@ -79,5 +79,8 @@ func (s *lazySeriesSet) Err() error {
 
 // Warnings implements storage.SeriesSet.
 func (s *lazySeriesSet) Warnings() annotations.Annotations {
-	return nil
+	if s.next == nil {
+		s.next = <-s.future
+	}
+	return s.next.Warnings()
 }

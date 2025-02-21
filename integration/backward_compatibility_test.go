@@ -5,17 +5,21 @@ package integration
 
 import (
 	"fmt"
+	"path"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 type versionsImagesFlags struct {
@@ -116,6 +120,97 @@ func TestNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T) {
 			runNewDistributorsCanPushToOldIngestersWithReplication(t, previousImage, flags, flagsForNewImage)
 		})
 	}
+}
+
+// Test cortex which uses Prometheus v3.x can support holt_winters function
+func TestCanSupportHoltWintersFunc(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                     blocksStorageEngine,
+			"-blocks-storage.backend":                           "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
+			"-blocks-storage.tsdb.block-ranges-period":          "2h",
+			"-blocks-storage.tsdb.ship-interval":                "1h",
+			"-blocks-storage.bucket-store.sync-interval":        "15m",
+			"-blocks-storage.tsdb.retention-period":             "2h",
+			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+			"-querier.query-store-for-labels-enabled":           "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor": "1",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path := path.Join(s.SharedDir(), "cortex-1")
+
+	flags = mergeFlags(flags, map[string]string{"-blocks-storage.filesystem.dir": path})
+	// Start Cortex replicas.
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+	// Push some series to Cortex.
+	start := now.Add(-time.Minute * 120)
+	end := now
+	scrapeInterval := 30 * time.Second
+
+	numSeries := 10
+	numSamples := 240
+	serieses := make([]prompb.TimeSeries, numSeries)
+	lbls := make([]labels.Labels, numSeries)
+	for i := 0; i < numSeries; i++ {
+		series := e2e.GenerateSeriesWithSamples("test_series", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
+		serieses[i] = series
+
+		builder := labels.NewBuilder(labels.EmptyLabels())
+		for _, lbl := range series.Labels {
+			builder.Set(lbl.Name, lbl.Value)
+		}
+		lbls[i] = builder.Labels()
+	}
+
+	res, err := c.Push(serieses)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// Test range query
+	query := "holt_winters(test_series[2h], 0.5, 0.5)"
+	rangeResult, err := c.QueryRange(query, start, end, scrapeInterval)
+	require.NoError(t, err)
+	matrix, ok := rangeResult.(model.Matrix)
+	require.True(t, ok)
+	require.True(t, matrix.Len() > 0)
+
+	// Test instant query
+	instantResult, err := c.Query(query, now)
+	require.NoError(t, err)
+	vector, ok := instantResult.(model.Vector)
+	require.True(t, ok)
+	require.True(t, vector.Len() > 0)
 }
 
 func blocksStorageFlagsWithFlushOnShutdown() map[string]string {

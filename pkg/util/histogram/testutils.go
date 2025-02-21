@@ -22,7 +22,7 @@ import (
 func GenerateTestHistograms(from, step, numHistograms int) []*histogram.Histogram {
 	var histograms []*histogram.Histogram
 	for i := 0; i < numHistograms; i++ {
-		v := from + i*step
+		v := int64(from + i*step)
 		histograms = append(histograms, tsdbutil.GenerateTestGaugeHistogram(v))
 	}
 	return histograms

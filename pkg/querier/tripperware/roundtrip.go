@@ -27,6 +27,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
@@ -121,6 +122,13 @@ func NewQueryTripperware(
 
 	// set EnableExperimentalFunctions
 	parser.EnableExperimentalFunctions = enablePromQLExperimentalFunctions
+	// The holt_winters function is renamed to double_exponential_smoothing and has been experimental since Prometheus v3. (https://github.com/prometheus/prometheus/pull/14930)
+	// The cortex supports holt_winters for users using this function.
+	holtWinters := *parser.Functions["double_exponential_smoothing"]
+	holtWinters.Experimental = false
+	holtWinters.Name = "holt_winters"
+	parser.Functions["holt_winters"] = &holtWinters
+	promql.FunctionCalls["holt_winters"] = promql.FunctionCalls["double_exponential_smoothing"]
 
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{

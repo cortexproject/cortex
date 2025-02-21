@@ -2803,7 +2803,7 @@ func mockWriteRequest(lbls []labels.Labels, value int64, timestampMs int64, hist
 	if histogram {
 		histograms = make([]cortexpb.Histogram, len(lbls))
 		for i := range lbls {
-			histograms[i] = cortexpb.HistogramToHistogramProto(timestampMs, tsdbutil.GenerateTestHistogram(int(value)))
+			histograms[i] = cortexpb.HistogramToHistogramProto(timestampMs, tsdbutil.GenerateTestHistogram(value))
 		}
 	} else {
 		samples = make([]cortexpb.Sample, len(lbls))
@@ -3014,7 +3014,7 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histogr
 				{Name: model.MetricNameLabel, Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: fmt.Sprintf("%d", i)},
-			}, startTimestampMs+int64(i), i, false))
+			}, startTimestampMs+int64(i), int64(i), false))
 	}
 
 	for i := 0; i < histograms; i++ {
@@ -3023,7 +3023,7 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histogr
 				{Name: model.MetricNameLabel, Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "histogram", Value: fmt.Sprintf("%d", i)},
-			}, startTimestampMs+int64(i), i, true))
+			}, startTimestampMs+int64(i), int64(i), true))
 	}
 
 	for i := 0; i < metadata; i++ {
@@ -3038,7 +3038,7 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histogr
 	return request
 }
 
-func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts int64, value int, histogram bool) cortexpb.PreallocTimeseries {
+func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts, value int64, histogram bool) cortexpb.PreallocTimeseries {
 	t := cortexpb.PreallocTimeseries{
 		TimeSeries: &cortexpb.TimeSeries{
 			Labels: labels,
@@ -3071,7 +3071,7 @@ func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *c
 		}
 		if histogram {
 			ts.Histograms = []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(i)),
+				cortexpb.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(int64(i))),
 			}
 		} else {
 			ts.Samples = []cortexpb.Sample{
@@ -3168,7 +3168,7 @@ func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.Write
 		}
 		if histogram {
 			ts.Histograms = []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(samples), tsdbutil.GenerateTestHistogram(samples)),
+				cortexpb.HistogramToHistogramProto(int64(samples), tsdbutil.GenerateTestHistogram(int64(samples))),
 			}
 		} else {
 			var s = make([]cortexpb.Sample, 0)

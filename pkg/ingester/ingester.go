@@ -1878,7 +1878,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 			seriesSet := q.Select(ctx, true, hints, matchers...)
 			sets = append(sets, seriesSet)
 		}
-		mergedSet = storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
+		mergedSet = storage.NewMergeSeriesSet(sets, 0, storage.ChainedSeriesMerge)
 	} else {
 		mergedSet = q.Select(ctx, false, hints, matchersSet[0]...)
 	}
@@ -2354,7 +2354,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 
 	// Create a new user database
-	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
+	db, err := tsdb.Open(udir, logutil.GoKitLogToSlog(userLogger), tsdbPromReg, &tsdb.Options{
 		RetentionDuration:              i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
 		MinBlockDuration:               blockRanges[0],
 		MaxBlockDuration:               blockRanges[len(blockRanges)-1],

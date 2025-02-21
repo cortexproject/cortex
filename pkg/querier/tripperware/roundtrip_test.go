@@ -88,7 +88,6 @@ func (m mockMiddleware) Do(_ context.Context, req Request) (Response, error) {
 }
 
 func TestRoundTrip(t *testing.T) {
-	t.Parallel()
 	s := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, err := w.Write([]byte("bar"))

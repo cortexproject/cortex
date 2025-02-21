@@ -206,6 +206,13 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 
 	// set EnableExperimentalFunctions
 	parser.EnableExperimentalFunctions = cfg.EnablePromQLExperimentalFunctions
+	// The holt_winters function is renamed to double_exponential_smoothing and has been experimental since Prometheus v3. (https://github.com/prometheus/prometheus/pull/14930)
+	// The cortex supports holt_winters for users using this function.
+	holtWinters := *parser.Functions["double_exponential_smoothing"]
+	holtWinters.Experimental = false
+	holtWinters.Name = "holt_winters"
+	parser.Functions["holt_winters"] = &holtWinters
+	promql.FunctionCalls["holt_winters"] = promql.FunctionCalls["double_exponential_smoothing"]
 
 	var queryEngine promql.QueryEngine
 	opts := promql.EngineOpts{

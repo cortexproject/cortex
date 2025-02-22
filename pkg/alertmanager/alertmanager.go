@@ -103,7 +103,8 @@ type Alertmanager struct {
 	persister       *statePersister
 	nflog           *nflog.Log
 	silences        *silence.Silences
-	marker          *types.MemMarker
+	alertMarker     types.AlertMarker
+	groupMarker     types.GroupMarker
 	alerts          *mem.Alerts
 	dispatcher      *dispatch.Dispatcher
 	inhibitor       *inhibit.Inhibitor
@@ -222,7 +223,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.nflog.Maintenance(maintenancePeriod, notificationFile, am.stop, nil)
 		am.wg.Done()
 	}()
-	am.marker = types.NewMarker(am.registry)
+	memMarker := types.NewMarker(reg)
+	am.alertMarker = memMarker
+	am.groupMarker = memMarker
 
 	silencesFile := filepath.Join(cfg.TenantDataDir, silencesSnapshot)
 	am.silences, err = silence.New(silence.Options{
@@ -268,7 +271,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if am.cfg.Limits != nil {
 		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
 	}
-	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, am.cfg.GCInterval, callback, util_log.GoKitLogToSlog(am.logger), am.registry)
+	am.alerts, err = mem.NewAlerts(context.Background(), am.alertMarker, am.cfg.GCInterval, callback, util_log.GoKitLogToSlog(am.logger), am.registry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
@@ -276,8 +279,8 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	am.api, err = api.New(api.Options{
 		Alerts:          am.alerts,
 		Silences:        am.silences,
-		AlertStatusFunc: am.marker.Status,
-		GroupMutedFunc:  am.marker.Muted,
+		AlertStatusFunc: am.alertMarker.Status,
+		GroupMutedFunc:  am.groupMarker.Muted,
 		// Cortex should not expose cluster information back to its tenants.
 		Peer:     &NilPeer{},
 		Registry: am.registry,
@@ -360,7 +363,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.dispatcher.Stop()
 	}
 
-	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.marker, util_log.GoKitLogToSlog(log.With(am.logger, "component", "inhibitor")))
+	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.alertMarker, util_log.GoKitLogToSlog(log.With(am.logger, "component", "inhibitor")))
 
 	waitFunc := clusterWait(am.state.Position, am.cfg.PeerTimeout)
 
@@ -403,9 +406,9 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,
-		silence.NewSilencer(am.silences, am.marker, util_log.GoKitLogToSlog(am.logger)),
+		silence.NewSilencer(am.silences, am.alertMarker, util_log.GoKitLogToSlog(am.logger)),
 		timeinterval.NewIntervener(timeIntervals),
-		am.marker,
+		am.groupMarker,
 		am.nflog,
 		am.state,
 	)
@@ -414,7 +417,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.alerts,
 		dispatch.NewRoute(conf.Route, nil),
 		pipeline,
-		am.marker,
+		am.groupMarker,
 		timeoutFunc,
 		&dispatcherLimits{tenant: am.cfg.UserID, limits: am.cfg.Limits},
 		util_log.GoKitLogToSlog(log.With(am.logger, "component", "dispatcher")),

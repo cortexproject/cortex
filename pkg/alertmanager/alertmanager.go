@@ -28,10 +28,13 @@ import (
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/notify/discord"
 	"github.com/prometheus/alertmanager/notify/email"
+	"github.com/prometheus/alertmanager/notify/jira"
 	"github.com/prometheus/alertmanager/notify/msteams"
+	"github.com/prometheus/alertmanager/notify/msteamsv2"
 	"github.com/prometheus/alertmanager/notify/opsgenie"
 	"github.com/prometheus/alertmanager/notify/pagerduty"
 	"github.com/prometheus/alertmanager/notify/pushover"
+	"github.com/prometheus/alertmanager/notify/rocketchat"
 	"github.com/prometheus/alertmanager/notify/slack"
 	"github.com/prometheus/alertmanager/notify/sns"
 	"github.com/prometheus/alertmanager/notify/telegram"
@@ -54,6 +57,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_net "github.com/cortexproject/cortex/pkg/util/net"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -99,7 +103,8 @@ type Alertmanager struct {
 	persister       *statePersister
 	nflog           *nflog.Log
 	silences        *silence.Silences
-	marker          types.Marker
+	alertMarker     types.AlertMarker
+	groupMarker     types.GroupMarker
 	alerts          *mem.Alerts
 	dispatcher      *dispatch.Dispatcher
 	inhibitor       *inhibit.Inhibitor
@@ -204,7 +209,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	am.nflog, err = nflog.New(nflog.Options{
 		SnapshotFile: notificationFile,
 		Retention:    cfg.Retention,
-		Logger:       log.With(am.logger, "component", "nflog"),
+		Logger:       util_log.GoKitLogToSlog(log.With(am.logger, "component", "nflog")),
 		Metrics:      am.registry,
 	})
 
@@ -218,13 +223,15 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.nflog.Maintenance(maintenancePeriod, notificationFile, am.stop, nil)
 		am.wg.Done()
 	}()
-	am.marker = types.NewMarker(am.registry)
+	memMarker := types.NewMarker(reg)
+	am.alertMarker = memMarker
+	am.groupMarker = memMarker
 
 	silencesFile := filepath.Join(cfg.TenantDataDir, silencesSnapshot)
 	am.silences, err = silence.New(silence.Options{
 		SnapshotFile: silencesFile,
 		Retention:    cfg.Retention,
-		Logger:       log.With(am.logger, "component", "silences"),
+		Logger:       util_log.GoKitLogToSlog(log.With(am.logger, "component", "silences")),
 		Metrics:      am.registry,
 	})
 	if err != nil {
@@ -246,7 +253,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	}
 
 	// Lets not enable any AM experimental feature for now.
-	featureConfig, err := featurecontrol.NewFlags(am.logger, "")
+	featureConfig, err := featurecontrol.NewFlags(util_log.GoKitLogToSlog(am.logger), "")
 	if err != nil {
 		level.Error(am.logger).Log("msg", "error parsing the feature flag list", "err", err)
 		return nil, errors.Wrap(err, "error parsing the feature flag list")
@@ -264,19 +271,20 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if am.cfg.Limits != nil {
 		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
 	}
-	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, am.cfg.GCInterval, callback, am.logger, am.registry)
+	am.alerts, err = mem.NewAlerts(context.Background(), am.alertMarker, am.cfg.GCInterval, callback, util_log.GoKitLogToSlog(am.logger), am.registry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
 
 	am.api, err = api.New(api.Options{
-		Alerts:     am.alerts,
-		Silences:   am.silences,
-		StatusFunc: am.marker.Status,
+		Alerts:          am.alerts,
+		Silences:        am.silences,
+		AlertStatusFunc: am.alertMarker.Status,
+		GroupMutedFunc:  am.groupMarker.Muted,
 		// Cortex should not expose cluster information back to its tenants.
 		Peer:     &NilPeer{},
 		Registry: am.registry,
-		Logger:   log.With(am.logger, "component", "api"),
+		Logger:   util_log.GoKitLogToSlog(log.With(am.logger, "component", "api")),
 		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
 			return am.dispatcher.Groups(f1, f2)
 		},
@@ -288,7 +296,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	router := route.New().WithPrefix(am.cfg.ExternalURL.Path)
 
-	ui.Register(router, webReload, log.With(am.logger, "component", "ui"))
+	ui.Register(router, webReload, util_log.GoKitLogToSlog(log.With(am.logger, "component", "ui")))
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
 
 	// Override some extra paths registered in the router (eg. /metrics which by default exposes prometheus.DefaultRegisterer).
@@ -355,7 +363,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.dispatcher.Stop()
 	}
 
-	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.marker, log.With(am.logger, "component", "inhibitor"))
+	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.alertMarker, util_log.GoKitLogToSlog(log.With(am.logger, "component", "inhibitor")))
 
 	waitFunc := clusterWait(am.state.Position, am.cfg.PeerTimeout)
 
@@ -398,8 +406,9 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,
-		silence.NewSilencer(am.silences, am.marker, am.logger),
+		silence.NewSilencer(am.silences, am.alertMarker, util_log.GoKitLogToSlog(am.logger)),
 		timeinterval.NewIntervener(timeIntervals),
+		am.groupMarker,
 		am.nflog,
 		am.state,
 	)
@@ -408,10 +417,10 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.alerts,
 		dispatch.NewRoute(conf.Route, nil),
 		pipeline,
-		am.marker,
+		am.groupMarker,
 		timeoutFunc,
 		&dispatcherLimits{tenant: am.cfg.UserID, limits: am.cfg.Limits},
-		log.With(am.logger, "component", "dispatcher"),
+		util_log.GoKitLogToSlog(log.With(am.logger, "component", "dispatcher")),
 		am.dispatcherMetrics,
 	)
 
@@ -514,43 +523,84 @@ func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, fire
 	}
 
 	for i, c := range nc.WebhookConfigs {
-		add("webhook", i, c, func(l log.Logger) (notify.Notifier, error) { return webhook.New(c, tmpl, l, httpOps...) })
+		add("webhook", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return webhook.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.EmailConfigs {
-		add("email", i, c, func(l log.Logger) (notify.Notifier, error) { return email.New(c, tmpl, l), nil })
+		add("email", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return email.New(c, tmpl, util_log.GoKitLogToSlog(l)), nil
+		})
 	}
 	for i, c := range nc.PagerdutyConfigs {
-		add("pagerduty", i, c, func(l log.Logger) (notify.Notifier, error) { return pagerduty.New(c, tmpl, l, httpOps...) })
+		add("pagerduty", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return pagerduty.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.OpsGenieConfigs {
-		add("opsgenie", i, c, func(l log.Logger) (notify.Notifier, error) { return opsgenie.New(c, tmpl, l, httpOps...) })
+		add("opsgenie", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return opsgenie.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.WechatConfigs {
-		add("wechat", i, c, func(l log.Logger) (notify.Notifier, error) { return wechat.New(c, tmpl, l, httpOps...) })
+		add("wechat", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return wechat.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.SlackConfigs {
-		add("slack", i, c, func(l log.Logger) (notify.Notifier, error) { return slack.New(c, tmpl, l, httpOps...) })
+		add("slack", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return slack.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.VictorOpsConfigs {
-		add("victorops", i, c, func(l log.Logger) (notify.Notifier, error) { return victorops.New(c, tmpl, l, httpOps...) })
+		add("victorops", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return victorops.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.PushoverConfigs {
-		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l, httpOps...) })
+		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return pushover.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.SNSConfigs {
-		add("sns", i, c, func(l log.Logger) (notify.Notifier, error) { return sns.New(c, tmpl, l, httpOps...) })
+		add("sns", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return sns.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.TelegramConfigs {
-		add("telegram", i, c, func(l log.Logger) (notify.Notifier, error) { return telegram.New(c, tmpl, l, httpOps...) })
+		add("telegram", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return telegram.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.DiscordConfigs {
-		add("discord", i, c, func(l log.Logger) (notify.Notifier, error) { return discord.New(c, tmpl, l, httpOps...) })
+		add("discord", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return discord.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.WebexConfigs {
-		add("webex", i, c, func(l log.Logger) (notify.Notifier, error) { return webex.New(c, tmpl, l, httpOps...) })
+		add("webex", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return webex.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	for i, c := range nc.MSTeamsConfigs {
-		add("msteams", i, c, func(l log.Logger) (notify.Notifier, error) { return msteams.New(c, tmpl, l) })
+		add("msteams", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return msteams.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
+	}
+	for i, c := range nc.MSTeamsV2Configs {
+		add("msteamsv2", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return msteamsv2.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
+	}
+	for i, c := range nc.JiraConfigs {
+		add("jira", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return jira.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
+	}
+	for i, c := range nc.RocketchatConfigs {
+		add("rocketchat", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return rocketchat.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
 	}
 	// If we add support for more integrations, we need to add them to validation as well. See validation.allowedIntegrationNames field.
 	if errs.Len() > 0 {

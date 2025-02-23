@@ -109,6 +109,9 @@ const (
 	OnVideoChatEnded        = "\avideo_chat_ended"
 	OnVideoChatParticipants = "\avideo_chat_participants_invited"
 	OnVideoChatScheduled    = "\avideo_chat_scheduled"
+
+	OnBoost        = "\aboost_updated"
+	OnBoostRemoved = "\aboost_removed"
 )
 
 // ChatAction is a client-side status indicating bot activity.

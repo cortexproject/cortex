@@ -3707,7 +3707,8 @@ query_rejection:
 # is given in JSON format. Rate limit has the same meaning as
 # -alertmanager.notification-rate-limit, but only applies for specific
 # integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
-# wechat, slack, victorops, pushover, sns, telegram, discord, webex, msteams.
+# wechat, slack, victorops, pushover, sns, telegram, discord, webex, msteams,
+# msteamsv2, jira, rocketchat.
 # CLI flag: -alertmanager.notification-rate-limit-per-integration
 [alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
 

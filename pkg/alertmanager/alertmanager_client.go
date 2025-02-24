@@ -40,6 +40,7 @@ type ClientConfig struct {
 	GRPCCompression string           `yaml:"grpc_compression"`
 	MaxRecvMsgSize  int              `yaml:"max_recv_msg_size"`
 	MaxSendMsgSize  int              `yaml:"max_send_msg_size"`
+	ConnectTimeout  time.Duration    `yaml:"connect_timeout"`
 }
 
 // RegisterFlagsWithPrefix registers flags with prefix.
@@ -50,6 +51,7 @@ func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
 	f.IntVar(&cfg.MaxRecvMsgSize, prefix+".grpc-max-recv-msg-size", 16*1024*1024, "gRPC client max receive message size (bytes).")
 	f.IntVar(&cfg.MaxSendMsgSize, prefix+".grpc-max-send-msg-size", 4*1024*1024, "gRPC client max send message size (bytes).")
+	f.DurationVar(&cfg.ConnectTimeout, prefix+".connect-timeout", 5*time.Second, "The maximum amount of time to establish a connection. A value of 0 means using default gRPC client connect timeout 5s.")
 }
 
 type alertmanagerClientsPool struct {
@@ -67,6 +69,7 @@ func newAlertmanagerClientsPool(discovery client.PoolServiceDiscovery, amClientC
 		BackoffOnRatelimits: false,
 		TLSEnabled:          amClientCfg.TLSEnabled,
 		TLS:                 amClientCfg.TLS,
+		ConnectTimeout:      amClientCfg.ConnectTimeout,
 	}
 
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{

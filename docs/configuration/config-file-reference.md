@@ -267,7 +267,7 @@ query_scheduler:
     [tls_insecure_skip_verify: <boolean> | default = false]
 
     # The maximum amount of time to establish a connection. A value of 0 means
-    # using default gRPC client connect timeout 20s.
+    # using default gRPC client connect timeout 5s.
     # CLI flag: -query-scheduler.grpc-client-config.connect-timeout
     [connect_timeout: <duration> | default = 5s]
 
@@ -502,6 +502,11 @@ alertmanager_client:
   # gRPC client max send message size (bytes).
   # CLI flag: -alertmanager.alertmanager-client.grpc-max-send-msg-size
   [max_send_msg_size: <int> | default = 4194304]
+
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 5s.
+  # CLI flag: -alertmanager.alertmanager-client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
 
 # The interval between persisting the current alertmanager state (notification
 # log and silences) to object storage. This is only used when sharding is
@@ -2995,7 +3000,7 @@ grpc_client_config:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
   # The maximum amount of time to establish a connection. A value of 0 means
-  # using default gRPC client connect timeout 20s.
+  # using default gRPC client connect timeout 5s.
   # CLI flag: -querier.frontend-client.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 ```
@@ -3313,7 +3318,7 @@ grpc_client_config:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
   # The maximum amount of time to establish a connection. A value of 0 means
-  # using default gRPC client connect timeout 20s.
+  # using default gRPC client connect timeout 5s.
   # CLI flag: -ingester.client.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 
@@ -4100,6 +4105,11 @@ store_gateway_client:
     # CLI flag: -querier.store-gateway-client.healthcheck.timeout
     [timeout: <duration> | default = 1s]
 
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 5s.
+  # CLI flag: -querier.store-gateway-client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
+
 # If enabled, store gateway query stats will be logged using `info` log level.
 # CLI flag: -querier.store-gateway-query-stats-enabled
 [store_gateway_query_stats: <boolean> | default = true]
@@ -4245,7 +4255,7 @@ grpc_client_config:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
   # The maximum amount of time to establish a connection. A value of 0 means
-  # using default gRPC client connect timeout 20s.
+  # using default gRPC client connect timeout 5s.
   # CLI flag: -frontend.grpc-client-config.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 
@@ -4492,7 +4502,7 @@ frontend_client:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
   # The maximum amount of time to establish a connection. A value of 0 means
-  # using default gRPC client connect timeout 20s.
+  # using default gRPC client connect timeout 5s.
   # CLI flag: -ruler.frontendClient.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 
@@ -4572,7 +4582,7 @@ ruler_client:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
   # The maximum amount of time to establish a connection. A value of 0 means
-  # using default gRPC client connect timeout 20s.
+  # using default gRPC client connect timeout 5s.
   # CLI flag: -ruler.client.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 

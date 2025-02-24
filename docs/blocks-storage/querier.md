@@ -222,6 +222,11 @@ querier:
       # CLI flag: -querier.store-gateway-client.healthcheck.timeout
       [timeout: <duration> | default = 1s]
 
+    # The maximum amount of time to establish a connection. A value of 0 means
+    # using default gRPC client connect timeout 5s.
+    # CLI flag: -querier.store-gateway-client.connect-timeout
+    [connect_timeout: <duration> | default = 5s]
+
   # If enabled, store gateway query stats will be logged using `info` log level.
   # CLI flag: -querier.store-gateway-query-stats-enabled
   [store_gateway_query_stats: <boolean> | default = true]

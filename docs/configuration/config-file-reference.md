@@ -267,7 +267,7 @@ query_scheduler:
     [tls_insecure_skip_verify: <boolean> | default = false]
 
     # The maximum amount of time to establish a connection. A value of 0 means
-    # using default gRPC client connect timeout 5s.
+    # using default gRPC client connect timeout 20s.
     # CLI flag: -query-scheduler.grpc-client-config.connect-timeout
     [connect_timeout: <duration> | default = 5s]
 
@@ -3000,7 +3000,7 @@ grpc_client_config:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
   # The maximum amount of time to establish a connection. A value of 0 means
-  # using default gRPC client connect timeout 5s.
+  # using default gRPC client connect timeout 20s.
   # CLI flag: -querier.frontend-client.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 ```
@@ -3318,7 +3318,7 @@ grpc_client_config:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
   # The maximum amount of time to establish a connection. A value of 0 means
-  # using default gRPC client connect timeout 5s.
+  # using default gRPC client connect timeout 20s.
   # CLI flag: -ingester.client.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 
@@ -4255,7 +4255,7 @@ grpc_client_config:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
   # The maximum amount of time to establish a connection. A value of 0 means
-  # using default gRPC client connect timeout 5s.
+  # using default gRPC client connect timeout 20s.
   # CLI flag: -frontend.grpc-client-config.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 
@@ -4502,7 +4502,7 @@ frontend_client:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
   # The maximum amount of time to establish a connection. A value of 0 means
-  # using default gRPC client connect timeout 5s.
+  # using default gRPC client connect timeout 20s.
   # CLI flag: -ruler.frontendClient.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 
@@ -4582,7 +4582,7 @@ ruler_client:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
   # The maximum amount of time to establish a connection. A value of 0 means
-  # using default gRPC client connect timeout 5s.
+  # using default gRPC client connect timeout 20s.
   # CLI flag: -ruler.client.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 

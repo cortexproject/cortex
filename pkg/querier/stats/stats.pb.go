@@ -471,13 +471,16 @@ func (m *Stats) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 }
 
 func encodeVarintStats(dAtA []byte, offset int, v uint64) int {
+	//fmt.Println("offset1", offset)
 	offset -= sovStats(v)
+	//fmt.Println("offset2", offset)
 	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
+	//fmt.Println("offset3", offset)
 	dAtA[offset] = uint8(v)
 	return base
 }

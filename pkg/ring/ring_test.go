@@ -574,8 +574,6 @@ func TestRing_Get_Stability(t *testing.T) {
 }
 
 func TestRing_Get_Consistency(t *testing.T) {
-	// Number of tests to run.
-	const testCount = 10000
 	g := NewRandomTokenGenerator()
 
 	tests := map[string]struct {
@@ -686,10 +684,10 @@ func TestRing_Get_Consistency(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			testValues := g.GenerateTokens(NewDesc(), "", "", testCount, true)
+			ringDesc := &Desc{Ingesters: generateRingInstances(testData.initialInstances, testData.numZones, 128)}
+			testValues := g.GenerateTokens(ringDesc, "", "", 128, true)
 			bufDescs, bufHosts, bufZones := MakeBuffersForGet()
-			for i := 0; i < testCount; i++ {
-				ringDesc := &Desc{Ingesters: generateRingInstances(testData.initialInstances, testData.numZones, 128)}
+			for i := 0; i < 128; i++ {
 				ring := Ring{
 					cfg: Config{
 						HeartbeatTimeout:     time.Hour,

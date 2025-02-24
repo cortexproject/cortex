@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -1689,6 +1690,37 @@ func TestConfig_Validate(t *testing.T) {
 			assert.Equal(t, testData.expected, cfg.Validate())
 		})
 	}
+}
+
+func Test_EnableExperimentalPromQLFunctions(t *testing.T) {
+	EnableExperimentalPromQLFunctions(true, true)
+
+	// holt_winters function should exist
+	holtWintersFunc, ok := parser.Functions["holt_winters"]
+	require.True(t, ok)
+
+	// double_exponential_smoothing function should exist
+	doubleExponentialSmoothingFunc, ok := parser.Functions["double_exponential_smoothing"]
+	require.True(t, ok)
+
+	// holt_winters should not experimental function.
+	require.False(t, holtWintersFunc.Experimental)
+	// holt_winters's Variadic, ReturnType, and ArgTypes are the same as the double_exponential_smoothing.
+	require.Equal(t, doubleExponentialSmoothingFunc.Variadic, holtWintersFunc.Variadic)
+	require.Equal(t, doubleExponentialSmoothingFunc.ReturnType, holtWintersFunc.ReturnType)
+	require.Equal(t, doubleExponentialSmoothingFunc.ArgTypes, holtWintersFunc.ArgTypes)
+
+	// double_exponential_smoothing shouldn't be changed.
+	require.Equal(t, "double_exponential_smoothing", doubleExponentialSmoothingFunc.Name)
+	require.True(t, parser.Functions["double_exponential_smoothing"].Experimental)
+
+	// holt_winters function calls should exist.
+	_, ok = promql.FunctionCalls["holt_winters"]
+	require.True(t, ok)
+
+	// double_exponential_smoothing function calls should exist.
+	_, ok = promql.FunctionCalls["double_exponential_smoothing"]
+	require.True(t, ok)
 }
 
 type mockQueryableWithFilter struct {

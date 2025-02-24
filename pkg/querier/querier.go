@@ -204,8 +204,9 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	})
 	maxConcurrentMetric.Set(float64(cfg.MaxConcurrent))
 
-	// set EnableExperimentalFunctions
-	parser.EnableExperimentalFunctions = cfg.EnablePromQLExperimentalFunctions
+	// The holt_winters function is renamed to double_exponential_smoothing and has been experimental since Prometheus v3. (https://github.com/prometheus/prometheus/pull/14930)
+	// The cortex supports holt_winters for users using this function.
+	EnableExperimentalPromQLFunctions(cfg.EnablePromQLExperimentalFunctions, true)
 
 	var queryEngine promql.QueryEngine
 	opts := promql.EngineOpts{
@@ -664,4 +665,16 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 	}
 
 	return int64(startTime), int64(endTime), nil
+}
+
+func EnableExperimentalPromQLFunctions(enablePromQLExperimentalFunctions, enableHoltWinters bool) {
+	parser.EnableExperimentalFunctions = enablePromQLExperimentalFunctions
+
+	if enableHoltWinters {
+		holtWinters := *parser.Functions["double_exponential_smoothing"]
+		holtWinters.Experimental = false
+		holtWinters.Name = "holt_winters"
+		parser.Functions["holt_winters"] = &holtWinters
+		promql.FunctionCalls["holt_winters"] = promql.FunctionCalls["double_exponential_smoothing"]
+	}
 }

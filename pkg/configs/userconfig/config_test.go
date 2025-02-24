@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/logutil"
 	"gopkg.in/yaml.v3"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -96,7 +95,7 @@ func TestParseLegacyAlerts(t *testing.T) {
 		nil,
 		"",
 		true,
-		logutil.GoKitLogToSlog(log.With(util_log.Logger, "alert", "TestAlert")),
+		util_log.GoKitLogToSlog(log.With(util_log.Logger, "alert", "TestAlert")),
 	)
 
 	for i, tc := range []struct {

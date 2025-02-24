@@ -247,8 +247,9 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241209162323-e6fa225c2576 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
 	gopkg.in/telebot.v3 v3.3.8 // indirect
-	k8s.io/apimachinery v0.31.1 // indirect
-	k8s.io/client-go v0.31.0 // indirect
+	k8s.io/apimachinery v0.31.3 // indirect
+	k8s.io/client-go v0.31.3 // indirect
+	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
 )
 

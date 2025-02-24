@@ -503,6 +503,11 @@ alertmanager_client:
   # CLI flag: -alertmanager.alertmanager-client.grpc-max-send-msg-size
   [max_send_msg_size: <int> | default = 4194304]
 
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 5s.
+  # CLI flag: -alertmanager.alertmanager-client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
+
 # The interval between persisting the current alertmanager state (notification
 # log and silences) to object storage. This is only used when sharding is
 # enabled. This state is read when all replicas for a shard can not be
@@ -4099,6 +4104,11 @@ store_gateway_client:
     # health check.
     # CLI flag: -querier.store-gateway-client.healthcheck.timeout
     [timeout: <duration> | default = 1s]
+
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 5s.
+  # CLI flag: -querier.store-gateway-client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
 
 # If enabled, store gateway query stats will be logged using `info` log level.
 # CLI flag: -querier.store-gateway-query-stats-enabled

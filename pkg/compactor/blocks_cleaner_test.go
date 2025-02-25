@@ -912,6 +912,8 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 		DeletionDelay:      time.Hour,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		ShardingStrategy:   util.ShardingStrategyShuffle,
+		CompactionStrategy: util.CompactionStrategyPartitioning,
 	}
 
 	ctx := context.Background()
@@ -929,13 +931,40 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 
 	userBucket := bucket.NewUserBucketClient(userID, bucketClient, cfgProvider)
 
-	err := cleaner.cleanUser(ctx, logger, userBucket, userID, false)
+	debugMetaFile := path.Join(block.DebugMetas, "meta.json")
+	require.NoError(t, userBucket.Upload(context.Background(), debugMetaFile, strings.NewReader("some random content here")))
+
+	partitionedGroupInfo := PartitionedGroupInfo{
+		PartitionedGroupID: 1234,
+		PartitionCount:     1,
+		Partitions: []Partition{
+			{
+				PartitionID: 0,
+				Blocks:      []ulid.ULID{},
+			},
+		},
+		RangeStart:   0,
+		RangeEnd:     2,
+		CreationTime: time.Now().Add(-5 * time.Minute).Unix(),
+		Version:      PartitionedGroupInfoVersion1,
+	}
+	_, err := UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo)
+	require.NoError(t, err)
+	partitionedGroupFile := GetPartitionedGroupFile(partitionedGroupInfo.PartitionedGroupID)
+
+	err = cleaner.cleanUser(ctx, logger, userBucket, userID, false)
 	require.NoError(t, err)
 
 	_, err = bucketindex.ReadIndex(ctx, bucketClient, userID, cfgProvider, logger)
 	require.ErrorIs(t, err, bucketindex.ErrIndexNotFound)
 
 	_, err = userBucket.WithExpectedErrs(userBucket.IsObjNotFoundErr).Get(ctx, bucketindex.SyncStatusFile)
+	require.True(t, userBucket.IsObjNotFoundErr(err))
+
+	_, err = userBucket.WithExpectedErrs(userBucket.IsObjNotFoundErr).Get(ctx, debugMetaFile)
+	require.True(t, userBucket.IsObjNotFoundErr(err))
+
+	_, err = userBucket.WithExpectedErrs(userBucket.IsObjNotFoundErr).Get(ctx, partitionedGroupFile)
 	require.True(t, userBucket.IsObjNotFoundErr(err))
 }
 

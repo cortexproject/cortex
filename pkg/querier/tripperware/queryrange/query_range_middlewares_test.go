@@ -17,11 +17,12 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
-	PrometheusCodec        = NewPrometheusCodec(false, "", "protobuf")
-	ShardedPrometheusCodec = NewPrometheusCodec(false, "", "protobuf")
+	PrometheusCodec        = NewPrometheusCodec(false, "", "protobuf", &validation.Overrides{})
+	ShardedPrometheusCodec = NewPrometheusCodec(false, "", "protobuf", &validation.Overrides{})
 )
 
 func TestRoundTrip(t *testing.T) {

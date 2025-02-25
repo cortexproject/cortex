@@ -333,6 +333,19 @@ func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values) {
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
 	}
+
+	if query := queryString.Get("query"); len(query) > 0 {
+		logMessage = append(logMessage, "query_length", len(query))
+	}
+
+	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
+		logMessage = append(logMessage, "user_agent", ua)
+	}
+
+	if acceptEncoding := r.Header.Get("Accept-Encoding"); len(acceptEncoding) > 0 {
+		logMessage = append(logMessage, "accept_encoding", acceptEncoding)
+	}
+
 	logMessage = append(logMessage, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)

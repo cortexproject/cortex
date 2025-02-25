@@ -20,8 +20,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // StatusSuccess Prometheus success result.
@@ -61,9 +65,10 @@ type prometheusCodec struct {
 	sharded          bool
 	compression      tripperware.Compression
 	defaultCodecType tripperware.CodecType
+	limits           *validation.Overrides
 }
 
-func NewPrometheusCodec(sharded bool, compressionStr string, defaultCodecTypeStr string) *prometheusCodec { //nolint:revive
+func NewPrometheusCodec(sharded bool, compressionStr string, defaultCodecTypeStr string, limits *validation.Overrides) *prometheusCodec { //nolint:revive
 	compression := tripperware.NonCompression // default
 	if compressionStr == string(tripperware.GzipCompression) {
 		compression = tripperware.GzipCompression
@@ -78,6 +83,7 @@ func NewPrometheusCodec(sharded bool, compressionStr string, defaultCodecTypeStr
 		sharded:          sharded,
 		compression:      compression,
 		defaultCodecType: defaultCodecType,
+		limits:           limits,
 	}
 }
 
@@ -198,11 +204,23 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		return nil, err
 	}
 
-	buf, err := tripperware.BodyBuffer(r, log)
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	queryLimiter := limiter.NewQueryLimiter(c.limits.MaxFetchedSeriesPerQuery(userID), c.limits.MaxFetchedChunkBytesPerQuery(userID), c.limits.MaxChunksPerQuery(userID), c.limits.MaxFetchedDataBytesPerQuery(userID))
+
+	buf, err := tripperware.BodyBuffer(r, c.limits.MaxFetchedDataBytesPerQuery(userID), log)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
+
+	if dataBytesLimitErr := queryLimiter.AddDataBytes(len(buf)); dataBytesLimitErr != nil {
+		return nil, validation.LimitError(dataBytesLimitErr.Error())
+	}
+
 	if r.StatusCode/100 != 2 {
 		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(buf))
 	}

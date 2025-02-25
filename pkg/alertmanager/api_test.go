@@ -649,6 +649,60 @@ alertmanager_config: |
 `,
 			err: errors.Wrap(errTelegramBotTokenFileNotAllowed, "error validating Alertmanager config"),
 		},
+		{
+			name: "Should return error if MSTeams webhook_url_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      msteams_configs:
+        - webhook_url_file: /urlFile
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errMSTeamsWebhookUrlFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if MSTeamsV2 webhook_url_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      msteamsv2_configs:
+        - webhook_url_file: /urlFile
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errMSTeamsV2WebhookUrlFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if RocketChat token_id_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      rocketchat_configs:
+        - token_id_file: /tokenIdFile
+          token: 'token'
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errRocketChatTokenIdFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if RocketChat token_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      rocketchat_configs:
+        - token_file: /tokenFile
+          token_id: 'tokenId'
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errRocketChatTokenFileNotAllowed, "error validating Alertmanager config"),
+		},
 	}
 
 	limits := &mockAlertManagerLimits{}

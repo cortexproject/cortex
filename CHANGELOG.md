@@ -15,6 +15,7 @@
 * [BUGFIX] Compactor: Cleaner would delete bucket index when there is no block in bucket store. #6577
 * [BUGFIX] Querier: Fix marshal native histogram with empty bucket when protobuf codec is enabled. #6595
 * [BUGFIX] Query Frontend: Fix samples scanned and peak samples query stats when query hits results cache. #6591
+* [BUGFIX] Query Frontend: Fix panic caused by nil pointer dereference. #6609
 
 ## 1.19.0 in progress
 

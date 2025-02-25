@@ -109,7 +109,7 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 	if err != nil {
 		return nil, err
 	}
-	
+
 	queryLimiter := limiter.NewQueryLimiter(c.limits.MaxFetchedSeriesPerQuery(userID), c.limits.MaxFetchedChunkBytesPerQuery(userID), c.limits.MaxChunksPerQuery(userID), c.limits.MaxFetchedDataBytesPerQuery(userID))
 
 	buf, err := tripperware.BodyBuffer(r, c.limits.MaxFetchedDataBytesPerQuery(userID), log)

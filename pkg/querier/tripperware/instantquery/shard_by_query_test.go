@@ -11,10 +11,10 @@ import (
 func Test_shardQuery(t *testing.T) {
 	t.Parallel()
 	userLimit := validation.Limits{
-		MaxFetchedSeriesPerQuery: 0,
+		MaxFetchedSeriesPerQuery:     0,
 		MaxFetchedChunkBytesPerQuery: 0,
-		MaxChunksPerQuery: 0,
-		MaxFetchedDataBytesPerQuery: 0,
+		MaxChunksPerQuery:            0,
+		MaxFetchedDataBytesPerQuery:  0,
 	}
 	overrides, _ := validation.NewOverrides(userLimit, nil)
 	tripperware.TestQueryShardQuery(t, testInstantQueryCodec, queryrange.NewPrometheusCodec(true, "", "protobuf", overrides))

@@ -21,8 +21,15 @@ import (
 )
 
 var (
-	PrometheusCodec        = NewPrometheusCodec(false, "", "protobuf", &validation.Overrides{})
-	ShardedPrometheusCodec = NewPrometheusCodec(false, "", "protobuf", &validation.Overrides{})
+	userLimit = validation.Limits{
+		MaxFetchedSeriesPerQuery: 0,
+		MaxFetchedChunkBytesPerQuery: 0,
+		MaxChunksPerQuery: 0,
+		MaxFetchedDataBytesPerQuery: 0,
+	}
+	overrides, _ = validation.NewOverrides(userLimit, nil)
+	PrometheusCodec        = NewPrometheusCodec(false, "", "protobuf", overrides)
+	ShardedPrometheusCodec = NewPrometheusCodec(false, "", "protobuf", overrides)
 )
 
 func TestRoundTrip(t *testing.T) {

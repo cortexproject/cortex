@@ -26,7 +26,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-var testInstantQueryCodec = NewInstantQueryCodec(string(tripperware.NonCompression), string(tripperware.ProtobufCodecType), &validation.Overrides{})
+var userLimit = validation.Limits{
+	MaxFetchedSeriesPerQuery: 0,
+	MaxFetchedChunkBytesPerQuery: 0,
+	MaxChunksPerQuery: 0,
+	MaxFetchedDataBytesPerQuery: 0,
+}
+var overrides, _ = validation.NewOverrides(userLimit, nil)
+var testInstantQueryCodec = NewInstantQueryCodec(string(tripperware.NonCompression), string(tripperware.ProtobufCodecType), overrides)
 
 var jsonHttpReq = &http.Request{
 	Header: map[string][]string{
@@ -191,7 +198,9 @@ func TestCompressedResponse(t *testing.T) {
 				Header:     h,
 				Body:       io.NopCloser(responseBody),
 			}
-			resp, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+
+			ctx := user.InjectOrgID(context.Background(), "1")
+			resp, err := testInstantQueryCodec.DecodeResponse(ctx, response, nil)
 			require.Equal(t, tc.err, err)
 
 			if err == nil {
@@ -455,7 +464,8 @@ func TestResponse(t *testing.T) {
 				}
 			}
 
-			resp, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+			ctx := user.InjectOrgID(context.Background(), "1")
+			resp, err := testInstantQueryCodec.DecodeResponse(ctx, response, nil)
 			require.NoError(t, err)
 
 			// Reset response, as the above call will have consumed the body reader.
@@ -465,7 +475,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
 				ContentLength: int64(len(tc.jsonBody)),
 			}
-			resp2, err := testInstantQueryCodec.EncodeResponse(context.Background(), jsonHttpReq, resp)
+			resp2, err := testInstantQueryCodec.EncodeResponse(ctx, jsonHttpReq, resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})
@@ -711,7 +721,7 @@ func TestMergeResponse(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ctx, cancelCtx := context.WithCancel(context.Background())
+			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))
 
 			var resps []tripperware.Response
 			for _, r := range tc.resps {
@@ -1724,7 +1734,7 @@ func TestMergeResponseProtobuf(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ctx, cancelCtx := context.WithCancel(context.Background())
+			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))
 
 			var resps []tripperware.Response
 			for _, r := range tc.resps {
@@ -1871,7 +1881,9 @@ func Benchmark_Decode(b *testing.B) {
 					StatusCode: 200,
 					Body:       io.NopCloser(bytes.NewBuffer(body)),
 				}
-				_, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+
+				ctx := user.InjectOrgID(context.Background(), "1")
+				_, err := testInstantQueryCodec.DecodeResponse(ctx, response, nil)
 				require.NoError(b, err)
 			}
 		})
@@ -1934,7 +1946,9 @@ func Benchmark_Decode_Protobuf(b *testing.B) {
 					Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
 					Body:       io.NopCloser(bytes.NewBuffer(body)),
 				}
-				_, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+				
+				ctx := user.InjectOrgID(context.Background(), "1")
+				_, err := testInstantQueryCodec.DecodeResponse(ctx, response, nil)
 				require.NoError(b, err)
 			}
 		})

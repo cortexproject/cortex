@@ -228,11 +228,16 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	am.groupMarker = memMarker
 
 	silencesFile := filepath.Join(cfg.TenantDataDir, silencesSnapshot)
+
 	am.silences, err = silence.New(silence.Options{
 		SnapshotFile: silencesFile,
 		Retention:    cfg.Retention,
-		Logger:       util_log.GoKitLogToSlog(log.With(am.logger, "component", "silences")),
-		Metrics:      am.registry,
+		Limits: silence.Limits{
+			MaxSilences:         func() int { return cfg.Limits.AlertmanagerMaxSilencesCount(cfg.UserID) },
+			MaxSilenceSizeBytes: func() int { return cfg.Limits.AlertmanagerMaxSilenceSizeBytes(cfg.UserID) },
+		},
+		Logger:  util_log.GoKitLogToSlog(log.With(am.logger, "component", "silences")),
+		Metrics: am.registry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create silences: %v", err)

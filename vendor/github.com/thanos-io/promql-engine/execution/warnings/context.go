@@ -35,6 +35,12 @@ func (w *warnings) get() annotations.Annotations {
 	return w.warns
 }
 
+func (w *warnings) merge(anno annotations.Annotations) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.warns = w.warns.Merge(anno)
+}
+
 func NewContext(ctx context.Context) context.Context {
 	return context.WithValue(ctx, key, newWarnings())
 }
@@ -45,6 +51,14 @@ func AddToContext(warn error, ctx context.Context) {
 		return
 	}
 	w.add(warn)
+}
+
+func MergeToContext(annos annotations.Annotations, ctx context.Context) {
+	w, ok := ctx.Value(key).(*warnings)
+	if !ok {
+		return
+	}
+	w.merge(annos)
 }
 
 func FromContext(ctx context.Context) annotations.Annotations {

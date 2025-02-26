@@ -204,12 +204,13 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	})
 	maxConcurrentMetric.Set(float64(cfg.MaxConcurrent))
 
-	// set EnableExperimentalFunctions
-	parser.EnableExperimentalFunctions = cfg.EnablePromQLExperimentalFunctions
+	// The holt_winters function is renamed to double_exponential_smoothing and has been experimental since Prometheus v3. (https://github.com/prometheus/prometheus/pull/14930)
+	// The cortex supports holt_winters for users using this function.
+	EnableExperimentalPromQLFunctions(cfg.EnablePromQLExperimentalFunctions, true)
 
 	var queryEngine promql.QueryEngine
 	opts := promql.EngineOpts{
-		Logger:               logger,
+		Logger:               util_log.GoKitLogToSlog(logger),
 		Reg:                  reg,
 		ActiveQueryTracker:   createActiveQueryTracker(cfg, logger),
 		MaxSamples:           cfg.MaxSamples,
@@ -252,7 +253,7 @@ func createActiveQueryTracker(cfg Config, logger log.Logger) promql.QueryTracker
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
-		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util_log.GoKitLogToSlog(logger))
 	}
 
 	return nil
@@ -436,7 +437,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		}
 	}
 
-	return storage.NewMergeSeriesSet(result, storage.ChainedSeriesMerge)
+	return storage.NewMergeSeriesSet(result, 0, storage.ChainedSeriesMerge)
 }
 
 // LabelValues implements storage.Querier.
@@ -664,4 +665,16 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 	}
 
 	return int64(startTime), int64(endTime), nil
+}
+
+func EnableExperimentalPromQLFunctions(enablePromQLExperimentalFunctions, enableHoltWinters bool) {
+	parser.EnableExperimentalFunctions = enablePromQLExperimentalFunctions
+
+	if enableHoltWinters {
+		holtWinters := *parser.Functions["double_exponential_smoothing"]
+		holtWinters.Experimental = false
+		holtWinters.Name = "holt_winters"
+		parser.Functions["holt_winters"] = &holtWinters
+		promql.FunctionCalls["holt_winters"] = promql.FunctionCalls["double_exponential_smoothing"]
+	}
 }

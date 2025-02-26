@@ -1287,7 +1287,7 @@ func TestCompressedResponse(t *testing.T) {
 				Header:     h,
 				Body:       io.NopCloser(responseBody),
 			}
-			
+
 			ctx := user.InjectOrgID(context.Background(), "1")
 			resp, err := PrometheusCodec.DecodeResponse(ctx, response, nil)
 			require.Equal(t, tc.err, err)

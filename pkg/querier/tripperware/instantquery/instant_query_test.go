@@ -27,10 +27,10 @@ import (
 )
 
 var userLimit = validation.Limits{
-	MaxFetchedSeriesPerQuery: 0,
+	MaxFetchedSeriesPerQuery:     0,
 	MaxFetchedChunkBytesPerQuery: 0,
-	MaxChunksPerQuery: 0,
-	MaxFetchedDataBytesPerQuery: 0,
+	MaxChunksPerQuery:            0,
+	MaxFetchedDataBytesPerQuery:  0,
 }
 var overrides, _ = validation.NewOverrides(userLimit, nil)
 var testInstantQueryCodec = NewInstantQueryCodec(string(tripperware.NonCompression), string(tripperware.ProtobufCodecType), overrides)
@@ -1946,7 +1946,7 @@ func Benchmark_Decode_Protobuf(b *testing.B) {
 					Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
 					Body:       io.NopCloser(bytes.NewBuffer(body)),
 				}
-				
+
 				ctx := user.InjectOrgID(context.Background(), "1")
 				_, err := testInstantQueryCodec.DecodeResponse(ctx, response, nil)
 				require.NoError(b, err)

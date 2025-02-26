@@ -3751,6 +3751,15 @@ query_rejection:
 # CLI flag: -alertmanager.max-alerts-size-bytes
 [alertmanager_max_alerts_size_bytes: <int> | default = 0]
 
+# Maximum number of silences that a single user can have, including expired
+# silences. 0 = no limit.
+# CLI flag: -alertmanager.max-silences-count
+[alertmanager_max_silences_count: <int> | default = 0]
+
+# Maximum size of individual silences that a single user can have. 0 = no limit.
+# CLI flag: -alertmanager.max-silences-size-bytes
+[alertmanager_max_silences_size_bytes: <int> | default = 0]
+
 # list of rule groups to disable
 [disabled_rule_groups: <list of DisabledRuleGroup> | default = []]
 ```

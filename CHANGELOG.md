@@ -10,6 +10,7 @@
 * [ENHANCEMENT] StoreGateway: Emit more histogram buckets on the `cortex_querier_storegateway_refetches_per_query` metric. #6570
 * [ENHANCEMENT] Querier: Apply bytes limiter to LabelNames and LabelValuesForLabelNames. #6568
 * [ENHANCEMENT] Query Frontend: Add a `too_many_tenants` reason label value to `cortex_rejected_queries_total` metric to track the rejected query count due to the # of tenant limits. #6569
+* [ENHANCEMENT] Alertmanager: Add receiver validations for msteamsv2 and rocketchat. #6606
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576

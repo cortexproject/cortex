@@ -49,6 +49,16 @@ func IsEnabled(ctx context.Context) bool {
 	return FromContext(ctx) != nil
 }
 
+func (s *QueryStats) Copy() *QueryStats {
+	if s == nil {
+		return nil
+	}
+
+	copied := &QueryStats{}
+	copied.Merge(s)
+	return copied
+}
+
 // AddWallTime adds some time to the counter.
 func (s *QueryStats) AddWallTime(t time.Duration) {
 	if s == nil {

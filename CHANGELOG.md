@@ -7,6 +7,7 @@
 * [FEATURE] Update prometheus alertmanager version to v0.28.0 and add new integration msteamsv2, jira, and rocketchat. #6590
 * [FEATURE] Ingester: Add a `-ingester.enable-ooo-native-histograms` flag to enable out-of-order native histogram ingestion per tenant. It only takes effect when `-blocks-storage.tsdb.enable-native-histograms=true` and `-ingester.out-of-order-time-window` > 0. It is applied after the restart if it is changed at runtime through the runtime config. #6626
 * [ENHANCEMENT] Querier: limit label APIs to query only ingesters if `start` param is not been specified. #6618
+* [ENHANCEMENT] Ruler: Add rule information (group name, namespace, name, and kind) to query parameters sent to the Query Frontend to leave rule information logs on query stats. #6539
 * [ENHANCEMENT] Alertmanager: Add new limits `-alertmanager.max-silences-count` and `-alertmanager.max-silences-size-bytes` for limiting silences per tenant. #6605
 * [ENHANCEMENT] Update prometheus version to v3.1.0. #6583
 * [ENHANCEMENT] Add `compactor.auto-forget-delay` for compactor to auto forget compactors after X minutes without heartbeat. #6533

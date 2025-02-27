@@ -32,7 +32,7 @@ func TestTimeout(t *testing.T) {
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "userID")
 	frontendClient := NewFrontendClient(mockHTTPGRPCClient(mockClientFn), time.Second*5, "/prometheus", "json")
-	_, err := frontendClient.InstantQuery(ctx, "query", time.Now())
+	_, err := frontendClient.InstantQuery(ctx, "query", time.Now(), nil)
 	require.Equal(t, context.DeadlineExceeded, err)
 }
 
@@ -41,7 +41,7 @@ func TestNoOrgId(t *testing.T) {
 		return nil, nil
 	}
 	frontendClient := NewFrontendClient(mockHTTPGRPCClient(mockClientFn), time.Second*5, "/prometheus", "json")
-	_, err := frontendClient.InstantQuery(context.Background(), "query", time.Now())
+	_, err := frontendClient.InstantQuery(context.Background(), "query", time.Now(), nil)
 	require.Equal(t, user.ErrNoOrgID, err)
 }
 
@@ -152,7 +152,7 @@ func TestInstantQueryJsonCodec(t *testing.T) {
 			ctx := context.Background()
 			ctx = user.InjectOrgID(ctx, "userID")
 			frontendClient := NewFrontendClient(mockHTTPGRPCClient(mockClientFn), time.Second*5, "/prometheus", "json")
-			vector, err := frontendClient.InstantQuery(ctx, "query", time.Now())
+			vector, err := frontendClient.InstantQuery(ctx, "query", time.Now(), nil)
 			require.Equal(t, test.expected, vector)
 			require.Equal(t, test.expectedErr, err)
 		})
@@ -301,7 +301,7 @@ func TestInstantQueryProtoCodec(t *testing.T) {
 			ctx := context.Background()
 			ctx = user.InjectOrgID(ctx, "userID")
 			frontendClient := NewFrontendClient(mockHTTPGRPCClient(mockClientFn), time.Second*5, "/prometheus", "protobuf")
-			vector, err := frontendClient.InstantQuery(ctx, "query", time.Now())
+			vector, err := frontendClient.InstantQuery(ctx, "query", time.Now(), nil)
 			require.Equal(t, test.expected, vector)
 			require.Equal(t, test.expectedErr, err)
 		})

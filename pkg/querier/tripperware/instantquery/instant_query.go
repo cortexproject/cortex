@@ -105,14 +105,20 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 		return nil, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	queryLimiter := limiter.NewQueryLimiter(c.limits.MaxFetchedSeriesPerQuery(userID), c.limits.MaxFetchedChunkBytesPerQuery(userID), c.limits.MaxChunksPerQuery(userID), c.limits.MaxFetchedDataBytesPerQuery(userID))
+	queryLimiter := limiter.NewQueryLimiter(
+		validation.SmallestPositiveIntPerTenant(tenantIDs, c.limits.MaxFetchedSeriesPerQuery),
+		validation.SmallestPositiveIntPerTenant(tenantIDs, c.limits.MaxFetchedChunkBytesPerQuery),
+		validation.SmallestPositiveIntPerTenant(tenantIDs, c.limits.MaxChunksPerQuery),
+		validation.SmallestPositiveIntPerTenant(tenantIDs, c.limits.MaxFetchedDataBytesPerQuery),
+	)
 
-	buf, err := tripperware.BodyBuffer(r, c.limits.MaxFetchedDataBytesPerQuery(userID), log)
+	maxByteSize := validation.SmallestPositiveIntPerTenant(tenantIDs, c.limits.MaxFetchedDataBytesPerQuery)
+	buf, err := tripperware.BodyBuffer(r, maxByteSize, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err

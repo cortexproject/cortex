@@ -656,7 +656,12 @@ func (c *Compactor) starting(ctx context.Context) error {
 	// Initialize the compactors ring if sharding is enabled.
 	if c.compactorCfg.ShardingEnabled {
 		lifecyclerCfg := c.compactorCfg.ShardingRing.ToLifecyclerConfig()
-		c.ringLifecycler, err = ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.registerer))
+		var delegate ring.LifecyclerDelegate
+		delegate = &ring.DefaultLifecyclerDelegate{}
+		if c.compactorCfg.ShardingRing.AutoForgetDelay > 0 {
+			delegate = ring.NewLifecyclerAutoForgetDelegate(c.compactorCfg.ShardingRing.AutoForgetDelay, delegate, c.logger)
+		}
+		c.ringLifecycler, err = ring.NewLifecyclerWithDelegate(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.registerer), delegate)
 		if err != nil {
 			return errors.Wrap(err, "unable to initialize compactor ring lifecycler")
 		}

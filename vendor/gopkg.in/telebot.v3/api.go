@@ -27,18 +27,21 @@ func (b *Bot) Raw(method string, payload interface{}) ([]byte, error) {
 		return nil, err
 	}
 
-	// Cancel the request immediately without waiting for the timeout  when bot is about to stop.
+	// Cancel the request immediately without waiting for the timeout
+	// when bot is about to stop.
 	// This may become important if doing long polling with long timeout.
-	exit := make(chan struct{})
-	defer close(exit)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
+		b.stopMu.RLock()
+		stopCh := b.stopClient
+		b.stopMu.RUnlock()
+
 		select {
-		case <-b.stopClient:
+		case <-stopCh:
 			cancel()
-		case <-exit:
+		case <-ctx.Done():
 		}
 	}()
 
@@ -160,6 +163,19 @@ func addFileToWriter(writer *multipart.Writer, filename, field string, file inte
 	return err
 }
 
+func (f *File) process(name string, files map[string]File) string {
+	switch {
+	case f.InCloud():
+		return f.FileID
+	case f.FileURL != "":
+		return f.FileURL
+	case f.OnDisk() || f.FileReader != nil:
+		files[name] = *f
+		return "attach://" + name
+	}
+	return ""
+}
+
 func (b *Bot) sendText(to Recipient, text string, opt *SendOptions) (*Message, error) {
 	params := map[string]string{
 		"chat_id": to.Recipient(),
@@ -233,6 +249,37 @@ func (b *Bot) getUpdates(offset, limit int, timeout time.Duration, allowed []str
 		Result []Update
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, wrapError(err)
+	}
+	return resp.Result, nil
+}
+
+func (b *Bot) forwardCopyMany(to Recipient, msgs []Editable, key string, opts ...*SendOptions) ([]Message, error) {
+	params := map[string]string{
+		"chat_id": to.Recipient(),
+	}
+
+	embedMessages(params, msgs)
+
+	if len(opts) > 0 {
+		b.embedSendOptions(params, opts[0])
+	}
+
+	data, err := b.Raw(key, params)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Result []Message
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		var resp struct {
+			Result bool
+		}
+		if err := json.Unmarshal(data, &resp); err != nil {
+			return nil, wrapError(err)
+		}
 		return nil, wrapError(err)
 	}
 	return resp.Result, nil

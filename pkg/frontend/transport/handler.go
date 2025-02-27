@@ -45,6 +45,7 @@ var (
 )
 
 const (
+	reasonTooManyTenants           = "too_many_tenants"
 	reasonRequestBodySizeExceeded  = "request_body_size_exceeded"
 	reasonResponseBodySizeExceeded = "response_body_size_exceeded"
 	reasonTooManyRequests          = "too_many_requests"
@@ -191,15 +192,19 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := tenant.JoinTenantIDs(tenantIDs)
+
 	if f.tenantFederationCfg.Enabled {
 		maxTenant := f.tenantFederationCfg.MaxTenant
 		if maxTenant > 0 && len(tenantIDs) > maxTenant {
+			source := tripperware.GetSource(r.Header.Get("User-Agent"))
+			if f.cfg.QueryStatsEnabled {
+				f.rejectedQueries.WithLabelValues(reasonTooManyTenants, source, userID).Inc()
+			}
 			http.Error(w, fmt.Errorf(errTooManyTenants, maxTenant, len(tenantIDs)).Error(), http.StatusBadRequest)
 			return
 		}
 	}
-
-	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Initialise the stats in the context and make sure it's propagated
 	// down the request chain.
@@ -328,6 +333,19 @@ func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values) {
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
 	}
+
+	if query := queryString.Get("query"); len(query) > 0 {
+		logMessage = append(logMessage, "query_length", len(query))
+	}
+
+	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
+		logMessage = append(logMessage, "user_agent", ua)
+	}
+
+	if acceptEncoding := r.Header.Get("Accept-Encoding"); len(acceptEncoding) > 0 {
+		logMessage = append(logMessage, "accept_encoding", acceptEncoding)
+	}
+
 	logMessage = append(logMessage, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
@@ -367,6 +385,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	splitQueries := stats.LoadSplitQueries()
 	dataSelectMaxTime := stats.LoadDataSelectMaxTime()
 	dataSelectMinTime := stats.LoadDataSelectMinTime()
+	splitInterval := stats.LoadSplitInterval()
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(source, userID).Add(wallTime.Seconds())
@@ -404,6 +423,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		"split_queries", splitQueries,
 		"status_code", statusCode,
 		"response_size", contentLength,
+		"samples_scanned", numScannedSamples,
 	}, stats.LoadExtraFields()...)
 
 	if numStoreGatewayTouchedPostings > 0 {
@@ -439,6 +459,10 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		// Only include query storage wall time field if set. This value can be 0
 		// for query APIs that don't call `Querier` interface.
 		logMessage = append(logMessage, "query_storage_wall_time_seconds", sws)
+	}
+
+	if splitInterval > 0 {
+		logMessage = append(logMessage, "split_interval", splitInterval.String())
 	}
 
 	if error != nil {

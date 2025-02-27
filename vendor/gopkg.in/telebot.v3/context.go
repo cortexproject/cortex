@@ -55,6 +55,12 @@ type Context interface {
 	// Topic returns the topic changes.
 	Topic() *Topic
 
+	// Boost returns the boost instance.
+	Boost() *BoostUpdated
+
+	// BoostRemoved returns the boost removed from a chat instance.
+	BoostRemoved() *BoostRemoved
+
 	// Sender returns the current recipient, depending on the context type.
 	// Returns nil if user is not presented.
 	Sender() *User
@@ -151,6 +157,12 @@ type Context interface {
 	// Respond sends a response for the current callback query.
 	// See Respond from bot.go.
 	Respond(resp ...*CallbackResponse) error
+
+	// RespondText sends a popup response for the current callback query.
+	RespondText(text string) error
+
+	// RespondAlert sends an alert response for the current callback query.
+	RespondAlert(text string) error
 
 	// Get retrieves data from the context.
 	Get(key string) interface{}
@@ -259,6 +271,14 @@ func (c *nativeContext) Topic() *Topic {
 	return nil
 }
 
+func (c *nativeContext) Boost() *BoostUpdated {
+	return c.u.Boost
+}
+
+func (c *nativeContext) BoostRemoved() *BoostRemoved {
+	return c.u.BoostRemoved
+}
+
 func (c *nativeContext) Sender() *User {
 	switch {
 	case c.u.Callback != nil:
@@ -281,9 +301,16 @@ func (c *nativeContext) Sender() *User {
 		return c.u.ChatMember.Sender
 	case c.u.ChatJoinRequest != nil:
 		return c.u.ChatJoinRequest.Sender
-	default:
-		return nil
+	case c.u.Boost != nil:
+		if b := c.u.Boost.Boost; b != nil && b.Source != nil {
+			return b.Source.Booster
+		}
+	case c.u.BoostRemoved != nil:
+		if b := c.u.BoostRemoved; b.Source != nil {
+			return b.Source.Booster
+		}
 	}
+	return nil
 }
 
 func (c *nativeContext) Chat() *Chat {
@@ -355,7 +382,7 @@ func (c *nativeContext) Args() []string {
 	case c.u.Message != nil:
 		payload := strings.Trim(c.u.Message.Payload, " ")
 		if payload != "" {
-			return strings.Split(payload, " ")
+			return strings.Fields(payload)
 		}
 	case c.u.Callback != nil:
 		return strings.Split(c.u.Callback.Data, "|")
@@ -479,6 +506,14 @@ func (c *nativeContext) Respond(resp ...*CallbackResponse) error {
 		return errors.New("telebot: context callback is nil")
 	}
 	return c.b.Respond(c.u.Callback, resp...)
+}
+
+func (c *nativeContext) RespondText(text string) error {
+	return c.Respond(&CallbackResponse{Text: text})
+}
+
+func (c *nativeContext) RespondAlert(text string) error {
+	return c.Respond(&CallbackResponse{Text: text, ShowAlert: true})
 }
 
 func (c *nativeContext) Answer(resp *QueryResponse) error {

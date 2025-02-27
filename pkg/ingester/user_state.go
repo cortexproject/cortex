@@ -131,15 +131,14 @@ func (m *labelSetCounter) canAddSeriesForLabelSet(ctx context.Context, u *userTS
 
 func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, forceBackfill bool, allLimits []validation.LimitsPerLabelSet, limit validation.LimitsPerLabelSet, s *labelSetCounterShard) (int, error) {
 	s.Lock()
+	defer s.Unlock()
 	// If not force backfill, use existing counter value.
 	if !forceBackfill {
 		if r, ok := s.valuesCounter[limit.Hash]; ok {
-			s.Unlock()
 			return r.count, nil
 		}
 	}
 
-	defer s.Unlock()
 	ir, err := u.db.Head().Index()
 	if err != nil {
 		return 0, err

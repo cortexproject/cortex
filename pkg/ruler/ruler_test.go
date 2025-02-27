@@ -223,7 +223,7 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 		querierTestConfig.Cfg.ActiveQueryTrackerDir = ""
 
 		overrides, _ := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
-		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, reg, logger)
+		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, reg, logger, nil)
 		return func(mint, maxt int64) (storage.Querier, error) {
 			return q.Querier(mint, maxt)
 		}

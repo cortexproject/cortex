@@ -28,6 +28,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/promslog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -450,6 +451,70 @@ receivers:
       - api_url: %s
         api_secret: secret
         corp_id: babycorp
+`, backendURL)
+			},
+		},
+		"msteams": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: msteams
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: msteams
+    msteams_configs:
+      - webhook_url: %s
+`, backendURL)
+			},
+		},
+		"msteamsv2": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: msteamsv2
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: msteamsv2
+    msteamsv2_configs:
+      - webhook_url: %s
+`, backendURL)
+			},
+		},
+		"jira": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: jira
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: jira
+    jira_configs:
+      - api_url: %s
+        project: test-project
+        issue_type: Incident
+`, backendURL)
+			},
+		},
+		"rocketchat": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: rocketchat
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: rocketchat
+    rocketchat_configs:
+      - api_url: %s
+        token: token
+        token_id: token-id
 `, backendURL)
 			},
 		},
@@ -1712,8 +1777,14 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 					amConfig.ShardingEnabled = true
 				}
 
+				var limits validation.Limits
+				flagext.DefaultValues(&limits)
+
+				overrides, err := validation.NewOverrides(limits, nil)
+				require.NoError(t, err)
+
 				reg := prometheus.NewPedanticRegistry()
-				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, nil, log.NewNopLogger(), reg)
+				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, overrides, log.NewNopLogger(), reg)
 				require.NoError(t, err)
 				defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
@@ -1904,8 +1975,14 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 
 				amConfig.ShardingEnabled = true
 
+				var limits validation.Limits
+				flagext.DefaultValues(&limits)
+
+				overrides, err := validation.NewOverrides(limits, nil)
+				require.NoError(t, err)
+
 				reg := prometheus.NewPedanticRegistry()
-				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, nil, log.NewNopLogger(), reg)
+				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, overrides, log.NewNopLogger(), reg)
 				require.NoError(t, err)
 
 				clientPool.setServer(amConfig.ShardingRing.InstanceAddr+":0", am)
@@ -2154,9 +2231,10 @@ receivers:
 	ctx = notify.WithReceiverName(ctx, "email")
 	ctx = notify.WithGroupKey(ctx, "key")
 	ctx = notify.WithRepeatInterval(ctx, time.Minute)
+	ctx = notify.WithRouteID(ctx, "routeId")
 
 	// Verify that rate-limiter is in place for email notifier.
-	_, _, err = uam.lastPipeline.Exec(ctx, log.NewNopLogger(), &types.Alert{})
+	_, _, err = uam.lastPipeline.Exec(ctx, promslog.NewNopLogger(), &types.Alert{})
 	require.NotNil(t, err)
 	require.Contains(t, err.Error(), errRateLimited.Error())
 }
@@ -2219,6 +2297,8 @@ type mockAlertManagerLimits struct {
 	maxDispatcherAggregationGroups int
 	maxAlertsCount                 int
 	maxAlertsSizeBytes             int
+	maxSilencesCount               int
+	maxSilencesSizeBytes           int
 }
 
 func (m *mockAlertManagerLimits) AlertmanagerMaxConfigSize(tenant string) int {
@@ -2259,4 +2339,12 @@ func (m *mockAlertManagerLimits) AlertmanagerMaxAlertsCount(_ string) int {
 
 func (m *mockAlertManagerLimits) AlertmanagerMaxAlertsSizeBytes(_ string) int {
 	return m.maxAlertsSizeBytes
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerMaxSilencesCount(_ string) int {
+	return m.maxSilencesCount
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerMaxSilenceSizeBytes(_ string) int {
+	return m.maxSilencesSizeBytes
 }

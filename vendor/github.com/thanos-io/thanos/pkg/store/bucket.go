@@ -585,7 +585,7 @@ func WithLazyExpandedPostings(enabled bool) BucketStoreOption {
 	}
 }
 
-// WithPostingGroupMaxKeySeriesRatio configures a threshold to mark a posting group as lazy if it has more add keys.
+// WithPostingGroupMaxKeySeriesRatio configures a threshold to mark a posting group as lazy if it has more add keys or remove keys.
 func WithPostingGroupMaxKeySeriesRatio(postingGroupMaxKeySeriesRatio float64) BucketStoreOption {
 	return func(s *BucketStore) {
 		s.postingGroupMaxKeySeriesRatio = postingGroupMaxKeySeriesRatio
@@ -1076,7 +1076,7 @@ type blockSeriesClient struct {
 
 	lazyExpandedPostingEnabled bool
 	seriesMatchRatio           float64
-	// Mark posting group as lazy if it adds too many keys. 0 to disable.
+	// Mark posting group as lazy if it adds or removes too many keys. 0 to disable.
 	postingGroupMaxKeySeriesRatio                 float64
 	lazyExpandedPostingsCount                     prometheus.Counter
 	lazyExpandedPostingGroupByReason              *prometheus.CounterVec
@@ -2978,6 +2978,12 @@ func toPostingGroup(ctx context.Context, lvalsFn func(name string) ([]string, er
 			return nil, nil, err
 		}
 
+		// If the matcher is ="" or =~"", it is the same as removing all values for the label.
+		// We can skip calling `Matches` here.
+		if m.Value == "" && (m.Type == labels.MatchEqual || m.Type == labels.MatchRegexp) {
+			return newPostingGroup(true, m.Name, nil, vals), vals, nil
+		}
+
 		for i, val := range vals {
 			if (i+1)%checkContextEveryNIterations == 0 && ctx.Err() != nil {
 				return nil, nil, ctx.Err()
@@ -3004,6 +3010,12 @@ func toPostingGroup(ctx context.Context, lvalsFn func(name string) ([]string, er
 	vals, err := lvalsFn(m.Name)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// If the matcher is !="" or !~"", it is the same as adding all values for the label.
+	// We can skip calling `Matches` here.
+	if m.Value == "" && (m.Type == labels.MatchNotEqual || m.Type == labels.MatchNotRegexp) {
+		return newPostingGroup(false, m.Name, vals, nil), vals, nil
 	}
 
 	var toAdd []string

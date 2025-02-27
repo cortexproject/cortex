@@ -3,6 +3,7 @@ package v2
 import (
 	"context"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -180,6 +181,18 @@ func TestFrontendEnqueueFailure(t *testing.T) {
 	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.HTTPRequest{})
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "failed to enqueue request"))
+}
+
+func TestFrontendEnqueueInternalError(t *testing.T) {
+	errorMsg := "Some error"
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.ERROR, Error: errorMsg}
+	}, 0)
+
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.HTTPRequest{})
+	require.NoError(t, err)
+	require.Equal(t, []byte(errorMsg), resp.Body)
+	require.Equal(t, int32(http.StatusInternalServerError), resp.Code)
 }
 
 func TestFrontendCancellation(t *testing.T) {

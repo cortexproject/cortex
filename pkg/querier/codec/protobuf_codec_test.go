@@ -39,6 +39,17 @@ func TestProtobufCodec_Encode(t *testing.T) {
 	}
 	testProtoHistogram := cortexpb.FloatHistogramToHistogramProto(1000, testFloatHistogram)
 
+	floatHistogramWithEmptyBucket := &histogram.FloatHistogram{
+		CounterResetHint: 0,
+		Schema:           1,
+		ZeroThreshold:    0.01,
+		ZeroCount:        0,
+		Count:            0,
+		Sum:              1,
+		PositiveSpans:    []histogram.Span{{Offset: 0, Length: 1}},
+		PositiveBuckets:  []float64{0},
+	}
+
 	tests := []struct {
 		name           string
 		data           *v1.QueryData
@@ -288,6 +299,47 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			},
 		},
 		{
+			name: "matrix with histogram and not cortex internal, empty bucket",
+			data: &v1.QueryData{
+				ResultType: parser.ValueTypeMatrix,
+				Result: promql.Matrix{
+					promql.Series{
+						Histograms: []promql.HPoint{{H: floatHistogramWithEmptyBucket, T: 1000}},
+						Metric:     labels.FromStrings("__name__", "foo"),
+					},
+				},
+			},
+			expected: &tripperware.PrometheusResponse{
+				Status: tripperware.StatusSuccess,
+				Data: tripperware.PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Matrix{
+							Matrix: &tripperware.Matrix{
+								SampleStreams: []tripperware.SampleStream{
+									{
+										Labels: []cortexpb.LabelAdapter{
+											{Name: "__name__", Value: "foo"},
+										},
+										Histograms: []tripperware.SampleHistogramPair{
+											{
+												TimestampMs: 1000,
+												Histogram: tripperware.SampleHistogram{
+													Count:   0,
+													Sum:     1,
+													Buckets: []*tripperware.HistogramBucket{},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "vector with histogram and not cortex internal",
 			data: &v1.QueryData{
 				ResultType: parser.ValueTypeVector,
@@ -366,6 +418,46 @@ func TestProtobufCodec_Encode(t *testing.T) {
 														Count:      1,
 													},
 												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "vector with histogram with and not cortex internal, empty bucket",
+			data: &v1.QueryData{
+				ResultType: parser.ValueTypeVector,
+				Result: promql.Vector{
+					promql.Sample{
+						Metric: labels.FromStrings("__name__", "foo"),
+						T:      1000,
+						H:      floatHistogramWithEmptyBucket,
+					},
+				},
+			},
+			expected: &tripperware.PrometheusResponse{
+				Status: tripperware.StatusSuccess,
+				Data: tripperware.PrometheusData{
+					ResultType: model.ValVector.String(),
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Vector{
+							Vector: &tripperware.Vector{
+								Samples: []tripperware.Sample{
+									{
+										Labels: []cortexpb.LabelAdapter{
+											{Name: "__name__", Value: "foo"},
+										},
+										Histogram: &tripperware.SampleHistogramPair{
+											TimestampMs: 1000,
+											Histogram: tripperware.SampleHistogram{
+												Count:   0,
+												Sum:     1,
+												Buckets: []*tripperware.HistogramBucket{},
 											},
 										},
 									},

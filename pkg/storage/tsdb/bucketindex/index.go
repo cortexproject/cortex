@@ -64,6 +64,10 @@ func (idx *Index) RemoveBlock(id ulid.ULID) {
 	}
 }
 
+func (idx *Index) IsEmpty() bool {
+	return len(idx.Blocks) == 0 && len(idx.BlockDeletionMarks) == 0
+}
+
 // Block holds the information about a block in the index.
 type Block struct {
 	// Block ID.

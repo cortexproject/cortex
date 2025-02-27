@@ -134,15 +134,13 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 				if sampleStream.Histograms[j].H.ZeroCount > 0 {
 					bucketsLen = len(sampleStream.Histograms[j].H.NegativeBuckets) + len(sampleStream.Histograms[j].H.PositiveBuckets) + 1
 				}
-				buckets := make([]*tripperware.HistogramBucket, bucketsLen)
 				it := sampleStream.Histograms[j].H.AllBucketIterator()
-				getBuckets(buckets, it)
 				histograms[j] = tripperware.SampleHistogramPair{
 					TimestampMs: sampleStream.Histograms[j].T,
 					Histogram: tripperware.SampleHistogram{
 						Count:   sampleStream.Histograms[j].H.Count,
 						Sum:     sampleStream.Histograms[j].H.Sum,
-						Buckets: buckets,
+						Buckets: getBuckets(bucketsLen, it),
 					},
 				}
 			}
@@ -192,22 +190,21 @@ func getVectorSamples(data *v1.QueryData, cortexInternal bool) *[]tripperware.Sa
 		if sample.H.ZeroCount > 0 {
 			bucketsLen = len(sample.H.NegativeBuckets) + len(sample.H.PositiveBuckets) + 1
 		}
-		buckets := make([]*tripperware.HistogramBucket, bucketsLen)
 		it := sample.H.AllBucketIterator()
-		getBuckets(buckets, it)
 		vectorSamples[i].Histogram = &tripperware.SampleHistogramPair{
 			TimestampMs: sample.T,
 			Histogram: tripperware.SampleHistogram{
 				Count:   sample.H.Count,
 				Sum:     sample.H.Sum,
-				Buckets: buckets,
+				Buckets: getBuckets(bucketsLen, it),
 			},
 		}
 	}
 	return &vectorSamples
 }
 
-func getBuckets(bucketsList []*tripperware.HistogramBucket, it histogram.BucketIterator[float64]) {
+func getBuckets(bucketsLen int, it histogram.BucketIterator[float64]) []*tripperware.HistogramBucket {
+	buckets := make([]*tripperware.HistogramBucket, bucketsLen)
 	bucketIdx := 0
 	for it.Next() {
 		bucket := it.At()
@@ -226,7 +223,7 @@ func getBuckets(bucketsList []*tripperware.HistogramBucket, it histogram.BucketI
 				boundaries = 0 // Inclusive only on upper end AKA left open.
 			}
 		}
-		bucketsList[bucketIdx] = &tripperware.HistogramBucket{
+		buckets[bucketIdx] = &tripperware.HistogramBucket{
 			Boundaries: int32(boundaries),
 			Lower:      bucket.Lower,
 			Upper:      bucket.Upper,
@@ -234,6 +231,8 @@ func getBuckets(bucketsList []*tripperware.HistogramBucket, it histogram.BucketI
 		}
 		bucketIdx += 1
 	}
+	buckets = buckets[:bucketIdx]
+	return buckets
 }
 
 func getStats(builtin *stats.BuiltinStats) *tripperware.PrometheusResponseSamplesStats {

@@ -3307,6 +3307,10 @@ func (i *mockIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWr
 	return i.Push(ctx, &in.WriteRequest, opts...)
 }
 
+func (i *mockIngester) PushStreamConnection(ctx context.Context, in *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return i.Push(ctx, in, opts...)
+}
+
 func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
 	i.Lock()
 	defer i.Unlock()

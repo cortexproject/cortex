@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/grafana/regexp"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
@@ -114,7 +114,7 @@ func TestApiStatusCodes(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
 				opts := promql.EngineOpts{
-					Logger:             log.NewNopLogger(),
+					Logger:             promslog.NewNopLogger(),
 					Reg:                nil,
 					ActiveQueryTracker: nil,
 					MaxSamples:         100,
@@ -152,13 +152,15 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine promql.QueryE
 		nil,   // Only needed for admin APIs.
 		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
-		log.NewNopLogger(),
+		promslog.NewNopLogger(),
 		func(context.Context) v1.RulesRetriever { return &DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
 		false,
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
 		&v1.PrometheusVersion{},
+		nil,
+		nil,
 		prometheus.DefaultGatherer,
 		nil,
 		nil,

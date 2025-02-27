@@ -45,14 +45,14 @@ require (
 	github.com/prometheus/client_model v0.6.1
 	github.com/prometheus/common v0.61.0
 	// Prometheus maps version 2.x.y to tags v0.x.y.
-	github.com/prometheus/prometheus v0.55.1
+	github.com/prometheus/prometheus v0.301.0
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/afero v1.11.0
 	github.com/stretchr/testify v1.10.0
 	github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97
-	github.com/thanos-io/promql-engine v0.0.0-20250110162513-14f995518af3
-	github.com/thanos-io/thanos v0.37.3-0.20250203070737-57efc2aacd6f
+	github.com/thanos-io/promql-engine v0.0.0-20250211181629-815830ca3e2e
+	github.com/thanos-io/thanos v0.37.3-0.20250212101700-346d18bb0f80
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 	go.etcd.io/etcd/api/v3 v3.5.17
@@ -69,7 +69,7 @@ require (
 	golang.org/x/net v0.33.0
 	golang.org/x/sync v0.10.0
 	golang.org/x/time v0.8.0
-	google.golang.org/grpc v1.68.1
+	google.golang.org/grpc v1.69.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -90,13 +90,13 @@ require (
 
 require (
 	cloud.google.com/go v0.115.1 // indirect
-	cloud.google.com/go/auth v0.9.3 // indirect
-	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
-	cloud.google.com/go/compute/metadata v0.5.0 // indirect
+	cloud.google.com/go/auth v0.13.0 // indirect
+	cloud.google.com/go/auth/oauth2adapt v0.2.6 // indirect
+	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/iam v1.1.13 // indirect
 	cloud.google.com/go/storage v1.43.0 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.14.0 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.7.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.16.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.8.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2 // indirect
@@ -129,11 +129,11 @@ require (
 	github.com/dgryski/go-metro v0.0.0-20200812162917-85c65e2d0165 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/edsrzf/mmap-go v1.1.0 // indirect
+	github.com/edsrzf/mmap-go v1.2.0 // indirect
 	github.com/efficientgo/tools/extkingpin v0.0.0-20220817170617-6c25e3b627dd // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
@@ -152,11 +152,11 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/btree v1.1.2 // indirect
-	github.com/google/pprof v0.0.0-20240827171923-fa2c70bbbfe5 // indirect
+	github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
-	github.com/googleapis/gax-go/v2 v2.13.0 // indirect
+	github.com/googleapis/gax-go/v2 v2.14.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.1.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.24.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -199,6 +199,7 @@ require (
 	github.com/prometheus/common/sigv4 v0.1.0 // indirect
 	github.com/prometheus/exporter-toolkit v0.13.2 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
+	github.com/prometheus/sigv4 v0.1.0 // indirect
 	github.com/redis/rueidis v1.0.45-alpha.1 // indirect
 	github.com/rs/cors v1.11.1 // indirect
 	github.com/rs/xid v1.6.0 // indirect
@@ -218,9 +219,10 @@ require (
 	go.mongodb.org/mongo-driver v1.14.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	go.opentelemetry.io/collector/semconv v0.108.1 // indirect
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.54.0 // indirect
+	go.opentelemetry.io/collector/semconv v0.116.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.54.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.58.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.58.0 // indirect
 	go.opentelemetry.io/contrib/propagators/autoprop v0.54.0 // indirect
 	go.opentelemetry.io/contrib/propagators/b3 v1.29.0 // indirect
 	go.opentelemetry.io/contrib/propagators/jaeger v1.29.0 // indirect
@@ -239,14 +241,14 @@ require (
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/tools v0.28.0 // indirect
 	gonum.org/v1/gonum v0.15.0 // indirect
-	google.golang.org/api v0.195.0 // indirect
+	google.golang.org/api v0.213.0 // indirect
 	google.golang.org/genproto v0.0.0-20240823204242-4ba0660f739c // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20241209162323-e6fa225c2576 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20241216192217-9240e9c98484 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241209162323-e6fa225c2576 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
 	gopkg.in/telebot.v3 v3.3.8 // indirect
-	k8s.io/apimachinery v0.31.1 // indirect
-	k8s.io/client-go v0.31.0 // indirect
+	k8s.io/apimachinery v0.31.3 // indirect
+	k8s.io/client-go v0.31.3 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
 )

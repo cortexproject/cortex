@@ -378,7 +378,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 		return storage.ErrSeriesSet(err)
 	}
 
-	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge)
+	return storage.NewMergeSeriesSet(seriesSets, 0, storage.ChainedSeriesMerge)
 }
 
 // filterValuesByMatchers applies matchers to inputed `idLabelName` and

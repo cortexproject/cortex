@@ -15,7 +15,27 @@ import (
 	"sort"
 
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/util/almost"
 )
+
+// smallDeltaTolerance is the threshold for relative deltas between classic
+// histogram buckets that will be ignored by the histogram_quantile function
+// because they are most likely artifacts of floating point precision issues.
+// Testing on 2 sets of real data with bugs arising from small deltas,
+// the safe ranges were from:
+// - 1e-05 to 1e-15
+// - 1e-06 to 1e-15
+// Anything to the left of that would cause non-query-sharded data to have
+// small deltas ignored (unnecessary and we should avoid this), and anything
+// to the right of that would cause query-sharded data to not have its small
+// deltas ignored (so the problem won't be fixed).
+// For context, query sharding triggers these float precision errors in Mimir.
+// To illustrate, with a relative deviation of 1e-12, we need to have 1e12
+// observations in the bucket so that the change of one observation is small
+// enough to get ignored. With the usual observation rate even of very busy
+// services, this will hardly be reached in timeframes that matters for
+// monitoring.
+const smallDeltaTolerance = 1e-12
 
 type le struct {
 	upperBound float64
@@ -55,39 +75,39 @@ func (b buckets) Less(i, j int) bool { return b[i].upperBound < b[j].upperBound 
 // If q<0, -Inf is returned.
 //
 // If q>1, +Inf is returned.
-func bucketQuantile(q float64, buckets buckets) float64 {
+func bucketQuantile(q float64, buckets buckets) (float64, bool, bool) {
 	if math.IsNaN(q) {
-		return math.NaN()
+		return math.NaN(), false, false
 	}
 	if q < 0 {
-		return math.Inf(-1)
+		return math.Inf(-1), false, false
 	}
 	if q > 1 {
-		return math.Inf(+1)
+		return math.Inf(+1), false, false
 	}
 	sort.Sort(buckets)
 	if !math.IsInf(buckets[len(buckets)-1].upperBound, +1) {
-		return math.NaN()
+		return math.NaN(), false, false
 	}
 
 	buckets = coalesceBuckets(buckets)
-	ensureMonotonic(buckets)
+	forcedMonotonic, fixedPrecision := ensureMonotonicAndIgnoreSmallDeltas(buckets, smallDeltaTolerance)
 
 	if len(buckets) < 2 {
-		return math.NaN()
+		return math.NaN(), false, false
 	}
 	observations := buckets[len(buckets)-1].count
 	if observations == 0 {
-		return math.NaN()
+		return math.NaN(), false, false
 	}
 	rank := q * observations
 	b := sort.Search(len(buckets)-1, func(i int) bool { return buckets[i].count >= rank })
 
 	if b == len(buckets)-1 {
-		return buckets[len(buckets)-2].upperBound
+		return buckets[len(buckets)-2].upperBound, forcedMonotonic, fixedPrecision
 	}
 	if b == 0 && buckets[0].upperBound <= 0 {
-		return buckets[0].upperBound
+		return buckets[0].upperBound, forcedMonotonic, fixedPrecision
 	}
 	var (
 		bucketStart float64
@@ -99,7 +119,7 @@ func bucketQuantile(q float64, buckets buckets) float64 {
 		count -= buckets[b-1].count
 		rank -= buckets[b-1].count
 	}
-	return bucketStart + (bucketEnd-bucketStart)*(rank/count)
+	return bucketStart + (bucketEnd-bucketStart)*(rank/count), forcedMonotonic, fixedPrecision
 }
 
 // coalesceBuckets merges buckets with the same upper bound.
@@ -124,49 +144,93 @@ func coalesceBuckets(buckets buckets) buckets {
 // The assumption that bucket counts increase monotonically with increasing
 // upperBound may be violated during:
 //
-//   * Recording rule evaluation of histogram_quantile, especially when rate()
-//      has been applied to the underlying bucket timeseries.
-//   * Evaluation of histogram_quantile computed over federated bucket
-//      timeseries, especially when rate() has been applied.
-//
-// This is because scraped data is not made available to rule evaluation or
-// federation atomically, so some buckets are computed with data from the
-// most recent scrapes, but the other buckets are missing data from the most
-// recent scrape.
+//   - Circumstances where data is already inconsistent at the target's side.
+//   - Ingestion via the remote write receiver that Prometheus implements.
+//   - Optimisation of query execution where precision is sacrificed for other
+//     benefits, not by Prometheus but by systems built on top of it.
+//   - Circumstances where floating point precision errors accumulate.
 //
 // Monotonicity is usually guaranteed because if a bucket with upper bound
 // u1 has count c1, then any bucket with a higher upper bound u > u1 must
-// have counted all c1 observations and perhaps more, so that c  >= c1.
-//
-// Randomly interspersed partial sampling breaks that guarantee, and rate()
-// exacerbates it. Specifically, suppose bucket le=1000 has a count of 10 from
-// 4 samples but the bucket with le=2000 has a count of 7 from 3 samples. The
-// monotonicity is broken. It is exacerbated by rate() because under normal
-// operation, cumulative counting of buckets will cause the bucket counts to
-// diverge such that small differences from missing samples are not a problem.
-// rate() removes this divergence.)
+// have counted all c1 observations and perhaps more, so that c >= c1.
 //
 // bucketQuantile depends on that monotonicity to do a binary search for the
 // bucket with the φ-quantile count, so breaking the monotonicity
 // guarantee causes bucketQuantile() to return undefined (nonsense) results.
 //
-// As a somewhat hacky solution until ingestion is atomic per scrape, we
-// calculate the "envelope" of the histogram buckets, essentially removing
-// any decreases in the count between successive buckets.
-
-func ensureMonotonic(buckets buckets) {
-	max := buckets[0].count
+// As a somewhat hacky solution, we first silently ignore any numerically
+// insignificant (relative delta below the requested tolerance and likely to
+// be from floating point precision errors) differences between successive
+// buckets regardless of the direction. Then we calculate the "envelope" of
+// the histogram buckets, essentially removing any decreases in the count
+// between successive buckets.
+//
+// We return a bool to indicate if this monotonicity was forced or not, and
+// another bool to indicate if small deltas were ignored or not.
+func ensureMonotonicAndIgnoreSmallDeltas(buckets buckets, tolerance float64) (bool, bool) {
+	var forcedMonotonic, fixedPrecision bool
+	prev := buckets[0].count
 	for i := 1; i < len(buckets); i++ {
-		switch {
-		case buckets[i].count > max:
-			max = buckets[i].count
-		case buckets[i].count < max:
-			buckets[i].count = max
+		curr := buckets[i].count // Assumed always positive.
+		if curr == prev {
+			// No correction needed if the counts are identical between buckets.
+			continue
 		}
+		if almost.Equal(prev, curr, tolerance) {
+			// Silently correct numerically insignificant differences from floating
+			// point precision errors, regardless of direction.
+			// Do not update the 'prev' value as we are ignoring the difference.
+			buckets[i].count = prev
+			fixedPrecision = true
+			continue
+		}
+		if curr < prev {
+			// Force monotonicity by removing any decreases regardless of magnitude.
+			// Do not update the 'prev' value as we are ignoring the decrease.
+			buckets[i].count = prev
+			forcedMonotonic = true
+			continue
+		}
+		prev = curr
 	}
+	return forcedMonotonic, fixedPrecision
 }
 
-// Copied from https://github.com/prometheus/prometheus/blob/main/promql/quantile.go#L146.
+// histogramQuantile calculates the quantile 'q' based on the given histogram.
+//
+// For custom buckets, the result is interpolated linearly, i.e. it is assumed
+// the observations are uniformly distributed within each bucket. (This is a
+// quite blunt assumption, but it is consistent with the interpolation method
+// used for classic histograms so far.)
+//
+// For exponential buckets, the interpolation is done under the assumption that
+// the samples within each bucket are distributed in a way that they would
+// uniformly populate the buckets in a hypothetical histogram with higher
+// resolution. For example, if the rank calculation suggests that the requested
+// quantile is right in the middle of the population of the (1,2] bucket, we
+// assume the quantile would be right at the bucket boundary between the two
+// buckets the (1,2] bucket would be divided into if the histogram had double
+// the resolution, which is 2**2**-1 = 1.4142... We call this exponential
+// interpolation.
+//
+// However, for a quantile that ends up in the zero bucket, this method isn't
+// very helpful (because there is an infinite number of buckets close to zero,
+// so we would have to assume zero as the result). Therefore, we return to
+// linear interpolation in the zero bucket.
+//
+// A natural lower bound of 0 is assumed if the histogram has only positive
+// buckets. Likewise, a natural upper bound of 0 is assumed if the histogram has
+// only negative buckets.
+//
+// There are a number of special cases:
+//
+// If the histogram has 0 observations, NaN is returned.
+//
+// If q<0, -Inf is returned.
+//
+// If q>1, +Inf is returned.
+//
+// If q is NaN, NaN is returned.
 func histogramQuantile(q float64, h *histogram.FloatHistogram) float64 {
 	if q < 0 {
 		return math.Inf(-1)
@@ -186,9 +250,9 @@ func histogramQuantile(q float64, h *histogram.FloatHistogram) float64 {
 		rank   float64
 	)
 
-	// if there are NaN observations in the histogram (h.Sum is NaN), use the forward iterator
-	// if the q < 0.5, use the forward iterator
-	// if the q >= 0.5, use the reverse iterator
+	// If there are NaN observations in the histogram (h.Sum is NaN), use the forward iterator.
+	// If q < 0.5, use the forward iterator.
+	// If q >= 0.5, use the reverse iterator.
 	if math.IsNaN(h.Sum) || q < 0.5 {
 		it = h.AllBucketIterator()
 		rank = q * h.Count
@@ -253,11 +317,61 @@ func histogramQuantile(q float64, h *histogram.FloatHistogram) float64 {
 		rank = count - rank
 	}
 
-	// TODO(codesome): Use a better estimation than linear.
-	return bucket.Lower + (bucket.Upper-bucket.Lower)*(rank/bucket.Count)
+	fraction := rank / bucket.Count
+
+	// Return linear interpolation for custom buckets and for quantiles that
+	// end up in the zero bucket.
+	if h.UsesCustomBuckets() || (bucket.Lower <= 0 && bucket.Upper >= 0) {
+		return bucket.Lower + (bucket.Upper-bucket.Lower)*fraction
+	}
+
+	// For exponential buckets, we interpolate on a logarithmic scale. On a
+	// logarithmic scale, the exponential bucket boundaries (for any schema)
+	// become linear (every bucket has the same width). Therefore, after
+	// taking the logarithm of both bucket boundaries, we can use the
+	// calculated fraction in the same way as for linear interpolation (see
+	// above). Finally, we return to the normal scale by applying the
+	// exponential function to the result.
+	logLower := math.Log2(math.Abs(bucket.Lower))
+	logUpper := math.Log2(math.Abs(bucket.Upper))
+	if bucket.Lower > 0 { // Positive bucket.
+		return math.Exp2(logLower + (logUpper-logLower)*fraction)
+	}
+	// Otherwise, we are in a negative bucket and have to mirror things.
+	return -math.Exp2(logUpper + (logLower-logUpper)*(1-fraction))
 }
 
-// Copied from https://github.com/prometheus/prometheus/blob/main/promql/quantile.go#L231.
+// histogramFraction calculates the fraction of observations between the
+// provided lower and upper bounds, based on the provided histogram.
+//
+// histogramFraction is in a certain way the inverse of histogramQuantile.  If
+// histogramQuantile(0.9, h) returns 123.4, then histogramFraction(-Inf, 123.4, h)
+// returns 0.9.
+//
+// The same notes with regard to interpolation and assumptions about the zero
+// bucket boundaries apply as for histogramQuantile.
+//
+// Whether either boundary is inclusive or exclusive doesn’t actually matter as
+// long as interpolation has to be performed anyway. In the case of a boundary
+// coinciding with a bucket boundary, the inclusive or exclusive nature of the
+// boundary determines the exact behavior of the threshold. With the current
+// implementation, that means that lower is exclusive for positive values and
+// inclusive for negative values, while upper is inclusive for positive values
+// and exclusive for negative values.
+//
+// Special cases:
+//
+// If the histogram has 0 observations, NaN is returned.
+//
+// Use a lower bound of -Inf to get the fraction of all observations below the
+// upper bound.
+//
+// Use an upper bound of +Inf to get the fraction of all observations above the
+// lower bound.
+//
+// If lower or upper is NaN, NaN is returned.
+//
+// If lower >= upper and the histogram has at least 1 observation, zero is returned.
 func histogramFraction(lower, upper float64, h *histogram.FloatHistogram) float64 {
 	if h.Count == 0 || math.IsNaN(lower) || math.IsNaN(upper) {
 		return math.NaN()
@@ -273,7 +387,34 @@ func histogramFraction(lower, upper float64, h *histogram.FloatHistogram) float6
 	)
 	for it.Next() {
 		b := it.At()
-		if b.Lower < 0 && b.Upper > 0 {
+
+		zeroBucket := false
+		// interpolateLinearly is used for custom buckets to be
+		// consistent with the linear interpolation known from classic
+		// histograms. It is also used for the zero bucket.
+		interpolateLinearly := func(v float64) float64 {
+			return rank + b.Count*(v-b.Lower)/(b.Upper-b.Lower)
+		}
+		// interpolateExponentially is using the same exponential
+		// interpolation method as above for histogramQuantile. This
+		// method is a better fit for exponential bucketing.
+		interpolateExponentially := func(v float64) float64 {
+			var (
+				logLower = math.Log2(math.Abs(b.Lower))
+				logUpper = math.Log2(math.Abs(b.Upper))
+				logV     = math.Log2(math.Abs(v))
+				fraction float64
+			)
+			if v > 0 {
+				fraction = (logV - logLower) / (logUpper - logLower)
+			} else {
+				fraction = 1 - ((logV - logUpper) / (logLower - logUpper))
+			}
+			return rank + b.Count*fraction
+		}
+
+		if b.Lower <= 0 && b.Upper >= 0 {
+			zeroBucket = true
 			switch {
 			case len(h.NegativeBuckets) == 0 && len(h.PositiveBuckets) > 0:
 				// This is the zero bucket and the histogram has only
@@ -288,10 +429,12 @@ func histogramFraction(lower, upper float64, h *histogram.FloatHistogram) float6
 			}
 		}
 		if !lowerSet && b.Lower >= lower {
+			// We have hit the lower value at the lower bucket boundary.
 			lowerRank = rank
 			lowerSet = true
 		}
 		if !upperSet && b.Lower >= upper {
+			// We have hit the upper value at the lower bucket boundary.
 			upperRank = rank
 			upperSet = true
 		}
@@ -299,11 +442,21 @@ func histogramFraction(lower, upper float64, h *histogram.FloatHistogram) float6
 			break
 		}
 		if !lowerSet && b.Lower < lower && b.Upper > lower {
-			lowerRank = rank + b.Count*(lower-b.Lower)/(b.Upper-b.Lower)
+			// The lower value is in this bucket.
+			if h.UsesCustomBuckets() || zeroBucket {
+				lowerRank = interpolateLinearly(lower)
+			} else {
+				lowerRank = interpolateExponentially(lower)
+			}
 			lowerSet = true
 		}
 		if !upperSet && b.Lower < upper && b.Upper > upper {
-			upperRank = rank + b.Count*(upper-b.Lower)/(b.Upper-b.Lower)
+			// The upper value is in this bucket.
+			if h.UsesCustomBuckets() || zeroBucket {
+				upperRank = interpolateLinearly(upper)
+			} else {
+				upperRank = interpolateExponentially(upper)
+			}
 			upperSet = true
 		}
 		if lowerSet && upperSet {

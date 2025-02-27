@@ -96,7 +96,7 @@ func TestOTLP(t *testing.T) {
 	require.Equal(t, model.ValVector, result.Type())
 	v := result.(model.Vector)
 	require.Equal(t, 1, v.Len())
-	expectedHistogram := tsdbutil.GenerateTestHistogram(int(i))
+	expectedHistogram := tsdbutil.GenerateTestHistogram(int64(i))
 	require.NotNil(t, v[0].Histogram)
 	require.Equal(t, float64(expectedHistogram.Count), float64(v[0].Histogram.Count))
 	require.Equal(t, expectedHistogram.Sum, float64(v[0].Histogram.Sum))

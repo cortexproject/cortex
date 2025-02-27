@@ -4,14 +4,18 @@
 package binary
 
 import (
+	"context"
 	"fmt"
 	"math"
 
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
 )
 
 type binOpSide string
@@ -109,24 +113,116 @@ func newOperation(expr parser.ItemType, vectorBinOp bool) (operation, error) {
 }
 
 // histogramFloatOperation is an operation defined one histogram and one float.
-type histogramFloatOperation func(lhsHist *histogram.FloatHistogram, rhsFloat float64) *histogram.FloatHistogram
+type histogramFloatOperation func(ctx context.Context, lhsHist *histogram.FloatHistogram, rhsFloat float64) *histogram.FloatHistogram
 
-func undefinedHistogramOp(_ *histogram.FloatHistogram, _ float64) *histogram.FloatHistogram {
+func undefinedHistogramOp(_ context.Context, _ *histogram.FloatHistogram, _ float64) *histogram.FloatHistogram {
 	return nil
 }
 
 var lhsHistogramOperations = map[string]histogramFloatOperation{
-	"*": func(hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+	"*": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
 		return hist.Copy().Mul(float)
 	},
-	"/": func(hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+	"/": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
 		return hist.Copy().Div(float)
+	},
+	"+": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "+", "float", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"-": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "-", "float", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"^": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "^", "float", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"%": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "%", "float", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"==": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "==", "float", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"!=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "!=", "float", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	">": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", ">", "float", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"<": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "<", "float", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	">=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", ">=", "float", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"<=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "<=", "float", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"atan2": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "atan2", "float", posrange.PositionRange{}), ctx)
+		return nil
 	},
 }
 
 var rhsHistogramOperations = map[string]histogramFloatOperation{
-	"*": func(hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+	"*": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
 		return hist.Copy().Mul(float)
+	},
+	"+": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "+", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"-": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "-", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"/": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "/", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"^": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "^", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"%": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "%", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"==": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "==", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"!=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "!=", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	">": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", ">", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"<": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "<", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	">=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", ">=", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"<=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "<=", "histogram", posrange.PositionRange{}), ctx)
+		return nil
+	},
+	"atan2": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "atan2", "histogram", posrange.PositionRange{}), ctx)
+		return nil
 	},
 }
 

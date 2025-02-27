@@ -186,7 +186,7 @@ func TestFindMinMaxTime(t *testing.T) {
 			req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte{}))
 
 			minTime, maxTime := FindMinMaxTime(req, expr, testData.lookbackDelta, now)
-			assert.Equal(t, testData.expectedMinTime.Truncate(time.Minute).UnixMilli(), minTime)
+			assert.Equal(t, testData.expectedMinTime.Truncate(time.Minute).UnixMilli()+1, minTime) // refer to https://github.com/prometheus/prometheus/issues/13213 for the reason +1
 			assert.Equal(t, testData.expectedMaxTime.Truncate(time.Minute).UnixMilli(), maxTime)
 		})
 	}

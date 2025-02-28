@@ -17,6 +17,11 @@ func (m *IngesterServerMock) Push(ctx context.Context, r *cortexpb.WriteRequest)
 	return args.Get(0).(*cortexpb.WriteResponse), args.Error(1)
 }
 
+func (m *IngesterServerMock) PushStream(srv Ingester_PushStreamServer) error {
+	args := m.Called(srv)
+	return args.Error(0)
+}
+
 func (m *IngesterServerMock) Query(ctx context.Context, r *QueryRequest) (*QueryResponse, error) {
 	args := m.Called(ctx, r)
 	return args.Get(0).(*QueryResponse), args.Error(1)

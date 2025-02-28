@@ -647,7 +647,6 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			},
 			limits:       &blocksStoreLimitsMock{},
 			queryLimiter: noOpQueryLimiter,
-			// TODO (johrry): Update this after passing limit in merge
 			expectedSeries: []seriesResult{
 				{
 					lbls: labels.New(metricNameLabel, series1Label),

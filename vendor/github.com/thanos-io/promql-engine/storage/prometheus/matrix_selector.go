@@ -11,19 +11,21 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/util/annotations"
+
+	"github.com/thanos-io/promql-engine/execution/warnings"
+
 	"github.com/thanos-io/promql-engine/execution/telemetry"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/ringbuffer"
@@ -45,6 +47,7 @@ type matrixSelector struct {
 	vectorPool *model.VectorPool
 	storage    SeriesSelector
 	scalarArg  float64
+	scalarArg2 float64
 	scanners   []matrixScanner
 	series     []labels.Labels
 	once       sync.Once
@@ -71,7 +74,9 @@ type matrixSelector struct {
 
 	// Lookback delta for extended range functions.
 	extLookbackDelta int64
-	inputSeries      []SignedSeries
+
+	nonCounterMetric string
+	hasFloats        bool
 }
 
 var ErrNativeHistogramsNotSupported = errors.New("native histograms are not supported in extended range functions")
@@ -82,6 +87,7 @@ func NewMatrixSelector(
 	selector SeriesSelector,
 	functionName string,
 	arg float64,
+	arg2 float64,
 	opts *query.Options,
 	selectRange, offset time.Duration,
 	batchSize int64,
@@ -97,6 +103,7 @@ func NewMatrixSelector(
 		functionName: functionName,
 		vectorPool:   pool,
 		scalarArg:    arg,
+		scalarArg2:   arg2,
 		fhReader:     &histogram.FloatHistogram{},
 
 		opts:          opts,
@@ -156,6 +163,10 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 	}
 
 	if o.currentStep > o.maxt {
+		if o.nonCounterMetric != "" && o.hasFloats {
+			warnings.AddToContext(annotations.NewPossibleNonCounterInfo(o.nonCounterMetric, posrange.PositionRange{}), ctx)
+		}
+
 		return nil, nil
 	}
 	if err := o.loadSeries(ctx); err != nil {
@@ -189,7 +200,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			// Also, allow operator to exist independently without being nested
 			// under parser.Call by implementing new data model.
 			// https://github.com/thanos-io/promql-engine/issues/39
-			f, h, ok, err := scanner.buffer.Eval(ctx, o.scalarArg, scanner.metricAppearedTs)
+			f, h, ok, err := scanner.buffer.Eval(ctx, o.scalarArg, o.scalarArg2, scanner.metricAppearedTs)
 			if err != nil {
 				return nil, err
 			}
@@ -197,21 +208,9 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 				vectors[currStep].T = seriesTs
 				if h != nil {
 					vectors[currStep].AppendHistogram(o.vectorPool, scanner.signature, h)
-				} else if f != nil {
-					if o.functionName == "rate" || o.functionName == "increase" {
-						if len(o.inputSeries) > 0 {
-							metricName := o.inputSeries[0].Labels().Get(labels.MetricName)
-							if metricName != "" &&
-								!strings.HasSuffix(metricName, "_total") &&
-								!strings.HasSuffix(metricName, "_sum") &&
-								!strings.HasSuffix(metricName, "_count") &&
-								!strings.HasSuffix(metricName, "_bucket") {
-								warnings.AddToContext(annotations.NewPossibleNonCounterInfo(metricName, posrange.PositionRange{}), ctx)
-							}
-						}
-					}
-
-					vectors[currStep].AppendSample(o.vectorPool, scanner.signature, *f)
+				} else {
+					vectors[currStep].AppendSample(o.vectorPool, scanner.signature, f)
+					o.hasFloats = true
 				}
 			}
 			o.IncrementSamplesAtTimestamp(scanner.buffer.Len(), seriesTs)
@@ -233,8 +232,6 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 			err = loadErr
 			return
 		}
-
-		o.inputSeries = series
 
 		o.scanners = make([]matrixScanner, len(series))
 		o.series = make([]labels.Labels, len(series))
@@ -264,6 +261,20 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 			o.seriesBatchSize = numSeries
 		}
 		o.vectorPool.SetStepSize(int(o.seriesBatchSize))
+
+		// Add a warning if rate or increase is applied on metrics which are not named like counters.
+		if o.functionName == "rate" || o.functionName == "increase" {
+			if len(series) > 0 {
+				metricName := series[0].Labels().Get(labels.MetricName)
+				if metricName != "" &&
+					!strings.HasSuffix(metricName, "_total") &&
+					!strings.HasSuffix(metricName, "_sum") &&
+					!strings.HasSuffix(metricName, "_count") &&
+					!strings.HasSuffix(metricName, "_bucket") {
+					o.nonCounterMetric = metricName
+				}
+			}
+		}
 	})
 	return err
 }

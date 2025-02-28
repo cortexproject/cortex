@@ -61,14 +61,21 @@ func TestOTLP(t *testing.T) {
 
 	// Push some series to Cortex.
 	now := time.Now()
-	series, expectedVector := generateSeries("series_1", now, prompb.Label{Name: "foo", Value: "bar"})
+	series, expectedVector := generateSeries("series_1_total", now, prompb.Label{Name: "foo", Value: "bar"})
 
-	res, err := c.OTLP(series)
+	metadata := []prompb.MetricMetadata{
+		{
+			Help: "help",
+			Unit: "total",
+		},
+	}
+
+	res, err := c.OTLP(series, metadata)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
 	// Query the series.
-	result, err := c.Query("series_1", now)
+	result, err := c.Query("series_1_total", now)
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))
@@ -81,13 +88,17 @@ func TestOTLP(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"__name__", "foo"}, labelNames)
 
+	metadataResult, err := c.Metadata("series_1", "")
+	require.NoError(t, err)
+	require.Equal(t, 1, len(metadataResult))
+
 	// Check that a range query does not return an error to sanity check the queryrange tripperware.
 	_, err = c.QueryRange("series_1", now.Add(-15*time.Minute), now, 15*time.Second)
 	require.NoError(t, err)
 
 	i := rand.Uint32()
 	histogramSeries := e2e.GenerateHistogramSeries("histogram_series", now, i, false, prompb.Label{Name: "job", Value: "test"})
-	res, err = c.OTLP(histogramSeries)
+	res, err = c.OTLP(histogramSeries, nil)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 

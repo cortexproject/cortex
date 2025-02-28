@@ -1878,7 +1878,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 			seriesSet := q.Select(ctx, true, hints, matchers...)
 			sets = append(sets, seriesSet)
 		}
-		mergedSet = storage.NewMergeSeriesSet(sets, 0, storage.ChainedSeriesMerge)
+		mergedSet = storage.NewMergeSeriesSet(sets, limit, storage.ChainedSeriesMerge)
 	} else {
 		mergedSet = q.Select(ctx, false, hints, matchersSet[0]...)
 	}

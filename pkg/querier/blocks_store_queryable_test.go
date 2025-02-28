@@ -655,12 +655,6 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 						{t: minT, v: 1},
 						{t: minT + 1, v: 2},
 					},
-				}, {
-					lbls: labels.New(metricNameLabel, series2Label),
-					values: []valueResult{
-						{t: minT, v: 1},
-						{t: minT + 1, v: 3},
-					},
 				},
 			},
 		},

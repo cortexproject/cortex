@@ -98,7 +98,8 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				overrides, err := validation.NewOverrides(limits, nil)
 				require.NoError(t, err)
 
-				start, end, err := validateQueryTimeRange(ctx, "test", testData.queryMinT, testData.queryMaxT, overrides, 0)
+				start, end, warnings, err := validateQueryTimeRange(ctx, "test", testData.queryMinT, testData.queryMaxT, overrides, 0)
+				require.Nil(t, warnings)
 				require.NoError(t, err)
 				// Select hints are passed by Prometheus when querying /series.
 				var hints *storage.SelectHints

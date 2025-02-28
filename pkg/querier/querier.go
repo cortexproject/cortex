@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/thanos-io/promql-engine/engine"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/strutil"
@@ -27,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -304,11 +306,12 @@ type querier struct {
 	ignoreMaxQueryLength bool
 }
 
-func (q querier) setupFromCtx(ctx context.Context) (context.Context, *querier_stats.QueryStats, string, int64, int64, storage.Querier, []storage.Querier, error) {
+func (q querier) setupFromCtx(ctx context.Context) (context.Context, *querier_stats.QueryStats, string, int64, int64, storage.Querier, []storage.Querier, annotations.Annotations, error) {
 	stats := querier_stats.FromContext(ctx)
 	userID, err := tenant.TenantID(ctx)
+	warnings := annotations.Annotations(nil)
 	if err != nil {
-		return ctx, stats, userID, 0, 0, nil, nil, err
+		return ctx, stats, userID, 0, 0, nil, nil, warnings, err
 	}
 
 	q.limiterHolder.limiterInitializer.Do(func() {
@@ -317,14 +320,14 @@ func (q querier) setupFromCtx(ctx context.Context) (context.Context, *querier_st
 
 	ctx = limiter.AddQueryLimiterToContext(ctx, q.limiterHolder.limiter)
 
-	mint, maxt, err := validateQueryTimeRange(ctx, userID, q.mint, q.maxt, q.limits, q.maxQueryIntoFuture)
+	mint, maxt, warnings, err := validateQueryTimeRange(ctx, userID, q.mint, q.maxt, q.limits, q.maxQueryIntoFuture)
 	if err != nil {
-		return ctx, stats, userID, 0, 0, nil, nil, err
+		return ctx, stats, userID, 0, 0, nil, nil, warnings, err
 	}
 
 	dqr, err := q.distributor.Querier(mint, maxt)
 	if err != nil {
-		return ctx, stats, userID, 0, 0, nil, nil, err
+		return ctx, stats, userID, 0, 0, nil, nil, warnings, err
 	}
 	metadataQuerier := dqr
 
@@ -340,18 +343,18 @@ func (q querier) setupFromCtx(ctx context.Context) (context.Context, *querier_st
 
 		cqr, err := s.Querier(mint, maxt)
 		if err != nil {
-			return ctx, stats, userID, 0, 0, nil, nil, err
+			return ctx, stats, userID, 0, 0, nil, nil, warnings, err
 		}
 
 		queriers = append(queriers, cqr)
 	}
-	return ctx, stats, userID, mint, maxt, metadataQuerier, queriers, nil
+	return ctx, stats, userID, mint, maxt, metadataQuerier, queriers, warnings, nil
 }
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
 func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, warnings, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return storage.EmptySeriesSet()
 	} else if err != nil {
@@ -370,7 +373,8 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	}
 
 	if sp == nil {
-		mint, maxt, err = validateQueryTimeRange(ctx, userID, mint, maxt, q.limits, q.maxQueryIntoFuture)
+		mint, maxt, newWarnings, err := validateQueryTimeRange(ctx, userID, mint, maxt, q.limits, q.maxQueryIntoFuture)
+		warnings.Merge(newWarnings)
 		if err == errEmptyTimeRange {
 			return storage.EmptySeriesSet()
 		} else if err != nil {
@@ -383,7 +387,8 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	// Validate query time range. Even if the time range has already been validated when we created
 	// the querier, we need to check it again here because the time range specified in hints may be
 	// different.
-	startMs, endMs, err := validateQueryTimeRange(ctx, userID, sp.Start, sp.End, q.limits, q.maxQueryIntoFuture)
+	startMs, endMs, newWarnings, err := validateQueryTimeRange(ctx, userID, sp.Start, sp.End, q.limits, q.maxQueryIntoFuture)
+	warnings.Merge(newWarnings)
 	if err == errEmptyTimeRange {
 		return storage.NoopSeriesSet()
 	} else if err != nil {
@@ -437,12 +442,12 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		}
 	}
 
-	return storage.NewMergeSeriesSet(result, 0, storage.ChainedSeriesMerge)
+	return seriesset.NewSeriesSetWithWarnings(storage.NewMergeSeriesSet(result, 0, storage.ChainedSeriesMerge), warnings)
 }
 
 // LabelValues implements storage.Querier.
 func (q querier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, userID, mint, maxt, _, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, _, queriers, warnings, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -456,7 +461,8 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 	startTime := model.Time(mint)
 	endTime := model.Time(maxt)
 
-	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
+	maxQueryLength := q.limits.MaxQueryLength(userID)
+	if maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
 		limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
 		return nil, nil, limitErr
 	}
@@ -466,9 +472,8 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 	}
 
 	var (
-		g, _     = errgroup.WithContext(ctx)
-		sets     = [][]string{}
-		warnings = annotations.Annotations(nil)
+		g, _ = errgroup.WithContext(ctx)
+		sets = [][]string{}
 
 		resMtx sync.Mutex
 	)
@@ -505,7 +510,7 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 }
 
 func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, userID, mint, maxt, _, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, _, queriers, warnings, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -519,7 +524,8 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 	startTime := model.Time(mint)
 	endTime := model.Time(maxt)
 
-	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
+	maxQueryLength := q.limits.MaxQueryLength(userID)
+	if maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
 		limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
 		return nil, nil, limitErr
 	}
@@ -529,9 +535,8 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 	}
 
 	var (
-		g, _     = errgroup.WithContext(ctx)
-		sets     = [][]string{}
-		warnings = annotations.Annotations(nil)
+		g, _ = errgroup.WithContext(ctx)
+		sets = [][]string{}
 
 		resMtx sync.Mutex
 	)
@@ -622,10 +627,30 @@ func UseBeforeTimestampQueryable(queryable storage.Queryable, ts time.Time) Quer
 	}
 }
 
-func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs int64, limits *validation.Overrides, maxQueryIntoFuture time.Duration) (int64, int64, error) {
+func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs int64, limits *validation.Overrides, maxQueryIntoFuture time.Duration) (int64, int64, annotations.Annotations, error) {
+	warnings := annotations.Annotations(nil)
 	now := model.Now()
 	startTime := model.Time(startMs)
 	endTime := model.Time(endMs)
+
+	// Truncate time range to MaxQueryLength if time parameters are unspecified
+	maxQueryLength := limits.MaxQueryLength(userID)
+	if maxQueryLength > 0 && (startMs == util.TimeToMillis(v1.MinTime) || endMs == util.TimeToMillis(v1.MaxTime)) {
+		if util.TimeToMillis(v1.MaxTime) == endMs {
+			endTime = now
+		}
+		if startMs == util.TimeToMillis(v1.MinTime) {
+			startTime = endTime.Add(-maxQueryLength)
+		}
+
+		warnings.Add(validation.LimitError(fmt.Sprintf(validation.WarningTruncatedQueryLength, maxQueryLength)))
+
+		// Make sure to log it in traces to ease debugging.
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "start or end time parameters not specified, response truncated to maximum query length",
+			"updatedStart", util.FormatTimeModel(startTime),
+			"updatedEnd", util.FormatTimeModel(endTime))
+	}
 
 	// Clamp time range based on max query into future.
 	if maxQueryIntoFuture > 0 && endTime.After(now.Add(maxQueryIntoFuture)) {
@@ -639,7 +664,7 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 			"updated", util.FormatTimeModel(endTime))
 
 		if endTime.Before(startTime) {
-			return 0, 0, errEmptyTimeRange
+			return 0, 0, warnings, errEmptyTimeRange
 		}
 	}
 
@@ -655,7 +680,7 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 			"updated", util.FormatTimeModel(startTime))
 
 		if endTime.Before(startTime) {
-			return 0, 0, errEmptyTimeRange
+			return 0, 0, warnings, errEmptyTimeRange
 		}
 	}
 
@@ -664,7 +689,7 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 		startTime = 0
 	}
 
-	return int64(startTime), int64(endTime), nil
+	return int64(startTime), int64(endTime), warnings, nil
 }
 
 func EnableExperimentalPromQLFunctions(enablePromQLExperimentalFunctions, enableHoltWinters bool) {

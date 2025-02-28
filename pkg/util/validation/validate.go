@@ -36,7 +36,8 @@ const (
 	unitTooLong       = "unit_too_long"
 
 	// ErrQueryTooLong is used in chunk store, querier and query frontend.
-	ErrQueryTooLong = "the query time range exceeds the limit (query length: %s, limit: %s)"
+	ErrQueryTooLong             = "the query time range exceeds the limit (query length: %s, limit: %s)"
+	WarningTruncatedQueryLength = "start or end time parameters not specified, response truncated to maximum query length (%s)"
 
 	missingMetricName       = "missing_metric_name"
 	invalidMetricName       = "metric_name_invalid"

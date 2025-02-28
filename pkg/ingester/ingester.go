@@ -305,6 +305,7 @@ type userTSDB struct {
 	stateMtx       sync.RWMutex
 	state          tsdbState
 	pushesInFlight sync.WaitGroup // Increased with stateMtx read lock held, only if state == active or activeShipping.
+	readInFlight   sync.WaitGroup // Increased with stateMtx read lock held, only if state == active, activeShipping or forceCompacting.
 
 	// Used to detect idle TSDBs.
 	lastUpdate atomic.Int64
@@ -1508,6 +1509,29 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	return &cortexpb.WriteResponse{}, nil
 }
 
+func (u *userTSDB) acquireReadLock() error {
+	u.stateMtx.RLock()
+	defer u.stateMtx.RUnlock()
+
+	switch u.state {
+	case active:
+	case activeShipping:
+	case forceCompacting:
+		// Read are allowed.
+	case closing:
+		return errors.New("TSDB is closing")
+	default:
+		return errors.New("TSDB is not active")
+	}
+
+	u.readInFlight.Add(1)
+	return nil
+}
+
+func (u *userTSDB) releaseReadLock() {
+	u.readInFlight.Done()
+}
+
 func (u *userTSDB) acquireAppendLock() error {
 	u.stateMtx.RLock()
 	defer u.stateMtx.RUnlock()
@@ -1554,6 +1578,11 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 	if err != nil || db == nil {
 		return &client.ExemplarQueryResponse{}, nil
 	}
+
+	if err := db.acquireReadLock(); err != nil {
+		return &client.ExemplarQueryResponse{}, nil
+	}
+	defer db.releaseReadLock()
 
 	q, err := db.ExemplarQuerier(ctx)
 	if err != nil {
@@ -1648,6 +1677,11 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return &client.LabelValuesResponse{}, cleanup, nil
 	}
 
+	if err := db.acquireReadLock(); err != nil {
+		return &client.LabelValuesResponse{}, cleanup, nil
+	}
+	defer db.releaseReadLock()
+
 	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
 	if err != nil {
 		return nil, cleanup, err
@@ -1737,6 +1771,11 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 	if err != nil || db == nil {
 		return &client.LabelNamesResponse{}, cleanup, nil
 	}
+
+	if err := db.acquireReadLock(); err != nil {
+		return &client.LabelNamesResponse{}, cleanup, nil
+	}
+	defer db.releaseReadLock()
 
 	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
 	if err != nil {
@@ -1835,6 +1874,11 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 	if err != nil || db == nil {
 		return cleanup, nil
 	}
+
+	if err := db.acquireReadLock(); err != nil {
+		return cleanup, nil
+	}
+	defer db.releaseReadLock()
 
 	// Parse the request
 	_, _, limit, matchersSet, err := client.FromMetricsForLabelMatchersRequest(i.matchersCache, req)
@@ -2069,6 +2113,11 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	if err != nil || db == nil {
 		return nil
 	}
+
+	if err := db.acquireReadLock(); err != nil {
+		return nil
+	}
+	defer db.releaseReadLock()
 
 	numSamples := 0
 	numSeries := 0
@@ -2857,8 +2906,9 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	// If TSDB is fully closed, we will set state to 'closed', which will prevent this deferred closing -> active transition.
 	defer userDB.casState(closing, active)
 
-	// Make sure we don't ignore any possible inflight pushes.
+	// Make sure we don't ignore any possible inflight requests.
 	userDB.pushesInFlight.Wait()
+	userDB.readInFlight.Wait()
 
 	// Verify again, things may have changed during the checks and pushes.
 	tenantDeleted := false

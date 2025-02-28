@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
@@ -635,11 +636,11 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 
 	// Truncate time range to MaxQueryLength if time parameters are unspecified
 	maxQueryLength := limits.MaxQueryLength(userID)
-	if maxQueryLength > 0 && (startMs == util.TimeToMillis(v1.MinTime) || endMs == util.TimeToMillis(v1.MaxTime)) {
-		if util.TimeToMillis(v1.MaxTime) == endMs {
+	if maxQueryLength > 0 && (startMs == timestamp.FromTime(v1.MinTime) || endMs == timestamp.FromTime(v1.MaxTime)) {
+		if endMs == timestamp.FromTime(v1.MaxTime) {
 			endTime = now
 		}
-		if startMs == util.TimeToMillis(v1.MinTime) {
+		if startMs == timestamp.FromTime(v1.MinTime) {
 			startTime = endTime.Add(-maxQueryLength)
 		}
 

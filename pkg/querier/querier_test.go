@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/scrape"
@@ -983,7 +984,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Labels(t *testing.T) {
 
 			ctx := user.InjectOrgID(context.Background(), "test")
 
-			q, err := queryable.Querier(util.TimeToMillis(testData.startTime), util.TimeToMillis(testData.endTime))
+			q, err := queryable.Querier(timestamp.FromTime(testData.startTime), timestamp.FromTime(testData.endTime))
 			require.NoError(t, err)
 
 			_, warnings, err := q.LabelNames(ctx, &storage.LabelHints{Limit: 0})

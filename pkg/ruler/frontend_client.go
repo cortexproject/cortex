@@ -49,12 +49,17 @@ func NewFrontendClient(client httpgrpc.HTTPClient, timeout time.Duration, promet
 	}
 }
 
-func (p *FrontendClient) makeRequest(ctx context.Context, qs string, ts time.Time) (*httpgrpc.HTTPRequest, error) {
+func (p *FrontendClient) makeRequest(ctx context.Context, qs string, ts time.Time, queryParams map[string]string) (*httpgrpc.HTTPRequest, error) {
 	args := make(url.Values)
 	args.Set("query", qs)
 	if !ts.IsZero() {
 		args.Set("time", ts.Format(time.RFC3339Nano))
 	}
+	// set query parameters sent to the Query Frontend to leave rule information logs on query stats
+	for k, v := range queryParams {
+		args.Set(k, v)
+	}
+
 	body := []byte(args.Encode())
 
 	//lint:ignore faillint wrapper around upstream method
@@ -87,11 +92,11 @@ func (p *FrontendClient) makeRequest(ctx context.Context, qs string, ts time.Tim
 	return req, nil
 }
 
-func (p *FrontendClient) InstantQuery(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+func (p *FrontendClient) InstantQuery(ctx context.Context, qs string, t time.Time, queryParams map[string]string) (promql.Vector, error) {
 	log, ctx := spanlogger.New(ctx, "FrontendClient.InstantQuery")
 	defer log.Span.Finish()
 
-	req, err := p.makeRequest(ctx, qs, t)
+	req, err := p.makeRequest(ctx, qs, t, queryParams)
 	if err != nil {
 		level.Error(log).Log("err", err, "query", qs)
 		return nil, err

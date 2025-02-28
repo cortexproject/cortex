@@ -19,6 +19,7 @@
 * [BUGFIX] Querier: Fix marshal native histogram with empty bucket when protobuf codec is enabled. #6595
 * [BUGFIX] Query Frontend: Fix samples scanned and peak samples query stats when query hits results cache. #6591
 * [BUGFIX] Query Frontend: Fix panic caused by nil pointer dereference. #6609
+* [BUGFIX] Querier: Fix panic when marshaling QueryResultRequest. #6601
 
 ## 1.19.0 2025-02-27
 

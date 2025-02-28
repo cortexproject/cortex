@@ -20,7 +20,7 @@
 * [BUGFIX] Query Frontend: Fix samples scanned and peak samples query stats when query hits results cache. #6591
 * [BUGFIX] Query Frontend: Fix panic caused by nil pointer dereference. #6609
 
-## 1.19.0 in progress
+## 1.19.0 2025-02-27
 
 * [CHANGE] Deprecate `-blocks-storage.tsdb.wal-compression-enabled` flag (use `blocks-storage.tsdb.wal-compression-type` instead). #6529
 * [CHANGE] OTLP: Change OTLP handler to be consistent with the Prometheus OTLP handler. #6272

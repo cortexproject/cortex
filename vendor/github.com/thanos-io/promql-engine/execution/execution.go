@@ -213,6 +213,7 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 	}
 
 	var scalarArg model.VectorOperator
+	var scalarArg2 model.VectorOperator
 	switch e.Func.Name {
 	case "quantile_over_time":
 		// quantile_over_time(scalar, range-vector)
@@ -226,9 +227,19 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 		if err != nil {
 			return nil, err
 		}
+	case "double_exponential_smoothing":
+		// double_exponential_smoothing(range-vector, scalar, scalar)
+		scalarArg, err = newOperator(ctx, e.Args[1], storage, opts, hints)
+		if err != nil {
+			return nil, err
+		}
+		scalarArg2, err = newOperator(ctx, e.Args[2], storage, opts, hints)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return scan.NewSubqueryOperator(model.NewVectorPool(opts.StepsBatch), inner, scalarArg, &outerOpts, e, t)
+	return scan.NewSubqueryOperator(model.NewVectorPool(opts.StepsBatch), inner, scalarArg, scalarArg2, &outerOpts, e, t)
 }
 
 func newInstantVectorFunction(ctx context.Context, e *logicalplan.FunctionCall, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {

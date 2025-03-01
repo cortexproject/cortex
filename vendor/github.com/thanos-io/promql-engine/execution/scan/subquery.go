@@ -24,8 +24,9 @@ import (
 type subqueryOperator struct {
 	telemetry.OperatorTelemetry
 
-	next    model.VectorOperator
-	paramOp model.VectorOperator
+	next     model.VectorOperator
+	paramOp  model.VectorOperator
+	paramOp2 model.VectorOperator
 
 	pool        *model.VectorPool
 	call        ringbuffer.FunctionCall
@@ -47,10 +48,13 @@ type subqueryOperator struct {
 	buffers       []*ringbuffer.GenericRingBuffer
 
 	// params holds the function parameter for each step.
-	params []float64
+	// quantile_over time and predict_linear use one parameter (params)
+	// double_exponential_smoothing uses two (params, params2) for (sf, tf)
+	params  []float64
+	params2 []float64
 }
 
-func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOperator, opts *query.Options, funcExpr *logicalplan.FunctionCall, subQuery *logicalplan.Subquery) (model.VectorOperator, error) {
+func NewSubqueryOperator(pool *model.VectorPool, next, paramOp, paramOp2 model.VectorOperator, opts *query.Options, funcExpr *logicalplan.FunctionCall, subQuery *logicalplan.Subquery) (model.VectorOperator, error) {
 	call, err := ringbuffer.NewRangeVectorFunc(funcExpr.Func.Name)
 	if err != nil {
 		return nil, err
@@ -63,6 +67,7 @@ func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOpera
 	o := &subqueryOperator{
 		next:          next,
 		paramOp:       paramOp,
+		paramOp2:      paramOp2,
 		call:          call,
 		pool:          pool,
 		funcExpr:      funcExpr,
@@ -75,6 +80,7 @@ func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOpera
 		stepsBatch:    opts.StepsBatch,
 		lastCollected: -1,
 		params:        make([]float64, opts.StepsBatch),
+		params2:       make([]float64, opts.StepsBatch),
 	}
 	o.OperatorTelemetry = telemetry.NewSubqueryTelemetry(o, opts)
 
@@ -89,6 +95,8 @@ func (o *subqueryOperator) Explain() (next []model.VectorOperator) {
 	switch o.funcExpr.Func.Name {
 	case "quantile_over_time", "predict_linear":
 		return []model.VectorOperator{o.paramOp, o.next}
+	case "double_exponential_smoothing":
+		return []model.VectorOperator{o.paramOp, o.paramOp2, o.next}
 	default:
 		return []model.VectorOperator{o.next}
 	}
@@ -125,6 +133,21 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 			o.paramOp.GetPool().PutStepVector(args[i])
 		}
 		o.paramOp.GetPool().PutVectors(args)
+	}
+
+	if o.paramOp2 != nil { // double_exponential_smoothing
+		args, err := o.paramOp2.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for i := range args {
+			o.params2[i] = math.NaN()
+			if len(args[i].Samples) == 1 {
+				o.params2[i] = args[i].Samples[0]
+			}
+			o.paramOp2.GetPool().PutStepVector(args[i])
+		}
+		o.paramOp2.GetPool().PutVectors(args)
 	}
 
 	res := o.pool.GetVectorBatch()
@@ -171,15 +194,15 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 
 		sv := o.pool.GetStepVector(o.currentStep)
 		for sampleId, rangeSamples := range o.buffers {
-			f, h, ok, err := rangeSamples.Eval(ctx, o.params[i], nil)
+			f, h, ok, err := rangeSamples.Eval(ctx, o.params[i], o.params2[i], nil)
 			if err != nil {
 				return nil, err
 			}
 			if ok {
 				if h != nil {
 					sv.AppendHistogram(o.pool, uint64(sampleId), h)
-				} else if f != nil {
-					sv.AppendSample(o.pool, uint64(sampleId), *f)
+				} else {
+					sv.AppendSample(o.pool, uint64(sampleId), f)
 				}
 			}
 			o.IncrementSamplesAtTimestamp(rangeSamples.Len(), sv.T)

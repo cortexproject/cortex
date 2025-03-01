@@ -981,7 +981,7 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing/opentracing
-# github.com/thanos-io/promql-engine v0.0.0-20250211181629-815830ca3e2e
+# github.com/thanos-io/promql-engine v0.0.0-20250220213456-fab1185f8c6c
 ## explicit; go 1.22.7
 github.com/thanos-io/promql-engine/api
 github.com/thanos-io/promql-engine/engine

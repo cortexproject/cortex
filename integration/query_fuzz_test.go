@@ -166,7 +166,7 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, false)
 }
 
 func TestDisableChunkTrimmingFuzz(t *testing.T) {
@@ -289,7 +289,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 			expr = ps.WalkRangeQuery()
 			query = expr.Pretty(0)
 			// timestamp is a known function that break with disable chunk trimming.
-			if isValidQuery(expr, 5) && !strings.Contains(query, "timestamp") {
+			if isValidQuery(expr, 5, false) && !strings.Contains(query, "timestamp") {
 				break
 			}
 		}
@@ -454,17 +454,19 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 
 	// Create the queries with the original labels
 	testRun := 300
-	queries := make([]string, testRun)
-	matchers := make([]string, testRun)
+	queries := make([]string, 0, testRun)
+	matchers := make([]string, 0, testRun)
 	for i := 0; i < testRun; i++ {
 		expr := ps.WalkRangeQuery()
-		queries[i] = expr.Pretty(0)
-		matchers[i] = storepb.PromMatchersToString(
+		if isValidQuery(expr, 5, true) {
+			break
+		}
+		queries = append(queries, expr.Pretty(0))
+		matchers = append(matchers, storepb.PromMatchersToString(
 			append(
 				ps.WalkSelectors(),
 				labels.MustNewMatcher(labels.MatchEqual, "__name__", fmt.Sprintf("test_series_%d", i%numSeries)),
-			)...,
-		)
+			)...))
 	}
 
 	// Lets run multiples iterations and create new series every iteration
@@ -680,7 +682,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000)
+	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000, false)
 }
 
 func TestProtobufCodecFuzz(t *testing.T) {
@@ -796,7 +798,7 @@ func TestProtobufCodecFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000)
+	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000, false)
 }
 
 var sampleNumComparer = cmp.Comparer(func(x, y model.Value) bool {
@@ -1416,7 +1418,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, true)
 }
 
 // TestPrometheusCompatibilityQueryFuzz compares Cortex with latest Prometheus release.
@@ -1529,7 +1531,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, false)
 }
 
 // waitUntilReady is a helper function to wait and check if both servers to test load the expected data.
@@ -1567,7 +1569,7 @@ func waitUntilReady(t *testing.T, ctx context.Context, c1, c2 *e2ecortex.Client,
 }
 
 // runQueryFuzzTestCases executes the fuzz test for the specified number of runs for both instant and range queries.
-func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2ecortex.Client, queryTime, start, end time.Time, step time.Duration, run int) {
+func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2ecortex.Client, queryTime, start, end time.Time, step time.Duration, run int, skipStdAggregations bool) {
 	type testCase struct {
 		query        string
 		res1, res2   model.Value
@@ -1583,7 +1585,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	for i := 0; i < run; i++ {
 		for {
 			expr = ps.WalkInstantQuery()
-			if isValidQuery(expr, 5) {
+			if isValidQuery(expr, 5, skipStdAggregations) {
 				query = expr.Pretty(0)
 				break
 			}
@@ -1604,7 +1606,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	for i := 0; i < run; i++ {
 		for {
 			expr = ps.WalkRangeQuery()
-			if isValidQuery(expr, 5) {
+			if isValidQuery(expr, 5, skipStdAggregations) {
 				query = expr.Pretty(0)
 				break
 			}
@@ -1655,7 +1657,7 @@ func shouldUseSampleNumComparer(query string) bool {
 	return false
 }
 
-func isValidQuery(generatedQuery parser.Expr, maxDepth int) bool {
+func isValidQuery(generatedQuery parser.Expr, maxDepth int, skipStdAggregations bool) bool {
 	isValid := true
 	currentDepth := 0
 	// TODO(SungJin1212): Test limitk, limit_ratio
@@ -1665,6 +1667,11 @@ func isValidQuery(generatedQuery parser.Expr, maxDepth int) bool {
 	}
 	if strings.Contains(generatedQuery.String(), "limit_ratio") {
 		// current skip the limit_ratio
+		return false
+	}
+	if skipStdAggregations && (strings.Contains(generatedQuery.String(), "stddev") || strings.Contains(generatedQuery.String(), "stdvar")) {
+		// The behavior of stdvar and stddev changes in https://github.com/prometheus/prometheus/pull/14941
+		// If skipStdAggregations enabled, we skip to evaluate for stddev and stdvar aggregations.
 		return false
 	}
 	parser.Inspect(generatedQuery, func(node parser.Node, path []parser.Node) error {

@@ -152,6 +152,11 @@ func (o *relabelOperator) loadSeriesForLabelReplace(series []labels.Labels) erro
 	if err != nil {
 		return errors.Newf("invalid regular expression in label_replace(): %s", labelReplaceRegexVal)
 	}
+
+	if !prommodel.LabelNameRE.MatchString(labelReplaceDst) {
+		return errors.Newf("invalid destination label name in label_replace(): %s", labelReplaceDst)
+	}
+
 	for i, s := range series {
 		lbls := s
 

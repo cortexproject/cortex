@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -1343,6 +1344,7 @@ func TestIngester_Push(t *testing.T) {
         	    # HELP cortex_ingester_tsdb_head_out_of_order_samples_appended_total Total number of appended out of order samples.
         	    # TYPE cortex_ingester_tsdb_head_out_of_order_samples_appended_total counter
         	    cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="float",user="test"} 0
+				cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="histogram",user="test"} 0
         	    # HELP cortex_ingester_tsdb_out_of_order_samples_total Total number of out of order samples ingestion failed attempts due to out of order being disabled.
         	    # TYPE cortex_ingester_tsdb_out_of_order_samples_total counter
         	    cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="test"} 1
@@ -1754,14 +1756,14 @@ func TestIngester_Push(t *testing.T) {
 			reqs: []*cortexpb.WriteRequest{
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 11}},
 					nil,
 					[]cortexpb.Histogram{testHistogram},
 					cortexpb.API),
 			},
 			expectedErr: nil,
 			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 10}}},
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 11}}},
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
@@ -3735,7 +3737,7 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 	return req, expectedQueryStreamResChunks
 }
 
-func mockHistogramWriteRequest(t *testing.T, lbls labels.Labels, value int, timestampMs int64, float bool) (*cortexpb.WriteRequest, *client.QueryStreamResponse) {
+func mockHistogramWriteRequest(t *testing.T, lbls labels.Labels, value int64, timestampMs int64, float bool) (*cortexpb.WriteRequest, *client.QueryStreamResponse) {
 	var (
 		histograms []cortexpb.Histogram
 		h          *histogram.Histogram
@@ -6398,7 +6400,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 
 func TestIngester_UserTSDB_BlocksToDelete(t *testing.T) {
 	tempDir := t.TempDir()
-	db, err := tsdb.Open(tempDir, log.NewNopLogger(), prometheus.NewPedanticRegistry(), &tsdb.Options{}, nil)
+	db, err := tsdb.Open(tempDir, promslog.NewNopLogger(), prometheus.NewPedanticRegistry(), &tsdb.Options{}, nil)
 	require.NoError(t, err)
 
 	t.Run("should delete all block beyond block retention period and were shipped", func(t *testing.T) {
@@ -6717,7 +6719,8 @@ func CreateBlock(t *testing.T, ctx context.Context, dir string, mint, maxt int64
 	err = app.Commit()
 	require.NoError(t, err)
 
-	c, err := tsdb.NewLeveledCompactor(ctx, nil, log.NewNopLogger(), []int64{maxt - mint}, nil, nil)
+	logger := promslog.NewNopLogger()
+	c, err := tsdb.NewLeveledCompactor(ctx, nil, logger, []int64{maxt - mint}, nil, nil)
 	require.NoError(t, err)
 
 	ids, err := c.Write(dir, h, mint, maxt, nil)
@@ -6725,8 +6728,7 @@ func CreateBlock(t *testing.T, ctx context.Context, dir string, mint, maxt int64
 	blockId := ids[0]
 
 	blockDir := filepath.Join(dir, blockId.String())
-	logger := log.NewNopLogger()
-	block, err := tsdb.OpenBlock(logger, blockDir, nil)
+	block, err := tsdb.OpenBlock(logger, blockDir, nil, nil)
 	require.NoError(t, err)
 
 	return block

@@ -43,6 +43,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -646,19 +647,12 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			},
 			limits:       &blocksStoreLimitsMock{},
 			queryLimiter: noOpQueryLimiter,
-			// TODO (johrry): Update this after passing limit in merge
 			expectedSeries: []seriesResult{
 				{
 					lbls: labels.New(metricNameLabel, series1Label),
 					values: []valueResult{
 						{t: minT, v: 1},
 						{t: minT + 1, v: 2},
-					},
-				}, {
-					lbls: labels.New(metricNameLabel, series2Label),
-					values: []valueResult{
-						{t: minT, v: 1},
-						{t: minT + 1, v: 3},
 					},
 				},
 			},
@@ -2292,7 +2286,7 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	t.Parallel()
 	logger := log.NewNopLogger()
 	opts := promql.EngineOpts{
-		Logger:     logger,
+		Logger:     util_log.GoKitLogToSlog(logger),
 		Timeout:    10 * time.Second,
 		MaxSamples: 1e6,
 	}
@@ -2418,7 +2412,7 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 						h := h
 						// Check sample timestamp is expected.
 						require.Equal(t, h.T, int64(from)+int64(i)*15000)
-						expectedH := tsdbutil.GenerateTestGaugeFloatHistogram(int(h.T))
+						expectedH := tsdbutil.GenerateTestGaugeFloatHistogram(h.T)
 						if enc == encoding.PrometheusHistogramChunk {
 							require.Equal(t, expectedH, h.H)
 						} else if enc == encoding.PrometheusFloatHistogramChunk {

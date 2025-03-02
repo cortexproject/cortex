@@ -213,6 +213,7 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 	}
 
 	var scalarArg model.VectorOperator
+	var scalarArg2 model.VectorOperator
 	switch e.Func.Name {
 	case "quantile_over_time":
 		// quantile_over_time(scalar, range-vector)
@@ -226,9 +227,19 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 		if err != nil {
 			return nil, err
 		}
+	case "double_exponential_smoothing":
+		// double_exponential_smoothing(range-vector, scalar, scalar)
+		scalarArg, err = newOperator(ctx, e.Args[1], storage, opts, hints)
+		if err != nil {
+			return nil, err
+		}
+		scalarArg2, err = newOperator(ctx, e.Args[2], storage, opts, hints)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return scan.NewSubqueryOperator(model.NewVectorPool(opts.StepsBatch), inner, scalarArg, &outerOpts, e, t)
+	return scan.NewSubqueryOperator(model.NewVectorPool(opts.StepsBatch), inner, scalarArg, scalarArg2, &outerOpts, e, t)
 }
 
 func newInstantVectorFunction(ctx context.Context, e *logicalplan.FunctionCall, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
@@ -376,7 +387,7 @@ func newDeduplication(ctx context.Context, e logicalplan.Deduplicate, scanners s
 
 func newRemoteExecution(ctx context.Context, e logicalplan.RemoteExecution, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
 	// Create a new remote query scoped to the calculated start time.
-	qry, err := e.Engine.NewRangeQuery(ctx, promql.NewPrometheusQueryOpts(false, opts.LookbackDelta), e.Query, e.QueryRangeStart, opts.End, opts.Step)
+	qry, err := e.Engine.NewRangeQuery(ctx, promql.NewPrometheusQueryOpts(false, opts.LookbackDelta), e.Query, e.QueryRangeStart, e.QueryRangeEnd, opts.Step)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +397,7 @@ func newRemoteExecution(ctx context.Context, e logicalplan.RemoteExecution, opts
 	// We need to set the lookback for the selector to 0 since the remote query already applies one lookback.
 	selectorOpts := *opts
 	selectorOpts.LookbackDelta = 0
-	remoteExec := remote.NewExecution(qry, model.NewVectorPool(opts.StepsBatch), e.QueryRangeStart, e.Engine.LabelSets(), &selectorOpts, hints)
+	remoteExec := remote.NewExecution(qry, model.NewVectorPool(opts.StepsBatch), e.QueryRangeStart, e.QueryRangeEnd, e.Engine.LabelSets(), &selectorOpts, hints)
 	return exchange.NewConcurrent(remoteExec, 2, opts), nil
 }
 
@@ -407,9 +418,9 @@ func getTimeRangesForVectorSelector(n *logicalplan.VectorSelector, opts *query.O
 		end = *n.Timestamp
 	}
 	if evalRange == 0 {
-		start -= opts.LookbackDelta.Milliseconds()
+		start -= opts.LookbackDelta.Milliseconds() - 1
 	} else {
-		start -= evalRange
+		start -= evalRange - 1
 	}
 	offset := n.OriginalOffset.Milliseconds()
 	return start - offset, end - offset

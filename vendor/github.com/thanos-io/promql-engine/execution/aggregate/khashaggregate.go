@@ -19,8 +19,11 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/query"
 )
 
@@ -132,6 +135,10 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 			result = append(result, a.GetPool().GetStepVector(vector.T))
 			continue
 		}
+		if len(vector.Histograms) > 0 {
+			warnings.AddToContext(annotations.NewHistogramIgnoredInAggregationInfo(a.aggregation.String(), posrange.PositionRange{}), ctx)
+		}
+
 		a.aggregate(vector.T, &result, int(a.params[i]), vector.SampleIDs, vector.Samples)
 		a.next.GetPool().PutStepVector(vector)
 	}

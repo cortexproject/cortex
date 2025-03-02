@@ -48,9 +48,9 @@ func (t *vectorTable) timestamp() int64 {
 	return t.ts
 }
 
-func (t *vectorTable) aggregate(vector model.StepVector) error {
+func (t *vectorTable) aggregate(ctx context.Context, vector model.StepVector) error {
 	t.ts = vector.T
-	return t.accumulator.AddVector(vector.Samples, vector.Histograms)
+	return t.accumulator.AddVector(ctx, vector.Samples, vector.Histograms)
 }
 
 func (t *vectorTable) toVector(ctx context.Context, pool *model.VectorPool) model.StepVector {
@@ -96,7 +96,7 @@ func newVectorAccumulator(expr parser.ItemType) (vectorAccumulator, error) {
 	return nil, errors.Wrap(parse.ErrNotSupportedExpr, msg)
 }
 
-func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
+func histogramSum(ctx context.Context, current *histogram.FloatHistogram, histograms []*histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
 	if len(histograms) == 0 {
 		return current, nil
 	}
@@ -116,11 +116,27 @@ func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.Flo
 		if histograms[i].Schema >= histSum.Schema {
 			histSum, err = histSum.Add(histograms[i])
 			if err != nil {
+				if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+					warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
+					return nil, nil
+				}
+				if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+					warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
+					return nil, nil
+				}
 				return nil, err
 			}
 		} else {
 			t := histograms[i].Copy()
 			if histSum, err = t.Add(histSum); err != nil {
+				if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+					warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
+					return nil, nil
+				}
+				if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+					warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
+					return nil, nil
+				}
 				return nil, err
 			}
 		}

@@ -311,7 +311,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 						nil,
 						"",
 						true,
-						log.With(util_log.Logger, "alert", rl.Alert.Value),
+						util_log.GoKitLogToSlog(log.With(util_log.Logger, "alert", rl.Alert.Value)),
 					))
 					continue
 				}

@@ -4,9 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/http"
 
-	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
@@ -567,7 +567,7 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	return
 }
 
-func createActiveQueryTracker(cfg querier.Config, logger log.Logger) promql.QueryTracker {
+func createActiveQueryTracker(cfg querier.Config, logger *slog.Logger) promql.QueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
@@ -595,9 +595,9 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 
 		var queryEngine promql.QueryEngine
 		opts := promql.EngineOpts{
-			Logger:               util_log.Logger,
+			Logger:               util_log.SLogger,
 			Reg:                  rulerRegisterer,
-			ActiveQueryTracker:   createActiveQueryTracker(t.Cfg.Querier, util_log.Logger),
+			ActiveQueryTracker:   createActiveQueryTracker(t.Cfg.Querier, util_log.SLogger),
 			MaxSamples:           t.Cfg.Querier.MaxSamples,
 			Timeout:              t.Cfg.Querier.Timeout,
 			LookbackDelta:        t.Cfg.Querier.LookbackDelta,

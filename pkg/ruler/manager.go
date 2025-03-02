@@ -259,7 +259,6 @@ func (r *DefaultMultiTenantManager) createRulesManager(user string, ctx context.
 
 func ruleGroupIterationFunc(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
 	logMessage := []interface{}{
-		"msg", "evaluating rule group",
 		"component", "ruler",
 		"rule_group", g.Name(),
 		"namespace", g.File(),
@@ -269,7 +268,7 @@ func ruleGroupIterationFunc(ctx context.Context, g *promRules.Group, evalTimesta
 		"eval_time", evalTimestamp,
 	}
 
-	level.Info(g.Logger()).Log(logMessage...)
+	g.Logger().Info("evaluating rule group", logMessage...)
 	promRules.DefaultEvalIterationFunc(ctx, g, evalTimestamp)
 }
 

@@ -215,14 +215,18 @@ func convertBucketLayout(bucket pmetric.ExponentialHistogramDataPointBuckets, sp
 }
 
 // Convert Timeseries to Metrics
-func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics {
+func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries, metadata []prompb.MetricMetadata) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
-	for _, ts := range timeseries {
+	for i, ts := range timeseries {
 		metricName, attributes := getNameAndAttributes(ts)
 		newMetric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 		newMetric.SetName(metricName)
-		//TODO Set description for new metric
-		//TODO Set unit for new metric
+
+		if metadata != nil {
+			newMetric.SetDescription(metadata[i].GetHelp())
+			newMetric.SetUnit(metadata[i].GetUnit())
+		}
+
 		if len(ts.Samples) > 0 {
 			createDataPointsGauge(newMetric, attributes, ts.Samples)
 		} else if len(ts.Histograms) > 0 {
@@ -302,9 +306,9 @@ func (c *Client) OTLPPushExemplar(name string, labels ...prompb.Label) (*http.Re
 }
 
 // Push series to OTLP endpoint
-func (c *Client) OTLP(timeseries []prompb.TimeSeries) (*http.Response, error) {
+func (c *Client) OTLP(timeseries []prompb.TimeSeries, metadata []prompb.MetricMetadata) (*http.Response, error) {
 
-	data, err := pmetricotlp.NewExportRequestFromMetrics(convertTimeseriesToMetrics(timeseries)).MarshalProto()
+	data, err := pmetricotlp.NewExportRequestFromMetrics(convertTimeseriesToMetrics(timeseries, metadata)).MarshalProto()
 	if err != nil {
 		return nil, err
 	}
@@ -354,6 +358,12 @@ func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 		retries.Wait()
 	}
 	return value, err
+}
+
+// Metadata runs a metadata query
+func (c *Client) Metadata(name, limit string) (map[string][]promv1.Metadata, error) {
+	metadata, err := c.querierClient.Metadata(context.Background(), name, limit)
+	return metadata, err
 }
 
 // QueryExemplars runs an exemplars query

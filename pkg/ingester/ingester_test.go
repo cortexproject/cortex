@@ -4327,6 +4327,63 @@ func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	require.NotNil(t, db)
 }
 
+func TestIngester_ReadNotFailWhenTSDBIsBeingDeleted(t *testing.T) {
+
+	tc := map[string]struct {
+		state tsdbState
+	}{
+		"closingTsdb": {state: closing},
+		"closedTsdb":  {state: closed},
+	}
+	for name, c := range tc {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			cfg := defaultIngesterTestConfig(t)
+			cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
+			cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown = true
+
+			// Create ingester
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+			require.NoError(t, err)
+
+			require.NoError(t, services.StartAndAwaitRunning(ctx, i))
+			defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			pushSingleSampleAtTime(t, i, 1*time.Minute.Milliseconds())
+
+			db, err := i.getOrCreateTSDB(userID, true)
+			require.NoError(t, err)
+			require.NotNil(t, db)
+
+			err = db.Close()
+			require.NoError(t, err)
+
+			b := db.casState(active, c.state)
+			require.True(t, b)
+
+			// Mock request
+			ctx = user.InjectOrgID(context.Background(), userID)
+
+			err = i.QueryStream(&client.QueryRequest{EndTimestampMs: 10 * time.Minute.Milliseconds()}, &mockQueryStreamServer{ctx: ctx})
+			require.NoError(t, err)
+
+			_, err = i.LabelNames(ctx, &client.LabelNamesRequest{Limit: int64(1)})
+			require.NoError(t, err)
+
+			_, err = i.LabelValues(ctx, &client.LabelValuesRequest{Limit: int64(1)})
+			require.NoError(t, err)
+
+			_, err = i.MetricsForLabelMatchers(ctx, &client.MetricsForLabelMatchersRequest{Limit: int64(1)})
+			require.NoError(t, err)
+		})
+	}
+}
+
 type shipperMock struct {
 	mock.Mock
 }

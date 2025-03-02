@@ -417,7 +417,6 @@ func TestHandler_ServeHTTP(t *testing.T) {
 func TestReportQueryStatsFormat(t *testing.T) {
 	outputBuf := bytes.NewBuffer(nil)
 	logger := log.NewSyncLogger(log.NewLogfmtLogger(outputBuf))
-	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
 	userID := "fake"
 	req, _ := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
 	resp := &http.Response{ContentLength: 1000}
@@ -425,20 +424,24 @@ func TestReportQueryStatsFormat(t *testing.T) {
 	statusCode := http.StatusOK
 
 	type testCase struct {
-		queryString url.Values
-		queryStats  *querier_stats.QueryStats
-		header      http.Header
-		responseErr error
-		expectedLog string
+		queryString               url.Values
+		queryStats                *querier_stats.QueryStats
+		header                    http.Header
+		responseErr               error
+		expectedLog               string
+		enabledRulerQueryStatsLog bool
+		source                    string
 	}
 
 	tests := map[string]testCase{
 		"should not include query and header details if empty": {
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0`,
+			source:      tripperware.SourceAPI,
 		},
 		"should include query length and string at the end": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 query_length=2 param_query=up`,
+			source:      tripperware.SourceAPI,
 		},
 		"should include query stats": {
 			queryStats: &querier_stats.QueryStats{
@@ -455,14 +458,17 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				},
 			},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 response_series_count=100 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 samples_scanned=0 query_storage_wall_time_seconds=6000`,
+			source:      tripperware.SourceAPI,
 		},
 		"should include user agent": {
 			header:      http.Header{"User-Agent": []string{"Grafana"}},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 user_agent=Grafana`,
+			source:      tripperware.SourceAPI,
 		},
 		"should include response error": {
 			responseErr: errors.New("foo_err"),
 			expectedLog: `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 error=foo_err`,
+			source:      tripperware.SourceAPI,
 		},
 		"should include query priority": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
@@ -471,6 +477,7 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				PriorityAssigned: true,
 			},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 query_length=2 priority=99 param_query=up`,
+			source:      tripperware.SourceAPI,
 		},
 		"should include data fetch min and max time": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
@@ -479,6 +486,7 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				DataSelectMinTime: 1704067200000,
 			},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 data_select_max_time=1704153600 data_select_min_time=1704067200 query_length=2 param_query=up`,
+			source:      tripperware.SourceAPI,
 		},
 		"should include query stats with store gateway stats": {
 			queryStats: &querier_stats.QueryStats{
@@ -497,16 +505,32 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				},
 			},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 response_series_count=100 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 samples_scanned=0 store_gateway_touched_postings_count=20 store_gateway_touched_posting_bytes=200 query_storage_wall_time_seconds=6000`,
+			source:      tripperware.SourceAPI,
+		},
+		"should not report a log": {
+			expectedLog:               ``,
+			source:                    tripperware.SourceRuler,
+			enabledRulerQueryStatsLog: false,
+		},
+		"should report a log": {
+			expectedLog:               `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0`,
+			source:                    tripperware.SourceRuler,
+			enabledRulerQueryStatsLog: true,
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, EnabledRulerQueryStatsLog: testData.enabledRulerQueryStatsLog}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
 			req.Header = testData.header
-			handler.reportQueryStats(req, tripperware.SourceAPI, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
+			handler.reportQueryStats(req, testData.source, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
 			data, err := io.ReadAll(outputBuf)
 			require.NoError(t, err)
-			require.Equal(t, testData.expectedLog+"\n", string(data))
+			if testData.expectedLog == "" {
+				require.Empty(t, string(data))
+			} else {
+				require.Equal(t, testData.expectedLog+"\n", string(data))
+			}
 		})
 	}
 }

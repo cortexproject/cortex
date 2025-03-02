@@ -74,15 +74,17 @@ const (
 
 // Config for a Handler.
 type HandlerConfig struct {
-	LogQueriesLongerThan time.Duration `yaml:"log_queries_longer_than"`
-	MaxBodySize          int64         `yaml:"max_body_size"`
-	QueryStatsEnabled    bool          `yaml:"query_stats_enabled"`
+	LogQueriesLongerThan      time.Duration `yaml:"log_queries_longer_than"`
+	MaxBodySize               int64         `yaml:"max_body_size"`
+	QueryStatsEnabled         bool          `yaml:"query_stats_enabled"`
+	EnabledRulerQueryStatsLog bool          `yaml:"enabled_ruler_query_stats_log"`
 }
 
 func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", 10*1024*1024, "Max body size for downstream prometheus.")
 	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query.")
+	f.BoolVar(&cfg.EnabledRulerQueryStatsLog, "frontend.enabled-ruler-query-stats", false, "If enabled, report the query stats log for queries coming from the ruler to evaluate rules. It only takes effect when '-ruler.frontend-address' is configured.")
 }
 
 // Handler accepts queries and forwards them to RoundTripper. It can log slow queries,
@@ -245,10 +247,11 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(&buf)
 	}
 
+	source := tripperware.GetSource(r.Header.Get("User-Agent"))
 	// Log request
 	if f.cfg.QueryStatsEnabled {
 		queryString = f.parseRequestQueryString(r, buf)
-		f.logQueryRequest(r, queryString)
+		f.logQueryRequest(r, queryString, source)
 	}
 
 	startTime := time.Now()
@@ -281,7 +284,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		source := tripperware.GetSource(r.Header.Get("User-Agent"))
 		f.reportQueryStats(r, source, userID, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
@@ -322,7 +324,7 @@ func formatGrafanaStatsFields(r *http.Request) []interface{} {
 }
 
 // logQueryRequest logs query request before query execution.
-func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values) {
+func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values, source string) {
 	logMessage := []interface{}{
 		"msg", "query request",
 		"component", "query-frontend",
@@ -346,9 +348,11 @@ func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values) {
 		logMessage = append(logMessage, "accept_encoding", acceptEncoding)
 	}
 
-	logMessage = append(logMessage, formatQueryString(queryString)...)
-
-	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+	shouldLog := source == tripperware.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == tripperware.SourceRuler)
+	if shouldLog {
+		logMessage = append(logMessage, formatQueryString(queryString)...)
+		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+	}
 }
 
 // reportSlowQuery reports slow queries.
@@ -473,11 +477,15 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			logMessage = append(logMessage, "error", s.Message())
 		}
 	}
-	logMessage = append(logMessage, formatQueryString(queryString)...)
-	if error != nil {
-		level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
-	} else {
-		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+
+	shouldLog := source == tripperware.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == tripperware.SourceRuler)
+	if shouldLog {
+		logMessage = append(logMessage, formatQueryString(queryString)...)
+		if error != nil {
+			level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+		} else {
+			level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+		}
 	}
 
 	var reason string

@@ -473,7 +473,7 @@ func parseGroupName(params map[string]string) (string, error) {
 // and returns them in that order. It also allows users to require a namespace or group name and return
 // an error if it they can not be parsed.
 func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (string, string, string, error) {
-	userID, err := tenant.TenantID(req.Context())
+	userIDs, err := tenant.TenantIDs(req.Context())
 	if err != nil {
 		return "", "", "", user.ErrNoOrgID
 	}
@@ -494,7 +494,7 @@ func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (strin
 		}
 	}
 
-	return userID, namespace, group, nil
+	return tenant.JoinTenantIDs(userIDs), namespace, group, nil
 }
 
 func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
@@ -507,12 +507,14 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
-	rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
+
+	var rgs rulespb.RuleGroupList
+	rgs, err = a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
 	if err != nil {
+		level.Error(logger).Log("msg", "list rules error", "err", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
 	if len(rgs) == 0 {
 		level.Info(logger).Log("msg", "no rule groups found", "userID", userID)
 		http.Error(w, ErrNoRuleGroups.Error(), http.StatusNotFound)
@@ -526,7 +528,6 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
-
 	formatted := rgs.Formatted()
 	marshalAndSend(formatted, w, logger)
 }
@@ -539,7 +540,7 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	rg, err := a.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
+	rgs, err := a.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
 	if err != nil {
 		if errors.Is(err, rulestore.ErrGroupNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -549,7 +550,7 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	formatted := rulespb.FromProto(rg)
+	formatted := rulespb.FromProto(rgs)
 	marshalAndSend(formatted, w, logger)
 }
 

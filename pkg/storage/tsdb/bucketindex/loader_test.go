@@ -473,7 +473,8 @@ func TestLoader_ShouldCacheIndexNotFoundOnBackgroundUpdates(t *testing.T) {
 	// Wait until the next index load attempt occurs.
 	prevLoads := testutil.ToFloat64(loader.loadAttempts)
 	test.Poll(t, 3*time.Second, true, func() interface{} {
-		return testutil.ToFloat64(loader.loadAttempts) > prevLoads
+		// loadAttempts is incremented before the indexes are updated so we also check countLoadedIndexesMetric()
+		return testutil.ToFloat64(loader.loadAttempts) > prevLoads && loader.countLoadedIndexesMetric() == 0
 	})
 
 	// We expect the bucket index is not considered loaded because of the error.

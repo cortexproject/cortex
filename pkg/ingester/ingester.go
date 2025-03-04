@@ -1260,6 +1260,10 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			case errors.Is(cause, histogram.ErrHistogramCountMismatch):
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
+			case errors.Is(cause, storage.ErrNativeHistogramsDisabled):
+				discardedNativeHistogramCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
 			default:
 				rollback = true
 			}
@@ -1326,53 +1330,49 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			return nil, wrapWithUser(err, userID)
 		}
+		for _, hp := range ts.Histograms {
+			var (
+				err error
+				h   *histogram.Histogram
+				fh  *histogram.FloatHistogram
+			)
 
-		if i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms {
-			for _, hp := range ts.Histograms {
-				var (
-					err error
-					h   *histogram.Histogram
-					fh  *histogram.FloatHistogram
-				)
+			if hp.GetCountFloat() > 0 {
+				fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp)
+			} else {
+				h = cortexpb.HistogramProtoToHistogram(hp)
+			}
 
-				if hp.GetCountFloat() > 0 {
-					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp)
-				} else {
-					h = cortexpb.HistogramProtoToHistogram(hp)
-				}
-
-				if ref != 0 {
-					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						succeededHistogramsCount++
-						continue
-					}
-				} else {
-					// Copy the label set because both TSDB and the active series tracker may retain it.
-					copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
-					if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						// Keep track of what series needs to be expired on the postings cache
-						if db.postingCache != nil {
-							newSeries = append(newSeries, copiedLabels)
-						}
-						succeededHistogramsCount++
-						continue
-					}
-				}
-
-				failedHistogramsCount++
-
-				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
+			if ref != 0 {
+				if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
+					succeededHistogramsCount++
 					continue
 				}
-				// The error looks an issue on our side, so we should rollback
-				if rollbackErr := app.Rollback(); rollbackErr != nil {
-					level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
+			} else {
+				// Copy the label set because both TSDB and the active series tracker may retain it.
+				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
+				if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
+					// Keep track of what series needs to be expired on the postings cache
+					if db.postingCache != nil {
+						newSeries = append(newSeries, copiedLabels)
+					}
+					succeededHistogramsCount++
+					continue
 				}
-				return nil, wrapWithUser(err, userID)
 			}
-		} else {
-			discardedNativeHistogramCount += len(ts.Histograms)
+
+			failedHistogramsCount++
+
+			if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
+				continue
+			}
+			// The error looks an issue on our side, so we should rollback
+			if rollbackErr := app.Rollback(); rollbackErr != nil {
+				level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
+			}
+			return nil, wrapWithUser(err, userID)
 		}
+
 		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || (succeededHistogramsCount > oldSucceededHistogramsCount)
 		if i.cfg.ActiveSeriesMetricsEnabled && shouldUpdateSeries {
 			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, func(l labels.Labels) labels.Labels {
@@ -1471,8 +1471,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	if perLabelSetSeriesLimitCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
-
-	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && discardedNativeHistogramCount > 0 {
+	if discardedNativeHistogramCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
 	}
 

@@ -1044,7 +1044,7 @@ func TestIngester_Push(t *testing.T) {
 					},
 					cortexpb.API),
 			},
-			expectedErr: nil,
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrNativeHistogramsDisabled, model.Time(10), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 10}}},
 			},

@@ -3517,6 +3517,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-exemplars
 [max_exemplars: <int> | default = 0]
 
+# [Experimental] Enable out-of-order native histogram ingestion, it only takes
+# effect when -blocks-storage.tsdb.enable-native-histograms=true and
+# -ingester.out-of-order-time-window > 0.
+# CLI flag: -ingester.enable-ooo-native-histograms
+[enable_ooo_native_histograms: <boolean> | default = false]
+
 # Maximum number of chunks that can be fetched in a single query from ingesters
 # and long-term storage. This limit is enforced in the querier, ruler and
 # store-gateway. 0 to disable.

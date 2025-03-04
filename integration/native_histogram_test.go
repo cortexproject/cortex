@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/require"
@@ -18,6 +19,84 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
+
+func TestOOONativeHistogramIngestion(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
+
+	flags := mergeFlags(baseFlags, map[string]string{
+		// ooo setting
+		"-ingester.enable-ooo-native-histograms":        "true",
+		"-blocks-storage.tsdb.enable-native-histograms": "true",
+		"-ingester.out-of-order-time-window":            "5m",
+		// alert manager
+		"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		// consul
+		"-ring.store":      "consul",
+		"-consul.hostname": consul.NetworkHTTPEndpoint(),
+	})
+
+	nowTs := time.Now()
+	oooTs := time.Now().Add(-time.Minute * 3)
+	tooOldTs := time.Now().Add(-time.Minute * 10)
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	seriesName := "series"
+	histogramIdx := rand.Uint32()
+
+	// Make Cortex client
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	// Push now ts
+	seriesNow := e2e.GenerateHistogramSeries(seriesName, nowTs, histogramIdx, false, prompb.Label{Name: "job", Value: "test"})
+	res, err := c.Push(seriesNow)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// Push ooo ts
+	seriesOOOTs := e2e.GenerateHistogramSeries(seriesName, oooTs, histogramIdx, false, prompb.Label{Name: "job", Value: "test"})
+	res, err = c.Push(seriesOOOTs)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// Push too old ts
+	seriesTooOOOTs := e2e.GenerateHistogramSeries(seriesName, tooOldTs, histogramIdx, false, prompb.Label{Name: "job", Value: "test"})
+	res, err = c.Push(seriesTooOOOTs)
+	require.NoError(t, err)
+	require.Equal(t, 400, res.StatusCode)
+
+	// check metrics
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_tsdb_head_samples_appended_total"),
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "type", "histogram")),
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
+	)
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_tsdb_head_out_of_order_samples_appended_total"),
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "type", "histogram")),
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
+	)
+
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_ingested_native_histograms_total"))
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_ingested_native_histograms_failures_total"))
+}
 
 func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 	const blockRangePeriod = 5 * time.Second

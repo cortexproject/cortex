@@ -52,6 +52,10 @@ var (
 	errPushOverUserKeyFileNotAllowed     = errors.New("setting PushOver user_key_file is not allowed")
 	errPushOverTokenFileNotAllowed       = errors.New("setting PushOver token_file is not allowed")
 	errTelegramBotTokenFileNotAllowed    = errors.New("setting Telegram bot_token_file is not allowed")
+	errMSTeamsWebhookUrlFileNotAllowed   = errors.New("setting MSTeams webhook_url_file is not allowed")
+	errMSTeamsV2WebhookUrlFileNotAllowed = errors.New("setting MSTeamsV2 webhook_url_file is not allowed")
+	errRocketChatTokenIdFileNotAllowed   = errors.New("setting RocketChat token_id_file is not allowed")
+	errRocketChatTokenFileNotAllowed     = errors.New("setting RocketChat token_file is not allowed")
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -383,6 +387,18 @@ func validateAlertmanagerConfig(cfg interface{}) error {
 		if err := validateTelegramConfig(v.Interface().(config.TelegramConfig)); err != nil {
 			return err
 		}
+	case reflect.TypeOf(config.MSTeamsConfig{}):
+		if err := validateMSTeamsConfig(v.Interface().(config.MSTeamsConfig)); err != nil {
+			return err
+		}
+	case reflect.TypeOf(config.MSTeamsV2Config{}):
+		if err := validateMSTeamsV2Config(v.Interface().(config.MSTeamsV2Config)); err != nil {
+			return err
+		}
+	case reflect.TypeOf(config.RocketchatConfig{}):
+		if err := validateRocketChatConfig(v.Interface().(config.RocketchatConfig)); err != nil {
+			return err
+		}
 	}
 
 	// If the input config is a struct, recursively iterate on all fields.
@@ -538,5 +554,37 @@ func validateTelegramConfig(cfg config.TelegramConfig) error {
 	if cfg.BotTokenFile != "" {
 		return errTelegramBotTokenFileNotAllowed
 	}
+	return nil
+}
+
+// validateMSTeamsConfig validates the MSTeams Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateMSTeamsConfig(cfg config.MSTeamsConfig) error {
+	if cfg.WebhookURLFile != "" {
+		return errMSTeamsWebhookUrlFileNotAllowed
+	}
+	return nil
+}
+
+// validateMSTeamsV2Config validates the MSTeamsV2 Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateMSTeamsV2Config(cfg config.MSTeamsV2Config) error {
+	if cfg.WebhookURLFile != "" {
+		return errMSTeamsV2WebhookUrlFileNotAllowed
+	}
+	return nil
+}
+
+// validateRocketChatConfig validates the RocketChat Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateRocketChatConfig(cfg config.RocketchatConfig) error {
+	if cfg.TokenIDFile != "" {
+		return errRocketChatTokenIdFileNotAllowed
+	}
+
+	if cfg.TokenFile != "" {
+		return errRocketChatTokenFileNotAllowed
+	}
+
 	return nil
 }

@@ -53,6 +53,10 @@ var instantVectorFuncs = map[string]functionCall{
 		return sign
 	}),
 	"round": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		if len(vargs) > 1 {
 			return 0., false
 		}
@@ -71,6 +75,10 @@ var instantVectorFuncs = map[string]functionCall{
 		return f, true
 	},
 	"clamp": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		if len(vargs) != 2 {
 			return 0., false
 		}
@@ -86,6 +94,10 @@ var instantVectorFuncs = map[string]functionCall{
 		return math.Max(min, math.Min(max, v)), true
 	},
 	"clamp_min": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		if len(vargs) != 1 {
 			return 0., false
 		}
@@ -96,6 +108,10 @@ var instantVectorFuncs = map[string]functionCall{
 		return math.Max(min, v), true
 	},
 	"clamp_max": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		if len(vargs) != 1 {
 			return 0., false
 		}
@@ -131,27 +147,59 @@ var instantVectorFuncs = map[string]functionCall{
 	},
 	// variants of date time functions with an argument
 	"days_in_month": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		return daysInMonth(dateFromSampleValue(f)), true
 	},
 	"day_of_month": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		return dayOfMonth(dateFromSampleValue(f)), true
 	},
 	"day_of_week": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		return dayOfWeek(dateFromSampleValue(f)), true
 	},
 	"day_of_year": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		return dayOfYear(dateFromSampleValue(f)), true
 	},
 	"hour": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		return hour(dateFromSampleValue(f)), true
 	},
 	"minute": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		return minute(dateFromSampleValue(f)), true
 	},
 	"month": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		return month(dateFromSampleValue(f)), true
 	},
 	"year": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
+
 		return year(dateFromSampleValue(f)), true
 	},
 	// hack we only have sort functions as argument for "timestamp" possibly so they dont actually
@@ -209,6 +257,9 @@ var noArgFuncs = map[string]noArgFunctionCall{
 
 func simpleFunc(f func(float64) float64) functionCall {
 	return func(v float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h != nil {
+			return 0., false
+		}
 		return f(v), true
 	}
 }

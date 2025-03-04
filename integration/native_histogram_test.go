@@ -112,8 +112,8 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 			c, err = e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
 			require.NoError(t, err)
 
-			expectedHistogram1 := tsdbutil.GenerateTestHistogram(int(histogramIdx1))
-			expectedHistogram2 := tsdbutil.GenerateTestHistogram(int(histogramIdx2))
+			expectedHistogram1 := tsdbutil.GenerateTestHistogram(int64(histogramIdx1))
+			expectedHistogram2 := tsdbutil.GenerateTestHistogram(int64(histogramIdx2))
 			result, err := c.QueryRange(`series_1`, series2Timestamp.Add(-time.Minute*10), series2Timestamp, time.Second)
 			require.NoError(t, err)
 			require.Equal(t, model.ValMatrix, result.Type())

@@ -7,8 +7,14 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/util/annotations"
+
+	"github.com/thanos-io/promql-engine/execution/warnings"
 
 	"github.com/thanos-io/promql-engine/execution/telemetry"
 
@@ -41,6 +47,7 @@ type matrixSelector struct {
 	vectorPool *model.VectorPool
 	storage    SeriesSelector
 	scalarArg  float64
+	scalarArg2 float64
 	scanners   []matrixScanner
 	series     []labels.Labels
 	once       sync.Once
@@ -67,6 +74,9 @@ type matrixSelector struct {
 
 	// Lookback delta for extended range functions.
 	extLookbackDelta int64
+
+	nonCounterMetric string
+	hasFloats        bool
 }
 
 var ErrNativeHistogramsNotSupported = errors.New("native histograms are not supported in extended range functions")
@@ -77,6 +87,7 @@ func NewMatrixSelector(
 	selector SeriesSelector,
 	functionName string,
 	arg float64,
+	arg2 float64,
 	opts *query.Options,
 	selectRange, offset time.Duration,
 	batchSize int64,
@@ -92,6 +103,7 @@ func NewMatrixSelector(
 		functionName: functionName,
 		vectorPool:   pool,
 		scalarArg:    arg,
+		scalarArg2:   arg2,
 		fhReader:     &histogram.FloatHistogram{},
 
 		opts:          opts,
@@ -151,6 +163,10 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 	}
 
 	if o.currentStep > o.maxt {
+		if o.nonCounterMetric != "" && o.hasFloats {
+			warnings.AddToContext(annotations.NewPossibleNonCounterInfo(o.nonCounterMetric, posrange.PositionRange{}), ctx)
+		}
+
 		return nil, nil
 	}
 	if err := o.loadSeries(ctx); err != nil {
@@ -184,7 +200,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			// Also, allow operator to exist independently without being nested
 			// under parser.Call by implementing new data model.
 			// https://github.com/thanos-io/promql-engine/issues/39
-			f, h, ok, err := scanner.buffer.Eval(o.scalarArg, scanner.metricAppearedTs)
+			f, h, ok, err := scanner.buffer.Eval(ctx, o.scalarArg, o.scalarArg2, scanner.metricAppearedTs)
 			if err != nil {
 				return nil, err
 			}
@@ -194,6 +210,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 					vectors[currStep].AppendHistogram(o.vectorPool, scanner.signature, h)
 				} else {
 					vectors[currStep].AppendSample(o.vectorPool, scanner.signature, f)
+					o.hasFloats = true
 				}
 			}
 			o.IncrementSamplesAtTimestamp(scanner.buffer.Len(), seriesTs)
@@ -219,6 +236,7 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 		o.scanners = make([]matrixScanner, len(series))
 		o.series = make([]labels.Labels, len(series))
 		b := labels.ScratchBuilder{}
+
 		for i, s := range series {
 			lbls := s.Labels()
 			if o.functionName != "last_over_time" {
@@ -234,7 +252,7 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 				signature:  s.Signature,
 				iterator:   s.Iterator(nil),
 				lastSample: ringbuffer.Sample{T: math.MinInt64},
-				buffer:     o.newBuffer(),
+				buffer:     o.newBuffer(ctx),
 			}
 			o.series[i] = lbls
 		}
@@ -243,24 +261,38 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 			o.seriesBatchSize = numSeries
 		}
 		o.vectorPool.SetStepSize(int(o.seriesBatchSize))
+
+		// Add a warning if rate or increase is applied on metrics which are not named like counters.
+		if o.functionName == "rate" || o.functionName == "increase" {
+			if len(series) > 0 {
+				metricName := series[0].Labels().Get(labels.MetricName)
+				if metricName != "" &&
+					!strings.HasSuffix(metricName, "_total") &&
+					!strings.HasSuffix(metricName, "_sum") &&
+					!strings.HasSuffix(metricName, "_count") &&
+					!strings.HasSuffix(metricName, "_bucket") {
+					o.nonCounterMetric = metricName
+				}
+			}
+		}
 	})
 	return err
 }
 
-func (o *matrixSelector) newBuffer() ringbuffer.Buffer {
+func (o *matrixSelector) newBuffer(ctx context.Context) ringbuffer.Buffer {
 	switch o.functionName {
 	case "rate":
-		return ringbuffer.NewRateBuffer(*o.opts, true, true, o.selectRange, o.offset)
+		return ringbuffer.NewRateBuffer(ctx, *o.opts, true, true, o.selectRange, o.offset)
 	case "increase":
-		return ringbuffer.NewRateBuffer(*o.opts, true, false, o.selectRange, o.offset)
+		return ringbuffer.NewRateBuffer(ctx, *o.opts, true, false, o.selectRange, o.offset)
 	case "delta":
-		return ringbuffer.NewRateBuffer(*o.opts, false, false, o.selectRange, o.offset)
+		return ringbuffer.NewRateBuffer(ctx, *o.opts, false, false, o.selectRange, o.offset)
 	}
 
 	if o.isExtFunction {
-		return ringbuffer.NewWithExtLookback(8, o.selectRange, o.offset, o.opts.ExtLookbackDelta.Milliseconds(), o.call)
+		return ringbuffer.NewWithExtLookback(ctx, 8, o.selectRange, o.offset, o.opts.ExtLookbackDelta.Milliseconds()-1, o.call)
 	}
-	return ringbuffer.New(8, o.selectRange, o.offset, o.call)
+	return ringbuffer.New(ctx, 8, o.selectRange, o.offset, o.call)
 
 }
 
@@ -295,7 +327,7 @@ func (m *matrixScanner) selectPoints(
 		mint = bufMaxt
 	}
 	mint = maxInt64(mint, m.buffer.MaxT()+1)
-	if m.lastSample.T >= mint {
+	if m.lastSample.T > mint {
 		m.buffer.Push(m.lastSample.T, m.lastSample.V)
 		m.lastSample.T = math.MinInt64
 		mint = maxInt64(mint, m.buffer.MaxT()+1)
@@ -322,7 +354,7 @@ func (m *matrixScanner) selectPoints(
 				}
 				return nil
 			}
-			if t >= mint {
+			if t > mint {
 				m.buffer.Push(t, ringbuffer.Value{H: fh})
 			}
 		case chunkenc.ValFloat:
@@ -339,7 +371,7 @@ func (m *matrixScanner) selectPoints(
 				return nil
 			}
 			if isExtFunction {
-				if t >= mint || !appendedPointBeforeMint {
+				if t > mint || !appendedPointBeforeMint {
 					m.buffer.Push(t, ringbuffer.Value{F: v})
 					appendedPointBeforeMint = true
 				} else {
@@ -348,7 +380,7 @@ func (m *matrixScanner) selectPoints(
 					})
 				}
 			} else {
-				if t >= mint {
+				if t > mint {
 					m.buffer.Push(t, ringbuffer.Value{F: v})
 				}
 			}

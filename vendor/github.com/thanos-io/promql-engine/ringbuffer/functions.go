@@ -4,7 +4,14 @@
 package ringbuffer
 
 import (
+	"context"
 	"math"
+
+	"github.com/efficientgo/core/errors"
+
+	"github.com/prometheus/prometheus/util/annotations"
+
+	"github.com/thanos-io/promql-engine/execution/warnings"
 
 	"github.com/prometheus/prometheus/model/histogram"
 
@@ -15,15 +22,16 @@ import (
 type SamplesBuffer GenericRingBuffer
 
 type FunctionArgs struct {
+	ctx              context.Context
 	Samples          []Sample
 	StepTime         int64
 	SelectRange      int64
 	Offset           int64
 	MetricAppearedTs *int64
 
-	// Only holt-winters uses two arguments, we fall back for that.
 	// quantile_over_time and predict_linear use one, so we only use one here.
-	ScalarPoint float64
+	ScalarPoint  float64
+	ScalarPoint2 float64 // only for double_exponential_smoothing (trend factor)
 }
 
 type FunctionCall func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error)
@@ -59,6 +67,19 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if len(f.Samples) == 0 {
 			return 0., nil, false, nil
 		}
+		if f.Samples[0].V.H != nil {
+			// histogram
+			sum := f.Samples[0].V.H.Copy()
+			for _, sample := range f.Samples[1:] {
+				h := sample.V.H
+				_, err := sum.Add(h)
+				if err != nil {
+					return 0, sum, true, err
+				}
+			}
+
+			return 0, sum, true, nil
+		}
 		return sumOverTime(f.Samples), nil, true, nil
 	},
 	"max_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
@@ -77,6 +98,26 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if len(f.Samples) == 0 {
 			return 0., nil, false, nil
 		}
+		if f.Samples[0].V.H != nil {
+			// histogram
+			count := 1
+			mean := f.Samples[0].V.H.Copy()
+			for _, sample := range f.Samples[1:] {
+				count++
+				left := sample.V.H.Copy().Div(float64(count))
+				right := mean.Copy().Div(float64(count))
+				toAdd, err := left.Sub(right)
+				if err != nil {
+					return 0, mean, true, err
+				}
+				_, err = mean.Add(toAdd)
+				if err != nil {
+					return 0, mean, true, err
+				}
+			}
+			return 0, mean, true, nil
+		}
+
 		return avgOverTime(f.Samples), nil, true, nil
 	},
 	"stddev_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
@@ -138,6 +179,10 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if len(f.Samples) < 2 {
 			return 0., nil, false, nil
 		}
+		if f.Samples[0].V.H != nil {
+			// deriv should ignore histograms.
+			return 0, nil, false, nil
+		}
 		return deriv(f.Samples), nil, true, nil
 	},
 	"irate": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
@@ -166,31 +211,19 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if len(f.Samples) < 2 {
 			return 0., nil, false, nil
 		}
-		v, h, err := extrapolatedRate(f.Samples, len(f.Samples), true, true, f.StepTime, f.SelectRange, f.Offset)
-		if err != nil {
-			return 0, nil, false, err
-		}
-		return v, h, true, nil
+		return extrapolatedRate(f.ctx, f.Samples, len(f.Samples), true, true, f.StepTime, f.SelectRange, f.Offset)
 	},
 	"delta": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) < 2 {
 			return 0., nil, false, nil
 		}
-		v, h, err := extrapolatedRate(f.Samples, len(f.Samples), false, false, f.StepTime, f.SelectRange, f.Offset)
-		if err != nil {
-			return 0, nil, false, err
-		}
-		return v, h, true, nil
+		return extrapolatedRate(f.ctx, f.Samples, len(f.Samples), false, false, f.StepTime, f.SelectRange, f.Offset)
 	},
 	"increase": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) < 2 {
 			return 0., nil, false, nil
 		}
-		v, h, err := extrapolatedRate(f.Samples, len(f.Samples), true, false, f.StepTime, f.SelectRange, f.Offset)
-		if err != nil {
-			return 0, nil, false, err
-		}
-		return v, h, true, nil
+		return extrapolatedRate(f.ctx, f.Samples, len(f.Samples), true, false, f.StepTime, f.SelectRange, f.Offset)
 	},
 	"xrate": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) == 0 {
@@ -199,7 +232,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if f.MetricAppearedTs == nil {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h, err := extendedRate(f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
+		v, h, err := extendedRate(f.ctx, f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
 		if err != nil {
 			return 0, nil, false, err
 		}
@@ -212,7 +245,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if f.MetricAppearedTs == nil {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h, err := extendedRate(f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
+		v, h, err := extendedRate(f.ctx, f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
 		if err != nil {
 			return 0, nil, false, err
 		}
@@ -225,7 +258,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if f.MetricAppearedTs == nil {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h, err := extendedRate(f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
+		v, h, err := extendedRate(f.ctx, f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
 		if err != nil {
 			return 0, nil, false, err
 		}
@@ -237,6 +270,29 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		}
 		v := predictLinear(f.Samples, f.ScalarPoint, f.StepTime)
 		return v, nil, true, nil
+	},
+	"double_exponential_smoothing": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
+		if len(f.Samples) < 2 {
+			if len(f.Samples) == 1 && f.Samples[0].V.H != nil {
+				warnings.AddToContext(annotations.MixedFloatsHistogramsWarning, f.ctx)
+				return 0, nil, false, nil
+			}
+			return 0, nil, false, nil
+		}
+
+		// Annotate mix of float and histogram.
+		for _, s := range f.Samples {
+			if s.V.H != nil {
+				warnings.AddToContext(annotations.MixedFloatsHistogramsWarning, f.ctx)
+				return 0, nil, false, nil
+			}
+		}
+
+		sf := f.ScalarPoint  // smoothing factor or alpha
+		tf := f.ScalarPoint2 // trend factor argument or beta
+
+		v, ok := doubleExponentialSmoothing(f.Samples, sf, tf)
+		return v, nil, ok, nil
 	},
 }
 
@@ -252,7 +308,7 @@ func NewRangeVectorFunc(name string) (FunctionCall, error) {
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // extrapolates if the first/last sample is close to the boundary, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extrapolatedRate(samples []Sample, numSamples int, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64) (float64, *histogram.FloatHistogram, error) {
+func extrapolatedRate(ctx context.Context, samples []Sample, numSamples int, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64) (f float64, h *histogram.FloatHistogram, ok bool, err error) {
 	var (
 		rangeStart      = stepTime - (selectRange + offset)
 		rangeEnd        = stepTime - offset
@@ -260,11 +316,10 @@ func extrapolatedRate(samples []Sample, numSamples int, isCounter, isRate bool, 
 		resultHistogram *histogram.FloatHistogram
 	)
 
-	var err error
 	if samples[0].V.H != nil {
-		resultHistogram, err = histogramRate(samples, isCounter)
+		resultHistogram, err = histogramRate(ctx, samples, isCounter)
 		if err != nil {
-			return 0, nil, err
+			return 0, nil, false, err
 		}
 	} else {
 		resultValue = samples[len(samples)-1].V.F - samples[0].V.F
@@ -286,10 +341,18 @@ func extrapolatedRate(samples []Sample, numSamples int, isCounter, isRate bool, 
 	sampledInterval := float64(samples[len(samples)-1].T-samples[0].T) / 1000
 	averageDurationBetweenSamples := sampledInterval / float64(numSamples-1)
 
-	// If the first/last samples are close to the boundaries of the range,
-	// extrapolate the result. This is as we expect that another sample
-	// will exist given the spacing between samples we've seen thus far,
-	// with an allowance for noise.
+	// If samples are close enough to the (lower or upper) boundary of the
+	// range, we extrapolate the rate all the way to the boundary in
+	// question. "Close enough" is defined as "up to 10% more than the
+	// average duration between samples within the range", see
+	// extrapolationThreshold below. Essentially, we are assuming a more or
+	// less regular spacing between samples, and if we don't see a sample
+	// where we would expect one, we assume the series does not cover the
+	// whole range, but starts and/or ends within the range. We still
+	// extrapolate the rate in this case, but not all the way to the
+	// boundary, but only by half of the average duration between samples
+	// (which is our guess for where the series actually starts or ends).
+
 	extrapolationThreshold := averageDurationBetweenSamples * 1.1
 	extrapolateToInterval := sampledInterval
 
@@ -319,23 +382,27 @@ func extrapolatedRate(samples []Sample, numSamples int, isCounter, isRate bool, 
 
 	factor := extrapolateToInterval / sampledInterval
 	if isRate {
-		factor /= float64(selectRange / 1000)
+		factor /= float64(selectRange) / 1000
 	}
 	if resultHistogram == nil {
 		resultValue *= factor
 	} else {
 		resultHistogram.Mul(factor)
-
 	}
 
-	return resultValue, resultHistogram, nil
+	if samples[0].V.H != nil && resultHistogram == nil {
+		// to prevent appending sample with 0
+		return 0, nil, false, nil
+	}
+
+	return resultValue, resultHistogram, true, nil
 }
 
 // extendedRate is a utility function for xrate/xincrease/xdelta.
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // taking into account the last sample before the range start, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extendedRate(samples []Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram, error) {
+func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram, error) {
 	var (
 		rangeStart      = stepTime - (selectRange + offset)
 		rangeEnd        = stepTime - offset
@@ -346,7 +413,7 @@ func extendedRate(samples []Sample, isCounter, isRate bool, stepTime int64, sele
 	if samples[0].V.H != nil {
 		var err error
 		// TODO - support extended rate for histograms
-		resultHistogram, err = histogramRate(samples, isCounter)
+		resultHistogram, err = histogramRate(ctx, samples, isCounter)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -427,20 +494,33 @@ func extendedRate(samples []Sample, isCounter, isRate bool, stepTime int64, sele
 // histogramRate is a helper function for extrapolatedRate. It requires
 // points[0] to be a histogram. It returns nil if any other Point in points is
 // not a histogram.
-func histogramRate(points []Sample, isCounter bool) (*histogram.FloatHistogram, error) {
+func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histogram.FloatHistogram, error) {
 	// Calculating a rate on a single sample is not defined.
 	if len(points) < 2 {
 		return nil, nil
 	}
 
 	prev := points[0].V.H // We already know that this is a histogram.
+	usingCustomBuckets := prev.UsesCustomBuckets()
 	last := points[len(points)-1].V.H
 	if last == nil {
+		warnings.AddToContext(annotations.MixedFloatsHistogramsWarning, ctx)
 		return nil, nil // Range contains a mix of histograms and floats.
 	}
 	minSchema := prev.Schema
 	if last.Schema < minSchema {
 		minSchema = last.Schema
+	}
+
+	if last.UsesCustomBuckets() != usingCustomBuckets {
+		warnings.AddToContext(annotations.MixedExponentialCustomHistogramsWarning, ctx)
+		return nil, nil
+	}
+
+	// We check for gauge type histograms in the loop below, but the loop below does not run on the first and last point,
+	// so check the first and last point now.
+	if isCounter && (prev.CounterResetHint == histogram.GaugeType || last.CounterResetHint == histogram.GaugeType) {
+		warnings.AddToContext(annotations.NativeHistogramNotCounterWarning, ctx)
 	}
 
 	// https://github.com/prometheus/prometheus/blob/ccea61c7bf1e6bce2196ba8189a209945a204c5b/promql/functions.go#L183
@@ -451,18 +531,31 @@ func histogramRate(points []Sample, isCounter bool) (*histogram.FloatHistogram, 
 	for _, currPoint := range points[1 : len(points)-1] {
 		curr := currPoint.V.H
 		if curr == nil {
+			warnings.AddToContext(annotations.MixedFloatsHistogramsWarning, ctx)
 			return nil, nil // Range contains a mix of histograms and floats.
 		}
 		if !isCounter {
 			continue
 		}
+		if curr.CounterResetHint == histogram.GaugeType {
+			warnings.AddToContext(annotations.NativeHistogramNotCounterWarning, ctx)
+		}
 		if curr.Schema < minSchema {
 			minSchema = curr.Schema
+		}
+		if curr.UsesCustomBuckets() != usingCustomBuckets {
+			warnings.AddToContext(annotations.MixedExponentialCustomHistogramsWarning, ctx)
+			return nil, nil
 		}
 	}
 
 	h := last.CopyToSchema(minSchema)
 	if _, err := h.Sub(prev); err != nil {
+		if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+			warnings.AddToContext(annotations.MixedExponentialCustomHistogramsWarning, ctx)
+		} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+			warnings.AddToContext(annotations.IncompatibleCustomBucketsHistogramsWarning, ctx)
+		}
 		return nil, err
 	}
 
@@ -472,12 +565,20 @@ func histogramRate(points []Sample, isCounter bool) (*histogram.FloatHistogram, 
 			curr := currPoint.V.H
 			if curr.DetectReset(prev) {
 				if _, err := h.Add(prev); err != nil {
+					if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+						warnings.AddToContext(annotations.MixedExponentialCustomHistogramsWarning, ctx)
+					} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+						warnings.AddToContext(annotations.IncompatibleCustomBucketsHistogramsWarning, ctx)
+					}
 					return nil, err
 				}
 			}
 			prev = curr
 		}
+	} else if points[0].V.H.CounterResetHint != histogram.GaugeType || points[len(points)-1].V.H.CounterResetHint != histogram.GaugeType {
+		warnings.AddToContext(annotations.NativeHistogramNotGaugeWarning, ctx)
 	}
+
 	h.CounterResetHint = histogram.GaugeType
 	return h.Compact(0), nil
 }
@@ -507,9 +608,28 @@ func countOverTime(points []Sample) float64 {
 }
 
 func avgOverTime(points []Sample) float64 {
-	var mean, count, c float64
+	var (
+		sum, mean, count, kahanC float64
+		incrementalMean          bool
+	)
 	for _, v := range points {
 		count++
+		if !incrementalMean {
+			newSum, newC := kahanSumInc(v.V.F, sum, kahanC)
+			// Perform regular mean calculation as long as
+			// the sum doesn't overflow and (in any case)
+			// for the first iteration (even if we start
+			// with ±Inf) to not run into division-by-zero
+			// problems below.
+			if count == 1 || !math.IsInf(newSum, 0) {
+				sum, kahanC = newSum, newC
+				continue
+			}
+			// Handle overflow by reverting to incremental calculation of the mean value.
+			incrementalMean = true
+			mean = sum / (count - 1)
+			kahanC /= count - 1
+		}
 		if math.IsInf(mean, 0) {
 			if math.IsInf(v.V.F, 0) && (mean > 0) == (v.V.F > 0) {
 				// The `mean` and `v.V.F` values are `Inf` of the same sign.  They
@@ -527,13 +647,14 @@ func avgOverTime(points []Sample) float64 {
 				continue
 			}
 		}
-		mean, c = kahanSumInc(v.V.F/count-mean/count, mean, c)
+		correctedMean := mean + kahanC
+		mean, kahanC = kahanSumInc(v.V.F/count-correctedMean/count, mean, kahanC)
 	}
 
-	if math.IsInf(mean, 0) {
-		return mean
+	if incrementalMean {
+		return mean + kahanC
 	}
-	return mean + c
+	return (sum + kahanC) / count
 }
 
 func sumOverTime(points []Sample) float64 {
@@ -574,15 +695,23 @@ func stdvarOverTime(points []Sample) float64 {
 }
 
 func changes(points []Sample) float64 {
-	var count float64
-	prev := points[0].V.F
-	count = 0
-	for _, sample := range points[1:] {
-		current := sample.V.F
-		if current != prev && !(math.IsNaN(current) && math.IsNaN(prev)) {
+	count := 0.
+
+	prevSample := points[0]
+	for _, curSample := range points[1:] {
+		switch {
+		case prevSample.V.H == nil && curSample.V.H == nil:
+			if curSample.V.F != prevSample.V.F && !(math.IsNaN(curSample.V.F) && math.IsNaN(prevSample.V.F)) {
+				count++
+			}
+		case prevSample.V.H != nil && curSample.V.H == nil, prevSample.V.H == nil && curSample.V.H != nil:
 			count++
+		case prevSample.V.H != nil && curSample.V.H != nil:
+			if !curSample.V.H.Equals(prevSample.V.H) {
+				count++
+			}
 		}
-		prev = current
+		prevSample = curSample
 	}
 	return count
 }
@@ -600,15 +729,109 @@ func predictLinear(points []Sample, duration float64, stepTime int64) float64 {
 	return slope*duration + intercept
 }
 
-func resets(points []Sample) float64 {
-	count := 0
-	prev := points[0].V.F
-	for _, sample := range points[1:] {
-		current := sample.V.F
-		if current < prev {
-			count++
+// Based on https://github.com/prometheus/prometheus/blob/8baad1a73e471bd3cf3175a1608199e27484f179/promql/functions.go#L438
+// doubleExponentialSmoothing calculates the smoothed out value for the given series.
+// It is similar to a weighted moving average, where historical data has exponentially less influence on the current data.
+// It also accounts for trends in data. The smoothing factor (0 < sf < 1), aka "alpha", affects how historical data will affect the current data.
+// A lower smoothing factor increases the influence of historical data.
+// The trend factor (0 < tf < 1), aka "beta", affects how trends in historical data will affect the current data.
+// A higher trend factor increases the influence of trends.
+// Algorithm taken from https://en.wikipedia.org/wiki/Exponential_smoothing
+func doubleExponentialSmoothing(points []Sample, sf, tf float64) (float64, bool) {
+	// Check that the input parameters are valid
+	if sf <= 0 || sf >= 1 || tf <= 0 || tf >= 1 {
+		return 0, false
+	}
+
+	// Can't do the smoothing operation with less than two points
+	if len(points) < 2 {
+		return 0, false
+	}
+
+	// Check for histograms in the samples
+	for _, s := range points {
+		if s.V.H != nil {
+			return 0, false
 		}
-		prev = current
+	}
+
+	var s0, s1, b float64
+	// Set initial values
+	s1 = points[0].V.F
+	b = points[1].V.F - points[0].V.F
+
+	// Run the smoothing operation
+	for i := 1; i < len(points); i++ {
+		// Scale the raw value against the smoothing factor
+		x := sf * points[i].V.F
+		// Scale the last smoothed value with the trend at this point
+		b = calcTrendValue(i-1, tf, s0, s1, b)
+		y := (1 - sf) * (s1 + b)
+		s0, s1 = s1, x+y
+	}
+
+	return s1, true
+}
+
+// calcTrendValue calculates the trend value at the given index i.
+// This is somewhat analogous to the slope of the trend at the given index.
+// The argument "tf" is the trend factor.
+// The argument "s0" is the previous smoothed value.
+// The argument "s1" is the current smoothed value.
+// The argument "b" is the previous trend value.
+func calcTrendValue(i int, tf, s0, s1, b float64) float64 {
+	if i == 0 {
+		return b
+	}
+	x := tf * (s1 - s0)
+	y := (1 - tf) * b
+	return x + y
+}
+
+func resets(points []Sample) float64 {
+	var histogramPoints []Sample
+	var floatPoints []Sample
+
+	for _, p := range points {
+		if p.V.H != nil {
+			histogramPoints = append(histogramPoints, p)
+		} else {
+			floatPoints = append(floatPoints, p)
+		}
+	}
+
+	count := 0
+	var prevSample, curSample Sample
+	for iFloat, iHistogram := 0, 0; iFloat < len(floatPoints) || iHistogram < len(histogramPoints); {
+		switch {
+		// Process a float sample if no histogram sample remains or its timestamp is earlier.
+		// Process a histogram sample if no float sample remains or its timestamp is earlier.
+		case iHistogram >= len(histogramPoints) || iFloat < len(floatPoints) && floatPoints[iFloat].T < histogramPoints[iHistogram].T:
+			curSample.V.F = floatPoints[iFloat].V.F
+			curSample.V.H = nil
+			iFloat++
+		case iFloat >= len(floatPoints) || iHistogram < len(histogramPoints) && floatPoints[iFloat].T > histogramPoints[iHistogram].T:
+			curSample.V.H = histogramPoints[iHistogram].V.H
+			iHistogram++
+		}
+		// Skip the comparison for the first sample, just initialize prevSample.
+		if iFloat+iHistogram == 1 {
+			prevSample = curSample
+			continue
+		}
+		switch {
+		case prevSample.V.H == nil && curSample.V.H == nil:
+			if curSample.V.F < prevSample.V.F {
+				count++
+			}
+		case prevSample.V.H != nil && curSample.V.H == nil, prevSample.V.H == nil && curSample.V.H != nil:
+			count++
+		case prevSample.V.H != nil && curSample.V.H != nil:
+			if curSample.V.H.DetectReset(prevSample.V.H) {
+				count++
+			}
+		}
+		prevSample = curSample
 	}
 
 	return float64(count)
@@ -627,6 +850,11 @@ func linearRegression(Samples []Sample, interceptTime int64) (slope, intercept f
 	initY = Samples[0].V.F
 	constY = true
 	for i, sample := range Samples {
+		if sample.V.H != nil {
+			// should ignore histograms
+			continue
+		}
+
 		// Set constY to false if any new y values are encountered.
 		if constY && i > 0 && sample.V.F != initY {
 			constY = false
@@ -671,10 +899,14 @@ func filterFloatOnlySamples(samples []Sample) []Sample {
 
 func kahanSumInc(inc, sum, c float64) (newSum, newC float64) {
 	t := sum + inc
+	switch {
+	case math.IsInf(t, 0):
+		c = 0
+
 	// Using Neumaier improvement, swap if next term larger than sum.
-	if math.Abs(sum) >= math.Abs(inc) {
+	case math.Abs(sum) >= math.Abs(inc):
 		c += (sum - t) + inc
-	} else {
+	default:
 		c += (inc - t) + sum
 	}
 	return t, c

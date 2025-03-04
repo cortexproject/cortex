@@ -79,6 +79,7 @@ func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, clientConf
 			BackoffOnRatelimits: false,
 			TLSEnabled:          clientConfig.TLSEnabled,
 			TLS:                 clientConfig.TLS,
+			ConnectTimeout:      clientConfig.ConnectTimeout,
 		},
 		HealthCheckConfig: clientConfig.HealthCheckConfig,
 	}
@@ -103,11 +104,13 @@ type ClientConfig struct {
 	TLS               tls.ClientConfig             `yaml:",inline"`
 	GRPCCompression   string                       `yaml:"grpc_compression"`
 	HealthCheckConfig grpcclient.HealthCheckConfig `yaml:"healthcheck_config" doc:"description=EXPERIMENTAL: If enabled, gRPC clients perform health checks for each target and fail the request if the target is marked as unhealthy."`
+	ConnectTimeout    time.Duration                `yaml:"connect_timeout"`
 }
 
 func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.TLSEnabled, prefix+".tls-enabled", cfg.TLSEnabled, "Enable TLS for gRPC client connecting to store-gateway.")
 	f.StringVar(&cfg.GRPCCompression, prefix+".grpc-compression", "", "Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)")
+	f.DurationVar(&cfg.ConnectTimeout, prefix+".connect-timeout", 5*time.Second, "The maximum amount of time to establish a connection. A value of 0 means using default gRPC client connect timeout 5s.")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
 	cfg.HealthCheckConfig.RegisterFlagsWithPrefix(prefix, f)
 }

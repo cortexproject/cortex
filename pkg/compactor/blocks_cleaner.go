@@ -475,6 +475,23 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	}
 	level.Info(userLogger).Log("msg", "cleaning up remaining blocks data for tenant marked for deletion")
 	// Let's do final cleanup of tenant.
+	err = c.deleteNonDataFiles(ctx, userLogger, userBucket)
+	if err != nil {
+		return err
+	}
+
+	if deleted, err := bucket.DeletePrefix(ctx, userBucket, bucketindex.MarkersPathname, userLogger); err != nil {
+		return errors.Wrap(err, "failed to delete marker files")
+	} else if deleted > 0 {
+		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted)
+	}
+	if err := cortex_tsdb.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
+		return errors.Wrap(err, "failed to delete tenant deletion mark")
+	}
+	return nil
+}
+
+func (c *BlocksCleaner) deleteNonDataFiles(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) error {
 	if deleted, err := bucket.DeletePrefix(ctx, userBucket, block.DebugMetas, userLogger); err != nil {
 		return errors.Wrap(err, "failed to delete "+block.DebugMetas)
 	} else if deleted > 0 {
@@ -488,15 +505,6 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 		} else if deleted > 0 {
 			level.Info(userLogger).Log("msg", "deleted files under "+PartitionedGroupDirectory+" for tenant marked for deletion", "count", deleted)
 		}
-	}
-
-	if deleted, err := bucket.DeletePrefix(ctx, userBucket, bucketindex.MarkersPathname, userLogger); err != nil {
-		return errors.Wrap(err, "failed to delete marker files")
-	} else if deleted > 0 {
-		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted)
-	}
-	if err := cortex_tsdb.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
-		return errors.Wrap(err, "failed to delete tenant deletion mark")
 	}
 	return nil
 }
@@ -546,6 +554,9 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 			level.Info(userLogger).Log("msg", "deleting bucket index sync status since bucket index is empty")
 			if err := bucketindex.DeleteIndexSyncStatus(ctx, c.bucketClient, userID); err != nil {
 				level.Warn(userLogger).Log("msg", "error deleting index sync status when index is empty", "err", err)
+			}
+			if err := c.deleteNonDataFiles(ctx, userLogger, userBucket); err != nil {
+				level.Warn(userLogger).Log("msg", "error deleting non-data files", "err", err)
 			}
 		} else {
 			bucketindex.WriteSyncStatus(ctx, c.bucketClient, userID, idxs, userLogger)

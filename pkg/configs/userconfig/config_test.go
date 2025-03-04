@@ -95,7 +95,7 @@ func TestParseLegacyAlerts(t *testing.T) {
 		nil,
 		"",
 		true,
-		log.With(util_log.Logger, "alert", "TestAlert"),
+		util_log.GoKitLogToSlog(log.With(util_log.Logger, "alert", "TestAlert")),
 	)
 
 	for i, tc := range []struct {
@@ -138,7 +138,8 @@ groups:
 				require.Equal(t, err, tc.err)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expected, rules)
+				require.Equal(t, 1, len(rules["example;alerts.yaml"]))
+				require.Equal(t, tc.expected["example;alerts.yaml"][0].String(), rules["example;alerts.yaml"][0].String())
 			}
 		})
 	}

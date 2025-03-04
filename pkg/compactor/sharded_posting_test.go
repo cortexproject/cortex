@@ -65,7 +65,7 @@ func TestShardPostingAndSymbolBasedOnPartitionID(t *testing.T) {
 	}()
 	seriesCount := 0
 	for partitionID := 0; partitionID < partitionCount; partitionID++ {
-		ir, err := index.NewFileReader(filepath.Join(tmpdir, blockID.String(), "index"))
+		ir, err := index.NewFileReader(filepath.Join(tmpdir, blockID.String(), "index"), index.DecodePostingsRaw)
 		closers = append(closers, ir)
 		require.NoError(t, err)
 		k, v := index.AllPostingsKey()

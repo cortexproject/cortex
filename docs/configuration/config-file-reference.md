@@ -503,6 +503,11 @@ alertmanager_client:
   # CLI flag: -alertmanager.alertmanager-client.grpc-max-send-msg-size
   [max_send_msg_size: <int> | default = 4194304]
 
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 5s.
+  # CLI flag: -alertmanager.alertmanager-client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
+
 # The interval between persisting the current alertmanager state (notification
 # log and silences) to object storage. This is only used when sharding is
 # enabled. This state is read when all replicas for a shard can not be
@@ -3712,7 +3717,8 @@ query_rejection:
 # is given in JSON format. Rate limit has the same meaning as
 # -alertmanager.notification-rate-limit, but only applies for specific
 # integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
-# wechat, slack, victorops, pushover, sns, telegram, discord, webex, msteams.
+# wechat, slack, victorops, pushover, sns, telegram, discord, webex, msteams,
+# msteamsv2, jira, rocketchat.
 # CLI flag: -alertmanager.notification-rate-limit-per-integration
 [alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
 
@@ -3749,6 +3755,15 @@ query_rejection:
 # alerts will fail with a log message and metric increment. 0 = no limit.
 # CLI flag: -alertmanager.max-alerts-size-bytes
 [alertmanager_max_alerts_size_bytes: <int> | default = 0]
+
+# Maximum number of silences that a single user can have, including expired
+# silences. 0 = no limit.
+# CLI flag: -alertmanager.max-silences-count
+[alertmanager_max_silences_count: <int> | default = 0]
+
+# Maximum size of individual silences that a single user can have. 0 = no limit.
+# CLI flag: -alertmanager.max-silences-size-bytes
+[alertmanager_max_silences_size_bytes: <int> | default = 0]
 
 # list of rule groups to disable
 [disabled_rule_groups: <list of DisabledRuleGroup> | default = []]
@@ -4104,6 +4119,11 @@ store_gateway_client:
     # CLI flag: -querier.store-gateway-client.healthcheck.timeout
     [timeout: <duration> | default = 1s]
 
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # using default gRPC client connect timeout 5s.
+  # CLI flag: -querier.store-gateway-client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
+
 # If enabled, store gateway query stats will be logged using `info` log level.
 # CLI flag: -querier.store-gateway-query-stats-enabled
 [store_gateway_query_stats: <boolean> | default = true]
@@ -4159,6 +4179,12 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # statistics is logged for every query.
 # CLI flag: -frontend.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
+
+# If enabled, report the query stats log for queries coming from the ruler to
+# evaluate rules. It only takes effect when '-ruler.frontend-address' is
+# configured.
+# CLI flag: -frontend.enabled-ruler-query-stats
+[enabled_ruler_query_stats_log: <boolean> | default = false]
 
 # If a querier disconnects without sending notification about graceful shutdown,
 # the query-frontend will keep the querier in the tenant's shard until the

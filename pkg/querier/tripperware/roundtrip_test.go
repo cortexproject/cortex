@@ -87,8 +87,20 @@ func (m mockMiddleware) Do(_ context.Context, req Request) (Response, error) {
 	return &mockResponse{resp: r.resp}, nil
 }
 
+var (
+	instantMiddlewares = []Middleware{
+		MiddlewareFunc(func(next Handler) Handler {
+			return mockMiddleware{}
+		}),
+	}
+	rangeMiddlewares = []Middleware{
+		MiddlewareFunc(func(next Handler) Handler {
+			return mockMiddleware{}
+		}),
+	}
+)
+
 func TestRoundTrip(t *testing.T) {
-	t.Parallel()
 	s := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, err := w.Write([]byte("bar"))
@@ -105,17 +117,6 @@ func TestRoundTrip(t *testing.T) {
 	downstream := singleHostRoundTripper{
 		host: u.Host,
 		next: http.DefaultTransport,
-	}
-
-	instantMiddlewares := []Middleware{
-		MiddlewareFunc(func(next Handler) Handler {
-			return mockMiddleware{}
-		}),
-	}
-	rangeMiddlewares := []Middleware{
-		MiddlewareFunc(func(next Handler) Handler {
-			return mockMiddleware{}
-		}),
 	}
 
 	limits := validation.Limits{

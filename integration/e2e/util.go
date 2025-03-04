@@ -15,6 +15,7 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -172,10 +173,10 @@ func GenerateHistogramSeries(name string, ts time.Time, i uint32, floatHistogram
 		ph prompb.Histogram
 	)
 	if floatHistogram {
-		fh = tsdbutil.GenerateTestFloatHistogram(int(i))
+		fh = tsdbutil.GenerateTestFloatHistogram(int64(i))
 		ph = prompb.FromFloatHistogram(tsMillis, fh)
 	} else {
-		h = tsdbutil.GenerateTestHistogram(int(i))
+		h = tsdbutil.GenerateTestHistogram(int64(i))
 		ph = prompb.FromIntHistogram(tsMillis, h)
 	}
 
@@ -209,8 +210,9 @@ func GenerateSeriesWithSamples(
 	startTMillis := tsMillis
 	samples := make([]prompb.Sample, numSamples)
 	for i := 0; i < numSamples; i++ {
+		scrapeJitter := rand.Int63n(10) + 1 // add a jitter to simulate real-world scenarios, refer to: https://github.com/prometheus/prometheus/issues/13213
 		samples[i] = prompb.Sample{
-			Timestamp: startTMillis,
+			Timestamp: startTMillis + scrapeJitter,
 			Value:     float64(i + startValue),
 		}
 		startTMillis += durMillis
@@ -304,7 +306,7 @@ func CreateBlock(
 		return id, errors.Wrap(err, "commit")
 	}
 
-	c, err := tsdb.NewLeveledCompactor(ctx, nil, log.NewNopLogger(), []int64{maxt - mint}, nil, nil)
+	c, err := tsdb.NewLeveledCompactor(ctx, nil, promslog.NewNopLogger(), []int64{maxt - mint}, nil, nil)
 	if err != nil {
 		return id, errors.Wrap(err, "create compactor")
 	}

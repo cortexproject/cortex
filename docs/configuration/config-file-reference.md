@@ -4175,6 +4175,12 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # CLI flag: -frontend.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
 
+# If enabled, report the query stats log for queries coming from the ruler to
+# evaluate rules. It only takes effect when '-ruler.frontend-address' is
+# configured.
+# CLI flag: -frontend.enabled-ruler-query-stats
+[enabled_ruler_query_stats_log: <boolean> | default = false]
+
 # If a querier disconnects without sending notification about graceful shutdown,
 # the query-frontend will keep the querier in the tenant's shard until the
 # forget delay has passed. This feature is useful to reduce the blast radius

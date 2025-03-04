@@ -10,7 +10,7 @@ VERSION=$(shell cat "./VERSION" 2> /dev/null)
 GOPROXY_VALUE=$(shell go env GOPROXY)
 
 # ARCHS
-ARCHS       = amd64 arm64
+ARCHS       = amd64 #arm64
 
 # Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.

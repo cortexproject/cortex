@@ -355,7 +355,7 @@ func calcTrendValue(i int, tf, s0, s1, b float64) float64 {
 // https://en.wikipedia.org/wiki/Exponential_smoothing .
 func funcDoubleExponentialSmoothing(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
 	samples := vals[0].(Matrix)[0]
-
+	metricName := samples.Metric.Get(labels.MetricName)
 	// The smoothing factor argument.
 	sf := vals[1].(Vector)[0].F
 
@@ -374,6 +374,10 @@ func funcDoubleExponentialSmoothing(vals []parser.Value, args parser.Expressions
 
 	// Can't do the smoothing operation with less than two points.
 	if l < 2 {
+		// Annotate mix of float and histogram.
+		if l == 1 && len(samples.Histograms) > 0 {
+			return enh.Out, annotations.New().Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
+		}
 		return enh.Out, nil
 	}
 
@@ -394,7 +398,9 @@ func funcDoubleExponentialSmoothing(vals []parser.Value, args parser.Expressions
 
 		s0, s1 = s1, x+y
 	}
-
+	if len(samples.Histograms) > 0 {
+		return append(enh.Out, Sample{F: s1}), annotations.New().Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
+	}
 	return append(enh.Out, Sample{F: s1}), nil
 }
 
@@ -685,8 +691,14 @@ func funcLastOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNod
 
 // === mad_over_time(Matrix parser.ValueTypeMatrix) (Vector, Annotations) ===
 func funcMadOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
-	if len(vals[0].(Matrix)[0].Floats) == 0 {
+	samples := vals[0].(Matrix)[0]
+	var annos annotations.Annotations
+	if len(samples.Floats) == 0 {
 		return enh.Out, nil
+	}
+	if len(samples.Histograms) > 0 {
+		metricName := samples.Metric.Get(labels.MetricName)
+		annos.Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
 	}
 	return aggrOverTime(vals, enh, func(s Series) float64 {
 		values := make(vectorByValueHeap, 0, len(s.Floats))
@@ -699,17 +711,19 @@ func funcMadOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNode
 			values = append(values, Sample{F: math.Abs(f.F - median)})
 		}
 		return quantile(0.5, values)
-	}), nil
+	}), annos
 }
 
 // === max_over_time(Matrix parser.ValueTypeMatrix) (Vector, Annotations) ===
 func funcMaxOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
-	if len(vals[0].(Matrix)[0].Floats) == 0 {
-		// TODO(beorn7): The passed values only contain
-		// histograms. max_over_time ignores histograms for now. If
-		// there are only histograms, we have to return without adding
-		// anything to enh.Out.
+	samples := vals[0].(Matrix)[0]
+	var annos annotations.Annotations
+	if len(samples.Floats) == 0 {
 		return enh.Out, nil
+	}
+	if len(samples.Histograms) > 0 {
+		metricName := samples.Metric.Get(labels.MetricName)
+		annos.Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
 	}
 	return aggrOverTime(vals, enh, func(s Series) float64 {
 		maxVal := s.Floats[0].F
@@ -719,17 +733,19 @@ func funcMaxOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNode
 			}
 		}
 		return maxVal
-	}), nil
+	}), annos
 }
 
 // === min_over_time(Matrix parser.ValueTypeMatrix) (Vector, Annotations) ===
 func funcMinOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
-	if len(vals[0].(Matrix)[0].Floats) == 0 {
-		// TODO(beorn7): The passed values only contain
-		// histograms. min_over_time ignores histograms for now. If
-		// there are only histograms, we have to return without adding
-		// anything to enh.Out.
+	samples := vals[0].(Matrix)[0]
+	var annos annotations.Annotations
+	if len(samples.Floats) == 0 {
 		return enh.Out, nil
+	}
+	if len(samples.Histograms) > 0 {
+		metricName := samples.Metric.Get(labels.MetricName)
+		annos.Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
 	}
 	return aggrOverTime(vals, enh, func(s Series) float64 {
 		minVal := s.Floats[0].F
@@ -739,7 +755,7 @@ func funcMinOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNode
 			}
 		}
 		return minVal
-	}), nil
+	}), annos
 }
 
 // === sum_over_time(Matrix parser.ValueTypeMatrix) (Vector, Annotations) ===
@@ -788,10 +804,6 @@ func funcQuantileOverTime(vals []parser.Value, args parser.Expressions, enh *Eva
 	q := vals[0].(Vector)[0].F
 	el := vals[1].(Matrix)[0]
 	if len(el.Floats) == 0 {
-		// TODO(beorn7): The passed values only contain
-		// histograms. quantile_over_time ignores histograms for now. If
-		// there are only histograms, we have to return without adding
-		// anything to enh.Out.
 		return enh.Out, nil
 	}
 
@@ -799,7 +811,10 @@ func funcQuantileOverTime(vals []parser.Value, args parser.Expressions, enh *Eva
 	if math.IsNaN(q) || q < 0 || q > 1 {
 		annos.Add(annotations.NewInvalidQuantileWarning(q, args[0].PositionRange()))
 	}
-
+	if len(el.Histograms) > 0 {
+		metricName := el.Metric.Get(labels.MetricName)
+		annos.Add(annotations.NewHistogramIgnoredInAggregationInfo(metricName, args[0].PositionRange()))
+	}
 	values := make(vectorByValueHeap, 0, len(el.Floats))
 	for _, f := range el.Floats {
 		values = append(values, Sample{F: f.F})
@@ -809,12 +824,14 @@ func funcQuantileOverTime(vals []parser.Value, args parser.Expressions, enh *Eva
 
 // === stddev_over_time(Matrix parser.ValueTypeMatrix) (Vector, Annotations) ===
 func funcStddevOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
-	if len(vals[0].(Matrix)[0].Floats) == 0 {
-		// TODO(beorn7): The passed values only contain
-		// histograms. stddev_over_time ignores histograms for now. If
-		// there are only histograms, we have to return without adding
-		// anything to enh.Out.
+	samples := vals[0].(Matrix)[0]
+	var annos annotations.Annotations
+	if len(samples.Floats) == 0 {
 		return enh.Out, nil
+	}
+	if len(samples.Histograms) > 0 {
+		metricName := samples.Metric.Get(labels.MetricName)
+		annos.Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
 	}
 	return aggrOverTime(vals, enh, func(s Series) float64 {
 		var count float64
@@ -827,17 +844,19 @@ func funcStddevOverTime(vals []parser.Value, args parser.Expressions, enh *EvalN
 			aux, cAux = kahanSumInc(delta*(f.F-(mean+cMean)), aux, cAux)
 		}
 		return math.Sqrt((aux + cAux) / count)
-	}), nil
+	}), annos
 }
 
 // === stdvar_over_time(Matrix parser.ValueTypeMatrix) (Vector, Annotations) ===
 func funcStdvarOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
-	if len(vals[0].(Matrix)[0].Floats) == 0 {
-		// TODO(beorn7): The passed values only contain
-		// histograms. stdvar_over_time ignores histograms for now. If
-		// there are only histograms, we have to return without adding
-		// anything to enh.Out.
+	samples := vals[0].(Matrix)[0]
+	var annos annotations.Annotations
+	if len(samples.Floats) == 0 {
 		return enh.Out, nil
+	}
+	if len(samples.Histograms) > 0 {
+		metricName := samples.Metric.Get(labels.MetricName)
+		annos.Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
 	}
 	return aggrOverTime(vals, enh, func(s Series) float64 {
 		var count float64
@@ -850,7 +869,7 @@ func funcStdvarOverTime(vals []parser.Value, args parser.Expressions, enh *EvalN
 			aux, cAux = kahanSumInc(delta*(f.F-(mean+cMean)), aux, cAux)
 		}
 		return (aux + cAux) / count
-	}), nil
+	}), annos
 }
 
 // === absent(Vector parser.ValueTypeVector) (Vector, Annotations) ===
@@ -1110,10 +1129,15 @@ func linearRegression(samples []FPoint, interceptTime int64) (slope, intercept f
 // === deriv(node parser.ValueTypeMatrix) (Vector, Annotations) ===
 func funcDeriv(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
 	samples := vals[0].(Matrix)[0]
+	metricName := samples.Metric.Get(labels.MetricName)
 
-	// No sense in trying to compute a derivative without at least two points.
+	// No sense in trying to compute a derivative without at least two float points.
 	// Drop this Vector element.
 	if len(samples.Floats) < 2 {
+		// Annotate mix of float and histogram.
+		if len(samples.Floats) == 1 && len(samples.Histograms) > 0 {
+			return enh.Out, annotations.New().Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
+		}
 		return enh.Out, nil
 	}
 
@@ -1121,6 +1145,9 @@ func funcDeriv(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper
 	// to avoid floating point accuracy issues, see
 	// https://github.com/prometheus/prometheus/issues/2674
 	slope, _ := linearRegression(samples.Floats, samples.Floats[0].T)
+	if len(samples.Histograms) > 0 {
+		return append(enh.Out, Sample{F: slope}), annotations.New().Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
+	}
 	return append(enh.Out, Sample{F: slope}), nil
 }
 
@@ -1128,13 +1155,22 @@ func funcDeriv(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper
 func funcPredictLinear(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
 	samples := vals[0].(Matrix)[0]
 	duration := vals[1].(Vector)[0].F
-	// No sense in trying to predict anything without at least two points.
+	metricName := samples.Metric.Get(labels.MetricName)
+
+	// No sense in trying to predict anything without at least two float points.
 	// Drop this Vector element.
 	if len(samples.Floats) < 2 {
+		// Annotate mix of float and histogram.
+		if len(samples.Floats) == 1 && len(samples.Histograms) > 0 {
+			return enh.Out, annotations.New().Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
+		}
 		return enh.Out, nil
 	}
-	slope, intercept := linearRegression(samples.Floats, enh.Ts)
 
+	slope, intercept := linearRegression(samples.Floats, enh.Ts)
+	if len(samples.Histograms) > 0 {
+		return append(enh.Out, Sample{F: slope*duration + intercept}), annotations.New().Add(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, args[0].PositionRange()))
+	}
 	return append(enh.Out, Sample{F: slope*duration + intercept}), nil
 }
 
@@ -1351,14 +1387,13 @@ func funcHistogramQuantile(vals []parser.Value, args parser.Expressions, enh *Ev
 			sample.Metric = labels.NewBuilder(sample.Metric).
 				Del(excludedLabels...).
 				Labels()
-
 			mb = &metricWithBuckets{sample.Metric, nil}
 			enh.signatureToMetricWithBuckets[string(enh.lblBuf)] = mb
 		}
 		mb.buckets = append(mb.buckets, Bucket{upperBound, sample.F})
 	}
 
-	// Now deal with the histograms.
+	// Now deal with the native histograms.
 	for _, sample := range histogramSamples {
 		// We have to reconstruct the exact same signature as above for
 		// a classic histogram, just ignoring any le label.
@@ -1382,16 +1417,23 @@ func funcHistogramQuantile(vals []parser.Value, args parser.Expressions, enh *Ev
 		})
 	}
 
+	// Now do classic histograms that have already been filtered for conflicting native histograms.
 	for _, mb := range enh.signatureToMetricWithBuckets {
 		if len(mb.buckets) > 0 {
 			res, forcedMonotonicity, _ := BucketQuantile(q, mb.buckets)
-			enh.Out = append(enh.Out, Sample{
-				Metric: mb.metric,
-				F:      res,
-			})
 			if forcedMonotonicity {
 				annos.Add(annotations.NewHistogramQuantileForcedMonotonicityInfo(mb.metric.Get(labels.MetricName), args[1].PositionRange()))
 			}
+
+			if !enh.enableDelayedNameRemoval {
+				mb.metric = mb.metric.DropMetricName()
+			}
+
+			enh.Out = append(enh.Out, Sample{
+				Metric:   mb.metric,
+				F:        res,
+				DropName: true,
+			})
 		}
 	}
 

@@ -44,13 +44,13 @@ func MetadataHandler(m MetadataQuerier) http.Handler {
 		// Put all the elements of the pseudo-set into a map of slices for marshalling.
 		metrics := map[string][]metricMetadata{}
 		for _, m := range resp {
-			ms, ok := metrics[m.Metric]
+			ms, ok := metrics[m.MetricFamily]
 			if !ok {
 				// Most metrics will only hold 1 copy of the same metadata.
 				ms = make([]metricMetadata, 0, 1)
-				metrics[m.Metric] = ms
+				metrics[m.MetricFamily] = ms
 			}
-			metrics[m.Metric] = append(ms, metricMetadata{Type: string(m.Type), Help: m.Help, Unit: m.Unit})
+			metrics[m.MetricFamily] = append(ms, metricMetadata{Type: string(m.Type), Help: m.Help, Unit: m.Unit})
 		}
 
 		util.WriteJSONResponse(w, metadataResult{Status: statusSuccess, Data: metrics})

@@ -388,6 +388,11 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # File path where tokens are stored. If empty, tokens are not stored at
+  # shutdown and restored at startup.
+  # CLI flag: -alertmanager.sharding-ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
   # The sleep seconds when alertmanager is shutting down. Need to be close to or
   # larger than KV Store information propagation delay
   # CLI flag: -alertmanager.sharding-ring.final-sleep
@@ -396,6 +401,10 @@ sharding_ring:
   # Timeout for waiting on alertmanager to become desired state in the ring.
   # CLI flag: -alertmanager.sharding-ring.wait-instance-state-timeout
   [wait_instance_state_timeout: <duration> | default = 10m]
+
+  # Keep instance in the ring on shut down.
+  # CLI flag: -alertmanager.sharding-ring.keep-instance-in-the-ring-on-shutdown
+  [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
 
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names

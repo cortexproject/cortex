@@ -417,6 +417,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		delegate := ring.BasicLifecyclerDelegate(am)
 		delegate = ring.NewLeaveOnStoppingDelegate(delegate, am.logger)
 		delegate = ring.NewAutoForgetDelegate(am.cfg.ShardingRing.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, am.logger)
+		delegate = ring.NewTokensPersistencyDelegate(am.cfg.ShardingRing.TokensFilePath, ring.JOINING, delegate, am.logger)
 
 		am.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, am.logger, prometheus.WrapRegistererWithPrefix("cortex_", am.registry))
 		if err != nil {

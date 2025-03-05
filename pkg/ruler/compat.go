@@ -370,7 +370,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			DefaultRuleQueryOffset: func() time.Duration {
 				return overrides.RulerQueryOffset(userID)
 			},
-			RestoreNewRuleGroups: true,
+			RestoreNewRuleGroups: cfg.AlwaysRestoreNewRuleGroups,
 		}), nil
 	}
 }

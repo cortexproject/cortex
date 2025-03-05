@@ -1488,10 +1488,10 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 			dedupTracker[*m] = struct{}{}
 
 			result = append(result, scrape.MetricMetadata{
-				Metric: m.MetricFamilyName,
-				Help:   m.Help,
-				Unit:   m.Unit,
-				Type:   cortexpb.MetricMetadataMetricTypeToMetricType(m.GetType()),
+				MetricFamily: m.MetricFamilyName,
+				Help:         m.Help,
+				Unit:         m.Unit,
+				Type:         cortexpb.MetricMetadataMetricTypeToMetricType(m.GetType()),
 			})
 		}
 	}

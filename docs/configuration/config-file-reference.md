@@ -4855,10 +4855,6 @@ ring:
 # ruler.enable-ha-evaluation is true.
 # CLI flag: -ruler.liveness-check-timeout
 [liveness_check_timeout: <duration> | default = 1s]
-
-# If true, restores the `for` state of new rule groups added to an existing rule manager.
-# CLI flag: -ruler.always-restore-new-rule-groups
-[always_restore_new_rule_groups: <boolean> | default = false]
 ```
 
 ### `ruler_storage_config`

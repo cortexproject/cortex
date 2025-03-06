@@ -6,17 +6,16 @@ package ringbuffer
 import (
 	"context"
 	"math"
+	"sort"
 
 	"github.com/efficientgo/core/errors"
-
-	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/execution/warnings"
-
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/util/annotations"
+	"gonum.org/v1/gonum/stat"
 
 	"github.com/thanos-io/promql-engine/execution/aggregate"
 	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
 )
 
 type SamplesBuffer GenericRingBuffer
@@ -81,6 +80,12 @@ var rangeVectorFuncs = map[string]FunctionCall{
 			return 0, sum, true, nil
 		}
 		return sumOverTime(f.Samples), nil, true, nil
+	},
+	"mad_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
+		if len(f.Samples) == 0 {
+			return 0., nil, false, nil
+		}
+		return madOverTime(f.Samples), nil, true, nil
 	},
 	"max_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) == 0 {
@@ -581,6 +586,23 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 
 	h.CounterResetHint = histogram.GaugeType
 	return h.Compact(0), nil
+}
+
+func madOverTime(points []Sample) float64 {
+	values := make([]float64, 0, len(points))
+	for _, f := range points {
+		values = append(values, f.V.F)
+	}
+	sort.Float64s(values)
+
+	median := stat.Quantile(0.5, stat.LinInterp, values, nil)
+
+	for i, f := range points {
+		values[i] = math.Abs(f.V.F - median)
+	}
+	sort.Float64s(values)
+
+	return stat.Quantile(0.5, stat.LinInterp, values, nil)
 }
 
 func maxOverTime(points []Sample) float64 {

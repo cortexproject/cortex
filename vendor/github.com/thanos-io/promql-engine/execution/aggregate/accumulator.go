@@ -378,7 +378,7 @@ func (a *avgAcc) Add(ctx context.Context, v float64, h *histogram.FloatHistogram
 	a.hasValue = true
 
 	if !a.incremental {
-		newSum, newC := kahanSumInc(v, a.kahanSum, a.kahanC)
+		newSum, newC := KahanSumInc(v, a.kahanSum, a.kahanC)
 
 		if !math.IsInf(newSum, 0) {
 			// The sum doesn't overflow, so we propagate it to the
@@ -414,7 +414,7 @@ func (a *avgAcc) Add(ctx context.Context, v float64, h *histogram.FloatHistogram
 		}
 	}
 	currentMean := a.avg + a.kahanC
-	a.avg, a.kahanC = kahanSumInc(
+	a.avg, a.kahanC = KahanSumInc(
 		// Divide each side of the `-` by `group.groupCount` to avoid float64 overflows.
 		v/float64(a.count)-currentMean/float64(a.count),
 		a.avg,
@@ -693,7 +693,8 @@ func SumCompensated(s []float64) float64 {
 	return sum + c
 }
 
-func kahanSumInc(inc, sum, c float64) (newSum, newC float64) {
+// KahanSumInc implements kahan summation, see https://en.wikipedia.org/wiki/Kahan_summation_algorithm.
+func KahanSumInc(inc, sum, c float64) (newSum, newC float64) {
 	t := sum + inc
 	switch {
 	case math.IsInf(t, 0):

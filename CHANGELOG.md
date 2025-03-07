@@ -5,6 +5,7 @@
 * [FEATURE] Query Frontend: Add dynamic interval size for query splitting. This is enabled by configuring experimental flags `querier.max-shards-per-query` and/or `querier.max-fetched-data-duration-per-query`. The split interval size is dynamically increased to maintain a number of shards and total duration fetched below the configured values. #6458
 * [FEATURE] Querier/Ruler: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
 * [FEATURE] Update prometheus alertmanager version to v0.28.0 and add new integration msteamsv2, jira, and rocketchat. #6590
+* [FEATURE] Ingester: Add a `-ingester.enable-ooo-native-histograms` flag to enable out-of-order native histogram ingestion per tenant. It only takes effect when `-blocks-storage.tsdb.enable-native-histograms=true` and `-ingester.out-of-order-time-window` > 0. It is applied after the restart if it is changed at runtime through the runtime config. #6626
 * [ENHANCEMENT] Alertmanager: Add new limits `-alertmanager.max-silences-count` and `-alertmanager.max-silences-size-bytes` for limiting silences per tenant. #6605
 * [ENHANCEMENT] Update prometheus version to v3.1.0. #6583
 * [ENHANCEMENT] Add `compactor.auto-forget-delay` for compactor to auto forget compactors after X minutes without heartbeat. #6533

@@ -8,6 +8,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestStats_Copy(t *testing.T) {
+	t.Run("stats is nil", func(t *testing.T) {
+		var stats *QueryStats
+		copied := stats.Copy()
+		assert.Nil(t, copied)
+	})
+	t.Run("stats is not nil", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+		stats.AddWallTime(time.Second)
+		copied := stats.Copy()
+
+		// value should be the same
+		assert.Equal(t, time.Second, copied.LoadWallTime())
+		p1, p2 := &copied, &stats
+
+		// address should be different
+		assert.False(t, p1 == p2)
+	})
+}
+
 func TestStats_WallTime(t *testing.T) {
 	t.Run("add and load wall time", func(t *testing.T) {
 		stats, _ := ContextWithEmptyStats(context.Background())

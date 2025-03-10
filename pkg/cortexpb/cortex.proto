@@ -43,6 +43,14 @@ message WriteResponse {
   // Exemplars represents X-Prometheus-Remote-Write-Written-Exemplars
   int64 Exemplars = 5;
 }
+message WriteResponse {
+  // Samples represents X-Prometheus-Remote-Write-Written-Samples
+  int64 Samples = 1;
+  // Histograms represents X-Prometheus-Remote-Write-Written-Histograms
+  int64 Histograms = 2;
+  // Exemplars represents X-Prometheus-Remote-Write-Written-Exemplars
+  int64 Exemplars = 3;
+}
 
 message TimeSeries {
   repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];

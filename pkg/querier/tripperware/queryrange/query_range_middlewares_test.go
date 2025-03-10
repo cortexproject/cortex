@@ -17,11 +17,19 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
-	PrometheusCodec        = NewPrometheusCodec(false, "", "protobuf")
-	ShardedPrometheusCodec = NewPrometheusCodec(false, "", "protobuf")
+	userLimit = validation.Limits{
+		MaxFetchedSeriesPerQuery:     0,
+		MaxFetchedChunkBytesPerQuery: 0,
+		MaxChunksPerQuery:            0,
+		MaxFetchedDataBytesPerQuery:  0,
+	}
+	overrides, _           = validation.NewOverrides(userLimit, nil)
+	PrometheusCodec        = NewPrometheusCodec(false, "", "protobuf", overrides)
+	ShardedPrometheusCodec = NewPrometheusCodec(false, "", "protobuf", overrides)
 )
 
 func TestRoundTrip(t *testing.T) {

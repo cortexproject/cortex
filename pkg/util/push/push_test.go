@@ -35,30 +35,34 @@ var (
 	}
 )
 
-func makeV2ReqWithSeries(num int) *writev2.Request {
-	ts := make([]writev2.TimeSeries, 0, num)
+func makeV2ReqWithSeries(num int) *cortexpb.PreallocWriteRequestV2 {
+	ts := make([]cortexpb.PreallocTimeseriesV2, 0, num)
 	symbols := []string{"", "__name__", "test_metric1", "b", "c", "baz", "qux", "d", "e", "foo", "bar", "f", "g", "h", "i", "Test gauge for test purposes", "Maybe op/sec who knows (:", "Test counter for test purposes"}
 	for range num {
-		ts = append(ts, writev2.TimeSeries{
-			LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-			Metadata: writev2.Metadata{
-				Type: writev2.Metadata_METRIC_TYPE_GAUGE,
+		ts = append(ts, cortexpb.PreallocTimeseriesV2{
+			TimeSeriesV2: &cortexpb.TimeSeriesV2{
+				LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+				Metadata: cortexpb.MetadataV2{
+					Type: cortexpb.METRIC_TYPE_GAUGE,
 
-				HelpRef: 15,
-				UnitRef: 16,
-			},
-			Samples:   []writev2.Sample{{Value: 1, Timestamp: 10}},
-			Exemplars: []writev2.Exemplar{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 10}},
-			Histograms: []writev2.Histogram{
-				writev2.FromIntHistogram(10, &testHistogram),
-				writev2.FromFloatHistogram(20, testHistogram.ToFloat(nil)),
+					HelpRef: 15,
+					UnitRef: 16,
+				},
+				Samples:   []cortexpb.Sample{{Value: 1, TimestampMs: 10}},
+				Exemplars: []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 10}},
+				Histograms: []cortexpb.Histogram{
+					cortexpb.HistogramToHistogramProto(10, &testHistogram),
+					cortexpb.FloatHistogramToHistogramProto(20, testHistogram.ToFloat(nil)),
+				},
 			},
 		})
 	}
 
-	return &writev2.Request{
-		Symbols:    symbols,
-		Timeseries: ts,
+	return &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols:    symbols,
+			Timeseries: ts,
+		},
 	}
 }
 
@@ -161,36 +165,44 @@ func Benchmark_convertV2RequestToV1(b *testing.B) {
 }
 
 func Test_convertV2RequestToV1(t *testing.T) {
-	var v2Req writev2.Request
+	var v2Req cortexpb.PreallocWriteRequestV2
 
 	fh := tsdbutil.GenerateTestFloatHistogram(1)
-	ph := writev2.FromFloatHistogram(4, fh)
+	ph := cortexpb.FloatHistogramToHistogramProto(4, fh)
 
 	symbols := []string{"", "__name__", "test_metric", "b", "c", "baz", "qux", "d", "e", "foo", "bar", "f", "g", "h", "i", "Test gauge for test purposes", "Maybe op/sec who knows (:", "Test counter for test purposes"}
-	timeseries := []writev2.TimeSeries{
+	timeseries := []cortexpb.PreallocTimeseriesV2{
 		{
-			LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-			Metadata: writev2.Metadata{
-				Type: writev2.Metadata_METRIC_TYPE_COUNTER,
+			TimeSeriesV2: &cortexpb.TimeSeriesV2{
+				LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+				Metadata: cortexpb.MetadataV2{
+					Type: cortexpb.METRIC_TYPE_COUNTER,
 
-				HelpRef: 15,
-				UnitRef: 16,
+					HelpRef: 15,
+					UnitRef: 16,
+				},
+				Samples:   []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+				Exemplars: []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
 			},
-			Samples:   []writev2.Sample{{Value: 1, Timestamp: 1}},
-			Exemplars: []writev2.Exemplar{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
 		},
 		{
-			LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-			Samples:    []writev2.Sample{{Value: 2, Timestamp: 2}},
+			TimeSeriesV2: &cortexpb.TimeSeriesV2{
+				LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+				Samples:    []cortexpb.Sample{{Value: 2, TimestampMs: 2}},
+			},
 		},
 		{
-			LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-			Samples:    []writev2.Sample{{Value: 3, Timestamp: 3}},
+			TimeSeriesV2: &cortexpb.TimeSeriesV2{
+				LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+				Samples:    []cortexpb.Sample{{Value: 3, TimestampMs: 3}},
+			},
 		},
 		{
-			LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-			Histograms: []writev2.Histogram{ph, ph},
-			Exemplars:  []writev2.Exemplar{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
+			TimeSeriesV2: &cortexpb.TimeSeriesV2{
+				LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+				Histograms: []cortexpb.Histogram{ph, ph},
+				Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
+			},
 		},
 	}
 
@@ -391,7 +403,7 @@ func TestHandler_ignoresSkipLabelNameValidationIfSet(t *testing.T) {
 	}
 }
 
-func verifyWriteRequestHandler(t *testing.T, expectSource cortexpb.WriteRequest_SourceEnum) func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {
+func verifyWriteRequestHandler(t *testing.T, expectSource cortexpb.SourceEnum) func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {
 	t.Helper()
 	return func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {
 		assert.Len(t, request.Timeseries, 1)
@@ -441,7 +453,7 @@ func createRequest(t *testing.T, protobuf []byte, isV2 bool) *http.Request {
 	return req
 }
 
-func createCortexRemoteWriteV2Protobuf(t *testing.T, skipLabelNameValidation bool, source cortexpb.WriteRequest_SourceEnum) []byte {
+func createCortexRemoteWriteV2Protobuf(t *testing.T, skipLabelNameValidation bool, source cortexpb.SourceEnum) []byte {
 	t.Helper()
 	input := writev2.Request{
 		Symbols: []string{"", "__name__", "foo"},
@@ -497,7 +509,7 @@ func createPrometheusRemoteWriteProtobuf(t *testing.T) []byte {
 	require.NoError(t, err)
 	return inoutBytes
 }
-func createCortexWriteRequestProtobuf(t *testing.T, skipLabelNameValidation bool, source cortexpb.WriteRequest_SourceEnum) []byte {
+func createCortexWriteRequestProtobuf(t *testing.T, skipLabelNameValidation bool, source cortexpb.SourceEnum) []byte {
 	t.Helper()
 	ts := cortexpb.PreallocTimeseries{
 		TimeSeries: &cortexpb.TimeSeries{

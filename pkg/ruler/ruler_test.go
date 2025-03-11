@@ -1360,11 +1360,7 @@ func TestGetRules(t *testing.T) {
 					if tc.sharding {
 						mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
 
-						if tc.shardingStrategy == util.ShardingStrategyShuffle {
-							require.Equal(t, int32(tc.expectedClientCallCount), mockPoolClient.numberOfCalls.Load())
-						} else {
-							require.Equal(t, int32(tc.expectedClientCallCount), mockPoolClient.numberOfCalls.Load())
-						}
+						require.Equal(t, int32(tc.expectedClientCallCount), mockPoolClient.numberOfCalls.Load())
 						mockPoolClient.numberOfCalls.Store(0)
 					}
 				})

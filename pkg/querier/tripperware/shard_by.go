@@ -42,7 +42,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 	stats := querier_stats.FromContext(ctx)
 
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	numShards := validation.SmallestPositiveIntPerTenant(tenantIDs, s.limits.QueryVerticalShardSize)
@@ -55,7 +55,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 	analysis, err := s.analyzer.Analyze(r.GetQuery())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error analyzing query", "q", r.GetQuery(), "err", err)
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	stats.AddExtraFields(

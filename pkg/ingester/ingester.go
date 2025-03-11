@@ -1168,7 +1168,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	i.stoppedMtx.RUnlock()
 
 	if err := db.acquireAppendLock(); err != nil {
-		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
+		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, "%s", wrapWithUser(err, userID).Error())
 	}
 	defer db.releaseAppendLock()
 
@@ -1506,7 +1506,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			code = ve.code
 		}
 		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "totalHistograms", succeededHistogramsCount+failedHistogramsCount, "failedHistograms", failedHistogramsCount, "firstPartialErr", firstPartialErr)
-		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
+		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, "%s", wrapWithUser(firstPartialErr, userID).Error())
 	}
 
 	return &cortexpb.WriteResponse{}, nil

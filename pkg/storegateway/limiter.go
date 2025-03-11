@@ -28,7 +28,7 @@ func (c *limiter) Reserve(num uint64) error {
 func (c *limiter) ReserveWithType(num uint64, _ store.StoreDataType) error {
 	err := c.limiter.Reserve(num)
 	if err != nil {
-		return httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
+		return httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
 	}
 
 	return nil

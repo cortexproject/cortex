@@ -1316,7 +1316,7 @@ func TestIngester_Push(t *testing.T) {
 					},
 					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfOrderSample, model.Time(9), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfOrderSample, model.Time(9), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 10}}},
 			},
@@ -1384,7 +1384,7 @@ func TestIngester_Push(t *testing.T) {
 					},
 					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -1438,7 +1438,7 @@ func TestIngester_Push(t *testing.T) {
 					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
-			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -1534,7 +1534,7 @@ func TestIngester_Push(t *testing.T) {
 			},
 			oooTimeWindow:             5 * time.Minute,
 			enableOOONativeHistograms: false,
-			expectedErr:               httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOOONativeHistogramsDisabled, model.Time(1575043969-(10)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr:               httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrOOONativeHistogramsDisabled, model.Time(1575043969-(10)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
 			},
@@ -1593,7 +1593,7 @@ func TestIngester_Push(t *testing.T) {
 			},
 			oooTimeWindow:             5 * time.Minute,
 			enableOOONativeHistograms: true,
-			expectedErr:               httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr:               httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
 			},
@@ -1712,7 +1712,7 @@ func TestIngester_Push(t *testing.T) {
 					nil,
 					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.NewDuplicateFloatErr(1575043969, 2, 1), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.NewDuplicateFloatErr(1575043969, 2, 1), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -1766,7 +1766,7 @@ func TestIngester_Push(t *testing.T) {
 					},
 				},
 			},
-			expectedErr:              httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestExemplarErr(errExemplarRef, model.Time(1000), cortexpb.FromLabelsToLabelAdapters(metricLabels), []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}}), userID).Error()),
+			expectedErr:              httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestExemplarErr(errExemplarRef, model.Time(1000), cortexpb.FromLabelsToLabelAdapters(metricLabels), []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}}), userID).Error()),
 			expectedIngested:         nil,
 			expectedMetadataIngested: nil,
 			additionalMetrics: []string{
@@ -2260,7 +2260,7 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 			req := cortexpb.ToWriteRequest([]labels.Labels{metricLabels}, nil, nil, tc.histograms, cortexpb.API)
 			// Push timeseries
 			_, err = i.Push(ctx, req)
-			assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(tc.expectedErr, model.Time(10), metricLabelAdapters), userID).Error()), err)
+			assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(tc.expectedErr, model.Time(10), metricLabelAdapters), userID).Error()), err)
 
 			require.Equal(t, testutil.ToFloat64(i.metrics.ingestedHistogramsFail), float64(1))
 		})
@@ -5557,7 +5557,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	req, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
 	ctx := user.InjectOrgID(context.Background(), userID)
 	_, err = i.Push(ctx, req)
-	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(errors.New("forced compaction in progress"), userID).Error()), err)
+	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, "%s", wrapWithUser(errors.New("forced compaction in progress"), userID).Error()), err)
 
 	// Ingestion is successful after a flush.
 	require.True(t, db.casState(forceCompacting, active))

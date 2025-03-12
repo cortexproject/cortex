@@ -138,7 +138,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 			reqStartTime:   now.Add(-time.Hour),
 			reqEndTime:     now,
 			maxQueryLength: thirtyDays,
-			expectedErr:    httpgrpc.Errorf(http.StatusBadRequest, parserErr.Error()).Error(),
+			expectedErr:    httpgrpc.Errorf(http.StatusBadRequest, "%s", parserErr.Error()).Error(),
 		},
 		"should succeed on a query on short time range, ending now": {
 			maxQueryLength: thirtyDays,

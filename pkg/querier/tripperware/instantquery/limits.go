@@ -40,14 +40,14 @@ func (l limitsMiddleware) Do(ctx context.Context, r tripperware.Request) (trippe
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	// Enforce the max query length.
 	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.MaxQueryLength); maxQueryLength > 0 {
 		expr, err := parser.ParseExpr(r.GetQuery())
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		// Enforce query length across all selectors in the query.

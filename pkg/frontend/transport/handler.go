@@ -39,9 +39,9 @@ const (
 )
 
 var (
-	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
-	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
-	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
+	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, "%s", context.Canceled.Error())
+	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, "%s", context.DeadlineExceeded.Error())
+	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "%s", "http: request body too large")
 )
 
 const (
@@ -279,7 +279,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if resp.StatusCode/100 != 2 {
 				body, err2 := tripperware.BodyBuffer(resp, f.log)
 				if err2 == nil {
-					err = httpgrpc.Errorf(resp.StatusCode, string(body))
+					err = httpgrpc.Errorf(resp.StatusCode, "%s", string(body))
 				}
 			}
 		}

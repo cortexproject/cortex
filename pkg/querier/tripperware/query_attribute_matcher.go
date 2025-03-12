@@ -26,7 +26,7 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 		query := r.FormValue("query")
 		expr, err := parser.ParseExpr(query)
 		if err != nil {
-			return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
 

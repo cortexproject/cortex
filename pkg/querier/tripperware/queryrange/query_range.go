@@ -34,9 +34,9 @@ var (
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: false,
 	}.Froze()
-	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
-	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
+	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "%s", "end timestamp must not be before start time")
+	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "%s", "zero or negative query resolution step widths are not accepted. Try a positive integer")
+	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "%s", "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 
 	// Name of the cache control header.
 	cacheControlHeader = "Cache-Control"
@@ -204,7 +204,7 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		return nil, err
 	}
 	if r.StatusCode/100 != 2 {
-		return nil, httpgrpc.Errorf(r.StatusCode, string(buf))
+		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(buf))
 	}
 	log.LogFields(otlog.Int("bytes", len(buf)))
 

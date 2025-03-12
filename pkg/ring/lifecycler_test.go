@@ -776,6 +776,7 @@ func TestRestartIngester_READONLY(t *testing.T) {
 	// Starts Ingester and wait it to became active
 	startIngesterAndWaitState := func(ingId string, addr string, expectedState InstanceState) *Lifecycler {
 		lifecyclerConfig := testLifecyclerConfigWithAddr(ringConfig, ingId, addr)
+		lifecyclerConfig.UnregisterOnShutdown = false
 		lifecycler, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "lifecycler", ringKey, true, true, log.NewNopLogger(), nil)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler))
@@ -786,10 +787,7 @@ func TestRestartIngester_READONLY(t *testing.T) {
 	}
 
 	l1 := startIngesterAndWaitState("ing1", "0.0.0.0", ACTIVE)
-	defer services.StopAndAwaitTerminated(context.Background(), l1) //nolint:errcheck
-
 	l2 := startIngesterAndWaitState("ing2", "0.0.0.0", ACTIVE)
-	defer services.StopAndAwaitTerminated(context.Background(), l2) //nolint:errcheck
 
 	err = l2.ChangeState(context.Background(), READONLY)
 	require.NoError(t, err)
@@ -818,10 +816,10 @@ func TestRestartIngester_READONLY(t *testing.T) {
 	assert.Equal(t, READONLY, ingesters["ing2"].State)
 
 	// Start Ingester1 again - Should flip back to ACTIVE in the ring
-	l1 = startIngesterAndWaitState("ing1", "0.0.0.0", ACTIVE)
+	defer services.StopAndAwaitTerminated(context.Background(), startIngesterAndWaitState("ing1", "0.0.0.0", ACTIVE)) //nolint:errcheck
 
 	// Start Ingester2 again - Should keep on READONLY
-	l2 = startIngesterAndWaitState("ing2", "0.0.0.0", READONLY)
+	defer services.StopAndAwaitTerminated(context.Background(), startIngesterAndWaitState("ing2", "0.0.0.0", READONLY)) //nolint:errcheck
 
 	ingesters = poll(func(desc *Desc) bool {
 		return len(desc.Ingesters) == 2 && desc.Ingesters["ing1"].State == ACTIVE

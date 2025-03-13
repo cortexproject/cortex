@@ -25,6 +25,7 @@
 * [BUGFIX] Query Frontend: Fix panic caused by nil pointer dereference. #6609
 * [BUGFIX] Ingester: Add check to avoid query 5xx when closing tsdb. #6616
 * [BUGFIX] Querier: Fix panic when marshaling QueryResultRequest. #6601
+* [BUGFIX] Ingester: Avoid resharding for query when restart readonly ingesters. #6642
 
 ## 1.19.0 2025-02-27
 

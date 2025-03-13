@@ -63,7 +63,6 @@ type prometheusCodec struct {
 	sharded          bool
 	compression      tripperware.Compression
 	defaultCodecType tripperware.CodecType
-	limits           *validation.Overrides
 }
 
 func NewPrometheusCodec(sharded bool, compressionStr string, defaultCodecTypeStr string) *prometheusCodec { //nolint:revive

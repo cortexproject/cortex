@@ -21,9 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -43,11 +41,10 @@ type instantQueryCodec struct {
 	tripperware.Codec
 	compression      tripperware.Compression
 	defaultCodecType tripperware.CodecType
-	limits           *validation.Overrides
 	now              func() time.Time
 }
 
-func NewInstantQueryCodec(compressionStr string, defaultCodecTypeStr string, limits *validation.Overrides) instantQueryCodec {
+func NewInstantQueryCodec(compressionStr string, defaultCodecTypeStr string) instantQueryCodec {
 	compression := tripperware.NonCompression // default
 	if compressionStr == string(tripperware.GzipCompression) {
 		compression = tripperware.GzipCompression
@@ -61,7 +58,6 @@ func NewInstantQueryCodec(compressionStr string, defaultCodecTypeStr string, lim
 	return instantQueryCodec{
 		compression:      compression,
 		defaultCodecType: defaultCodecType,
-		limits:           limits,
 		now:              time.Now,
 	}
 }
@@ -105,27 +101,16 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 		return nil, err
 	}
 
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	queryLimiter := limiter.NewQueryLimiter(
-		validation.SmallestPositiveIntPerTenant(tenantIDs, c.limits.MaxFetchedSeriesPerQuery),
-		validation.SmallestPositiveIntPerTenant(tenantIDs, c.limits.MaxFetchedChunkBytesPerQuery),
-		validation.SmallestPositiveIntPerTenant(tenantIDs, c.limits.MaxChunksPerQuery),
-		validation.SmallestPositiveIntPerTenant(tenantIDs, c.limits.MaxFetchedDataBytesPerQuery),
-	)
-
-	maxByteSize := validation.SmallestPositiveIntPerTenant(tenantIDs, c.limits.MaxFetchedDataBytesPerQuery)
-	buf, err := tripperware.BodyBuffer(r, maxByteSize, log)
+	buf, err := tripperware.BodyBuffer(r, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
 
-	if dataBytesLimitErr := queryLimiter.AddDataBytes(len(buf)); dataBytesLimitErr != nil {
-		return nil, validation.LimitError(dataBytesLimitErr.Error())
+	responseSizeLimiter := tripperware.ResponseSizeLimiterFromContextWithFallback(ctx)
+
+	if responseSizeLimitErr := responseSizeLimiter.AddResponseBytes(len(buf)); responseSizeLimitErr != nil {
+		return nil, validation.LimitError(responseSizeLimitErr.Error())
 	}
 
 	if r.StatusCode/100 != 2 {

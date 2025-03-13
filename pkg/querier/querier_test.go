@@ -23,7 +23,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/prometheus/prometheus/util/annotations"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -933,33 +932,26 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Labels(t *testing.T) {
 	tests := map[string]struct {
 		startTime            time.Time
 		endTime              time.Time
-		expectedErr          error
-		expectedWarning      error
+		expected             error
 		ignoreMaxQueryLength bool
 	}{
 		"time range shorter than maxQueryLength": {
 			startTime:            time.Now().Add(-maxQueryLength).Add(time.Hour),
 			endTime:              time.Now(),
-			expectedErr:          nil,
+			expected:             nil,
 			ignoreMaxQueryLength: false,
 		},
 		"time range longer than maxQueryLength": {
 			startTime:            time.Now().Add(-maxQueryLength).Add(-time.Hour),
 			endTime:              time.Now(),
-			expectedErr:          validation.LimitError("expanding series: the query time range exceeds the limit (query length: 721h0m0s, limit: 720h0m0s)"),
+			expected:             validation.LimitError("expanding series: the query time range exceeds the limit (query length: 721h0m0s, limit: 720h0m0s)"),
 			ignoreMaxQueryLength: false,
 		},
 		"time range longer than maxQueryLength and ignoreMaxQueryLength is true": {
 			startTime:            time.Now().Add(-maxQueryLength).Add(-time.Hour),
 			endTime:              time.Now(),
-			expectedErr:          validation.LimitError("expanding series: the query time range exceeds the limit (query length: 721h0m0s, limit: 720h0m0s)"),
+			expected:             validation.LimitError("expanding series: the query time range exceeds the limit (query length: 721h0m0s, limit: 720h0m0s)"),
 			ignoreMaxQueryLength: true,
-		},
-		"time range not specified should be truncated with a warning": {
-			startTime:            v1.MinTime,
-			endTime:              v1.MaxTime,
-			expectedWarning:      validation.LimitError(fmt.Sprintf(validation.WarningTruncatedQueryLength, maxQueryLength)),
-			ignoreMaxQueryLength: false,
 		},
 	}
 
@@ -986,48 +978,22 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Labels(t *testing.T) {
 			q, err := queryable.Querier(util.TimeToMillis(testData.startTime), util.TimeToMillis(testData.endTime))
 			require.NoError(t, err)
 
-			_, warnings, err := q.LabelNames(ctx, &storage.LabelHints{Limit: 0})
+			_, _, err = q.LabelNames(ctx, &storage.LabelHints{Limit: 0})
 
-			// Verify expected error is returned
-			if testData.expectedErr != nil {
-				assert.True(t, strings.Contains(testData.expectedErr.Error(), err.Error()))
+			if testData.expected != nil {
+				require.NotNil(t, err)
+				assert.True(t, strings.Contains(testData.expected.Error(), err.Error()))
 			} else {
 				assert.Nil(t, err)
 			}
 
-			// Verify expected warning is returned
-			if testData.expectedWarning != nil {
-				foundWarning := false
-				for _, warning := range warnings {
-					if strings.Contains(testData.expectedWarning.Error(), warning.Error()) {
-						foundWarning = true
-					}
-				}
-				assert.True(t, foundWarning)
-			} else {
-				assert.Nil(t, warnings)
-			}
+			_, _, err = q.LabelValues(ctx, labels.MetricName, &storage.LabelHints{Limit: 0})
 
-			_, warnings, err = q.LabelValues(ctx, labels.MetricName, &storage.LabelHints{Limit: 0})
-
-			// Verify expected error is returned
-			if testData.expectedErr != nil {
-				assert.True(t, strings.Contains(testData.expectedErr.Error(), err.Error()))
+			if testData.expected != nil {
+				require.NotNil(t, err)
+				assert.True(t, strings.Contains(testData.expected.Error(), err.Error()))
 			} else {
 				assert.Nil(t, err)
-			}
-
-			// Verify expected warning is returned
-			if testData.expectedWarning != nil {
-				foundWarning := false
-				for _, warning := range warnings {
-					if strings.Contains(testData.expectedWarning.Error(), warning.Error()) {
-						foundWarning = true
-					}
-				}
-				assert.True(t, foundWarning)
-			} else {
-				assert.Nil(t, warnings)
 			}
 		})
 	}
@@ -1191,7 +1157,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 
 					// We apply the validation here again since when initializing querier we change the start/end time,
 					// but when querying series we don't validate again. So we should pass correct hints here.
-					start, end, _, err := validateQueryTimeRange(ctx, "test", util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime), overrides, 0)
+					start, end, err := validateQueryTimeRange(ctx, "test", util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime), overrides, 0)
 					// Skipped query will hit errEmptyTimeRange during validation.
 					if !testData.expectedSkipped {
 						require.NoError(t, err)
@@ -1352,7 +1318,7 @@ func TestValidateMaxQueryLength(t *testing.T) {
 			limits := DefaultLimitsConfig()
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
-			startMs, endMs, _, err := validateQueryTimeRange(ctx, "test", util.TimeToMillis(tc.start), util.TimeToMillis(tc.end), overrides, 0)
+			startMs, endMs, err := validateQueryTimeRange(ctx, "test", util.TimeToMillis(tc.start), util.TimeToMillis(tc.end), overrides, 0)
 			require.NoError(t, err)
 			startTime := model.Time(startMs)
 			endTime := model.Time(endMs)

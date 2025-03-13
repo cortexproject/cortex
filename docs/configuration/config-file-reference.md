@@ -3568,6 +3568,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 14]
 
+# The maximum total uncompressed query response size. If the query was sharded
+# the limit is applied to the total response size of all shards. This limit is
+# enforced in query-frontend for `query` and `query_range` APIs. 0 to disable.
+# CLI flag: -frontend.max-query-response-size
+[max_query_response_size: <int> | default = 0]
+
 # Most recent allowed cacheable result per-tenant, to prevent caching very
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness

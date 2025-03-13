@@ -448,7 +448,7 @@ type Buffer interface {
 	Bytes() []byte
 }
 
-func BodyBuffer(res *http.Response, maxBytes int, logger log.Logger) ([]byte, error) {
+func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 	var buf *bytes.Buffer
 
 	// Attempt to cast the response body to a Buffer and use it if possible.
@@ -473,18 +473,10 @@ func BodyBuffer(res *http.Response, maxBytes int, logger log.Logger) ([]byte, er
 			return nil, err
 		}
 		defer runutil.CloseWithLogOnErr(logger, gReader, "close gzip reader")
-		if maxBytes > 0 {
-			gReaderLimited := io.LimitReader(gReader, int64(maxBytes)+1)
-			return io.ReadAll(gReaderLimited)
-		}
-		return io.ReadAll(gReader)
 
+		return io.ReadAll(gReader)
 	} else if strings.EqualFold(res.Header.Get("Content-Encoding"), "snappy") {
 		sReader := snappy.NewReader(buf)
-		if maxBytes > 0 {
-			sReaderLimited := io.LimitReader(sReader, int64(maxBytes)+1)
-			return io.ReadAll(sReaderLimited)
-		}
 		return io.ReadAll(sReader)
 	}
 

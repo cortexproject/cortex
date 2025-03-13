@@ -23,18 +23,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-var userLimit = validation.Limits{
-	MaxFetchedSeriesPerQuery:     0,
-	MaxFetchedChunkBytesPerQuery: 0,
-	MaxChunksPerQuery:            0,
-	MaxFetchedDataBytesPerQuery:  0,
-}
-var overrides, _ = validation.NewOverrides(userLimit, nil)
-var testInstantQueryCodec = NewInstantQueryCodec(string(tripperware.NonCompression), string(tripperware.ProtobufCodecType), overrides)
-
+var testInstantQueryCodec = NewInstantQueryCodec(string(tripperware.NonCompression), string(tripperware.ProtobufCodecType))
 var jsonHttpReq = &http.Request{
 	Header: map[string][]string{
 		"Accept": {"application/json"},

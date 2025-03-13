@@ -65,7 +65,7 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 		}
 
 		// otlp to prompb TimeSeries
-		promTsList, err := convertToPromTS(r.Context(), req.Metrics(), cfg, overrides, userID, logger)
+		promTsList, promMetadata, err := convertToPromTS(r.Context(), req.Metrics(), cfg, overrides, userID, logger)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -81,7 +81,11 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 				Histograms: makeHistograms(v.Histograms),
 			}})
 		}
+
+		metadata := makeMetadata(promMetadata)
+
 		prwReq.Timeseries = tsList
+		prwReq.Metadata = metadata
 
 		if _, err := push(ctx, &prwReq); err != nil {
 			resp, ok := httpgrpc.HTTPResponseFromError(err)
@@ -97,6 +101,19 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 			http.Error(w, string(resp.Body), int(resp.Code))
 		}
 	})
+}
+
+func makeMetadata(promMetadata []prompb.MetricMetadata) []*cortexpb.MetricMetadata {
+	metadata := make([]*cortexpb.MetricMetadata, 0, len(promMetadata))
+	for _, m := range promMetadata {
+		metadata = append(metadata, &cortexpb.MetricMetadata{
+			Type:             cortexpb.MetricMetadata_MetricType(m.Type),
+			MetricFamilyName: m.MetricFamilyName,
+			Help:             m.Help,
+			Unit:             m.Unit,
+		})
+	}
+	return metadata
 }
 
 func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (pmetricotlp.ExportRequest, error) {
@@ -157,7 +174,7 @@ func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (
 	return decoderFunc(r.Body)
 }
 
-func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) ([]prompb.TimeSeries, error) {
+func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) ([]prompb.TimeSeries, []prompb.MetricMetadata, error) {
 	promConverter := prometheusremotewrite.NewPrometheusConverter()
 	settings := prometheusremotewrite.Settings{
 		AddMetricSuffixes: true,
@@ -181,9 +198,10 @@ func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distribu
 
 	if err != nil {
 		level.Error(logger).Log("msg", "Error translating OTLP metrics to Prometheus write request", "err", err)
-		return nil, err
+		return nil, nil, err
 	}
-	return promConverter.TimeSeries(), nil
+
+	return promConverter.TimeSeries(), promConverter.Metadata(), nil
 }
 
 func makeLabels(in []prompb.Label) []cortexpb.LabelAdapter {

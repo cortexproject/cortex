@@ -655,10 +655,15 @@ func (i *Lifecycler) stopping(runningError error) error {
 		i.setPreviousState(currentState)
 	}
 
-	// Mark ourselved as Leaving so no more samples are send to us.
-	err := i.changeState(context.Background(), LEAVING)
-	if err != nil {
-		level.Error(i.logger).Log("msg", "failed to set state to LEAVING", "ring", i.RingName, "err", err)
+	// We dont need to mark us as leaving if READONLY. There is not request sent to us.
+	// Also important to avoid this change so we dont have resharding(for querier) happen when READONLY restart as we extended shard on READONLY but not on LEAVING
+	// Query also keeps calling pods on LEAVING or JOINING not causing any difference if left on READONLY
+	if i.GetState() != READONLY {
+		// Mark ourselved as Leaving so no more samples are send to us.
+		err := i.changeState(context.Background(), LEAVING)
+		if err != nil {
+			level.Error(i.logger).Log("msg", "failed to set state to LEAVING", "ring", i.RingName, "err", err)
+		}
 	}
 
 	// Do the transferring / flushing on a background goroutine so we can continue

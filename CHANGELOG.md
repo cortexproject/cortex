@@ -5,19 +5,30 @@
 * [FEATURE] Query Frontend: Add dynamic interval size for query splitting. This is enabled by configuring experimental flags `querier.max-shards-per-query` and/or `querier.max-fetched-data-duration-per-query`. The split interval size is dynamically increased to maintain a number of shards and total duration fetched below the configured values. #6458
 * [FEATURE] Querier/Ruler: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
 * [FEATURE] Update prometheus alertmanager version to v0.28.0 and add new integration msteamsv2, jira, and rocketchat. #6590
+* [FEATURE] Ingester: Add a `-ingester.enable-ooo-native-histograms` flag to enable out-of-order native histogram ingestion per tenant. It only takes effect when `-blocks-storage.tsdb.enable-native-histograms=true` and `-ingester.out-of-order-time-window` > 0. It is applied after the restart if it is changed at runtime through the runtime config. #6626
 * [ENHANCEMENT] Query Frontend: Limit total query response size after decompression in query frontend. #6607
+* [ENHANCEMENT] Alertmanager: Add new limits `-alertmanager.max-silences-count` and `-alertmanager.max-silences-size-bytes` for limiting silences per tenant. #6605
+* [ENHANCEMENT] Update prometheus version to v3.1.0. #6583
 * [ENHANCEMENT] Add `compactor.auto-forget-delay` for compactor to auto forget compactors after X minutes without heartbeat. #6533
 * [ENHANCEMENT] StoreGateway: Emit more histogram buckets on the `cortex_querier_storegateway_refetches_per_query` metric. #6570
 * [ENHANCEMENT] Querier: Apply bytes limiter to LabelNames and LabelValuesForLabelNames. #6568
 * [ENHANCEMENT] Query Frontend: Add a `too_many_tenants` reason label value to `cortex_rejected_queries_total` metric to track the rejected query count due to the # of tenant limits. #6569
+* [ENHANCEMENT] Alertmanager: Add receiver validations for msteamsv2 and rocketchat. #6606
+* [ENHANCEMENT] Query Frontend: Add a `-frontend.enabled-ruler-query-stats` flag to configure whether to report the query stats log for queries coming from the Ruler. #6504
+* [ENHANCEMENT] OTLP: Support otlp metadata ingestion. #6617
+* [ENHANCEMENT] AlertManager: Add `keep_instance_in_the_ring_on_shutdown` and `tokens_file_path` configs for alertmanager ring. #6628
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576
 * [BUGFIX] Compactor: Cleaner would delete bucket index when there is no block in bucket store. #6577
 * [BUGFIX] Querier: Fix marshal native histogram with empty bucket when protobuf codec is enabled. #6595
 * [BUGFIX] Query Frontend: Fix samples scanned and peak samples query stats when query hits results cache. #6591
+* [BUGFIX] Query Frontend: Fix panic caused by nil pointer dereference. #6609
+* [BUGFIX] Ingester: Add check to avoid query 5xx when closing tsdb. #6616
+* [BUGFIX] Querier: Fix panic when marshaling QueryResultRequest. #6601
+* [BUGFIX] Ingester: Avoid resharding for query when restart readonly ingesters. #6642
 
-## 1.19.0 in progress
+## 1.19.0 2025-02-27
 
 * [CHANGE] Deprecate `-blocks-storage.tsdb.wal-compression-enabled` flag (use `blocks-storage.tsdb.wal-compression-type` instead). #6529
 * [CHANGE] OTLP: Change OTLP handler to be consistent with the Prometheus OTLP handler. #6272

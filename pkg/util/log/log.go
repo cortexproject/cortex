@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/promslog"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc/metadata"
@@ -26,7 +27,8 @@ var (
 	// Logger is a shared go-kit logger.
 	// TODO: Change all components to take a non-global logger via their constructors.
 	// Prefer accepting a non-global logger as an argument.
-	Logger = log.NewNopLogger()
+	Logger  = log.NewNopLogger()
+	SLogger = promslog.NewNopLogger()
 
 	logMessages = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "log_messages_total",

@@ -43,7 +43,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r tripperware.Request) (trippe
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	// Clamp the time range based on the max query lookback.
@@ -84,7 +84,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r tripperware.Request) (trippe
 
 		expr, err := parser.ParseExpr(r.GetQuery())
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		// Enforce query length across all selectors in the query.

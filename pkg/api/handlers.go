@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/codec"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -209,7 +210,7 @@ func NewQuerierHandler(
 		nil,   // Only needed for admin APIs.
 		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
-		logger,
+		util_log.GoKitLogToSlog(logger),
 		func(context.Context) v1.RulesRetriever { return &querier.DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
 		false,
@@ -223,12 +224,16 @@ func NewQuerierHandler(
 			BuildDate: version.BuildDate,
 			GoVersion: version.GoVersion,
 		},
+		nil,
+		nil,
 		// This is used for the stats API which we should not support. Or find other ways to.
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 		reg,
 		querier.StatsRenderer,
 		false,
 		nil,
+		false,
+		false,
 		false,
 	)
 	// Let's clear all codecs to create the instrumented ones

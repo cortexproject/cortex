@@ -28,17 +28,20 @@ type Execution struct {
 	query           promql.Query
 	opts            *query.Options
 	queryRangeStart time.Time
-	vectorSelector  model.VectorOperator
+	queryRangeEnd   time.Time
+
+	vectorSelector model.VectorOperator
 	telemetry.OperatorTelemetry
 }
 
-func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart time.Time, engineLabels []labels.Labels, opts *query.Options, _ storage.SelectHints) *Execution {
+func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart, queryRangeEnd time.Time, engineLabels []labels.Labels, opts *query.Options, _ storage.SelectHints) *Execution {
 	storage := newStorageFromQuery(query, opts, engineLabels)
 	oper := &Execution{
 		storage:         storage,
 		query:           query,
 		opts:            opts,
 		queryRangeStart: queryRangeStart,
+		queryRangeEnd:   queryRangeEnd,
 		vectorSelector:  promstorage.NewVectorSelector(pool, storage, opts, 0, 0, false, 0, 1),
 	}
 
@@ -57,7 +60,7 @@ func (e *Execution) Series(ctx context.Context) ([]labels.Labels, error) {
 }
 
 func (e *Execution) String() string {
-	return fmt.Sprintf("[remoteExec] %s (%d, %d)", e.query, e.queryRangeStart.Unix(), e.opts.End.Unix())
+	return fmt.Sprintf("[remoteExec] %s (%d, %d)", e.query, e.queryRangeStart.Unix(), e.queryRangeEnd.Unix())
 }
 
 func (e *Execution) Next(ctx context.Context) ([]model.StepVector, error) {
@@ -125,12 +128,7 @@ func (s *storageAdapter) executeQuery(ctx context.Context) {
 		warnings.AddToContext(w, ctx)
 	}
 	if result.Err != nil {
-		err := errors.Wrapf(result.Err, "remote exec error [%s]", s.lbls)
-		if s.opts.EnablePartialResponses {
-			warnings.AddToContext(err, ctx)
-		} else {
-			s.err = err
-		}
+		s.err = errors.Wrapf(result.Err, "remote exec error [%s]", s.lbls)
 		return
 	}
 	switch val := result.Value.(type) {

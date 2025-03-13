@@ -260,7 +260,7 @@ func (c RulesConfig) parseV2Formatted() (map[string]rulefmt.RuleGroups, error) {
 	ruleMap := map[string]rulefmt.RuleGroups{}
 
 	for fn, content := range c.Files {
-		rgs, errs := rulefmt.Parse([]byte(content))
+		rgs, errs := rulefmt.Parse([]byte(content), false)
 		for _, err := range errs { // return just the first error, if any
 			return nil, err
 		}
@@ -287,7 +287,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 	groups := map[string][]rules.Rule{}
 
 	for fn, content := range c.Files {
-		rgs, errs := rulefmt.Parse([]byte(content))
+		rgs, errs := rulefmt.Parse([]byte(content), false)
 		if len(errs) > 0 {
 			return nil, fmt.Errorf("error parsing %s: %v", fn, errs[0])
 		}
@@ -311,7 +311,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 						nil,
 						"",
 						true,
-						log.With(util_log.Logger, "alert", rl.Alert.Value),
+						util_log.GoKitLogToSlog(log.With(util_log.Logger, "alert", rl.Alert.Value)),
 					))
 					continue
 				}

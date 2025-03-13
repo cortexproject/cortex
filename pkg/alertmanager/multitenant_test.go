@@ -1777,8 +1777,14 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 					amConfig.ShardingEnabled = true
 				}
 
+				var limits validation.Limits
+				flagext.DefaultValues(&limits)
+
+				overrides, err := validation.NewOverrides(limits, nil)
+				require.NoError(t, err)
+
 				reg := prometheus.NewPedanticRegistry()
-				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, nil, log.NewNopLogger(), reg)
+				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, overrides, log.NewNopLogger(), reg)
 				require.NoError(t, err)
 				defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
@@ -1969,8 +1975,14 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 
 				amConfig.ShardingEnabled = true
 
+				var limits validation.Limits
+				flagext.DefaultValues(&limits)
+
+				overrides, err := validation.NewOverrides(limits, nil)
+				require.NoError(t, err)
+
 				reg := prometheus.NewPedanticRegistry()
-				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, nil, log.NewNopLogger(), reg)
+				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, overrides, log.NewNopLogger(), reg)
 				require.NoError(t, err)
 
 				clientPool.setServer(amConfig.ShardingRing.InstanceAddr+":0", am)
@@ -2285,6 +2297,8 @@ type mockAlertManagerLimits struct {
 	maxDispatcherAggregationGroups int
 	maxAlertsCount                 int
 	maxAlertsSizeBytes             int
+	maxSilencesCount               int
+	maxSilencesSizeBytes           int
 }
 
 func (m *mockAlertManagerLimits) AlertmanagerMaxConfigSize(tenant string) int {
@@ -2325,4 +2339,12 @@ func (m *mockAlertManagerLimits) AlertmanagerMaxAlertsCount(_ string) int {
 
 func (m *mockAlertManagerLimits) AlertmanagerMaxAlertsSizeBytes(_ string) int {
 	return m.maxAlertsSizeBytes
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerMaxSilencesCount(_ string) int {
+	return m.maxSilencesCount
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerMaxSilenceSizeBytes(_ string) int {
+	return m.maxSilencesSizeBytes
 }

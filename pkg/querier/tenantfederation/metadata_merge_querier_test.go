@@ -81,12 +81,12 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 			name: "single tenant",
 			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
 				"user-1": {
-					{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+					{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
 				},
 			},
 			orgId: "user-1",
 			expectedResults: []scrape.MetricMetadata{
-				{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+				{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
 			},
 			expectedMetrics: expectedSingleTenantsMetadataMetrics,
 		},
@@ -94,18 +94,18 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 			name: "should be merged two tenants results",
 			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
 				"user-1": {
-					{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+					{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
 				},
 				"user-2": {
-					{Metric: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
-					{Metric: "metadata3", Help: "metadata3 help", Type: "gauge", Unit: ""},
+					{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+					{MetricFamily: "metadata3", Help: "metadata3 help", Type: "gauge", Unit: ""},
 				},
 			},
 			orgId: "user-1|user-2",
 			expectedResults: []scrape.MetricMetadata{
-				{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
-				{Metric: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
-				{Metric: "metadata3", Help: "metadata3 help", Type: "gauge", Unit: ""},
+				{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+				{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+				{MetricFamily: "metadata3", Help: "metadata3 help", Type: "gauge", Unit: ""},
 			},
 			expectedMetrics: expectedTwoTenantsMetadataMetrics,
 		},
@@ -113,17 +113,17 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 			name: "should be deduplicated when the same metadata exist",
 			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
 				"user-1": {
-					{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
-					{Metric: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+					{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+					{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
 				},
 				"user-2": {
-					{Metric: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+					{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
 				},
 			},
 			orgId: "user-1|user-2",
 			expectedResults: []scrape.MetricMetadata{
-				{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
-				{Metric: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+				{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+				{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
 			},
 			expectedMetrics: expectedTwoTenantsMetadataMetrics,
 		},

@@ -27,11 +27,11 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -119,8 +119,9 @@ func NewQueryTripperware(
 	enablePromQLExperimentalFunctions bool,
 ) Tripperware {
 
-	// set EnableExperimentalFunctions
-	parser.EnableExperimentalFunctions = enablePromQLExperimentalFunctions
+	// The holt_winters function is renamed to double_exponential_smoothing and has been experimental since Prometheus v3. (https://github.com/prometheus/prometheus/pull/14930)
+	// The cortex supports holt_winters for users using this function.
+	querier.EnableExperimentalPromQLFunctions(enablePromQLExperimentalFunctions, true)
 
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -178,7 +179,7 @@ func NewQueryTripperware(
 				tenantIDs, err := tenant.TenantIDs(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
-					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 				}
 				now := time.Now()
 				userStr := tenant.JoinTenantIDs(tenantIDs)
@@ -261,7 +262,7 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	response, err := q.next.RoundTrip(request)

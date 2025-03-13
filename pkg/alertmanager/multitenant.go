@@ -228,6 +228,12 @@ type Limits interface {
 	// AlertmanagerMaxAlertsSizeBytes returns total max size of alerts that tenant can have active at the same time. 0 = no limit.
 	// Size of the alert is computed from alert labels, annotations and generator URL.
 	AlertmanagerMaxAlertsSizeBytes(tenant string) int
+
+	// AlertmanagerMaxSilencesCount returns max number of silences that tenant can have, including expired silences. 0 = no limit.
+	AlertmanagerMaxSilencesCount(tenant string) int
+
+	// AlertmanagerMaxSilenceSizeBytes returns the maximum size of an individual silence. 0 = no limit.
+	AlertmanagerMaxSilenceSizeBytes(tenant string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -411,6 +417,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		delegate := ring.BasicLifecyclerDelegate(am)
 		delegate = ring.NewLeaveOnStoppingDelegate(delegate, am.logger)
 		delegate = ring.NewAutoForgetDelegate(am.cfg.ShardingRing.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, am.logger)
+		delegate = ring.NewTokensPersistencyDelegate(am.cfg.ShardingRing.TokensFilePath, ring.JOINING, delegate, am.logger)
 
 		am.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, am.logger, prometheus.WrapRegistererWithPrefix("cortex_", am.registry))
 		if err != nil {

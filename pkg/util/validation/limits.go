@@ -159,6 +159,8 @@ type Limits struct {
 	OutOfOrderTimeWindow model.Duration `yaml:"out_of_order_time_window" json:"out_of_order_time_window"`
 	// Exemplars
 	MaxExemplars int `yaml:"max_exemplars" json:"max_exemplars"`
+	// Native Histogram
+	EnableOOONativeHistograms bool `yaml:"enable_ooo_native_histograms" json:"enable_ooo_native_histograms"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery            int            `yaml:"max_fetched_chunks_per_query" json:"max_fetched_chunks_per_query"`
@@ -219,6 +221,8 @@ type Limits struct {
 	AlertmanagerMaxDispatcherAggregationGroups int                `yaml:"alertmanager_max_dispatcher_aggregation_groups" json:"alertmanager_max_dispatcher_aggregation_groups"`
 	AlertmanagerMaxAlertsCount                 int                `yaml:"alertmanager_max_alerts_count" json:"alertmanager_max_alerts_count"`
 	AlertmanagerMaxAlertsSizeBytes             int                `yaml:"alertmanager_max_alerts_size_bytes" json:"alertmanager_max_alerts_size_bytes"`
+	AlertmanagerMaxSilencesCount               int                `yaml:"alertmanager_max_silences_count" json:"alertmanager_max_silences_count"`
+	AlertmanagerMaxSilencesSizeBytes           int                `yaml:"alertmanager_max_silences_size_bytes" json:"alertmanager_max_silences_size_bytes"`
 	DisabledRuleGroups                         DisabledRuleGroups `yaml:"disabled_rule_groups" json:"disabled_rule_groups" doc:"nocli|description=list of rule groups to disable"`
 }
 
@@ -257,6 +261,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster before replication. 0 to disable.")
 	f.IntVar(&l.MaxExemplars, "ingester.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.")
 	f.Var(&l.OutOfOrderTimeWindow, "ingester.out-of-order-time-window", "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.")
+	f.BoolVar(&l.EnableOOONativeHistograms, "ingester.enable-ooo-native-histograms", false, "[Experimental] Enable out-of-order native histogram ingestion, it only takes effect when -blocks-storage.tsdb.enable-native-histograms=true and -ingester.out-of-order-time-window > 0. It is applied after the restart if it is changed at runtime through the runtime config.")
 
 	f.IntVar(&l.MaxLocalMetricsWithMetadataPerUser, "ingester.max-metadata-per-user", 8000, "The maximum number of active metrics with metadata per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxLocalMetadataPerMetric, "ingester.max-metadata-per-metric", 10, "The maximum number of metadata per metric, per ingester. 0 to disable.")
@@ -312,6 +317,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.AlertmanagerMaxDispatcherAggregationGroups, "alertmanager.max-dispatcher-aggregation-groups", 0, "Maximum number of aggregation groups in Alertmanager's dispatcher that a tenant can have. Each active aggregation group uses single goroutine. When the limit is reached, dispatcher will not dispatch alerts that belong to additional aggregation groups, but existing groups will keep working properly. 0 = no limit.")
 	f.IntVar(&l.AlertmanagerMaxAlertsCount, "alertmanager.max-alerts-count", 0, "Maximum number of alerts that a single user can have. Inserting more alerts will fail with a log message and metric increment. 0 = no limit.")
 	f.IntVar(&l.AlertmanagerMaxAlertsSizeBytes, "alertmanager.max-alerts-size-bytes", 0, "Maximum total size of alerts that a single user can have, alert size is the sum of the bytes of its labels, annotations and generatorURL. Inserting more alerts will fail with a log message and metric increment. 0 = no limit.")
+	f.IntVar(&l.AlertmanagerMaxSilencesCount, "alertmanager.max-silences-count", 0, "Maximum number of silences that a single user can have, including expired silences. 0 = no limit.")
+	f.IntVar(&l.AlertmanagerMaxSilencesSizeBytes, "alertmanager.max-silences-size-bytes", 0, "Maximum size of individual silences that a single user can have. 0 = no limit.")
 }
 
 // Validate the limits config and returns an error if the validation
@@ -906,6 +913,11 @@ func (o *Overrides) MaxExemplars(userID string) int {
 	return o.GetOverridesForUser(userID).MaxExemplars
 }
 
+// EnableOOONativeHistograms returns whether to ingest out-of-order native histogram for a given user.
+func (o *Overrides) EnableOOONativeHistograms(userID string) bool {
+	return o.GetOverridesForUser(userID).EnableOOONativeHistograms
+}
+
 // Notification limits are special. Limits are returned in following order:
 // 1. per-tenant limits for given integration
 // 2. default limits for given integration
@@ -976,6 +988,14 @@ func (o *Overrides) AlertmanagerMaxAlertsCount(userID string) int {
 
 func (o *Overrides) AlertmanagerMaxAlertsSizeBytes(userID string) int {
 	return o.GetOverridesForUser(userID).AlertmanagerMaxAlertsSizeBytes
+}
+
+func (o *Overrides) AlertmanagerMaxSilencesCount(userID string) int {
+	return o.GetOverridesForUser(userID).AlertmanagerMaxSilencesCount
+}
+
+func (o *Overrides) AlertmanagerMaxSilenceSizeBytes(userID string) int {
+	return o.GetOverridesForUser(userID).AlertmanagerMaxSilencesSizeBytes
 }
 
 func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {

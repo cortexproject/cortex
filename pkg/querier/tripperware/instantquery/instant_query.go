@@ -114,7 +114,7 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 	}
 
 	if r.StatusCode/100 != 2 {
-		return nil, httpgrpc.Errorf(r.StatusCode, string(buf))
+		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(buf))
 	}
 
 	var resp tripperware.PrometheusResponse

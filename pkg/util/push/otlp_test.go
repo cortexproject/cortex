@@ -195,8 +195,14 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 			}
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
-			tsList, err := convertToPromTS(ctx, d, test.cfg, overrides, "user-1", logger)
+			tsList, metadata, err := convertToPromTS(ctx, d, test.cfg, overrides, "user-1", logger)
 			require.NoError(t, err)
+
+			// test metadata conversion
+			require.Equal(t, 1, len(metadata))
+			require.Equal(t, prompb.MetricMetadata_MetricType(1), metadata[0].Type)
+			require.Equal(t, "test_counter_total", metadata[0].MetricFamilyName)
+			require.Equal(t, "test-counter-description", metadata[0].Help)
 
 			if test.cfg.DisableTargetInfo {
 				require.Equal(t, 1, len(tsList)) // test_counter_total

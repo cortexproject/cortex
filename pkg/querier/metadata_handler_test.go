@@ -18,7 +18,7 @@ func TestMetadataHandler_Success(t *testing.T) {
 	d := &MockDistributor{}
 	d.On("MetricsMetadata", mock.Anything).Return(
 		[]scrape.MetricMetadata{
-			{Metric: "alertmanager_dispatcher_aggregation_groups", Help: "Number of active aggregation groups", Type: "gauge", Unit: ""},
+			{MetricFamily: "alertmanager_dispatcher_aggregation_groups", Help: "Number of active aggregation groups", Type: "gauge", Unit: ""},
 		},
 		nil)
 

@@ -85,6 +85,7 @@ func (p Scanners) NewMatrixSelector(
 	call logicalplan.FunctionCall,
 ) (model.VectorOperator, error) {
 	arg := 0.0
+	arg2 := 0.0
 	switch call.Func.Name {
 	case "quantile_over_time":
 		unwrap, err := logicalplan.UnwrapFloat(call.Args[0])
@@ -101,6 +102,22 @@ func (p Scanners) NewMatrixSelector(
 			return nil, errors.Wrapf(parse.ErrNotSupportedExpr, "predict_linear with expression as second argument is not supported")
 		}
 		arg = unwrap
+	case "double_exponential_smoothing":
+		sf, err := logicalplan.UnwrapFloat(call.Args[1])
+		if err != nil {
+			return nil, errors.Wrapf(parse.ErrNotSupportedExpr, "double_exponential_smoothing with expression as second argument is not supported")
+		}
+
+		tf, err := logicalplan.UnwrapFloat(call.Args[2])
+		if err != nil {
+			return nil, errors.Wrapf(parse.ErrNotSupportedExpr, "double_exponential_smoothing with expression as third argument is not supported")
+		}
+
+		if sf <= 0 || sf >= 1 || tf <= 0 || tf >= 1 {
+			return nil, nil
+		}
+		arg = sf
+		arg2 = tf
 	}
 
 	vs := logicalNode.VectorSelector
@@ -116,6 +133,7 @@ func (p Scanners) NewMatrixSelector(
 			selector,
 			call.Func.Name,
 			arg,
+			arg2,
 			opts,
 			logicalNode.Range,
 			vs.Offset,

@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/alertmanager/api/v2/models"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
@@ -235,7 +236,7 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 }
 
 func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
-	tracker := promql.NewActiveQueryTracker(t.TempDir(), 20, log.NewNopLogger())
+	tracker := promql.NewActiveQueryTracker(t.TempDir(), 20, promslog.NewNopLogger())
 
 	timeout := time.Minute * 2
 
@@ -1359,11 +1360,7 @@ func TestGetRules(t *testing.T) {
 					if tc.sharding {
 						mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
 
-						if tc.shardingStrategy == util.ShardingStrategyShuffle {
-							require.Equal(t, int32(tc.expectedClientCallCount), mockPoolClient.numberOfCalls.Load())
-						} else {
-							require.Equal(t, int32(tc.expectedClientCallCount), mockPoolClient.numberOfCalls.Load())
-						}
+						require.Equal(t, int32(tc.expectedClientCallCount), mockPoolClient.numberOfCalls.Load())
 						mockPoolClient.numberOfCalls.Store(0)
 					}
 				})

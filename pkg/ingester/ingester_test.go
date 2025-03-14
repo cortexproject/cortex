@@ -2943,8 +2943,8 @@ func Test_Ingester_Query(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
 		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
 	}
 

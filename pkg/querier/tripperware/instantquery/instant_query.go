@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -92,7 +93,7 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 	return &result, nil
 }
 
-func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
+func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
 	log, ctx := spanlogger.New(ctx, "DecodeQueryInstantResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
@@ -105,6 +106,13 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		log.Error(err)
 		return nil, err
 	}
+
+	responseSizeLimiter := tripperware.ResponseSizeLimiterFromContextWithFallback(ctx)
+
+	if responseSizeLimitErr := responseSizeLimiter.AddResponseBytes(len(buf)); responseSizeLimitErr != nil {
+		return nil, validation.LimitError(responseSizeLimitErr.Error())
+	}
+
 	if r.StatusCode/100 != 2 {
 		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(buf))
 	}

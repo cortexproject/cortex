@@ -21,7 +21,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // StatusSuccess Prometheus success result.
@@ -203,6 +205,13 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		log.Error(err)
 		return nil, err
 	}
+
+	responseSizeLimiter := tripperware.ResponseSizeLimiterFromContextWithFallback(ctx)
+
+	if responseSizeLimitErr := responseSizeLimiter.AddResponseBytes(len(buf)); responseSizeLimitErr != nil {
+		return nil, validation.LimitError(responseSizeLimitErr.Error())
+	}
+
 	if r.StatusCode/100 != 2 {
 		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(buf))
 	}

@@ -4854,7 +4854,9 @@ ring:
 [disabled_tenants: <string> | default = ""]
 
 # Report query statistics for ruler queries to complete as a per user metric and
-# as an info level log message.
+# as an info level log message. It works only when the -ruler.frontend-address
+# is not configured. When -ruler.frontend-address enabled, the Query Frontend
+# tracks query statistics logs and metrics.
 # CLI flag: -ruler.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
 

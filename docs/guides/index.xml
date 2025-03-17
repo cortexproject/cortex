@@ -507,7 +507,61 @@ no special care is required to take when scaling up ingesters.&lt;/p>
 &lt;li>Before proceeding to the next ingester, wait 2x the maximum between &lt;code>-blocks-storage.bucket-store.sync-interval&lt;/code> and &lt;code>-compactor.cleanup-interval&lt;/code>&lt;/li>
 &lt;/ol>
 &lt;/li>
-&lt;/ul></description></item><item><title>Docs: OpenTelemetry Collector</title><link>/docs/guides/opentelemetry-collector/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/opentelemetry-collector/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Native Histograms</title><link>/docs/guides/native-histograms/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/native-histograms/</guid><description>
+&lt;h2 id="context">Context&lt;/h2>
+&lt;p>The Prometheus introduces a native histogram, a new sample type, to address several problems that the classic histograms (originally implemented histograms) have.
+Please read to &lt;a href="https://prometheus.io/docs/specs/native_histograms/">Prometheus Native Histograms Document&lt;/a> if more detailed information is necessary.&lt;/p>
+&lt;p>This guide explains how to configure the native histograms on the Cortex.&lt;/p>
+&lt;h2 id="how-to-configure-native-histograms">How to configure native histograms&lt;/h2>
+&lt;p>This section explains how to configure native histograms on the Cortex.&lt;/p>
+&lt;h3 id="enable-ingestion">Enable Ingestion&lt;/h3>
+&lt;p>To ingest native histogram ingestion, set the flag &lt;code>-blocks-storage.tsdb.enable-native-histograms&lt;/code>.&lt;/p>
+&lt;p>And via yaml:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">blocks_storage&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tsdb&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_native_histograms&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;bool&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>By default, it is disabled, so make sure to enable it if you need native histograms for your system monitoring.&lt;/p>
+&lt;p>When a &lt;code>write request&lt;/code> contains both &lt;code>samples&lt;/code> and &lt;code>native histogram&lt;/code>, the ingestion behavior is as follows:&lt;/p>
+&lt;ul>
+&lt;li>When it is enabled, the Cortex ingests samples and native histograms. If ingestion is successful, the Cortex returns a 200 status code.&lt;/li>
+&lt;li>When it is disabled, the Cortex ingests samples but discards the native histograms. If sample ingestion is successful, the Cortex returns a 200 status code.&lt;/li>
+&lt;/ul>
+&lt;p>You can track the discarded number of native histograms via the &lt;code>cortex_discarded_samples_total{reason=&amp;quot;native-histogram-sample&amp;quot;}&lt;/code> promQL.&lt;/p>
+&lt;h3 id="set-bucket-limit">Set Bucket limit&lt;/h3>
+&lt;p>To limit the number of buckets(= sum of the number of positive and negative buckets) native histograms ingested, set the flag &lt;code>-validation.max-native-histogram-buckets&lt;/code>.&lt;/p>
+&lt;p>And via yaml:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_native_histogram_buckets&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;int&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The default value is 0, which means no limit. If the total number of positive and negative buckets exceeds the limit, the Cortex emits a validation error with status code 400 (Bad Request).&lt;/p>
+&lt;p>To limit the number of buckets per tenant, you can utilize a &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime config&lt;/a>.&lt;/p>
+&lt;p>For example, the following yaml file specifies the number of bucket limit 160 for &lt;code>user-1&lt;/code> and no limit for &lt;code>user-2&lt;/code>.&lt;/p>
+&lt;pre tabindex="0">&lt;code>overrides:
+user-1:
+max_native_histogram_buckets: 160
+user-2:
+max_native_histogram_buckets: 0
+&lt;/code>&lt;/pre>&lt;h2 id="how-to-enable-out-of-order-native-histograms-ingestion">How to enable out-of-order native histograms ingestion&lt;/h2>
+&lt;p>Like samples out-of-order ingestion, the Cortex allows out-of-order ingestion for the native histogram.
+To enable it, set the flag &lt;code>-ingester.enable-ooo-native-histograms&lt;/code>.&lt;/p>
+&lt;p>And via yaml:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_ooo_native_histograms&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;bool&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Is it only works if when &lt;code>-blocks-storage.tsdb.enable-native-histograms=true&lt;/code> and &lt;code>-ingester.out-of-order-time-window &amp;gt; 0&lt;/code>.&lt;/p>
+&lt;p>To enable it per tenant, you can utilize a &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime config&lt;/a>.&lt;/p>
+&lt;p>For example, the following yaml file specifies enabling out-of-order native histogram ingestion for &lt;code>user-1&lt;/code>, but not for &lt;code>user-2&lt;/code>.&lt;/p>
+&lt;pre tabindex="0">&lt;code>overrides:
+user-1:
+enable_ooo_native_histograms: true
+user-2:
+enable_ooo_native_histograms: false
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>Caution&lt;/strong>: It is applied after the Ingester restart if it is changed at runtime through the runtime config.
+For example, if you have changed the &lt;code>enable_ooo_native_histograms&lt;/code> value to &lt;code>false&lt;/code> of the &lt;code>user-1&lt;/code> via the below yaml file, then the Ingester stops the out-of-order ingestion not until the Ingester restarts.&lt;/p>
+&lt;pre tabindex="0">&lt;code>overrides:
+user-1:
+enable_ooo_native_histograms: false
+user-2:
+enable_ooo_native_histograms: false
+&lt;/code>&lt;/pre></description></item><item><title>Docs: OpenTelemetry Collector</title><link>/docs/guides/opentelemetry-collector/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/opentelemetry-collector/</guid><description>
 &lt;p>This guide explains how to configure open-telemetry collector and OTLP(OpenTelemetry Protocol) configurations in the
 Cortex.&lt;/p>
 &lt;h2 id="context">Context&lt;/h2>

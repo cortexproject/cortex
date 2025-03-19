@@ -431,7 +431,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 
 // LabelValues implements storage.Querier.
 func (q querier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, userID, mint, maxt, _, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -441,6 +441,12 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 	defer func() {
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
+
+	// For label values queries without specifying the start time, we prefer to
+	// only query ingesters and not to query maxQueryLength to avoid OOM kill.
+	if mint == 0 {
+		return metadataQuerier.LabelValues(ctx, name, hints, matchers...)
+	}
 
 	startTime := model.Time(mint)
 	endTime := model.Time(maxt)
@@ -494,7 +500,7 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 }
 
 func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, userID, mint, maxt, _, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -504,6 +510,12 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 	defer func() {
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
+
+	// For label names queries without specifying the start time, we prefer to
+	// only query ingesters and not to query maxQueryLength to avoid OOM kill.
+	if mint == 0 {
+		return metadataQuerier.LabelNames(ctx, hints, matchers...)
+	}
 
 	startTime := model.Time(mint)
 	endTime := model.Time(maxt)

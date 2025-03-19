@@ -3,6 +3,7 @@ package instantquery
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net/http"
@@ -101,7 +102,7 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 		return nil, err
 	}
 
-	buf, err := tripperware.BodyBuffer(r, log)
+	buf, err := tripperware.BodyBuffer(r)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -109,16 +110,31 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 
 	responseSizeLimiter := tripperware.ResponseSizeLimiterFromContextWithFallback(ctx)
 
-	if responseSizeLimitErr := responseSizeLimiter.AddResponseBytes(len(buf)); responseSizeLimitErr != nil {
-		return nil, validation.LimitError(responseSizeLimitErr.Error())
+	if strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") && len(buf.Bytes()) >= 4 {
+		// Read the uncompressed gzip response size from the footer
+		// This method works if response is smaller than 4 GB
+		unzippedSize := int(binary.LittleEndian.Uint32(buf.Bytes()[len(buf.Bytes())-4:]))
+		err = responseSizeLimiter.AddResponseBytes(unzippedSize)
+	} else {
+		err = responseSizeLimiter.AddResponseBytes(len(buf.Bytes()))
+	}
+
+	if err != nil {
+		return nil, validation.LimitError(err.Error())
+	}
+
+	body, err := tripperware.DecompressedBodyBytes(buf, r, log)
+	if err != nil {
+		log.Error(err)
+		return nil, err
 	}
 
 	if r.StatusCode/100 != 2 {
-		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(buf))
+		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(body))
 	}
 
 	var resp tripperware.PrometheusResponse
-	err = tripperware.UnmarshalResponse(r, buf, &resp)
+	err = tripperware.UnmarshalResponse(r, body, &resp)
 
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)

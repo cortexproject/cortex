@@ -56,7 +56,7 @@ func (r *Retry) Do(ctx context.Context, f func() (*httpgrpc.HTTPResponse, error)
 			// This is not that efficient as we might decode the body multiple
 			// times. But error response should be too large so we should be fine.
 			// TODO: investigate ways to decode only once.
-			body, err := tripperware.BodyBufferFromHTTPGRPCResponse(resp, nil)
+			body, err := tripperware.BodyBytesFromHTTPGRPCResponse(resp, nil)
 			if err != nil {
 				return nil, err
 			}

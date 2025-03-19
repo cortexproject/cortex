@@ -448,9 +448,8 @@ type Buffer interface {
 	Bytes() []byte
 }
 
-func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
+func BodyBuffer(res *http.Response) (*bytes.Buffer, error) {
 	var buf *bytes.Buffer
-
 	// Attempt to cast the response body to a Buffer and use it if possible.
 	// This is because the frontend may have already read the body and buffered it.
 	if buffer, ok := res.Body.(Buffer); ok {
@@ -465,7 +464,10 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 	}
+	return buf, nil
+}
 
+func DecompressedBodyBytes(buf *bytes.Buffer, res *http.Response, logger log.Logger) ([]byte, error) {
 	// if the response is gzipped, lets unzip it here
 	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") {
 		gReader, err := gzip.NewReader(buf)
@@ -483,7 +485,7 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func BodyBufferFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
+func BodyBytesFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
 	// if the response is gzipped, lets unzip it here
 	headers := http.Header{}
 	for _, h := range res.Headers {

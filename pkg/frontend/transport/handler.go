@@ -277,9 +277,10 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// If the response status code is not 2xx, try to get the
 			// error message from response body.
 			if resp.StatusCode/100 != 2 {
-				body, err2 := tripperware.BodyBuffer(resp, f.log)
-				if err2 == nil {
-					err = httpgrpc.Errorf(resp.StatusCode, "%s", string(body))
+				if buf, err2 := tripperware.BodyBuffer(resp); err2 == nil {
+					if body, err2 := tripperware.DecompressedBodyBytes(buf, resp, f.log); err2 == nil {
+						err = httpgrpc.Errorf(resp.StatusCode, "%s", string(body))
+					}
 				}
 			}
 		}

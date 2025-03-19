@@ -195,7 +195,10 @@ func NewQueryTripperware(
 					}
 				}
 
-				maxResponseSize := limits.MaxQueryResponseSize(userStr)
+				maxResponseSize := 0
+				if limits != nil {
+					maxResponseSize = limits.MaxQueryResponseSize(userStr)
+				}
 				if maxResponseSize > 0 && (isQuery || isQueryRange) {
 					responseSizeLimiter := NewResponseSizeLimiter(maxResponseSize)
 					context := AddResponseSizeLimiterToContext(r.Context(), responseSizeLimiter)

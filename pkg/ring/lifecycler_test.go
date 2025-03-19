@@ -3,7 +3,7 @@ package ring
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -906,8 +905,8 @@ func TestTokenFileOnDisk(t *testing.T) {
 	})
 
 	// Check for same tokens.
-	sort.Slice(expTokens, func(i, j int) bool { return expTokens[i] < expTokens[j] })
-	sort.Slice(actTokens, func(i, j int) bool { return actTokens[i] < actTokens[j] })
+	slices.Sort(expTokens)
+	slices.Sort(actTokens)
 	for i := 0; i < 512; i++ {
 		require.Equal(t, expTokens, actTokens)
 	}
@@ -1088,8 +1087,8 @@ func TestTokenFileOnDisk_WithoutAutoJoinOnStartup(t *testing.T) {
 	})
 
 	// Check for same tokens.
-	sort.Slice(expTokens, func(i, j int) bool { return expTokens[i] < expTokens[j] })
-	sort.Slice(actTokens, func(i, j int) bool { return actTokens[i] < actTokens[j] })
+	slices.Sort(expTokens)
+	slices.Sort(actTokens)
 	for i := 0; i < 512; i++ {
 		require.Equal(t, expTokens, actTokens)
 	}

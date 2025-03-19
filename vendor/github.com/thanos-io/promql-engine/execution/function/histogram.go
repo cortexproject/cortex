@@ -15,6 +15,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
 
@@ -172,7 +173,7 @@ func (o *histogramOperator) processInputSeries(ctx context.Context, vectors []mo
 			// In that case, we reset the conventional buckets to avoid emitting a sample.
 			// TODO(fpetkovski): Prometheus is looking to solve these conflicts through warnings: https://github.com/prometheus/prometheus/issues/10839.
 			if len(o.seriesBuckets[outputSeriesID]) == 0 {
-				value := histogramQuantile(o.scalarPoints[stepIndex], vector.Histograms[i])
+				value := promql.HistogramQuantile(o.scalarPoints[stepIndex], vector.Histograms[i])
 				step.AppendSample(o.pool, uint64(outputSeriesID), value)
 			} else {
 				o.seriesBuckets[outputSeriesID] = o.seriesBuckets[outputSeriesID][:0]

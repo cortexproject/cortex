@@ -19,8 +19,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
-	"github.com/thanos-io/promql-engine/engine"
-	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
@@ -208,7 +206,6 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	// The cortex supports holt_winters for users using this function.
 	EnableExperimentalPromQLFunctions(cfg.EnablePromQLExperimentalFunctions, true)
 
-	var queryEngine promql.QueryEngine
 	opts := promql.EngineOpts{
 		Logger:               util_log.GoKitLogToSlog(logger),
 		Reg:                  reg,
@@ -223,15 +220,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
 	}
-	if cfg.ThanosEngine {
-		queryEngine = engine.New(engine.Opts{
-			EngineOpts:        opts,
-			LogicalOptimizers: logicalplan.AllOptimizers,
-			EnableAnalysis:    true,
-		})
-	} else {
-		queryEngine = promql.NewEngine(opts)
-	}
+	queryEngine := NewEngineFactory(opts, cfg.ThanosEngine, reg)
 	return NewSampleAndChunkQueryable(lazyQueryable), exemplarQueryable, queryEngine
 }
 

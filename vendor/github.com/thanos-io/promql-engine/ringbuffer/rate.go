@@ -18,7 +18,7 @@ type Buffer interface {
 	MaxT() int64
 	Push(t int64, v Value)
 	Reset(mint int64, evalt int64)
-	Eval(ctx context.Context, _ float64, _ *int64) (*float64, *histogram.FloatHistogram, bool, error)
+	Eval(ctx context.Context, _, _ float64, _ *int64) (float64, *histogram.FloatHistogram, bool, error)
 	ReadIntoLast(f func(*Sample))
 }
 
@@ -171,9 +171,9 @@ func (r *RateBuffer) Reset(mint int64, evalt int64) {
 	r.firstSamples[last].T = math.MaxInt64
 }
 
-func (r *RateBuffer) Eval(ctx context.Context, _ float64, _ *int64) (*float64, *histogram.FloatHistogram, bool, error) {
+func (r *RateBuffer) Eval(ctx context.Context, _, _ float64, _ *int64) (float64, *histogram.FloatHistogram, bool, error) {
 	if r.firstSamples[0].T == math.MaxInt64 || r.firstSamples[0].T == r.last.T {
-		return nil, nil, false, nil
+		return 0, nil, false, nil
 	}
 
 	r.rateBuffer = append(append(
@@ -183,8 +183,7 @@ func (r *RateBuffer) Eval(ctx context.Context, _ float64, _ *int64) (*float64, *
 	)
 	r.rateBuffer = slices.CompactFunc(r.rateBuffer, func(s1 Sample, s2 Sample) bool { return s1.T == s2.T })
 	numSamples := r.stepRanges[0].numSamples
-	f, h, err := extrapolatedRate(ctx, r.rateBuffer, numSamples, r.isCounter, r.isRate, r.evalTs, r.selectRange, r.offset)
-	return f, h, true, err
+	return extrapolatedRate(ctx, r.rateBuffer, numSamples, r.isCounter, r.isRate, r.evalTs, r.selectRange, r.offset)
 }
 
 func (r *RateBuffer) ReadIntoLast(func(*Sample)) {}

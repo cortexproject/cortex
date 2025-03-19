@@ -305,6 +305,7 @@ type userTSDB struct {
 	stateMtx       sync.RWMutex
 	state          tsdbState
 	pushesInFlight sync.WaitGroup // Increased with stateMtx read lock held, only if state == active or activeShipping.
+	readInFlight   sync.WaitGroup // Increased with stateMtx read lock held, only if state == active, activeShipping or forceCompacting.
 
 	// Used to detect idle TSDBs.
 	lastUpdate atomic.Int64
@@ -1167,7 +1168,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	i.stoppedMtx.RUnlock()
 
 	if err := db.acquireAppendLock(); err != nil {
-		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
+		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, "%s", wrapWithUser(err, userID).Error())
 	}
 	defer db.releaseAppendLock()
 
@@ -1257,6 +1258,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, histogram.ErrHistogramCountMismatch):
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
+			case errors.Is(cause, storage.ErrOOONativeHistogramsDisabled):
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			default:
@@ -1502,10 +1506,33 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			code = ve.code
 		}
 		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "totalHistograms", succeededHistogramsCount+failedHistogramsCount, "failedHistograms", failedHistogramsCount, "firstPartialErr", firstPartialErr)
-		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
+		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, "%s", wrapWithUser(firstPartialErr, userID).Error())
 	}
 
 	return &cortexpb.WriteResponse{}, nil
+}
+
+func (u *userTSDB) acquireReadLock() error {
+	u.stateMtx.RLock()
+	defer u.stateMtx.RUnlock()
+
+	switch u.state {
+	case active:
+	case activeShipping:
+	case forceCompacting:
+		// Read are allowed.
+	case closing:
+		return errors.New("TSDB is closing")
+	default:
+		return errors.New("TSDB is not active")
+	}
+
+	u.readInFlight.Add(1)
+	return nil
+}
+
+func (u *userTSDB) releaseReadLock() {
+	u.readInFlight.Done()
 }
 
 func (u *userTSDB) acquireAppendLock() error {
@@ -1554,6 +1581,11 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 	if err != nil || db == nil {
 		return &client.ExemplarQueryResponse{}, nil
 	}
+
+	if err := db.acquireReadLock(); err != nil {
+		return &client.ExemplarQueryResponse{}, nil
+	}
+	defer db.releaseReadLock()
 
 	q, err := db.ExemplarQuerier(ctx)
 	if err != nil {
@@ -1648,6 +1680,11 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return &client.LabelValuesResponse{}, cleanup, nil
 	}
 
+	if err := db.acquireReadLock(); err != nil {
+		return &client.LabelValuesResponse{}, cleanup, nil
+	}
+	defer db.releaseReadLock()
+
 	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
 	if err != nil {
 		return nil, cleanup, err
@@ -1737,6 +1774,11 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 	if err != nil || db == nil {
 		return &client.LabelNamesResponse{}, cleanup, nil
 	}
+
+	if err := db.acquireReadLock(); err != nil {
+		return &client.LabelNamesResponse{}, cleanup, nil
+	}
+	defer db.releaseReadLock()
 
 	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
 	if err != nil {
@@ -1836,6 +1878,11 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return cleanup, nil
 	}
 
+	if err := db.acquireReadLock(); err != nil {
+		return cleanup, nil
+	}
+	defer db.releaseReadLock()
+
 	// Parse the request
 	_, _, limit, matchersSet, err := client.FromMetricsForLabelMatchersRequest(i.matchersCache, req)
 	if err != nil {
@@ -1878,7 +1925,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 			seriesSet := q.Select(ctx, true, hints, matchers...)
 			sets = append(sets, seriesSet)
 		}
-		mergedSet = storage.NewMergeSeriesSet(sets, 0, storage.ChainedSeriesMerge)
+		mergedSet = storage.NewMergeSeriesSet(sets, limit, storage.ChainedSeriesMerge)
 	} else {
 		mergedSet = q.Select(ctx, false, hints, matchersSet[0]...)
 	}
@@ -2069,6 +2116,11 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	if err != nil || db == nil {
 		return nil
 	}
+
+	if err := db.acquireReadLock(); err != nil {
+		return nil
+	}
+	defer db.releaseReadLock()
 
 	numSamples := 0
 	numSeries := 0
@@ -2372,6 +2424,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
+		EnableOOONativeHistograms:      i.limits.EnableOOONativeHistograms(userID),
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
 		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
@@ -2857,8 +2910,9 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	// If TSDB is fully closed, we will set state to 'closed', which will prevent this deferred closing -> active transition.
 	defer userDB.casState(closing, active)
 
-	// Make sure we don't ignore any possible inflight pushes.
+	// Make sure we don't ignore any possible inflight requests.
 	userDB.pushesInFlight.Wait()
+	userDB.readInFlight.Wait()
 
 	// Verify again, things may have changed during the checks and pushes.
 	tenantDeleted := false

@@ -388,6 +388,11 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # File path where tokens are stored. If empty, tokens are not stored at
+  # shutdown and restored at startup.
+  # CLI flag: -alertmanager.sharding-ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
   # The sleep seconds when alertmanager is shutting down. Need to be close to or
   # larger than KV Store information propagation delay
   # CLI flag: -alertmanager.sharding-ring.final-sleep
@@ -396,6 +401,10 @@ sharding_ring:
   # Timeout for waiting on alertmanager to become desired state in the ring.
   # CLI flag: -alertmanager.sharding-ring.wait-instance-state-timeout
   [wait_instance_state_timeout: <duration> | default = 10m]
+
+  # Keep instance in the ring on shut down.
+  # CLI flag: -alertmanager.sharding-ring.keep-instance-in-the-ring-on-shutdown
+  [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
 
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
@@ -3517,6 +3526,13 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-exemplars
 [max_exemplars: <int> | default = 0]
 
+# [Experimental] Enable out-of-order native histogram ingestion, it only takes
+# effect when -blocks-storage.tsdb.enable-native-histograms=true and
+# -ingester.out-of-order-time-window > 0. It is applied after the restart if it
+# is changed at runtime through the runtime config.
+# CLI flag: -ingester.enable-ooo-native-histograms
+[enable_ooo_native_histograms: <boolean> | default = false]
+
 # Maximum number of chunks that can be fetched in a single query from ingesters
 # and long-term storage. This limit is enforced in the querier, ruler and
 # store-gateway. 0 to disable.
@@ -4174,6 +4190,12 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # statistics is logged for every query.
 # CLI flag: -frontend.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
+
+# If enabled, report the query stats log for queries coming from the ruler to
+# evaluate rules. It only takes effect when '-ruler.frontend-address' is
+# configured.
+# CLI flag: -frontend.enabled-ruler-query-stats
+[enabled_ruler_query_stats_log: <boolean> | default = false]
 
 # If a querier disconnects without sending notification about graceful shutdown,
 # the query-frontend will keep the querier in the tenant's shard until the

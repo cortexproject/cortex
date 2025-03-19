@@ -233,6 +233,8 @@ func NewQuerierHandler(
 		false,
 		nil,
 		false,
+		false,
+		false,
 	)
 	// Let's clear all codecs to create the instrumented ones
 	api.ClearCodecs()

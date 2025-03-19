@@ -1028,6 +1028,7 @@ func TestIngester_Push(t *testing.T) {
 		maxExemplars              int
 		oooTimeWindow             time.Duration
 		disableNativeHistogram    bool
+		enableOOONativeHistograms bool
 	}{
 		"should record native histogram discarded": {
 			reqs: []*cortexpb.WriteRequest{
@@ -1315,7 +1316,7 @@ func TestIngester_Push(t *testing.T) {
 					},
 					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfOrderSample, model.Time(9), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfOrderSample, model.Time(9), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 10}}},
 			},
@@ -1383,7 +1384,7 @@ func TestIngester_Push(t *testing.T) {
 					},
 					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -1437,7 +1438,7 @@ func TestIngester_Push(t *testing.T) {
 					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
-			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -1516,6 +1517,186 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
+		"native histogram ooo disabled, should soft fail": {
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					nil,
+					nil,
+					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))},
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					nil,
+					nil,
+					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1))},
+					cortexpb.API),
+			},
+			oooTimeWindow:             5 * time.Minute,
+			enableOOONativeHistograms: false,
+			expectedErr:               httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrOOONativeHistogramsDisabled, model.Time(1575043969-(10)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
+			},
+			additionalMetrics: []string{
+				"cortex_ingester_tsdb_head_samples_appended_total",
+				"cortex_ingester_active_series",
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 0
+				# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
+				# TYPE cortex_ingester_ingested_native_histograms_total counter
+				cortex_ingester_ingested_native_histograms_total 1
+				# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
+				# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
+				cortex_ingester_ingested_native_histograms_failures_total 1
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+        	    # HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
+        	    # TYPE cortex_ingester_tsdb_head_samples_appended_total counter
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="float",user="test"} 0
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="test"} 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
+		"native histogram ooo enabled, should soft fail on sample too old": {
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					nil,
+					nil,
+					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))},
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					nil,
+					nil,
+					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(600*1000), tsdbutil.GenerateTestHistogram(1))},
+					cortexpb.API),
+			},
+			oooTimeWindow:             5 * time.Minute,
+			enableOOONativeHistograms: true,
+			expectedErr:               httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
+			},
+			additionalMetrics: []string{
+				"cortex_ingester_tsdb_head_samples_appended_total",
+				"cortex_ingester_active_series",
+				"cortex_discarded_samples_total",
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 0
+				# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
+				# TYPE cortex_ingester_ingested_native_histograms_total counter
+				cortex_ingester_ingested_native_histograms_total 1
+				# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
+				# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
+				cortex_ingester_ingested_native_histograms_failures_total 1
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+        	    # HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
+        	    # TYPE cortex_ingester_tsdb_head_samples_appended_total counter
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="float",user="test"} 0
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="test"} 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="sample-too-old",user="test"} 1
+			`,
+		},
+		"native histogram ooo enabled, should succeed": {
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					nil,
+					nil,
+					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))},
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					nil,
+					nil,
+					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1))},
+					cortexpb.API),
+			},
+			oooTimeWindow:             5 * time.Minute,
+			enableOOONativeHistograms: true,
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1)), cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
+			},
+			additionalMetrics: []string{
+				"cortex_ingester_tsdb_head_samples_appended_total",
+				"cortex_ingester_active_series",
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 0
+				# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
+				# TYPE cortex_ingester_ingested_native_histograms_total counter
+				cortex_ingester_ingested_native_histograms_total 2
+				# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
+				# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
+				cortex_ingester_ingested_native_histograms_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+        	    # HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
+        	    # TYPE cortex_ingester_tsdb_head_samples_appended_total counter
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="float",user="test"} 0
+        	    cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="test"} 2
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
 		"should soft fail on two different sample values at the same timestamp": {
 			reqs: []*cortexpb.WriteRequest{
 				cortexpb.ToWriteRequest(
@@ -1531,7 +1712,7 @@ func TestIngester_Push(t *testing.T) {
 					nil,
 					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.NewDuplicateFloatErr(1575043969, 2, 1), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.NewDuplicateFloatErr(1575043969, 2, 1), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -1585,7 +1766,7 @@ func TestIngester_Push(t *testing.T) {
 					},
 				},
 			},
-			expectedErr:              httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestExemplarErr(errExemplarRef, model.Time(1000), cortexpb.FromLabelsToLabelAdapters(metricLabels), []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}}), userID).Error()),
+			expectedErr:              httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestExemplarErr(errExemplarRef, model.Time(1000), cortexpb.FromLabelsToLabelAdapters(metricLabels), []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}}), userID).Error()),
 			expectedIngested:         nil,
 			expectedMetadataIngested: nil,
 			additionalMetrics: []string{
@@ -1824,6 +2005,7 @@ func TestIngester_Push(t *testing.T) {
 			limits := defaultLimitsTestConfig()
 			limits.MaxExemplars = testData.maxExemplars
 			limits.OutOfOrderTimeWindow = model.Duration(testData.oooTimeWindow)
+			limits.EnableOOONativeHistograms = testData.enableOOONativeHistograms
 			limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
 				{
 					LabelSet: labels.FromMap(map[string]string{model.MetricNameLabel: "test"}),
@@ -2078,7 +2260,7 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 			req := cortexpb.ToWriteRequest([]labels.Labels{metricLabels}, nil, nil, tc.histograms, cortexpb.API)
 			// Push timeseries
 			_, err = i.Push(ctx, req)
-			assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(tc.expectedErr, model.Time(10), metricLabelAdapters), userID).Error()), err)
+			assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(tc.expectedErr, model.Time(10), metricLabelAdapters), userID).Error()), err)
 
 			require.Equal(t, testutil.ToFloat64(i.metrics.ingestedHistogramsFail), float64(1))
 		})
@@ -2761,8 +2943,8 @@ func Test_Ingester_Query(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
 		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
 	}
 
@@ -4327,6 +4509,63 @@ func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	require.NotNil(t, db)
 }
 
+func TestIngester_ReadNotFailWhenTSDBIsBeingDeleted(t *testing.T) {
+
+	tc := map[string]struct {
+		state tsdbState
+	}{
+		"closingTsdb": {state: closing},
+		"closedTsdb":  {state: closed},
+	}
+	for name, c := range tc {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			cfg := defaultIngesterTestConfig(t)
+			cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
+			cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown = true
+
+			// Create ingester
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+			require.NoError(t, err)
+
+			require.NoError(t, services.StartAndAwaitRunning(ctx, i))
+			defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			pushSingleSampleAtTime(t, i, 1*time.Minute.Milliseconds())
+
+			db, err := i.getOrCreateTSDB(userID, true)
+			require.NoError(t, err)
+			require.NotNil(t, db)
+
+			err = db.Close()
+			require.NoError(t, err)
+
+			b := db.casState(active, c.state)
+			require.True(t, b)
+
+			// Mock request
+			ctx = user.InjectOrgID(context.Background(), userID)
+
+			err = i.QueryStream(&client.QueryRequest{EndTimestampMs: 10 * time.Minute.Milliseconds()}, &mockQueryStreamServer{ctx: ctx})
+			require.NoError(t, err)
+
+			_, err = i.LabelNames(ctx, &client.LabelNamesRequest{Limit: int64(1)})
+			require.NoError(t, err)
+
+			_, err = i.LabelValues(ctx, &client.LabelValuesRequest{Limit: int64(1)})
+			require.NoError(t, err)
+
+			_, err = i.MetricsForLabelMatchers(ctx, &client.MetricsForLabelMatchersRequest{Limit: int64(1)})
+			require.NoError(t, err)
+		})
+	}
+}
+
 type shipperMock struct {
 	mock.Mock
 }
@@ -5318,7 +5557,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	req, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
 	ctx := user.InjectOrgID(context.Background(), userID)
 	_, err = i.Push(ctx, req)
-	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(errors.New("forced compaction in progress"), userID).Error()), err)
+	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, "%s", wrapWithUser(errors.New("forced compaction in progress"), userID).Error()), err)
 
 	// Ingestion is successful after a flush.
 	require.True(t, db.casState(forceCompacting, active))

@@ -93,15 +93,15 @@ jobs:
 
       # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@6bb031afdd8eb862ea3fc1848194185e076637e5 # v3.28.11
+        uses: github/codeql-action/init@5f8171a638ada777af81d42b55959a643bb29017 # v3.28.12
         with:
           languages: go
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@6bb031afdd8eb862ea3fc1848194185e076637e5 # v3.28.11
+        uses: github/codeql-action/autobuild@5f8171a638ada777af81d42b55959a643bb29017 # v3.28.12
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@6bb031afdd8eb862ea3fc1848194185e076637e5 # v3.28.11
+        uses: github/codeql-action/analyze@5f8171a638ada777af81d42b55959a643bb29017 # v3.28.12
 
   
   build:
@@ -164,7 +164,7 @@ jobs:
           - integration_query_fuzz
     steps:
       - name: Upgrade golang
-        uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
         with:
           go-version: 1.23.2
       - name: Checkout Repo
@@ -176,7 +176,7 @@ jobs:
           sudo mkdir -p /go/src/github.com/cortexproject/cortex
           sudo ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Download Docker Images Artifacts
-        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        uses: actions/download-artifact@b14cf4c92620c250e1c074ab0a5800e37df86765 # v4.2.0
         with:
           name: Docker Images
       - name: Extract Docker Images Archive
@@ -237,7 +237,7 @@ jobs:
       - name: Install Docker Client
         run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Download Docker Images Artifact
-        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        uses: actions/download-artifact@b14cf4c92620c250e1c074ab0a5800e37df86765 # v4.2.0
         with:
           name: Docker Images
       - name: Extract Docker Images Archive
@@ -271,7 +271,7 @@ jobs:
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Download Website Artifact
-        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        uses: actions/download-artifact@b14cf4c92620c250e1c074ab0a5800e37df86765 # v4.2.0
         with:
           name: website public
           path: website/public
@@ -312,7 +312,7 @@ jobs:
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Download Docker Images Artifact
-        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        uses: actions/download-artifact@b14cf4c92620c250e1c074ab0a5800e37df86765 # v4.2.0
         with:
           name: Docker Images
       - name: Extract Docker Images Archive

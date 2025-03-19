@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/runutil"
+	"go.uber.org/atomic"
 
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
@@ -257,6 +258,92 @@ func GetTempDirectory() (string, error) {
 
 func RandRange(rnd *rand.Rand, min, max int64) int64 {
 	return rnd.Int63n(max-min) + min
+}
+
+func CreateNHBlock(
+	ctx context.Context,
+	rnd *rand.Rand,
+	dir string,
+	series []labels.Labels,
+	numNHSamples int,
+	mint, maxt int64,
+	scrapeInterval int64,
+	seriesSize int64,
+) (id ulid.ULID, err error) {
+	headOpts := tsdb.DefaultHeadOptions()
+	headOpts.EnableNativeHistograms = *atomic.NewBool(true)
+	headOpts.ChunkDirRoot = filepath.Join(dir, "chunks")
+	headOpts.ChunkRange = 10000000000
+	random := rand.New(rand.NewSource(time.Now().UnixNano()))
+	h, err := tsdb.NewHead(nil, nil, nil, nil, headOpts, nil)
+	if err != nil {
+		return id, errors.Wrap(err, "create head block")
+	}
+	defer func() {
+		runutil.CloseWithErrCapture(&err, h, "TSDB Head")
+		if e := os.RemoveAll(headOpts.ChunkDirRoot); e != nil {
+			err = errors.Wrap(e, "delete chunks dir")
+		}
+	}()
+
+	app := h.Appender(ctx)
+	for i := 0; i < len(series); i++ {
+		num := random.Intn(i + 1)
+		var ref storage.SeriesRef
+		start := RandRange(rnd, mint, maxt)
+		for j := 0; j < numNHSamples; j++ {
+			if num%2 == 0 {
+				// append float histogram
+				ref, err = app.AppendHistogram(ref, series[i], start, nil, tsdbutil.GenerateTestFloatHistogram(int64(i+j)))
+			} else {
+				// append histogram
+				ref, err = app.AppendHistogram(ref, series[i], start, tsdbutil.GenerateTestHistogram(int64(i+j)), nil)
+			}
+			if err != nil {
+				if rerr := app.Rollback(); rerr != nil {
+					err = errors.Wrapf(err, "rollback failed: %v", rerr)
+				}
+				return id, errors.Wrap(err, "add NH sample")
+			}
+			start += scrapeInterval
+			if start > maxt {
+				break
+			}
+		}
+	}
+	if err := app.Commit(); err != nil {
+		return id, errors.Wrap(err, "commit")
+	}
+
+	c, err := tsdb.NewLeveledCompactor(ctx, nil, promslog.NewNopLogger(), []int64{maxt - mint}, nil, nil)
+	if err != nil {
+		return id, errors.Wrap(err, "create compactor")
+	}
+
+	ids, err := c.Write(dir, h, mint, maxt, nil)
+	if err != nil {
+		return id, errors.Wrap(err, "write block")
+	}
+	if len(ids) == 0 {
+		return id, errors.Errorf("nothing to write, asked for %d samples", numNHSamples)
+	}
+	id = ids[0]
+
+	blockDir := filepath.Join(dir, id.String())
+	logger := log.NewNopLogger()
+
+	if _, err = metadata.InjectThanos(logger, blockDir, metadata.Thanos{
+		Labels: map[string]string{
+			cortex_tsdb.IngesterIDExternalLabel: "ingester-0",
+		},
+		Downsample: metadata.ThanosDownsample{Resolution: 0},
+		Source:     metadata.TestSource,
+		IndexStats: metadata.IndexStats{SeriesMaxSize: seriesSize},
+	}, nil); err != nil {
+		return id, errors.Wrap(err, "finalize block")
+	}
+
+	return id, nil
 }
 
 func CreateBlock(

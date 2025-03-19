@@ -17,7 +17,7 @@ var defaultGoKitLogger = log.NewLogfmtLogger(os.Stderr)
 type GoKitHandler struct {
 	level        slog.Leveler
 	logger       log.Logger
-	preformatted []any
+	preformatted []slog.Attr
 	group        string
 }
 
@@ -41,6 +41,8 @@ func NewGoKitHandler(logger log.Logger, level slog.Leveler) slog.Handler {
 	return &GoKitHandler{logger: logger, level: level}
 }
 
+// Enabled returns true if the internal slog.Leveler is enabled for the
+// provided log level. It implements slog.Handler.
 func (h *GoKitHandler) Enabled(_ context.Context, level slog.Level) bool {
 	if h.level == nil {
 		h.level = &slog.LevelVar{} // Info level by default.
@@ -49,6 +51,10 @@ func (h *GoKitHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.level.Level()
 }
 
+// Handler take an slog.Record created by an slog.Logger and dispatches the log
+// call to the internal go-kit logger. Groups and attributes created by slog
+// are formatted and added to the log call as individual key/value pairs. It
+// implements slog.Handler.
 func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
 	if h.logger == nil {
 		h.logger = defaultGoKitLogger
@@ -64,10 +70,14 @@ func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
 	// creation time here.
 	pairs := make([]any, 0, (2 * record.NumAttrs()))
 	if !record.Time.IsZero() {
-		pairs = append(pairs, "time", record.Time)
+		pairs = append(pairs, slog.TimeKey, record.Time)
 	}
-	pairs = append(pairs, "msg", record.Message)
-	pairs = append(pairs, h.preformatted...)
+	pairs = append(pairs, slog.MessageKey, record.Message)
+
+	// preformatted attributes have already had their group prefix applied in WithAttr
+	for _, a := range h.preformatted {
+		pairs = appendPair(pairs, "", a)
+	}
 
 	record.Attrs(func(a slog.Attr) bool {
 		pairs = appendPair(pairs, h.group, a)
@@ -77,10 +87,16 @@ func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
 	return logger.Log(pairs...)
 }
 
+// WithAttrs formats the provided attributes and caches them in the handler to
+// attach to all future log calls. It implements slog.Handler.
 func (h *GoKitHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	pairs := make([]any, 0, 2*len(attrs))
-	for _, a := range attrs {
-		pairs = appendPair(pairs, h.group, a)
+	pairs := make([]slog.Attr, 0, len(attrs)+len(h.preformatted))
+	for _, attr := range attrs {
+		// preresolve the group to simplify attr tracking
+		if h.group != "" {
+			attr.Key = h.group + "." + attr.Key
+		}
+		pairs = append(pairs, attr)
 	}
 
 	if h.preformatted != nil {
@@ -95,6 +111,8 @@ func (h *GoKitHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	}
 }
 
+// WithGroup sets the group prefix string and caches it within the handler to
+// use to prefix all future log attribute pairs. It implements slog.Handler.
 func (h *GoKitHandler) WithGroup(name string) slog.Handler {
 	if name == "" {
 		return h
@@ -120,11 +138,25 @@ func appendPair(pairs []any, groupPrefix string, attr slog.Attr) []any {
 
 	switch attr.Value.Kind() {
 	case slog.KindGroup:
-		if attr.Key != "" {
-			groupPrefix = groupPrefix + "." + attr.Key
-		}
-		for _, a := range attr.Value.Group() {
-			pairs = appendPair(pairs, groupPrefix, a)
+		attrs := attr.Value.Group()
+		if len(attrs) > 0 {
+			// Only process groups that have non-empty attributes
+			// to properly conform to slog.Handler interface
+			// contract.
+
+			if attr.Key != "" {
+				// If a group's key is empty, attributes should
+				// be inlined to properly conform to
+				// slog.Handler interface contract.
+				if groupPrefix != "" {
+					groupPrefix = groupPrefix + "." + attr.Key
+				} else {
+					groupPrefix = attr.Key
+				}
+			}
+			for _, a := range attrs {
+				pairs = appendPair(pairs, groupPrefix, a)
+			}
 		}
 	default:
 		key := attr.Key
@@ -132,7 +164,7 @@ func appendPair(pairs []any, groupPrefix string, attr slog.Attr) []any {
 			key = groupPrefix + "." + key
 		}
 
-		pairs = append(pairs, key, attr.Value)
+		pairs = append(pairs, key, attr.Value.Resolve())
 	}
 
 	return pairs

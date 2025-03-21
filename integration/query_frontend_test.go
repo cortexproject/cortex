@@ -960,7 +960,7 @@ func TestQueryFrontendResponseSizeLimit(t *testing.T) {
 	defer s.Close()
 
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
-		// "-frontend.max-query-response-size":  "4096",
+		"-frontend.max-query-response-size":  "4096",
 		"-querier.split-queries-by-interval": "1m",
 	})
 
@@ -1013,7 +1013,7 @@ func TestQueryFrontendResponseSizeLimit(t *testing.T) {
 	require.Contains(t, string(body), "the query response size exceeds limit")
 
 	// Expect response size less than limit (4 KB)
-	resp, body, err = qfeClient.QueryRangeRaw(`{__name__="small_series"}`, queryStart, queryEnd, 30*time.Second, nil)
+	resp, _, err = qfeClient.QueryRangeRaw(`{__name__="small_series"}`, queryStart, queryEnd, 30*time.Second, nil)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }

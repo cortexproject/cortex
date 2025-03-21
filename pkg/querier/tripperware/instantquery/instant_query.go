@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -107,7 +108,7 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 		return nil, err
 	}
 
-	responseSizeLimiter := tripperware.ResponseSizeLimiterFromContextWithFallback(ctx)
+	responseSizeLimiter := limiter.ResponseSizeLimiterFromContextWithFallback(ctx)
 
 	if strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") && len(buf.Bytes()) >= 4 {
 		// Read the uncompressed gzip response size from the footer

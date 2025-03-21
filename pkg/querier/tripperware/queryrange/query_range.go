@@ -24,7 +24,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // StatusSuccess Prometheus success result.
@@ -219,7 +218,7 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	}
 
 	if err != nil {
-		return nil, validation.LimitError(err.Error())
+		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
 	}
 
 	body, err := tripperware.DecompressedBodyBytes(buf, r, log)

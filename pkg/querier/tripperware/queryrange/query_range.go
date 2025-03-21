@@ -3,7 +3,6 @@ package queryrange
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"net/http"
@@ -201,28 +200,8 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		return nil, err
 	}
 
-	buf, err := tripperware.BodyBuffer(r)
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-
 	responseSizeLimiter := limiter.ResponseSizeLimiterFromContextWithFallback(ctx)
-
-	if strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") && len(buf.Bytes()) >= 4 {
-		// Read the uncompressed gzip response size from the footer
-		// This method works if response is smaller than 4 GB
-		unzippedSize := int(binary.LittleEndian.Uint32(buf.Bytes()[len(buf.Bytes())-4:]))
-		err = responseSizeLimiter.AddResponseBytes(unzippedSize)
-	} else {
-		err = responseSizeLimiter.AddResponseBytes(len(buf.Bytes()))
-	}
-
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
-	}
-
-	body, err := tripperware.DecompressedBodyBytes(buf, r, log)
+	body, err := tripperware.BodyBytes(r, responseSizeLimiter, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err

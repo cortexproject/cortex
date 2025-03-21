@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -277,10 +278,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// If the response status code is not 2xx, try to get the
 			// error message from response body.
 			if resp.StatusCode/100 != 2 {
-				if buf, err2 := tripperware.BodyBuffer(resp); err2 == nil {
-					if body, err2 := tripperware.DecompressedBodyBytes(buf, resp, f.log); err2 == nil {
-						err = httpgrpc.Errorf(resp.StatusCode, "%s", string(body))
-					}
+				body, err2 := tripperware.BodyBytes(resp, limiter.NewResponseSizeLimiter(0), f.log)
+				if err2 == nil {
+					err = httpgrpc.Errorf(resp.StatusCode, "%s", string(body))
 				}
 			}
 		}

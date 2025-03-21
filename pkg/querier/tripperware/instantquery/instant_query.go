@@ -24,7 +24,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -120,7 +119,7 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 	}
 
 	if err != nil {
-		return nil, validation.LimitError(err.Error())
+		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
 	}
 
 	body, err := tripperware.DecompressedBodyBytes(buf, r, log)

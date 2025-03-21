@@ -219,7 +219,7 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	}
 
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
 	}
 
 	body, err := tripperware.DecompressedBodyBytes(buf, r, log)

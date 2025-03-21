@@ -17,6 +17,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -67,6 +68,9 @@ func TestRoundTrip(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	defaultLimits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
 	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
 		nil,
 		nil,
@@ -74,7 +78,7 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		PrometheusCodec,
 		nil,
-		nil,
+		defaultLimits,
 		qa,
 		time.Minute,
 		0,

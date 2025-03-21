@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -26,6 +26,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
@@ -448,7 +449,7 @@ type Buffer interface {
 	Bytes() []byte
 }
 
-func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
+func BodyBytes(res *http.Response, responseSizeLimiter *limiter.ResponseSizeLimiter, logger log.Logger) ([]byte, error) {
 	var buf *bytes.Buffer
 
 	// Attempt to cast the response body to a Buffer and use it if possible.
@@ -466,6 +467,10 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 		}
 	}
 
+	if err := updateResponseSizeLimiter(res, buf, responseSizeLimiter); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
+	}
+
 	// if the response is gzipped, lets unzip it here
 	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") {
 		gReader, err := gzip.NewReader(buf)
@@ -475,15 +480,12 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 		defer runutil.CloseWithLogOnErr(logger, gReader, "close gzip reader")
 
 		return io.ReadAll(gReader)
-	} else if strings.EqualFold(res.Header.Get("Content-Encoding"), "snappy") {
-		sReader := snappy.NewReader(buf)
-		return io.ReadAll(sReader)
 	}
 
 	return buf.Bytes(), nil
 }
 
-func BodyBufferFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
+func BodyBytesFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
 	// if the response is gzipped, lets unzip it here
 	headers := http.Header{}
 	for _, h := range res.Headers {
@@ -500,6 +502,16 @@ func BodyBufferFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logge
 	}
 
 	return res.Body, nil
+}
+
+func updateResponseSizeLimiter(res *http.Response, buf *bytes.Buffer, responseSizeLimiter *limiter.ResponseSizeLimiter) error {
+	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") && len(buf.Bytes()) >= 4 {
+		// Read the uncompressed gzip response size from the footer
+		// This method works if response is smaller than 4 GB
+		unzippedSize := int(binary.LittleEndian.Uint32(buf.Bytes()[len(buf.Bytes())-4:]))
+		return responseSizeLimiter.AddResponseBytes(unzippedSize)
+	}
+	return responseSizeLimiter.AddResponseBytes(len(buf.Bytes()))
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

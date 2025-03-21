@@ -22,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -92,7 +93,7 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 	return &result, nil
 }
 
-func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
+func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
 	log, ctx := spanlogger.New(ctx, "DecodeQueryInstantResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
@@ -100,17 +101,19 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		return nil, err
 	}
 
-	buf, err := tripperware.BodyBuffer(r, log)
+	responseSizeLimiter := limiter.ResponseSizeLimiterFromContextWithFallback(ctx)
+	body, err := tripperware.BodyBytes(r, responseSizeLimiter, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
+
 	if r.StatusCode/100 != 2 {
-		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(buf))
+		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(body))
 	}
 
 	var resp tripperware.PrometheusResponse
-	err = tripperware.UnmarshalResponse(r, buf, &resp)
+	err = tripperware.UnmarshalResponse(r, body, &resp)
 
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)

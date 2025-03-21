@@ -1,4 +1,4 @@
-package tripperware
+package limiter
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 type responseSizeLimiterCtxKey struct{}
 
 var (
-	ctxKey                = &responseSizeLimiterCtxKey{}
+	responseLimiterCtxKey = &responseSizeLimiterCtxKey{}
 	ErrMaxResponseSizeHit = "the query response size exceeds limit (limit: %d bytes)"
 )
 
@@ -27,13 +27,13 @@ func NewResponseSizeLimiter(maxResponseSize int) *ResponseSizeLimiter {
 }
 
 func AddResponseSizeLimiterToContext(ctx context.Context, responseSizeLimiter *ResponseSizeLimiter) context.Context {
-	return context.WithValue(ctx, ctxKey, responseSizeLimiter)
+	return context.WithValue(ctx, responseLimiterCtxKey, responseSizeLimiter)
 }
 
 // ResponseSizeLimiterFromContextWithFallback returns a ResponseSizeLimiter from the current context.
 // If there is not a ResponseSizeLimiter on the context it will return a new no-op limiter.
 func ResponseSizeLimiterFromContextWithFallback(ctx context.Context) *ResponseSizeLimiter {
-	rl, ok := ctx.Value(ctxKey).(*ResponseSizeLimiter)
+	rl, ok := ctx.Value(responseLimiterCtxKey).(*ResponseSizeLimiter)
 	if !ok {
 		// If there's no limiter return a new unlimited limiter as a fallback
 		rl = NewResponseSizeLimiter(0)

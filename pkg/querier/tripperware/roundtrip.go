@@ -34,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -200,8 +201,8 @@ func NewQueryTripperware(
 					maxResponseSize = limits.MaxQueryResponseSize(userStr)
 				}
 				if maxResponseSize > 0 && (isQuery || isQueryRange) {
-					responseSizeLimiter := NewResponseSizeLimiter(maxResponseSize)
-					context := AddResponseSizeLimiterToContext(r.Context(), responseSizeLimiter)
+					responseSizeLimiter := limiter.NewResponseSizeLimiter(maxResponseSize)
+					context := limiter.AddResponseSizeLimiterToContext(r.Context(), responseSizeLimiter)
 					r = r.WithContext(context)
 				}
 

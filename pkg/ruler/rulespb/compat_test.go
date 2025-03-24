@@ -35,6 +35,7 @@ func TestProto(t *testing.T) {
 		Rules:       rules,
 		Interval:    model.Duration(time.Minute),
 		QueryOffset: &queryOffset,
+		Labels:      map[string]string{},
 	}
 
 	desc := ToProto("test", "namespace", rg)

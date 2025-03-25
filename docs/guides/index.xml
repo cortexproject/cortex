@@ -542,26 +542,14 @@ user-2:
 max_native_histogram_buckets: 0
 &lt;/code>&lt;/pre>&lt;h2 id="how-to-enable-out-of-order-native-histograms-ingestion">How to enable out-of-order native histograms ingestion&lt;/h2>
 &lt;p>Like samples out-of-order ingestion, the Cortex allows out-of-order ingestion for the native histogram.
-To enable it, set the flag &lt;code>-ingester.enable-ooo-native-histograms&lt;/code>.&lt;/p>
+It is automatically enabled when &lt;code>-blocks-storage.tsdb.enable-native-histograms=true&lt;/code> and &lt;code>-ingester.out-of-order-time-window &amp;gt; 0&lt;/code>.&lt;/p>
 &lt;p>And via yaml:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_ooo_native_histograms&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;bool&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Is it only works if when &lt;code>-blocks-storage.tsdb.enable-native-histograms=true&lt;/code> and &lt;code>-ingester.out-of-order-time-window &amp;gt; 0&lt;/code>.&lt;/p>
-&lt;p>To enable it per tenant, you can utilize a &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime config&lt;/a>.&lt;/p>
-&lt;p>For example, the following yaml file specifies enabling out-of-order native histogram ingestion for &lt;code>user-1&lt;/code>, but not for &lt;code>user-2&lt;/code>.&lt;/p>
-&lt;pre tabindex="0">&lt;code>overrides:
-user-1:
-enable_ooo_native_histograms: true
-user-2:
-enable_ooo_native_histograms: false
-&lt;/code>&lt;/pre>&lt;p>&lt;strong>Caution&lt;/strong>: It is applied after the Ingester restart if it is changed at runtime through the runtime config.
-For example, if you have changed the &lt;code>enable_ooo_native_histograms&lt;/code> value to &lt;code>false&lt;/code> of the &lt;code>user-1&lt;/code> via the below yaml file, then the Ingester stops the out-of-order ingestion not until the Ingester restarts.&lt;/p>
-&lt;pre tabindex="0">&lt;code>overrides:
-user-1:
-enable_ooo_native_histograms: false
-user-2:
-enable_ooo_native_histograms: false
-&lt;/code>&lt;/pre></description></item><item><title>Docs: OpenTelemetry Collector</title><link>/docs/guides/opentelemetry-collector/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/opentelemetry-collector/</guid><description>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">blocks_storage&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tsdb&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_native_histograms&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">out_of_order_time_window&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">5m&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: OpenTelemetry Collector</title><link>/docs/guides/opentelemetry-collector/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/opentelemetry-collector/</guid><description>
 &lt;p>This guide explains how to configure open-telemetry collector and OTLP(OpenTelemetry Protocol) configurations in the
 Cortex.&lt;/p>
 &lt;h2 id="context">Context&lt;/h2>

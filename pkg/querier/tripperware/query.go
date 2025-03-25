@@ -507,10 +507,8 @@ func BodyBytesFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger
 
 func getResponseSize(res *http.Response, buf *bytes.Buffer) int {
 	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") && len(buf.Bytes()) >= 4 {
-		// Read the uncompressed gzip response size from the footer.
-		// This method works if response is smaller than 4 GB.
-		// A response size larger than 4 GB will overflow the
-		// gzip footer resulting in a smaller size than original.
+		// GZIP body contains the size of the original (uncompressed) input data
+		// modulo 2^32 in the last 4 bytes (https://www.ietf.org/rfc/rfc1952.txt).
 		return int(binary.LittleEndian.Uint32(buf.Bytes()[len(buf.Bytes())-4:]))
 	}
 	return len(buf.Bytes())

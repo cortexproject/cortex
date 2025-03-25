@@ -467,7 +467,8 @@ func BodyBytes(res *http.Response, responseSizeLimiter *limiter.ResponseSizeLimi
 		}
 	}
 
-	if err := updateResponseSizeLimiter(res, buf, responseSizeLimiter); err != nil {
+	responseSize := getResponseSize(res, buf)
+	if err := responseSizeLimiter.AddResponseBytes(responseSize); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
 	}
 
@@ -504,16 +505,15 @@ func BodyBytesFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger
 	return res.Body, nil
 }
 
-func updateResponseSizeLimiter(res *http.Response, buf *bytes.Buffer, responseSizeLimiter *limiter.ResponseSizeLimiter) error {
+func getResponseSize(res *http.Response, buf *bytes.Buffer) int {
 	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") && len(buf.Bytes()) >= 4 {
 		// Read the uncompressed gzip response size from the footer.
 		// This method works if response is smaller than 4 GB.
 		// A response size larger than 4 GB will overflow the
 		// gzip footer resulting in a smaller size than original.
-		unzippedSize := int(binary.LittleEndian.Uint32(buf.Bytes()[len(buf.Bytes())-4:]))
-		return responseSizeLimiter.AddResponseBytes(unzippedSize)
+		return int(binary.LittleEndian.Uint32(buf.Bytes()[len(buf.Bytes())-4:]))
 	}
-	return responseSizeLimiter.AddResponseBytes(len(buf.Bytes()))
+	return len(buf.Bytes())
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

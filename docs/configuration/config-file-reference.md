@@ -272,11 +272,11 @@ query_scheduler:
     [connect_timeout: <duration> | default = 5s]
 
 resource_thresholds:
-  # Utilization threshold for CPU, between 0 and 1. 0 to disable.
+  # Utilization threshold for CPU in percentage, between 0 and 1. 0 to disable.
   # CLI flag: -resource-thresholds.cpu
   [cpu: <float> | default = 0]
 
-  # Utilization threshold for heap, between 0 and 1. 0 to disable.
+  # Utilization threshold for heap in percentage, between 0 and 1. 0 to disable.
   # CLI flag: -resource-thresholds.heap
   [heap: <float> | default = 0]
 

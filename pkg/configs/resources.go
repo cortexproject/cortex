@@ -13,8 +13,8 @@ type Resources struct {
 }
 
 func (cfg *Resources) RegisterFlags(f *flag.FlagSet) {
-	f.Float64Var(&cfg.CPU, "resource-thresholds.cpu", 0, "Utilization threshold for CPU, between 0 and 1. 0 to disable.")
-	f.Float64Var(&cfg.Heap, "resource-thresholds.heap", 0, "Utilization threshold for heap, between 0 and 1. 0 to disable.")
+	f.Float64Var(&cfg.CPU, "resource-thresholds.cpu", 0, "Utilization threshold for CPU in percentage, between 0 and 1. 0 to disable.")
+	f.Float64Var(&cfg.Heap, "resource-thresholds.heap", 0, "Utilization threshold for heap in percentage, between 0 and 1. 0 to disable.")
 }
 
 func (cfg *Resources) Validate() error {

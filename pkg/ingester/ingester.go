@@ -2424,8 +2424,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
-		EnableOOONativeHistograms:      i.limits.EnableOOONativeHistograms(userID),
-		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
+		EnableOOONativeHistograms:      i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms, // Automatically enabled when EnableNativeHistograms is true.
+		EnableOverlappingCompaction:    false,                                                 // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
 		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
 	}, nil)

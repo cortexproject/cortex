@@ -159,8 +159,6 @@ type Limits struct {
 	OutOfOrderTimeWindow model.Duration `yaml:"out_of_order_time_window" json:"out_of_order_time_window"`
 	// Exemplars
 	MaxExemplars int `yaml:"max_exemplars" json:"max_exemplars"`
-	// Native Histogram
-	EnableOOONativeHistograms bool `yaml:"enable_ooo_native_histograms" json:"enable_ooo_native_histograms"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery            int            `yaml:"max_fetched_chunks_per_query" json:"max_fetched_chunks_per_query"`
@@ -260,7 +258,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster before replication. 0 to disable.")
 	f.IntVar(&l.MaxExemplars, "ingester.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.")
 	f.Var(&l.OutOfOrderTimeWindow, "ingester.out-of-order-time-window", "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.")
-	f.BoolVar(&l.EnableOOONativeHistograms, "ingester.enable-ooo-native-histograms", false, "[Experimental] Enable out-of-order native histogram ingestion, it only takes effect when -blocks-storage.tsdb.enable-native-histograms=true and -ingester.out-of-order-time-window > 0. It is applied after the restart if it is changed at runtime through the runtime config.")
 
 	f.IntVar(&l.MaxLocalMetricsWithMetadataPerUser, "ingester.max-metadata-per-user", 8000, "The maximum number of active metrics with metadata per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxLocalMetadataPerMetric, "ingester.max-metadata-per-metric", 10, "The maximum number of metadata per metric, per ingester. 0 to disable.")
@@ -904,11 +901,6 @@ func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool
 // MaxExemplars gets the maximum number of exemplars that will be stored per user. 0 or less means disabled.
 func (o *Overrides) MaxExemplars(userID string) int {
 	return o.GetOverridesForUser(userID).MaxExemplars
-}
-
-// EnableOOONativeHistograms returns whether to ingest out-of-order native histogram for a given user.
-func (o *Overrides) EnableOOONativeHistograms(userID string) bool {
-	return o.GetOverridesForUser(userID).EnableOOONativeHistograms
 }
 
 // Notification limits are special. Limits are returned in following order:

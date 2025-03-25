@@ -58,6 +58,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -231,6 +232,7 @@ type Ingester struct {
 	lifecycler         *ring.Lifecycler
 	limits             *validation.Overrides
 	limiter            *Limiter
+	resourceMonitor    resource.IMonitor
 	subservicesWatcher *services.FailureWatcher
 
 	stoppedMtx sync.RWMutex // protects stopped
@@ -699,7 +701,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 }
 
 // New returns a new Ingester that uses Cortex block storage instead of chunks storage.
-func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
+func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger, resourceMonitor resource.IMonitor) (*Ingester, error) {
 	defaultInstanceLimits = &cfg.DefaultLimits
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
@@ -719,6 +721,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		ingestionRate:                util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 		expandedPostingsCacheFactory: cortex_tsdb.NewExpandedPostingsCacheFactory(cfg.BlocksStorageConfig.TSDB.PostingsCache),
 		matchersCache:                storecache.NoopMatchersCache,
+		resourceMonitor:              resourceMonitor,
 	}
 
 	if cfg.MatchersCacheMaxItems > 0 {
@@ -2152,6 +2155,14 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 	}
 
 	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
+
+	if i.resourceMonitor != nil {
+		if resourceName, threshold, utilization, err := i.resourceMonitor.CheckResourceUtilization(); err != nil {
+			level.Warn(i.logger).Log("msg", "resource threshold breached", "resource", resourceName, "threshold", threshold, "utilization", utilization)
+			return nil, errors.Wrapf(err, "failed to query")
+		}
+	}
+
 	return func() {
 		i.inflightQueryRequests.Dec()
 	}, nil

@@ -25,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -117,10 +118,12 @@ type StoreGateway struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
+	resourceMonitor resource.IMonitor
+
 	bucketSync *prometheus.CounterVec
 }
 
-func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*StoreGateway, error) {
+func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer, resourceMonitor *resource.Monitor) (*StoreGateway, error) {
 	var ringStore kv.Client
 
 	bucketClient, err := createBucketClient(storageCfg, gatewayCfg.HedgedRequest.GetHedgedRoundTripper(), logger, reg)
@@ -140,10 +143,10 @@ func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		}
 	}
 
-	return newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, limits, logLevel, logger, reg)
+	return newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, limits, logLevel, logger, reg, resourceMonitor)
 }
 
-func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, ringStore kv.Client, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*StoreGateway, error) {
+func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, ringStore kv.Client, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer, resourceMonitor resource.IMonitor) (*StoreGateway, error) {
 	var err error
 
 	g := &StoreGateway{
@@ -154,6 +157,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 			Name: "cortex_storegateway_bucket_sync_total",
 			Help: "Total number of times the bucket sync operation triggered.",
 		}, []string{"reason"}),
+		resourceMonitor: resourceMonitor,
 	}
 	allowedTenants := util.NewAllowedTenants(gatewayCfg.EnabledTenants, gatewayCfg.DisabledTenants)
 
@@ -381,17 +385,39 @@ func (g *StoreGateway) syncStores(ctx context.Context, reason string) {
 }
 
 func (g *StoreGateway) Series(req *storepb.SeriesRequest, srv storegatewaypb.StoreGateway_SeriesServer) error {
+	if err := g.checkResourceUtilization(); err != nil {
+		return err
+	}
 	return g.stores.Series(req, srv)
 }
 
 // LabelNames implements the Storegateway proto service.
 func (g *StoreGateway) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	if err := g.checkResourceUtilization(); err != nil {
+		return nil, err
+	}
 	return g.stores.LabelNames(ctx, req)
 }
 
 // LabelValues implements the Storegateway proto service.
 func (g *StoreGateway) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	if err := g.checkResourceUtilization(); err != nil {
+		return nil, err
+	}
 	return g.stores.LabelValues(ctx, req)
+}
+
+func (g *StoreGateway) checkResourceUtilization() error {
+	if g.resourceMonitor == nil {
+		return nil
+	}
+
+	if resourceName, threshold, utilization, err := g.resourceMonitor.CheckResourceUtilization(); err != nil {
+		level.Warn(g.logger).Log("msg", "resource threshold breached", "resource", resourceName, "threshold", threshold, "utilization", utilization)
+		return errors.Wrapf(err, "failed to query")
+	}
+
+	return nil
 }
 
 func (g *StoreGateway) OnRingInstanceRegister(lc *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {

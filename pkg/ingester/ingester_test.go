@@ -1028,7 +1028,6 @@ func TestIngester_Push(t *testing.T) {
 		maxExemplars              int
 		oooTimeWindow             time.Duration
 		disableNativeHistogram    bool
-		enableOOONativeHistograms bool
 	}{
 		"should record native histogram discarded": {
 			reqs: []*cortexpb.WriteRequest{
@@ -1517,65 +1516,6 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
-		"native histogram ooo disabled, should soft fail": {
-			reqs: []*cortexpb.WriteRequest{
-				cortexpb.ToWriteRequest(
-					[]labels.Labels{metricLabels},
-					nil,
-					nil,
-					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))},
-					cortexpb.API),
-				cortexpb.ToWriteRequest(
-					[]labels.Labels{metricLabels},
-					nil,
-					nil,
-					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1))},
-					cortexpb.API),
-			},
-			oooTimeWindow:             5 * time.Minute,
-			enableOOONativeHistograms: false,
-			expectedErr:               httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrOOONativeHistogramsDisabled, model.Time(1575043969-(10)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
-			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
-			},
-			additionalMetrics: []string{
-				"cortex_ingester_tsdb_head_samples_appended_total",
-				"cortex_ingester_active_series",
-			},
-			expectedMetrics: `
-				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
-				# TYPE cortex_ingester_ingested_samples_failures_total counter
-				cortex_ingester_ingested_samples_failures_total 0
-				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
-				# TYPE cortex_ingester_ingested_samples_total counter
-				cortex_ingester_ingested_samples_total 0
-				# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
-				# TYPE cortex_ingester_ingested_native_histograms_total counter
-				cortex_ingester_ingested_native_histograms_total 1
-				# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
-				# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
-				cortex_ingester_ingested_native_histograms_failures_total 1
-				# HELP cortex_ingester_memory_users The current number of users in memory.
-				# TYPE cortex_ingester_memory_users gauge
-				cortex_ingester_memory_users 1
-        	    # HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
-        	    # TYPE cortex_ingester_tsdb_head_samples_appended_total counter
-        	    cortex_ingester_tsdb_head_samples_appended_total{type="float",user="test"} 0
-        	    cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="test"} 1
-				# HELP cortex_ingester_memory_series The current number of series in memory.
-				# TYPE cortex_ingester_memory_series gauge
-				cortex_ingester_memory_series 1
-				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
-				# TYPE cortex_ingester_memory_series_created_total counter
-				cortex_ingester_memory_series_created_total{user="test"} 1
-				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
-				# TYPE cortex_ingester_memory_series_removed_total counter
-				cortex_ingester_memory_series_removed_total{user="test"} 0
-				# HELP cortex_ingester_active_series Number of currently active series per user.
-				# TYPE cortex_ingester_active_series gauge
-				cortex_ingester_active_series{user="test"} 1
-			`,
-		},
 		"native histogram ooo enabled, should soft fail on sample too old": {
 			reqs: []*cortexpb.WriteRequest{
 				cortexpb.ToWriteRequest(
@@ -1591,9 +1531,8 @@ func TestIngester_Push(t *testing.T) {
 					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(600*1000), tsdbutil.GenerateTestHistogram(1))},
 					cortexpb.API),
 			},
-			oooTimeWindow:             5 * time.Minute,
-			enableOOONativeHistograms: true,
-			expectedErr:               httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			oooTimeWindow: 5 * time.Minute,
+			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
 			},
@@ -1654,8 +1593,7 @@ func TestIngester_Push(t *testing.T) {
 					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1))},
 					cortexpb.API),
 			},
-			oooTimeWindow:             5 * time.Minute,
-			enableOOONativeHistograms: true,
+			oooTimeWindow: 5 * time.Minute,
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1)), cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
 			},
@@ -2005,7 +1943,6 @@ func TestIngester_Push(t *testing.T) {
 			limits := defaultLimitsTestConfig()
 			limits.MaxExemplars = testData.maxExemplars
 			limits.OutOfOrderTimeWindow = model.Duration(testData.oooTimeWindow)
-			limits.EnableOOONativeHistograms = testData.enableOOONativeHistograms
 			limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
 				{
 					LabelSet: labels.FromMap(map[string]string{model.MetricNameLabel: "test"}),

@@ -104,7 +104,6 @@ Currently experimental features are:
   - `-blocks-storage.tsdb.out-of-order-cap-max` (int) CLI flag
   - `-ingester.out-of-order-time-window` (duration) CLI flag
   - `out_of_order_time_window` (duration) field in runtime config file
-  - `enable_ooo_native_histograms` (bool) field in runtime config file
 - Store Gateway Zone Stable Shuffle Sharding
   - `-store-gateway.sharding-ring.zone-stable-shuffle-sharding` CLI flag
   - `zone_stable_shuffle_sharding` (boolean) field in config file

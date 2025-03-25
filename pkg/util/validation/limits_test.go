@@ -606,38 +606,6 @@ tenant2:
 	require.Equal(t, 5, ov.MaxExemplars("tenant3"))
 }
 
-func TestEnableOOONativeHistograms(t *testing.T) {
-	SetDefaultLimitsForYAMLUnmarshalling(Limits{
-		MaxLabelNameLength: 100,
-	})
-
-	baseYAML := `
-enable_ooo_native_histograms: false`
-	overridesYAML := `
-tenant1:
-  enable_ooo_native_histograms: true
-tenant2:
-  enable_ooo_native_histograms: false
-`
-
-	l := Limits{}
-	err := yaml.UnmarshalStrict([]byte(baseYAML), &l)
-	require.NoError(t, err)
-
-	overrides := map[string]*Limits{}
-	err = yaml.Unmarshal([]byte(overridesYAML), &overrides)
-	require.NoError(t, err, "parsing overrides")
-
-	tl := newMockTenantLimits(overrides)
-
-	ov, err := NewOverrides(l, tl)
-	require.NoError(t, err)
-
-	require.Equal(t, true, ov.EnableOOONativeHistograms("tenant1"))
-	require.Equal(t, false, ov.EnableOOONativeHistograms("tenant2"))
-	require.Equal(t, false, ov.EnableOOONativeHistograms("tenant3"))
-}
-
 func TestMaxDownloadedBytesPerRequestOverridesPerTenant(t *testing.T) {
 	SetDefaultLimitsForYAMLUnmarshalling(Limits{
 		MaxLabelNameLength: 100,

@@ -55,35 +55,14 @@ overrides:
 
 ## How to enable out-of-order native histograms ingestion
 Like samples out-of-order ingestion, the Cortex allows out-of-order ingestion for the native histogram.
-To enable it, set the flag `-ingester.enable-ooo-native-histograms`.
+It is automatically enabled when `-blocks-storage.tsdb.enable-native-histograms=true` and `-ingester.out-of-order-time-window > 0`.
 
 And via yaml:
+
 ```yaml
+blocks_storage:
+  tsdb:
+    enable_native_histograms: true
 limits:
-  enable_ooo_native_histograms: <bool>
-```
-
-Is it only works if when `-blocks-storage.tsdb.enable-native-histograms=true` and `-ingester.out-of-order-time-window > 0`.
-
-To enable it per tenant, you can utilize a [runtime config](../configuration/arguments.md#runtime-configuration-file).
-
-For example, the following yaml file specifies enabling out-of-order native histogram ingestion for `user-1`, but not for `user-2`.
-
-```
-overrides:
-  user-1:
-    enable_ooo_native_histograms: true
-  user-2:
-    enable_ooo_native_histograms: false
-```
-
-**Caution**: It is applied after the Ingester restart if it is changed at runtime through the runtime config.
-For example, if you have changed the `enable_ooo_native_histograms` value to `false` of the `user-1` via the below yaml file, then the Ingester stops the out-of-order ingestion not until the Ingester restarts.
-
-```
-overrides:
-  user-1:
-    enable_ooo_native_histograms: false
-  user-2:
-    enable_ooo_native_histograms: false
+  out_of_order_time_window: 5m
 ```

@@ -271,6 +271,15 @@ query_scheduler:
     # CLI flag: -query-scheduler.grpc-client-config.connect-timeout
     [connect_timeout: <duration> | default = 5s]
 
+resource_thresholds:
+  # Utilization threshold for CPU, between 0 and 1. 0 to disable.
+  # CLI flag: -resource-thresholds.cpu
+  [cpu: <float> | default = 0]
+
+  # Utilization threshold for heap, between 0 and 1. 0 to disable.
+  # CLI flag: -resource-thresholds.heap
+  [heap: <float> | default = 0]
+
 # The tracing_config configures backends cortex uses.
 [tracing: <tracing_config>]
 ```

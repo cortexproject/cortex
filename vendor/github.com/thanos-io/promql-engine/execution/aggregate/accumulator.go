@@ -473,6 +473,9 @@ func (a *avgAcc) ValueType() ValueType {
 
 func (a *avgAcc) Reset(_ float64) {
 	a.hasValue = false
+	a.incremental = false
+	a.kahanSum = 0
+	a.kahanC = 0
 	a.count = 0
 
 	a.histCount = 0

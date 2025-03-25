@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/procfs"
 	"github.com/weaveworks/common/httpgrpc"
+	_ "go.uber.org/automaxprocs"
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util/services"

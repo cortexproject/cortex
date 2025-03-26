@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime"
+	"runtime/debug"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -27,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/compactor"
+	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -772,8 +775,17 @@ func (t *Cortex) initResourceMonitor() (services.Service, error) {
 		return nil, nil
 	}
 
-	var err error
-	t.ResourceMonitor, err = resource.NewMonitor(t.Cfg.ResourceThresholds, prometheus.DefaultRegisterer)
+	scanner, err := resource.NewScanner()
+	if err != nil {
+		return nil, err
+	}
+
+	limits := configs.Resources{
+		CPU:  float64(runtime.GOMAXPROCS(0)),
+		Heap: float64(debug.SetMemoryLimit(-1)),
+	}
+
+	t.ResourceMonitor, err = resource.NewMonitor(t.Cfg.ResourceThresholds, limits, scanner, prometheus.DefaultRegisterer)
 
 	return t.ResourceMonitor, err
 }

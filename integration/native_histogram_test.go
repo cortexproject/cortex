@@ -33,7 +33,6 @@ func TestOOONativeHistogramIngestion(t *testing.T) {
 
 	flags := mergeFlags(baseFlags, map[string]string{
 		// ooo setting
-		"-ingester.enable-ooo-native-histograms":        "true",
 		"-blocks-storage.tsdb.enable-native-histograms": "true",
 		"-ingester.out-of-order-time-window":            "5m",
 		// alert manager

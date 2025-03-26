@@ -104,6 +104,12 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		# HELP cortex_alertmanager_nflog_snapshot_size_bytes Size of the last notification log snapshot in bytes.
 		# TYPE cortex_alertmanager_nflog_snapshot_size_bytes gauge
 		cortex_alertmanager_nflog_snapshot_size_bytes 111
+		# HELP cortex_alertmanager_nflog_maintenance_total How many maintenances were executed for the notification log.
+		# TYPE cortex_alertmanager_nflog_maintenance_total counter
+		cortex_alertmanager_nflog_maintenance_total 111
+		# HELP cortex_alertmanager_nflog_maintenance_errors_total How many maintenances were executed for the notification log that failed.
+		# TYPE cortex_alertmanager_nflog_maintenance_errors_total counter
+		cortex_alertmanager_nflog_maintenance_errors_total 111
 		# HELP cortex_alertmanager_notification_latency_seconds The latency of notifications in seconds.
 		# TYPE cortex_alertmanager_notification_latency_seconds histogram
 		cortex_alertmanager_notification_latency_seconds_bucket{le="1"} 14
@@ -277,6 +283,12 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		# HELP cortex_alertmanager_silences_snapshot_size_bytes Size of the last silence snapshot in bytes.
 		# TYPE cortex_alertmanager_silences_snapshot_size_bytes gauge
 		cortex_alertmanager_silences_snapshot_size_bytes 111
+		# HELP cortex_alertmanager_silences_maintenance_total How many maintenances were executed for silences.
+		# TYPE cortex_alertmanager_silences_maintenance_total counter
+		cortex_alertmanager_silences_maintenance_total 111
+		# HELP cortex_alertmanager_silences_maintenance_errors_total How many maintenances were executed for silences that failed.
+		# TYPE cortex_alertmanager_silences_maintenance_errors_total counter
+		cortex_alertmanager_silences_maintenance_errors_total 111
 		# HELP cortex_alertmanager_state_fetch_replica_state_failed_total Number of times we have failed to read and merge the full state from another replica.
 		# TYPE cortex_alertmanager_state_fetch_replica_state_failed_total counter
 		cortex_alertmanager_state_fetch_replica_state_failed_total 0
@@ -413,6 +425,13 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
         	            # HELP cortex_alertmanager_nflog_snapshot_size_bytes Size of the last notification log snapshot in bytes.
         	            # TYPE cortex_alertmanager_nflog_snapshot_size_bytes gauge
         	            cortex_alertmanager_nflog_snapshot_size_bytes 111
+
+						# HELP cortex_alertmanager_nflog_maintenance_total How many maintenances were executed for the notification log.
+						# TYPE cortex_alertmanager_nflog_maintenance_total counter
+						cortex_alertmanager_nflog_maintenance_total 111
+						# HELP cortex_alertmanager_nflog_maintenance_errors_total How many maintenances were executed for the notification log that failed.
+						# TYPE cortex_alertmanager_nflog_maintenance_errors_total counter
+						cortex_alertmanager_nflog_maintenance_errors_total 111
 
 						# HELP cortex_alertmanager_notification_latency_seconds The latency of notifications in seconds.
         	           	# TYPE cortex_alertmanager_notification_latency_seconds histogram
@@ -598,6 +617,14 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 						# HELP cortex_alertmanager_silences_snapshot_size_bytes Size of the last silence snapshot in bytes.
 						# TYPE cortex_alertmanager_silences_snapshot_size_bytes gauge
 						cortex_alertmanager_silences_snapshot_size_bytes 111
+
+						# HELP cortex_alertmanager_silences_maintenance_total How many maintenances were executed for silences.
+						# TYPE cortex_alertmanager_silences_maintenance_total counter
+						cortex_alertmanager_silences_maintenance_total 111
+						# HELP cortex_alertmanager_silences_maintenance_errors_total How many maintenances were executed for silences that failed.
+						# TYPE cortex_alertmanager_silences_maintenance_errors_total counter
+						cortex_alertmanager_silences_maintenance_errors_total 111
+
 						# HELP cortex_alertmanager_state_fetch_replica_state_failed_total Number of times we have failed to read and merge the full state from another replica.
 						# TYPE cortex_alertmanager_state_fetch_replica_state_failed_total counter
 						cortex_alertmanager_state_fetch_replica_state_failed_total 0
@@ -714,6 +741,13 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
     		# HELP cortex_alertmanager_nflog_snapshot_size_bytes Size of the last notification log snapshot in bytes.
     		# TYPE cortex_alertmanager_nflog_snapshot_size_bytes gauge
     		cortex_alertmanager_nflog_snapshot_size_bytes 11
+
+			# HELP cortex_alertmanager_nflog_maintenance_total How many maintenances were executed for the notification log.
+			# TYPE cortex_alertmanager_nflog_maintenance_total counter
+			cortex_alertmanager_nflog_maintenance_total 111
+			# HELP cortex_alertmanager_nflog_maintenance_errors_total How many maintenances were executed for the notification log that failed.
+			# TYPE cortex_alertmanager_nflog_maintenance_errors_total counter
+			cortex_alertmanager_nflog_maintenance_errors_total 111
 
     		# HELP cortex_alertmanager_notification_latency_seconds The latency of notifications in seconds.
     		# TYPE cortex_alertmanager_notification_latency_seconds histogram
@@ -863,6 +897,13 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 			# TYPE cortex_alertmanager_silences_snapshot_size_bytes gauge
 			cortex_alertmanager_silences_snapshot_size_bytes 11
 
+			# HELP cortex_alertmanager_silences_maintenance_total How many maintenances were executed for silences.
+			# TYPE cortex_alertmanager_silences_maintenance_total counter
+			cortex_alertmanager_silences_maintenance_total 111
+			# HELP cortex_alertmanager_silences_maintenance_errors_total How many maintenances were executed for silences that failed.
+			# TYPE cortex_alertmanager_silences_maintenance_errors_total counter
+			cortex_alertmanager_silences_maintenance_errors_total 111
+
 			# HELP cortex_alertmanager_state_fetch_replica_state_failed_total Number of times we have failed to read and merge the full state from another replica.
 			# TYPE cortex_alertmanager_state_fetch_replica_state_failed_total counter
 			cortex_alertmanager_state_fetch_replica_state_failed_total 0
@@ -913,6 +954,8 @@ func populateAlertmanager(base float64) *prometheus.Registry {
 	s.silencesActive.Set(base)
 	s.silencesExpired.Set(base * 2)
 	s.silencesPending.Set(base * 3)
+	s.silencesMaintenanceTotal.Add(base)
+	s.silencesMaintenanceErrorsTotal.Add(base)
 
 	n := newNflogMetrics(reg)
 	n.gcDuration.Observe(base)
@@ -922,6 +965,8 @@ func populateAlertmanager(base float64) *prometheus.Registry {
 	n.queryErrorsTotal.Add(base)
 	n.queryDuration.Observe(base)
 	n.propagatedMessagesTotal.Add(base)
+	n.maintenanceTotal.Add(base)
+	n.maintenanceErrorsTotal.Add(base)
 
 	nm := newNotifyMetrics(reg)
 	for i, integration := range integrations {
@@ -967,6 +1012,8 @@ type nflogMetrics struct {
 	queryErrorsTotal        prometheus.Counter
 	queryDuration           prometheus.Histogram
 	propagatedMessagesTotal prometheus.Counter
+	maintenanceTotal        prometheus.Counter
+	maintenanceErrorsTotal  prometheus.Counter
 }
 
 func newNflogMetrics(r prometheus.Registerer) *nflogMetrics {
@@ -1002,22 +1049,32 @@ func newNflogMetrics(r prometheus.Registerer) *nflogMetrics {
 		Name: "alertmanager_nflog_gossip_messages_propagated_total",
 		Help: "Number of received gossip messages that have been further gossiped.",
 	})
+	m.maintenanceTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_nflog_maintenance_total",
+		Help: "How many maintenances were executed for the notification log.",
+	})
+	m.maintenanceErrorsTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_nflog_maintenance_errors_total",
+		Help: "How many maintenances were executed for the notification log that failed.",
+	})
 
 	return m
 }
 
 // Copied from github.com/alertmanager/silence/silence.go
 type silenceMetrics struct {
-	gcDuration              prometheus.Summary
-	snapshotDuration        prometheus.Summary
-	snapshotSize            prometheus.Gauge
-	queriesTotal            prometheus.Counter
-	queryErrorsTotal        prometheus.Counter
-	queryDuration           prometheus.Histogram
-	silencesActive          prometheus.Gauge
-	silencesPending         prometheus.Gauge
-	silencesExpired         prometheus.Gauge
-	propagatedMessagesTotal prometheus.Counter
+	gcDuration                     prometheus.Summary
+	snapshotDuration               prometheus.Summary
+	snapshotSize                   prometheus.Gauge
+	queriesTotal                   prometheus.Counter
+	queryErrorsTotal               prometheus.Counter
+	queryDuration                  prometheus.Histogram
+	silencesActive                 prometheus.Gauge
+	silencesPending                prometheus.Gauge
+	silencesExpired                prometheus.Gauge
+	propagatedMessagesTotal        prometheus.Counter
+	silencesMaintenanceTotal       prometheus.Counter
+	silencesMaintenanceErrorsTotal prometheus.Counter
 }
 
 func newSilenceMetrics(r prometheus.Registerer) *silenceMetrics {
@@ -1067,6 +1124,14 @@ func newSilenceMetrics(r prometheus.Registerer) *silenceMetrics {
 		Name:        "alertmanager_silences",
 		Help:        "How many silences by state.",
 		ConstLabels: prometheus.Labels{"state": string(types.SilenceStateExpired)},
+	})
+	m.silencesMaintenanceTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_silences_maintenance_total",
+		Help: "How many maintenances were executed for silences.",
+	})
+	m.silencesMaintenanceErrorsTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_silences_maintenance_errors_total",
+		Help: "How many maintenances were executed for silences that failed.",
 	})
 
 	return m

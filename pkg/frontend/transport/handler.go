@@ -73,6 +73,8 @@ const (
 	limitBytesStoreGateway  = `exceeded bytes limit`
 )
 
+var noopResponseSizeLimiter = limiter.NewResponseSizeLimiter(0)
+
 // Config for a Handler.
 type HandlerConfig struct {
 	LogQueriesLongerThan      time.Duration `yaml:"log_queries_longer_than"`
@@ -278,7 +280,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// If the response status code is not 2xx, try to get the
 			// error message from response body.
 			if resp.StatusCode/100 != 2 {
-				body, err2 := tripperware.BodyBytes(resp, limiter.NewResponseSizeLimiter(0), f.log)
+				body, err2 := tripperware.BodyBytes(resp, noopResponseSizeLimiter, f.log)
 				if err2 == nil {
 					err = httpgrpc.Errorf(resp.StatusCode, "%s", string(body))
 				}

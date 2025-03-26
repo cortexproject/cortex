@@ -20,7 +20,7 @@ type Limits interface {
 	MaxQueryParallelism(string) int
 
 	// MaxQueryResponseSize returns the max total response size of a query in bytes.
-	MaxQueryResponseSize(string) int
+	MaxQueryResponseSize(string) int64
 
 	// MaxCacheFreshness returns the period after which results are cacheable,
 	// to prevent caching of very recent results.

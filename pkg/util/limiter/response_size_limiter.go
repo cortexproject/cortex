@@ -16,11 +16,11 @@ var (
 
 type ResponseSizeLimiter struct {
 	responseSizeCount atomic.Int64
-	maxResponseSize   int
+	maxResponseSize   int64
 }
 
 // NewResponseSizeLimiter creates a new limiter to track total response size.
-func NewResponseSizeLimiter(maxResponseSize int) *ResponseSizeLimiter {
+func NewResponseSizeLimiter(maxResponseSize int64) *ResponseSizeLimiter {
 	return &ResponseSizeLimiter{
 		maxResponseSize: maxResponseSize,
 	}

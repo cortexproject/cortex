@@ -196,7 +196,7 @@ func NewQueryTripperware(
 					}
 				}
 
-				maxResponseSize := 0
+				var maxResponseSize int64 = 0
 				if limits != nil {
 					maxResponseSize = limits.MaxQueryResponseSize(userStr)
 				}

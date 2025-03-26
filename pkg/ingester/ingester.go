@@ -232,7 +232,7 @@ type Ingester struct {
 	lifecycler         *ring.Lifecycler
 	limits             *validation.Overrides
 	limiter            *Limiter
-	resourceMonitor    resource.IMonitor
+	resourceMonitor    *resource.Monitor
 	subservicesWatcher *services.FailureWatcher
 
 	stoppedMtx sync.RWMutex // protects stopped
@@ -701,7 +701,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 }
 
 // New returns a new Ingester that uses Cortex block storage instead of chunks storage.
-func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger, resourceMonitor resource.IMonitor) (*Ingester, error) {
+func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger, resourceMonitor *resource.Monitor) (*Ingester, error) {
 	defaultInstanceLimits = &cfg.DefaultLimits
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
@@ -2156,7 +2156,6 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 
 	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
 
-	//if _, ok := i.resourceMonitor.(*resource.Monitor); ok {
 	if i.resourceMonitor != nil {
 		if resourceName, threshold, utilization, err := i.resourceMonitor.CheckResourceUtilization(); err != nil {
 			level.Warn(i.logger).Log("msg", "resource threshold breached", "resource", resourceName, "threshold", threshold, "utilization", utilization)

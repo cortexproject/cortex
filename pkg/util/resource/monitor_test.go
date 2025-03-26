@@ -77,7 +77,7 @@ type mockScanner struct {
 
 func (m *mockScanner) Scan() (Stats, error) {
 	return Stats{
-		cpu:  m.CPU,
-		heap: m.Heap,
+		CPU:  m.CPU,
+		Heap: m.Heap,
 	}, nil
 }

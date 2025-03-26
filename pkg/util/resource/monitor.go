@@ -24,7 +24,7 @@ func (e *ExhaustedError) Error() string {
 	return "resource exhausted"
 }
 
-const heapMetricName = "/memory/classes/heap/objects:bytes"
+const heapMetricName = "/memory/classes/Heap/objects:bytes"
 const monitorInterval = time.Second
 const dataPointsToAvg = 30
 
@@ -38,8 +38,8 @@ type Scanner struct {
 }
 
 type Stats struct {
-	cpu  float64
-	heap uint64
+	CPU  float64
+	Heap uint64
 }
 
 func NewScanner() (*Scanner, error) {
@@ -73,15 +73,9 @@ func (s *Scanner) Scan() (Stats, error) {
 	metrics.Read(s.metricSamples)
 
 	return Stats{
-		cpu:  stat.CPUTime(),
-		heap: s.metricSamples[0].Value.Uint64(),
+		CPU:  stat.CPUTime(),
+		Heap: s.metricSamples[0].Value.Uint64(),
 	}, nil
-}
-
-type IMonitor interface {
-	GetCPUUtilization() float64
-	GetHeapUtilization() float64
-	CheckResourceUtilization() (string, float64, float64, error)
 }
 
 type Monitor struct {
@@ -121,19 +115,19 @@ func NewMonitor(thresholds configs.Resources, limits configs.Resources, scanner 
 
 	promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name:        "cortex_resource_utilization",
-		ConstLabels: map[string]string{"resource": "cpu"},
+		ConstLabels: map[string]string{"resource": "CPU"},
 	}, m.GetCPUUtilization)
 	promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name:        "cortex_resource_utilization",
-		ConstLabels: map[string]string{"resource": "heap"},
+		ConstLabels: map[string]string{"resource": "Heap"},
 	}, m.GetHeapUtilization)
 	promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 		Name:        "cortex_resource_threshold",
-		ConstLabels: map[string]string{"resource": "cpu"},
+		ConstLabels: map[string]string{"resource": "CPU"},
 	}).Set(thresholds.CPU)
 	promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 		Name:        "cortex_resource_threshold",
-		ConstLabels: map[string]string{"resource": "heap"},
+		ConstLabels: map[string]string{"resource": "Heap"},
 	}).Set(thresholds.Heap)
 
 	return m, nil
@@ -167,7 +161,7 @@ func (m *Monitor) storeCPUUtilization(stats Stats) {
 	now := time.Now()
 
 	if m.lastUpdate.IsZero() {
-		m.lastCPU = stats.cpu
+		m.lastCPU = stats.CPU
 		m.lastUpdate = now
 		return
 	}
@@ -175,13 +169,13 @@ func (m *Monitor) storeCPUUtilization(stats Stats) {
 	m.totalCPU -= m.cpuRates[m.index]
 	m.totalInterval -= m.cpuIntervals[m.index]
 
-	m.cpuRates[m.index] = stats.cpu - m.lastCPU
+	m.cpuRates[m.index] = stats.CPU - m.lastCPU
 	m.cpuIntervals[m.index] = now.Sub(m.lastUpdate).Seconds()
 
 	m.totalCPU += m.cpuRates[m.index]
 	m.totalInterval += m.cpuIntervals[m.index]
 
-	m.lastCPU = stats.cpu
+	m.lastCPU = stats.CPU
 	m.lastUpdate = now
 	m.index = (m.index + 1) % dataPointsToAvg
 
@@ -195,7 +189,7 @@ func (m *Monitor) storeHeapUtilization(stats Stats) {
 	defer m.lock.Unlock()
 
 	if m.containerLimit.Heap > 0 {
-		m.utilization.Heap = float64(stats.heap) / m.containerLimit.Heap
+		m.utilization.Heap = float64(stats.Heap) / m.containerLimit.Heap
 	}
 }
 
@@ -219,12 +213,12 @@ func (m *Monitor) CheckResourceUtilization() (string, float64, float64, error) {
 
 	if m.thresholds.CPU > 0 && cpu > m.thresholds.CPU {
 		err := ExhaustedError{}
-		return "cpu", m.thresholds.CPU, cpu, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+		return "CPU", m.thresholds.CPU, cpu, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 	}
 
 	if m.thresholds.Heap > 0 && heap > m.thresholds.Heap {
 		err := ExhaustedError{}
-		return "heap", m.thresholds.Heap, heap, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+		return "Heap", m.thresholds.Heap, heap, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 	}
 
 	return "", 0, 0, nil

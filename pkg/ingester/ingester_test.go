@@ -49,6 +49,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
@@ -3068,11 +3069,14 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
 	}
 
-	mockErr := fmt.Errorf("resource monitor error")
-	resourceMonitor := testResourceMonitor{
-		err: mockErr,
-	}
-	i, err := prepareIngesterWithResourceMonitor(t, &resourceMonitor)
+	thresholds := configs.Resources{Heap: 0.1}
+	limits := configs.Resources{Heap: 10}
+	resourceMonitor, err := resource.NewMonitor(thresholds, limits, &mockResourceScanner{
+		heap: uint64(5),
+	}, prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	i, err := prepareIngesterWithResourceMonitor(t, resourceMonitor)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -3095,23 +3099,18 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 	s := &mockQueryStreamServer{ctx: ctx}
 	err = i.QueryStream(rreq, s)
 	require.Error(t, err)
-	require.ErrorContains(t, err, mockErr.Error())
+	exhaustedErr := resource.ExhaustedError{}
+	require.ErrorContains(t, err, exhaustedErr.Error())
 }
 
-type testResourceMonitor struct {
-	err error
+type mockResourceScanner struct {
+	heap uint64
 }
 
-func (t *testResourceMonitor) GetCPUUtilization() float64 {
-	return 0
-}
-
-func (t *testResourceMonitor) GetHeapUtilization() float64 {
-	return 0
-}
-
-func (t *testResourceMonitor) CheckResourceUtilization() (string, float64, float64, error) {
-	return "", 0, 0, t.err
+func (m *mockResourceScanner) Scan() (resource.Stats, error) {
+	return resource.Stats{
+		Heap: m.heap,
+	}, nil
 }
 
 func TestIngester_LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
@@ -3997,7 +3996,7 @@ func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config,
 	return ingester, nil
 }
 
-func prepareIngesterWithResourceMonitor(t testing.TB, resourceMonitor resource.IMonitor) (*Ingester, error) {
+func prepareIngesterWithResourceMonitor(t testing.TB, resourceMonitor *resource.Monitor) (*Ingester, error) {
 	dataDir := t.TempDir()
 	bucketDir := t.TempDir()
 
@@ -4007,6 +4006,12 @@ func prepareIngesterWithResourceMonitor(t testing.TB, resourceMonitor resource.I
 	ingesterCfg.BlocksStorageConfig.Bucket.Filesystem.Directory = bucketDir
 
 	overrides, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+
+	err := resourceMonitor.StartAsync(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	time.Sleep(time.Second)
 
 	ingester, err := New(ingesterCfg, overrides, prometheus.NewRegistry(), log.NewNopLogger(), resourceMonitor)
 	if err != nil {

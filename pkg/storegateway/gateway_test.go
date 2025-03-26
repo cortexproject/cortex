@@ -32,6 +32,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -41,6 +42,7 @@ import (
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -1209,12 +1211,18 @@ func TestStoreGateway_SeriesThrottledByResourceMonitor(t *testing.T) {
 	gatewayCfg.ShardingEnabled = false
 	storageCfg := mockStorageConfig(t)
 
-	mockErr := fmt.Errorf("resource monitor error")
-	resourceMonitor := testResourceMonitor{
-		err: mockErr,
-	}
+	thresholds := configs.Resources{Heap: 0.1}
+	limits := configs.Resources{Heap: 10}
+	resourceMonitor, err := resource.NewMonitor(thresholds, limits, &mockResourceScanner{
+		heap: uint64(5),
+	}, prometheus.NewRegistry())
+	require.NoError(t, err)
 
-	g, err := newStoreGateway(gatewayCfg, storageCfg, objstore.WithNoopInstr(bucketClient), nil, overrides, mockLoggingLevel(), logger, nil, &resourceMonitor)
+	err = resourceMonitor.StartAsync(context.Background())
+	require.NoError(t, err)
+	time.Sleep(time.Second)
+
+	g, err := newStoreGateway(gatewayCfg, storageCfg, objstore.WithNoopInstr(bucketClient), nil, overrides, mockLoggingLevel(), logger, nil, resourceMonitor)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
@@ -1222,23 +1230,18 @@ func TestStoreGateway_SeriesThrottledByResourceMonitor(t *testing.T) {
 	srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
 	err = g.Series(req, srv)
 	require.Error(t, err)
-	require.ErrorContains(t, err, mockErr.Error())
+	exhaustedErr := resource.ExhaustedError{}
+	require.ErrorContains(t, err, exhaustedErr.Error())
 }
 
-type testResourceMonitor struct {
-	err error
+type mockResourceScanner struct {
+	heap uint64
 }
 
-func (t *testResourceMonitor) GetCPUUtilization() float64 {
-	return 0
-}
-
-func (t *testResourceMonitor) GetHeapUtilization() float64 {
-	return 0
-}
-
-func (t *testResourceMonitor) CheckResourceUtilization() (string, float64, float64, error) {
-	return "", 0, 0, t.err
+func (m *mockResourceScanner) Scan() (resource.Stats, error) {
+	return resource.Stats{
+		Heap: m.heap,
+	}, nil
 }
 
 func mockGatewayConfig() Config {

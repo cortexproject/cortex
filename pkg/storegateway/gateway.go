@@ -118,7 +118,7 @@ type StoreGateway struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	resourceMonitor resource.IMonitor
+	resourceMonitor *resource.Monitor
 
 	bucketSync *prometheus.CounterVec
 }
@@ -146,7 +146,7 @@ func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 	return newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, limits, logLevel, logger, reg, resourceMonitor)
 }
 
-func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, ringStore kv.Client, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer, resourceMonitor resource.IMonitor) (*StoreGateway, error) {
+func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, ringStore kv.Client, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer, resourceMonitor *resource.Monitor) (*StoreGateway, error) {
 	var err error
 
 	g := &StoreGateway{
@@ -408,7 +408,7 @@ func (g *StoreGateway) LabelValues(ctx context.Context, req *storepb.LabelValues
 }
 
 func (g *StoreGateway) checkResourceUtilization() error {
-	if _, ok := g.resourceMonitor.(*resource.Monitor); !ok {
+	if g.resourceMonitor == nil {
 		return nil
 	}
 

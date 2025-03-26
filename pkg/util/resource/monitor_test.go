@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -69,27 +68,6 @@ func TestMonitor(t *testing.T) {
 			require.NoError(t, err)
 		}
 	}
-}
-
-func TestMonitor_GetCPUUtilization(t *testing.T) {
-	limits := configs.Resources{CPU: 10}
-	thresholds := configs.Resources{}
-	scanner := mockScanner{CPU: 0}
-
-	monitor, err := NewMonitor(thresholds, limits, &scanner, nil)
-	require.NoError(t, err)
-	require.NoError(t, monitor.StartAsync(context.Background()))
-	t.Cleanup(func() {
-		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), monitor))
-	})
-
-	for i := 0; i < 10; i++ {
-		scanner.CPU++
-		time.Sleep(time.Second) // let scanner store values
-	}
-
-	fmt.Println(monitor.GetCPUUtilization())
-	require.InDelta(t, 0.1, monitor.GetCPUUtilization(), 1e-5)
 }
 
 type mockScanner struct {

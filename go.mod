@@ -52,19 +52,19 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97
 	github.com/thanos-io/promql-engine v0.0.0-20250324222505-d17b9bdecd14
-	github.com/thanos-io/thanos v0.37.3-0.20250212101700-346d18bb0f80
+	github.com/thanos-io/thanos v0.38.0-rc.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 	go.etcd.io/etcd/api/v3 v3.5.17
 	go.etcd.io/etcd/client/pkg/v3 v3.5.17
 	go.etcd.io/etcd/client/v3 v3.5.17
 	go.opentelemetry.io/contrib/propagators/aws v1.33.0
-	go.opentelemetry.io/otel v1.34.0
+	go.opentelemetry.io/otel v1.35.0
 	go.opentelemetry.io/otel/bridge/opentracing v1.33.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.34.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.34.0
-	go.opentelemetry.io/otel/sdk v1.34.0
-	go.opentelemetry.io/otel/trace v1.34.0
+	go.opentelemetry.io/otel/sdk v1.35.0
+	go.opentelemetry.io/otel/trace v1.35.0
 	go.uber.org/atomic v1.11.0
 	golang.org/x/net v0.36.0
 	golang.org/x/sync v0.11.0
@@ -82,7 +82,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 	github.com/sercand/kuberesolver/v5 v5.1.1
-	github.com/tjhop/slog-gokit v0.1.2
+	github.com/tjhop/slog-gokit v0.1.3
 	go.opentelemetry.io/collector/pdata v1.24.0
 	google.golang.org/protobuf v1.36.4
 )
@@ -233,7 +233,7 @@ require (
 	go.opentelemetry.io/contrib/propagators/b3 v1.29.0 // indirect
 	go.opentelemetry.io/contrib/propagators/jaeger v1.29.0 // indirect
 	go.opentelemetry.io/contrib/propagators/ot v1.29.0 // indirect
-	go.opentelemetry.io/otel/metric v1.34.0 // indirect
+	go.opentelemetry.io/otel/metric v1.35.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
 	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect

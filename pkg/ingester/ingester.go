@@ -2156,6 +2156,7 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 
 	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
 
+	//if _, ok := i.resourceMonitor.(*resource.Monitor); ok {
 	if i.resourceMonitor != nil {
 		if resourceName, threshold, utilization, err := i.resourceMonitor.CheckResourceUtilization(); err != nil {
 			level.Warn(i.logger).Log("msg", "resource threshold breached", "resource", resourceName, "threshold", threshold, "utilization", utilization)

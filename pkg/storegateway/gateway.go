@@ -408,7 +408,7 @@ func (g *StoreGateway) LabelValues(ctx context.Context, req *storepb.LabelValues
 }
 
 func (g *StoreGateway) checkResourceUtilization() error {
-	if g.resourceMonitor == nil {
+	if _, ok := g.resourceMonitor.(*resource.Monitor); !ok {
 		return nil
 	}
 

@@ -87,7 +87,7 @@ func defaultRulerConfig(t testing.TB) Config {
 
 type ruleLimits struct {
 	mtx                  sync.RWMutex
-	tenantShard          int
+	tenantShard          float64
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
 	disabledRuleGroups   validation.DisabledRuleGroups
@@ -102,7 +102,7 @@ func (r *ruleLimits) setRulerExternalLabels(lset labels.Labels) {
 	r.mtx.Unlock()
 }
 
-func (r *ruleLimits) RulerTenantShardSize(_ string) int {
+func (r *ruleLimits) RulerTenantShardSize(_ string) float64 {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	return r.tenantShard
@@ -630,7 +630,7 @@ func TestGetRules(t *testing.T) {
 	type testCase struct {
 		sharding                   bool
 		shardingStrategy           string
-		shuffleShardSize           int
+		shuffleShardSize           float64
 		rulesRequest               RulesRequest
 		expectedCount              map[string]int
 		expectedClientCallCount    int
@@ -1887,7 +1887,7 @@ func TestSharding(t *testing.T) {
 		sharding            bool
 		shardingStrategy    string
 		replicationFactor   int
-		shuffleShardSize    int
+		shuffleShardSize    float64
 		setupRing           func(*ring.Desc)
 		enabledUsers        []string
 		disabledUsers       []string

@@ -203,7 +203,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			queryPartialData:    true,
 			want:                []interface{}{1},
 			expectedError:       partialdata.ErrPartialData,
-			errStrContains:      []string{"failed to get data from", "10.0.0.1", "10.0.0.2"},
+			errStrContains:      []string{"10.0.0.1", "10.0.0.2", "zone failed"},
 		},
 		{
 			name:                "with partial data enabled, should fail on instances failing in all zones",

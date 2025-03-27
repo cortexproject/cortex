@@ -694,7 +694,16 @@ The address should be the gRPC listen address in host:port format.&lt;/p>
 &lt;h2 id="configure-query-response-format">Configure query response format&lt;/h2>
 &lt;p>You can configure the query response format via &lt;code>-ruler.query-response-format&lt;/code>. It is used to retrieve query results from the Query Frontend.
 The supported values are &lt;code>protobuf&lt;/code> and &lt;code>json&lt;/code>. We recommend using &lt;code>protobuf&lt;/code>(default) because the retrieved query results containing native histograms are only supported on &lt;code>protobuf&lt;/code>.&lt;/p>
-&lt;h2 id="pros-and-cons">Pros and Cons&lt;/h2>
+&lt;h2 id="how-to-track-query-stat-log-and-metric">How to track query stat log and metric&lt;/h2>
+&lt;p>When the &lt;code>-ruler.frontend-address&lt;/code> is configured, the values of query stats for rule evaluation logs and metrics are all &lt;code>0&lt;/code> in the Ruler.
+You can look at the logs at the Query Frontend via enabling &lt;code>-frontend.enabled-ruler-query-stats&lt;/code> (disabled by default).&lt;/p>
+&lt;p>Also, there are alternative metrics; you can see right-side metrics instead:&lt;/p>
+&lt;pre tabindex="0">&lt;code>`cortex_ruler_query_seconds_total` -&amp;gt; `cortex_query_seconds_total{source=&amp;#34;ruler&amp;#34;}`
+`cortex_ruler_fetched_series_total` -&amp;gt; `cortex_query_fetched_series_total{source=&amp;#34;ruler&amp;#34;}`
+`cortex_ruler_samples_total` -&amp;gt; `cortex_query_samples_total{source=&amp;#34;ruler&amp;#34;}`
+`cortex_ruler_fetched_chunks_bytes_total` -&amp;gt; `cortex_query_fetched_chunks_bytes_total{source=&amp;#34;ruler&amp;#34;}`
+`cortex_ruler_fetched_data_bytes_total` -&amp;gt; `cortex_query_fetched_data_bytes_total{source=&amp;#34;ruler&amp;#34;}`
+&lt;/code>&lt;/pre>&lt;h2 id="pros-and-cons">Pros and Cons&lt;/h2>
 &lt;p>If this feature is enabled, the query execute path is as follows:&lt;/p>
 &lt;p>Ruler -&amp;gt; Query Frontend -&amp;gt; Query Scheduler -&amp;gt; Querier -&amp;gt; Ingester/Store Gateway&lt;/p>
 &lt;p>There are pros and cons regarding query performance as more hops than before (Ruler -&amp;gt; Ingester/Store Gateway).&lt;/p>

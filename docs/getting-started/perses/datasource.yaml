@@ -1,0 +1,16 @@
+---
+kind: GlobalDatasource
+metadata:
+  name: Cortex
+spec:
+  default: true
+  plugin:
+    kind: PrometheusDatasource
+    spec:
+      proxy:
+        kind: HTTPProxy
+        spec:
+          url: http://cortex:9009/api/prom
+          headers:
+            X-Scope-OrgID: cortex
+

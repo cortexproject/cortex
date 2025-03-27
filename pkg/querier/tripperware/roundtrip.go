@@ -34,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -193,6 +194,16 @@ func NewQueryTripperware(
 					if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, maxSubQuerySteps); err != nil {
 						return nil, err
 					}
+				}
+
+				var maxResponseSize int64 = 0
+				if limits != nil {
+					maxResponseSize = limits.MaxQueryResponseSize(userStr)
+				}
+				if maxResponseSize > 0 && (isQuery || isQueryRange) {
+					responseSizeLimiter := limiter.NewResponseSizeLimiter(maxResponseSize)
+					context := limiter.AddResponseSizeLimiterToContext(r.Context(), responseSizeLimiter)
+					r = r.WithContext(context)
 				}
 
 				if err := rejectQueryOrSetPriority(r, now, lookbackDelta, limits, userStr, rejectedQueriesPerTenant); err != nil {

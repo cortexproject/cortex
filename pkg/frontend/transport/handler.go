@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -71,6 +72,8 @@ const (
 	limitChunksStoreGateway = `exceeded chunks limit`
 	limitBytesStoreGateway  = `exceeded bytes limit`
 )
+
+var noopResponseSizeLimiter = limiter.NewResponseSizeLimiter(0)
 
 // Config for a Handler.
 type HandlerConfig struct {
@@ -277,7 +280,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// If the response status code is not 2xx, try to get the
 			// error message from response body.
 			if resp.StatusCode/100 != 2 {
-				body, err2 := tripperware.BodyBuffer(resp, f.log)
+				body, err2 := tripperware.BodyBytes(resp, noopResponseSizeLimiter, f.log)
 				if err2 == nil {
 					err = httpgrpc.Errorf(resp.StatusCode, "%s", string(body))
 				}

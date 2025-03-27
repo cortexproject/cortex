@@ -1,7 +1,10 @@
 package tripperware
 
 import (
+	"bytes"
+	"compress/gzip"
 	"math"
+	"net/http"
 	"strconv"
 	"testing"
 	"time"
@@ -192,4 +195,51 @@ func generateData(timeseries, datapoints int) (floatMatrix, histogramMatrix []*S
 		histogramMatrix = append(histogramMatrix, hss)
 	}
 	return
+}
+
+func Test_getResponseSize(t *testing.T) {
+	tests := []struct {
+		body    []byte
+		useGzip bool
+	}{
+		{
+			body:    []byte(`foo`),
+			useGzip: false,
+		},
+		{
+			body:    []byte(`foo`),
+			useGzip: true,
+		},
+		{
+			body:    []byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`),
+			useGzip: false,
+		},
+		{
+			body:    []byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`),
+			useGzip: true,
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			expectedBodyLength := len(test.body)
+			buf := &bytes.Buffer{}
+			response := &http.Response{}
+
+			if test.useGzip {
+				response = &http.Response{
+					Header: http.Header{"Content-Encoding": []string{"gzip"}},
+				}
+				w := gzip.NewWriter(buf)
+				_, err := w.Write(test.body)
+				require.NoError(t, err)
+				w.Close()
+			} else {
+				buf = bytes.NewBuffer(test.body)
+			}
+
+			bodyLength := getResponseSize(response, buf)
+			require.Equal(t, expectedBodyLength, bodyLength)
+		})
+	}
 }

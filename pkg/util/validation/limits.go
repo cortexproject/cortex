@@ -168,6 +168,7 @@ type Limits struct {
 	MaxQueryLookback             model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength               model.Duration `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	MaxQueryResponseSize         int64          `yaml:"max_query_response_size" json:"max_query_response_size"`
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
@@ -271,6 +272,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
 	_ = l.MaxCacheFreshness.Set("1m")
+	f.Int64Var(&l.MaxQueryResponseSize, "frontend.max-query-response-size", 0, "The maximum total uncompressed query response size. If the query was sharded the limit is applied to the total response size of all shards. This limit is enforced in query-frontend for `query` and `query_range` APIs. 0 to disable.")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 	f.Float64Var(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. If the value is < 1, it will be treated as a percentage and the gets a percentage of the total queriers. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
@@ -714,6 +716,11 @@ func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 	return time.Duration(o.GetOverridesForUser(userID).MaxQueryLength)
+}
+
+// MaxQueryResponseSize returns the max total response size of a query in bytes.
+func (o *Overrides) MaxQueryResponseSize(userID string) int64 {
+	return o.GetOverridesForUser(userID).MaxQueryResponseSize
 }
 
 // MaxCacheFreshness returns the period after which results are cacheable,

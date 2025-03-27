@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -70,20 +71,13 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 		}(i, &r.Instances[i])
 	}
 
-	trackerFailed := false
-	cnt := 0
-
-track:
-	for !tracker.succeeded() {
+	for !tracker.succeeded() && !tracker.finished() {
 		select {
 		case res := <-ch:
 			tracker.done(res.instance, res.res, res.err)
 			if res.err != nil {
-				if tracker.failed() {
-					if !partialDataEnabled || tracker.failedInAllZones() {
-						return nil, res.err
-					}
-					trackerFailed = true
+				if tracker.failed() && (!partialDataEnabled || tracker.failedCompletely()) {
+					return nil, res.err
 				}
 
 				// force one of the delayed requests to start
@@ -91,18 +85,18 @@ track:
 					forceStart <- struct{}{}
 				}
 			}
-			cnt++
-			if cnt == len(r.Instances) {
-				break track
-			}
 
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
 
-	if partialDataEnabled && trackerFailed {
-		return tracker.getResults(), partialdata.ErrPartialData
+	if partialDataEnabled && tracker.failed() {
+		finalErr := partialdata.ErrPartialData
+		for _, partialErr := range tracker.getErrors() {
+			finalErr = fmt.Errorf("%w: %w", finalErr, partialErr)
+		}
+		return tracker.getResults(), finalErr
 	}
 
 	return tracker.getResults(), nil

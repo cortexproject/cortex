@@ -330,7 +330,8 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	reqStats.AddFetchedSamples(uint64(resp.SamplesCount()))
 
 	if partialdata.IsPartialDataError(err) {
-		level.Info(d.log).Log("msg", "returning partial data")
+		level.Warn(d.log).Log("msg", "returning partial data", "err", err.Error())
+		d.ingesterPartialDataQueries.Inc()
 		return resp, err
 	}
 

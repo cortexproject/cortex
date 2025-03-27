@@ -2,6 +2,7 @@ package ring
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -152,6 +153,50 @@ func TestDefaultResultTracker(t *testing.T) {
 				assert.False(t, tracker.failed())
 
 				assert.Equal(t, []interface{}{[]int{1, 1, 1}, []int{2, 2, 2}, []int{3, 3, 3}}, tracker.getResults())
+			},
+		},
+		"failedCompletely() should return true only if all instances have failed, regardless of max errors": {
+			instances: []InstanceDesc{instance1, instance2, instance3},
+			maxErrors: 1,
+			run: func(t *testing.T, tracker *defaultResultTracker) {
+				tracker.done(&instance1, nil, errors.New("test"))
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+				assert.False(t, tracker.failedCompletely())
+
+				tracker.done(&instance2, nil, errors.New("test"))
+				assert.False(t, tracker.succeeded())
+				assert.True(t, tracker.failed())
+				assert.False(t, tracker.failedCompletely())
+
+				tracker.done(&instance3, nil, errors.New("test"))
+				assert.False(t, tracker.succeeded())
+				assert.True(t, tracker.failed())
+				assert.True(t, tracker.failedCompletely())
+			},
+		},
+		"finished() should return true only if all instances are done": {
+			instances: []InstanceDesc{instance1, instance2},
+			maxErrors: 1,
+			run: func(t *testing.T, tracker *defaultResultTracker) {
+				tracker.done(&instance1, nil, errors.New("test"))
+				assert.False(t, tracker.finished())
+
+				tracker.done(&instance2, nil, errors.New("test"))
+				assert.True(t, tracker.finished())
+			},
+		},
+		"getErrors() should return list of all errors": {
+			instances: []InstanceDesc{instance1, instance2},
+			maxErrors: 1,
+			run: func(t *testing.T, tracker *defaultResultTracker) {
+				tracker.done(&instance1, nil, errors.New("test1"))
+				err1 := fmt.Errorf("(%s) %w", instance1.GetAddr(), errors.New("test1"))
+				assert.ElementsMatch(t, []error{err1}, tracker.getErrors())
+
+				tracker.done(&instance2, nil, errors.New("test2"))
+				err2 := fmt.Errorf("(%s) %w", instance2.GetAddr(), errors.New("test2"))
+				assert.ElementsMatch(t, []error{err1, err2}, tracker.getErrors())
 			},
 		},
 	}
@@ -399,7 +444,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.False(t, tracker.failed())
 			},
 		},
-		"failInAllZones should return true only if all zones have failed, regardless of max unavailable zones": {
+		"failedCompletely() should return true only if all zones have failed, regardless of max unavailable zones": {
 			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
 			maxUnavailableZones: 1,
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
@@ -407,19 +452,43 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				tracker.done(&instance1, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
-				assert.False(t, tracker.failedInAllZones())
+				assert.False(t, tracker.failedCompletely())
 
 				// Zone-b
 				tracker.done(&instance3, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.True(t, tracker.failed())
-				assert.False(t, tracker.failedInAllZones())
+				assert.False(t, tracker.failedCompletely())
 
 				// Zone-c
 				tracker.done(&instance5, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.True(t, tracker.failed())
-				assert.True(t, tracker.failedInAllZones())
+				assert.True(t, tracker.failedCompletely())
+			},
+		},
+		"finished() should return true only if all instances are done": {
+			instances:           []InstanceDesc{instance1, instance2},
+			maxUnavailableZones: 1,
+			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
+				tracker.done(&instance1, nil, errors.New("test"))
+				assert.False(t, tracker.finished())
+
+				tracker.done(&instance2, nil, errors.New("test"))
+				assert.True(t, tracker.finished())
+			},
+		},
+		"getErrors() should return list of all errors": {
+			instances:           []InstanceDesc{instance1, instance2},
+			maxUnavailableZones: 1,
+			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
+				tracker.done(&instance1, nil, errors.New("test1"))
+				err1 := fmt.Errorf("(%s) %w", instance1.GetAddr(), errors.New("test1"))
+				assert.ElementsMatch(t, []error{err1}, tracker.getErrors())
+
+				tracker.done(&instance2, nil, errors.New("test2"))
+				err2 := fmt.Errorf("(%s) %w", instance2.GetAddr(), errors.New("test2"))
+				assert.ElementsMatch(t, []error{err1, err2}, tracker.getErrors())
 			},
 		},
 	}

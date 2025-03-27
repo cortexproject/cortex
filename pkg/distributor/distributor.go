@@ -123,6 +123,7 @@ type Distributor struct {
 	ingesterAppendFailures           *prometheus.CounterVec
 	ingesterQueries                  *prometheus.CounterVec
 	ingesterQueryFailures            *prometheus.CounterVec
+	ingesterPartialDataQueries       prometheus.Counter
 	replicationFactor                prometheus.Gauge
 	latestSeenSampleTimestampPerUser *prometheus.GaugeVec
 
@@ -375,6 +376,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name:      "distributor_ingester_query_failures_total",
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
+		ingesterPartialDataQueries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "distributor_ingester_partial_data_queries_total",
+			Help:      "The total number of queries sent to ingesters that may have returned partial data.",
+		}),
 		replicationFactor: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "distributor_replication_factor",

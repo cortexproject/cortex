@@ -124,6 +124,7 @@ func TestReplicationSet_Do(t *testing.T) {
 		expectedError       error
 		zoneResultsQuorum   bool
 		queryPartialData    bool
+		errStrContains      []string
 	}{
 		{
 			name: "max errors = 0, no errors no delay",
@@ -196,12 +197,13 @@ func TestReplicationSet_Do(t *testing.T) {
 		},
 		{
 			name:                "with partial data enabled and max unavailable zones = 1, should succeed on instances failing in 2 out of 3 zones (3 instances)",
-			instances:           []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
+			instances:           []InstanceDesc{{Addr: "10.0.0.1", Zone: "zone1"}, {Addr: "10.0.0.2", Zone: "zone2"}, {Addr: "10.0.0.3", Zone: "zone3"}},
 			f:                   failingFunctionOnZones("zone1", "zone2"),
 			maxUnavailableZones: 1,
 			queryPartialData:    true,
 			want:                []interface{}{1},
 			expectedError:       partialdata.ErrPartialData,
+			errStrContains:      []string{"10.0.0.1", "10.0.0.2", "zone failed"},
 		},
 		{
 			name:                "with partial data enabled, should fail on instances failing in all zones",
@@ -264,7 +266,10 @@ func TestReplicationSet_Do(t *testing.T) {
 			}
 			got, err := r.Do(ctx, tt.delay, tt.zoneResultsQuorum, tt.queryPartialData, tt.f)
 			if tt.expectedError != nil {
-				assert.Equal(t, tt.expectedError, err)
+				assert.ErrorIs(t, err, tt.expectedError)
+				for _, str := range tt.errStrContains {
+					assert.ErrorContains(t, err, str)
+				}
 			} else {
 				assert.NoError(t, err)
 			}

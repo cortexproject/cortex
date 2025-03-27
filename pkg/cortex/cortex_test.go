@@ -22,6 +22,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -165,11 +166,20 @@ func TestConfigValidation(t *testing.T) {
 			},
 			expectedError: errInvalidHTTPPrefix,
 		},
+		{
+			name: "should fail validation for resource thresholds",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.ResourceThresholds.CPU = 10
+				return configuration
+			},
+			expectedError: configs.ErrInvalidResourceThreshold,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.getTestConfig().Validate(nil)
 			if tc.expectedError != nil {
-				require.Equal(t, tc.expectedError, err)
+				require.ErrorContains(t, err, tc.expectedError.Error())
 			} else {
 				require.NoError(t, err)
 			}

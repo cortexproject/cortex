@@ -22,6 +22,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
@@ -122,6 +123,7 @@ type Config struct {
 	RuntimeConfig       runtimeconfig.Config                       `yaml:"runtime_config"`
 	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
 	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
+	ResourceThresholds  configs.Resources                          `yaml:"resource_thresholds"`
 
 	Tracing tracing.Config `yaml:"tracing"`
 }
@@ -170,6 +172,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
+	c.ResourceThresholds.RegisterFlags(f)
 }
 
 // Validate the cortex config and returns an error if the validation
@@ -235,6 +238,10 @@ func (c *Config) Validate(log log.Logger) error {
 
 	if err := c.Tracing.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tracing config")
+	}
+
+	if err := c.ResourceThresholds.Validate(); err != nil {
+		return errors.Wrap(err, "invalid resource_thresholds config")
 	}
 
 	return nil
@@ -315,6 +322,7 @@ type Cortex struct {
 	MetadataQuerier          querier.MetadataQuerier
 	QuerierEngine            promql.QueryEngine
 	QueryFrontendTripperware tripperware.Tripperware
+	ResourceMonitor          *resource.Monitor
 
 	Ruler        *ruler.Ruler
 	RulerStorage rulestore.RuleStore

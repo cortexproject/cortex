@@ -49,6 +49,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
@@ -58,6 +59,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -3058,6 +3060,59 @@ func TestIngester_Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	assert.False(t, tsdbCreated)
 }
 
+func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
+	series := []struct {
+		lbls      labels.Labels
+		value     float64
+		timestamp int64
+	}{
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
+	}
+
+	thresholds := configs.Resources{Heap: 0.1}
+	limits := configs.Resources{Heap: 10}
+	resourceMonitor, err := resource.NewMonitor(thresholds, limits, &mockResourceScanner{
+		heap: uint64(5),
+	}, prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	i, err := prepareIngesterWithResourceMonitor(t, resourceMonitor)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push series
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	for _, series := range series {
+		req, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
+		_, err := i.Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	rreq := &client.QueryRequest{}
+	s := &mockQueryStreamServer{ctx: ctx}
+	err = i.QueryStream(rreq, s)
+	require.Error(t, err)
+	exhaustedErr := resource.ExhaustedError{}
+	require.ErrorContains(t, err, exhaustedErr.Error())
+}
+
+type mockResourceScanner struct {
+	heap uint64
+}
+
+func (m *mockResourceScanner) Scan() (resource.Stats, error) {
+	return resource.Stats{
+		Heap: m.heap,
+	}, nil
+}
+
 func TestIngester_LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
 	require.NoError(t, err)
@@ -3933,12 +3988,38 @@ func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config,
 	ingesterCfg.BlocksStorageConfig.Bucket.Filesystem.Directory = bucketDir
 	ingesterCfg.BlocksStorageConfig.TSDB.EnableNativeHistograms = nativeHistograms
 
-	ingester, err := New(ingesterCfg, overrides, registerer, log.NewNopLogger())
+	ingester, err := New(ingesterCfg, overrides, registerer, log.NewNopLogger(), nil)
 	if err != nil {
 		return nil, err
 	}
 
 	return ingester, nil
+}
+
+func prepareIngesterWithResourceMonitor(t testing.TB, resourceMonitor *resource.Monitor) (*Ingester, error) {
+	dataDir := t.TempDir()
+	bucketDir := t.TempDir()
+
+	ingesterCfg := defaultIngesterTestConfig(t)
+	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dataDir
+	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "filesystem"
+	ingesterCfg.BlocksStorageConfig.Bucket.Filesystem.Directory = bucketDir
+
+	overrides, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+
+	err := resourceMonitor.StartAsync(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	time.Sleep(time.Second)
+
+	ingester, err := New(ingesterCfg, overrides, prometheus.NewRegistry(), log.NewNopLogger(), resourceMonitor)
+	if err != nil {
+		return nil, err
+	}
+
+	return ingester, nil
+
 }
 
 func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
@@ -4096,7 +4177,7 @@ func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
 			// setup the tsdbs dir
 			testData.setup(t, tempDir)
 
-			ingester, err := New(ingesterCfg, overrides, prometheus.NewRegistry(), log.NewNopLogger())
+			ingester, err := New(ingesterCfg, overrides, prometheus.NewRegistry(), log.NewNopLogger(), nil)
 			require.NoError(t, err)
 
 			startErr := services.StartAndAwaitRunning(context.Background(), ingester)
@@ -5305,7 +5386,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	ingesterCfg.BlocksStorageConfig.Bucket.S3.Endpoint = "localhost"
 	ingesterCfg.BlocksStorageConfig.TSDB.Retention = 2 * 24 * time.Hour // Make sure that no newly created blocks are deleted.
 
-	ingester, err := New(ingesterCfg, overrides, prometheus.NewRegistry(), log.NewNopLogger())
+	ingester, err := New(ingesterCfg, overrides, prometheus.NewRegistry(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
 

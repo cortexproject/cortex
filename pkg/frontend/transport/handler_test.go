@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -379,6 +380,23 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
+		},
+		{
+			name:            "test handler with reasonResourceExhausted",
+			cfg:             HandlerConfig{QueryStatsEnabled: true},
+			expectedMetrics: 6,
+			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				resourceExhaustedErr := &resource.ExhaustedError{}
+				return &http.Response{
+					StatusCode: http.StatusTooManyRequests,
+					Body:       io.NopCloser(strings.NewReader(resourceExhaustedErr.Error())),
+				}, nil
+			}),
+			additionalMetricsCheckFunc: func(h *Handler) {
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResourceExhausted, tripperware.SourceAPI, userID))
+				assert.Equal(t, float64(1), v)
+			},
+			expectedStatusCode: http.StatusTooManyRequests,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

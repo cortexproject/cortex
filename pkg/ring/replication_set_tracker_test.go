@@ -154,6 +154,26 @@ func TestDefaultResultTracker(t *testing.T) {
 				assert.Equal(t, []interface{}{[]int{1, 1, 1}, []int{2, 2, 2}, []int{3, 3, 3}}, tracker.getResults())
 			},
 		},
+		"failedCompletely should return true only if all instances have failed, regardless of max errors": {
+			instances: []InstanceDesc{instance1, instance2, instance3},
+			maxErrors: 1,
+			run: func(t *testing.T, tracker *defaultResultTracker) {
+				tracker.done(&instance1, nil, errors.New("test"))
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+				assert.False(t, tracker.failedCompletely())
+
+				tracker.done(&instance2, nil, errors.New("test"))
+				assert.False(t, tracker.succeeded())
+				assert.True(t, tracker.failed())
+				assert.False(t, tracker.failedCompletely())
+
+				tracker.done(&instance3, nil, errors.New("test"))
+				assert.False(t, tracker.succeeded())
+				assert.True(t, tracker.failed())
+				assert.True(t, tracker.failedCompletely())
+			},
+		},
 		"failedInstances should work": {
 			instances: []InstanceDesc{instance1, instance2},
 			maxErrors: 2,
@@ -410,7 +430,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.False(t, tracker.failed())
 			},
 		},
-		"failInAllZones should return true only if all zones have failed, regardless of max unavailable zones": {
+		"failedCompletely should return true only if all zones have failed, regardless of max unavailable zones": {
 			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
 			maxUnavailableZones: 1,
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
@@ -418,19 +438,19 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				tracker.done(&instance1, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
-				assert.False(t, tracker.failedInAllZones())
+				assert.False(t, tracker.failedCompletely())
 
 				// Zone-b
 				tracker.done(&instance3, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.True(t, tracker.failed())
-				assert.False(t, tracker.failedInAllZones())
+				assert.False(t, tracker.failedCompletely())
 
 				// Zone-c
 				tracker.done(&instance5, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.True(t, tracker.failed())
-				assert.True(t, tracker.failedInAllZones())
+				assert.True(t, tracker.failedCompletely())
 			},
 		},
 		"failedInstances should work": {

@@ -81,7 +81,7 @@ track:
 			tracker.done(res.instance, res.res, res.err)
 			if res.err != nil {
 				if tracker.failed() {
-					if !partialDataEnabled || tracker.failedInAllZones() {
+					if !partialDataEnabled || tracker.failedCompletely() {
 						return nil, res.err
 					}
 					trackerFailed = true

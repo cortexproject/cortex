@@ -15,8 +15,8 @@ type replicationSetResultTracker interface {
 	// Returns list of instance addresses that failed
 	failedInstances() []string
 
-	// Returns true if executions failed in all zones. Only relevant for zoneAwareResultTracker.
-	failedInAllZones() bool
+	// Returns true if executions failed in all instances or all zones.
+	failedCompletely() bool
 
 	// Returns recorded results.
 	getResults() []interface{}
@@ -29,6 +29,7 @@ type defaultResultTracker struct {
 	maxErrors    int
 	failedInst   []string
 	results      []interface{}
+	numInstances int
 }
 
 func newDefaultResultTracker(instances []InstanceDesc, maxErrors int) *defaultResultTracker {
@@ -39,6 +40,7 @@ func newDefaultResultTracker(instances []InstanceDesc, maxErrors int) *defaultRe
 		maxErrors:    maxErrors,
 		failedInst:   make([]string, 0, len(instances)),
 		results:      make([]interface{}, 0, len(instances)),
+		numInstances: len(instances),
 	}
 }
 
@@ -60,8 +62,8 @@ func (t *defaultResultTracker) failed() bool {
 	return t.numErrors > t.maxErrors
 }
 
-func (t *defaultResultTracker) failedInAllZones() bool {
-	return false
+func (t *defaultResultTracker) failedCompletely() bool {
+	return t.numInstances == t.numErrors
 }
 
 func (t *defaultResultTracker) failedInstances() []string {
@@ -141,7 +143,7 @@ func (t *zoneAwareResultTracker) failed() bool {
 	return failedZones > t.maxUnavailableZones
 }
 
-func (t *zoneAwareResultTracker) failedInAllZones() bool {
+func (t *zoneAwareResultTracker) failedCompletely() bool {
 	failedZones := len(t.failuresByZone)
 	return failedZones == t.zoneCount
 }

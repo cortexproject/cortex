@@ -3,7 +3,7 @@
 # and development.
 
 # https://cortexmetrics.io/docs/configuration/configuration-file/#supported-contents-and-default-values-of-the-config-file
-target: all,compactor,alertmanager
+target: all
 
 # Disable the requirement that every request to Cortex has an
 # X-Scope-OrgID header. `fake` will be substituted in instead.

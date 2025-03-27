@@ -680,7 +680,32 @@ emitted.&lt;/p>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_samples_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_series_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>With these metrics, you can set up alerts to know when tenants are close to hitting their limits
-before they exceed them.&lt;/p></description></item><item><title>Docs: Rule evaluations via query frontend</title><link>/docs/guides/rule-evalutions-via-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/rule-evalutions-via-query-frontend/</guid><description>
+before they exceed them.&lt;/p></description></item><item><title>Docs: Use Partition Compaction in Cortex</title><link>/docs/guides/partition-compaction/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/partition-compaction/</guid><description>
+&lt;h2 id="context">Context&lt;/h2>
+&lt;p>Compactor is bounded by maximum 64GB of index file size. If compaction failed due to exceeding index file size limit, partition compaction can be enabled to allow compactor compacting into multiple blocks that have index file size stays within limit.&lt;/p>
+&lt;h2 id="enable-partition-compaction">Enable Partition Compaction&lt;/h2>
+&lt;p>In order to enable partition compaction, the following flag needs to be set:&lt;/p>
+&lt;pre tabindex="0">&lt;code>-compactor.sharding-enabled=true # Enable sharding tenants across multiple compactor instances. This is required to enable partition compaction
+-compactor.sharding-strategy=shuffle-sharding # Use Shuffle Sharding as sharding strategy. This is required to enable partition compaction
+-compactor.compaction-strategy=partitioning # Use Partition Compaction as compaction strategy. To turn if off, set it to `default`
+&lt;/code>&lt;/pre>&lt;h3 id="migration">Migration&lt;/h3>
+&lt;p>There is no special migration process needed to enable partition compaction. End user could enable it by setting the above configurations all at once.&lt;/p>
+&lt;p>Enabling partition compaction would group previously compacted blocks (only those have time range smaller than the largest configured compaction time ranges) with uncompacted blocks and generate new compaction plans. This would group blocks having duplicated series together and those series would be deduped after compaction.&lt;/p>
+&lt;p>Disabling partition compaction after enabled it does not need migration either. After disabling partition compaction, compactor would group partitioned result blocks together and compact them into one block.&lt;/p>
+&lt;h2 id="configure-partition-compaction">Configure Partition Compaction&lt;/h2>
+&lt;p>By default, partition compaction utilizes the following configurations and their values:&lt;/p>
+&lt;pre tabindex="0">&lt;code>-compactor.partition-index-size-bytes=68719476736 # 64GB
+-compactor.partition-series-count=0 # no limit
+&lt;/code>&lt;/pre>&lt;p>The default value should start partitioning result blocks when sum of index files size of parent blocks exceeds 64GB. End user could also change those two configurations. Partition compaction would always calculate partition count based on both configuration and pick the one with higher partition count.&lt;/p>
+&lt;p>Both configurations support to be set per tenant.&lt;/p>
+&lt;p>Note: &lt;code>compactor.partition-series-count&lt;/code> is using sum of series count of all parent blocks. If parent blocks were not deduped, the result block could have fewer series than the configuration value.&lt;/p>
+&lt;h2 id="useful-metrics">Useful Metrics&lt;/h2>
+&lt;ul>
+&lt;li>&lt;code>cortex_compactor_group_partition_count&lt;/code>: can be used to keep track of how many partitions being compacted for each time range.&lt;/li>
+&lt;li>&lt;code>cortex_compactor_group_compactions_not_planned_total&lt;/code>: can be used to alarm any compaction was failed to be planned due to error.&lt;/li>
+&lt;li>&lt;code>cortex_compact_group_compaction_duration_seconds&lt;/code>: can be used to monitor compaction duration of each time range compactions.&lt;/li>
+&lt;li>&lt;code>cortex_compactor_oldest_partition_offset&lt;/code>: can be used to monitor when was the oldest compaction that is still not completed.&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Rule evaluations via query frontend</title><link>/docs/guides/rule-evalutions-via-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/rule-evalutions-via-query-frontend/</guid><description>
 &lt;p>This guide explains how to configure the Ruler to evaluate rules via Query Frontends instead of the Ingester/Store Gateway, and the pros and cons of rule evaluation via Query Frontend.&lt;/p>
 &lt;h2 id="how-to-enable">How to enable&lt;/h2>
 &lt;p>By default, the Ruler queries both Ingesters and Store Gateway depending on the Rule time range for evaluating rules (alerting rules or recording rules). If you have set &lt;code>-ruler.frontend-address&lt;/code>, then the Ruler queries the Query Frontend for evaluation rules.

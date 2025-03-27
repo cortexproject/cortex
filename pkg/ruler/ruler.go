@@ -857,6 +857,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	userRings := map[string]ring.ReadRing{}
 	for _, u := range users {
 		if shardSize := r.limits.RulerTenantShardSize(u); shardSize > 0 {
+			shardSize := util.DynamicShardSize(shardSize, r.ring.InstancesCount())
 			subRing := r.ring.ShuffleShard(u, shardSize)
 
 			// Include the user only if it belongs to this ruler shard.
@@ -1329,6 +1330,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		shardSize := util.DynamicShardSize(shardSize, r.ring.InstancesCount())
 		ring = r.ring.ShuffleShard(userID, shardSize)
 	}
 

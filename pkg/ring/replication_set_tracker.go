@@ -12,6 +12,9 @@ type replicationSetResultTracker interface {
 	// Returns true if the maximum number of failed executions have been reached.
 	failed() bool
 
+	// Returns list of instance addresses that failed
+	failedInstances() []string
+
 	// Returns true if executions failed in all zones. Only relevant for zoneAwareResultTracker.
 	failedInAllZones() bool
 
@@ -24,6 +27,7 @@ type defaultResultTracker struct {
 	numSucceeded int
 	numErrors    int
 	maxErrors    int
+	failedInst   []string
 	results      []interface{}
 }
 
@@ -33,15 +37,17 @@ func newDefaultResultTracker(instances []InstanceDesc, maxErrors int) *defaultRe
 		numSucceeded: 0,
 		numErrors:    0,
 		maxErrors:    maxErrors,
+		failedInst:   make([]string, 0, len(instances)),
 		results:      make([]interface{}, 0, len(instances)),
 	}
 }
 
-func (t *defaultResultTracker) done(_ *InstanceDesc, result interface{}, err error) {
+func (t *defaultResultTracker) done(instance *InstanceDesc, result interface{}, err error) {
 	if err == nil {
 		t.numSucceeded++
 		t.results = append(t.results, result)
 	} else {
+		t.failedInst = append(t.failedInst, instance.GetAddr())
 		t.numErrors++
 	}
 }
@@ -58,6 +64,10 @@ func (t *defaultResultTracker) failedInAllZones() bool {
 	return false
 }
 
+func (t *defaultResultTracker) failedInstances() []string {
+	return t.failedInst
+}
+
 func (t *defaultResultTracker) getResults() []interface{} {
 	return t.results
 }
@@ -72,6 +82,7 @@ type zoneAwareResultTracker struct {
 	resultsPerZone      map[string][]interface{}
 	numInstances        int
 	zoneResultsQuorum   bool
+	failedInst          []string
 	zoneCount           int
 }
 
@@ -82,6 +93,7 @@ func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int
 		maxUnavailableZones: maxUnavailableZones,
 		numInstances:        len(instances),
 		zoneResultsQuorum:   zoneResultsQuorum,
+		failedInst:          make([]string, 0, len(instances)),
 	}
 
 	for _, instance := range instances {
@@ -97,6 +109,7 @@ func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int
 func (t *zoneAwareResultTracker) done(instance *InstanceDesc, result interface{}, err error) {
 	if err != nil {
 		t.failuresByZone[instance.Zone]++
+		t.failedInst = append(t.failedInst, instance.Addr)
 	} else {
 		if _, ok := t.resultsPerZone[instance.Zone]; !ok {
 			// If it is the first result in the zone, then total number of instances
@@ -131,6 +144,10 @@ func (t *zoneAwareResultTracker) failed() bool {
 func (t *zoneAwareResultTracker) failedInAllZones() bool {
 	failedZones := len(t.failuresByZone)
 	return failedZones == t.zoneCount
+}
+
+func (t *zoneAwareResultTracker) failedInstances() []string {
+	return t.failedInst
 }
 
 func (t *zoneAwareResultTracker) getResults() []interface{} {

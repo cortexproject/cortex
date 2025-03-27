@@ -154,6 +154,17 @@ func TestDefaultResultTracker(t *testing.T) {
 				assert.Equal(t, []interface{}{[]int{1, 1, 1}, []int{2, 2, 2}, []int{3, 3, 3}}, tracker.getResults())
 			},
 		},
+		"failedInstances should work": {
+			instances: []InstanceDesc{instance1, instance2},
+			maxErrors: 2,
+			run: func(t *testing.T, tracker *defaultResultTracker) {
+				tracker.done(&instance1, nil, errors.New("test"))
+				assert.ElementsMatch(t, []string{"127.0.0.1"}, tracker.failedInstances())
+
+				tracker.done(&instance2, nil, errors.New("test"))
+				assert.ElementsMatch(t, []string{"127.0.0.1", "127.0.0.2"}, tracker.failedInstances())
+			},
+		},
 	}
 
 	for testName, testCase := range tests {
@@ -420,6 +431,17 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.False(t, tracker.succeeded())
 				assert.True(t, tracker.failed())
 				assert.True(t, tracker.failedInAllZones())
+			},
+		},
+		"failedInstances should work": {
+			instances:           []InstanceDesc{instance1, instance2},
+			maxUnavailableZones: 1,
+			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
+				tracker.done(&instance1, nil, errors.New("test"))
+				assert.ElementsMatch(t, []string{"127.0.0.1"}, tracker.failedInstances())
+
+				tracker.done(&instance2, nil, errors.New("test"))
+				assert.ElementsMatch(t, []string{"127.0.0.1", "127.0.0.2"}, tracker.failedInstances())
 			},
 		},
 	}

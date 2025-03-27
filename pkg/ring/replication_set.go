@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -102,7 +103,7 @@ track:
 	}
 
 	if partialDataEnabled && trackerFailed {
-		return tracker.getResults(), partialdata.ErrPartialData
+		return tracker.getResults(), fmt.Errorf("failed to get data from %s: %w", tracker.failedInstances(), partialdata.ErrPartialData)
 	}
 
 	return tracker.getResults(), nil

@@ -949,8 +949,25 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		const fraction = 1.e-10 // 0.00000001%
 		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(fraction, epsilon))
 	}
+	compareHistogramBucket := func(l, r *model.HistogramBucket) bool {
+		return l == r || (l.Boundaries == r.Boundaries && compareFloats(float64(l.Lower), float64(r.Lower)) && compareFloats(float64(l.Upper), float64(r.Upper)) && compareFloats(float64(l.Count), float64(r.Count)))
+	}
+
+	compareHistogramBuckets := func(l, r model.HistogramBuckets) bool {
+		if len(l) != len(r) {
+			return false
+		}
+
+		for i := range l {
+			if !compareHistogramBucket(l[i], r[i]) {
+				return false
+			}
+		}
+		return true
+	}
+
 	compareHistograms := func(l, r *model.SampleHistogram) bool {
-		return l.Equal(r)
+		return l == r || (l.Count == r.Count && compareFloats(float64(l.Sum), float64(r.Sum)) && compareHistogramBuckets(l.Buckets, r.Buckets))
 	}
 
 	// count_values returns a metrics with one label {"value": "1.012321"}

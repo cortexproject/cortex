@@ -124,6 +124,35 @@ message Histogram {
   // timestamp is in ms format, see model/timestamp/timestamp.go for
   // conversion from time.Time to Prometheus timestamp.
   int64 timestamp_ms = 15;
+
+  // custom_values is an additional field used by non-exponential bucketing layouts.
+  //
+  // For custom buckets (-53 schema value) custom_values specify monotonically
+  // increasing upper inclusive boundaries for the bucket counts with arbitrary
+  // widths for this histogram. In other words, custom_values represents custom,
+  // explicit bucketing that could have been converted from the classic histograms.
+  //
+  // Those bounds are then referenced by spans in positive_spans with corresponding positive
+  // counts of deltas (refer to positive_spans for more details). This way we can
+  // have encode sparse histograms with custom bucketing (many buckets are often
+  // not used).
+  //
+  // Note that for custom bounds, even negative observations are placed in the positive
+  // counts to simplify the implementation and avoid ambiguity of where to place
+  // an underflow bucket, e.g. (-2, 1]. Therefore negative buckets and
+  // the zero bucket are unused, if the schema indicates custom bucketing.
+  //
+  // For each upper boundary the previous boundary represent the lower exclusive
+  // boundary for that bucket. The first element is the upper inclusive boundary
+  // for the first bucket, which implicitly has a lower inclusive bound of -Inf.
+  // This is similar to "le" label semantics on classic histograms. You may add a
+  // bucket with an upper bound of 0 to make sure that you really have no negative
+  // observations, but in practice, native histogram rendering will show both with
+  // or without first upper boundary 0 and no negative counts as the same case.
+  //
+  // The last element is not only the upper inclusive bound of the last regular
+  // bucket, but implicitly the lower exclusive bound of the +Inf bucket.
+  repeated double custom_values = 16;
 }
 
 // A BucketSpan defines a number of consecutive buckets with their

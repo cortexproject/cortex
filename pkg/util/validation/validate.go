@@ -350,7 +350,8 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 		if !exceedLimit {
 			return histogramSample, nil
 		}
-		// Exceed limit.
+		// Return error early if exceeding limit and there is no way to reduce resolution further.
+		// This also includes CustomBucketsSchema.
 		if histogramSample.Schema <= histogram.ExponentialSchemaMin {
 			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
@@ -376,7 +377,8 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 	if !exceedLimit {
 		return histogramSample, nil
 	}
-	// Exceed limit.
+	// Return error early if exceeding limit and there is no way to reduce resolution further.
+	// This also includes CustomBucketsSchema.
 	if histogramSample.Schema <= histogram.ExponentialSchemaMin {
 		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 		return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)

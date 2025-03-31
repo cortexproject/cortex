@@ -3104,3 +3104,130 @@ func TestRuler_QueryOffset(t *testing.T) {
 	gotOffset = rg.GetGroup().QueryOffset
 	require.Equal(t, time.Minute*2, *gotOffset)
 }
+
+func TestGetShardSizeForUser(t *testing.T) {
+	tests := []struct {
+		name               string
+		tenantShardSize    float64
+		userID             string
+		rulerInstanceCount int
+		expectedShardSize  int
+	}{
+		{
+			name:               "User with fixed shard size",
+			userID:             "user1",
+			rulerInstanceCount: 10,
+			tenantShardSize:    2,
+			expectedShardSize:  2,
+		},
+		{
+			name:               "User with percentage shard size",
+			userID:             "user1",
+			rulerInstanceCount: 10,
+			tenantShardSize:    0.6,
+			expectedShardSize:  6,
+		},
+		{
+			name:               "User with default percentage shard size",
+			userID:             "user1",
+			rulerInstanceCount: 10,
+			tenantShardSize:    -1,
+			expectedShardSize:  4,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+
+			rulerStateMap := make(map[string]ring.InstanceState)
+			rulerAZEvenSpread := make(map[string]string)
+			rulerIDs := make([]string, tc.rulerInstanceCount)
+
+			for i := 0; i < tc.rulerInstanceCount; i++ {
+				rulerID := fmt.Sprintf("ruler%d", i+1)
+				rulerIDs[i] = rulerID
+				rulerStateMap[rulerID] = ring.ACTIVE
+				rulerAZEvenSpread[rulerID] = string(rune('a' + i%3))
+			}
+
+			kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
+			allRulesByUser := map[string]rulespb.RuleGroupList{}
+			allTokensByRuler := map[string][]uint32{}
+			rulerAddrMap := map[string]*Ruler{}
+
+			createRuler := func(id string) *Ruler {
+				store := newMockRuleStore(allRulesByUser, nil)
+				cfg := defaultRulerConfig(t)
+
+				cfg.ShardingStrategy = util.ShardingStrategyShuffle
+				cfg.EnableSharding = true
+				cfg.EnableHAEvaluation = false
+				cfg.EvaluationInterval = 5 * time.Minute
+
+				cfg.Ring = RingConfig{
+					InstanceID:   id,
+					InstanceAddr: id,
+					KVStore: kv.Config{
+						Mock: kvStore,
+					},
+					ReplicationFactor:    1,
+					ZoneAwarenessEnabled: true,
+					InstanceZone:         rulerAZEvenSpread[id],
+				}
+
+				r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
+				r.limits = &ruleLimits{tenantShard: tc.tenantShardSize}
+				rulerAddrMap[id] = r
+				if r.ring != nil {
+					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
+					t.Cleanup(r.ring.StopAsync)
+				}
+				return r
+			}
+
+			var testRuler *Ruler
+			// Create rulers and ensure they join the ring
+			for _, rID := range rulerIDs {
+				r := createRuler(rID)
+				testRuler = r
+				require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.lifecycler))
+			}
+
+			err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				d, _ := in.(*ring.Desc)
+				if d == nil {
+					d = ring.NewDesc()
+				}
+				for rID, tokens := range allTokensByRuler {
+					d.AddIngester(rID, rulerAddrMap[rID].lifecycler.GetInstanceAddr(), rulerAddrMap[rID].lifecycler.GetInstanceZone(), tokens, ring.ACTIVE, time.Now())
+				}
+				return d, true, nil
+			})
+			require.NoError(t, err)
+			// Wait a bit to make sure ruler's ring is updated.
+			time.Sleep(100 * time.Millisecond)
+
+			// Check the ring state
+			ringDesc, err := kvStore.Get(context.Background(), ringKey)
+			require.NoError(t, err)
+			require.NotNil(t, ringDesc)
+			desc := ringDesc.(*ring.Desc)
+			require.Equal(t, tc.rulerInstanceCount, len(desc.Ingesters))
+
+			forEachRuler := func(f func(rID string, r *Ruler)) {
+				for rID, r := range rulerAddrMap {
+					f(rID, r)
+				}
+			}
+
+			// Sync Rules
+			forEachRuler(func(_ string, r *Ruler) {
+				r.syncRules(context.Background(), rulerSyncReasonInitial)
+			})
+
+			result := testRuler.getShardSizeForUser(tc.userID)
+			assert.Equal(t, tc.expectedShardSize, result)
+		})
+	}
+}

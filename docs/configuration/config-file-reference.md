@@ -273,10 +273,14 @@ query_scheduler:
 
 resource_thresholds:
   # Utilization threshold for CPU in percentage, between 0 and 1. 0 to disable.
+  # The CPU utilization metric is from github.com/prometheus/procfs, which is a
+  # close estimate. Applicable to ingesters and store-gateways only.
   # CLI flag: -resource-thresholds.cpu
   [cpu: <float> | default = 0]
 
   # Utilization threshold for heap in percentage, between 0 and 1. 0 to disable.
+  # The heap utilization metric is from runtime/metrics, which is a close
+  # estimate. Applicable to ingesters and store-gateways only.
   # CLI flag: -resource-thresholds.heap
   [heap: <float> | default = 0]
 

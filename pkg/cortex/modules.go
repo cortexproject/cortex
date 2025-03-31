@@ -777,6 +777,10 @@ func (t *Cortex) initResourceMonitor() (services.Service, error) {
 
 	scanner, err := resource.NewScanner()
 	if err != nil {
+		if errors.As(err, resource.UnsupportedOSError{}) {
+			level.Warn(util_log.Logger).Log("msg", "Skipping resource monitor", "err", err.Error())
+			return nil, nil
+		}
 		return nil, err
 	}
 

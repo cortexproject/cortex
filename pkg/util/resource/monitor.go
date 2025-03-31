@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"runtime"
 	"runtime/metrics"
 	"sync"
 	"time"
@@ -22,6 +23,12 @@ type ExhaustedError struct{}
 
 func (e *ExhaustedError) Error() string {
 	return "resource exhausted"
+}
+
+type UnsupportedOSError struct{}
+
+func (e *UnsupportedOSError) Error() string {
+	return "resource scanner is only supported in linux"
 }
 
 const heapMetricName = "/memory/classes/Heap/objects:bytes"
@@ -43,6 +50,10 @@ type Stats struct {
 }
 
 func NewScanner() (*Scanner, error) {
+	if runtime.GOOS != "linux" {
+		return nil, &UnsupportedOSError{}
+	}
+
 	proc, err := procfs.Self()
 	if err != nil {
 		return nil, errors.Wrap(err, "error reading proc directory")
@@ -89,8 +100,8 @@ type Monitor struct {
 
 	// Variables to calculate average CPU utilization
 	index         int
-	cpuRates      []float64
-	cpuIntervals  []float64
+	cpuRates      [dataPointsToAvg]float64
+	cpuIntervals  [dataPointsToAvg]float64
 	totalCPU      float64
 	totalInterval float64
 	lastCPU       float64
@@ -105,8 +116,8 @@ func NewMonitor(thresholds configs.Resources, limits configs.Resources, scanner 
 		containerLimit: limits,
 		scanner:        scanner,
 
-		cpuRates:     make([]float64, dataPointsToAvg),
-		cpuIntervals: make([]float64, dataPointsToAvg),
+		cpuRates:     [dataPointsToAvg]float64{},
+		cpuIntervals: [dataPointsToAvg]float64{},
 
 		lock: sync.RWMutex{},
 	}

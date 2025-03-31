@@ -3637,7 +3637,7 @@ query_rejection:
 # ruler. When this setting is specified in the per-tenant overrides, a value of
 # 0 disables shuffle sharding for the tenant.
 # CLI flag: -ruler.tenant-shard-size
-[ruler_tenant_shard_size: <int> | default = 0]
+[ruler_tenant_shard_size: <float> | default = 0]
 
 # Maximum number of rules per rule group per-tenant. 0 to disable.
 # CLI flag: -ruler.max-rules-per-rule-group

@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"flag"
-	"fmt"
 	"io"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -15,7 +14,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -138,7 +136,6 @@ func MakeIngesterClient(addr string, cfg Config, useStreamConnection bool) (Heal
 	if err != nil {
 		return nil, err
 	}
-	streamCtx, streamCancel := context.WithCancel(context.Background())
 	c := &closableHealthAndIngesterClient{
 		IngesterClient:          NewIngesterClient(conn),
 		HealthClient:            grpc_health_v1.NewHealthClient(conn),
@@ -146,12 +143,10 @@ func MakeIngesterClient(addr string, cfg Config, useStreamConnection bool) (Heal
 		addr:                    addr,
 		maxInflightPushRequests: cfg.MaxInflightPushRequests,
 		inflightPushRequests:    ingesterClientInflightPushRequests,
-		streamPushChan:          make(chan *streamWriteJob, INGESTER_CLIENT_STREAM_WORKER_COUNT),
-		streamCtx:               streamCtx,
-		streamCancel:            streamCancel,
 	}
 	if useStreamConnection {
-		err = c.Run()
+		streamCtx, streamCancel := context.WithCancel(context.Background())
+		err = c.Run(make(chan *streamWriteJob, INGESTER_CLIENT_STREAM_WORKER_COUNT), streamCtx, streamCancel)
 		if err != nil {
 			return nil, err
 		}
@@ -161,21 +156,46 @@ func MakeIngesterClient(addr string, cfg Config, useStreamConnection bool) (Heal
 
 func (c *closableHealthAndIngesterClient) Close() error {
 	c.inflightPushRequests.DeleteLabelValues(c.addr)
-	c.streamCancel()
+
+	if c.streamCancel != nil {
+		c.streamCancel()
+	}
+
+	if c.streamPushChan != nil {
+	drainingLoop:
+		for {
+			select {
+			case job, ok := <-c.streamPushChan:
+				if !ok {
+					break drainingLoop
+				}
+				if job != nil && job.cancel != nil {
+					job.err = errors.New("stream connection ingester client closing")
+					job.cancel()
+				}
+			default:
+				close(c.streamPushChan)
+				break drainingLoop
+			}
+		}
+	}
+
 	return c.conn.Close()
 }
 
-func (c *closableHealthAndIngesterClient) Run() error {
+func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJob, streamCtx context.Context, streamCancel context.CancelFunc) error {
+	c.streamPushChan = streamPushChan
+	c.streamCtx = streamCtx
+	c.streamCancel = streamCancel
 	var err error
 	for i := 0; i < INGESTER_CLIENT_STREAM_WORKER_COUNT; i++ {
-		workerCtx := user.InjectOrgID(c.streamCtx, fmt.Sprintf("stream-worker-%d", i))
 		go func() {
 			for {
 				select {
-				case <-workerCtx.Done():
+				case <-streamCtx.Done():
 					return
 				default:
-					err = c.worker(workerCtx)
+					err = c.worker(streamCtx)
 					if err != nil {
 						return
 					}

@@ -1343,8 +1343,8 @@ func (r *Ruler) getShardSizeForUser(userID string) int {
 func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {
 	ring := ring.ReadRing(r.ring)
 
-	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		shardSize := util.DynamicShardSize(shardSize, r.ring.InstancesCount())
+	if r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		shardSize := r.getShardSizeForUser(userID)
 		ring = r.ring.ShuffleShard(userID, shardSize)
 	}
 

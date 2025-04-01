@@ -3,14 +3,16 @@ package querier
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/prometheus/prometheus/scrape"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type MetadataQuerier interface {
-	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
+	MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error)
 }
 
 type metricMetadata struct {
@@ -24,20 +26,51 @@ const (
 	statusError   = "error"
 )
 
-type metadataResult struct {
+type metadataSuccessResult struct {
 	Status string                      `json:"status"`
-	Data   map[string][]metricMetadata `json:"data,omitempty"`
-	Error  string                      `json:"error,omitempty"`
+	Data   map[string][]metricMetadata `json:"data"`
+}
+
+type metadataErrorResult struct {
+	Status string `json:"status"`
+	Error  string `json:"error"`
 }
 
 // MetadataHandler returns metric metadata held by Cortex for a given tenant.
 // It is kept and returned as a set.
 func MetadataHandler(m MetadataQuerier) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp, err := m.MetricsMetadata(r.Context())
+		limit := -1
+		if s := r.FormValue("limit"); s != "" {
+			var err error
+			if limit, err = strconv.Atoi(s); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				util.WriteJSONResponse(w, metadataErrorResult{Status: statusError, Error: "limit must be a number"})
+				return
+			}
+		}
+
+		limitPerMetric := -1
+		if s := r.FormValue("limit_per_metric"); s != "" {
+			var err error
+			if limitPerMetric, err = strconv.Atoi(s); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				util.WriteJSONResponse(w, metadataErrorResult{Status: statusError, Error: "limit_per_metric must be a number"})
+				return
+			}
+		}
+
+		metric := r.FormValue("metric")
+		req := &client.MetricsMetadataRequest{
+			Limit:          int64(limit),
+			LimitPerMetric: int64(limitPerMetric),
+			Metric:         metric,
+		}
+
+		resp, err := m.MetricsMetadata(r.Context(), req)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			util.WriteJSONResponse(w, metadataResult{Status: statusError, Error: err.Error()})
+			util.WriteJSONResponse(w, metadataErrorResult{Status: statusError, Error: err.Error()})
 			return
 		}
 
@@ -45,7 +78,17 @@ func MetadataHandler(m MetadataQuerier) http.Handler {
 		metrics := map[string][]metricMetadata{}
 		for _, m := range resp {
 			ms, ok := metrics[m.MetricFamily]
+			// We have to check limit both ingester and here since the ingester only check
+			// for one user, it cannot handle the case when the mergeMetadataQuerier
+			// (tenant-federation) is used.
+			if limitPerMetric > 0 && len(ms) >= limitPerMetric {
+				continue
+			}
+
 			if !ok {
+				if limit >= 0 && len(metrics) >= limit {
+					break
+				}
 				// Most metrics will only hold 1 copy of the same metadata.
 				ms = make([]metricMetadata, 0, 1)
 				metrics[m.MetricFamily] = ms
@@ -53,6 +96,6 @@ func MetadataHandler(m MetadataQuerier) http.Handler {
 			metrics[m.MetricFamily] = append(ms, metricMetadata{Type: string(m.Type), Help: m.Help, Unit: m.Unit})
 		}
 
-		util.WriteJSONResponse(w, metadataResult{Status: statusSuccess, Data: metrics})
+		util.WriteJSONResponse(w, metadataSuccessResult{Status: statusSuccess, Data: metrics})
 	})
 }

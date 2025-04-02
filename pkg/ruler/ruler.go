@@ -1324,16 +1324,17 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 
 func (r *Ruler) getShardSizeForUser(userID string) int {
 	var newShardSize int
+	numInstances := r.ring.InstancesCount()
 	rulerTenantShardSize := r.limits.RulerTenantShardSize(userID)
 
 	if rulerTenantShardSize == 0 {
 		// A shard size of 0 means shuffle sharding is disabled for this specific user.
 		// In that case we use the full ring so that rule groups will be sharded across all rulers.
-		return r.ring.InstancesCount()
+		return numInstances
 	} else if rulerTenantShardSize > 0 {
-		newShardSize = util.DynamicShardSize(rulerTenantShardSize, r.ring.InstancesCount())
+		newShardSize = util.DynamicShardSize(rulerTenantShardSize, numInstances)
 	} else {
-		newShardSize = util.DynamicShardSize(defaultRulerShardSizePercentage, r.ring.InstancesCount())
+		newShardSize = util.DynamicShardSize(defaultRulerShardSizePercentage, numInstances)
 	}
 
 	// We want to guarantee that shard size will be at least 1

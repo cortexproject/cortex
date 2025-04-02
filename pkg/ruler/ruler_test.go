@@ -3114,25 +3114,60 @@ func TestGetShardSizeForUser(t *testing.T) {
 		expectedShardSize  int
 	}{
 		{
-			name:               "User with fixed shard size",
+			name:               "User with fixed shard size with 10 ruler instances",
 			userID:             "user1",
 			rulerInstanceCount: 10,
 			tenantShardSize:    2,
 			expectedShardSize:  2,
 		},
 		{
-			name:               "User with percentage shard size",
+			name:               "User with fixed shard size with 50 ruler instances",
+			userID:             "user1",
+			rulerInstanceCount: 50,
+			tenantShardSize:    30,
+			expectedShardSize:  30,
+		},
+		{
+			name:               "User with percentage shard size with 10 ruler instances",
 			userID:             "user1",
 			rulerInstanceCount: 10,
 			tenantShardSize:    0.6,
 			expectedShardSize:  6,
 		},
 		{
-			name:               "User with default percentage shard size",
+			name:               "User with percentage shard size with 80 ruler instances",
+			userID:             "user1",
+			rulerInstanceCount: 80,
+			tenantShardSize:    0.25,
+			expectedShardSize:  20,
+		},
+		{
+			name:               "User with invalid negative shard size",
 			userID:             "user1",
 			rulerInstanceCount: 10,
 			tenantShardSize:    -1,
 			expectedShardSize:  4,
+		},
+		{
+			name:               "User with default 0 shard size",
+			userID:             "user1",
+			rulerInstanceCount: 10,
+			tenantShardSize:    0,
+			expectedShardSize:  10,
+		},
+		{
+			name:               "User with greater shard size than number of ruler instances",
+			userID:             "user1",
+			rulerInstanceCount: 10,
+			tenantShardSize:    15,
+			expectedShardSize:  15,
+		},
+		{
+			name:               "Ensure smallest shard size will be 1",
+			userID:             "user1",
+			rulerInstanceCount: 1,
+			tenantShardSize:    0.5,
+			expectedShardSize:  1,
 		},
 	}
 

@@ -858,18 +858,12 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	// Only users in userRings will be used in the to load the rules.
 	userRings := map[string]ring.ReadRing{}
 	for _, u := range users {
-		if shardSize := r.limits.RulerTenantShardSize(u); shardSize > 0 {
-			shardSize := util.DynamicShardSize(shardSize, r.ring.InstancesCount())
-			subRing := r.ring.ShuffleShard(u, shardSize)
+		shardSize := r.getShardSizeForUser(u)
+		subRing := r.ring.ShuffleShard(u, shardSize)
 
-			// Include the user only if it belongs to this ruler shard.
-			if subRing.HasInstance(r.lifecycler.GetInstanceID()) {
-				userRings[u] = subRing
-			}
-		} else {
-			// A shard size of 0 means shuffle sharding is disabled for this specific user.
-			// In that case we use the full ring so that rule groups will be sharded across all rulers.
-			userRings[u] = r.ring
+		// Include the user only if it belongs to this ruler shard.
+		if subRing.HasInstance(r.lifecycler.GetInstanceID()) {
+			userRings[u] = subRing
 		}
 	}
 
@@ -1329,15 +1323,21 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 }
 
 func (r *Ruler) getShardSizeForUser(userID string) int {
-	var userShardSize int
+	var newShardSize int
+	rulerTenantShardSize := r.limits.RulerTenantShardSize(userID)
 
-	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 {
-		userShardSize = util.DynamicShardSize(shardSize, r.ring.InstancesCount())
+	if rulerTenantShardSize == 0 {
+		// A shard size of 0 means shuffle sharding is disabled for this specific user.
+		// In that case we use the full ring so that rule groups will be sharded across all rulers.
+		return r.ring.InstancesCount()
+	} else if rulerTenantShardSize > 0 {
+		newShardSize = util.DynamicShardSize(rulerTenantShardSize, r.ring.InstancesCount())
 	} else {
-		userShardSize = util.DynamicShardSize(defaultRulerShardSizePercentage, r.ring.InstancesCount())
+		newShardSize = util.DynamicShardSize(defaultRulerShardSizePercentage, r.ring.InstancesCount())
 	}
 
-	return userShardSize
+	// We want to guarantee that shard size will be at least 1
+	return max(newShardSize, 1)
 }
 
 func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {

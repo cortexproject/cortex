@@ -3,8 +3,10 @@ package client
 import (
 	"context"
 	"flag"
+	"io"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
 
@@ -31,6 +33,8 @@ var ingesterClientInflightPushRequests = promauto.NewGaugeVec(prometheus.GaugeOp
 
 var errTooManyInflightPushRequests = errors.New("too many inflight push requests in ingester client")
 
+const INGESTER_CLIENT_STREAM_WORKER_COUNT = 1024
+
 // ClosableClientConn is grpc.ClientConnInterface with Close function
 type ClosableClientConn interface {
 	grpc.ClientConnInterface
@@ -43,6 +47,15 @@ type HealthAndIngesterClient interface {
 	grpc_health_v1.HealthClient
 	Close() error
 	PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error)
+	PushStreamConnection(ctx context.Context, in *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error)
+}
+
+type streamWriteJob struct {
+	req    *cortexpb.StreamWriteRequest
+	resp   *cortexpb.WriteResponse
+	ctx    context.Context
+	cancel context.CancelFunc
+	err    error
 }
 
 type closableHealthAndIngesterClient struct {
@@ -53,6 +66,9 @@ type closableHealthAndIngesterClient struct {
 	maxInflightPushRequests int64
 	inflightRequests        atomic.Int64
 	inflightPushRequests    *prometheus.GaugeVec
+	streamPushChan          chan *streamWriteJob
+	streamCtx               context.Context
+	streamCancel            context.CancelFunc
 }
 
 func (c *closableHealthAndIngesterClient) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
@@ -72,6 +88,38 @@ func (c *closableHealthAndIngesterClient) Push(ctx context.Context, in *cortexpb
 	})
 }
 
+func (c *closableHealthAndIngesterClient) PushStreamConnection(ctx context.Context, in *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return c.handlePushRequest(func() (*cortexpb.WriteResponse, error) {
+		select {
+		case <-c.streamCtx.Done():
+			return nil, errors.Wrap(c.streamCtx.Err(), "ingester client stream connection closed")
+		default:
+		}
+
+		tenantID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		streamReq := &cortexpb.StreamWriteRequest{
+			TenantID: tenantID,
+			Request:  in,
+		}
+
+		reqCtx, reqCancel := context.WithCancel(ctx)
+		defer reqCancel()
+
+		job := &streamWriteJob{
+			req:    streamReq,
+			ctx:    reqCtx,
+			cancel: reqCancel,
+		}
+		c.streamPushChan <- job
+		<-reqCtx.Done()
+		return job.resp, job.err
+	})
+}
+
 func (c *closableHealthAndIngesterClient) handlePushRequest(mainFunc func() (*cortexpb.WriteResponse, error)) (*cortexpb.WriteResponse, error) {
 	currentInflight := c.inflightRequests.Inc()
 	c.inflightPushRequests.WithLabelValues(c.addr).Set(float64(currentInflight))
@@ -85,7 +133,7 @@ func (c *closableHealthAndIngesterClient) handlePushRequest(mainFunc func() (*co
 }
 
 // MakeIngesterClient makes a new IngesterClient
-func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error) {
+func MakeIngesterClient(addr string, cfg Config, useStreamConnection bool) (HealthAndIngesterClient, error) {
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(ingesterClientRequestDuration))
 	if err != nil {
 		return nil, err
@@ -94,19 +142,109 @@ func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error
 	if err != nil {
 		return nil, err
 	}
-	return &closableHealthAndIngesterClient{
+	c := &closableHealthAndIngesterClient{
 		IngesterClient:          NewIngesterClient(conn),
 		HealthClient:            grpc_health_v1.NewHealthClient(conn),
 		conn:                    conn,
 		addr:                    addr,
 		maxInflightPushRequests: cfg.MaxInflightPushRequests,
 		inflightPushRequests:    ingesterClientInflightPushRequests,
-	}, nil
+	}
+	if useStreamConnection {
+		streamCtx, streamCancel := context.WithCancel(context.Background())
+		err = c.Run(make(chan *streamWriteJob, INGESTER_CLIENT_STREAM_WORKER_COUNT), streamCtx, streamCancel)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return c, nil
 }
 
 func (c *closableHealthAndIngesterClient) Close() error {
 	c.inflightPushRequests.DeleteLabelValues(c.addr)
+
+	if c.streamCancel != nil {
+		c.streamCancel()
+	}
+
+	if c.streamPushChan != nil {
+	drainingLoop:
+		for {
+			select {
+			case job, ok := <-c.streamPushChan:
+				if !ok {
+					break drainingLoop
+				}
+				if job != nil && job.cancel != nil {
+					job.err = errors.New("stream connection ingester client closing")
+					job.cancel()
+				}
+			default:
+				close(c.streamPushChan)
+				break drainingLoop
+			}
+		}
+	}
+
 	return c.conn.Close()
+}
+
+func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJob, streamCtx context.Context, streamCancel context.CancelFunc) error {
+	c.streamPushChan = streamPushChan
+	c.streamCtx = streamCtx
+	c.streamCancel = streamCancel
+
+	errChan := make(chan error)
+	defer close(errChan)
+	for i := 0; i < INGESTER_CLIENT_STREAM_WORKER_COUNT; i++ {
+		go func() {
+			workerErr := c.worker(streamCtx)
+			if workerErr != nil {
+				errChan <- workerErr
+			}
+		}()
+	}
+	for err := range errChan {
+		if err != nil {
+			c.streamCancel()
+			return errors.Wrap(err, err.Error())
+		}
+	}
+	return nil
+}
+
+func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {
+	stream, err := c.PushStream(ctx)
+	if err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case job := <-c.streamPushChan:
+			err = stream.Send(job.req)
+			if err == io.EOF {
+				job.resp = &cortexpb.WriteResponse{}
+				job.cancel()
+				return nil
+			}
+			if err != nil {
+				job.err = err
+				job.cancel()
+				continue
+			}
+			resp, err := stream.Recv()
+			if err == io.EOF {
+				job.resp = &cortexpb.WriteResponse{}
+				job.cancel()
+				return nil
+			}
+			job.resp = resp
+			job.err = err
+			job.cancel()
+		}
+	}
 }
 
 // Config is the configuration struct for the ingester client

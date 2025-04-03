@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime"
+	"runtime/debug"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -27,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/compactor"
+	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -51,6 +54,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/modules"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -86,6 +90,7 @@ const (
 	Purger                   string = "purger"
 	QueryScheduler           string = "query-scheduler"
 	TenantFederation         string = "tenant-federation"
+	ResourceMonitor          string = "resource-monitor"
 	All                      string = "all"
 )
 
@@ -441,7 +446,7 @@ func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 	t.Cfg.Ingester.QueryIngestersWithin = t.Cfg.Querier.QueryIngestersWithin
 	t.tsdbIngesterConfig()
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Overrides, prometheus.DefaultRegisterer, util_log.Logger)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Overrides, prometheus.DefaultRegisterer, util_log.Logger, t.ResourceMonitor)
 	if err != nil {
 		return
 	}
@@ -705,7 +710,7 @@ func (t *Cortex) initCompactor() (serv services.Service, err error) {
 func (t *Cortex) initStoreGateway() (serv services.Service, err error) {
 	t.Cfg.StoreGateway.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	t.StoreGateway, err = storegateway.NewStoreGateway(t.Cfg.StoreGateway, t.Cfg.BlocksStorage, t.Overrides, t.Cfg.Server.LogLevel, util_log.Logger, prometheus.DefaultRegisterer)
+	t.StoreGateway, err = storegateway.NewStoreGateway(t.Cfg.StoreGateway, t.Cfg.BlocksStorage, t.Overrides, t.Cfg.Server.LogLevel, util_log.Logger, prometheus.DefaultRegisterer, t.ResourceMonitor)
 	if err != nil {
 		return nil, err
 	}
@@ -765,11 +770,36 @@ func (t *Cortex) initQueryScheduler() (services.Service, error) {
 	return s, nil
 }
 
+func (t *Cortex) initResourceMonitor() (services.Service, error) {
+	if t.Cfg.ResourceThresholds.CPU <= 0 && t.Cfg.ResourceThresholds.Heap <= 0 {
+		return nil, nil
+	}
+
+	scanner, err := resource.NewScanner()
+	if err != nil {
+		if errors.As(err, resource.UnsupportedOSError{}) {
+			level.Warn(util_log.Logger).Log("msg", "Skipping resource monitor", "err", err.Error())
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	limits := configs.Resources{
+		CPU:  float64(runtime.GOMAXPROCS(0)),
+		Heap: float64(debug.SetMemoryLimit(-1)),
+	}
+
+	t.ResourceMonitor, err = resource.NewMonitor(t.Cfg.ResourceThresholds, limits, scanner, prometheus.DefaultRegisterer)
+
+	return t.ResourceMonitor, err
+}
+
 func (t *Cortex) setupModuleManager() error {
 	mm := modules.NewManager(util_log.Logger)
 
 	// Register all modules here.
 	// RegisterModule(name string, initFn func()(services.Service, error))
+	mm.RegisterModule(ResourceMonitor, t.initResourceMonitor)
 	mm.RegisterModule(Server, t.initServer, modules.UserInvisibleModule)
 	mm.RegisterModule(API, t.initAPI, modules.UserInvisibleModule)
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
@@ -811,7 +841,7 @@ func (t *Cortex) setupModuleManager() error {
 		Distributor:              {DistributorService, API, GrpcClientService},
 		DistributorService:       {Ring, Overrides},
 		Ingester:                 {IngesterService, Overrides, API},
-		IngesterService:          {Overrides, RuntimeConfig, MemberlistKV},
+		IngesterService:          {Overrides, RuntimeConfig, MemberlistKV, ResourceMonitor},
 		Flusher:                  {Overrides, API},
 		Queryable:                {Overrides, DistributorService, Overrides, Ring, API, StoreQueryable, MemberlistKV},
 		Querier:                  {TenantFederation},
@@ -824,7 +854,7 @@ func (t *Cortex) setupModuleManager() error {
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV, Overrides},
 		Compactor:                {API, MemberlistKV, Overrides},
-		StoreGateway:             {API, Overrides, MemberlistKV},
+		StoreGateway:             {API, Overrides, MemberlistKV, ResourceMonitor},
 		TenantDeletion:           {API, Overrides},
 		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},

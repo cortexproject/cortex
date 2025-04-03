@@ -26,6 +26,7 @@ func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc
 		User:        user,
 		Limit:       int64(rl.Limit),
 		QueryOffset: queryOffset,
+		Labels:      cortexpb.FromLabelsToLabelAdapters(labels.FromMap(rl.Labels)),
 	}
 	return &rg
 }
@@ -60,6 +61,7 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 		Rules:       make([]rulefmt.RuleNode, len(rg.GetRules())),
 		Limit:       int(rg.Limit),
 		QueryOffset: queryOffset,
+		Labels:      cortexpb.FromLabelAdaptersToLabels(rg.Labels).Map(),
 	}
 
 	for i, rl := range rg.GetRules() {

@@ -89,6 +89,8 @@ const (
 	// query response formats
 	queryResponseFormatJson     = "json"
 	queryResponseFormatProtobuf = "protobuf"
+
+	defaultRulerShardSizePercentage = 0.4
 )
 
 type DisabledRuleGroupErr struct {
@@ -856,17 +858,12 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	// Only users in userRings will be used in the to load the rules.
 	userRings := map[string]ring.ReadRing{}
 	for _, u := range users {
-		if shardSize := r.limits.RulerTenantShardSize(u); shardSize > 0 {
-			subRing := r.ring.ShuffleShard(u, shardSize)
+		shardSize := r.getShardSizeForUser(u)
+		subRing := r.ring.ShuffleShard(u, shardSize)
 
-			// Include the user only if it belongs to this ruler shard.
-			if subRing.HasInstance(r.lifecycler.GetInstanceID()) {
-				userRings[u] = subRing
-			}
-		} else {
-			// A shard size of 0 means shuffle sharding is disabled for this specific user.
-			// In that case we use the full ring so that rule groups will be sharded across all rulers.
-			userRings[u] = r.ring
+		// Include the user only if it belongs to this ruler shard.
+		if subRing.HasInstance(r.lifecycler.GetInstanceID()) {
+			userRings[u] = subRing
 		}
 	}
 
@@ -1325,10 +1322,30 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 	return groupDescs, nil
 }
 
+func (r *Ruler) getShardSizeForUser(userID string) int {
+	var newShardSize int
+	numInstances := r.ring.InstancesCount()
+	rulerTenantShardSize := r.limits.RulerTenantShardSize(userID)
+
+	if rulerTenantShardSize == 0 {
+		// A shard size of 0 means shuffle sharding is disabled for this specific user.
+		// In that case we use the full ring so that rule groups will be sharded across all rulers.
+		return numInstances
+	} else if rulerTenantShardSize > 0 {
+		newShardSize = util.DynamicShardSize(rulerTenantShardSize, numInstances)
+	} else {
+		newShardSize = util.DynamicShardSize(defaultRulerShardSizePercentage, numInstances)
+	}
+
+	// We want to guarantee that shard size will be at least 1
+	return max(newShardSize, 1)
+}
+
 func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {
 	ring := ring.ReadRing(r.ring)
 
-	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+	if r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		shardSize := r.getShardSizeForUser(userID)
 		ring = r.ring.ShuffleShard(userID, shardSize)
 	}
 

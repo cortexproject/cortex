@@ -167,7 +167,7 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 			return baseInterval, nil
 		}
 
-		queryVerticalShardSize, err := getMaxVerticalShardSize(ctx, r, limits, queryAnalyzer)
+		maxVerticalShardSize, isShardable, err := getMaxVerticalShardSize(ctx, r, limits, queryAnalyzer)
 		if err != nil {
 			return baseInterval, err
 		}
@@ -177,41 +177,60 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 			return baseInterval, err
 		}
 
-		maxSplitsPerQuery := getMaxSplitsFromConfig(dynamicSplitCfg.MaxShardsPerQuery, queryVerticalShardSize)
-		maxSplitsFromDurationFetched := getMaxSplitsByDurationFetched(dynamicSplitCfg.MaxFetchedDataDurationPerQuery, queryVerticalShardSize, queryExpr, r.GetStart(), r.GetEnd(), r.GetStep(), baseInterval, lookbackDelta)
+		interval := baseInterval
+		verticalShardSize := 1
+		totalShards := 0
+		// Find the combination of horizontal splits and vertical shards that will result in the largest total number of shards
+		for currentVerticalShardSize := 1; currentVerticalShardSize <= maxVerticalShardSize; currentVerticalShardSize++ {
+			maxSplitsPerQuery := getMaxSplitsFromConfig(dynamicSplitCfg.MaxShardsPerQuery, currentVerticalShardSize)
+			maxSplitsFromDurationFetched := getMaxSplitsByDurationFetched(dynamicSplitCfg.MaxFetchedDataDurationPerQuery, currentVerticalShardSize, queryExpr, r.GetStart(), r.GetEnd(), r.GetStep(), baseInterval, lookbackDelta)
 
-		// Use the more restrictive max splits limit
-		var maxSplits int
-		switch {
-		case dynamicSplitCfg.MaxShardsPerQuery > 0 && dynamicSplitCfg.MaxFetchedDataDurationPerQuery > 0:
-			maxSplits = min(maxSplitsPerQuery, maxSplitsFromDurationFetched)
-		case dynamicSplitCfg.MaxShardsPerQuery > 0:
-			maxSplits = maxSplitsPerQuery
-		case dynamicSplitCfg.MaxFetchedDataDurationPerQuery > 0:
-			maxSplits = maxSplitsFromDurationFetched
+			// Use the more restrictive max splits limit
+			var maxSplits int
+			switch {
+			case dynamicSplitCfg.MaxShardsPerQuery > 0 && dynamicSplitCfg.MaxFetchedDataDurationPerQuery > 0:
+				maxSplits = min(maxSplitsPerQuery, maxSplitsFromDurationFetched)
+			case dynamicSplitCfg.MaxShardsPerQuery > 0:
+				maxSplits = maxSplitsPerQuery
+			case dynamicSplitCfg.MaxFetchedDataDurationPerQuery > 0:
+				maxSplits = maxSplitsFromDurationFetched
+			}
+
+			currentInterval := getIntervalFromMaxSplits(r, baseInterval, maxSplits)
+			currentTotalShards := getExpectedTotalShards(r.GetStart(), r.GetEnd(), currentInterval, currentVerticalShardSize)
+			if totalShards <= currentTotalShards {
+				verticalShardSize = currentVerticalShardSize
+				interval = currentInterval
+				totalShards = currentTotalShards
+			}
 		}
 
-		interval := getIntervalFromMaxSplits(r, baseInterval, maxSplits)
+		// Set number of vertical shards to be used by shard_by middleware
+		if isShardable && maxVerticalShardSize > 1 {
+			stats := querier_stats.FromContext(ctx)
+			stats.AddExtraFields("shard_by.num_shards", verticalShardSize)
+		}
+
 		return interval, nil
 	}
 }
 
-func getMaxVerticalShardSize(ctx context.Context, r tripperware.Request, limits tripperware.Limits, queryAnalyzer querysharding.Analyzer) (int, error) {
+func getMaxVerticalShardSize(ctx context.Context, r tripperware.Request, limits tripperware.Limits, queryAnalyzer querysharding.Analyzer) (int, bool, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return 1, err
+		return 1, false, err
 	}
 
 	analysis, err := queryAnalyzer.Analyze(r.GetQuery())
 	if err != nil {
-		return 1, err
+		return 1, false, err
 	}
 
 	queryVerticalShardSize := validation.SmallestPositiveIntPerTenant(tenantIDs, limits.QueryVerticalShardSize)
 	if queryVerticalShardSize <= 0 || !analysis.IsShardable() {
 		queryVerticalShardSize = 1
 	}
-	return queryVerticalShardSize, nil
+	return queryVerticalShardSize, analysis.IsShardable(), nil
 }
 
 // Returns the minimum multiple of base interval needed to split query into less than maxSplits
@@ -323,6 +342,12 @@ func analyzeDurationFetchedByQueryExpr(expr parser.Expr, queryStart int64, query
 	})
 
 	return time.Duration(durationFetchedByRangeCount) * baseInterval, time.Duration(durationFetchedBySelectorsCount) * baseInterval
+}
+
+func getExpectedTotalShards(queryStart int64, queryEnd int64, interval time.Duration, verticalShardSize int) int {
+	queryRange := time.Duration((queryEnd - queryStart) * int64(time.Millisecond))
+	expectedSplits := int(ceilDiv(int64(queryRange), int64(interval)))
+	return expectedSplits * verticalShardSize
 }
 
 func floorDiv(a, b int64) int64 {

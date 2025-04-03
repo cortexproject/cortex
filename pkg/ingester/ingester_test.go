@@ -834,7 +834,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 				require.Equal(t, expected, res)
 
 				// Verify metadata
-				m, err := ing.MetricsMetadata(ctx, nil)
+				m, err := ing.MetricsMetadata(ctx, &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
 				require.NoError(t, err)
 				assert.Equal(t, []*cortexpb.MetricMetadata{metadata1}, m.Metadata)
 
@@ -965,7 +965,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 				assert.Equal(t, expected, res)
 
 				// Verify metadata
-				m, err := ing.MetricsMetadata(ctx, nil)
+				m, err := ing.MetricsMetadata(ctx, &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
 				require.NoError(t, err)
 				assert.Equal(t, []*cortexpb.MetricMetadata{metadata1}, m.Metadata)
 
@@ -2008,7 +2008,7 @@ func TestIngester_Push(t *testing.T) {
 			assert.Equal(t, testData.expectedExemplarsIngested, exemplarRes.Timeseries)
 
 			// Read back metadata to see what has been really ingested.
-			mres, err := i.MetricsMetadata(ctx, &client.MetricsMetadataRequest{})
+			mres, err := i.MetricsMetadata(ctx, &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
 
 			require.NoError(t, err)
 			require.NotNil(t, mres)

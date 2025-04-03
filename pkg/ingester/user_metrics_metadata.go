@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -84,16 +85,44 @@ func (mm *userMetricsMetadata) purge(deadline time.Time) {
 	mm.metrics.memMetadataRemovedTotal.WithLabelValues(mm.userID).Add(float64(deleted))
 }
 
-func (mm *userMetricsMetadata) toClientMetadata() []*cortexpb.MetricMetadata {
+func (mm *userMetricsMetadata) toClientMetadata(req *client.MetricsMetadataRequest) []*cortexpb.MetricMetadata {
 	mm.mtx.RLock()
 	defer mm.mtx.RUnlock()
 	r := make([]*cortexpb.MetricMetadata, 0, len(mm.metricToMetadata))
-	for _, set := range mm.metricToMetadata {
-		for m := range set {
-			r = append(r, &m)
+	if req.Limit == 0 {
+		return r
+	}
+
+	if req.Metric != "" {
+		metadataSet, ok := mm.metricToMetadata[req.Metric]
+		if !ok {
+			return r
 		}
+
+		metadataSet.add(req.LimitPerMetric, &r)
+		return r
+	}
+
+	var metrics int64
+	for _, set := range mm.metricToMetadata {
+		if req.Limit > 0 && metrics >= req.Limit {
+			break
+		}
+		set.add(req.LimitPerMetric, &r)
+		metrics++
 	}
 	return r
+}
+
+func (mns metricMetadataSet) add(limitPerMetric int64, r *[]*cortexpb.MetricMetadata) {
+	var metrics int64
+	for m := range mns {
+		if limitPerMetric > 0 && metrics >= limitPerMetric {
+			return
+		}
+		*r = append(*r, &m)
+		metrics++
+	}
 }
 
 type metricMetadataSet map[cortexpb.MetricMetadata]time.Time

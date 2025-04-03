@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
 )
 
@@ -51,7 +52,7 @@ type mockMetadataQuerier struct {
 	tenantIdToMetadata map[string][]scrape.MetricMetadata
 }
 
-func (m *mockMetadataQuerier) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+func (m *mockMetadataQuerier) MetricsMetadata(ctx context.Context, _ *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error) {
 	// Due to lint check for `ensure the query path is supporting multiple tenants`
 	ids, err := tenant.TenantIDs(ctx)
 	if err != nil {
@@ -137,7 +138,7 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 			}
 
 			mergeMetadataQuerier := NewMetadataQuerier(&upstream, defaultMaxConcurrency, reg)
-			metadata, err := mergeMetadataQuerier.MetricsMetadata(user.InjectOrgID(context.Background(), test.orgId))
+			metadata, err := mergeMetadataQuerier.MetricsMetadata(user.InjectOrgID(context.Background(), test.orgId), &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
 			require.NoError(t, err)
 			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(test.expectedMetrics), "cortex_querier_federated_tenants_per_metadata_query"))
 			require.Equal(t, test.expectedResults, metadata)

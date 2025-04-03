@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -12,6 +13,28 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
+
+func TestDecodeLabelOrder(t *testing.T) {
+	j := JsonDecoder{}
+
+	decoded := j.vectorToPromQLVector(
+		model.Vector{
+			{
+				Metric: model.Metric{
+					"foo": "bar",
+					"a":   "b",
+					"b":   "b",
+				},
+				Timestamp: 1724146338123,
+				Value:     1.234,
+			},
+		},
+	)
+	require.Equal(t, 1, len(decoded))
+	require.Equal(t, int64(1724146338123), decoded[0].T)
+	require.Equal(t, 1.234, decoded[0].F)
+	require.Equal(t, labels.FromStrings("a", "b", "b", "b", "foo", "bar"), decoded[0].Metric)
+}
 
 func TestProtoDecode(t *testing.T) {
 	tests := []struct {

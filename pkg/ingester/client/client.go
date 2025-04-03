@@ -90,6 +90,12 @@ func (c *closableHealthAndIngesterClient) Push(ctx context.Context, in *cortexpb
 
 func (c *closableHealthAndIngesterClient) PushStreamConnection(ctx context.Context, in *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
 	return c.handlePushRequest(func() (*cortexpb.WriteResponse, error) {
+		select {
+		case <-c.streamCtx.Done():
+			return nil, errors.Wrap(c.streamCtx.Err(), "ingester client stream connection closed")
+		default:
+		}
+
 		tenantID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
@@ -187,23 +193,24 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 	c.streamPushChan = streamPushChan
 	c.streamCtx = streamCtx
 	c.streamCancel = streamCancel
-	var err error
+
+	errChan := make(chan error)
+	defer close(errChan)
 	for i := 0; i < INGESTER_CLIENT_STREAM_WORKER_COUNT; i++ {
 		go func() {
-			for {
-				select {
-				case <-streamCtx.Done():
-					return
-				default:
-					err = c.worker(streamCtx)
-					if err != nil {
-						return
-					}
-				}
+			workerErr := c.worker(streamCtx)
+			if workerErr != nil {
+				errChan <- workerErr
 			}
 		}()
 	}
-	return err
+	for err := range errChan {
+		if err != nil {
+			c.streamCancel()
+			return errors.Wrap(err, err.Error())
+		}
+	}
+	return nil
 }
 
 func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {

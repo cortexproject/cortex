@@ -19,6 +19,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
@@ -440,14 +441,15 @@ func Test_evaluateAtModifier(t *testing.T) {
 
 func Test_dynamicIntervalFn(t *testing.T) {
 	for _, tc := range []struct {
-		name                     string
-		baseSplitInterval        time.Duration
-		req                      tripperware.Request
-		expectedInterval         time.Duration
-		expectedError            bool
-		verticalShardSize        int
-		maxIntervalSplits        int
-		maxDurationOfDataFetched time.Duration
+		name                      string
+		baseSplitInterval         time.Duration
+		req                       tripperware.Request
+		maxVerticalShardSize      int
+		maxIntervalSplits         int
+		maxDurationOfDataFetched  time.Duration
+		expectedInterval          time.Duration
+		expectedVerticalShardSize int
+		expectedError             bool
 	}{
 		{
 			baseSplitInterval: day,
@@ -549,16 +551,17 @@ func Test_dynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "60 day range with 15 max splits and 3 vertical shard size, expect split by 12 days",
+			name:              "60 day range with 15 max splits and max 3 vertical shard size, expect split by 12 days and 3 vertical shards",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
 				End:   60 * 24 * 3600 * seconds,
 				Step:  5 * 60 * seconds,
 				Query: "sum by (pod) (up)",
 			},
-			verticalShardSize: 3,
-			maxIntervalSplits: 15,
-			expectedInterval:  12 * day,
+			maxVerticalShardSize:      3,
+			maxIntervalSplits:         15,
+			expectedInterval:          12 * day,
+			expectedVerticalShardSize: 3,
 		},
 		{
 			baseSplitInterval: time.Hour,
@@ -610,16 +613,17 @@ func Test_dynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "30 day range with multiple matrix selectors and 3 vertical shards, expect split by 6 days",
+			name:              "30 day range with multiple matrix selectors and max 3 vertical shards, expect split by 1 day and 1 vertical shard",
 			req: &tripperware.PrometheusRequest{
 				Start: (14 * 24 * 3600 * seconds) - (3600 * seconds),
 				End:   (32 * 24 * 3600 * seconds) + (2 * 3600 * seconds),
 				Step:  5 * 60 * seconds,
 				Query: "rate(up[2d]) + rate(up[5d]) + rate(up[7d])",
 			},
-			verticalShardSize:        3,
-			maxDurationOfDataFetched: 350 * day,
-			expectedInterval:         6 * day,
+			maxVerticalShardSize:      3,
+			maxDurationOfDataFetched:  350 * day,
+			expectedInterval:          day,
+			expectedVerticalShardSize: 1,
 		},
 		{
 			baseSplitInterval: day,
@@ -656,8 +660,16 @@ func Test_dynamicIntervalFn(t *testing.T) {
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), "1")
-			interval, err := dynamicIntervalFn(cfg, mockLimits{queryVerticalShardSize: tc.verticalShardSize}, querysharding.NewQueryAnalyzer(), lookbackDelta)(ctx, tc.req)
+			stats, ctx := querier_stats.ContextWithEmptyStats(ctx)
+
+			interval, err := dynamicIntervalFn(cfg, mockLimits{queryVerticalShardSize: tc.maxVerticalShardSize}, querysharding.NewQueryAnalyzer(), lookbackDelta)(ctx, tc.req)
 			require.Equal(t, tc.expectedInterval, interval)
+
+			if tc.expectedVerticalShardSize > 0 {
+				verticalShardSize, err := strconv.Atoi(stats.GetExtraField("shard_by.num_shards"))
+				require.Nil(t, err)
+				require.Equal(t, tc.expectedVerticalShardSize, verticalShardSize)
+			}
 			if !tc.expectedError {
 				require.Nil(t, err)
 			}

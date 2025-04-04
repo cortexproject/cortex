@@ -3,6 +3,7 @@ package tripperware
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -46,6 +47,10 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	numShards := validation.SmallestPositiveIntPerTenant(tenantIDs, s.limits.QueryVerticalShardSize)
+	// Check if vertical shard size is set by dynamic query splitting
+	if val, err := strconv.Atoi(stats.GetExtraField("shard_by.num_shards")); err == nil && val > 0 {
+		numShards = val
+	}
 
 	if numShards <= 1 {
 		return s.next.Do(ctx, r)

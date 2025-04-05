@@ -8,7 +8,7 @@
 | Daniel Blando      | daniel@blando.com.br  | @danielblando | Amazon Web Services |
 | Friedrich Gonzalez | friedrichg@gmail.com  | @friedrichg   | Adobe               |
 
-### Triaggers
+### Triagers
 
 
 | Name            | Email                      | GitHub          | Company             |

@@ -53,7 +53,7 @@ id = "G-SRR0DSREGX"
 [languages]
 [languages.en]
 title = "Cortex"
-description = "A horizontally scalable, highly available, multi-tenant, long term storage for Prometheus."
+description = "The horizontally scalable, highly available, multi-tenant, long term storage solution for Prometheus and OpenTelemetry Metrics."
 languageName ="English"
 # Weight used for sorting.
 weight = 1

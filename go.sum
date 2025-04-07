@@ -938,8 +938,8 @@ github.com/coreos/go-semver v0.3.0/go.mod h1:nnelYz7RCh+5ahJtPPxZlU+153eP4D4r3Ee
 github.com/coreos/go-systemd/v22 v22.3.2/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
 github.com/coreos/go-systemd/v22 v22.5.0 h1:RrqgGjYQKalulkV8NGVIfkXQf6YYmOyiJKk8iXXhfZs=
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
-github.com/cortexproject/promqlsmith v0.0.0-20250203072244-cbb5738d00ca h1:TvKuPFRUQ39O07xv3b+TO6GBRhchYKyBCCXrlmmDE3Y=
-github.com/cortexproject/promqlsmith v0.0.0-20250203072244-cbb5738d00ca/go.mod h1:xbYQa0KX6Eh6YWbTBfZ9kK3N4hRxX+ZPIfVIY2U/y00=
+github.com/cortexproject/promqlsmith v0.0.0-20250407233056-90db95b1a4e4 h1:dpo7kQ24uFSV6Zgm9/kB34TIUWjGmadlbKrM6fNfQko=
+github.com/cortexproject/promqlsmith v0.0.0-20250407233056-90db95b1a4e4/go.mod h1:jh6POgN18lXU133HBMfwr/1TjvBp8e5kL4ZtRsAPvGY=
 github.com/cortexproject/weaveworks-common v0.0.0-20241129212437-96019edf21f1 h1:UoSixdl0sBUhfEOMpIGxFnJjp3/y/+nkw6Du7su05FE=
 github.com/cortexproject/weaveworks-common v0.0.0-20241129212437-96019edf21f1/go.mod h1:7cl8fS/nivXe2DmBUUmr/3UGTJG2jVU2NRaIayR2Zjs=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=

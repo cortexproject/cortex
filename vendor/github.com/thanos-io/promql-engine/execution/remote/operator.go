@@ -9,18 +9,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/execution/warnings"
+	"github.com/thanos-io/promql-engine/query"
+	promstorage "github.com/thanos-io/promql-engine/storage/prometheus"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/stats"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/execution/warnings"
-	"github.com/thanos-io/promql-engine/query"
-	promstorage "github.com/thanos-io/promql-engine/storage/prometheus"
 )
 
 type Execution struct {

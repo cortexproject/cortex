@@ -11,19 +11,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/execution/warnings"
+	"github.com/thanos-io/promql-engine/extlabels"
+	"github.com/thanos-io/promql-engine/logicalplan"
+	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/execution/warnings"
-	"github.com/thanos-io/promql-engine/extlabels"
-	"github.com/thanos-io/promql-engine/logicalplan"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 type histogramSeries struct {

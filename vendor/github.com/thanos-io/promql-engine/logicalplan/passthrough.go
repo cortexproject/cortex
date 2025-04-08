@@ -4,11 +4,11 @@
 package logicalplan
 
 import (
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/util/annotations"
-
 	"github.com/thanos-io/promql-engine/api"
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
 // PassthroughOptimizer optimizes queries which can be simply passed

@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/prometheus/model/histogram"
-	"github.com/prometheus/prometheus/model/labels"
-	"gonum.org/v1/gonum/floats"
-
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
+	"gonum.org/v1/gonum/floats"
 )
 
 type unaryNegation struct {

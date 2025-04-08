@@ -6,9 +6,9 @@ package logicalplan
 import (
 	"sort"
 
-	"github.com/prometheus/prometheus/util/annotations"
-
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
 // SortMatchers sorts all matchers in a selector so that

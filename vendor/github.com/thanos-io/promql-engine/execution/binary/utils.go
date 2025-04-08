@@ -8,14 +8,14 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
+
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 )
 
 type binOpSide string

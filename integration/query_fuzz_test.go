@@ -1805,7 +1805,6 @@ func shouldUseSampleNumComparer(query string) bool {
 
 func isValidQuery(generatedQuery parser.Expr, skipStdAggregations bool) bool {
 	isValid := true
-	currentDepth := 0
 	// TODO(SungJin1212): Test limitk, limit_ratio
 	if strings.Contains(generatedQuery.String(), "limitk") {
 		// current skip the limitk

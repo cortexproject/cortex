@@ -397,7 +397,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 			expr = ps.WalkRangeQuery()
 			query = expr.Pretty(0)
 			// timestamp is a known function that break with disable chunk trimming.
-			if isValidQuery(expr, 5, false) && !strings.Contains(query, "timestamp") {
+			if isValidQuery(expr, false) && !strings.Contains(query, "timestamp") {
 				break
 			}
 		}
@@ -566,7 +566,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	matchers := make([]string, 0, testRun)
 	for i := 0; i < testRun; i++ {
 		expr := ps.WalkRangeQuery()
-		if isValidQuery(expr, 5, true) {
+		if isValidQuery(expr, true) {
 			break
 		}
 		queries = append(queries, expr.Pretty(0))
@@ -1731,7 +1731,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	for i := 0; i < run; i++ {
 		for {
 			expr = ps.WalkInstantQuery()
-			if isValidQuery(expr, 5, skipStdAggregations) {
+			if isValidQuery(expr, skipStdAggregations) {
 				query = expr.Pretty(0)
 				break
 			}
@@ -1752,7 +1752,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	for i := 0; i < run; i++ {
 		for {
 			expr = ps.WalkRangeQuery()
-			if isValidQuery(expr, 5, skipStdAggregations) {
+			if isValidQuery(expr, skipStdAggregations) {
 				query = expr.Pretty(0)
 				break
 			}
@@ -1803,9 +1803,8 @@ func shouldUseSampleNumComparer(query string) bool {
 	return false
 }
 
-func isValidQuery(generatedQuery parser.Expr, maxDepth int, skipStdAggregations bool) bool {
+func isValidQuery(generatedQuery parser.Expr, skipStdAggregations bool) bool {
 	isValid := true
-	currentDepth := 0
 	// TODO(SungJin1212): Test limitk, limit_ratio
 	if strings.Contains(generatedQuery.String(), "limitk") {
 		// current skip the limitk
@@ -1820,13 +1819,5 @@ func isValidQuery(generatedQuery parser.Expr, maxDepth int, skipStdAggregations 
 		// If skipStdAggregations enabled, we skip to evaluate for stddev and stdvar aggregations.
 		return false
 	}
-	parser.Inspect(generatedQuery, func(node parser.Node, path []parser.Node) error {
-		if currentDepth > maxDepth {
-			isValid = false
-			return fmt.Errorf("generated query has exceeded maxDepth of %d", maxDepth)
-		}
-		currentDepth = len(path) + 1
-		return nil
-	})
 	return isValid
 }

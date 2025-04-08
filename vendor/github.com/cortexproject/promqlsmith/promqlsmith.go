@@ -20,6 +20,18 @@ const (
 	UnaryExpr
 )
 
+// Add minimum depth requirements for each ExprType
+var exprMinDepth = map[ExprType]int{
+	VectorSelector: 1,
+	MatrixSelector: 1, // Needs one child expression but we consider 1 depth
+	AggregateExpr:  2, // Needs at least one child expression
+	BinaryExpr:     2, // Needs two child expressions but whichever higher
+	SubQueryExpr:   2, // Needs one child expression
+	CallExpr:       2, // Needs at least one argument
+	NumberLiteral:  1,
+	UnaryExpr:      2, // Needs one child expression
+}
+
 var (
 	valueTypeToExprsMap = map[parser.ValueType][]ExprType{
 		parser.ValueTypeVector: {VectorSelector, BinaryExpr, AggregateExpr, CallExpr, UnaryExpr},
@@ -45,6 +57,7 @@ type PromQLSmith struct {
 	enableVectorMatching     bool
 	enableExperimentalPromQL bool
 	atModifierMaxTimestamp   int64
+	maxDepth                 int
 
 	seriesSet       []labels.Labels
 	labelNames      []string
@@ -78,6 +91,7 @@ func New(rnd *rand.Rand, seriesSet []labels.Labels, opts ...Option) *PromQLSmith
 		enableVectorMatching:     options.enableVectorMatching,
 		enableExperimentalPromQL: options.enableExperimentalPromQLFunctions,
 		enforceMatchers:          options.enforceLabelMatchers,
+		maxDepth:                 options.maxDepth,
 	}
 	ps.labelNames, ps.labelValues = labelNameAndValuesFromLabelSet(seriesSet)
 	return ps
@@ -99,14 +113,62 @@ func (s *PromQLSmith) WalkSelectors() []*labels.Matcher {
 	return s.walkSelectors()
 }
 
+// intersectExprTypes returns the intersection of two ExprType slices
+func intersectExprTypes(a, b []ExprType) []ExprType {
+	result := make([]ExprType, 0)
+	for _, expr := range a {
+		for _, other := range b {
+			if expr == other {
+				result = append(result, expr)
+				break
+			}
+		}
+	}
+	return result
+}
+
 // Walk will walk the ast tree using one of the randomly generated expr type.
 func (s *PromQLSmith) Walk(valueTypes ...parser.ValueType) parser.Expr {
+	return s.walk(s.maxDepth, valueTypes...)
+}
+
+// filterNumberLiteral removes NumberLiteral from validExprs unless it's the only option
+func filterNumberLiteral(validExprs []ExprType) []ExprType {
+	if len(validExprs) <= 1 {
+		return validExprs
+	}
+
+	filtered := make([]ExprType, 0, len(validExprs))
+	for _, expr := range validExprs {
+		if expr != NumberLiteral {
+			filtered = append(filtered, expr)
+		}
+	}
+	return filtered
+}
+
+func (s *PromQLSmith) walk(depth int, valueTypes ...parser.ValueType) parser.Expr {
 	supportedExprs := s.supportedExprs
 	if len(valueTypes) > 0 {
-		supportedExprs = exprsFromValueTypes(valueTypes)
+		supportedExprs = intersectExprTypes(supportedExprs, exprsFromValueTypes(valueTypes))
 	}
-	e := supportedExprs[s.rnd.Intn(len(supportedExprs))]
-	expr, _ := s.walkExpr(e, valueTypes...)
+
+	// Filter expressions based on remaining depth
+	validExprs := make([]ExprType, 0, len(supportedExprs))
+	for _, expr := range supportedExprs {
+		if minDepth := exprMinDepth[expr]; depth >= minDepth {
+			validExprs = append(validExprs, expr)
+		}
+	}
+
+	// Return nil if no valid expressions are available
+	if len(validExprs) == 0 {
+		return nil
+	}
+
+	validExprs = filterNumberLiteral(validExprs)
+	e := validExprs[s.rnd.Intn(len(validExprs))]
+	expr, _ := s.walkExpr(e, depth, valueTypes...)
 	return expr
 }
 

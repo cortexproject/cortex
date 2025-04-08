@@ -8,9 +8,9 @@ import (
 	"math"
 	"slices"
 
-	"github.com/prometheus/prometheus/model/histogram"
-
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/model/histogram"
 )
 
 type Buffer interface {

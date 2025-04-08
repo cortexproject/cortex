@@ -4,9 +4,9 @@
 package logicalplan
 
 import (
-	"github.com/prometheus/prometheus/util/annotations"
-
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
 type DetectHistogramStatsOptimizer struct{}
@@ -26,7 +26,7 @@ func (d DetectHistogramStatsOptimizer) optimize(plan Node, decodeStats bool) (No
 			n.DecodeNativeHistogramStats = decodeStats
 		case *FunctionCall:
 			switch n.Func.Name {
-			case "histogram_count", "histogram_sum":
+			case "histogram_count", "histogram_sum", "histogram_avg":
 				n.Args[0], _ = d.optimize(n.Args[0], true)
 				stop = true
 				return
@@ -36,6 +36,10 @@ func (d DetectHistogramStatsOptimizer) optimize(plan Node, decodeStats bool) (No
 				return
 			case "histogram_fraction":
 				n.Args[2], _ = d.optimize(n.Args[2], false)
+				stop = true
+				return
+			case "histogram_stddev", "histogram_stdvar":
+				n.Args[0], _ = d.optimize(n.Args[0], false)
 				stop = true
 				return
 			}

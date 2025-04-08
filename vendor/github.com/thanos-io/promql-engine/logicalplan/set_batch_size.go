@@ -4,10 +4,10 @@
 package logicalplan
 
 import (
+	"github.com/thanos-io/promql-engine/query"
+
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/query"
 )
 
 // SelectorBatchSize configures the batch size of selector based on

@@ -12,16 +12,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/efficientgo/core/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/promslog"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/util/annotations"
-	"github.com/prometheus/prometheus/util/stats"
-
 	"github.com/thanos-io/promql-engine/execution"
 	"github.com/thanos-io/promql-engine/execution/function"
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -33,6 +23,16 @@ import (
 	"github.com/thanos-io/promql-engine/query"
 	engstorage "github.com/thanos-io/promql-engine/storage"
 	promstorage "github.com/thanos-io/promql-engine/storage/prometheus"
+
+	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/promslog"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/prometheus/prometheus/util/stats"
 )
 
 type QueryType int

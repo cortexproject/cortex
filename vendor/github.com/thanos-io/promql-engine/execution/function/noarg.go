@@ -7,12 +7,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/logicalplan"
 
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 type noArgFunctionOperator struct {

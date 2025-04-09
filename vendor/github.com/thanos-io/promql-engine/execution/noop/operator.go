@@ -6,11 +6,11 @@ package noop
 import (
 	"context"
 
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/storage/prometheus"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 type operator struct {

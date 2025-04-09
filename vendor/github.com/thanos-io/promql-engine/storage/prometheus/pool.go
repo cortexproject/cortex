@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/cespare/xxhash/v2"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 )

@@ -397,7 +397,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 			expr = ps.WalkRangeQuery()
 			query = expr.Pretty(0)
 			// timestamp is a known function that break with disable chunk trimming.
-			if isValidQuery(expr, 5, false) && !strings.Contains(query, "timestamp") {
+			if isValidQuery(expr, false) && !strings.Contains(query, "timestamp") {
 				break
 			}
 		}
@@ -566,7 +566,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	matchers := make([]string, 0, testRun)
 	for i := 0; i < testRun; i++ {
 		expr := ps.WalkRangeQuery()
-		if isValidQuery(expr, 5, true) {
+		if isValidQuery(expr, true) {
 			break
 		}
 		queries = append(queries, expr.Pretty(0))
@@ -949,8 +949,25 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		const fraction = 1.e-10 // 0.00000001%
 		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(fraction, epsilon))
 	}
+	compareHistogramBucket := func(l, r *model.HistogramBucket) bool {
+		return l == r || (l.Boundaries == r.Boundaries && compareFloats(float64(l.Lower), float64(r.Lower)) && compareFloats(float64(l.Upper), float64(r.Upper)) && compareFloats(float64(l.Count), float64(r.Count)))
+	}
+
+	compareHistogramBuckets := func(l, r model.HistogramBuckets) bool {
+		if len(l) != len(r) {
+			return false
+		}
+
+		for i := range l {
+			if !compareHistogramBucket(l[i], r[i]) {
+				return false
+			}
+		}
+		return true
+	}
+
 	compareHistograms := func(l, r *model.SampleHistogram) bool {
-		return l.Equal(r)
+		return l == r || (l.Count == r.Count && compareFloats(float64(l.Sum), float64(r.Sum)) && compareHistogramBuckets(l.Buckets, r.Buckets))
 	}
 
 	// count_values returns a metrics with one label {"value": "1.012321"}
@@ -1714,7 +1731,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	for i := 0; i < run; i++ {
 		for {
 			expr = ps.WalkInstantQuery()
-			if isValidQuery(expr, 5, skipStdAggregations) {
+			if isValidQuery(expr, skipStdAggregations) {
 				query = expr.Pretty(0)
 				break
 			}
@@ -1735,7 +1752,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	for i := 0; i < run; i++ {
 		for {
 			expr = ps.WalkRangeQuery()
-			if isValidQuery(expr, 5, skipStdAggregations) {
+			if isValidQuery(expr, skipStdAggregations) {
 				query = expr.Pretty(0)
 				break
 			}
@@ -1786,9 +1803,8 @@ func shouldUseSampleNumComparer(query string) bool {
 	return false
 }
 
-func isValidQuery(generatedQuery parser.Expr, maxDepth int, skipStdAggregations bool) bool {
+func isValidQuery(generatedQuery parser.Expr, skipStdAggregations bool) bool {
 	isValid := true
-	currentDepth := 0
 	// TODO(SungJin1212): Test limitk, limit_ratio
 	if strings.Contains(generatedQuery.String(), "limitk") {
 		// current skip the limitk
@@ -1803,13 +1819,5 @@ func isValidQuery(generatedQuery parser.Expr, maxDepth int, skipStdAggregations 
 		// If skipStdAggregations enabled, we skip to evaluate for stddev and stdvar aggregations.
 		return false
 	}
-	parser.Inspect(generatedQuery, func(node parser.Node, path []parser.Node) error {
-		if currentDepth > maxDepth {
-			isValid = false
-			return fmt.Errorf("generated query has exceeded maxDepth of %d", maxDepth)
-		}
-		currentDepth = len(path) + 1
-		return nil
-	})
 	return isValid
 }

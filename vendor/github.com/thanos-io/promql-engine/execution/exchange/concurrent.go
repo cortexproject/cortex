@@ -9,9 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thanos-io/promql-engine/execution/telemetry"
-
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/prometheus/prometheus/model/labels"

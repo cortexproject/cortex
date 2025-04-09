@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/prometheus/prometheus/util/stats"
-
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/util/stats"
 )
 
 type OperatorTelemetry interface {

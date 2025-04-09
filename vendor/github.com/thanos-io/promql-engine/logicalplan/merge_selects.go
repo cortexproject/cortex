@@ -4,10 +4,10 @@
 package logicalplan
 
 import (
+	"github.com/thanos-io/promql-engine/query"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/query"
 )
 
 // MergeSelectsOptimizer optimizes a binary expression where

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -82,6 +83,9 @@ func (j JsonDecoder) vectorToPromQLVector(vector model.Vector) promql.Vector {
 				Value: string(v),
 			})
 		}
+		sort.Slice(metric, func(i, j int) bool {
+			return metric[i].Name < metric[j].Name
+		})
 		v = append(v, promql.Sample{
 			T:      int64(sample.Timestamp),
 			F:      float64(sample.Value),

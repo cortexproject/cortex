@@ -8,14 +8,14 @@ import (
 	"math"
 	"sort"
 
+	"github.com/thanos-io/promql-engine/execution/aggregate"
+	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/util/annotations"
 	"gonum.org/v1/gonum/stat"
-
-	"github.com/thanos-io/promql-engine/execution/aggregate"
-	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 )
 
 type SamplesBuffer GenericRingBuffer

@@ -6,11 +6,11 @@ package storage
 import (
 	"context"
 
-	"github.com/prometheus/prometheus/storage"
-
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/storage"
 )
 
 type Scanners interface {

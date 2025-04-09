@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thanos-io/promql-engine/api"
+	"github.com/thanos-io/promql-engine/query"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/api"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 var (

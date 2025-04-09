@@ -14,10 +14,10 @@ import (
 	"math"
 	"sort"
 
+	"github.com/thanos-io/promql-engine/execution/aggregate"
+
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/util/almost"
-
-	"github.com/thanos-io/promql-engine/execution/aggregate"
 )
 
 // smallDeltaTolerance is the threshold for relative deltas between classic

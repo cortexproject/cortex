@@ -11,7 +11,7 @@
 
 # Cortex
 
-Cortex is a horizontally scalable, highly available, multi-tenant, long term storage for [Prometheus](https://prometheus.io).
+Cortex is a horizontally scalable, highly available, multi-tenant, long term storage solution for [Prometheus](https://prometheus.io) and [OpenTelemetry Metrics](https://opentelemetry.io/docs/specs/otel/metrics/)
 
 ## Features
 
@@ -20,20 +20,14 @@ Cortex is a horizontally scalable, highly available, multi-tenant, long term sto
 - **Multi-tenant:** Cortex can isolate data and queries from multiple different independent Prometheus sources in a single cluster.
 - **Long term storage:** Cortex supports S3, GCS, Swift and Microsoft Azure for long term storage of metric data.
 
-## Getting Started
-
-To get started with Cortex, follow these steps:
-
-1. [Installation](https://cortexmetrics.io/docs/getting-started/)
-2. [Basic Setup](https://cortexmetrics.io/docs/configuration/)
-3. [Example Usage](https://cortexmetrics.io/docs/guides/)
-
 ## Documentation
 
+- [Getting Started](https://cortexmetrics.io/docs/getting-started/)
 - [Architecture Overview](https://cortexmetrics.io/docs/architecture/)
-- [Configuration Guide](https://cortexmetrics.io/docs/configuration/)
-- [Security Guide](https://cortexmetrics.io/docs/guides/security/)
-- [Contributor Guidelines](https://cortexmetrics.io/docs/contributing/)
+- [Configuration](https://cortexmetrics.io/docs/configuration/)
+- [Guides](https://cortexmetrics.io/docs/guides/)
+- [Security](https://cortexmetrics.io/docs/guides/security/)
+- [Contributing](https://cortexmetrics.io/docs/contributing/)
 
 ## Community and Support
 
@@ -158,8 +152,6 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 [promcon-2016-slides]: http://www.slideshare.net/weaveworks/project-frankenstein-a-multitenant-horizontally-scalable-prometheus-as-a-service
 
 ## Hosted Cortex
-
-There are several commercial services where you can use Cortex on-demand:
 
 ### Amazon Managed Service for Prometheus (AMP)
 

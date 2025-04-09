@@ -54,7 +54,7 @@ func TestShardPostingAndSymbolBasedOnPartitionID(t *testing.T) {
 		expectedSymbols[TestLabelName] = false
 		expectedSymbols[labelValue] = false
 	}
-	blockID, err := e2eutil.CreateBlock(context.Background(), tmpdir, series, 10, time.Now().Add(-10*time.Minute).UnixMilli(), time.Now().UnixMilli(), nil, 0, metadata.NoneFunc)
+	blockID, err := e2eutil.CreateBlock(context.Background(), tmpdir, series, 10, time.Now().Add(-10*time.Minute).UnixMilli(), time.Now().UnixMilli(), nil, 0, metadata.NoneFunc, nil)
 	require.NoError(t, err)
 
 	var closers []io.Closer

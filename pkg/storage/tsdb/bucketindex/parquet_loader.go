@@ -1,0 +1,301 @@
+package bucketindex
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/services"
+)
+
+// ParquetLoader is responsible to lazy load bucket indexes and, once loaded for the first time,
+// keep them updated in background. Loaded indexes are automatically offloaded once the
+// idle timeout expires.
+type ParquetLoader struct {
+	services.Service
+
+	bkt         objstore.Bucket
+	logger      log.Logger
+	cfg         LoaderConfig
+	cfgProvider bucket.TenantConfigProvider
+
+	indexesMx sync.RWMutex
+	indexes   map[string]*cachedParquetIndex
+
+	// Metrics.
+	loadAttempts prometheus.Counter
+	loadFailures prometheus.Counter
+	loadDuration prometheus.Histogram
+	loaded       prometheus.GaugeFunc
+}
+
+// NewLParquetLoader makes a new ParquetLoader.
+func NewLParquetLoader(cfg LoaderConfig, bucketClient objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *ParquetLoader {
+	l := &ParquetLoader{
+		bkt:         bucketClient,
+		logger:      logger,
+		cfg:         cfg,
+		cfgProvider: cfgProvider,
+		indexes:     map[string]*cachedParquetIndex{},
+
+		loadAttempts: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_bucket_index_loads_total",
+			Help: "Total number of bucket index loading attempts.",
+		}),
+		loadFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_bucket_index_load_failures_total",
+			Help: "Total number of bucket index loading failures.",
+		}),
+		loadDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_bucket_index_load_duration_seconds",
+			Help:    "Duration of the a single bucket index loading operation in seconds.",
+			Buckets: []float64{0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 1, 10},
+		}),
+	}
+
+	l.loaded = promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cortex_bucket_index_loaded",
+		Help: "Number of bucket indexes currently loaded in-memory.",
+	}, l.countLoadedIndexesMetric)
+
+	// Apply a jitter to the sync frequency in order to increase the probability
+	// of hitting the shared cache (if any).
+	checkInterval := util.DurationWithJitter(cfg.CheckInterval, 0.2)
+	l.Service = services.NewTimerService(checkInterval, nil, l.checkCachedIndexes, nil)
+
+	return l
+}
+
+// GetIndex returns the bucket index for the given user. It returns the in-memory cached
+// index if available, or load it from the bucket otherwise.
+func (l *ParquetLoader) GetIndex(ctx context.Context, userID string) (*ParquetIndex, Status, error) {
+	l.indexesMx.RLock()
+	if entry := l.indexes[userID]; entry != nil {
+		idx := entry.index
+		err := entry.err
+		ss := entry.syncStatus
+		l.indexesMx.RUnlock()
+
+		// We don't check if the index is stale because it's the responsibility
+		// of the background job to keep it updated.
+		entry.requestedAt.Store(time.Now().Unix())
+		return idx, ss, err
+	}
+	l.indexesMx.RUnlock()
+
+	ss, err := ReadSyncStatus(ctx, l.bkt, userID, l.logger)
+
+	if err != nil {
+		level.Warn(l.logger).Log("msg", "unable to read bucket index status", "user", userID, "err", err)
+	}
+
+	startTime := time.Now()
+	l.loadAttempts.Inc()
+	uBucket := bucket.NewUserBucketClient(userID, l.bkt, l.cfgProvider)
+	idx, err := ReadParquetIndex(ctx, uBucket, l.logger)
+	if err != nil {
+		// Cache the error, to avoid hammering the object store in case of persistent issues
+		// (eg. corrupted bucket index or not existing).
+		l.cacheIndex(userID, nil, ss, err)
+
+		if ctx.Err() != nil {
+			level.Warn(util_log.WithContext(ctx, l.logger)).Log("msg", "received context error when reading bucket index", "err", ctx.Err())
+			return nil, UnknownStatus, ctx.Err()
+		}
+
+		if errors.Is(err, ErrIndexNotFound) {
+			level.Warn(l.logger).Log("msg", "bucket index not found", "user", userID)
+		} else if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
+			level.Warn(l.logger).Log("msg", "key access denied when reading bucket index", "user", userID)
+		} else {
+			// We don't track ErrIndexNotFound as failure because it's a legit case (eg. a tenant just
+			// started to remote write and its blocks haven't uploaded to storage yet).
+			l.loadFailures.Inc()
+			level.Error(l.logger).Log("msg", "unable to load bucket index", "user", userID, "err", err)
+		}
+
+		return nil, ss, err
+	}
+
+	// Cache the index.
+	l.cacheIndex(userID, idx, ss, nil)
+
+	elapsedTime := time.Since(startTime)
+	l.loadDuration.Observe(elapsedTime.Seconds())
+	level.Info(l.logger).Log("msg", "loaded bucket index", "user", userID, "duration", elapsedTime)
+	return idx, ss, nil
+}
+
+func (l *ParquetLoader) cacheIndex(userID string, idx *ParquetIndex, ss Status, err error) {
+	if errors.Is(err, context.Canceled) {
+		level.Info(l.logger).Log("msg", "skipping cache bucket index", "err", err)
+		return
+	}
+	l.indexesMx.Lock()
+	defer l.indexesMx.Unlock()
+
+	// Not an issue if, due to concurrency, another index was already cached
+	// and we overwrite it: last will win.
+	l.indexes[userID] = newParquetCachedIndex(idx, ss, err)
+}
+
+// checkCachedIndexes checks all cached indexes and, for each of them, does two things:
+// 1. Offload indexes not requested since >= idle timeout
+// 2. Update indexes which have been updated last time since >= update timeout
+func (l *ParquetLoader) checkCachedIndexes(ctx context.Context) error {
+	// Build a list of users for which we should update or delete the index.
+	toUpdate, toDelete := l.checkCachedIndexesToUpdateAndDelete()
+
+	// Delete unused indexes.
+	for _, userID := range toDelete {
+		l.deleteCachedIndex(userID)
+	}
+
+	// Update actively used indexes.
+	for _, userID := range toUpdate {
+		l.updateCachedIndex(ctx, userID)
+	}
+
+	// Never return error, otherwise the service terminates.
+	return nil
+}
+
+func (l *ParquetLoader) checkCachedIndexesToUpdateAndDelete() (toUpdate, toDelete []string) {
+	now := time.Now()
+
+	l.indexesMx.RLock()
+	defer l.indexesMx.RUnlock()
+
+	for userID, entry := range l.indexes {
+		// Given ErrIndexNotFound is a legit case and assuming UpdateOnErrorInterval is lower than
+		// UpdateOnStaleInterval, we don't consider ErrIndexNotFound as an error with regards to the
+		// refresh interval and so it will updated once stale.
+		isError := entry.err != nil && !errors.Is(entry.err, ErrIndexNotFound)
+
+		switch {
+		case now.Sub(entry.getRequestedAt()) >= l.cfg.IdleTimeout:
+			toDelete = append(toDelete, userID)
+		case isError && now.Sub(entry.getUpdatedAt()) >= l.cfg.UpdateOnErrorInterval:
+			toUpdate = append(toUpdate, userID)
+		case !isError && now.Sub(entry.getUpdatedAt()) >= l.cfg.UpdateOnStaleInterval:
+			toUpdate = append(toUpdate, userID)
+		}
+	}
+
+	return
+}
+
+func (l *ParquetLoader) updateCachedIndex(ctx context.Context, userID string) {
+	readCtx, cancel := context.WithTimeout(ctx, readIndexTimeout)
+	defer cancel()
+
+	l.loadAttempts.Inc()
+	startTime := time.Now()
+	ss, err := ReadSyncStatus(ctx, l.bkt, userID, l.logger)
+	if err != nil {
+		level.Warn(l.logger).Log("msg", "unable to read bucket index status", "user", userID, "err", err)
+	}
+
+	// Update Sync Status
+	l.indexesMx.Lock()
+	l.indexes[userID].syncStatus = ss
+	l.indexesMx.Unlock()
+
+	uBucket := bucket.NewUserBucketClient(userID, l.bkt, l.cfgProvider)
+	idx, err := ReadParquetIndex(readCtx, uBucket, l.logger)
+	if err != nil &&
+		!errors.Is(err, ErrIndexNotFound) &&
+		!errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) &&
+		!errors.Is(err, context.Canceled) {
+		l.loadFailures.Inc()
+		level.Warn(l.logger).Log("msg", "unable to update bucket index", "user", userID, "err", err)
+		return
+	}
+
+	l.loadDuration.Observe(time.Since(startTime).Seconds())
+
+	// We cache it either it was successfully refreshed,  wasn't found or when is a CMK error. An use case for caching the ErrIndexNotFound
+	// is when a tenant has rules configured but hasn't started remote writing yet. Rules will be evaluated and
+	// bucket index loaded by the ruler.
+	l.indexesMx.Lock()
+	l.indexes[userID].index = idx
+	l.indexes[userID].err = err
+	l.indexes[userID].setUpdatedAt(startTime)
+	l.indexesMx.Unlock()
+}
+
+func (l *ParquetLoader) deleteCachedIndex(userID string) {
+	l.indexesMx.Lock()
+	delete(l.indexes, userID)
+	l.indexesMx.Unlock()
+
+	level.Info(l.logger).Log("msg", "unloaded bucket index", "user", userID, "reason", "idle")
+}
+
+func (l *ParquetLoader) countLoadedIndexesMetric() float64 {
+	l.indexesMx.RLock()
+	defer l.indexesMx.RUnlock()
+
+	count := 0
+	for _, idx := range l.indexes {
+		if idx.index != nil {
+			count++
+		}
+	}
+	return float64(count)
+}
+
+type cachedParquetIndex struct {
+	// We cache either the index or the error occurred while fetching it. They're
+	// mutually exclusive.
+	index      *ParquetIndex
+	syncStatus Status
+	err        error
+
+	// Unix timestamp (seconds) of when the index has been updated from the storage the last time.
+	updatedAt atomic.Int64
+
+	// Unix timestamp (seconds) of when the index has been requested the last time.
+	requestedAt atomic.Int64
+}
+
+func newParquetCachedIndex(idx *ParquetIndex, ss Status, err error) *cachedParquetIndex {
+	entry := &cachedParquetIndex{
+		index:      idx,
+		err:        err,
+		syncStatus: ss,
+	}
+
+	now := time.Now()
+	entry.setUpdatedAt(now)
+	entry.setRequestedAt(now)
+
+	return entry
+}
+
+func (i *cachedParquetIndex) setUpdatedAt(ts time.Time) {
+	i.updatedAt.Store(ts.Unix())
+}
+
+func (i *cachedParquetIndex) getUpdatedAt() time.Time {
+	return time.Unix(i.updatedAt.Load(), 0)
+}
+
+func (i *cachedParquetIndex) setRequestedAt(ts time.Time) {
+	i.requestedAt.Store(ts.Unix())
+}
+
+func (i *cachedParquetIndex) getRequestedAt() time.Time {
+	return time.Unix(i.requestedAt.Load(), 0)
+}

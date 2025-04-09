@@ -542,14 +542,26 @@ user-2:
 max_native_histogram_buckets: 0
 &lt;/code>&lt;/pre>&lt;h2 id="how-to-enable-out-of-order-native-histograms-ingestion">How to enable out-of-order native histograms ingestion&lt;/h2>
 &lt;p>Like samples out-of-order ingestion, the Cortex allows out-of-order ingestion for the native histogram.
-It is automatically enabled when &lt;code>-blocks-storage.tsdb.enable-native-histograms=true&lt;/code> and &lt;code>-ingester.out-of-order-time-window &amp;gt; 0&lt;/code>.&lt;/p>
+To enable it, set the flag &lt;code>-ingester.enable-ooo-native-histograms&lt;/code>.&lt;/p>
 &lt;p>And via yaml:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">blocks_storage&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tsdb&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_native_histograms&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">out_of_order_time_window&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">5m&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: OpenTelemetry Collector</title><link>/docs/guides/opentelemetry-collector/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/opentelemetry-collector/</guid><description>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_ooo_native_histograms&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;bool&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Is it only works if when &lt;code>-blocks-storage.tsdb.enable-native-histograms=true&lt;/code> and &lt;code>-ingester.out-of-order-time-window &amp;gt; 0&lt;/code>.&lt;/p>
+&lt;p>To enable it per tenant, you can utilize a &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime config&lt;/a>.&lt;/p>
+&lt;p>For example, the following yaml file specifies enabling out-of-order native histogram ingestion for &lt;code>user-1&lt;/code>, but not for &lt;code>user-2&lt;/code>.&lt;/p>
+&lt;pre tabindex="0">&lt;code>overrides:
+user-1:
+enable_ooo_native_histograms: true
+user-2:
+enable_ooo_native_histograms: false
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>Caution&lt;/strong>: It is applied after the Ingester restart if it is changed at runtime through the runtime config.
+For example, if you have changed the &lt;code>enable_ooo_native_histograms&lt;/code> value to &lt;code>false&lt;/code> of the &lt;code>user-1&lt;/code> via the below yaml file, then the Ingester stops the out-of-order ingestion not until the Ingester restarts.&lt;/p>
+&lt;pre tabindex="0">&lt;code>overrides:
+user-1:
+enable_ooo_native_histograms: false
+user-2:
+enable_ooo_native_histograms: false
+&lt;/code>&lt;/pre></description></item><item><title>Docs: OpenTelemetry Collector</title><link>/docs/guides/opentelemetry-collector/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/opentelemetry-collector/</guid><description>
 &lt;p>This guide explains how to configure open-telemetry collector and OTLP(OpenTelemetry Protocol) configurations in the
 Cortex.&lt;/p>
 &lt;h2 id="context">Context&lt;/h2>
@@ -680,32 +692,7 @@ emitted.&lt;/p>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_samples_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_series_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>With these metrics, you can set up alerts to know when tenants are close to hitting their limits
-before they exceed them.&lt;/p></description></item><item><title>Docs: Use Partition Compaction in Cortex</title><link>/docs/guides/partition-compaction/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/partition-compaction/</guid><description>
-&lt;h2 id="context">Context&lt;/h2>
-&lt;p>Compactor is bounded by maximum 64GB of index file size. If compaction failed due to exceeding index file size limit, partition compaction can be enabled to allow compactor compacting into multiple blocks that have index file size stays within limit.&lt;/p>
-&lt;h2 id="enable-partition-compaction">Enable Partition Compaction&lt;/h2>
-&lt;p>In order to enable partition compaction, the following flag needs to be set:&lt;/p>
-&lt;pre tabindex="0">&lt;code>-compactor.sharding-enabled=true # Enable sharding tenants across multiple compactor instances. This is required to enable partition compaction
--compactor.sharding-strategy=shuffle-sharding # Use Shuffle Sharding as sharding strategy. This is required to enable partition compaction
--compactor.compaction-strategy=partitioning # Use Partition Compaction as compaction strategy. To turn if off, set it to `default`
-&lt;/code>&lt;/pre>&lt;h3 id="migration">Migration&lt;/h3>
-&lt;p>There is no special migration process needed to enable partition compaction. End user could enable it by setting the above configurations all at once.&lt;/p>
-&lt;p>Enabling partition compaction would group previously compacted blocks (only those have time range smaller than the largest configured compaction time ranges) with uncompacted blocks and generate new compaction plans. This would group blocks having duplicated series together and those series would be deduped after compaction.&lt;/p>
-&lt;p>Disabling partition compaction after enabled it does not need migration either. After disabling partition compaction, compactor would group partitioned result blocks together and compact them into one block.&lt;/p>
-&lt;h2 id="configure-partition-compaction">Configure Partition Compaction&lt;/h2>
-&lt;p>By default, partition compaction utilizes the following configurations and their values:&lt;/p>
-&lt;pre tabindex="0">&lt;code>-compactor.partition-index-size-bytes=68719476736 # 64GB
--compactor.partition-series-count=0 # no limit
-&lt;/code>&lt;/pre>&lt;p>The default value should start partitioning result blocks when sum of index files size of parent blocks exceeds 64GB. End user could also change those two configurations. Partition compaction would always calculate partition count based on both configuration and pick the one with higher partition count.&lt;/p>
-&lt;p>Both configurations support to be set per tenant.&lt;/p>
-&lt;p>Note: &lt;code>compactor.partition-series-count&lt;/code> is using sum of series count of all parent blocks. If parent blocks were not deduped, the result block could have fewer series than the configuration value.&lt;/p>
-&lt;h2 id="useful-metrics">Useful Metrics&lt;/h2>
-&lt;ul>
-&lt;li>&lt;code>cortex_compactor_group_partition_count&lt;/code>: can be used to keep track of how many partitions being compacted for each time range.&lt;/li>
-&lt;li>&lt;code>cortex_compactor_group_compactions_not_planned_total&lt;/code>: can be used to alarm any compaction was failed to be planned due to error.&lt;/li>
-&lt;li>&lt;code>cortex_compact_group_compaction_duration_seconds&lt;/code>: can be used to monitor compaction duration of each time range compactions.&lt;/li>
-&lt;li>&lt;code>cortex_compactor_oldest_partition_offset&lt;/code>: can be used to monitor when was the oldest compaction that is still not completed.&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Rule evaluations via query frontend</title><link>/docs/guides/rule-evalutions-via-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/rule-evalutions-via-query-frontend/</guid><description>
+before they exceed them.&lt;/p></description></item><item><title>Docs: Rule evaluations via query frontend</title><link>/docs/guides/rule-evalutions-via-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/rule-evalutions-via-query-frontend/</guid><description>
 &lt;p>This guide explains how to configure the Ruler to evaluate rules via Query Frontends instead of the Ingester/Store Gateway, and the pros and cons of rule evaluation via Query Frontend.&lt;/p>
 &lt;h2 id="how-to-enable">How to enable&lt;/h2>
 &lt;p>By default, the Ruler queries both Ingesters and Store Gateway depending on the Rule time range for evaluating rules (alerting rules or recording rules). If you have set &lt;code>-ruler.frontend-address&lt;/code>, then the Ruler queries the Query Frontend for evaluation rules.
@@ -719,16 +706,7 @@ The address should be the gRPC listen address in host:port format.&lt;/p>
 &lt;h2 id="configure-query-response-format">Configure query response format&lt;/h2>
 &lt;p>You can configure the query response format via &lt;code>-ruler.query-response-format&lt;/code>. It is used to retrieve query results from the Query Frontend.
 The supported values are &lt;code>protobuf&lt;/code> and &lt;code>json&lt;/code>. We recommend using &lt;code>protobuf&lt;/code>(default) because the retrieved query results containing native histograms are only supported on &lt;code>protobuf&lt;/code>.&lt;/p>
-&lt;h2 id="how-to-track-query-stat-log-and-metric">How to track query stat log and metric&lt;/h2>
-&lt;p>When the &lt;code>-ruler.frontend-address&lt;/code> is configured, the values of query stats for rule evaluation logs and metrics are all &lt;code>0&lt;/code> in the Ruler.
-You can look at the logs at the Query Frontend via enabling &lt;code>-frontend.enabled-ruler-query-stats&lt;/code> (disabled by default).&lt;/p>
-&lt;p>Also, there are alternative metrics; you can see right-side metrics instead:&lt;/p>
-&lt;pre tabindex="0">&lt;code>`cortex_ruler_query_seconds_total` -&amp;gt; `cortex_query_seconds_total{source=&amp;#34;ruler&amp;#34;}`
-`cortex_ruler_fetched_series_total` -&amp;gt; `cortex_query_fetched_series_total{source=&amp;#34;ruler&amp;#34;}`
-`cortex_ruler_samples_total` -&amp;gt; `cortex_query_samples_total{source=&amp;#34;ruler&amp;#34;}`
-`cortex_ruler_fetched_chunks_bytes_total` -&amp;gt; `cortex_query_fetched_chunks_bytes_total{source=&amp;#34;ruler&amp;#34;}`
-`cortex_ruler_fetched_data_bytes_total` -&amp;gt; `cortex_query_fetched_data_bytes_total{source=&amp;#34;ruler&amp;#34;}`
-&lt;/code>&lt;/pre>&lt;h2 id="pros-and-cons">Pros and Cons&lt;/h2>
+&lt;h2 id="pros-and-cons">Pros and Cons&lt;/h2>
 &lt;p>If this feature is enabled, the query execute path is as follows:&lt;/p>
 &lt;p>Ruler -&amp;gt; Query Frontend -&amp;gt; Query Scheduler -&amp;gt; Querier -&amp;gt; Ingester/Store Gateway&lt;/p>
 &lt;p>There are pros and cons regarding query performance as more hops than before (Ruler -&amp;gt; Ingester/Store Gateway).&lt;/p>
@@ -982,7 +960,6 @@ even if you plan to use the default values.&lt;/p>
 &lt;p>In order to send traces, you will need to set up an OpenTelemetry Collector. The collector will be able to send traces to
 multiple destinations such as &lt;a href="https://aws-otel.github.io/docs/getting-started/x-ray">AWS X-Ray&lt;/a>,
 &lt;a href="https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/googlecloudexporter">Google Cloud&lt;/a>,
-&lt;a href="https://www.dash0.com/hub/integrations/int_opentelemetry-collector/overview">Dash0&lt;/a>
 &lt;a href="https://docs.datadoghq.com/tracing/trace_collection/open_standards/otel_collector_datadog_exporter/">DataDog&lt;/a> and
 &lt;a href="https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter">others&lt;/a>. OpenTelemetry Collector
 provides a &lt;a href="https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-collector/examples/deployment-otlp-traces">helm chart&lt;/a>

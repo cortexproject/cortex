@@ -30,6 +30,10 @@ message RuleGroupDesc {
   int64 limit =10;
   google.protobuf.Duration queryOffset = 11
       [(gogoproto.nullable) = true, (gogoproto.stdduration) = true];
+  repeated cortexpb.LabelPair labels = 12 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"
+  ];
 }
 
 // RuleDesc is a proto representation of a Prometheus Rule

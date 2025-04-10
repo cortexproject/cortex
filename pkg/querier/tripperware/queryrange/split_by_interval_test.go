@@ -19,7 +19,6 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
-	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
@@ -664,15 +663,13 @@ func Test_dynamicIntervalFn(t *testing.T) {
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), "1")
-			stats, ctx := querier_stats.ContextWithEmptyStats(ctx)
-
 			ctx, interval, err := dynamicIntervalFn(cfg, mockLimits{queryVerticalShardSize: tc.maxVerticalShardSize}, querysharding.NewQueryAnalyzer(), lookbackDelta)(ctx, tc.req)
 			require.Equal(t, tc.expectedInterval, interval)
 
 			if tc.expectedVerticalShardSize > 0 {
-				verticalShardSize, err := strconv.Atoi(stats.GetExtraField("shard_by.num_shards"))
-				require.Nil(t, err)
-				require.Equal(t, tc.expectedVerticalShardSize, verticalShardSize)
+				if verticalShardSize, ok := tripperware.VerticalShardSizeFromContext(ctx); ok {
+					require.Equal(t, tc.expectedVerticalShardSize, verticalShardSize)
+				}
 			}
 			if !tc.expectedError {
 				require.Nil(t, err)

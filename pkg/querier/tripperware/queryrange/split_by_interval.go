@@ -181,9 +181,9 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 		verticalShardSize := 1
 		totalShards := 0
 		// Find the combination of horizontal splits and vertical shards that will result in the largest total number of shards
-		for currentVerticalShardSize := 1; currentVerticalShardSize <= maxVerticalShardSize; currentVerticalShardSize++ {
-			maxSplitsPerQuery := getMaxSplitsFromConfig(dynamicSplitCfg.MaxShardsPerQuery, currentVerticalShardSize)
-			maxSplitsFromDurationFetched := getMaxSplitsByDurationFetched(dynamicSplitCfg.MaxFetchedDataDurationPerQuery, currentVerticalShardSize, queryExpr, r.GetStart(), r.GetEnd(), r.GetStep(), baseInterval, lookbackDelta)
+		for candidateVerticalShardSize := 1; candidateVerticalShardSize <= maxVerticalShardSize; candidateVerticalShardSize++ {
+			maxSplitsPerQuery := getMaxSplitsFromConfig(dynamicSplitCfg.MaxShardsPerQuery, candidateVerticalShardSize)
+			maxSplitsFromDurationFetched := getMaxSplitsByDurationFetched(dynamicSplitCfg.MaxFetchedDataDurationPerQuery, candidateVerticalShardSize, queryExpr, r.GetStart(), r.GetEnd(), r.GetStep(), baseInterval, lookbackDelta)
 
 			// Use the more restrictive max splits limit
 			var maxSplits int
@@ -196,12 +196,11 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 				maxSplits = maxSplitsFromDurationFetched
 			}
 
-			currentInterval := getIntervalFromMaxSplits(r, baseInterval, maxSplits)
-			currentTotalShards := getExpectedTotalShards(r.GetStart(), r.GetEnd(), currentInterval, currentVerticalShardSize)
-			if totalShards <= currentTotalShards {
-				verticalShardSize = currentVerticalShardSize
-				interval = currentInterval
-				totalShards = currentTotalShards
+			candidateInterval := getIntervalFromMaxSplits(r, baseInterval, maxSplits)
+			if candidateTotalShards := getExpectedTotalShards(r.GetStart(), r.GetEnd(), candidateInterval, candidateVerticalShardSize); totalShards <= candidateTotalShards {
+				interval = candidateInterval
+				verticalShardSize = candidateVerticalShardSize
+				totalShards = candidateTotalShards
 			}
 		}
 
@@ -301,14 +300,7 @@ func getMaxSplitsByDurationFetched(maxFetchedDataDurationPerQuery time.Duration,
 }
 
 // analyzeDurationFetchedByQueryExpr analyzes the query to calculate
-// the estimated duration of data that will be fetched from storage by
-// different parts of the query
-//
-// Returns:
-//   - durationFetchedByRange: The total duration fetched by the original start-end
-//     range of the query.
-//   - durationFetchedBySelectors: The duration fetched by matrix selectors,
-//     subquery selectors, and lookbackDelta.
+// the estimated duration of data that will be fetched from storage
 //
 // Example:
 // Query up[15d:1h] with a range of 30 days, 1 day base split interval, and 5 min lookbackDelta with 00:00 UTC start time

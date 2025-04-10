@@ -3108,15 +3108,17 @@ func TestRuler_QueryOffset(t *testing.T) {
 func TestGetShardSizeForUser(t *testing.T) {
 	tests := []struct {
 		name               string
-		tenantShardSize    float64
 		userID             string
+		replicationFactor  int
 		rulerInstanceCount int
+		tenantShardSize    float64
 		expectedShardSize  int
 	}{
 		{
 			name:               "User with fixed shard size with 10 ruler instances",
 			userID:             "user1",
 			rulerInstanceCount: 10,
+			replicationFactor:  1,
 			tenantShardSize:    2,
 			expectedShardSize:  2,
 		},
@@ -3124,6 +3126,7 @@ func TestGetShardSizeForUser(t *testing.T) {
 			name:               "User with fixed shard size with 50 ruler instances",
 			userID:             "user1",
 			rulerInstanceCount: 50,
+			replicationFactor:  1,
 			tenantShardSize:    30,
 			expectedShardSize:  30,
 		},
@@ -3131,6 +3134,7 @@ func TestGetShardSizeForUser(t *testing.T) {
 			name:               "User with percentage shard size with 10 ruler instances",
 			userID:             "user1",
 			rulerInstanceCount: 10,
+			replicationFactor:  1,
 			tenantShardSize:    0.6,
 			expectedShardSize:  6,
 		},
@@ -3138,36 +3142,25 @@ func TestGetShardSizeForUser(t *testing.T) {
 			name:               "User with percentage shard size with 80 ruler instances",
 			userID:             "user1",
 			rulerInstanceCount: 80,
+			replicationFactor:  1,
 			tenantShardSize:    0.25,
 			expectedShardSize:  20,
-		},
-		{
-			name:               "User with invalid negative shard size",
-			userID:             "user1",
-			rulerInstanceCount: 10,
-			tenantShardSize:    -1,
-			expectedShardSize:  4,
 		},
 		{
 			name:               "User with default 0 shard size",
 			userID:             "user1",
 			rulerInstanceCount: 10,
+			replicationFactor:  1,
 			tenantShardSize:    0,
 			expectedShardSize:  10,
 		},
 		{
-			name:               "User with greater shard size than number of ruler instances",
+			name:               "Ensure shard size is at least replication factor",
 			userID:             "user1",
 			rulerInstanceCount: 10,
-			tenantShardSize:    15,
-			expectedShardSize:  15,
-		},
-		{
-			name:               "Ensure smallest shard size will be 1",
-			userID:             "user1",
-			rulerInstanceCount: 1,
-			tenantShardSize:    0.5,
-			expectedShardSize:  1,
+			replicationFactor:  3,
+			tenantShardSize:    0.1,
+			expectedShardSize:  3,
 		},
 	}
 
@@ -3206,7 +3199,7 @@ func TestGetShardSizeForUser(t *testing.T) {
 					KVStore: kv.Config{
 						Mock: kvStore,
 					},
-					ReplicationFactor:    1,
+					ReplicationFactor:    tc.replicationFactor,
 					ZoneAwarenessEnabled: true,
 					InstanceZone:         rulerAZEvenSpread[id],
 				}

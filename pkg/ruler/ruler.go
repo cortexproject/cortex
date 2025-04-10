@@ -89,8 +89,6 @@ const (
 	// query response formats
 	queryResponseFormatJson     = "json"
 	queryResponseFormatProtobuf = "protobuf"
-
-	defaultRulerShardSizePercentage = 0.4
 )
 
 type DisabledRuleGroupErr struct {
@@ -1331,14 +1329,11 @@ func (r *Ruler) getShardSizeForUser(userID string) int {
 		// A shard size of 0 means shuffle sharding is disabled for this specific user.
 		// In that case we use the full ring so that rule groups will be sharded across all rulers.
 		return numInstances
-	} else if rulerTenantShardSize > 0 {
-		newShardSize = util.DynamicShardSize(rulerTenantShardSize, numInstances)
-	} else {
-		newShardSize = util.DynamicShardSize(defaultRulerShardSizePercentage, numInstances)
 	}
 
-	// We want to guarantee that shard size will be at least 1
-	return max(newShardSize, 1)
+	newShardSize = util.DynamicShardSize(rulerTenantShardSize, numInstances)
+	// We want to guarantee that shard size will be at replication factor
+	return max(newShardSize, r.cfg.Ring.ReplicationFactor)
 }
 
 func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {

@@ -140,6 +140,17 @@ func (s *QueryStats) LoadExtraFields() []interface{} {
 	return r
 }
 
+func (s *QueryStats) GetExtraField(fieldName string) string {
+	fields := s.LoadExtraFields()
+	for i := 0; i < len(fields); i += 2 {
+		key, ok := fields[i].(string)
+		if ok && key == fieldName {
+			return fmt.Sprintf("%v", fields[i+1])
+		}
+	}
+	return ""
+}
+
 func (s *QueryStats) LoadFetchedSeries() uint64 {
 	if s == nil {
 		return 0

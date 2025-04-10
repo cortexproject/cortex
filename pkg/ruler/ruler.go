@@ -1326,8 +1326,7 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 }
 
 func (r *Ruler) getShardSizeForUser(userID string) int {
-	rulerTenantShardSize := r.limits.RulerTenantShardSize(userID)
-	newShardSize := util.DynamicShardSize(rulerTenantShardSize, r.ring.InstancesCount())
+	newShardSize := util.DynamicShardSize(r.limits.RulerTenantShardSize(userID), r.ring.InstancesCount())
 
 	// We want to guarantee that shard size will be at replication factor
 	return max(newShardSize, r.cfg.Ring.ReplicationFactor)

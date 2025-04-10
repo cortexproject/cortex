@@ -248,7 +248,9 @@ func (c *Config) Validate(log log.Logger) error {
 		switch resource.Type(r) {
 		case resource.CPU, resource.Heap:
 		default:
-			return fmt.Errorf("unsupported resource type to monitor: %s from list [%s]", r, c.MonitoredResources)
+			if len(r) > 0 {
+				return fmt.Errorf("unsupported resource type to monitor: %s", r)
+			}
 		}
 	}
 

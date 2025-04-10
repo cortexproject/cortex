@@ -175,6 +175,15 @@ func TestConfigValidation(t *testing.T) {
 			},
 			expectedError: fmt.Errorf("unsupported resource type to monitor: %s", "wrong"),
 		},
+		{
+			name: "should not fail validation for valid resources to monitor",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.MonitoredResources = []string{"cpu", "heap"}
+				return configuration
+			},
+			expectedError: nil,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.getTestConfig().Validate(nil)

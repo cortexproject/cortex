@@ -249,7 +249,10 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		if gatewayCfg.InstanceLimits.HeapUtilization > 0 {
 			resourceLimits[resource.Heap] = gatewayCfg.InstanceLimits.HeapUtilization
 		}
-		g.resourceBasedLimiter = util_limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits)
+		g.resourceBasedLimiter, err = util_limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits, reg)
+		if err != nil {
+			return nil, errors.Wrap(err, "error creating resource based limiter")
+		}
 	}
 
 	g.Service = services.NewBasicService(g.starting, g.running, g.stopping)

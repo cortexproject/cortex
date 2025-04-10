@@ -3,6 +3,9 @@ package limiter
 import (
 	"fmt"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/cortexproject/cortex/pkg/util/resource"
 )
 
@@ -19,11 +22,23 @@ type ResourceBasedLimiter struct {
 	limits          map[resource.Type]float64
 }
 
-func NewResourceBasedLimiter(resourceMonitor resource.IMonitor, limits map[resource.Type]float64) *ResourceBasedLimiter {
+func NewResourceBasedLimiter(resourceMonitor resource.IMonitor, limits map[resource.Type]float64, registerer prometheus.Registerer) (*ResourceBasedLimiter, error) {
+	for resType, limit := range limits {
+		switch resType {
+		case resource.CPU, resource.Heap:
+			promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+				Name:        "cortex_resource_based_limiter_limit",
+				ConstLabels: map[string]string{"resource": string(resType)},
+			}).Set(limit)
+		default:
+			return nil, fmt.Errorf("unsupported resource type: [%s]", resType)
+		}
+	}
+
 	return &ResourceBasedLimiter{
 		resourceMonitor: resourceMonitor,
 		limits:          limits,
-	}
+	}, nil
 }
 
 func (l *ResourceBasedLimiter) AcceptNewRequest() error {

@@ -16,8 +16,8 @@ const (
 	CPU  Type = "cpu"
 	Heap Type = "heap"
 
-	monitorInterval = time.Second
-	dataPointsToAvg = 30
+	monitorInterval = 100 * time.Millisecond
+	dataPointsToAvg = 50
 )
 
 type Type string
@@ -70,6 +70,8 @@ func NewMonitor(limits map[Type]float64, registerer prometheus.Registerer) (*Mon
 		case Heap:
 			scannerFunc = newHeapScanner
 			gaugeFunc = m.GetHeapUtilization
+		default:
+			return nil, fmt.Errorf("no scanner available for resource type: [%s]", resType)
 		}
 
 		s, err := scannerFunc()
@@ -84,15 +86,6 @@ func NewMonitor(limits map[Type]float64, registerer prometheus.Registerer) (*Mon
 			ConstLabels: map[string]string{"resource": string(resType)},
 		}, gaugeFunc)
 	}
-
-	//promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-	//	Name:        "cortex_resource_threshold",
-	//	ConstLabels: map[string]string{"resource": "CPU"},
-	//}).Set(thresholds.CPU)
-	//promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-	//	Name:        "cortex_resource_threshold",
-	//	ConstLabels: map[string]string{"resource": "Heap"},
-	//}).Set(thresholds.Heap)
 
 	return m, nil
 }

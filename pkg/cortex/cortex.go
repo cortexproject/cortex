@@ -147,7 +147,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	c.MonitoredResources = []string{}
 	f.Var(&c.MonitoredResources, "monitored.resources", "Comma-separated list of resources to monitor. "+
-		"Supported values are cpu and heap, which tracks metrics that are close estimates. Empty string to disable.")
+		"Supported values are cpu and heap, which tracks metrics from github.com/prometheus/procfs and runtime/metrics "+
+		"that are close estimates. Empty string to disable.")
 
 	c.API.RegisterFlags(f)
 	c.registerServerFlagsWithChangedDefaultValues(f)

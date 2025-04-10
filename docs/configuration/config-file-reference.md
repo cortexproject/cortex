@@ -69,7 +69,8 @@ Where default_value is the value to use if the environment variable is undefined
 [http_prefix: <string> | default = "/api/prom"]
 
 # Comma-separated list of resources to monitor. Supported values are cpu and
-# heap, which tracks metrics that are close estimates. Empty string to disable.
+# heap, which tracks metrics from github.com/prometheus/procfs and
+# runtime/metrics that are close estimates. Empty string to disable.
 # CLI flag: -monitored.resources
 [monitored_resources: <string> | default = ""]
 

@@ -146,8 +146,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 
 	c.MonitoredResources = []string{}
-	f.Var(&c.MonitoredResources, "monitored_resources", "Comma-separated list of resources to monitor. "+
-		"Supported values are cpu and heap. Empty string to disable.")
+	f.Var(&c.MonitoredResources, "monitored.resources", "Comma-separated list of resources to monitor. "+
+		"Supported values are cpu and heap, which tracks metrics that are close estimates. Empty string to disable.")
 
 	c.API.RegisterFlags(f)
 	c.registerServerFlagsWithChangedDefaultValues(f)

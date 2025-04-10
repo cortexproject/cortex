@@ -351,14 +351,14 @@ store_gateway:
 
   instance_limits:
     # Max CPU utilization that this ingester can reach before rejecting new
-    # query request (across all tenants) in percentage, between 0 and 1. 0 =
-    # unlimited.
+    # query request (across all tenants) in percentage, between 0 and 1.
+    # monitored_resources config must include the resource type. 0 to disable.
     # CLI flag: -store-gateway.instance-limits.cpu-utilization
     [cpu_utilization: <float> | default = 0]
 
     # Max heap utilization that this ingester can reach before rejecting new
-    # query request (across all tenants) in percentage, between 0 and 1. 0 =
-    # unlimited.
+    # query request (across all tenants) in percentage, between 0 and 1.
+    # monitored_resources config must include the resource type. 0 to disable.
     # CLI flag: -store-gateway.instance-limits.heap-utilization
     [heap_utilization: <float> | default = 0]
 

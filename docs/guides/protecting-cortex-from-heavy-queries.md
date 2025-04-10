@@ -37,7 +37,7 @@ See https://cortexmetrics.io/docs/configuration/configuration-file/#query_fronte
 
 See https://cortexmetrics.io/docs/configuration/configuration-file/#querier_config:~:text=max_samples for details.
 
-## Resource-based throttling
+## Resource-based throttling (Experimental)
 
 Although the static limits are able to protect Cortex components from specific query patterns, they are not generic enough to cover different combinations of bad query patterns. For example, what if the query fetches relatively large postings, series and chunks that are slightly below the individual limits? For a more generic solution, you can enable resource-based throttling by setting CPU and heap utilization thresholds.
 
@@ -47,9 +47,10 @@ For example, the following configuration will start throttling query requests if
 
 ```
 target: ingester
-resource_thresholds:
-  cpu: 0.8
-  heap: 0.8
+monitored_resources: cpu,heap
+instance_limits:
+  cpu_utilization: 0.8
+  heap_utilization: 0.8
 ```
 
-See https://cortexmetrics.io/docs/configuration/configuration-file/#generic-placeholders:~:text=resource_thresholds for details.
+See https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=instance_limits for details.

@@ -69,8 +69,8 @@ Where default_value is the value to use if the environment variable is undefined
 [http_prefix: <string> | default = "/api/prom"]
 
 # Comma-separated list of resources to monitor. Supported values are cpu and
-# heap. Empty string to disable.
-# CLI flag: -monitored_resources
+# heap, which tracks metrics that are close estimates. Empty string to disable.
+# CLI flag: -monitored.resources
 [monitored_resources: <string> | default = ""]
 
 api:
@@ -3202,18 +3202,15 @@ lifecycler:
 [upload_compacted_blocks_enabled: <boolean> | default = true]
 
 instance_limits:
-  instancelimits:
-    # Max CPU utilization that this ingester can reach before rejecting new
-    # query request (across all tenants) in percentage, between 0 and 1. 0 =
-    # unlimited.
-    # CLI flag: -ingester.instance-limits.cpu-utilization
-    [cpu_utilization: <float> | default = 0]
+  # Max CPU utilization that this ingester can reach before rejecting new query
+  # request (across all tenants) in percentage, between 0 and 1. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.cpu-utilization
+  [cpu_utilization: <float> | default = 0]
 
-    # Max heap utilization that this ingester can reach before rejecting new
-    # query request (across all tenants) in percentage, between 0 and 1. 0 =
-    # unlimited.
-    # CLI flag: -ingester.instance-limits.heap-utilization
-    [heap_utilization: <float> | default = 0]
+  # Max heap utilization that this ingester can reach before rejecting new query
+  # request (across all tenants) in percentage, between 0 and 1. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.heap-utilization
+  [heap_utilization: <float> | default = 0]
 
   # Max ingestion rate (samples/sec) that ingester will accept. This limit is
   # per-ingester, not per-tenant. Additional push requests will be rejected.
@@ -5870,12 +5867,14 @@ sharding_ring:
 
 instance_limits:
   # Max CPU utilization that this ingester can reach before rejecting new query
-  # request (across all tenants) in percentage, between 0 and 1. 0 = unlimited.
+  # request (across all tenants) in percentage, between 0 and 1.
+  # monitored_resources config must include the resource type. 0 to disable.
   # CLI flag: -store-gateway.instance-limits.cpu-utilization
   [cpu_utilization: <float> | default = 0]
 
   # Max heap utilization that this ingester can reach before rejecting new query
-  # request (across all tenants) in percentage, between 0 and 1. 0 = unlimited.
+  # request (across all tenants) in percentage, between 0 and 1.
+  # monitored_resources config must include the resource type. 0 to disable.
   # CLI flag: -store-gateway.instance-limits.heap-utilization
   [heap_utilization: <float> | default = 0]
 

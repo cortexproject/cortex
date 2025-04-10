@@ -123,3 +123,8 @@ Currently experimental features are:
 - Query-frontend: dynamic query splits
   - `querier.max-shards-per-query` (int) CLI flag
   - `querier.max-fetched-data-duration-per-query` (duration) CLI flag
+- Ingester/Store-Gateway: Resource-based throttling
+  - `-ingester.instance-limits.cpu-utilization`
+  - `-ingester.instance-limits.heap-utilization`
+  - `-store-gateway.instance-limits.cpu-utilization`
+  - `-store-gateway.instance-limits.heap-utilization`

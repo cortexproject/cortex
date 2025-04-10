@@ -5,7 +5,7 @@
 * [FEATURE] Query Frontend: Add dynamic interval size for query splitting. This is enabled by configuring experimental flags `querier.max-shards-per-query` and/or `querier.max-fetched-data-duration-per-query`. The split interval size is dynamically increased to maintain a number of shards and total duration fetched below the configured values. #6458
 * [FEATURE] Querier/Ruler: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
 * [FEATURE] Update prometheus alertmanager version to v0.28.0 and add new integration msteamsv2, jira, and rocketchat. #6590
-* [FEATURE] Ingester/StoreGateway: Add `resource-thresholds` in ingesters and store gateways to throttle query requests when the pods are under resource pressure. #6674
+* [FEATURE] Ingester/StoreGateway: Add `monitored_resources` config + ResourceBasedLimiter in ingesters and store gateways. #6674
 * [FEATURE] Ingester: Support out-of-order native histogram ingestion. It automatically enabled when `-ingester.out-of-order-time-window > 0` and `-blocks-storage.tsdb.enable-native-histograms=true`. #6626 #6663
 * [ENHANCEMENT] Alertmanager: Add nflog and silences maintenance metrics. #6659
 * [ENHANCEMENT] Querier: limit label APIs to query only ingesters if `start` param is not been specified. #6618

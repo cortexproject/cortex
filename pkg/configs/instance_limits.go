@@ -15,8 +15,8 @@ type InstanceLimits struct {
 }
 
 func (cfg *InstanceLimits) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.Float64Var(&cfg.CPUUtilization, prefix+"instance-limits.cpu-utilization", 0, "Max CPU utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. 0 = unlimited.")
-	f.Float64Var(&cfg.HeapUtilization, prefix+"instance-limits.heap-utilization", 0, "Max heap utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. 0 = unlimited.")
+	f.Float64Var(&cfg.CPUUtilization, prefix+"instance-limits.cpu-utilization", 0, "EXPERIMENTAL: Max CPU utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.")
+	f.Float64Var(&cfg.HeapUtilization, prefix+"instance-limits.heap-utilization", 0, "EXPERIMENTAL: Max heap utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.")
 }
 
 func (cfg *InstanceLimits) Validate(monitoredResources flagext.StringSliceCSV) error {

@@ -2,13 +2,11 @@ package ingester
 
 import (
 	"flag"
-	"strings"
 
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/resource"
 )
 
 var (
@@ -22,7 +20,7 @@ var (
 
 // InstanceLimits describes limits used by ingester. Reaching any of these will result in error response to the call.
 type InstanceLimits struct {
-	configs.InstanceLimits
+	configs.InstanceLimits `yaml:",inline"`
 
 	MaxIngestionRate         float64 `yaml:"max_ingestion_rate"`
 	MaxInMemoryTenants       int64   `yaml:"max_tenants"`
@@ -45,15 +43,7 @@ func (cfg *InstanceLimits) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix strin
 }
 
 func (cfg *InstanceLimits) Validate(monitoredResources flagext.StringSliceCSV) error {
-	if cfg.CPUUtilization > 0 && !strings.Contains(monitoredResources.String(), string(resource.CPU)) {
-		return errors.New("monitored_resources config must include \"cpu\" as well")
-	}
-
-	if cfg.HeapUtilization > 0 && !strings.Contains(monitoredResources.String(), string(resource.Heap)) {
-		return errors.New("monitored_resources config must include \"heap\" as well")
-	}
-
-	return nil
+	return cfg.InstanceLimits.Validate(monitoredResources)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface. If give

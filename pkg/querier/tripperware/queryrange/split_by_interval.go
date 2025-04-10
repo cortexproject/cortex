@@ -18,7 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-type IntervalFn func(ctx context.Context, r tripperware.Request) (time.Duration, error)
+type IntervalFn func(ctx context.Context, r tripperware.Request) (context.Context, time.Duration, error)
 
 // SplitByIntervalMiddleware creates a new Middleware that splits requests by a given interval.
 func SplitByIntervalMiddleware(interval IntervalFn, limits tripperware.Limits, merger tripperware.Merger, registerer prometheus.Registerer, lookbackDelta time.Duration) tripperware.Middleware {
@@ -52,7 +52,7 @@ type splitByInterval struct {
 func (s splitByInterval) Do(ctx context.Context, r tripperware.Request) (tripperware.Response, error) {
 	// First we're going to build new requests, one for each day, taking care
 	// to line up the boundaries with step.
-	interval, err := s.interval(ctx, r)
+	ctx, interval, err := s.interval(ctx, r)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
@@ -152,29 +152,29 @@ func nextIntervalBoundary(t, step int64, interval time.Duration) int64 {
 }
 
 // Returns a fixed split interval
-func staticIntervalFn(cfg Config) func(ctx context.Context, r tripperware.Request) (time.Duration, error) {
-	return func(_ context.Context, _ tripperware.Request) (time.Duration, error) {
-		return cfg.SplitQueriesByInterval, nil
+func staticIntervalFn(cfg Config) func(ctx context.Context, r tripperware.Request) (context.Context, time.Duration, error) {
+	return func(ctx context.Context, _ tripperware.Request) (context.Context, time.Duration, error) {
+		return ctx, cfg.SplitQueriesByInterval, nil
 	}
 }
 
 // Returns a dynamic multiple of base interval adjusted depending on configured 'max_shards_per_query' and 'max_fetched_data_duration_per_query'
-func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer querysharding.Analyzer, lookbackDelta time.Duration) func(ctx context.Context, r tripperware.Request) (time.Duration, error) {
-	return func(ctx context.Context, r tripperware.Request) (time.Duration, error) {
+func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer querysharding.Analyzer, lookbackDelta time.Duration) func(ctx context.Context, r tripperware.Request) (context.Context, time.Duration, error) {
+	return func(ctx context.Context, r tripperware.Request) (context.Context, time.Duration, error) {
 		baseInterval := cfg.SplitQueriesByInterval
 		dynamicSplitCfg := cfg.DynamicQuerySplitsConfig
 		if dynamicSplitCfg.MaxShardsPerQuery == 0 && dynamicSplitCfg.MaxFetchedDataDurationPerQuery == 0 {
-			return baseInterval, nil
+			return ctx, baseInterval, nil
 		}
 
 		maxVerticalShardSize, isShardable, err := getMaxVerticalShardSize(ctx, r, limits, queryAnalyzer)
 		if err != nil {
-			return baseInterval, err
+			return ctx, baseInterval, err
 		}
 
 		queryExpr, err := parser.ParseExpr(r.GetQuery())
 		if err != nil {
-			return baseInterval, err
+			return ctx, baseInterval, err
 		}
 
 		interval := baseInterval
@@ -207,11 +207,10 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 
 		// Set number of vertical shards to be used by shard_by middleware
 		if isShardable && maxVerticalShardSize > 1 {
-			stats := querier_stats.FromContext(ctx)
-			stats.AddExtraFields("shard_by.num_shards", verticalShardSize)
+			ctx = tripperware.SetVerticalShardSizeToContext(ctx, verticalShardSize)
 		}
 
-		return interval, nil
+		return ctx, interval, nil
 	}
 }
 

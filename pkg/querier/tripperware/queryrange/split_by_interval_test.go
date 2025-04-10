@@ -298,7 +298,9 @@ func TestSplitByDay(t *testing.T) {
 			path:               query,
 			expectedBody:       string(mergedHTTPResponseBody),
 			expectedQueryCount: 2,
-			intervalFn:         func(_ context.Context, _ tripperware.Request) (time.Duration, error) { return 24 * time.Hour, nil },
+			intervalFn: func(ctx context.Context, _ tripperware.Request) (context.Context, time.Duration, error) {
+				return ctx, 24 * time.Hour, nil
+			},
 		},
 		{
 			path:               query,
@@ -310,7 +312,9 @@ func TestSplitByDay(t *testing.T) {
 			path:               longQuery,
 			expectedBody:       string(mergedHTTPResponseBody),
 			expectedQueryCount: 31,
-			intervalFn:         func(_ context.Context, _ tripperware.Request) (time.Duration, error) { return day, nil },
+			intervalFn: func(ctx context.Context, _ tripperware.Request) (context.Context, time.Duration, error) {
+				return ctx, day, nil
+			},
 		},
 		{
 			path:               longQuery,
@@ -662,7 +666,7 @@ func Test_dynamicIntervalFn(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 			stats, ctx := querier_stats.ContextWithEmptyStats(ctx)
 
-			interval, err := dynamicIntervalFn(cfg, mockLimits{queryVerticalShardSize: tc.maxVerticalShardSize}, querysharding.NewQueryAnalyzer(), lookbackDelta)(ctx, tc.req)
+			ctx, interval, err := dynamicIntervalFn(cfg, mockLimits{queryVerticalShardSize: tc.maxVerticalShardSize}, querysharding.NewQueryAnalyzer(), lookbackDelta)(ctx, tc.req)
 			require.Equal(t, tc.expectedInterval, interval)
 
 			if tc.expectedVerticalShardSize > 0 {

@@ -1,0 +1,37 @@
+package resource
+
+import (
+	"fmt"
+	"runtime/metrics"
+)
+
+const (
+	heapMetricName = "/memory/classes/Heap/objects:bytes"
+)
+
+type scanner interface {
+	scan() (float64, error)
+}
+
+type heapScanner struct {
+	metricSamples []metrics.Sample
+}
+
+func newHeapScanner() (scanner, error) {
+	metricSamples := make([]metrics.Sample, 1)
+	metricSamples[0].Name = heapMetricName
+	metrics.Read(metricSamples)
+
+	for _, sample := range metricSamples {
+		if sample.Value.Kind() == metrics.KindBad {
+			return nil, fmt.Errorf("metric %s is not supported", sample.Name)
+		}
+	}
+
+	return &heapScanner{metricSamples: metricSamples}, nil
+}
+
+func (s *heapScanner) scan() (float64, error) {
+	metrics.Read(s.metricSamples)
+	return s.metricSamples[0].Value.Float64(), nil
+}

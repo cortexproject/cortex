@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -376,6 +377,23 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonBytesLimitStoreGateway, tripperware.SourceAPI, userID))
+				assert.Equal(t, float64(1), v)
+			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
+		},
+		{
+			name:            "test handler with reasonResourceExhausted",
+			cfg:             HandlerConfig{QueryStatsEnabled: true},
+			expectedMetrics: 6,
+			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				resourceLimitReachedErr := &limiter.ResourceLimitReachedError{}
+				return &http.Response{
+					StatusCode: http.StatusUnprocessableEntity,
+					Body:       io.NopCloser(strings.NewReader(resourceLimitReachedErr.Error())),
+				}, nil
+			}),
+			additionalMetricsCheckFunc: func(h *Handler) {
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResourceExhausted, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,

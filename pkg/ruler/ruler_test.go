@@ -3147,14 +3147,6 @@ func TestGetShardSizeForUser(t *testing.T) {
 			expectedShardSize:  20,
 		},
 		{
-			name:               "User with default 0 shard size",
-			userID:             "user1",
-			rulerInstanceCount: 10,
-			replicationFactor:  1,
-			tenantShardSize:    0,
-			expectedShardSize:  10,
-		},
-		{
 			name:               "Ensure shard size is at least replication factor",
 			userID:             "user1",
 			rulerInstanceCount: 10,

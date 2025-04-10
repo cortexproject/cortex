@@ -29,7 +29,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/compactor"
-	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -771,25 +770,25 @@ func (t *Cortex) initQueryScheduler() (services.Service, error) {
 }
 
 func (t *Cortex) initResourceMonitor() (services.Service, error) {
-	if t.Cfg.ResourceThresholds.CPU <= 0 && t.Cfg.ResourceThresholds.Heap <= 0 {
+	if len(t.Cfg.MonitoredResources) == 0 {
 		return nil, nil
 	}
 
-	scanner, err := resource.NewScanner()
-	if err != nil {
-		if errors.As(err, resource.UnsupportedOSError{}) {
-			level.Warn(util_log.Logger).Log("msg", "Skipping resource monitor", "err", err.Error())
-			return nil, nil
+	containerLimits := make(map[resource.Type]float64)
+	for _, res := range t.Cfg.MonitoredResources {
+		switch resource.Type(res) {
+		case resource.CPU:
+			containerLimits[resource.Type(res)] = float64(runtime.GOMAXPROCS(0))
+		case resource.Heap:
+			containerLimits[resource.Type(res)] = float64(debug.SetMemoryLimit(-1))
 		}
-		return nil, err
 	}
 
-	limits := configs.Resources{
-		CPU:  float64(runtime.GOMAXPROCS(0)),
-		Heap: float64(debug.SetMemoryLimit(-1)),
+	var err error
+	t.ResourceMonitor, err = resource.NewMonitor(containerLimits, prometheus.DefaultRegisterer)
+	if t.ResourceMonitor != nil {
+		util_log.WarnExperimentalUse("resource monitor")
 	}
-
-	t.ResourceMonitor, err = resource.NewMonitor(t.Cfg.ResourceThresholds, limits, scanner, prometheus.DefaultRegisterer)
 
 	return t.ResourceMonitor, err
 }

@@ -388,7 +388,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				resourceExhaustedErr := &resource.ExhaustedError{}
 				return &http.Response{
-					StatusCode: http.StatusTooManyRequests,
+					StatusCode: http.StatusUnprocessableEntity,
 					Body:       io.NopCloser(strings.NewReader(resourceExhaustedErr.Error())),
 				}, nil
 			}),
@@ -396,7 +396,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResourceExhausted, tripperware.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
-			expectedStatusCode: http.StatusTooManyRequests,
+			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

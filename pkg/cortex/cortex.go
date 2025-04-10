@@ -89,10 +89,11 @@ var (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target      flagext.StringSliceCSV `yaml:"target"`
-	AuthEnabled bool                   `yaml:"auth_enabled"`
-	PrintConfig bool                   `yaml:"-"`
-	HTTPPrefix  string                 `yaml:"http_prefix"`
+	Target             flagext.StringSliceCSV `yaml:"target"`
+	AuthEnabled        bool                   `yaml:"auth_enabled"`
+	PrintConfig        bool                   `yaml:"-"`
+	HTTPPrefix         string                 `yaml:"http_prefix"`
+	MonitoredResources flagext.StringSliceCSV `yaml:"monitored_resources"`
 
 	ExternalQueryable prom_storage.Queryable `yaml:"-"`
 	ExternalPusher    ruler.Pusher           `yaml:"-"`
@@ -123,7 +124,6 @@ type Config struct {
 	RuntimeConfig       runtimeconfig.Config                       `yaml:"runtime_config"`
 	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
 	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
-	ResourceThresholds  configs.Resources                          `yaml:"resource_thresholds"`
 
 	Tracing tracing.Config `yaml:"tracing"`
 }
@@ -144,6 +144,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
+
+	c.MonitoredResources = []string{}
+	f.Var(&c.MonitoredResources, "monitored_resources", "Comma-separated list of resources to monitor. "+
+		"Supported values are cpu and heap. Empty string to disable.")
 
 	c.API.RegisterFlags(f)
 	c.registerServerFlagsWithChangedDefaultValues(f)
@@ -172,7 +176,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
-	c.ResourceThresholds.RegisterFlags(f)
 }
 
 // Validate the cortex config and returns an error if the validation
@@ -219,7 +222,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.QueryRange.Validate(c.Querier); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
-	if err := c.StoreGateway.Validate(c.LimitsConfig); err != nil {
+	if err := c.StoreGateway.Validate(c.LimitsConfig, c.MonitoredResources); err != nil {
 		return errors.Wrap(err, "invalid store-gateway config")
 	}
 	if err := c.Compactor.Validate(c.LimitsConfig); err != nil {
@@ -232,7 +235,7 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
-	if err := c.Ingester.Validate(); err != nil {
+	if err := c.Ingester.Validate(c.MonitoredResources); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
 
@@ -240,8 +243,12 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid tracing config")
 	}
 
-	if err := c.ResourceThresholds.Validate(); err != nil {
-		return errors.Wrap(err, "invalid resource_thresholds config")
+	for _, r := range c.MonitoredResources {
+		switch resource.Type(r) {
+		case resource.CPU, resource.Heap:
+		default:
+			return fmt.Errorf("unsupported resource type to monitor: %s", r)
+		}
 	}
 
 	return nil

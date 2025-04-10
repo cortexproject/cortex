@@ -56,6 +56,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/resource"
@@ -168,29 +170,27 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 
 	f.BoolVar(&cfg.UploadCompactedBlocksEnabled, "ingester.upload-compacted-blocks-enabled", true, "Enable uploading compacted blocks.")
-	f.Float64Var(&cfg.DefaultLimits.MaxIngestionRate, "ingester.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that ingester will accept. This limit is per-ingester, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. This limit only works when using blocks engine. 0 = unlimited.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryTenants, "ingester.instance-limits.max-tenants", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.instance-limits.max-series", 0, "Max series that this ingester can hold (across all tenants). Requests to create additional series will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInflightQueryRequests, "ingester.instance-limits.max-inflight-query-requests", 0, "Max inflight query requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
-
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
-
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
-
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
 
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
+
+	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
 }
 
-func (cfg *Config) Validate() error {
+func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
 	if err := cfg.LifecyclerConfig.Validate(); err != nil {
 		return err
 	}
 
 	if cfg.LabelsStringInterningEnabled {
 		logutil.WarnExperimentalUse("String interning for metrics labels Enabled")
+	}
+
+	if err := cfg.DefaultLimits.Validate(monitoredResources); err != nil {
+		return err
 	}
 
 	return nil
@@ -229,11 +229,11 @@ type Ingester struct {
 
 	logger log.Logger
 
-	lifecycler         *ring.Lifecycler
-	limits             *validation.Overrides
-	limiter            *Limiter
-	resourceMonitor    *resource.Monitor
-	subservicesWatcher *services.FailureWatcher
+	lifecycler           *ring.Lifecycler
+	limits               *validation.Overrides
+	limiter              *Limiter
+	resourceBasedLimiter *limiter.ResourceBasedLimiter
+	subservicesWatcher   *services.FailureWatcher
 
 	stoppedMtx sync.RWMutex // protects stopped
 	stopped    bool         // protected by stoppedMtx
@@ -721,7 +721,6 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		ingestionRate:                util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 		expandedPostingsCacheFactory: cortex_tsdb.NewExpandedPostingsCacheFactory(cfg.BlocksStorageConfig.TSDB.PostingsCache),
 		matchersCache:                storecache.NoopMatchersCache,
-		resourceMonitor:              resourceMonitor,
 	}
 
 	if cfg.MatchersCacheMaxItems > 0 {
@@ -782,6 +781,17 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 	// Apply positive jitter only to ensure that the minimum timeout is adhered to.
 	i.TSDBState.compactionIdleTimeout = util.DurationWithPositiveJitter(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout, compactionIdleTimeoutJitter)
 	level.Info(i.logger).Log("msg", "TSDB idle compaction timeout set", "timeout", i.TSDBState.compactionIdleTimeout)
+
+	if resourceMonitor != nil {
+		resourceLimits := make(map[resource.Type]float64)
+		if cfg.DefaultLimits.CPUUtilization > 0 {
+			resourceLimits[resource.CPU] = cfg.DefaultLimits.CPUUtilization
+		}
+		if cfg.DefaultLimits.HeapUtilization > 0 {
+			resourceLimits[resource.Heap] = cfg.DefaultLimits.HeapUtilization
+		}
+		i.resourceBasedLimiter = limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits)
+	}
 
 	i.BasicService = services.NewBasicService(i.starting, i.updateLoop, i.stopping)
 	return i, nil
@@ -2156,10 +2166,10 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 
 	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
 
-	if i.resourceMonitor != nil {
-		if resourceName, threshold, utilization, err := i.resourceMonitor.CheckResourceUtilization(); err != nil {
-			level.Warn(i.logger).Log("msg", "resource threshold breached", "resource", resourceName, "threshold", threshold, "utilization", utilization)
-			return nil, errors.Wrapf(err, "failed to query")
+	if i.resourceBasedLimiter != nil {
+		if err := i.resourceBasedLimiter.AcceptNewRequest(); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to accept request", "err", err)
+			return nil, fmt.Errorf("failed to query: %s", limiter.ErrResourceLimitReachedStr)
 		}
 	}
 

@@ -491,38 +491,33 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	}
 
 	var reason string
-	if statusCode == http.StatusRequestEntityTooLarge {
+	if statusCode == http.StatusTooManyRequests {
+		reason = reasonTooManyRequests
+	} else if statusCode == http.StatusRequestEntityTooLarge {
 		reason = reasonResponseBodySizeExceeded
-	} else if error != nil {
+	} else if statusCode == http.StatusUnprocessableEntity && error != nil {
 		// We are unable to use errors.As to compare since body string from the http response is wrapped as an error
 		errMsg := error.Error()
-		if statusCode == http.StatusTooManyRequests {
-			var resourceExhaustedErr resource.ExhaustedError
-			if strings.Contains(errMsg, resourceExhaustedErr.Error()) {
-				reason = reasonResourceExhausted
-			} else {
-				reason = reasonTooManyRequests
-			}
-		} else if statusCode == http.StatusUnprocessableEntity {
-			if strings.Contains(errMsg, limitTooManySamples) {
-				reason = reasonTooManySamples
-			} else if strings.Contains(errMsg, limitTimeRangeExceeded) {
-				reason = reasonTimeRangeExceeded
-			} else if strings.Contains(errMsg, limitSeriesFetched) {
-				reason = reasonSeriesFetched
-			} else if strings.Contains(errMsg, limitChunksFetched) {
-				reason = reasonChunksFetched
-			} else if strings.Contains(errMsg, limitChunkBytesFetched) {
-				reason = reasonChunkBytesFetched
-			} else if strings.Contains(errMsg, limitDataBytesFetched) {
-				reason = reasonDataBytesFetched
-			} else if strings.Contains(errMsg, limitSeriesStoreGateway) {
-				reason = reasonSeriesLimitStoreGateway
-			} else if strings.Contains(errMsg, limitChunksStoreGateway) {
-				reason = reasonChunksLimitStoreGateway
-			} else if strings.Contains(errMsg, limitBytesStoreGateway) {
-				reason = reasonBytesLimitStoreGateway
-			}
+		if strings.Contains(errMsg, limitTooManySamples) {
+			reason = reasonTooManySamples
+		} else if strings.Contains(errMsg, limitTimeRangeExceeded) {
+			reason = reasonTimeRangeExceeded
+		} else if strings.Contains(errMsg, limitSeriesFetched) {
+			reason = reasonSeriesFetched
+		} else if strings.Contains(errMsg, limitChunksFetched) {
+			reason = reasonChunksFetched
+		} else if strings.Contains(errMsg, limitChunkBytesFetched) {
+			reason = reasonChunkBytesFetched
+		} else if strings.Contains(errMsg, limitDataBytesFetched) {
+			reason = reasonDataBytesFetched
+		} else if strings.Contains(errMsg, limitSeriesStoreGateway) {
+			reason = reasonSeriesLimitStoreGateway
+		} else if strings.Contains(errMsg, limitChunksStoreGateway) {
+			reason = reasonChunksLimitStoreGateway
+		} else if strings.Contains(errMsg, limitBytesStoreGateway) {
+			reason = reasonBytesLimitStoreGateway
+		} else if strings.Contains(errMsg, resource.ExhaustedErrorStr) {
+			reason = reasonResourceExhausted
 		}
 	}
 	if len(reason) > 0 {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -22,7 +23,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -167,13 +167,13 @@ func TestConfigValidation(t *testing.T) {
 			expectedError: errInvalidHTTPPrefix,
 		},
 		{
-			name: "should fail validation for resource thresholds",
+			name: "should fail validation for invalid resource to monitor",
 			getTestConfig: func() *Config {
 				configuration := newDefaultConfig()
-				configuration.ResourceThresholds.CPU = 10
+				configuration.MonitoredResources = []string{"wrong"}
 				return configuration
 			},
-			expectedError: configs.ErrInvalidResourceThreshold,
+			expectedError: fmt.Errorf("unsupported resource type to monitor: %s", "wrong"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

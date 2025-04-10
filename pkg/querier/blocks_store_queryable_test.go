@@ -44,7 +44,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -1527,7 +1526,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{
 						remoteAddr:      "1.1.1.1",
-						mockedSeriesErr: &resource.ExhaustedError{},
+						mockedSeriesErr: &limiter.ResourceLimitReachedError{},
 					}: {block1},
 				},
 				map[BlocksStoreClient][]ulid.ULID{

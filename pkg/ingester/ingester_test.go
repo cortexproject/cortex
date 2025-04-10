@@ -49,7 +49,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
@@ -59,6 +58,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -3069,17 +3069,16 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
 	}
 
-	thresholds := configs.Resources{Heap: 0.1}
-	limits := configs.Resources{Heap: 10}
-	resourceMonitor, err := resource.NewMonitor(thresholds, limits, &mockResourceScanner{
-		heap: uint64(5),
-	}, prometheus.NewRegistry())
-	require.NoError(t, err)
-
-	i, err := prepareIngesterWithResourceMonitor(t, resourceMonitor)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	limits := map[resource.Type]float64{
+		resource.CPU:  0.5,
+		resource.Heap: 0.5,
+	}
+	i.resourceBasedLimiter = limiter.NewResourceBasedLimiter(&mockResourceMonitor{cpu: 0.4, heap: 0.6}, limits)
 
 	// Wait until it's ACTIVE
 	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
@@ -3099,18 +3098,8 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 	s := &mockQueryStreamServer{ctx: ctx}
 	err = i.QueryStream(rreq, s)
 	require.Error(t, err)
-	exhaustedErr := resource.ExhaustedError{}
+	exhaustedErr := limiter.ResourceLimitReachedError{}
 	require.ErrorContains(t, err, exhaustedErr.Error())
-}
-
-type mockResourceScanner struct {
-	heap uint64
-}
-
-func (m *mockResourceScanner) Scan() (resource.Stats, error) {
-	return resource.Stats{
-		Heap: m.heap,
-	}, nil
 }
 
 func TestIngester_LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
@@ -3996,30 +3985,17 @@ func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config,
 	return ingester, nil
 }
 
-func prepareIngesterWithResourceMonitor(t testing.TB, resourceMonitor *resource.Monitor) (*Ingester, error) {
-	dataDir := t.TempDir()
-	bucketDir := t.TempDir()
+type mockResourceMonitor struct {
+	cpu  float64
+	heap float64
+}
 
-	ingesterCfg := defaultIngesterTestConfig(t)
-	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dataDir
-	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "filesystem"
-	ingesterCfg.BlocksStorageConfig.Bucket.Filesystem.Directory = bucketDir
+func (m *mockResourceMonitor) GetCPUUtilization() float64 {
+	return m.cpu
+}
 
-	overrides, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-
-	err := resourceMonitor.StartAsync(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	time.Sleep(time.Second)
-
-	ingester, err := New(ingesterCfg, overrides, prometheus.NewRegistry(), log.NewNopLogger(), resourceMonitor)
-	if err != nil {
-		return nil, err
-	}
-
-	return ingester, nil
-
+func (m *mockResourceMonitor) GetHeapUtilization() float64 {
+	return m.heap
 }
 
 func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {

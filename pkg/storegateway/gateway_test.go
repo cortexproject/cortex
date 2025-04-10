@@ -32,7 +32,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"google.golang.org/grpc/status"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -42,6 +41,7 @@ import (
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -91,7 +91,7 @@ func TestConfig_Validate(t *testing.T) {
 			flagext.DefaultValues(cfg, limits)
 			testData.setup(cfg, limits)
 
-			assert.Equal(t, testData.expected, cfg.Validate(*limits))
+			assert.Equal(t, testData.expected, cfg.Validate(*limits, nil))
 		})
 	}
 }
@@ -1211,37 +1211,22 @@ func TestStoreGateway_SeriesThrottledByResourceMonitor(t *testing.T) {
 	gatewayCfg.ShardingEnabled = false
 	storageCfg := mockStorageConfig(t)
 
-	thresholds := configs.Resources{Heap: 0.1}
-	limits := configs.Resources{Heap: 10}
-	resourceMonitor, err := resource.NewMonitor(thresholds, limits, &mockResourceScanner{
-		heap: uint64(5),
-	}, prometheus.NewRegistry())
-	require.NoError(t, err)
-
-	err = resourceMonitor.StartAsync(context.Background())
-	require.NoError(t, err)
-	time.Sleep(time.Second)
-
-	g, err := newStoreGateway(gatewayCfg, storageCfg, objstore.WithNoopInstr(bucketClient), nil, overrides, mockLoggingLevel(), logger, nil, resourceMonitor)
+	g, err := newStoreGateway(gatewayCfg, storageCfg, objstore.WithNoopInstr(bucketClient), nil, overrides, mockLoggingLevel(), logger, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 
+	limits := map[resource.Type]float64{
+		resource.CPU:  0.5,
+		resource.Heap: 0.5,
+	}
+	g.resourceBasedLimiter = util_limiter.NewResourceBasedLimiter(&mockResourceMonitor{cpu: 0.4, heap: 0.6}, limits)
+
 	srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
 	err = g.Series(req, srv)
 	require.Error(t, err)
-	exhaustedErr := resource.ExhaustedError{}
+	exhaustedErr := util_limiter.ResourceLimitReachedError{}
 	require.ErrorContains(t, err, exhaustedErr.Error())
-}
-
-type mockResourceScanner struct {
-	heap uint64
-}
-
-func (m *mockResourceScanner) Scan() (resource.Stats, error) {
-	return resource.Stats{
-		Heap: m.heap,
-	}, nil
 }
 
 func mockGatewayConfig() Config {
@@ -1254,6 +1239,19 @@ func mockGatewayConfig() Config {
 	cfg.ShardingRing.WaitStabilityMaxDuration = 0
 
 	return cfg
+}
+
+type mockResourceMonitor struct {
+	cpu  float64
+	heap float64
+}
+
+func (m *mockResourceMonitor) GetCPUUtilization() float64 {
+	return m.cpu
+}
+
+func (m *mockResourceMonitor) GetHeapUtilization() float64 {
+	return m.heap
 }
 
 func mockStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {

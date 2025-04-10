@@ -13,9 +13,6 @@ import (
 )
 
 const (
-	ExhaustedErrorStr     = "resource exhausted"
-	UnsupportedOSErrorStr = "resource scanner is only supported in linux"
-
 	CPU  Type = "cpu"
 	Heap Type = "heap"
 
@@ -24,12 +21,6 @@ const (
 )
 
 type Type string
-
-type UnsupportedOSError struct{}
-
-func (e *UnsupportedOSError) Error() string {
-	return UnsupportedOSErrorStr
-}
 
 type IMonitor interface {
 	GetCPUUtilization() float64

@@ -51,7 +51,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
-	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -1205,7 +1204,7 @@ func countSamplesAndChunks(series ...*storepb.Series) (samplesCount, chunksCount
 // only retry connection issues
 func isRetryableError(err error) bool {
 	// retry upon resource exhaustion error from resource monitor
-	var resourceExhaustedErr *resource.ExhaustedError
+	var resourceExhaustedErr *limiter.ResourceLimitReachedError
 	if errors.As(err, &resourceExhaustedErr) {
 		return true
 	}

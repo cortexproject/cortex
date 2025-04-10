@@ -22,7 +22,7 @@ var (
 
 // InstanceLimits describes limits used by ingester. Reaching any of these will result in error response to the call.
 type InstanceLimits struct {
-	*configs.InstanceLimits
+	configs.InstanceLimits
 
 	MaxIngestionRate         float64 `yaml:"max_ingestion_rate"`
 	MaxInMemoryTenants       int64   `yaml:"max_tenants"`

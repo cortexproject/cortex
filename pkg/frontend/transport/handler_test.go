@@ -29,8 +29,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/resource"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -386,10 +386,10 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
 			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				resourceExhaustedErr := &resource.ExhaustedError{}
+				resourceLimitReachedErr := &limiter.ResourceLimitReachedError{}
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
-					Body:       io.NopCloser(strings.NewReader(resourceExhaustedErr.Error())),
+					Body:       io.NopCloser(strings.NewReader(resourceLimitReachedErr.Error())),
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {

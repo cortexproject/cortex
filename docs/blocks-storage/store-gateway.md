@@ -349,6 +349,19 @@ store_gateway:
   # CLI flag: -store-gateway.disabled-tenants
   [disabled_tenants: <string> | default = ""]
 
+  instance_limits:
+    # Max CPU utilization that this ingester can reach before rejecting new
+    # query request (across all tenants) in percentage, between 0 and 1. 0 =
+    # unlimited.
+    # CLI flag: -store-gateway.instance-limits.cpu-utilization
+    [cpu_utilization: <float> | default = 0]
+
+    # Max heap utilization that this ingester can reach before rejecting new
+    # query request (across all tenants) in percentage, between 0 and 1. 0 =
+    # unlimited.
+    # CLI flag: -store-gateway.instance-limits.heap-utilization
+    [heap_utilization: <float> | default = 0]
+
   hedged_request:
     # If true, hedged requests are applied to object store calls. It can help
     # with reducing tail latency.

@@ -27,8 +27,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/resource"
 )
 
 const (
@@ -516,7 +516,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonChunksLimitStoreGateway
 		} else if strings.Contains(errMsg, limitBytesStoreGateway) {
 			reason = reasonBytesLimitStoreGateway
-		} else if strings.Contains(errMsg, resource.ExhaustedErrorStr) {
+		} else if strings.Contains(errMsg, limiter.ErrResourceLimitReachedStr) {
 			reason = reasonResourceExhausted
 		}
 	}

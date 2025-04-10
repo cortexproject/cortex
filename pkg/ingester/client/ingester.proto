@@ -129,6 +129,9 @@ message MetricsForLabelMatchersStreamResponse {
 }
 
 message MetricsMetadataRequest {
+  int64 limit = 1;
+  int64 limit_per_metric = 2;
+  string metric = 3;
 }
 
 message MetricsMetadataResponse {

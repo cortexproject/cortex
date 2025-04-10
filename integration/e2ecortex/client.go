@@ -115,9 +115,9 @@ func NewPromQueryClient(address string) (*Client, error) {
 }
 
 // Push the input timeseries to the remote endpoint
-func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
+func (c *Client) Push(timeseries []prompb.TimeSeries, metadata ...prompb.MetricMetadata) (*http.Response, error) {
 	// Create write request
-	data, err := proto.Marshal(&prompb.WriteRequest{Timeseries: timeseries})
+	data, err := proto.Marshal(&prompb.WriteRequest{Timeseries: timeseries, Metadata: metadata})
 	if err != nil {
 		return nil, err
 	}

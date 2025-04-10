@@ -856,12 +856,17 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	// Only users in userRings will be used in the to load the rules.
 	userRings := map[string]ring.ReadRing{}
 	for _, u := range users {
-		shardSize := r.getShardSizeForUser(u)
-		subRing := r.ring.ShuffleShard(u, shardSize)
+		if shardSize := r.limits.RulerTenantShardSize(u); shardSize > 0 {
+			subRing := r.ring.ShuffleShard(u, r.getShardSizeForUser(u))
 
-		// Include the user only if it belongs to this ruler shard.
-		if subRing.HasInstance(r.lifecycler.GetInstanceID()) {
-			userRings[u] = subRing
+			// Include the user only if it belongs to this ruler shard.
+			if subRing.HasInstance(r.lifecycler.GetInstanceID()) {
+				userRings[u] = subRing
+			}
+		} else {
+			// A shard size of 0 means shuffle sharding is disabled for this specific user.
+			// In that case we use the full ring so that rule groups will be sharded across all rulers.
+			userRings[u] = r.ring
 		}
 	}
 
@@ -1321,17 +1326,9 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 }
 
 func (r *Ruler) getShardSizeForUser(userID string) int {
-	var newShardSize int
-	numInstances := r.ring.InstancesCount()
 	rulerTenantShardSize := r.limits.RulerTenantShardSize(userID)
+	newShardSize := util.DynamicShardSize(rulerTenantShardSize, r.ring.InstancesCount())
 
-	if rulerTenantShardSize == 0 {
-		// A shard size of 0 means shuffle sharding is disabled for this specific user.
-		// In that case we use the full ring so that rule groups will be sharded across all rulers.
-		return numInstances
-	}
-
-	newShardSize = util.DynamicShardSize(rulerTenantShardSize, numInstances)
 	// We want to guarantee that shard size will be at replication factor
 	return max(newShardSize, r.cfg.Ring.ReplicationFactor)
 }
@@ -1339,9 +1336,8 @@ func (r *Ruler) getShardSizeForUser(userID string) int {
 func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {
 	ring := ring.ReadRing(r.ring)
 
-	if r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		shardSize := r.getShardSizeForUser(userID)
-		ring = r.ring.ShuffleShard(userID, shardSize)
+	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		ring = r.ring.ShuffleShard(userID, r.getShardSizeForUser(userID))
 	}
 
 	rulers, failedZones, err := GetReplicationSetForListRule(ring, &r.cfg.Ring)

@@ -1221,6 +1221,7 @@ func TestStoreGateway_SeriesThrottledByResourceMonitor(t *testing.T) {
 		resource.Heap: 0.5,
 	}
 	g.resourceBasedLimiter, err = util_limiter.NewResourceBasedLimiter(&mockResourceMonitor{cpu: 0.4, heap: 0.6}, limits, nil)
+	require.NoError(t, err)
 
 	srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
 	err = g.Series(req, srv)

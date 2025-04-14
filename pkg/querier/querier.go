@@ -348,7 +348,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	}
 	startT := time.Now()
 	defer func() {
-		stats.AddNotOptimizedRegexMatchers(notOptimizedRegexMatchersCount(matchers))
+		stats.StoreMaxNotOptimizedRegexMatchers(notOptimizedRegexMatchersCount(matchers))
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
 

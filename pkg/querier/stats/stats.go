@@ -221,18 +221,20 @@ func (s *QueryStats) AddQueryStorageWallTime(t time.Duration) {
 	atomic.AddInt64((*int64)(&s.QueryStorageWallTime), int64(t))
 }
 
-func (s *QueryStats) AddNotOptimizedRegexMatchers(count uint64) {
+func (s *QueryStats) StoreMaxNotOptimizedRegexMatchers(count uint64) {
 	if s == nil {
 		return
 	}
-	atomic.AddUint64(&s.NotOptimizedRegexCount, count)
+
+	// For this stats we get the MAX, instead of adding the counts
+	// as for split queries we will call this method multiples times.
+	atomic.StoreUint64(&s.NotOptimizedRegexCount, max(count, s.LoadNotOptimizedRegexMatchers()))
 }
 
 func (s *QueryStats) LoadNotOptimizedRegexMatchers() uint64 {
 	if s == nil {
 		return 0
 	}
-
 	return atomic.LoadUint64(&s.NotOptimizedRegexCount)
 }
 
@@ -405,7 +407,7 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	s.AddFetchedChunkBytes(other.LoadFetchedChunkBytes())
 	s.AddFetchedDataBytes(other.LoadFetchedDataBytes())
 	s.AddFetchedSamples(other.LoadFetchedSamples())
-	s.AddNotOptimizedRegexMatchers(other.LoadNotOptimizedRegexMatchers())
+	s.StoreMaxNotOptimizedRegexMatchers(other.LoadNotOptimizedRegexMatchers())
 	s.AddFetchedChunks(other.LoadFetchedChunks())
 	s.AddStoreGatewayTouchedPostings(other.LoadStoreGatewayTouchedPostings())
 	s.AddStoreGatewayTouchedPostingBytes(other.LoadStoreGatewayTouchedPostingBytes())

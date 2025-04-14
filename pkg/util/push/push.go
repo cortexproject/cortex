@@ -32,8 +32,6 @@ const (
 	rw20WrittenSamplesHeader    = "X-Prometheus-Remote-Write-Samples-Written"
 	rw20WrittenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
 	rw20WrittenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
-
-	errMsgNotEnabledPRW2 = "Not enabled prometheus remote write v2 push request"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.
@@ -52,36 +50,7 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 			}
 		}
 
-		// follow Prometheus https://github.com/prometheus/prometheus/blob/main/storage/remote/write_handler.go
-		contentType := r.Header.Get("Content-Type")
-		if contentType == "" {
-			contentType = appProtoContentType
-		}
-
-		msgType, err := parseProtoMsg(contentType)
-		if err != nil {
-			level.Error(logger).Log("Error decoding remote write request", "err", err)
-			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-			return
-		}
-
-		if msgType != config.RemoteWriteProtoMsgV1 && msgType != config.RemoteWriteProtoMsgV2 {
-			level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
-			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-			return
-		}
-
-		enc := r.Header.Get("Content-Encoding")
-		if enc == "" {
-		} else if enc != string(remote.SnappyBlockCompression) {
-			err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, remote.SnappyBlockCompression)
-			level.Error(logger).Log("Error decoding remote write request", "err", err)
-			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-			return
-		}
-
-		switch msgType {
-		case config.RemoteWriteProtoMsgV1:
+		handlePRW1 := func() {
 			var req cortexpb.PreallocWriteRequest
 			err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
 			if err != nil {
@@ -108,55 +77,89 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 				}
 				http.Error(w, string(resp.Body), int(resp.Code))
 			}
-		case config.RemoteWriteProtoMsgV2:
-			if remoteWrite2Enabled {
-				var req writev2.Request
-				err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
-				if err != nil {
-					level.Error(logger).Log("err", err.Error())
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
+		}
 
-				v1Req, err := convertV2RequestToV1(&req)
-				if err != nil {
-					level.Error(logger).Log("err", err.Error())
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-
-				v1Req.SkipLabelNameValidation = false
-				// Current source is only API
-				if v1Req.Source == 0 {
-					v1Req.Source = cortexpb.API
-				}
-
-				if resp, err := push(ctx, &v1Req.WriteRequest); err != nil {
-					resp, ok := httpgrpc.HTTPResponseFromError(err)
-					setHeader(w, 0, 0, 0)
-					if !ok {
-						http.Error(w, err.Error(), http.StatusInternalServerError)
-						return
-					}
-					if resp.GetCode()/100 == 5 {
-						level.Error(logger).Log("msg", "push error", "err", err)
-					} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests {
-						level.Warn(logger).Log("msg", "push refused", "err", err)
-					}
-					http.Error(w, string(resp.Body), int(resp.Code))
-				} else {
-					setHeader(w, resp.Samples, resp.Histograms, resp.Exemplars)
-				}
-			} else {
-				level.Error(logger).Log(errMsgNotEnabledPRW2)
-				http.Error(w, errMsgNotEnabledPRW2, http.StatusUnsupportedMediaType)
+		handlePRW2 := func() {
+			var req writev2.Request
+			err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
+			if err != nil {
+				level.Error(logger).Log("err", err.Error())
+				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+
+			v1Req, err := convertV2RequestToV1(&req)
+			if err != nil {
+				level.Error(logger).Log("err", err.Error())
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			v1Req.SkipLabelNameValidation = false
+			if v1Req.Source == 0 {
+				v1Req.Source = cortexpb.API
+			}
+
+			if resp, err := push(ctx, &v1Req.WriteRequest); err != nil {
+				resp, ok := httpgrpc.HTTPResponseFromError(err)
+				setPRW2RespHeader(w, 0, 0, 0)
+				if !ok {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				if resp.GetCode()/100 == 5 {
+					level.Error(logger).Log("msg", "push error", "err", err)
+				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests {
+					level.Warn(logger).Log("msg", "push refused", "err", err)
+				}
+				http.Error(w, string(resp.Body), int(resp.Code))
+			} else {
+				setPRW2RespHeader(w, resp.Samples, resp.Histograms, resp.Exemplars)
+			}
+		}
+
+		if remoteWrite2Enabled {
+			// follow Prometheus https://github.com/prometheus/prometheus/blob/main/storage/remote/write_handler.go
+			contentType := r.Header.Get("Content-Type")
+			if contentType == "" {
+				contentType = appProtoContentType
+			}
+
+			msgType, err := parseProtoMsg(contentType)
+			if err != nil {
+				level.Error(logger).Log("Error decoding remote write request", "err", err)
+				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+				return
+			}
+
+			if msgType != config.RemoteWriteProtoMsgV1 && msgType != config.RemoteWriteProtoMsgV2 {
+				level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
+				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+				return
+			}
+
+			enc := r.Header.Get("Content-Encoding")
+			if enc == "" {
+			} else if enc != string(remote.SnappyBlockCompression) {
+				err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, remote.SnappyBlockCompression)
+				level.Error(logger).Log("Error decoding remote write request", "err", err)
+				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+				return
+			}
+
+			switch msgType {
+			case config.RemoteWriteProtoMsgV1:
+				handlePRW1()
+			case config.RemoteWriteProtoMsgV2:
+				handlePRW2()
+			}
+		} else {
+			handlePRW1()
 		}
 	})
 }
 
-func setHeader(w http.ResponseWriter, samples, histograms, exemplars int64) {
+func setPRW2RespHeader(w http.ResponseWriter, samples, histograms, exemplars int64) {
 	w.Header().Set(rw20WrittenSamplesHeader, strconv.FormatInt(samples, 10))
 	w.Header().Set(rw20WrittenHistogramsHeader, strconv.FormatInt(histograms, 10))
 	w.Header().Set(rw20WrittenExemplarsHeader, strconv.FormatInt(exemplars, 10))

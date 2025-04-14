@@ -31,8 +31,6 @@ const (
 	rw20WrittenSamplesHeader    = "X-Prometheus-Remote-Write-Samples-Written"
 	rw20WrittenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
 	rw20WrittenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
-
-	errMsgNotEnabledPRW2 = "Not enabled prometheus remote write v2 push request"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.

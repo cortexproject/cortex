@@ -1038,6 +1038,7 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 
 		userDB.activeSeries.Purge(purgeTime)
 		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
+		i.metrics.activeNHSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.ActiveNativeHistogram()))
 		if err := userDB.labelSetCounter.UpdateMetric(ctx, userDB, i.metrics); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
 		}
@@ -1376,9 +1377,11 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		} else {
 			discardedNativeHistogramCount += len(ts.Histograms)
 		}
-		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || (succeededHistogramsCount > oldSucceededHistogramsCount)
+
+		isNHAppended := succeededHistogramsCount > oldSucceededHistogramsCount
+		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || isNHAppended
 		if i.cfg.ActiveSeriesMetricsEnabled && shouldUpdateSeries {
-			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, func(l labels.Labels) labels.Labels {
+			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, isNHAppended, func(l labels.Labels) labels.Labels {
 				// we must already have copied the labels if succeededSamplesCount or succeededHistogramsCount has been incremented.
 				return copiedLabels
 			})
@@ -2526,6 +2529,7 @@ func (i *Ingester) closeAllTSDB() {
 
 			i.metrics.memUsers.Dec()
 			i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
+			i.metrics.activeNHSeriesPerUser.DeleteLabelValues(userID)
 		}(userDB)
 	}
 

@@ -25,15 +25,17 @@ type activeSeriesStripe struct {
 	// without holding the lock -- hence the atomic).
 	oldestEntryTs atomic.Int64
 
-	mu     sync.RWMutex
-	refs   map[uint64][]activeSeriesEntry
-	active int // Number of active entries in this stripe. Only decreased during purge or clear.
+	mu                    sync.RWMutex
+	refs                  map[uint64][]activeSeriesEntry
+	active                int // Number of active entries in this stripe. Only decreased during purge or clear.
+	activeNativeHistogram int // Number of active entries only for Native Histogram in this stripe. Only decreased during purge or clear.
 }
 
 // activeSeriesEntry holds a timestamp for single series.
 type activeSeriesEntry struct {
-	lbs   labels.Labels
-	nanos *atomic.Int64 // Unix timestamp in nanoseconds. Needs to be a pointer because we don't store pointers to entries in the stripe.
+	lbs               labels.Labels
+	nanos             *atomic.Int64 // Unix timestamp in nanoseconds. Needs to be a pointer because we don't store pointers to entries in the stripe.
+	isNativeHistogram bool
 }
 
 func NewActiveSeries() *ActiveSeries {
@@ -48,10 +50,10 @@ func NewActiveSeries() *ActiveSeries {
 }
 
 // Updates series timestamp to 'now'. Function is called to make a copy of labels if entry doesn't exist yet.
-func (c *ActiveSeries) UpdateSeries(series labels.Labels, hash uint64, now time.Time, labelsCopy func(labels.Labels) labels.Labels) {
+func (c *ActiveSeries) UpdateSeries(series labels.Labels, hash uint64, now time.Time, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels) {
 	stripeID := hash % numActiveSeriesStripes
 
-	c.stripes[stripeID].updateSeriesTimestamp(now, series, hash, labelsCopy)
+	c.stripes[stripeID].updateSeriesTimestamp(now, series, hash, nativeHistogram, labelsCopy)
 }
 
 // Purge removes expired entries from the cache. This function should be called
@@ -77,13 +79,21 @@ func (c *ActiveSeries) Active() int {
 	return total
 }
 
-func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, labelsCopy func(labels.Labels) labels.Labels) {
+func (c *ActiveSeries) ActiveNativeHistogram() int {
+	total := 0
+	for s := 0; s < numActiveSeriesStripes; s++ {
+		total += c.stripes[s].getActiveNativeHistogram()
+	}
+	return total
+}
+
+func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels) {
 	nowNanos := now.UnixNano()
 
 	e := s.findEntryForSeries(fingerprint, series)
 	entryTimeSet := false
 	if e == nil {
-		e, entryTimeSet = s.findOrCreateEntryForSeries(fingerprint, series, nowNanos, labelsCopy)
+		e, entryTimeSet = s.findOrCreateEntryForSeries(fingerprint, series, nowNanos, nativeHistogram, labelsCopy)
 	}
 
 	if !entryTimeSet {
@@ -117,7 +127,7 @@ func (s *activeSeriesStripe) findEntryForSeries(fingerprint uint64, series label
 	return nil
 }
 
-func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, series labels.Labels, nowNanos int64, labelsCopy func(labels.Labels) labels.Labels) (*atomic.Int64, bool) {
+func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, series labels.Labels, nowNanos int64, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels) (*atomic.Int64, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -129,9 +139,13 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, seri
 	}
 
 	s.active++
+	if nativeHistogram {
+		s.activeNativeHistogram++
+	}
 	e := activeSeriesEntry{
-		lbs:   labelsCopy(series),
-		nanos: atomic.NewInt64(nowNanos),
+		lbs:               labelsCopy(series),
+		nanos:             atomic.NewInt64(nowNanos),
+		isNativeHistogram: nativeHistogram,
 	}
 
 	s.refs[fingerprint] = append(s.refs[fingerprint], e)
@@ -160,6 +174,7 @@ func (s *activeSeriesStripe) purge(keepUntil time.Time) {
 	defer s.mu.Unlock()
 
 	active := 0
+	activeNativeHistogram := 0
 
 	oldest := int64(math.MaxInt64)
 	for fp, entries := range s.refs {
@@ -173,6 +188,9 @@ func (s *activeSeriesStripe) purge(keepUntil time.Time) {
 			}
 
 			active++
+			if entries[0].isNativeHistogram {
+				activeNativeHistogram++
+			}
 			if ts < oldest {
 				oldest = ts
 			}
@@ -199,6 +217,11 @@ func (s *activeSeriesStripe) purge(keepUntil time.Time) {
 			delete(s.refs, fp)
 		} else {
 			active += cnt
+			for _, e := range entries {
+				if e.isNativeHistogram {
+					activeNativeHistogram++
+				}
+			}
 			s.refs[fp] = entries
 		}
 	}
@@ -209,6 +232,7 @@ func (s *activeSeriesStripe) purge(keepUntil time.Time) {
 		s.oldestEntryTs.Store(oldest)
 	}
 	s.active = active
+	s.activeNativeHistogram = activeNativeHistogram
 }
 
 func (s *activeSeriesStripe) getActive() int {
@@ -216,4 +240,11 @@ func (s *activeSeriesStripe) getActive() int {
 	defer s.mu.RUnlock()
 
 	return s.active
+}
+
+func (s *activeSeriesStripe) getActiveNativeHistogram() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.activeNativeHistogram
 }

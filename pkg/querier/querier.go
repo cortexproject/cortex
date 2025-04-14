@@ -348,6 +348,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	}
 	startT := time.Now()
 	defer func() {
+		stats.AddNotOptimizedRegexMatchers(notOptimizedRegexMatchersCount(matchers))
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
 
@@ -608,6 +609,16 @@ func (u useBeforeTimestampQueryable) UseQueryable(_ time.Time, queryMinT, _ int6
 		return true
 	}
 	return queryMinT < u.ts
+}
+
+func notOptimizedRegexMatchersCount(matchers []*labels.Matcher) uint64 {
+	n := uint64(0)
+	for _, matcher := range matchers {
+		if matcher.GetRegexString() != "" && !matcher.IsRegexOptimized() {
+			n++
+		}
+	}
+	return n
 }
 
 // Returns QueryableWithFilter, that is used only if query starts before given timestamp.

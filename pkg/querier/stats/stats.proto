@@ -45,4 +45,6 @@ message Stats {
   // The highest count of samples considered while evaluating a query.
   // Equal to PeakSamples in https://github.com/prometheus/prometheus/blob/main/util/stats/query_stats.go
   uint64 peak_samples = 14;
+  // The total number of not optimized regex matchers
+  uint64 not_optimized_regex_count = 15;
 }

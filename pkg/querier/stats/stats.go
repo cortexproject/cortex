@@ -221,6 +221,21 @@ func (s *QueryStats) AddQueryStorageWallTime(t time.Duration) {
 	atomic.AddInt64((*int64)(&s.QueryStorageWallTime), int64(t))
 }
 
+func (s *QueryStats) AddNotOptimizedRegexMatchers(count uint64) {
+	if s == nil {
+		return
+	}
+	atomic.AddUint64(&s.NotOptimizedRegexCount, count)
+}
+
+func (s *QueryStats) LoadNotOptimizedRegexMatchers() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.NotOptimizedRegexCount)
+}
+
 // LoadQueryStorageWallTime returns current query storage wall time.
 func (s *QueryStats) LoadQueryStorageWallTime() time.Duration {
 	if s == nil {
@@ -390,6 +405,7 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	s.AddFetchedChunkBytes(other.LoadFetchedChunkBytes())
 	s.AddFetchedDataBytes(other.LoadFetchedDataBytes())
 	s.AddFetchedSamples(other.LoadFetchedSamples())
+	s.AddNotOptimizedRegexMatchers(other.LoadNotOptimizedRegexMatchers())
 	s.AddFetchedChunks(other.LoadFetchedChunks())
 	s.AddStoreGatewayTouchedPostings(other.LoadStoreGatewayTouchedPostings())
 	s.AddStoreGatewayTouchedPostingBytes(other.LoadStoreGatewayTouchedPostingBytes())

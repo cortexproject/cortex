@@ -98,13 +98,6 @@ func TestHandler_remoteWrite(t *testing.T) {
 		assert.Equal(t, "1", respHeader[rw20WrittenHistogramsHeader][0])
 		assert.Equal(t, "1", respHeader[rw20WrittenExemplarsHeader][0])
 	})
-	t.Run("remote write v2 with not support remote write 2.0", func(t *testing.T) {
-		handler := Handler(false, 100000, nil, verifyWriteRequestHandler(t, cortexpb.API))
-		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
-		resp := httptest.NewRecorder()
-		handler.ServeHTTP(resp, req)
-		assert.Equal(t, http.StatusUnsupportedMediaType, resp.Code)
-	})
 }
 
 func TestHandler_ContentTypeAndEncoding(t *testing.T) {

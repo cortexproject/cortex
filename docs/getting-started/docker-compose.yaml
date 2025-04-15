@@ -39,6 +39,16 @@ services:
       - ./dashboards/:/var/lib/grafana/dashboards/:ro
     ports:
       - "3000:3000"
+  perses:
+    image: persesdev/perses:${PERSES_VERSION}
+    command: "--config=/etc/perses/config/config.yaml"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./perses/config.yaml:/etc/perses/config/config.yaml:ro
+      - ./perses/datasource.yaml:/etc/perses/resources/datasource.yaml:ro
+      - ./perses/project.yaml:/etc/perses/resources/project.yaml:ro
+      - ./perses/dashboards/cortex-writes.yaml:/etc/perses/resources/cortex-writes.yaml:ro
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION}
     command:
@@ -55,8 +65,11 @@ services:
       - -s3.config=/workspace/seaweedfs-config.json
     ports:
       - "8333:8333"
+    post_start:
+    - command: /seaweedfs-init.sh
     volumes:
       - ./seaweedfs-config.json:/workspace/seaweedfs-config.json:ro
+      - ./seaweedfs-init.sh:/seaweedfs-init.sh:ro
     healthcheck:
       test: wget -qO- http://127.0.0.1:8333/status
       interval: 10s

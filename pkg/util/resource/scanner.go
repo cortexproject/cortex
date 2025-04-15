@@ -13,6 +13,12 @@ type scanner interface {
 	scan() (float64, error)
 }
 
+type noopScanner struct{}
+
+func (s *noopScanner) scan() (float64, error) {
+	return 0, nil
+}
+
 type heapScanner struct {
 	metricSamples []metrics.Sample
 }

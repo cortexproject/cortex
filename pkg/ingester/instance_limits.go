@@ -38,8 +38,7 @@ func (cfg *InstanceLimits) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix strin
 	f.Int64Var(&cfg.MaxInMemorySeries, prefix+"instance-limits.max-series", 0, "Max series that this ingester can hold (across all tenants). Requests to create additional series will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
 	f.Int64Var(&cfg.MaxInflightPushRequests, prefix+"instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
 	f.Int64Var(&cfg.MaxInflightQueryRequests, prefix+"instance-limits.max-inflight-query-requests", 0, "Max inflight query requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
-	f.Float64Var(&cfg.CPUUtilization, prefix+"instance-limits.cpu-utilization", 0, "Max CPU utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. 0 = unlimited.")
-	f.Float64Var(&cfg.HeapUtilization, prefix+"instance-limits.heap-utilization", 0, "Max heap utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. 0 = unlimited.")
+	cfg.InstanceLimits.RegisterFlagsWithPrefix(f, prefix)
 }
 
 func (cfg *InstanceLimits) Validate(monitoredResources flagext.StringSliceCSV) error {

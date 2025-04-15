@@ -3203,13 +3203,17 @@ lifecycler:
 [upload_compacted_blocks_enabled: <boolean> | default = true]
 
 instance_limits:
-  # Max CPU utilization that this ingester can reach before rejecting new query
-  # request (across all tenants) in percentage, between 0 and 1. 0 = unlimited.
+  # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+  # rejecting new query request (across all tenants) in percentage, between 0
+  # and 1. monitored_resources config must include the resource type. 0 to
+  # disable.
   # CLI flag: -ingester.instance-limits.cpu-utilization
   [cpu_utilization: <float> | default = 0]
 
-  # Max heap utilization that this ingester can reach before rejecting new query
-  # request (across all tenants) in percentage, between 0 and 1. 0 = unlimited.
+  # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+  # rejecting new query request (across all tenants) in percentage, between 0
+  # and 1. monitored_resources config must include the resource type. 0 to
+  # disable.
   # CLI flag: -ingester.instance-limits.heap-utilization
   [heap_utilization: <float> | default = 0]
 

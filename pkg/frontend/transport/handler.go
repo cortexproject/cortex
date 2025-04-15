@@ -167,23 +167,47 @@ func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, 
 			[]string{"reason", "source", "user"},
 		)
 
-		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
-			h.querySeconds.DeleteLabelValues(user)
-			h.queryFetchedSeries.DeleteLabelValues(user)
-			h.queryFetchedSamples.DeleteLabelValues(user)
-			h.queryScannedSamples.DeleteLabelValues(user)
-			h.queryPeakSamples.DeleteLabelValues(user)
-			h.queryChunkBytes.DeleteLabelValues(user)
-			h.queryDataBytes.DeleteLabelValues(user)
-			if err := util.DeleteMatchingLabels(h.rejectedQueries, map[string]string{"user": user}); err != nil {
-				level.Warn(log).Log("msg", "failed to remove cortex_rejected_queries_total metric for user", "user", user, "err", err)
-			}
-		})
+		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(h.cleanupMetricsForInactiveUser)
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
 	}
 
 	return h
+}
+
+func (h *Handler) cleanupMetricsForInactiveUser(user string) {
+	if !h.cfg.QueryStatsEnabled {
+		return
+	}
+
+	// Create a map with the user label to match
+	userLabel := map[string]string{"user": user}
+
+	// Clean up all metrics for the user
+	if err := util.DeleteMatchingLabels(h.querySeconds, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_seconds_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryFetchedSeries, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_fetched_series_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryFetchedSamples, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_samples_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryScannedSamples, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_samples_scanned_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryPeakSamples, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_peak_samples metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryChunkBytes, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_fetched_chunks_bytes_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryDataBytes, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_fetched_data_bytes_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.rejectedQueries, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_rejected_queries_total metric for user", "user", user, "err", err)
+	}
 }
 
 func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

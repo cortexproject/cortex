@@ -30,6 +30,7 @@
 * [BUGFIX] Ingester: Add check to avoid query 5xx when closing tsdb. #6616
 * [BUGFIX] Querier: Fix panic when marshaling QueryResultRequest. #6601
 * [BUGFIX] Ingester: Avoid resharding for query when restart readonly ingesters. #6642
+* [BUGFIX] Query Frontend: Fix query frontend per `user` metrics clean up. #6698
 
 ## 1.19.0 2025-02-27
 

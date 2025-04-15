@@ -637,3 +637,109 @@ func Test_TenantFederation_MaxTenant(t *testing.T) {
 		})
 	}
 }
+
+func TestHandlerMetricsCleanup(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, http.DefaultTransport, log.NewNopLogger(), reg)
+
+	user1 := "user1"
+	user2 := "user2"
+	source := "api"
+
+	// Simulate activity for user1
+	handler.querySeconds.WithLabelValues(source, user1).Add(1.0)
+	handler.queryFetchedSeries.WithLabelValues(source, user1).Add(100)
+	handler.queryFetchedSamples.WithLabelValues(source, user1).Add(1000)
+	handler.queryScannedSamples.WithLabelValues(source, user1).Add(2000)
+	handler.queryPeakSamples.WithLabelValues(source, user1).Observe(500)
+	handler.queryChunkBytes.WithLabelValues(source, user1).Add(1024)
+	handler.queryDataBytes.WithLabelValues(source, user1).Add(2048)
+	handler.rejectedQueries.WithLabelValues(reasonTooManySamples, source, user1).Add(5)
+
+	// Simulate activity for user2
+	handler.querySeconds.WithLabelValues(source, user2).Add(2.0)
+	handler.queryFetchedSeries.WithLabelValues(source, user2).Add(200)
+	handler.queryFetchedSamples.WithLabelValues(source, user2).Add(2000)
+	handler.queryScannedSamples.WithLabelValues(source, user2).Add(4000)
+	handler.queryPeakSamples.WithLabelValues(source, user2).Observe(1000)
+	handler.queryChunkBytes.WithLabelValues(source, user2).Add(2048)
+	handler.queryDataBytes.WithLabelValues(source, user2).Add(4096)
+	handler.rejectedQueries.WithLabelValues(reasonTooManySamples, source, user2).Add(10)
+
+	// Verify initial state - both users should have metrics
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_seconds_total Total amount of wall clock time spend processing queries.
+		# TYPE cortex_query_seconds_total counter
+		cortex_query_seconds_total{source="api",user="user1"} 1
+		cortex_query_seconds_total{source="api",user="user2"} 2
+		# HELP cortex_query_fetched_series_total Number of series fetched to execute a query.
+		# TYPE cortex_query_fetched_series_total counter
+		cortex_query_fetched_series_total{source="api",user="user1"} 100
+		cortex_query_fetched_series_total{source="api",user="user2"} 200
+		# HELP cortex_query_samples_total Number of samples fetched to execute a query.
+		# TYPE cortex_query_samples_total counter
+		cortex_query_samples_total{source="api",user="user1"} 1000
+		cortex_query_samples_total{source="api",user="user2"} 2000
+		# HELP cortex_query_samples_scanned_total Number of samples scanned to execute a query.
+		# TYPE cortex_query_samples_scanned_total counter
+		cortex_query_samples_scanned_total{source="api",user="user1"} 2000
+		cortex_query_samples_scanned_total{source="api",user="user2"} 4000
+		# HELP cortex_query_peak_samples Highest count of samples considered to execute a query.
+		# TYPE cortex_query_peak_samples histogram
+		cortex_query_peak_samples_bucket{source="api",user="user1",le="+Inf"} 1
+		cortex_query_peak_samples_sum{source="api",user="user1"} 500
+		cortex_query_peak_samples_count{source="api",user="user1"} 1
+		cortex_query_peak_samples_bucket{source="api",user="user2",le="+Inf"} 1
+		cortex_query_peak_samples_sum{source="api",user="user2"} 1000
+		cortex_query_peak_samples_count{source="api",user="user2"} 1
+		# HELP cortex_query_fetched_chunks_bytes_total Size of all chunks fetched to execute a query in bytes.
+		# TYPE cortex_query_fetched_chunks_bytes_total counter
+		cortex_query_fetched_chunks_bytes_total{source="api",user="user1"} 1024
+		cortex_query_fetched_chunks_bytes_total{source="api",user="user2"} 2048
+		# HELP cortex_query_fetched_data_bytes_total Size of all data fetched to execute a query in bytes.
+		# TYPE cortex_query_fetched_data_bytes_total counter
+		cortex_query_fetched_data_bytes_total{source="api",user="user1"} 2048
+		cortex_query_fetched_data_bytes_total{source="api",user="user2"} 4096
+		# HELP cortex_rejected_queries_total The total number of queries that were rejected.
+		# TYPE cortex_rejected_queries_total counter
+		cortex_rejected_queries_total{reason="too_many_samples",source="api",user="user1"} 5
+		cortex_rejected_queries_total{reason="too_many_samples",source="api",user="user2"} 10
+	`), "cortex_query_seconds_total", "cortex_query_fetched_series_total", "cortex_query_samples_total",
+		"cortex_query_samples_scanned_total", "cortex_query_peak_samples", "cortex_query_fetched_chunks_bytes_total",
+		"cortex_query_fetched_data_bytes_total", "cortex_rejected_queries_total"))
+
+	// Clean up metrics for user1
+	handler.cleanupMetricsForInactiveUser(user1)
+
+	// Verify final state - only user2 should have metrics
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_seconds_total Total amount of wall clock time spend processing queries.
+		# TYPE cortex_query_seconds_total counter
+		cortex_query_seconds_total{source="api",user="user2"} 2
+		# HELP cortex_query_fetched_series_total Number of series fetched to execute a query.
+		# TYPE cortex_query_fetched_series_total counter
+		cortex_query_fetched_series_total{source="api",user="user2"} 200
+		# HELP cortex_query_samples_total Number of samples fetched to execute a query.
+		# TYPE cortex_query_samples_total counter
+		cortex_query_samples_total{source="api",user="user2"} 2000
+		# HELP cortex_query_samples_scanned_total Number of samples scanned to execute a query.
+		# TYPE cortex_query_samples_scanned_total counter
+		cortex_query_samples_scanned_total{source="api",user="user2"} 4000
+		# HELP cortex_query_peak_samples Highest count of samples considered to execute a query.
+		# TYPE cortex_query_peak_samples histogram
+		cortex_query_peak_samples_bucket{source="api",user="user2",le="+Inf"} 1
+		cortex_query_peak_samples_sum{source="api",user="user2"} 1000
+		cortex_query_peak_samples_count{source="api",user="user2"} 1
+		# HELP cortex_query_fetched_chunks_bytes_total Size of all chunks fetched to execute a query in bytes.
+		# TYPE cortex_query_fetched_chunks_bytes_total counter
+		cortex_query_fetched_chunks_bytes_total{source="api",user="user2"} 2048
+		# HELP cortex_query_fetched_data_bytes_total Size of all data fetched to execute a query in bytes.
+		# TYPE cortex_query_fetched_data_bytes_total counter
+		cortex_query_fetched_data_bytes_total{source="api",user="user2"} 4096
+		# HELP cortex_rejected_queries_total The total number of queries that were rejected.
+		# TYPE cortex_rejected_queries_total counter
+		cortex_rejected_queries_total{reason="too_many_samples",source="api",user="user2"} 10
+	`), "cortex_query_seconds_total", "cortex_query_fetched_series_total", "cortex_query_samples_total",
+		"cortex_query_samples_scanned_total", "cortex_query_peak_samples", "cortex_query_fetched_chunks_bytes_total",
+		"cortex_query_fetched_data_bytes_total", "cortex_rejected_queries_total"))
+}

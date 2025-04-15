@@ -3,12 +3,14 @@ package push
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/prompb"
 	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
@@ -18,6 +20,148 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
+
+var (
+	testHistogram = histogram.Histogram{
+		Schema:          2,
+		ZeroThreshold:   1e-128,
+		ZeroCount:       0,
+		Count:           3,
+		Sum:             20,
+		PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
+		PositiveBuckets: []int64{1},
+		NegativeSpans:   []histogram.Span{{Offset: 0, Length: 1}},
+		NegativeBuckets: []int64{2},
+	}
+)
+
+func makeV2ReqWithSeries(num int) *writev2.Request {
+	ts := make([]writev2.TimeSeries, 0, num)
+	symbols := []string{"", "__name__", "test_metric1", "b", "c", "baz", "qux", "d", "e", "foo", "bar", "f", "g", "h", "i", "Test gauge for test purposes", "Maybe op/sec who knows (:", "Test counter for test purposes"}
+	for i := 0; i < num; i++ {
+		ts = append(ts, writev2.TimeSeries{
+			LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+			Metadata: writev2.Metadata{
+				Type: writev2.Metadata_METRIC_TYPE_GAUGE,
+
+				HelpRef: 15,
+				UnitRef: 16,
+			},
+			Samples:   []writev2.Sample{{Value: 1, Timestamp: 10}},
+			Exemplars: []writev2.Exemplar{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 10}},
+			Histograms: []writev2.Histogram{
+				writev2.FromIntHistogram(10, &testHistogram),
+				writev2.FromFloatHistogram(20, testHistogram.ToFloat(nil)),
+			},
+		})
+	}
+
+	return &writev2.Request{
+		Symbols:    symbols,
+		Timeseries: ts,
+	}
+}
+
+func createPRW1HTTPRequest(seriesNum int) (*http.Request, error) {
+	series := makeV2ReqWithSeries(seriesNum)
+	v1Req, err := convertV2RequestToV1(series)
+	if err != nil {
+		return nil, err
+	}
+	protobuf, err := v1Req.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	body := snappy.Encode(nil, protobuf)
+	req, err := http.NewRequest("POST", "http://localhost/", newResetReader(body))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Encoding", "snappy")
+	req.Header.Set("Content-Type", appProtoContentType)
+	req.Header.Set("X-Prometheus-Remote-Write-Version", remoteWriteVersion1HeaderValue)
+	req.ContentLength = int64(len(body))
+	return req, nil
+}
+
+func createPRW2HTTPRequest(seriesNum int) (*http.Request, error) {
+	series := makeV2ReqWithSeries(seriesNum)
+	protobuf, err := series.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	body := snappy.Encode(nil, protobuf)
+	req, err := http.NewRequest("POST", "http://localhost/", newResetReader(body))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Encoding", "snappy")
+	req.Header.Set("Content-Type", appProtoV2ContentType)
+	req.Header.Set("X-Prometheus-Remote-Write-Version", remoteWriteVersion20HeaderValue)
+	req.ContentLength = int64(len(body))
+	return req, nil
+}
+
+func Benchmark_Handler(b *testing.B) {
+	mockHandler := func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+		// Nothing to do.
+		return &cortexpb.WriteResponse{}, nil
+	}
+	testSeriesNums := []int{10, 100, 500, 1000}
+	for _, seriesNum := range testSeriesNums {
+		b.Run(fmt.Sprintf("PRW1 with %d series", seriesNum), func(b *testing.B) {
+			handler := Handler(true, 1000000, nil, mockHandler)
+			req, err := createPRW1HTTPRequest(seriesNum)
+			require.NoError(b, err)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				resp := httptest.NewRecorder()
+				handler.ServeHTTP(resp, req)
+				assert.Equal(b, http.StatusOK, resp.Code)
+				req.Body.(*resetReader).Reset()
+			}
+		})
+		b.Run(fmt.Sprintf("PRW2 with %d series", seriesNum), func(b *testing.B) {
+			handler := Handler(true, 1000000, nil, mockHandler)
+			req, err := createPRW2HTTPRequest(seriesNum)
+			require.NoError(b, err)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				resp := httptest.NewRecorder()
+				handler.ServeHTTP(resp, req)
+				assert.Equal(b, http.StatusOK, resp.Code)
+				req.Body.(*resetReader).Reset()
+			}
+		})
+	}
+}
+
+func Benchmark_convertV2RequestToV1(b *testing.B) {
+	testSeriesNums := []int{100, 500, 1000}
+
+	for _, seriesNum := range testSeriesNums {
+		b.Run(fmt.Sprintf("%d series", seriesNum), func(b *testing.B) {
+			series := makeV2ReqWithSeries(seriesNum)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_, err := convertV2RequestToV1(series)
+				require.NoError(b, err)
+			}
+		})
+	}
+}
 
 func Test_convertV2RequestToV1(t *testing.T) {
 	var v2Req writev2.Request

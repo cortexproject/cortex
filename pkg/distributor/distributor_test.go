@@ -2774,7 +2774,7 @@ func TestDistributor_MetricsMetadata(t *testing.T) {
 			require.NoError(t, err)
 
 			// Assert on metric metadata
-			metadata, err := ds[0].MetricsMetadata(ctx)
+			metadata, err := ds[0].MetricsMetadata(ctx, &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
 			require.NoError(t, err)
 			assert.Equal(t, 10, len(metadata))
 

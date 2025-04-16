@@ -17,8 +17,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/objstore"
 
+	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 type BucketClientFactory func(ctx context.Context) (objstore.Bucket, error)
@@ -32,18 +35,36 @@ type Config struct {
 	ReloadPeriod time.Duration `yaml:"period"`
 	// LoadPath contains the path to the runtime config file, requires an
 	// non-empty value
-	LoadPath string `yaml:"file"`
-	Loader   Loader `yaml:"-"`
-
-	StorageConfig bucket.Config `yaml:",inline"`
+	LoadPath               string                  `yaml:"file"`
+	TenantLimits           tenantLimitsConfig      `yaml:"overrides" doc:"description=Sets tenant-specific global limits that override defaults in limits_config. Each tenant is defined by a key-value pair, namely the tenant ID and an object detailing its limits, using the same fields found in limits_config. For field descriptions and examples, please visit the respective pages on Cortex Metrics documentation: the limits_config section for available fields, and the runtime configuration file section for usage examples."`
+	Multi                  kv.MultiRuntimeConfig   `yaml:"multi_kv_config"`
+	IngesterChunkStreaming bool                    `yaml:"ingester_stream_chunks_when_using_blocks"`
+	IngesterLimits         ingester.InstanceLimits `yaml:"ingester_limits"`
+	Loader                 Loader                  `yaml:"-"`
+	StorageConfig          bucket.Config           `yaml:",inline"`
 }
 
 // RegisterFlags registers flags.
 func (mc *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&mc.LoadPath, "runtime-config.file", "", "File with the configuration that can be updated in runtime.")
 	f.DurationVar(&mc.ReloadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")
-
+	mc.TenantLimits.registerFlags(f)
+	mc.IngesterLimits.RegisterFlagsWithPrefix("runtime-config.ingester-limits", f)
+	mc.Multi.RegisterFlagsWithPrefix("runtime-config.multi-kv-config", f)
+	f.BoolVar(&mc.IngesterChunkStreaming, "runtime-config.ingester-stream-chunks-when-using-blocks", false, "Enable streaming entire chunks instead of individual samples to the querier")
 	mc.StorageConfig.RegisterFlagsWithPrefixAndBackend("runtime-config.", f, bucket.Filesystem)
+
+}
+
+type tenantLimitsConfig struct {
+	perTenantLimits map[string]validation.Limits
+}
+
+func (cfg *tenantLimitsConfig) registerFlags(f *flag.FlagSet) {
+	for key, value := range cfg.perTenantLimits {
+		f.StringVar(&key, "runtime-config.override.tenant-id", "", "Specifies the tenant id")
+		value.RegisterFlags(f)
+	}
 }
 
 // Manager periodically reloads the configuration from a file, and keeps this

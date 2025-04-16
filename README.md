@@ -66,6 +66,8 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 
 ### Talks
 
+- Apr 2025 KubeCon talk "Cortex: Insights, Updates and Roadmap" ([video](https://youtu.be/3aUg2qxfoZU), [slides](https://static.sched.com/hosted_files/kccnceu2025/6c/Cortex%20Talk%20KubeCon%20EU%202025.pdf))
+- Apr 2025 KubeCon talk "Taming 50 Billion Time Series: Operating Global-Scale Prometheus Deployments on Kubernetes" ([video](https://youtu.be/OqLpKJwKZlk), [slides](https://static.sched.com/hosted_files/kccnceu2025/b2/kubecon%20-%2050b%20-%20final.pdf))
 - Nov 2024 KubeCon talk "Cortex Intro: Multi-Tenant Scalable Prometheus" ([video](https://youtu.be/OGAEWCoM6Tw), [slides](https://static.sched.com/hosted_files/kccncna2024/0f/Cortex%20Talk%20KubeCon%20US%202024.pdf))
 - Mar 2024 KubeCon talk "Cortex Intro: Multi-Tenant Scalable Prometheus" ([video](https://youtu.be/by538PPSPQ0), [slides](https://static.sched.com/hosted_files/kccnceu2024/a1/Cortex%20Talk%20KubeConEU24.pptx.pdf))
 - Apr 2023 KubeCon talk "How to Run a Rock Solid Multi-Tenant Prometheus" ([video](https://youtu.be/Pl5hEoRPLJU), [slides](https://static.sched.com/hosted_files/kccnceu2023/49/Kubecon2023.pptx.pdf))

@@ -18,8 +18,9 @@ func (e *ResourceLimitReachedError) Error() string {
 }
 
 type ResourceBasedLimiter struct {
-	resourceMonitor resource.IMonitor
-	limits          map[resource.Type]float64
+	resourceMonitor    resource.IMonitor
+	limits             map[resource.Type]float64
+	limitBreachedCount *prometheus.CounterVec
 }
 
 func NewResourceBasedLimiter(resourceMonitor resource.IMonitor, limits map[resource.Type]float64, registerer prometheus.Registerer) (*ResourceBasedLimiter, error) {
@@ -38,6 +39,13 @@ func NewResourceBasedLimiter(resourceMonitor resource.IMonitor, limits map[resou
 	return &ResourceBasedLimiter{
 		resourceMonitor: resourceMonitor,
 		limits:          limits,
+		limitBreachedCount: promauto.With(registerer).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "cortex_resource_based_limiter_limit_breached",
+				Help: "The total number of times resource based limiter was throttled.",
+			},
+			[]string{"resource"},
+		),
 	}, nil
 }
 
@@ -53,6 +61,7 @@ func (l *ResourceBasedLimiter) AcceptNewRequest() error {
 		}
 
 		if utilization >= limit {
+			l.limitBreachedCount.WithLabelValues(string(resType)).Inc()
 			return fmt.Errorf("%s utilization limit reached (limit: %.3f, utilization: %.3f)", resType, limit, utilization)
 		}
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
 
 	"github.com/cortexproject/cortex/pkg/configs"
@@ -436,7 +437,7 @@ func (g *StoreGateway) checkResourceUtilization() error {
 
 	if err := g.resourceBasedLimiter.AcceptNewRequest(); err != nil {
 		level.Warn(g.logger).Log("msg", "failed to accept request", "err", err)
-		return fmt.Errorf("failed to query: %s", util_limiter.ErrResourceLimitReachedStr)
+		return httpgrpc.Errorf(http.StatusTooManyRequests, "failed to query: %s", util_limiter.ErrResourceLimitReachedStr)
 	}
 
 	return nil

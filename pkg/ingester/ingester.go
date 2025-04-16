@@ -2172,7 +2172,7 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 	if i.resourceBasedLimiter != nil {
 		if err := i.resourceBasedLimiter.AcceptNewRequest(); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to accept request", "err", err)
-			return nil, fmt.Errorf("failed to query: %s", limiter.ErrResourceLimitReachedStr)
+			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "failed to query: %s", limiter.ErrResourceLimitReachedStr)
 		}
 	}
 

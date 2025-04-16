@@ -967,7 +967,7 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 	}
 
 	compareHistograms := func(l, r *model.SampleHistogram) bool {
-		return l == r || (l.Count == r.Count && compareFloats(float64(l.Sum), float64(r.Sum)) && compareHistogramBuckets(l.Buckets, r.Buckets))
+		return l == r || (compareFloats(float64(l.Count), float64(r.Count)) && compareFloats(float64(l.Sum), float64(r.Sum)) && compareHistogramBuckets(l.Buckets, r.Buckets))
 	}
 
 	// count_values returns a metrics with one label {"value": "1.012321"}

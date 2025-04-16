@@ -1257,6 +1257,7 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 				User:        userID,
 				Limit:       group.Limit,
 				QueryOffset: group.QueryOffset,
+				Labels:      group.Labels,
 			},
 			// We are keeping default value for EvaluationTimestamp and EvaluationDuration since the backup is not evaluating
 		}

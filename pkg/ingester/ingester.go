@@ -2386,7 +2386,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 		instanceLimitsFn:             i.getInstanceLimits,
 		instanceSeriesCount:          &i.TSDBState.seriesCount,
-		interner:                     util.NewLruInterner(),
+		interner:                     util.NewLruInterner(i.cfg.LabelsStringInterningEnabled),
 		labelsStringInterningEnabled: i.cfg.LabelsStringInterningEnabled,
 
 		blockRetentionPeriod: i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),

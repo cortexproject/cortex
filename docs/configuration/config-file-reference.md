@@ -3635,9 +3635,10 @@ query_rejection:
 
 # The default tenant's shard size when the shuffle-sharding strategy is used by
 # ruler. When this setting is specified in the per-tenant overrides, a value of
-# 0 disables shuffle sharding for the tenant.
+# 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size
+# will be a percentage of the total rulers.
 # CLI flag: -ruler.tenant-shard-size
-[ruler_tenant_shard_size: <int> | default = 0]
+[ruler_tenant_shard_size: <float> | default = 0]
 
 # Maximum number of rules per rule group per-tenant. 0 to disable.
 # CLI flag: -ruler.max-rules-per-rule-group

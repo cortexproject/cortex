@@ -857,7 +857,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	userRings := map[string]ring.ReadRing{}
 	for _, u := range users {
 		if shardSize := r.limits.RulerTenantShardSize(u); shardSize > 0 {
-			subRing := r.ring.ShuffleShard(u, shardSize)
+			subRing := r.ring.ShuffleShard(u, r.getShardSizeForUser(u))
 
 			// Include the user only if it belongs to this ruler shard.
 			if subRing.HasInstance(r.lifecycler.GetInstanceID()) {
@@ -1325,11 +1325,18 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 	return groupDescs, nil
 }
 
+func (r *Ruler) getShardSizeForUser(userID string) int {
+	newShardSize := util.DynamicShardSize(r.limits.RulerTenantShardSize(userID), r.ring.InstancesCount())
+
+	// We want to guarantee that shard size will be at least replication factor
+	return max(newShardSize, r.cfg.Ring.ReplicationFactor)
+}
+
 func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		ring = r.ring.ShuffleShard(userID, shardSize)
+		ring = r.ring.ShuffleShard(userID, r.getShardSizeForUser(userID))
 	}
 
 	rulers, failedZones, err := GetReplicationSetForListRule(ring, &r.cfg.Ring)

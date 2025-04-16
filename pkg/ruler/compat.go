@@ -155,7 +155,7 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 // RulesLimits defines limits used by Ruler.
 type RulesLimits interface {
 	MaxQueryLength(userID string) time.Duration
-	RulerTenantShardSize(userID string) int
+	RulerTenantShardSize(userID string) float64
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
 	RulerQueryOffset(userID string) time.Duration

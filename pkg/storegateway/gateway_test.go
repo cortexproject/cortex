@@ -1220,7 +1220,7 @@ func TestStoreGateway_SeriesThrottledByResourceMonitor(t *testing.T) {
 		resource.CPU:  0.5,
 		resource.Heap: 0.5,
 	}
-	g.resourceBasedLimiter, err = util_limiter.NewResourceBasedLimiter(&mockResourceMonitor{cpu: 0.4, heap: 0.6}, limits, nil)
+	g.resourceBasedLimiter, err = util_limiter.NewResourceBasedLimiter(&mockResourceMonitor{cpu: 0.4, heap: 0.6}, limits, nil, "store-gateway")
 	require.NoError(t, err)
 
 	srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))

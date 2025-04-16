@@ -23,13 +23,14 @@ type ResourceBasedLimiter struct {
 	limitBreachedCount *prometheus.CounterVec
 }
 
-func NewResourceBasedLimiter(resourceMonitor resource.IMonitor, limits map[resource.Type]float64, registerer prometheus.Registerer) (*ResourceBasedLimiter, error) {
+func NewResourceBasedLimiter(resourceMonitor resource.IMonitor, limits map[resource.Type]float64, registerer prometheus.Registerer, component string) (*ResourceBasedLimiter, error) {
 	for resType, limit := range limits {
 		switch resType {
 		case resource.CPU, resource.Heap:
 			promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 				Name:        "cortex_resource_based_limiter_limit",
-				ConstLabels: map[string]string{"resource": string(resType)},
+				Help:        "Limit set for the resource utilization.",
+				ConstLabels: map[string]string{"component": component},
 			}).Set(limit)
 		default:
 			return nil, fmt.Errorf("unsupported resource type: [%s]", resType)
@@ -41,8 +42,9 @@ func NewResourceBasedLimiter(resourceMonitor resource.IMonitor, limits map[resou
 		limits:          limits,
 		limitBreachedCount: promauto.With(registerer).NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "cortex_resource_based_limiter_limit_breached",
-				Help: "The total number of times resource based limiter was throttled.",
+				Name:        "cortex_resource_based_limiter_limit_breached",
+				Help:        "The total number of times resource based limiter was throttled.",
+				ConstLabels: map[string]string{"component": component},
 			},
 			[]string{"resource"},
 		),

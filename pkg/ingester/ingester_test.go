@@ -3078,7 +3078,7 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 		resource.CPU:  0.5,
 		resource.Heap: 0.5,
 	}
-	i.resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(&mockResourceMonitor{cpu: 0.4, heap: 0.6}, limits, nil)
+	i.resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(&mockResourceMonitor{cpu: 0.4, heap: 0.6}, limits, nil, "ingester")
 	require.NoError(t, err)
 
 	// Wait until it's ACTIVE

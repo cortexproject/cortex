@@ -790,7 +790,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		if cfg.DefaultLimits.HeapUtilization > 0 {
 			resourceLimits[resource.Heap] = cfg.DefaultLimits.HeapUtilization
 		}
-		i.resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits, registerer)
+		i.resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits, registerer, "ingester")
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating resource based limiter")
 		}

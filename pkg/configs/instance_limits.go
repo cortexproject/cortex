@@ -20,8 +20,16 @@ func (cfg *InstanceLimits) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix strin
 }
 
 func (cfg *InstanceLimits) Validate(monitoredResources flagext.StringSliceCSV) error {
+	if cfg.CPUUtilization > 1 || cfg.CPUUtilization < 0 {
+		return errors.New("cpu_utilization must be between 0 and 1")
+	}
+
 	if cfg.CPUUtilization > 0 && !strings.Contains(monitoredResources.String(), string(resource.CPU)) {
 		return errors.New("monitored_resources config must include \"cpu\" as well")
+	}
+
+	if cfg.HeapUtilization > 1 || cfg.HeapUtilization < 0 {
+		return errors.New("heap_utilization must be between 0 and 1")
 	}
 
 	if cfg.HeapUtilization > 0 && !strings.Contains(monitoredResources.String(), string(resource.Heap)) {

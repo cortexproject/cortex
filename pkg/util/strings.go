@@ -157,10 +157,19 @@ type Interner interface {
 
 // NewLruInterner returns a new Interner to be used to intern strings.
 // The interner will use a LRU cache to return the deduplicated strings
-func NewLruInterner() Interner {
+func NewLruInterner(enabled bool) Interner {
+	if !enabled {
+		return &noOpInterner{}
+	}
 	return &pool{
 		lru: expirable.NewLRU[string, string](maxInternerLruCacheSize, nil, internerLruCacheTTL),
 	}
+}
+
+type noOpInterner struct{}
+
+func (n noOpInterner) Intern(s string) string {
+	return s
 }
 
 type pool struct {

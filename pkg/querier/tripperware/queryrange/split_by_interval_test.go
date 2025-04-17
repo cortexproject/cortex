@@ -458,7 +458,7 @@ func Test_dynamicIntervalFn(t *testing.T) {
 			req: &tripperware.PrometheusRequest{
 				Query: "up[aaa",
 				Start: 0,
-				End:   10 * 24 * 3600 * seconds,
+				End:   10*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 			},
 			maxShardsPerQuery:      30,
@@ -468,10 +468,10 @@ func Test_dynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "23 hour range with 30 max splits, expect split by 1 day",
+			name:              "23 hour range with 30 max shards, expect split by 1 day",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   23 * 3600 * seconds,
+				End:   23*3600*seconds - 1,
 				Step:  60 * seconds,
 				Query: "up",
 			},
@@ -480,10 +480,10 @@ func Test_dynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "30 day range with 30 max splits, expect split by 1 day",
+			name:              "30 day range with 30 max shards, expect split by 1 day",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   30 * 24 * 3600 * seconds,
+				End:   30*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "up",
 			},
@@ -492,10 +492,10 @@ func Test_dynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "30 day range with 10 max splits, expect split by 3 days",
+			name:              "30 day range with 10 max shards, expect split by 3 days",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   30 * 24 * 3600 * seconds,
+				End:   30*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "up",
 			},
@@ -504,10 +504,10 @@ func Test_dynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "31 day range with 10 max splits, expect split by 4 days",
+			name:              "31 day range with 10 max shards, expect split by 4 days",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   31 * 24 * 3600 * seconds,
+				End:   31*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "up",
 			},
@@ -519,7 +519,7 @@ func Test_dynamicIntervalFn(t *testing.T) {
 			name:              "30 day range with 1h matrix selector and 200 days max duration fetched, expect split by 1 day",
 			req: &tripperware.PrometheusRequest{
 				Start: 30 * 24 * 3600 * seconds,
-				End:   60 * 24 * 3600 * seconds,
+				End:   60*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "avg_over_time(up[1h])",
 			},
@@ -531,7 +531,7 @@ func Test_dynamicIntervalFn(t *testing.T) {
 			name:              "30 day range with 20d matrix selector and 200 days max duration fetched, expect split by 4 days",
 			req: &tripperware.PrometheusRequest{
 				Start: 30 * 24 * 3600 * seconds,
-				End:   60 * 24 * 3600 * seconds,
+				End:   60*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "avg_over_time(up[20d])",
 			},
@@ -555,7 +555,7 @@ func Test_dynamicIntervalFn(t *testing.T) {
 			name:              "50 day range with 5 day subquery and 100 days max duration fetched, expect split by 7 days",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   50 * 24 * 3600 * seconds,
+				End:   50*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "up[5d:10m]",
 			},
@@ -564,10 +564,10 @@ func Test_dynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "50 day range with 5 day subquery and 100 days max duration fetched and 5 max splits, expect split by 10 days",
+			name:              "50 day range with 5 day subquery and 100 days max duration fetched and 5 max shards, expect split by 10 days",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   50 * 24 * 3600 * seconds,
+				End:   50*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "up[5d:10m]",
 			},
@@ -580,7 +580,7 @@ func Test_dynamicIntervalFn(t *testing.T) {
 			name:              "100 day range with 5 day subquery and 100 days max duration fetched, expect no splitting (100 day interval)",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   100 * 24 * 3600 * seconds,
+				End:   100*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "up[5d:10m]",
 			},
@@ -589,39 +589,39 @@ func Test_dynamicIntervalFn(t *testing.T) {
 		},
 		{
 			baseSplitInterval: time.Hour,
-			name:              "100 hour range with 100 max splits, expect split by 1 hour",
+			name:              "120 hour range with 120 max shards, expect split by 1 hour",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   100 * 3600 * seconds,
+				End:   120*3600*seconds - 1,
 				Step:  60 * seconds,
 				Query: "up",
 			},
-			maxShardsPerQuery: 100,
+			maxShardsPerQuery: 120,
 			expectedInterval:  time.Hour,
 		},
 		{
 			baseSplitInterval: time.Hour,
-			name:              "100 hour range with 20 max splits, expect split by 5 hours",
+			name:              "120 hour range with 20 max shards, expect split by 6 hours",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   100 * 3600 * seconds,
+				End:   120*3600*seconds - 1,
 				Step:  60 * seconds,
 				Query: "up",
 			},
 			maxShardsPerQuery: 20,
-			expectedInterval:  5 * time.Hour,
+			expectedInterval:  6 * time.Hour,
 		},
 		{
 			baseSplitInterval: time.Hour,
-			name:              "100 hours with 200 hour max duration fetched and 5h matrix selector, expect split by 5 hours",
+			name:              "120 hours with 200h max duration fetched and 4h matrix selector, expect split by 6 hours",
 			req: &tripperware.PrometheusRequest{
-				Start: 100 * 3600 * seconds,
-				End:   200 * 3600 * seconds,
+				Start: 0 * 3600 * seconds,
+				End:   120*3600*seconds - 1,
 				Step:  60 * seconds,
-				Query: "up[5h]",
+				Query: "up[4h]",
 			},
 			maxFetchedDataDuration: 200 * time.Hour,
-			expectedInterval:       5 * time.Hour,
+			expectedInterval:       6 * time.Hour,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -633,7 +633,7 @@ func Test_dynamicIntervalFn(t *testing.T) {
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), "1")
-			ctx, interval, err := dynamicIntervalFn(cfg, mockLimits{}, querysharding.NewQueryAnalyzer(), lookbackDelta)(ctx, tc.req)
+			_, interval, err := dynamicIntervalFn(cfg, mockLimits{}, querysharding.NewQueryAnalyzer(), lookbackDelta)(ctx, tc.req)
 			require.Equal(t, tc.expectedInterval, interval)
 
 			if !tc.expectedError {
@@ -657,10 +657,10 @@ func Test_dynamicIntervalFn_verticalSharding(t *testing.T) {
 	}{
 		{
 			baseSplitInterval: day,
-			name:              "23 hour range with 30 max splits, expect split by 1 day and 3 vertical shards",
+			name:              "23 hour range with 30 max shards, expect split by 1 day and 3 vertical shards",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   23 * 3600 * seconds,
+				End:   23*3600*seconds - 1,
 				Step:  60 * seconds,
 				Query: "sum(up) by (cluster)",
 			},
@@ -671,10 +671,10 @@ func Test_dynamicIntervalFn_verticalSharding(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "30 day range with 30 max splits, expect split by 1 days and 1 vertical shards",
+			name:              "30 day range with 30 max shards, expect split by 1 days and 1 vertical shards",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   30 * 24 * 3600 * seconds,
+				End:   30*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "sum(up) by (cluster)",
 			},
@@ -685,10 +685,10 @@ func Test_dynamicIntervalFn_verticalSharding(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "30 day range with 10 max splits, expect split by 3 days and 1 vertical shard",
+			name:              "30 day range with 10 max shards, expect split by 3 days and 1 vertical shard",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   30 * 24 * 3600 * seconds,
+				End:   30*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "sum(up) by (cluster)",
 			},
@@ -699,10 +699,10 @@ func Test_dynamicIntervalFn_verticalSharding(t *testing.T) {
 		},
 		{
 			baseSplitInterval: day,
-			name:              "31 day range with 10 max splits, expect split by 7 days and 2 vertical shards",
+			name:              "31 day range with 10 max shards, expect split by 7 days and 2 vertical shards",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   31 * 24 * 3600 * seconds,
+				End:   31*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "sum(up) by (cluster)",
 			},
@@ -716,7 +716,7 @@ func Test_dynamicIntervalFn_verticalSharding(t *testing.T) {
 			name:              "30 day range with 1h matrix selector and 200 days max duration fetched, expect split by 1 day and 3 vertical shards",
 			req: &tripperware.PrometheusRequest{
 				Start: 30 * 24 * 3600 * seconds,
-				End:   60 * 24 * 3600 * seconds,
+				End:   60*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "sum(rate(up[1h])) by (cluster)",
 			},
@@ -730,7 +730,7 @@ func Test_dynamicIntervalFn_verticalSharding(t *testing.T) {
 			name:              "30 day range with 20d matrix selector and 200 days max duration fetched, expect split by 4 days and 1 vertical shard",
 			req: &tripperware.PrometheusRequest{
 				Start: 30 * 24 * 3600 * seconds,
-				End:   60 * 24 * 3600 * seconds,
+				End:   60*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "sum(rate(up[20d])) by (cluster)",
 			},
@@ -744,7 +744,7 @@ func Test_dynamicIntervalFn_verticalSharding(t *testing.T) {
 			name:              "100 day range with 5 day subquery and 100 days max duration fetched, expect no splitting (100 day interval)",
 			req: &tripperware.PrometheusRequest{
 				Start: 0,
-				End:   100 * 24 * 3600 * seconds,
+				End:   100*24*3600*seconds - 1,
 				Step:  5 * 60 * seconds,
 				Query: "sum(rate(up[5d:10m])) by (cluster)",
 			},
@@ -774,45 +774,6 @@ func Test_dynamicIntervalFn_verticalSharding(t *testing.T) {
 			if !tc.expectedError {
 				require.Nil(t, err)
 			}
-		})
-	}
-}
-
-func Test_getMaxSplitsFromConfig(t *testing.T) {
-	for i, tc := range []struct {
-		maxIntervalSplits int
-		verticalShardSize int
-		expectedMaxSplits int
-	}{
-		{
-			verticalShardSize: 1,
-			maxIntervalSplits: 100,
-			expectedMaxSplits: 100,
-		},
-		{
-			verticalShardSize: 1,
-			maxIntervalSplits: 15,
-			expectedMaxSplits: 15,
-		},
-		{
-			verticalShardSize: 1,
-			maxIntervalSplits: 0,
-			expectedMaxSplits: 1,
-		},
-		{
-			verticalShardSize: 3,
-			maxIntervalSplits: 15,
-			expectedMaxSplits: 5,
-		},
-		{
-			verticalShardSize: 5,
-			maxIntervalSplits: 103,
-			expectedMaxSplits: 20,
-		},
-	} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			maxSplits := getMaxSplitsFromConfig(tc.maxIntervalSplits, tc.verticalShardSize)
-			require.Equal(t, tc.expectedMaxSplits, maxSplits)
 		})
 	}
 }

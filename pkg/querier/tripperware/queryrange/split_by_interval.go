@@ -182,16 +182,16 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 		totalShards := 0
 		// Find the combination of horizontal splits and vertical shards that will result in the largest total number of shards
 		for candidateVerticalShardSize := 1; candidateVerticalShardSize <= maxVerticalShardSize; candidateVerticalShardSize++ {
-			maxSplitsPerQuery := getMaxSplitsFromConfig(dynamicSplitCfg.MaxShardsPerQuery, candidateVerticalShardSize)
-			maxSplitsFromDurationFetched := getMaxSplitsByDurationFetched(dynamicSplitCfg.MaxFetchedDataDurationPerQuery, candidateVerticalShardSize, queryExpr, r.GetStart(), r.GetEnd(), r.GetStep(), baseInterval, lookbackDelta)
+			maxSplitsFromMaxShards := getMaxSplitsFromMaxQueryShards(dynamicSplitCfg.MaxShardsPerQuery, candidateVerticalShardSize)
+			maxSplitsFromDurationFetched := getMaxSplitsFromDurationFetched(dynamicSplitCfg.MaxFetchedDataDurationPerQuery, candidateVerticalShardSize, queryExpr, r.GetStart(), r.GetEnd(), r.GetStep(), baseInterval, lookbackDelta)
 
 			// Use the more restrictive max splits limit
 			var maxSplits int
 			switch {
 			case dynamicSplitCfg.MaxShardsPerQuery > 0 && dynamicSplitCfg.MaxFetchedDataDurationPerQuery > 0:
-				maxSplits = min(maxSplitsPerQuery, maxSplitsFromDurationFetched)
+				maxSplits = min(maxSplitsFromMaxShards, maxSplitsFromDurationFetched)
 			case dynamicSplitCfg.MaxShardsPerQuery > 0:
-				maxSplits = maxSplitsPerQuery
+				maxSplits = maxSplitsFromMaxShards
 			case dynamicSplitCfg.MaxFetchedDataDurationPerQuery > 0:
 				maxSplits = maxSplitsFromDurationFetched
 			}
@@ -268,7 +268,7 @@ func getIntervalFromMaxSplits(r tripperware.Request, baseInterval time.Duration,
 }
 
 // Return max allowed number of splits by MaxShardsPerQuery config after accounting for vertical sharding
-func getMaxSplitsFromConfig(maxSplitsConfigValue int, queryVerticalShardSize int) int {
+func getMaxSplitsFromMaxQueryShards(maxSplitsConfigValue int, queryVerticalShardSize int) int {
 	var maxSplitsFromConfig int
 	if maxSplitsConfigValue > 0 {
 		maxSplitsFromConfig = maxSplitsConfigValue / queryVerticalShardSize
@@ -280,7 +280,7 @@ func getMaxSplitsFromConfig(maxSplitsConfigValue int, queryVerticalShardSize int
 }
 
 // Return max allowed number of splits by MaxFetchedDataDurationPerQuery config after accounting for vertical sharding
-func getMaxSplitsByDurationFetched(maxFetchedDataDurationPerQuery time.Duration, queryVerticalShardSize int, expr parser.Expr, queryStart int64, queryEnd int64, queryStep int64, baseInterval time.Duration, lookbackDelta time.Duration) int {
+func getMaxSplitsFromDurationFetched(maxFetchedDataDurationPerQuery time.Duration, queryVerticalShardSize int, expr parser.Expr, queryStart int64, queryEnd int64, queryStep int64, baseInterval time.Duration, lookbackDelta time.Duration) int {
 	durationFetchedByRange, durationFetchedBySelectors := analyzeDurationFetchedByQueryExpr(expr, queryStart, queryEnd, baseInterval, lookbackDelta)
 
 	if durationFetchedBySelectors == 0 {

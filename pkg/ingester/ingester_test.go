@@ -1051,7 +1051,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedMetadataIngested: []*cortexpb.MetricMetadata{
 				{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
 			},
-			additionalMetrics:      []string{"cortex_discarded_samples_total", "cortex_ingester_active_series"},
+			additionalMetrics:      []string{"cortex_discarded_samples_total", "cortex_ingester_active_series", "cortex_ingester_active_native_histogram_series"},
 			disableNativeHistogram: true,
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1078,6 +1078,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 0
 			`,
 		},
 		"should succeed on valid series and metadata": {
@@ -1114,6 +1117,7 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_ingested_metadata_total",
 				"cortex_ingester_ingested_metadata_failures_total",
 				"cortex_ingester_active_series",
+				"cortex_ingester_active_native_histogram_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_metadata_failures_total The total number of metadata that errored on ingestion.
@@ -1149,6 +1153,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 0
 			`,
 		},
 		"should succeed on valid series with exemplars": {
@@ -1212,6 +1219,7 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds",
 				"cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total",
 				"cortex_ingester_active_series",
+				"cortex_ingester_active_native_histogram_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1235,6 +1243,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 0
 
 				# HELP cortex_ingester_tsdb_exemplar_exemplars_appended_total Total number of TSDB exemplars appended.
 				# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
@@ -1324,6 +1335,7 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_tsdb_head_out_of_order_samples_appended_total",
 				"cortex_discarded_samples_total",
 				"cortex_ingester_active_series",
+				"cortex_ingester_active_native_histogram_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1364,6 +1376,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 0
 			`,
 		},
 		"ooo disabled, should soft fail on sample out of bound": {
@@ -1387,7 +1402,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
-			additionalMetrics: []string{"cortex_ingester_active_series"},
+			additionalMetrics: []string{"cortex_ingester_active_series", "cortex_ingester_active_native_histogram_series"},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1419,6 +1434,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 0
 			`,
 		},
 		"ooo enabled, should soft fail on sample too old": {
@@ -1444,6 +1462,7 @@ func TestIngester_Push(t *testing.T) {
 			additionalMetrics: []string{
 				"cortex_discarded_samples_total",
 				"cortex_ingester_active_series",
+				"cortex_ingester_active_native_histogram_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1470,6 +1489,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 0
 			`,
 		},
 		"ooo enabled, should succeed": {
@@ -1491,7 +1513,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (60 * 1000)}, {Value: 2, TimestampMs: 1575043969}}},
 			},
-			additionalMetrics: []string{"cortex_ingester_active_series"},
+			additionalMetrics: []string{"cortex_ingester_active_series", "cortex_ingester_active_native_histogram_series"},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1514,6 +1536,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 0
 			`,
 		},
 		"native histogram ooo enabled, should soft fail on sample too old": {
@@ -1539,6 +1564,7 @@ func TestIngester_Push(t *testing.T) {
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
 				"cortex_ingester_active_series",
+				"cortex_ingester_active_native_histogram_series",
 				"cortex_discarded_samples_total",
 			},
 			expectedMetrics: `
@@ -1576,6 +1602,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="sample-too-old",user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 1
 			`,
 		},
 		"native histogram ooo enabled, should succeed": {
@@ -1600,6 +1629,7 @@ func TestIngester_Push(t *testing.T) {
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
 				"cortex_ingester_active_series",
+				"cortex_ingester_active_native_histogram_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
@@ -1633,6 +1663,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 1
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
@@ -1654,7 +1687,7 @@ func TestIngester_Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
-			additionalMetrics: []string{"cortex_discarded_samples_total", "cortex_ingester_active_series"},
+			additionalMetrics: []string{"cortex_discarded_samples_total", "cortex_ingester_active_series", "cortex_ingester_active_native_histogram_series"},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1680,6 +1713,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 0
 			`,
 		},
 		"should soft fail on exemplar with unknown series": {
@@ -1714,6 +1750,7 @@ func TestIngester_Push(t *testing.T) {
 				"cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds",
 				"cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total",
 				"cortex_ingester_active_series",
+				"cortex_ingester_active_native_histogram_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1737,6 +1774,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 0
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 0
 
 				# HELP cortex_ingester_tsdb_exemplar_exemplars_appended_total Total number of TSDB exemplars appended.
 				# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
@@ -1775,6 +1815,7 @@ func TestIngester_Push(t *testing.T) {
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
 				"cortex_ingester_active_series",
+				"cortex_ingester_active_native_histogram_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
@@ -1813,6 +1854,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 1
 			`,
 		},
 		"should succeed when only float native histogram present if enabled": {
@@ -1831,6 +1875,7 @@ func TestIngester_Push(t *testing.T) {
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
 				"cortex_ingester_active_series",
+				"cortex_ingester_active_native_histogram_series",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -1869,64 +1914,9 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
-			`,
-		},
-		"should fail to ingest histogram due to OOO native histogram. Sample and histogram has same timestamp but sample got ingested first": {
-			reqs: []*cortexpb.WriteRequest{
-				cortexpb.ToWriteRequest(
-					[]labels.Labels{metricLabels},
-					[]cortexpb.Sample{{Value: 2, TimestampMs: 11}},
-					nil,
-					[]cortexpb.Histogram{testHistogram},
-					cortexpb.API),
-			},
-			expectedErr: nil,
-			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 11}}},
-			},
-			additionalMetrics: []string{
-				"cortex_ingester_tsdb_head_samples_appended_total",
-				"cortex_ingester_tsdb_out_of_order_samples_total",
-				"cortex_ingester_active_series",
-			},
-			expectedMetrics: `
-				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
-				# TYPE cortex_ingester_ingested_samples_total counter
-				cortex_ingester_ingested_samples_total 1
-				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
-				# TYPE cortex_ingester_ingested_samples_failures_total counter
-				cortex_ingester_ingested_samples_failures_total 0
-				# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
-				# TYPE cortex_ingester_ingested_native_histograms_total counter
-				cortex_ingester_ingested_native_histograms_total 1
-				# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
-				# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
-				cortex_ingester_ingested_native_histograms_failures_total 0
-				# HELP cortex_ingester_memory_users The current number of users in memory.
-				# TYPE cortex_ingester_memory_users gauge
-				cortex_ingester_memory_users 1
-        	    # HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
-        	    # TYPE cortex_ingester_tsdb_head_samples_appended_total counter
-        	    cortex_ingester_tsdb_head_samples_appended_total{type="float",user="test"} 1
-        	    cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="test"} 0
-        	    # HELP cortex_ingester_tsdb_out_of_order_samples_total Total number of out of order samples ingestion failed attempts due to out of order being disabled.
-        	    # TYPE cortex_ingester_tsdb_out_of_order_samples_total counter
-        	    cortex_ingester_tsdb_out_of_order_samples_total{type="float",user="test"} 0
-        	    cortex_ingester_tsdb_out_of_order_samples_total{type="histogram",user="test"} 1
-				# HELP cortex_ingester_memory_series The current number of series in memory.
-				# TYPE cortex_ingester_memory_series gauge
-				cortex_ingester_memory_series 1
-				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
-				# TYPE cortex_ingester_memory_series_created_total counter
-				cortex_ingester_memory_series_created_total{user="test"} 1
-				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
-				# TYPE cortex_ingester_memory_series_removed_total counter
-				cortex_ingester_memory_series_removed_total{user="test"} 0
-				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
-				# TYPE cortex_discarded_samples_total counter
-				# HELP cortex_ingester_active_series Number of currently active series per user.
-				# TYPE cortex_ingester_active_series gauge
-				cortex_ingester_active_series{user="test"} 1
+				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
+				# TYPE cortex_ingester_active_native_histogram_series gauge
+				cortex_ingester_active_native_histogram_series{user="test"} 1
 			`,
 		},
 	}

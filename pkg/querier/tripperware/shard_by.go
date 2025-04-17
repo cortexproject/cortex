@@ -45,9 +45,13 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	numShards := validation.SmallestPositiveIntPerTenant(tenantIDs, s.limits.QueryVerticalShardSize)
+	verticalShardSize := validation.SmallestPositiveIntPerTenant(tenantIDs, s.limits.QueryVerticalShardSize)
+	// Check if vertical shard size is set by dynamic query splitting
+	if dynamicVerticalShardSize, ok := VerticalShardSizeFromContext(ctx); ok {
+		verticalShardSize = dynamicVerticalShardSize
+	}
 
-	if numShards <= 1 {
+	if verticalShardSize <= 1 {
 		return s.next.Do(ctx, r)
 	}
 
@@ -60,7 +64,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 
 	stats.AddExtraFields(
 		"shard_by.is_shardable", analysis.IsShardable(),
-		"shard_by.num_shards", numShards,
+		"shard_by.num_shards", verticalShardSize,
 		"shard_by.sharding_labels", analysis.ShardingLabels(),
 	)
 
@@ -68,7 +72,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 		return s.next.Do(ctx, r)
 	}
 
-	reqs := s.shardQuery(logger, numShards, r, analysis)
+	reqs := s.shardQuery(logger, verticalShardSize, r, analysis)
 
 	reqResps, err := DoRequests(ctx, s.next, reqs, s.limits)
 	if err != nil {
@@ -83,11 +87,11 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 	return s.merger.MergeResponse(ctx, r, resps...)
 }
 
-func (s shardBy) shardQuery(l log.Logger, numShards int, r Request, analysis querysharding.QueryAnalysis) []Request {
-	reqs := make([]Request, numShards)
-	for i := 0; i < numShards; i++ {
+func (s shardBy) shardQuery(l log.Logger, verticalShardSize int, r Request, analysis querysharding.QueryAnalysis) []Request {
+	reqs := make([]Request, verticalShardSize)
+	for i := 0; i < verticalShardSize; i++ {
 		q, err := cquerysharding.InjectShardingInfo(r.GetQuery(), &storepb.ShardInfo{
-			TotalShards: int64(numShards),
+			TotalShards: int64(verticalShardSize),
 			ShardIndex:  int64(i),
 			By:          analysis.ShardBy(),
 			Labels:      analysis.ShardingLabels(),
@@ -101,4 +105,19 @@ func (s shardBy) shardQuery(l log.Logger, numShards int, r Request, analysis que
 	}
 
 	return reqs
+}
+
+type verticalShardsKey struct{}
+
+func VerticalShardSizeFromContext(ctx context.Context) (int, bool) {
+	val := ctx.Value(verticalShardsKey{})
+	if val == nil {
+		return 1, false
+	}
+	verticalShardSize, ok := val.(int)
+	return verticalShardSize, ok
+}
+
+func InjectVerticalShardSizeToContext(ctx context.Context, verticalShardSize int) context.Context {
+	return context.WithValue(ctx, verticalShardsKey{}, verticalShardSize)
 }

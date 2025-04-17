@@ -197,16 +197,16 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 			}
 
 			candidateInterval := getIntervalFromMaxSplits(r, baseInterval, maxSplits)
-			if candidateTotalShards := getExpectedTotalShards(r.GetStart(), r.GetEnd(), candidateInterval, candidateVerticalShardSize); totalShards <= candidateTotalShards {
+			if candidateTotalShards := getExpectedTotalShards(r.GetStart(), r.GetEnd(), candidateInterval, candidateVerticalShardSize); candidateTotalShards > totalShards {
 				interval = candidateInterval
 				verticalShardSize = candidateVerticalShardSize
 				totalShards = candidateTotalShards
 			}
 		}
 
-		// Set number of vertical shards to be used by shard_by middleware
+		// Set number of vertical shards to be used in shard_by middleware
 		if isShardable && maxVerticalShardSize > 1 {
-			ctx = tripperware.SetVerticalShardSizeToContext(ctx, verticalShardSize)
+			ctx = tripperware.InjectVerticalShardSizeToContext(ctx, verticalShardSize)
 		}
 
 		return ctx, interval, nil

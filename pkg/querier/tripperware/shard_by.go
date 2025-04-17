@@ -118,6 +118,6 @@ func VerticalShardSizeFromContext(ctx context.Context) (int, bool) {
 	return verticalShardSize, ok
 }
 
-func SetVerticalShardSizeToContext(ctx context.Context, verticalShardSize int) context.Context {
+func InjectVerticalShardSizeToContext(ctx context.Context, verticalShardSize int) context.Context {
 	return context.WithValue(ctx, verticalShardsKey{}, verticalShardSize)
 }

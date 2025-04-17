@@ -42,8 +42,8 @@ func NewResourceBasedLimiter(resourceMonitor resource.IMonitor, limits map[resou
 		limits:          limits,
 		limitBreachedCount: promauto.With(registerer).NewCounterVec(
 			prometheus.CounterOpts{
-				Name:        "cortex_resource_based_limiter_limit_breached",
-				Help:        "The total number of times resource based limiter was throttled.",
+				Name:        "cortex_resource_based_limiter_throttled_total",
+				Help:        "The total number of times resource based limiter throttled.",
 				ConstLabels: map[string]string{"component": component},
 			},
 			[]string{"resource"},

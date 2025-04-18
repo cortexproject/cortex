@@ -30,3 +30,8 @@ compose-simple
 
 /build-image-arm64.tar
 /build-image-amd64.tar
+
+.DS_Store
+.hugo_build.lock
+public/
+.config

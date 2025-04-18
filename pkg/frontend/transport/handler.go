@@ -50,6 +50,7 @@ const (
 	reasonRequestBodySizeExceeded  = "request_body_size_exceeded"
 	reasonResponseBodySizeExceeded = "response_body_size_exceeded"
 	reasonTooManyRequests          = "too_many_requests"
+	reasonResourceExhausted        = "resource_exhausted"
 	reasonTimeRangeExceeded        = "time_range_exceeded"
 	reasonTooManySamples           = "too_many_samples"
 	reasonSeriesFetched            = "series_fetched"
@@ -520,7 +521,8 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		reason = reasonTooManyRequests
 	} else if statusCode == http.StatusRequestEntityTooLarge {
 		reason = reasonResponseBodySizeExceeded
-	} else if statusCode == http.StatusUnprocessableEntity {
+	} else if statusCode == http.StatusUnprocessableEntity && error != nil {
+		// We are unable to use errors.As to compare since body string from the http response is wrapped as an error
 		errMsg := error.Error()
 		if strings.Contains(errMsg, limitTooManySamples) {
 			reason = reasonTooManySamples
@@ -540,6 +542,8 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonChunksLimitStoreGateway
 		} else if strings.Contains(errMsg, limitBytesStoreGateway) {
 			reason = reasonBytesLimitStoreGateway
+		} else if strings.Contains(errMsg, limiter.ErrResourceLimitReachedStr) {
+			reason = reasonResourceExhausted
 		}
 	}
 	if len(reason) > 0 {

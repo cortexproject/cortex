@@ -81,9 +81,11 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
+	github.com/prometheus/procfs v0.15.1
 	github.com/sercand/kuberesolver/v5 v5.1.1
 	github.com/tjhop/slog-gokit v0.1.3
 	go.opentelemetry.io/collector/pdata v1.24.0
+	go.uber.org/automaxprocs v1.6.0
 	google.golang.org/protobuf v1.36.4
 )
 
@@ -199,7 +201,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus-community/prom-label-proxy v0.8.1-0.20240127162815-c1195f9aabc0 // indirect
 	github.com/prometheus/exporter-toolkit v0.13.2 // indirect
-	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/prometheus/sigv4 v0.1.1 // indirect
 	github.com/redis/rueidis v1.0.45-alpha.1 // indirect
 	github.com/rs/cors v1.11.1 // indirect

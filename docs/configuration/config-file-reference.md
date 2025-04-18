@@ -68,6 +68,12 @@ Where default_value is the value to use if the environment variable is undefined
 # CLI flag: -http.prefix
 [http_prefix: <string> | default = "/api/prom"]
 
+# Comma-separated list of resources to monitor. Supported values are cpu and
+# heap, which tracks metrics from github.com/prometheus/procfs and
+# runtime/metrics that are close estimates. Empty string to disable.
+# CLI flag: -monitored.resources
+[monitored_resources: <string> | default = ""]
+
 api:
   # Use GZIP compression for API responses. Some endpoints serve large YAML or
   # JSON blobs which can benefit from compression.
@@ -3197,6 +3203,20 @@ lifecycler:
 [upload_compacted_blocks_enabled: <boolean> | default = true]
 
 instance_limits:
+  # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+  # rejecting new query request (across all tenants) in percentage, between 0
+  # and 1. monitored_resources config must include the resource type. 0 to
+  # disable.
+  # CLI flag: -ingester.instance-limits.cpu-utilization
+  [cpu_utilization: <float> | default = 0]
+
+  # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+  # rejecting new query request (across all tenants) in percentage, between 0
+  # and 1. monitored_resources config must include the resource type. 0 to
+  # disable.
+  # CLI flag: -ingester.instance-limits.heap-utilization
+  [heap_utilization: <float> | default = 0]
+
   # Max ingestion rate (samples/sec) that ingester will accept. This limit is
   # per-ingester, not per-tenant. Additional push requests will be rejected.
   # Current ingestion rate is computed as exponentially weighted moving average,
@@ -5856,6 +5876,21 @@ sharding_ring:
 # tenant(s) for processing will ignore them instead.
 # CLI flag: -store-gateway.disabled-tenants
 [disabled_tenants: <string> | default = ""]
+
+instance_limits:
+  # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+  # rejecting new query request (across all tenants) in percentage, between 0
+  # and 1. monitored_resources config must include the resource type. 0 to
+  # disable.
+  # CLI flag: -store-gateway.instance-limits.cpu-utilization
+  [cpu_utilization: <float> | default = 0]
+
+  # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+  # rejecting new query request (across all tenants) in percentage, between 0
+  # and 1. monitored_resources config must include the resource type. 0 to
+  # disable.
+  # CLI flag: -store-gateway.instance-limits.heap-utilization
+  [heap_utilization: <float> | default = 0]
 
 hedged_request:
   # If true, hedged requests are applied to object store calls. It can help with

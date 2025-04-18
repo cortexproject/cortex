@@ -86,8 +86,8 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 
 				distributor := &MockDistributor{}
 				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
-				distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]model.Metric{}, nil)
-				distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]model.Metric{}, nil)
+				distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]labels.Labels{}, nil)
+				distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]labels.Labels{}, nil)
 
 				ctx := user.InjectOrgID(context.Background(), "test")
 				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, testData.queryIngestersWithin, nil)
@@ -224,10 +224,10 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 				t.Run("with matchers", func(t *testing.T) {
 					t.Parallel()
 
-					metrics := []model.Metric{
-						{"foo": "bar"},
-						{"job": "baz"},
-						{"job": "baz", "foo": "boom"},
+					metrics := []labels.Labels{
+						labels.FromStrings("foo", "bar"),
+						labels.FromStrings("job", "baz"),
+						labels.FromStrings("job", "baz", "foo", "boom"),
 					}
 					d := &MockDistributor{}
 

@@ -502,7 +502,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# HELP cortex_distributor_exemplars_in_total The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.
 		# TYPE cortex_distributor_exemplars_in_total counter
 		cortex_distributor_exemplars_in_total{user="userA"} 5
-		
+
 		# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 		# TYPE cortex_distributor_ingester_append_failures_total counter
 		cortex_distributor_ingester_append_failures_total{ingester="ingester-0",status="2xx",type="metadata"} 1
@@ -2459,7 +2459,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 		shuffleShardEnabled bool
 		shuffleShardSize    int
 		matchers            []*labels.Matcher
-		expectedResult      []model.Metric
+		expectedResult      []labels.Labels
 		expectedIngesters   int
 		queryLimiter        *limiter.QueryLimiter
 		expectedErr         error
@@ -2468,7 +2468,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "unknown"),
 			},
-			expectedResult:    []model.Metric{},
+			expectedResult:    []labels.Labels{},
 			expectedIngesters: numIngesters,
 			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
 			expectedErr:       nil,
@@ -2477,9 +2477,9 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
 			},
-			expectedResult: []model.Metric{
-				util.LabelsToMetric(fixtures[0].lbls),
-				util.LabelsToMetric(fixtures[1].lbls),
+			expectedResult: []labels.Labels{
+				fixtures[0].lbls,
+				fixtures[1].lbls,
 			},
 			expectedIngesters: numIngesters,
 			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
@@ -2490,8 +2490,8 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				mustNewMatcher(labels.MatchEqual, "status", "200"),
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
 			},
-			expectedResult: []model.Metric{
-				util.LabelsToMetric(fixtures[0].lbls),
+			expectedResult: []labels.Labels{
+				fixtures[0].lbls,
 			},
 			expectedIngesters: numIngesters,
 			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
@@ -2501,9 +2501,9 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "fast_fingerprint_collision"),
 			},
-			expectedResult: []model.Metric{
-				util.LabelsToMetric(fixtures[3].lbls),
-				util.LabelsToMetric(fixtures[4].lbls),
+			expectedResult: []labels.Labels{
+				fixtures[3].lbls,
+				fixtures[4].lbls,
 			},
 			expectedIngesters: numIngesters,
 			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
@@ -2515,9 +2515,9 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
 			},
-			expectedResult: []model.Metric{
-				util.LabelsToMetric(fixtures[0].lbls),
-				util.LabelsToMetric(fixtures[1].lbls),
+			expectedResult: []labels.Labels{
+				fixtures[0].lbls,
+				fixtures[1].lbls,
 			},
 			expectedIngesters: 3,
 			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
@@ -2529,9 +2529,9 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
 			},
-			expectedResult: []model.Metric{
-				util.LabelsToMetric(fixtures[0].lbls),
-				util.LabelsToMetric(fixtures[1].lbls),
+			expectedResult: []labels.Labels{
+				fixtures[0].lbls,
+				fixtures[1].lbls,
 			},
 			expectedIngesters: numIngesters,
 			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
@@ -2563,8 +2563,8 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_2"),
 			},
-			expectedResult: []model.Metric{
-				util.LabelsToMetric(fixtures[2].lbls),
+			expectedResult: []labels.Labels{
+				fixtures[2].lbls,
 			},
 			expectedIngesters: numIngesters,
 			queryLimiter:      limiter.NewQueryLimiter(1, 0, 0, 0),

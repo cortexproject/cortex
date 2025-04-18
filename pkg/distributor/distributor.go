@@ -1367,8 +1367,8 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time, hint 
 }
 
 // MetricsForLabelMatchers gets the metrics that match said matchers
-func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
-	return d.metricsForLabelMatchersCommon(ctx, from, through, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
+func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	return d.metricsForLabelMatchersCommon(ctx, from, through, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]labels.Labels, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
 		_, err := d.ForReplicationSet(ctx, rs, false, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			resp, err := client.MetricsForLabelMatchers(ctx, req)
 			if err != nil {
@@ -1380,8 +1380,8 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 			s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
 			for _, m := range resp.Metric {
 				s = append(s, m.Labels)
-				m := cortexpb.FromLabelAdaptersToMetric(m.Labels)
-				fingerprint := m.Fingerprint()
+				m := cortexpb.FromLabelAdaptersToLabels(m.Labels)
+				fingerprint := cortexpb.LabelsToFingerprint(m)
 				mutex.Lock()
 				(*metrics)[fingerprint] = m
 				mutex.Unlock()
@@ -1396,8 +1396,8 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 	}, matchers...)
 }
 
-func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
-	return d.metricsForLabelMatchersCommon(ctx, from, through, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
+func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	return d.metricsForLabelMatchersCommon(ctx, from, through, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]labels.Labels, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
 		_, err := d.ForReplicationSet(ctx, rs, false, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			stream, err := client.MetricsForLabelMatchersStream(ctx, req)
 			if err != nil {
@@ -1417,9 +1417,9 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 
 				s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
 				for _, metric := range resp.Metric {
-					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)
+					m := cortexpb.FromLabelAdaptersToLabels(metric.Labels)
 					s = append(s, metric.Labels)
-					fingerprint := m.Fingerprint()
+					fingerprint := cortexpb.LabelsToFingerprint(m)
 					mutex.Lock()
 					(*metrics)[fingerprint] = m
 					mutex.Unlock()
@@ -1436,7 +1436,7 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 	}, matchers...)
 }
 
-func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, through model.Time, hints *storage.SelectHints, f func(context.Context, ring.ReplicationSet, *ingester_client.MetricsForLabelMatchersRequest, *map[model.Fingerprint]model.Metric, *sync.Mutex, *limiter.QueryLimiter) error, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, through model.Time, hints *storage.SelectHints, f func(context.Context, ring.ReplicationSet, *ingester_client.MetricsForLabelMatchersRequest, *map[model.Fingerprint]labels.Labels, *sync.Mutex, *limiter.QueryLimiter) error, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
 	if err != nil {
@@ -1448,7 +1448,7 @@ func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, t
 		return nil, err
 	}
 	mutex := sync.Mutex{}
-	metrics := map[model.Fingerprint]model.Metric{}
+	metrics := map[model.Fingerprint]labels.Labels{}
 
 	err = f(ctx, replicationSet, req, &metrics, &mutex, queryLimiter)
 
@@ -1457,7 +1457,7 @@ func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, t
 	}
 
 	mutex.Lock()
-	result := make([]model.Metric, 0, len(metrics))
+	result := make([]labels.Labels, 0, len(metrics))
 	for _, m := range metrics {
 		result = append(result, m)
 	}

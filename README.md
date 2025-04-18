@@ -7,6 +7,7 @@
 <a href="https://cloud-native.slack.com/messages/cortex/"><img src="https://img.shields.io/badge/join%20slack-%23cortex-brightgreen.svg" alt="Slack" /></a>
 <a href="https://bestpractices.coreinfrastructure.org/projects/6681"><img src="https://bestpractices.coreinfrastructure.org/projects/6681/badge"></a>
 [![CLOMonitor](https://img.shields.io/endpoint?url=https://clomonitor.io/api/projects/cncf/cortex/badge)](https://clomonitor.io/projects/cncf/cortex)
+[![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20Cortex%20Guru-006BFF)](https://gurubase.io/g/cortex)
 
 
 # Cortex

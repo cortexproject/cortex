@@ -9,12 +9,14 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
@@ -207,6 +209,178 @@ func TestIngesterStreaming(t *testing.T) {
 				require.Contains(t, seriesSet.Warnings(), partialdata.ErrPartialData.Error())
 			}
 		}
+	}
+}
+
+func TestDistributorQuerier_Retry(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "0")
+
+	tests := map[string]struct {
+		api           string
+		errors        []error
+		isPartialData bool
+		isError       bool
+	}{
+		"Select - should retry up to 3 times": {
+			api: "Select",
+			errors: []error{
+				partialdata.ErrPartialData,
+				partialdata.ErrPartialData,
+				nil,
+			},
+			isError:       false,
+			isPartialData: false,
+		},
+		"Select - should return partial data after 3 times": {
+			api: "Select",
+			errors: []error{
+				partialdata.ErrPartialData,
+				partialdata.ErrPartialData,
+				partialdata.ErrPartialData,
+			},
+			isError:       false,
+			isPartialData: true,
+		},
+		"Select - should not retry on other error": {
+			api: "Select",
+			errors: []error{
+				fmt.Errorf("new error"),
+				partialdata.ErrPartialData,
+			},
+			isError:       true,
+			isPartialData: false,
+		},
+		"LabelNames - should retry up to 3 times": {
+			api: "LabelNames",
+			errors: []error{
+				partialdata.ErrPartialData,
+				partialdata.ErrPartialData,
+				nil,
+			},
+			isError:       false,
+			isPartialData: false,
+		},
+		"LabelNames - should return partial data after 3 times": {
+			api: "LabelNames",
+			errors: []error{
+				partialdata.ErrPartialData,
+				partialdata.ErrPartialData,
+				partialdata.ErrPartialData,
+			},
+			isError:       false,
+			isPartialData: true,
+		},
+		"LabelNames - should not retry on other error": {
+			api: "LabelNames",
+			errors: []error{
+				fmt.Errorf("new error"),
+				partialdata.ErrPartialData,
+			},
+			isError:       true,
+			isPartialData: false,
+		},
+		"LabelValues - should retry up to 3 times": {
+			api: "LabelValues",
+			errors: []error{
+				partialdata.ErrPartialData,
+				partialdata.ErrPartialData,
+				nil,
+			},
+			isError:       false,
+			isPartialData: false,
+		},
+		"LabelValues - should return partial data after 3 times": {
+			api: "LabelValues",
+			errors: []error{
+				partialdata.ErrPartialData,
+				partialdata.ErrPartialData,
+				partialdata.ErrPartialData,
+			},
+			isError:       false,
+			isPartialData: true,
+		},
+		"LabelValues - should not retry on other error": {
+			api: "LabelValues",
+			errors: []error{
+				fmt.Errorf("new error"),
+				partialdata.ErrPartialData,
+			},
+			isError:       true,
+			isPartialData: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			d := &MockDistributor{}
+
+			if tc.api == "Select" {
+				promChunk := util.GenerateChunk(t, time.Second, model.TimeFromUnix(time.Now().Unix()), 10, promchunk.PrometheusXorChunk)
+				clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{promChunk})
+				require.NoError(t, err)
+
+				for _, err := range tc.errors {
+					d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{
+						Chunkseries: []client.TimeSeriesChunk{
+							{
+								Labels: []cortexpb.LabelAdapter{
+									{Name: "foo", Value: "bar"},
+								},
+								Chunks: clientChunks,
+							},
+						},
+					}, err).Once()
+				}
+			} else if tc.api == "LabelNames" {
+				for _, err := range tc.errors {
+					d.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, err).Once()
+					d.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, err).Once()
+				}
+			} else if tc.api == "LabelValues" {
+				for _, err := range tc.errors {
+					d.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, err).Once()
+					d.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, err).Once()
+				}
+			}
+
+			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+				return true
+			})
+			querier, err := queryable.Querier(mint, maxt)
+			require.NoError(t, err)
+
+			if tc.api == "Select" {
+				seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
+				if tc.isError {
+					require.Error(t, seriesSet.Err())
+					return
+				}
+				require.NoError(t, seriesSet.Err())
+
+				if tc.isPartialData {
+					require.Contains(t, seriesSet.Warnings(), partialdata.ErrPartialData.Error())
+				}
+			} else {
+				var annots annotations.Annotations
+				var err error
+				if tc.api == "LabelNames" {
+					_, annots, err = querier.LabelNames(ctx, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+				} else if tc.api == "LabelValues" {
+					_, annots, err = querier.LabelValues(ctx, "foo", nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+				}
+
+				if tc.isError {
+					require.Error(t, err)
+					return
+				}
+				require.NoError(t, err)
+
+				if tc.isPartialData {
+					warnings, _ := annots.AsStrings("", 1, 0)
+					require.Contains(t, warnings, partialdata.ErrPartialData.Error())
+				}
+			}
+		})
 	}
 }
 

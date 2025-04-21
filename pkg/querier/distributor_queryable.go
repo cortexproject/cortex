@@ -150,7 +150,9 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 }
 
 func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, partialDataEnabled bool, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
-	results, err := q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), partialDataEnabled, matchers...)
+	results, err := q.queryWithRetry(func() (*client.QueryStreamResponse, error) {
+		return q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), partialDataEnabled, matchers...)
+	}, 3)
 
 	if err != nil && !partialdata.IsPartialDataError(err) {
 		return storage.ErrSeriesSet(err)
@@ -192,6 +194,21 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, pa
 	return seriesSet
 }
 
+func (q *distributorQuerier) queryWithRetry(queryFunc func() (*client.QueryStreamResponse, error), retryAttempt int) (*client.QueryStreamResponse, error) {
+	var result *client.QueryStreamResponse
+	var err error
+
+	for i := 0; i < retryAttempt; i++ {
+		result, err = queryFunc()
+
+		if err == nil || !q.isRetryableError(err) {
+			return result, err
+		}
+	}
+
+	return result, err
+}
+
 func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	var (
 		lvs []string
@@ -201,9 +218,13 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 	partialDataEnabled := q.partialDataEnabled(ctx)
 
 	if q.streamingMetadata {
-		lvs, err = q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
+		lvs, err = q.labelsWithRetry(func() ([]string, error) {
+			return q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
+		}, 3)
 	} else {
-		lvs, err = q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
+		lvs, err = q.labelsWithRetry(func() ([]string, error) {
+			return q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
+		}, 3)
 	}
 
 	if partialdata.IsPartialDataError(err) {
@@ -230,9 +251,13 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 	)
 
 	if q.streamingMetadata {
-		ln, err = q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
+		ln, err = q.labelsWithRetry(func() ([]string, error) {
+			return q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
+		}, 3)
 	} else {
-		ln, err = q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
+		ln, err = q.labelsWithRetry(func() ([]string, error) {
+			return q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
+		}, 3)
 	}
 
 	if partialdata.IsPartialDataError(err) {
@@ -241,6 +266,21 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 	}
 
 	return ln, nil, err
+}
+
+func (q *distributorQuerier) labelsWithRetry(labelsFunc func() ([]string, error), retryAttempt int) ([]string, error) {
+	var result []string
+	var err error
+
+	for i := 0; i < retryAttempt; i++ {
+		result, err = labelsFunc()
+
+		if err == nil || !q.isRetryableError(err) {
+			return result, err
+		}
+	}
+
+	return result, err
 }
 
 // labelNamesWithMatchers performs the LabelNames call by calling ingester's MetricsForLabelMatchers method
@@ -295,6 +335,14 @@ func (q *distributorQuerier) partialDataEnabled(ctx context.Context) bool {
 	}
 
 	return q.isPartialDataEnabled != nil && q.isPartialDataEnabled(userID)
+}
+
+func (q *distributorQuerier) isRetryableError(err error) bool {
+	if partialdata.IsPartialDataError(err) {
+		return true
+	}
+
+	return false
 }
 
 type distributorExemplarQueryable struct {

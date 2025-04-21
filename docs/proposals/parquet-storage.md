@@ -11,7 +11,7 @@ slug: parquet-storage
 
 ## Background
 
-Since the introducion of Block Storage in Cortex, TSDB format and Store Gateway is the de-facto way to query long term data on object storage. However, it presents several significant chanllenges:
+Since the introduction of Block Storage in Cortex, TSDB format and Store Gateway is the de-facto way to query long term data on object storage. However, it presents several significant chanllenges:
 
 ### TSDB Format Limitations
 

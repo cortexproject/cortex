@@ -265,9 +265,9 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *
 	namesMap := make(map[string]struct{})
 
 	for _, m := range ms {
-		for _, l := range m {
+		m.Range(func(l labels.Label) {
 			namesMap[l.Name] = struct{}{}
-		}
+		})
 	}
 
 	names := make([]string, 0, len(namesMap))

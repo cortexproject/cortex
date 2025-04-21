@@ -14,12 +14,12 @@ func LabelsToFingerprint(lset labels.Labels) model.Fingerprint {
 	}
 
 	sum := hashNew()
-	for _, l := range lset {
+	lset.Range(func(l labels.Label) {
 		sum = hashAdd(sum, string(l.Name))
 		sum = hashAddByte(sum, model.SeparatorByte)
 		sum = hashAdd(sum, string(l.Value))
 		sum = hashAddByte(sum, model.SeparatorByte)
-	}
+	})
 	return model.Fingerprint(sum)
 }
 

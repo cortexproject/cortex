@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"net/http"
 	"os"
 	"reflect"
@@ -113,6 +114,7 @@ type Config struct {
 	QueryRange       queryrange.Config               `yaml:"query_range"`
 	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
 	Compactor        compactor.Config                `yaml:"compactor"`
+	ParquetConverter parquetconverter.Config         `yaml:"parquet_converter"`
 	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
@@ -165,6 +167,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.QueryRange.RegisterFlags(f)
 	c.BlocksStorage.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
+	c.ParquetConverter.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
 	c.TenantFederation.RegisterFlags(f)
 
@@ -334,14 +337,15 @@ type Cortex struct {
 	QueryFrontendTripperware tripperware.Tripperware
 	ResourceMonitor          *resource.Monitor
 
-	Ruler        *ruler.Ruler
-	RulerStorage rulestore.RuleStore
-	ConfigAPI    *configAPI.API
-	ConfigDB     db.DB
-	Alertmanager *alertmanager.MultitenantAlertmanager
-	Compactor    *compactor.Compactor
-	StoreGateway *storegateway.StoreGateway
-	MemberlistKV *memberlist.KVInitService
+	Ruler            *ruler.Ruler
+	RulerStorage     rulestore.RuleStore
+	ConfigAPI        *configAPI.API
+	ConfigDB         db.DB
+	Alertmanager     *alertmanager.MultitenantAlertmanager
+	Compactor        *compactor.Compactor
+	Parquetconverter *parquetconverter.Converter
+	StoreGateway     *storegateway.StoreGateway
+	MemberlistKV     *memberlist.KVInitService
 
 	// Queryables that the querier should use to query the long
 	// term storage. It depends on the storage engine used.

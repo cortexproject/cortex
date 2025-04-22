@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"log/slog"
 	"net/http"
 	"runtime"
@@ -83,6 +84,7 @@ const (
 	Configs                  string = "configs"
 	AlertManager             string = "alertmanager"
 	Compactor                string = "compactor"
+	ParquetConverter         string = "parquet-converter"
 	StoreGateway             string = "store-gateway"
 	MemberlistKV             string = "memberlist-kv"
 	TenantDeletion           string = "tenant-deletion"
@@ -692,6 +694,12 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	return t.Alertmanager, nil
 }
 
+func (t *Cortex) initParquetConverter() (serv services.Service, err error) {
+	t.Cfg.ParquetConverter.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Parquetconverter = parquetconverter.NewConverter(t.Cfg.ParquetConverter, t.Cfg.BlocksStorage, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
+	return t.Parquetconverter, nil
+}
+
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	ingestionReplicationFactor := t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor
@@ -822,6 +830,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Configs, t.initConfig)
 	mm.RegisterModule(AlertManager, t.initAlertManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(ParquetConverter, t.initParquetConverter)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 	mm.RegisterModule(TenantDeletion, t.initTenantDeletionAPI, modules.UserInvisibleModule)
 	mm.RegisterModule(Purger, nil)
@@ -853,6 +862,7 @@ func (t *Cortex) setupModuleManager() error {
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV, Overrides},
 		Compactor:                {API, MemberlistKV, Overrides},
+		ParquetConverter:         {API, MemberlistKV, Overrides},
 		StoreGateway:             {API, Overrides, MemberlistKV, ResourceMonitor},
 		TenantDeletion:           {API, Overrides},
 		Purger:                   {TenantDeletion},

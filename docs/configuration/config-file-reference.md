@@ -152,6 +152,96 @@ api:
 # The compactor_config configures the compactor for the blocks storage.
 [compactor: <compactor_config>]
 
+parquet_converter:
+  # Comma separated list of tenants that can be converted. If specified, only
+  # these tenants will be converted, otherwise all tenants can be converted.
+  # CLI flag: -parquet-converter.enabled-tenants
+  [enabled_tenants: <string> | default = ""]
+
+  # Comma separated list of tenants that cannot converted.
+  # CLI flag: -parquet-converter.disabled-tenants
+  [disabled_tenants: <string> | default = ""]
+
+  ring:
+    kvstore:
+      # Backend storage to use for the ring. Supported values are: consul, etcd,
+      # inmemory, memberlist, multi.
+      # CLI flag: -parquet-converter.ring.store
+      [store: <string> | default = "consul"]
+
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -parquet-converter.ring.prefix
+      [prefix: <string> | default = "collectors/"]
+
+      dynamodb:
+        # Region to access dynamodb.
+        # CLI flag: -parquet-converter.ring.dynamodb.region
+        [region: <string> | default = ""]
+
+        # Table name to use on dynamodb.
+        # CLI flag: -parquet-converter.ring.dynamodb.table-name
+        [table_name: <string> | default = ""]
+
+        # Time to expire items on dynamodb.
+        # CLI flag: -parquet-converter.ring.dynamodb.ttl-time
+        [ttl: <duration> | default = 0s]
+
+        # Time to refresh local ring with information on dynamodb.
+        # CLI flag: -parquet-converter.ring.dynamodb.puller-sync-time
+        [puller_sync_time: <duration> | default = 1m]
+
+        # Maximum number of retries for DDB KV CAS.
+        # CLI flag: -parquet-converter.ring.dynamodb.max-cas-retries
+        [max_cas_retries: <int> | default = 10]
+
+        # Timeout of dynamoDbClient requests. Default is 2m.
+        # CLI flag: -parquet-converter.ring.dynamodb.timeout
+        [timeout: <duration> | default = 2m]
+
+      # The consul_config configures the consul client.
+      # The CLI flags prefix for this block config is: parquet-converter.ring
+      [consul: <consul_config>]
+
+      # The etcd_config configures the etcd client.
+      # The CLI flags prefix for this block config is: parquet-converter.ring
+      [etcd: <etcd_config>]
+
+      multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -parquet-converter.ring.multi.primary
+        [primary: <string> | default = ""]
+
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -parquet-converter.ring.multi.secondary
+        [secondary: <string> | default = ""]
+
+        # Mirror writes to secondary store.
+        # CLI flag: -parquet-converter.ring.multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
+
+        # Timeout for storing value to secondary store.
+        # CLI flag: -parquet-converter.ring.multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
+
+    # Period at which to heartbeat to the ring. 0 = disabled.
+    # CLI flag: -parquet-converter.ring.heartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
+
+    # The heartbeat timeout after which parquet-converter are considered
+    # unhealthy within the ring. 0 = never (timeout disabled).
+    # CLI flag: -parquet-converter.ring.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # Time since last heartbeat before parquet-converter will be removed from
+    # ring. 0 to disable
+    # CLI flag: -parquet-converter.auto-forget-delay
+    [auto_forget_delay: <duration> | default = 2m]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -parquet-converter.ring.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
 # The store_gateway_config configures the store-gateway service used by the
 # blocks storage.
 [store_gateway: <store_gateway_config>]
@@ -2499,6 +2589,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
+- `parquet-converter.ring`
 - `ruler.ring`
 - `store-gateway.sharding-ring`
 
@@ -2815,6 +2906,7 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
+- `parquet-converter.ring`
 - `ruler.ring`
 - `store-gateway.sharding-ring`
 
@@ -3710,6 +3802,12 @@ query_rejection:
 # Time series count limit for each compaction partition. 0 means no limit
 # CLI flag: -compactor.partition-series-count
 [compactor_partition_series_count: <int> | default = 0]
+
+# The default tenant's shard size when the shuffle-sharding strategy is used by
+# the parquet converter. When this setting is specified in the per-tenant
+# overrides, a value of 0 disables shuffle sharding for the tenant.
+# CLI flag: -parquet-converter.tenant-shard-size
+[parquet_converter_tenant_shard_size: <int> | default = 0]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

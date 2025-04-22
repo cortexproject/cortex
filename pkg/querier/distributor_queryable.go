@@ -20,9 +20,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
+
+const retryMinBackoff = 10 * time.Second
+const retryMaxBackoff = time.Minute
 
 // Distributor is the read interface to the distributor, made an interface here
 // to reduce package coupling.
@@ -154,9 +158,9 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 }
 
 func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, partialDataEnabled bool, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
-	results, err := q.queryWithRetry(func() (*client.QueryStreamResponse, error) {
+	results, err := q.queryWithRetry(ctx, func() (*client.QueryStreamResponse, error) {
 		return q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), partialDataEnabled, matchers...)
-	}, q.ingesterQueryMaxAttempts)
+	})
 
 	if err != nil && !partialdata.IsPartialDataError(err) {
 		return storage.ErrSeriesSet(err)
@@ -198,16 +202,24 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, pa
 	return seriesSet
 }
 
-func (q *distributorQuerier) queryWithRetry(queryFunc func() (*client.QueryStreamResponse, error), retryAttempt int) (*client.QueryStreamResponse, error) {
+func (q *distributorQuerier) queryWithRetry(ctx context.Context, queryFunc func() (*client.QueryStreamResponse, error)) (*client.QueryStreamResponse, error) {
 	var result *client.QueryStreamResponse
 	var err error
 
-	for i := 0; i < retryAttempt; i++ {
+	retries := backoff.New(ctx, backoff.Config{
+		MinBackoff: retryMinBackoff,
+		MaxBackoff: retryMaxBackoff,
+		MaxRetries: q.ingesterQueryMaxAttempts,
+	})
+
+	for retries.Ongoing() {
 		result, err = queryFunc()
 
 		if err == nil || !q.isRetryableError(err) {
 			return result, err
 		}
+
+		retries.Wait()
 	}
 
 	return result, err

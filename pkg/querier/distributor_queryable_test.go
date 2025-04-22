@@ -92,7 +92,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]model.Metric{}, nil)
 
 				ctx := user.InjectOrgID(context.Background(), "test")
-				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, testData.queryIngestersWithin, nil)
+				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, testData.queryIngestersWithin, nil, 1)
 				querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
 
@@ -131,7 +131,7 @@ func TestDistributorQueryableFilter(t *testing.T) {
 	t.Parallel()
 
 	d := &MockDistributor{}
-	dq := newDistributorQueryable(d, false, true, nil, 1*time.Hour, nil)
+	dq := newDistributorQueryable(d, false, true, nil, 1*time.Hour, nil, 1)
 
 	now := time.Now()
 
@@ -183,7 +183,7 @@ func TestIngesterStreaming(t *testing.T) {
 
 			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
 				return partialDataEnabled
-			})
+			}, 1)
 			querier, err := queryable.Querier(mint, maxt)
 			require.NoError(t, err)
 
@@ -221,7 +221,7 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 		isPartialData bool
 		isError       bool
 	}{
-		"Select - should retry up to 3 times": {
+		"Select - should retry": {
 			api: "Select",
 			errors: []error{
 				partialdata.ErrPartialData,
@@ -231,7 +231,7 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 			isError:       false,
 			isPartialData: false,
 		},
-		"Select - should return partial data after 3 times": {
+		"Select - should return partial data after all retries": {
 			api: "Select",
 			errors: []error{
 				partialdata.ErrPartialData,
@@ -250,7 +250,7 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 			isError:       true,
 			isPartialData: false,
 		},
-		"LabelNames - should retry up to 3 times": {
+		"LabelNames - should retry": {
 			api: "LabelNames",
 			errors: []error{
 				partialdata.ErrPartialData,
@@ -260,7 +260,7 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 			isError:       false,
 			isPartialData: false,
 		},
-		"LabelNames - should return partial data after 3 times": {
+		"LabelNames - should return partial data after all retries": {
 			api: "LabelNames",
 			errors: []error{
 				partialdata.ErrPartialData,
@@ -279,7 +279,7 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 			isError:       true,
 			isPartialData: false,
 		},
-		"LabelValues - should retry up to 3 times": {
+		"LabelValues - should retry": {
 			api: "LabelValues",
 			errors: []error{
 				partialdata.ErrPartialData,
@@ -289,7 +289,7 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 			isError:       false,
 			isPartialData: false,
 		},
-		"LabelValues - should return partial data after 3 times": {
+		"LabelValues - should return partial data after all retries": {
 			api: "LabelValues",
 			errors: []error{
 				partialdata.ErrPartialData,
@@ -332,20 +332,23 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 					}, err).Once()
 				}
 			} else if tc.api == "LabelNames" {
+				res := []string{"foo"}
 				for _, err := range tc.errors {
-					d.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, err).Once()
-					d.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, err).Once()
+					d.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
+					d.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
 				}
 			} else if tc.api == "LabelValues" {
+				res := []string{"foo"}
 				for _, err := range tc.errors {
-					d.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, err).Once()
-					d.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, err).Once()
+					d.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
+					d.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
 				}
 			}
 
+			ingesterQueryMaxAttempts := 3
 			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
 				return true
-			})
+			}, ingesterQueryMaxAttempts)
 			querier, err := queryable.Querier(mint, maxt)
 			require.NoError(t, err)
 
@@ -423,7 +426,7 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 
 					queryable := newDistributorQueryable(d, streamingEnabled, labelNamesWithMatchers, nil, 0, func(string) bool {
 						return partialDataEnabled
-					})
+					}, 1)
 					querier, err := queryable.Querier(mint, maxt)
 					require.NoError(t, err)
 

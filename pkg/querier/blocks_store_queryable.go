@@ -61,6 +61,8 @@ const (
 	// store-gateways. If no more store-gateways are left (ie. due to lower replication
 	// factor) than we'll end the retries earlier.
 	maxFetchSeriesAttempts = 3
+
+	ingesterQueryMaxAttempts = 3
 )
 
 var (

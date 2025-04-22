@@ -38,36 +38,39 @@ type Distributor interface {
 	MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, isPartialDataEnabled partialdata.IsCfgEnabledFunc) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, isPartialDataEnabled partialdata.IsCfgEnabledFunc, ingesterQueryMaxAttempts int) QueryableWithFilter {
 	return distributorQueryable{
-		distributor:            distributor,
-		streamingMetdata:       streamingMetdata,
-		labelNamesWithMatchers: labelNamesWithMatchers,
-		iteratorFn:             iteratorFn,
-		queryIngestersWithin:   queryIngestersWithin,
-		isPartialDataEnabled:   isPartialDataEnabled,
+		distributor:              distributor,
+		streamingMetdata:         streamingMetdata,
+		labelNamesWithMatchers:   labelNamesWithMatchers,
+		iteratorFn:               iteratorFn,
+		queryIngestersWithin:     queryIngestersWithin,
+		isPartialDataEnabled:     isPartialDataEnabled,
+		ingesterQueryMaxAttempts: ingesterQueryMaxAttempts,
 	}
 }
 
 type distributorQueryable struct {
-	distributor            Distributor
-	streamingMetdata       bool
-	labelNamesWithMatchers bool
-	iteratorFn             chunkIteratorFunc
-	queryIngestersWithin   time.Duration
-	isPartialDataEnabled   partialdata.IsCfgEnabledFunc
+	distributor              Distributor
+	streamingMetdata         bool
+	labelNamesWithMatchers   bool
+	iteratorFn               chunkIteratorFunc
+	queryIngestersWithin     time.Duration
+	isPartialDataEnabled     partialdata.IsCfgEnabledFunc
+	ingesterQueryMaxAttempts int
 }
 
 func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
 	return &distributorQuerier{
-		distributor:          d.distributor,
-		mint:                 mint,
-		maxt:                 maxt,
-		streamingMetadata:    d.streamingMetdata,
-		labelNamesMatchers:   d.labelNamesWithMatchers,
-		chunkIterFn:          d.iteratorFn,
-		queryIngestersWithin: d.queryIngestersWithin,
-		isPartialDataEnabled: d.isPartialDataEnabled,
+		distributor:              d.distributor,
+		mint:                     mint,
+		maxt:                     maxt,
+		streamingMetadata:        d.streamingMetdata,
+		labelNamesMatchers:       d.labelNamesWithMatchers,
+		chunkIterFn:              d.iteratorFn,
+		queryIngestersWithin:     d.queryIngestersWithin,
+		isPartialDataEnabled:     d.isPartialDataEnabled,
+		ingesterQueryMaxAttempts: d.ingesterQueryMaxAttempts,
 	}, nil
 }
 
@@ -77,13 +80,14 @@ func (d distributorQueryable) UseQueryable(now time.Time, _, queryMaxT int64) bo
 }
 
 type distributorQuerier struct {
-	distributor          Distributor
-	mint, maxt           int64
-	streamingMetadata    bool
-	labelNamesMatchers   bool
-	chunkIterFn          chunkIteratorFunc
-	queryIngestersWithin time.Duration
-	isPartialDataEnabled partialdata.IsCfgEnabledFunc
+	distributor              Distributor
+	mint, maxt               int64
+	streamingMetadata        bool
+	labelNamesMatchers       bool
+	chunkIterFn              chunkIteratorFunc
+	queryIngestersWithin     time.Duration
+	isPartialDataEnabled     partialdata.IsCfgEnabledFunc
+	ingesterQueryMaxAttempts int
 }
 
 // Select implements storage.Querier interface.
@@ -152,7 +156,7 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, partialDataEnabled bool, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
 	results, err := q.queryWithRetry(func() (*client.QueryStreamResponse, error) {
 		return q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), partialDataEnabled, matchers...)
-	}, 3)
+	}, q.ingesterQueryMaxAttempts)
 
 	if err != nil && !partialdata.IsPartialDataError(err) {
 		return storage.ErrSeriesSet(err)
@@ -220,11 +224,11 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 	if q.streamingMetadata {
 		lvs, err = q.labelsWithRetry(func() ([]string, error) {
 			return q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
-		}, 3)
+		}, q.ingesterQueryMaxAttempts)
 	} else {
 		lvs, err = q.labelsWithRetry(func() ([]string, error) {
 			return q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
-		}, 3)
+		}, q.ingesterQueryMaxAttempts)
 	}
 
 	if partialdata.IsPartialDataError(err) {
@@ -253,11 +257,11 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 	if q.streamingMetadata {
 		ln, err = q.labelsWithRetry(func() ([]string, error) {
 			return q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
-		}, 3)
+		}, q.ingesterQueryMaxAttempts)
 	} else {
 		ln, err = q.labelsWithRetry(func() ([]string, error) {
 			return q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
-		}, 3)
+		}, q.ingesterQueryMaxAttempts)
 	}
 
 	if partialdata.IsPartialDataError(err) {

@@ -97,7 +97,9 @@ Cortex querier remains a stateless component when Parquet queryable is enabled.
 
 ### Data Format
 
-Following the current design of Cortex, each Parquet file contains at most 1 day of data.
+Parquet file is converted from TSDB block so it follows the same time range constraint.
+
+If the largest block is 1 day then parquet file can go up to 1 day. Max block range is configurable in Cortex but default value is 24h. So following schema will use 24h as example.
 
 #### Schema Overview
 
@@ -110,7 +112,7 @@ The Parquet format consists of two types of files:
 
 2. **Chunks Parquet File**
    - Maintains row and row group order matching the Labels file
-   - Contains multiple chunk columns for time-series data. Each column covering a time range of chunks: 0-8h, 8h-16h, 16-24h.
+   - Contains multiple chunk columns for time-series data ordered by time. With 3 chunk columns for example, each column covers 8h of chunks: 0-8h, 8h-16h, 16-24h. It is possible that a single TSDB chunk spans over time ranges of 2 columns and Parquet file writer needs to split and re-encode chunks for each chunk column.
 
 #### Column Specifications
 
@@ -121,7 +123,7 @@ The Parquet format consists of two types of files:
 | `s_lbl_{labelName}` | Values for a given label name. Rows are sorted by metric name | ByteArray (string) | RLE_DICTIONARY/Zstd/No | Yes |
 | `s_data_{n}` | Chunks columns (0 to data_cols_count). Each column contains data from `[n*duration, (n+1)*duration]` where duration is `24h/data_cols_count` | ByteArray (encoded chunks) | DeltaByteArray/Zstd/Yes | Yes |
 
-data_cols_count_md will be a parquet file metadata and its value is usually 3 but it can be configurable to adjust for different usecases.
+data_cols_count will be a parquet file metadata and its value is default to 3 but it can be configurable to adjust for different usecases.
 
 ## Open Questions
 

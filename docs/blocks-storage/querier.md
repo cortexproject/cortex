@@ -237,6 +237,11 @@ querier:
   # CLI flag: -querier.store-gateway-consistency-check-max-attempts
   [store_gateway_consistency_check_max_attempts: <int> | default = 3]
 
+  # The maximum number of times we attempt fetching data from ingesters for
+  # retryable errors.
+  # CLI flag: -querier.ingester-query-max-attempts
+  [ingester_query_max_attempts: <int> | default = 3]
+
   # When distributor's sharding strategy is shuffle-sharding and this setting is
   # > 0, queriers fetch in-memory series from the minimum set of required
   # ingesters, selecting only ingesters which may have received series since

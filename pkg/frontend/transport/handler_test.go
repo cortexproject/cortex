@@ -553,6 +553,46 @@ func TestReportQueryStatsFormat(t *testing.T) {
 	}
 }
 
+func Test_ExtractTenantIDs(t *testing.T) {
+	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("{}")),
+		}, nil
+	})
+
+	tests := []struct {
+		name               string
+		orgId              string
+		expectedStatusCode int
+	}{
+		{
+			name:               "invalid tenantID",
+			orgId:              "aaa\\/",
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:               "valid tenantID",
+			orgId:              "user-1",
+			expectedStatusCode: http.StatusOK,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, roundTripper, log.NewNopLogger(), nil)
+			handlerWithAuth := middleware.Merge(middleware.AuthenticateUser).Wrap(handler)
+
+			req := httptest.NewRequest("GET", "http://fake", nil)
+			req.Header.Set("X-Scope-OrgId", test.orgId)
+			resp := httptest.NewRecorder()
+
+			handlerWithAuth.ServeHTTP(resp, req)
+			require.Equal(t, test.expectedStatusCode, resp.Code)
+		})
+	}
+}
+
 func Test_TenantFederation_MaxTenant(t *testing.T) {
 	// set a multi tenant resolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())

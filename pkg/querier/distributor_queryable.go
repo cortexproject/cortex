@@ -342,11 +342,7 @@ func (q *distributorQuerier) partialDataEnabled(ctx context.Context) bool {
 }
 
 func (q *distributorQuerier) isRetryableError(err error) bool {
-	if partialdata.IsPartialDataError(err) {
-		return true
-	}
-
-	return false
+	return partialdata.IsPartialDataError(err)
 }
 
 type distributorExemplarQueryable struct {

@@ -227,73 +227,70 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		reqStats     = stats.FromContext(ctx)
 	)
 
-	results, err := d.queryWithRetry(func() ([]interface{}, error) {
-		// Fetch samples from multiple ingesters
-		results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, partialDataEnabled, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
-			client, err := d.ingesterPool.GetClientFor(ing.Addr)
-			if err != nil {
-				return nil, err
-			}
-
-			ingesterId, err := d.ingestersRing.GetInstanceIdByAddr(ing.Addr)
-			if err != nil {
-				level.Warn(d.log).Log("msg", "instance not found in the ring", "addr", ing.Addr, "err", err)
-			}
-
-			d.ingesterQueries.WithLabelValues(ingesterId).Inc()
-
-			stream, err := client.(ingester_client.IngesterClient).QueryStream(ctx, req)
-			if err != nil {
-				d.ingesterQueryFailures.WithLabelValues(ingesterId).Inc()
-				return nil, err
-			}
-			defer stream.CloseSend() //nolint:errcheck
-
-			result := &ingester_client.QueryStreamResponse{}
-			for {
-				resp, err := stream.Recv()
-				if err == io.EOF {
-					break
-				} else if err != nil {
-					// Do not track a failure if the context was canceled.
-					if !grpcutil.IsGRPCContextCanceled(err) {
-						d.ingesterQueryFailures.WithLabelValues(ingesterId).Inc()
-					}
-
-					return nil, err
-				}
-
-				// Enforce the max chunks limits.
-				if chunkLimitErr := queryLimiter.AddChunks(resp.ChunksCount()); chunkLimitErr != nil {
-					return nil, validation.LimitError(chunkLimitErr.Error())
-				}
-
-				s := make([][]cortexpb.LabelAdapter, 0, len(resp.Chunkseries))
-				for _, series := range resp.Chunkseries {
-					s = append(s, series.Labels)
-				}
-
-				if limitErr := queryLimiter.AddSeries(s...); limitErr != nil {
-					return nil, validation.LimitError(limitErr.Error())
-				}
-
-				if chunkBytesLimitErr := queryLimiter.AddChunkBytes(resp.ChunksSize()); chunkBytesLimitErr != nil {
-					return nil, validation.LimitError(chunkBytesLimitErr.Error())
-				}
-
-				if dataBytesLimitErr := queryLimiter.AddDataBytes(resp.Size()); dataBytesLimitErr != nil {
-					return nil, validation.LimitError(dataBytesLimitErr.Error())
-				}
-
-				result.Chunkseries = append(result.Chunkseries, resp.Chunkseries...)
-			}
-			return result, nil
-		})
-		if err != nil && !partialdata.IsPartialDataError(err) {
+	// Fetch samples from multiple ingesters
+	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, partialDataEnabled, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+		client, err := d.ingesterPool.GetClientFor(ing.Addr)
+		if err != nil {
 			return nil, err
 		}
-		return results, err
-	}, 3)
+
+		ingesterId, err := d.ingestersRing.GetInstanceIdByAddr(ing.Addr)
+		if err != nil {
+			level.Warn(d.log).Log("msg", "instance not found in the ring", "addr", ing.Addr, "err", err)
+		}
+
+		d.ingesterQueries.WithLabelValues(ingesterId).Inc()
+
+		stream, err := client.(ingester_client.IngesterClient).QueryStream(ctx, req)
+		if err != nil {
+			d.ingesterQueryFailures.WithLabelValues(ingesterId).Inc()
+			return nil, err
+		}
+		defer stream.CloseSend() //nolint:errcheck
+
+		result := &ingester_client.QueryStreamResponse{}
+		for {
+			resp, err := stream.Recv()
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				// Do not track a failure if the context was canceled.
+				if !grpcutil.IsGRPCContextCanceled(err) {
+					d.ingesterQueryFailures.WithLabelValues(ingesterId).Inc()
+				}
+
+				return nil, err
+			}
+
+			// Enforce the max chunks limits.
+			if chunkLimitErr := queryLimiter.AddChunks(resp.ChunksCount()); chunkLimitErr != nil {
+				return nil, validation.LimitError(chunkLimitErr.Error())
+			}
+
+			s := make([][]cortexpb.LabelAdapter, 0, len(resp.Chunkseries))
+			for _, series := range resp.Chunkseries {
+				s = append(s, series.Labels)
+			}
+
+			if limitErr := queryLimiter.AddSeries(s...); limitErr != nil {
+				return nil, validation.LimitError(limitErr.Error())
+			}
+
+			if chunkBytesLimitErr := queryLimiter.AddChunkBytes(resp.ChunksSize()); chunkBytesLimitErr != nil {
+				return nil, validation.LimitError(chunkBytesLimitErr.Error())
+			}
+
+			if dataBytesLimitErr := queryLimiter.AddDataBytes(resp.Size()); dataBytesLimitErr != nil {
+				return nil, validation.LimitError(dataBytesLimitErr.Error())
+			}
+
+			result.Chunkseries = append(result.Chunkseries, resp.Chunkseries...)
+		}
+		return result, nil
+	})
+	if err != nil && !partialdata.IsPartialDataError(err) {
+		return nil, err
+	}
 
 	span, _ := opentracing.StartSpanFromContext(ctx, "Distributor.MergeIngesterStreams")
 	defer span.Finish()
@@ -339,27 +336,4 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	}
 
 	return resp, nil
-}
-
-func (d *Distributor) queryWithRetry(queryFunc func() ([]interface{}, error), retryAttempt int) ([]interface{}, error) {
-	var result []interface{}
-	var err error
-
-	for i := 0; i < retryAttempt; i++ {
-		result, err = queryFunc()
-
-		if err == nil || !d.isRetryableError(err) {
-			return result, err
-		}
-	}
-
-	return result, err
-}
-
-func (d *Distributor) isRetryableError(err error) bool {
-	if partialdata.IsPartialDataError(err) {
-		return true
-	}
-
-	return false
 }

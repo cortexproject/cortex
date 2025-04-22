@@ -25,8 +25,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
-const retryMinBackoff = 10 * time.Second
-const retryMaxBackoff = time.Minute
+const retryMinBackoff = time.Second
+const retryMaxBackoff = 5 * time.Second
 
 // Distributor is the read interface to the distributor, made an interface here
 // to reduce package coupling.
@@ -234,13 +234,13 @@ func (q *distributorQuerier) LabelValues(ctx context.Context, name string, hints
 	partialDataEnabled := q.partialDataEnabled(ctx)
 
 	if q.streamingMetadata {
-		lvs, err = q.labelsWithRetry(func() ([]string, error) {
+		lvs, err = q.labelsWithRetry(ctx, func() ([]string, error) {
 			return q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
-		}, q.ingesterQueryMaxAttempts)
+		})
 	} else {
-		lvs, err = q.labelsWithRetry(func() ([]string, error) {
+		lvs, err = q.labelsWithRetry(ctx, func() ([]string, error) {
 			return q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), hints, partialDataEnabled, matchers...)
-		}, q.ingesterQueryMaxAttempts)
+		})
 	}
 
 	if partialdata.IsPartialDataError(err) {
@@ -267,13 +267,13 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 	)
 
 	if q.streamingMetadata {
-		ln, err = q.labelsWithRetry(func() ([]string, error) {
+		ln, err = q.labelsWithRetry(ctx, func() ([]string, error) {
 			return q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
-		}, q.ingesterQueryMaxAttempts)
+		})
 	} else {
-		ln, err = q.labelsWithRetry(func() ([]string, error) {
+		ln, err = q.labelsWithRetry(ctx, func() ([]string, error) {
 			return q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt), hints, partialDataEnabled, matchers...)
-		}, q.ingesterQueryMaxAttempts)
+		})
 	}
 
 	if partialdata.IsPartialDataError(err) {
@@ -284,16 +284,24 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 	return ln, nil, err
 }
 
-func (q *distributorQuerier) labelsWithRetry(labelsFunc func() ([]string, error), retryAttempt int) ([]string, error) {
+func (q *distributorQuerier) labelsWithRetry(ctx context.Context, labelsFunc func() ([]string, error)) ([]string, error) {
 	var result []string
 	var err error
 
-	for i := 0; i < retryAttempt; i++ {
+	retries := backoff.New(ctx, backoff.Config{
+		MinBackoff: retryMinBackoff,
+		MaxBackoff: retryMaxBackoff,
+		MaxRetries: q.ingesterQueryMaxAttempts,
+	})
+
+	for retries.Ongoing() {
 		result, err = labelsFunc()
 
 		if err == nil || !q.isRetryableError(err) {
 			return result, err
 		}
+
+		retries.Wait()
 	}
 
 	return result, err

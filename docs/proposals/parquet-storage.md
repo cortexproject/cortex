@@ -5,13 +5,13 @@ weight: 1
 slug: parquet-storage
 ---
 
-- Author: [Ben Ye](https://github.com/yeya24), [Alan Protasio](https://github.com/alanprot)
+- Author: [Alan Protasio](https://github.com/alanprot), [Ben Ye](https://github.com/yeya24)
 - Date: April 2025
 - Status: Proposed
 
 ## Background
 
-Since the introduction of Block Storage in Cortex, TSDB format and Store Gateway is the de-facto way to query long term data on object storage. However, it presents several significant chanllenges:
+Since the introduction of Block Storage in Cortex, TSDB format and Store Gateway is the de-facto way to query long term data on object storage. However, it presents several significant challenges:
 
 ### TSDB Format Limitations
 
@@ -68,13 +68,15 @@ Parquet Converter is a new component that converts TSDB blocks on object store t
 
 It is similar to compactor, however, it only converts single block. The converted Parquet files will be stored in the same TSDB block folder so that the lifecycle of Parquet file will be managed together with the block.
 
-Only certain blocks can be configured to convert to Parquet file and it will be block duration based, for example we only convert if block duration is >= 12h.
+Only certain blocks can be configured to convert to Parquet file and it can be block duration based, for example we only convert if block duration is >= 12h.
 
 #### 2. Parquet Queryable
 
-Similar to the existing distributorQueryable and blockStorageQueryable, Parquet queryable is a queryable implementation which allows Cortex to query parquet files and can be used in both Cortex Querier and Ruler.
+Similar to the existing `distributorQueryable` and `blockStorageQueryable`, Parquet queryable is a queryable implementation which allows Cortex to query parquet files and can be used in both Cortex Querier and Ruler.
 
-If Parquet queryable is enabled, block storage queryable will be disabled and Cortex querier will not query Store Gateway anymore. But it still queries Ingesters.
+If Parquet queryable is enabled, block storage queryable will be disabled and Cortex querier will not query Store Gateway anymore. `distributorQueryable` remains unchanged so it still queries Ingesters.
+
+Parquet queryable uses bucket index to discovers  parquet files in object storage. The bucket index is the same as the existing TSDB bucket index file, but using a different name `bucket-index-parquet.json.gz`. It is updated periodically by Cortex Compactor/Parquet Converter if parquet storage is enabled.
 
 Cortex querier remains a stateless component when Parquet queryable is enabled.
 
@@ -95,7 +97,7 @@ Cortex querier remains a stateless component when Parquet queryable is enabled.
 
 ### Data Format
 
-Following the current desgin of Cortex, each Parquet file contains at most 1 day of data.
+Following the current design of Cortex, each Parquet file contains at most 1 day of data.
 
 #### Schema Overview
 
@@ -126,3 +128,10 @@ data_cols_count_md will be a parquet file metadata and its value is usually 3 bu
 1. Should we use Parquet Gateway to replace Store Gateway
    - Separate query engine and storage
    - We can make Parquet Gateway semi-stateful like data locality for better performance
+
+## Acknowledgement
+
+We'd like to give huge credits for people from the Thanos community who started this initiative.
+
+- [Filip Petkovski](https://github.com/fpetkovski) and his initial [talk about Parquet](https://www.youtube.com/watch?v=V8Y4VuUwg8I)
+- [Michael Hoffmann](https://github.com/MichaHoffmann) and his great work of [parquet poc](https://github.com/cloudflare/parquet-tsdb-poc)

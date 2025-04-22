@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,9 +23,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 const (
@@ -472,9 +475,6 @@ cortex_querier_federated_tenants_per_query_count 1
 )
 
 func TestMergeQueryable_Select(t *testing.T) {
-	// Set a multi tenant resolver.
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, scenario := range []selectScenario{
 		{
 			mergeQueryableScenario: threeTenantsScenario,
@@ -653,51 +653,77 @@ func TestMergeQueryable_Select(t *testing.T) {
 	} {
 		scenario := scenario
 		t.Run(scenario.name, func(t *testing.T) {
-			for _, tc := range scenario.selectTestCases {
-				tc := tc
-				t.Run(tc.name, func(t *testing.T) {
-					t.Parallel()
-					querier, reg, err := scenario.init()
-					require.NoError(t, err)
+			for _, useRegexResolver := range []bool{true, false} {
+				for _, tc := range scenario.selectTestCases {
+					tc := tc
+					t.Run(fmt.Sprintf("%s, useRegexResolver: %v", tc.name, useRegexResolver), func(t *testing.T) {
+						ctx := context.Background()
+						if useRegexResolver {
+							reg := prometheus.NewRegistry()
+							userStat := ingester.UserStats{}
 
-					// inject tenants into context
-					ctx := context.Background()
-					if len(scenario.tenants) > 0 {
-						ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
-					}
+							var userIDStats []ingester.UserIDStats
 
-					seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt}, tc.matchers...)
+							for _, tenant := range scenario.tenants {
+								userIDStats = append(userIDStats, ingester.UserIDStats{UserID: tenant, UserStats: userStat})
+							}
 
-					if tc.expectedQueryErr != nil {
-						require.EqualError(t, seriesSet.Err(), tc.expectedQueryErr.Error())
-					} else {
-						require.NoError(t, seriesSet.Err())
-						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
-						assertEqualWarnings(t, tc.expectedWarnings, seriesSet.Warnings())
-					}
+							regexResolver := NewRegexResolver(reg, time.Second, log.NewNopLogger(), func(ctx context.Context) ([]ingester.UserIDStats, error) {
+								return userIDStats, nil
+							})
 
-					if tc.expectedLabels != nil {
-						require.Equal(t, len(tc.expectedLabels), tc.expectedSeriesCount)
-					}
+							// set a regex tenant resolver
+							tenant.WithDefaultResolver(regexResolver)
 
-					count := 0
-					for i := 0; seriesSet.Next(); i++ {
-						count++
-						if tc.expectedLabels != nil {
-							require.Equal(t, tc.expectedLabels[i], seriesSet.At().Labels(), fmt.Sprintf("labels index: %d", i))
+							// wait update knownUsers
+							test.Poll(t, time.Second*10, true, func() interface{} {
+								return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0
+							})
+
+							ctx = user.InjectOrgID(ctx, "team-.+")
+						} else {
+							// Set a multi tenant resolver.
+							tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+							// inject tenants into context
+							if len(scenario.tenants) > 0 {
+								ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
+							}
 						}
-					}
-					require.Equal(t, tc.expectedSeriesCount, count)
-				})
+
+						querier, reg, err := scenario.init()
+						require.NoError(t, err)
+
+						seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt}, tc.matchers...)
+
+						if tc.expectedQueryErr != nil {
+							require.EqualError(t, seriesSet.Err(), tc.expectedQueryErr.Error())
+						} else {
+							require.NoError(t, seriesSet.Err())
+							assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
+							assertEqualWarnings(t, tc.expectedWarnings, seriesSet.Warnings())
+						}
+
+						if tc.expectedLabels != nil {
+							require.Equal(t, len(tc.expectedLabels), tc.expectedSeriesCount)
+						}
+
+						count := 0
+						for i := 0; seriesSet.Next(); i++ {
+							count++
+							if tc.expectedLabels != nil {
+								require.Equal(t, tc.expectedLabels[i], seriesSet.At().Labels(), fmt.Sprintf("labels index: %d", i))
+							}
+						}
+						require.Equal(t, tc.expectedSeriesCount, count)
+					})
+				}
 			}
 		})
 	}
 }
 
 func TestMergeQueryable_LabelNames(t *testing.T) {
-	// set a multi tenant resolver
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, scenario := range []labelNamesScenario{
 		{
 			mergeQueryableScenario: singleTenantScenario,
@@ -822,38 +848,63 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 		},
 	} {
 		scenario := scenario
-		t.Run(scenario.mergeQueryableScenario.name, func(t *testing.T) {
-			t.Parallel()
-			querier, reg, err := scenario.init()
-			require.NoError(t, err)
+		for _, useRegexResolver := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s, useRegexResolver: %v", scenario.mergeQueryableScenario.name, useRegexResolver), func(t *testing.T) {
+				ctx := context.Background()
+				if useRegexResolver {
+					reg := prometheus.NewRegistry()
+					userStat := ingester.UserStats{}
 
-			// inject tenants into context
-			ctx := context.Background()
-			if len(scenario.tenants) > 0 {
-				ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
-			}
+					var userIDStats []ingester.UserIDStats
 
-			t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
-				t.Parallel()
-				labelNames, warnings, err := querier.LabelNames(ctx, nil, scenario.labelNamesTestCase.matchers...)
-				if scenario.labelNamesTestCase.expectedQueryErr != nil {
-					require.EqualError(t, err, scenario.labelNamesTestCase.expectedQueryErr.Error())
+					for _, tenant := range scenario.tenants {
+						userIDStats = append(userIDStats, ingester.UserIDStats{UserID: tenant, UserStats: userStat})
+					}
+
+					regexResolver := NewRegexResolver(reg, time.Second, log.NewNopLogger(), func(ctx context.Context) ([]ingester.UserIDStats, error) {
+						return userIDStats, nil
+					})
+
+					// set a regex tenant resolver
+					tenant.WithDefaultResolver(regexResolver)
+
+					// wait update knownUsers
+					test.Poll(t, time.Second*10, true, func() interface{} {
+						return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0
+					})
+
+					ctx = user.InjectOrgID(ctx, "team-.+")
 				} else {
-					require.NoError(t, err)
-					assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(scenario.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
-					assert.Equal(t, scenario.labelNamesTestCase.expectedLabelNames, labelNames)
-					assertEqualWarnings(t, scenario.labelNamesTestCase.expectedWarnings, warnings)
+					// Set a multi tenant resolver.
+					tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+					// inject tenants into context
+					if len(scenario.tenants) > 0 {
+						ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
+					}
 				}
+
+				querier, reg, err := scenario.init()
+				require.NoError(t, err)
+
+				t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
+					t.Parallel()
+					labelNames, warnings, err := querier.LabelNames(ctx, nil, scenario.labelNamesTestCase.matchers...)
+					if scenario.labelNamesTestCase.expectedQueryErr != nil {
+						require.EqualError(t, err, scenario.labelNamesTestCase.expectedQueryErr.Error())
+					} else {
+						require.NoError(t, err)
+						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(scenario.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
+						assert.Equal(t, scenario.labelNamesTestCase.expectedLabelNames, labelNames)
+						assertEqualWarnings(t, scenario.labelNamesTestCase.expectedWarnings, warnings)
+					}
+				})
 			})
-		})
+		}
 	}
 }
 
 func TestMergeQueryable_LabelValues(t *testing.T) {
-	t.Parallel()
-	// set a multi tenant resolver
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, scenario := range []labelValuesScenario{
 		{
 			mergeQueryableScenario: singleTenantScenario,
@@ -1028,29 +1079,57 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 	} {
 		scenario := scenario
 		t.Run(scenario.name, func(t *testing.T) {
-			for _, tc := range scenario.labelValuesTestCases {
-				tc := tc
-				t.Run(tc.name, func(t *testing.T) {
-					t.Parallel()
-					querier, reg, err := scenario.init()
-					require.NoError(t, err)
+			for _, useRegexResolver := range []bool{true, false} {
+				for _, tc := range scenario.labelValuesTestCases {
+					t.Run(fmt.Sprintf("%s, useRegexResolver: %v", tc.name, useRegexResolver), func(t *testing.T) {
+						ctx := context.Background()
+						if useRegexResolver {
+							reg := prometheus.NewRegistry()
+							userStat := ingester.UserStats{}
 
-					// inject tenants into context
-					ctx := context.Background()
-					if len(scenario.tenants) > 0 {
-						ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
-					}
+							var userIDStats []ingester.UserIDStats
 
-					actLabelValues, warnings, err := querier.LabelValues(ctx, tc.labelName, nil, tc.matchers...)
-					if tc.expectedQueryErr != nil {
-						require.EqualError(t, err, tc.expectedQueryErr.Error())
-					} else {
+							for _, tenant := range scenario.tenants {
+								userIDStats = append(userIDStats, ingester.UserIDStats{UserID: tenant, UserStats: userStat})
+							}
+
+							regexResolver := NewRegexResolver(reg, time.Second, log.NewNopLogger(), func(ctx context.Context) ([]ingester.UserIDStats, error) {
+								return userIDStats, nil
+							})
+
+							// set a regex tenant resolver
+							tenant.WithDefaultResolver(regexResolver)
+
+							// wait update knownUsers
+							test.Poll(t, time.Second*10, true, func() interface{} {
+								return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0
+							})
+
+							ctx = user.InjectOrgID(ctx, "team-.+")
+						} else {
+							// Set a multi tenant resolver.
+							tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+							// inject tenants into context
+							if len(scenario.tenants) > 0 {
+								ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
+							}
+						}
+
+						querier, reg, err := scenario.init()
 						require.NoError(t, err)
-						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
-						assert.Equal(t, tc.expectedLabelValues, actLabelValues, fmt.Sprintf("unexpected values for label '%s'", tc.labelName))
-						assertEqualWarnings(t, tc.expectedWarnings, warnings)
-					}
-				})
+
+						actLabelValues, warnings, err := querier.LabelValues(ctx, tc.labelName, nil, tc.matchers...)
+						if tc.expectedQueryErr != nil {
+							require.EqualError(t, err, tc.expectedQueryErr.Error())
+						} else {
+							require.NoError(t, err)
+							assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
+							assert.Equal(t, tc.expectedLabelValues, actLabelValues, fmt.Sprintf("unexpected values for label '%s'", tc.labelName))
+							assertEqualWarnings(t, tc.expectedWarnings, warnings)
+						}
+					})
+				}
 			}
 		})
 	}

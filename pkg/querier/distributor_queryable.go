@@ -203,6 +203,10 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, pa
 }
 
 func (q *distributorQuerier) queryWithRetry(ctx context.Context, queryFunc func() (*client.QueryStreamResponse, error)) (*client.QueryStreamResponse, error) {
+	if q.ingesterQueryMaxAttempts == 1 {
+		return queryFunc()
+	}
+
 	var result *client.QueryStreamResponse
 	var err error
 
@@ -285,6 +289,10 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 }
 
 func (q *distributorQuerier) labelsWithRetry(ctx context.Context, labelsFunc func() ([]string, error)) ([]string, error) {
+	if q.ingesterQueryMaxAttempts == 1 {
+		return labelsFunc()
+	}
+
 	var result []string
 	var err error
 

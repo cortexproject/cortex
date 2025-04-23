@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	heapMetricName = "/memory/classes/Heap/objects:bytes"
+	heapMetricName = "/memory/classes/heap/objects:bytes"
 )
 
 type scanner interface {

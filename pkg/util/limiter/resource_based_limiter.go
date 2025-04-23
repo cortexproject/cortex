@@ -30,7 +30,7 @@ func NewResourceBasedLimiter(resourceMonitor resource.IMonitor, limits map[resou
 			promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 				Name:        "cortex_resource_based_limiter_limit",
 				Help:        "Limit set for the resource utilization.",
-				ConstLabels: map[string]string{"component": component},
+				ConstLabels: map[string]string{"component": component, "resource": string(resType)},
 			}).Set(limit)
 		default:
 			return nil, fmt.Errorf("unsupported resource type: [%s]", resType)

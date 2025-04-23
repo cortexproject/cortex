@@ -50,6 +50,7 @@ func NewMonitor(limits map[Type]float64, registerer prometheus.Registerer) (*Mon
 	m := &Monitor{
 		containerLimit: limits,
 		scanners:       make(map[Type]scanner),
+		utilization:    make(map[Type]float64),
 
 		cpuRates:     [dataPointsToAvg]float64{},
 		cpuIntervals: [dataPointsToAvg]float64{},

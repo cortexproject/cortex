@@ -233,7 +233,7 @@ func Test_setupModuleManager(t *testing.T) {
 	}
 }
 
-func Test_initResourceMonitor_shouldNotFailOnInvalidResource(t *testing.T) {
+func Test_initResourceMonitor_shouldFailOnInvalidResource(t *testing.T) {
 	cortex := &Cortex{
 		Server: &server.Server{},
 		Cfg: Config{
@@ -243,5 +243,5 @@ func Test_initResourceMonitor_shouldNotFailOnInvalidResource(t *testing.T) {
 
 	// log warning message and spin up other cortex services
 	_, err := cortex.initResourceMonitor()
-	require.NoError(t, err)
+	require.ErrorContains(t, err, "unknown resource type")
 }

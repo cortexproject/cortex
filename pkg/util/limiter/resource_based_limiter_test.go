@@ -9,7 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 )
 
-func Test_NewResourceBasedLimiter(t *testing.T) {
+func Test_ResourceBasedLimiter(t *testing.T) {
 	limits := map[resource.Type]float64{
 		resource.CPU:  0.5,
 		resource.Heap: 0.5,

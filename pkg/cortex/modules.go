@@ -782,19 +782,14 @@ func (t *Cortex) initResourceMonitor() (services.Service, error) {
 		case resource.Heap:
 			containerLimits[resource.Type(res)] = float64(debug.SetMemoryLimit(-1))
 		default:
-			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("skipping unsupported resource [%s]", res))
+			return nil, fmt.Errorf("unknown resource type: %s", res)
 		}
 	}
 
 	var err error
 	t.ResourceMonitor, err = resource.NewMonitor(containerLimits, prometheus.DefaultRegisterer)
-	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "skipping resource monitor; failed to initialize.", "err", err)
-		return nil, nil
-	}
-
 	util_log.WarnExperimentalUse("resource monitor")
-	return t.ResourceMonitor, nil
+	return t.ResourceMonitor, err
 }
 
 func (t *Cortex) setupModuleManager() error {

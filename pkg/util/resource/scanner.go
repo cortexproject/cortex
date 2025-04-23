@@ -39,5 +39,5 @@ func newHeapScanner() (scanner, error) {
 
 func (s *heapScanner) scan() (float64, error) {
 	metrics.Read(s.metricSamples)
-	return s.metricSamples[0].Value.Float64(), nil
+	return float64(s.metricSamples[0].Value.Uint64()), nil
 }

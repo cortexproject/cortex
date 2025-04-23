@@ -124,6 +124,7 @@ func seriesSetFromResponseStream(s *mockQueryStreamServer) (storage.SeriesSet, e
 
 func TestMatcherCache(t *testing.T) {
 	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistogramPerUser = true
 	userID := "1"
 	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
 	registry := prometheus.NewRegistry()
@@ -135,7 +136,7 @@ func TestMatcherCache(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 	cfg := defaultIngesterTestConfig(t)
 	cfg.MatchersCacheMaxItems = 50
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry, true)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -204,7 +205,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry, false)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
@@ -254,6 +255,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 
 func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistogramPerUser = true
 	userID := "1"
 	registry := prometheus.NewRegistry()
 
@@ -287,7 +289,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry, true)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	// Wait until it's ACTIVE
@@ -630,7 +632,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	// Should persist between restarts
 	services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	registry = prometheus.NewRegistry()
-	ing, err = prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry, true)
+	ing, err = prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	ing.updateActiveSeries(ctx)
@@ -661,6 +663,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 func TestPushRace(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	l := defaultLimitsTestConfig()
+	l.EnableNativeHistogramPerUser = true
 	cfg.LabelsStringInterningEnabled = true
 	cfg.LifecyclerConfig.JoinAfter = 0
 
@@ -686,7 +689,7 @@ func TestPushRace(t *testing.T) {
 	blocksDir := filepath.Join(dir, "blocks")
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, l, nil, blocksDir, prometheus.NewRegistry(), true)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, l, nil, blocksDir, prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
@@ -747,6 +750,7 @@ func TestPushRace(t *testing.T) {
 
 func TestIngesterUserLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistogramPerUser = true
 	limits.MaxLocalSeriesPerUser = 1
 	limits.MaxLocalMetricsWithMetadataPerUser = 1
 
@@ -778,7 +782,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	blocksIngesterGenerator := func(reg prometheus.Registerer) *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg, true)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -878,6 +882,7 @@ func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []cortexp
 
 func TestIngesterMetricLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistogramPerUser = true
 	limits.MaxLocalSeriesPerMetric = 1
 	limits.MaxLocalMetadataPerMetric = 1
 
@@ -909,7 +914,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	blocksIngesterGenerator := func(reg prometheus.Registerer) *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg, true)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -1933,6 +1938,7 @@ func TestIngester_Push(t *testing.T) {
 			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
 
 			limits := defaultLimitsTestConfig()
+			limits.EnableNativeHistogramPerUser = !testData.disableNativeHistogram
 			limits.MaxExemplars = testData.maxExemplars
 			limits.OutOfOrderTimeWindow = model.Duration(testData.oooTimeWindow)
 			limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
@@ -1945,7 +1951,7 @@ func TestIngester_Push(t *testing.T) {
 					Hash:     1,
 				},
 			}
-			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry, !testData.disableNativeHistogram)
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -2174,7 +2180,8 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 			cfg.LifecyclerConfig.JoinAfter = 0
 
 			limits := defaultLimitsTestConfig()
-			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry, true)
+			limits.EnableNativeHistogramPerUser = true
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -2662,6 +2669,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 					cfg.LifecyclerConfig.JoinAfter = 0
 
 					limits := defaultLimitsTestConfig()
+					limits.EnableNativeHistogramPerUser = true
 					if !testData.prepareConfig(&limits, instanceLimits) {
 						b.SkipNow()
 					}
@@ -2670,7 +2678,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 						return instanceLimits
 					}
 
-					ingester, err := prepareIngesterWithBlocksStorageAndLimits(b, cfg, limits, nil, "", registry, true)
+					ingester, err := prepareIngesterWithBlocksStorageAndLimits(b, cfg, limits, nil, "", registry)
 					require.NoError(b, err)
 					require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingester))
 					defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
@@ -3947,10 +3955,10 @@ func mockHistogramWriteRequest(t *testing.T, lbls labels.Labels, value int64, ti
 }
 
 func prepareIngesterWithBlocksStorage(t testing.TB, ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, error) {
-	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, defaultLimitsTestConfig(), nil, "", registerer, true)
+	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, defaultLimitsTestConfig(), nil, "", registerer)
 }
 
-func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, tenantLimits validation.TenantLimits, dataDir string, registerer prometheus.Registerer, nativeHistograms bool) (*Ingester, error) {
+func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, tenantLimits validation.TenantLimits, dataDir string, registerer prometheus.Registerer) (*Ingester, error) {
 	// Create a data dir if none has been provided.
 	if dataDir == "" {
 		dataDir = t.TempDir()
@@ -3966,7 +3974,6 @@ func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config,
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dataDir
 	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "filesystem"
 	ingesterCfg.BlocksStorageConfig.Bucket.Filesystem.Directory = bucketDir
-	ingesterCfg.BlocksStorageConfig.TSDB.EnableNativeHistograms = nativeHistograms
 
 	ingester, err := New(ingesterCfg, overrides, registerer, log.NewNopLogger(), nil)
 	if err != nil {
@@ -6432,7 +6439,8 @@ func TestIngester_MaxExemplarsFallBack(t *testing.T) {
 	dir := t.TempDir()
 	blocksDir := filepath.Join(dir, "blocks")
 	limits := defaultLimitsTestConfig()
-	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry(), true)
+	limits.EnableNativeHistogramPerUser = true
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	maxExemplars := i.getMaxExemplars("someTenant")
@@ -6440,7 +6448,7 @@ func TestIngester_MaxExemplarsFallBack(t *testing.T) {
 
 	// set max exemplars value in limits, and re-initialize the ingester
 	limits.MaxExemplars = 5
-	i, err = prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry(), true)
+	i, err = prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// validate this value is picked up now
@@ -6815,6 +6823,7 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
 	reg := prometheus.NewRegistry()
 	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistogramPerUser = true
 	userID := "1"
 	ctx := user.InjectOrgID(context.Background(), userID)
 
@@ -6839,7 +6848,7 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, reg, false)
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, reg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck

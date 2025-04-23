@@ -1347,7 +1347,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			return nil, wrapWithUser(err, userID)
 		}
 
-		if i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms {
+		if i.limits.EnableNativeHistogramPerUser(userID) {
 			for _, hp := range ts.Histograms {
 				var (
 					err error
@@ -1494,7 +1494,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
-	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && discardedNativeHistogramCount > 0 {
+	if !i.limits.EnableNativeHistogramPerUser(userID) && discardedNativeHistogramCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
 	}
 
@@ -2451,9 +2451,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
-		EnableOOONativeHistograms:      i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms, // Automatically enabled when EnableNativeHistograms is true.
-		EnableOverlappingCompaction:    false,                                                 // Always let compactors handle overlapped blocks, e.g. OOO blocks.
-		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
+		EnableOOONativeHistograms:      true,
+		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
+		EnableNativeHistograms:         true,  // Always enable Native Histograms
 		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
 	}, nil)
 	if err != nil {

@@ -33,8 +33,8 @@ type Distributor interface {
 	LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, label model.LabelName, hint *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error)
 	LabelNames(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error)
 	LabelNamesStream(context.Context, model.Time, model.Time, *storage.LabelHints, bool, ...*labels.Matcher) ([]string, error)
-	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error)
-	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error)
+	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error)
+	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error)
 }
 
@@ -122,7 +122,7 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 	// See: https://github.com/prometheus/prometheus/pull/8050
 	if sp != nil && sp.Func == "series" {
 		var (
-			ms  []model.Metric
+			ms  []labels.Labels
 			err error
 		)
 
@@ -136,14 +136,14 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 			return storage.ErrSeriesSet(err)
 		}
 
-		seriesSet := series.MetricsToSeriesSet(ctx, sortSeries, ms)
+		seriesSet := series.LabelsSetToSeriesSet(sortSeries, ms)
 
 		if partialdata.IsPartialDataError(err) {
 			warning := seriesSet.Warnings()
 			return series.NewSeriesSetWithWarnings(seriesSet, warning.Add(err))
 		}
 
-		return series.MetricsToSeriesSet(ctx, sortSeries, ms)
+		return seriesSet
 	}
 
 	return q.streamingSelect(ctx, sortSeries, partialDataEnabled, minT, maxT, matchers)
@@ -249,7 +249,7 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *
 	defer log.Span.Finish()
 
 	var (
-		ms  []model.Metric
+		ms  []labels.Labels
 		err error
 	)
 
@@ -265,9 +265,9 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *
 	namesMap := make(map[string]struct{})
 
 	for _, m := range ms {
-		for name := range m {
-			namesMap[string(name)] = struct{}{}
-		}
+		m.Range(func(l labels.Label) {
+			namesMap[l.Name] = struct{}{}
+		})
 	}
 
 	names := make([]string, 0, len(namesMap))

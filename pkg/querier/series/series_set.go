@@ -18,6 +18,7 @@ package series
 
 import (
 	"context"
+	"slices"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -29,6 +30,44 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/util"
 )
+
+type labelsSetSeriesSet struct {
+	cur       int
+	labelsSet []labels.Labels
+}
+
+// LabelsSetToSeriesSet creates a storage.SeriesSet from a []labels.Labels.
+func LabelsSetToSeriesSet(sortSeries bool, labelsSet []labels.Labels) storage.SeriesSet {
+	if sortSeries {
+		slices.SortFunc(labelsSet, func(a, b labels.Labels) int { return labels.Compare(a, b) })
+	}
+	return &labelsSetSeriesSet{
+		cur:       -1,
+		labelsSet: labelsSet,
+	}
+}
+
+// Next iterates through a series set and implements storage.SeriesSet.
+func (c *labelsSetSeriesSet) Next() bool {
+	c.cur++
+	return c.cur < len(c.labelsSet)
+}
+
+// At returns the current series and implements storage.SeriesSet.
+func (c *labelsSetSeriesSet) At() storage.Series {
+	lset := c.labelsSet[c.cur]
+	return &ConcreteSeries{labels: lset}
+}
+
+// Err implements storage.SeriesSet.
+func (c *labelsSetSeriesSet) Err() error {
+	return nil
+}
+
+// Warnings implements storage.SeriesSet.
+func (c *labelsSetSeriesSet) Warnings() annotations.Annotations {
+	return nil
+}
 
 // ConcreteSeriesSet implements storage.SeriesSet.
 type ConcreteSeriesSet struct {

@@ -101,6 +101,14 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks 
 				level.Warn(w.logger).Log("msg", "skipped block with missing global deletion marker", "block", b.ID.String())
 				continue
 			}
+			// Check if parquet mark has been uploaded for the old block.
+			// TODO: this should be optimized to have all parquet marker in a global path.
+			// We assume parquet marker cannot be removed from a block if it exists before.
+			if b.Parquet == nil {
+				if err := w.updateParquetBlockIndexEntry(ctx, b.ID, b); err != nil {
+					return nil, nil, err
+				}
+			}
 			blocks = append(blocks, b)
 		}
 	}
@@ -187,8 +195,7 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 }
 
 func (w *Updater) updateParquetBlockIndexEntry(ctx context.Context, id ulid.ULID, block *Block) error {
-	// TODO: don't hardcode it
-	parquetMarkFile := path.Join(id.String(), "parquet-converter-mark.json")
+	parquetMarkFile := path.Join(id.String(), tsdb.ParquetConverterMakerFileName)
 
 	// Get the block's parquet marker file.
 	r, err := w.bkt.ReaderWithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(w.bkt.IsObjNotFoundErr, w.bkt.IsAccessDeniedErr)).Get(ctx, parquetMarkFile)
@@ -208,7 +215,7 @@ func (w *Updater) updateParquetBlockIndexEntry(ctx context.Context, id ulid.ULID
 		return errors.Wrapf(err, "read parquet converter marker file: %v", parquetMarkFile)
 	}
 
-	m := ParquetMeta{}
+	m := tsdb.ParquetMeta{}
 	if err := json.Unmarshal(markContent, &m); err != nil {
 		return errors.Wrapf(ErrBlockParquetMarkCorrupted, "unmarshal parquet converter marker file %s: %v", parquetMarkFile, err)
 	}

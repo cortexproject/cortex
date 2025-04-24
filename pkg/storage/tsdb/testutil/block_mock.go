@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +83,23 @@ func MockStorageNonCompactionMark(t testing.TB, bucket objstore.Bucket, userID s
 
 	markContentReader := strings.NewReader(string(markContent))
 	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), metadata.NoCompactMarkFilename)
+	require.NoError(t, bucket.Upload(context.Background(), markPath, markContentReader))
+
+	return &mark
+}
+
+func MockStorageParquetMark(t testing.TB, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *cortex_tsdb.ParquetMeta {
+	mark := cortex_tsdb.ParquetMeta{
+		Version: 1,
+	}
+
+	markContent, err := json.Marshal(mark)
+	if err != nil {
+		panic("failed to marshal mocked parquet meta")
+	}
+
+	markContentReader := strings.NewReader(string(markContent))
+	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), cortex_tsdb.ParquetConverterMakerFileName)
 	require.NoError(t, bucket.Upload(context.Background(), markPath, markContentReader))
 
 	return &mark

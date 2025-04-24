@@ -48,7 +48,7 @@ func (idx *Index) GetUpdatedAt() time.Time {
 	return time.Unix(idx.UpdatedAt, 0)
 }
 
-// RemoveBlock removes block, parquet block and its deletion mark (if any) from index.
+// RemoveBlock removes block and its deletion mark (if any) from index.
 func (idx *Index) RemoveBlock(id ulid.ULID) {
 	for i := 0; i < len(idx.Blocks); i++ {
 		if idx.Blocks[i].ID == id {
@@ -94,11 +94,7 @@ type Block struct {
 	UploadedAt int64 `json:"uploaded_at"`
 
 	// Parquet metadata if exists. If doesn't exist it will be nil.
-	Parquet *ParquetMeta `json:"parquet,omitempty"`
-}
-
-type ParquetMeta struct {
-	Version int `json:"version"`
+	Parquet *cortex_tsdb.ParquetMeta `json:"parquet,omitempty"`
 }
 
 // Within returns whether the block contains samples within the provided range.

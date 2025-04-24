@@ -26,6 +26,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -271,14 +272,14 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		marker, err := ReadConverterMark(ctx, b.ULID, uBucket, logger)
+		marker, err := cortex_parquet.ReadConverterMark(ctx, b.ULID, uBucket, logger)
 
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to read marker", "block", b.ULID.String(), "err", err)
 			continue
 		}
 
-		if marker.Version == CurrentVersion {
+		if marker.Version == cortex_parquet.CurrentVersion {
 			continue
 		}
 
@@ -326,7 +327,7 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			level.Error(logger).Log("msg", "Error converting block", "err", err)
 		}
 
-		err = WriteCompactMark(ctx, b.ULID, uBucket)
+		err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket)
 		if err != nil {
 			level.Error(logger).Log("msg", "Error writing block", "err", err)
 		}

@@ -1,4 +1,4 @@
-package parquetconverter
+package parquet
 
 import (
 	"bytes"
@@ -16,43 +16,43 @@ import (
 )
 
 const (
-	ParquetConverterMakerFileName = "parquet-converter-mark.json"
-	CurrentVersion                = 1
+	Name           = "parquet-converter-mark.json"
+	CurrentVersion = 1
 )
 
-type CompactionMark struct {
+type ConverterMark struct {
 	Version int `json:"version"`
 }
 
-func (m *CompactionMark) markerFilename() string { return ParquetConverterMakerFileName }
+func (m *ConverterMark) markerFilename() string { return Name }
 
-func ReadConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.InstrumentedBucket, logger log.Logger) (*CompactionMark, error) {
-	markerPath := path.Join(id.String(), ParquetConverterMakerFileName)
+func ReadConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.InstrumentedBucket, logger log.Logger) (*ConverterMark, error) {
+	markerPath := path.Join(id.String(), Name)
 	reader, err := userBkt.WithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(userBkt.IsAccessDeniedErr, userBkt.IsObjNotFoundErr)).Get(ctx, markerPath)
 	if err != nil {
 		if userBkt.IsObjNotFoundErr(err) {
-			return &CompactionMark{}, nil
+			return &ConverterMark{}, nil
 		}
 
-		return &CompactionMark{}, err
+		return &ConverterMark{}, err
 	}
 	defer runutil.CloseWithLogOnErr(logger, reader, "close bucket index reader")
 
 	metaContent, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, errors.Wrapf(err, "read file: %s", ParquetConverterMakerFileName)
+		return nil, errors.Wrapf(err, "read file: %s", Name)
 	}
 
-	marker := CompactionMark{}
+	marker := ConverterMark{}
 	err = json.Unmarshal(metaContent, &marker)
 	return &marker, err
 }
 
-func WriteCompactMark(ctx context.Context, id ulid.ULID, userBkt objstore.Bucket) error {
-	marker := CompactionMark{
+func WriteConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Bucket) error {
+	marker := ConverterMark{
 		Version: CurrentVersion,
 	}
-	markerPath := path.Join(id.String(), ParquetConverterMakerFileName)
+	markerPath := path.Join(id.String(), Name)
 	b, err := json.Marshal(marker)
 	if err != nil {
 		return err

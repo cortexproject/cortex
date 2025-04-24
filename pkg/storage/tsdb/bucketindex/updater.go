@@ -34,8 +34,9 @@ var (
 
 // Updater is responsible to generate an update in-memory bucket index.
 type Updater struct {
-	bkt    objstore.InstrumentedBucket
-	logger log.Logger
+	bkt            objstore.InstrumentedBucket
+	logger         log.Logger
+	parquetEnabled bool
 }
 
 func NewUpdater(bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *Updater {
@@ -43,6 +44,11 @@ func NewUpdater(bkt objstore.Bucket, userID string, cfgProvider bucket.TenantCon
 		bkt:    bucket.NewUserBucketClient(userID, bkt, cfgProvider),
 		logger: util_log.WithUserID(userID, logger),
 	}
+}
+
+func (w *Updater) EnableParquet() *Updater {
+	w.parquetEnabled = true
+	return w
 }
 
 // UpdateIndex generates the bucket index and returns it, without storing it to the storage.
@@ -104,7 +110,7 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks 
 			// Check if parquet mark has been uploaded for the old block.
 			// TODO: this should be optimized to have all parquet marker in a global path.
 			// We assume parquet marker cannot be removed from a block if it exists before.
-			if b.Parquet == nil {
+			if w.parquetEnabled && b.Parquet == nil {
 				if err := w.updateParquetBlockIndexEntry(ctx, b.ID, b); err != nil {
 					return nil, nil, err
 				}
@@ -119,7 +125,9 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks 
 	for id := range discovered {
 		b, err := w.updateBlockIndexEntry(ctx, id)
 		if err == nil {
-			err = w.updateParquetBlockIndexEntry(ctx, id, b)
+			if w.parquetEnabled {
+				err = w.updateParquetBlockIndexEntry(ctx, id, b)
+			}
 			if err == nil {
 				blocks = append(blocks, b)
 				continue

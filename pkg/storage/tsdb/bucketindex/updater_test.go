@@ -319,7 +319,7 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	// Add parquet marker to block 1.
 	block1ParquetMark := testutil.MockStorageParquetMark(t, bkt, userID, block1)
 
-	w := NewUpdater(bkt, userID, nil, logger)
+	w := NewUpdater(bkt, userID, nil, logger).EnableParquet()
 	returnedIdx, _, _, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,

@@ -10,10 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/parquet-go/parquet-go"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/logutil"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -43,9 +43,11 @@ const (
 var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
 type Config struct {
-	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
-	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
-	DataDir         string                 `yaml:"data_dir"`
+	EnabledTenants      flagext.StringSliceCSV `yaml:"enabled_tenants"`
+	DisabledTenants     flagext.StringSliceCSV `yaml:"disabled_tenants"`
+	MetaSyncConcurrency int                    `yaml:"meta_sync_concurrency"`
+
+	DataDir string `yaml:"data_dir"`
 
 	Ring RingConfig `yaml:"ring"`
 }
@@ -61,9 +63,6 @@ type Converter struct {
 	allowedTenants *util.AllowedTenants
 	limits         *validation.Overrides
 
-	// Blocks loader
-	loader *bucketindex.Loader
-
 	// Ring used for sharding compactions.
 	ringLifecycler         *ring.Lifecycler
 	ring                   *ring.Ring
@@ -77,6 +76,8 @@ type Converter struct {
 
 	// compaction block ranges
 	blockRanges []int64
+
+	fetcherMetrics *block.FetcherMetrics
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -85,6 +86,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.EnabledTenants, "parquet-converter.enabled-tenants", "Comma separated list of tenants that can be converted. If specified, only these tenants will be converted, otherwise all tenants can be converted.")
 	f.Var(&cfg.DisabledTenants, "parquet-converter.disabled-tenants", "Comma separated list of tenants that cannot converted.")
 	f.StringVar(&cfg.DataDir, "parquet-converter.data-dir", "./data", "Data directory in which to cache blocks and process conversions.")
+	f.IntVar(&cfg.MetaSyncConcurrency, "parquet-converter.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
 }
 
 func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) *Converter {
@@ -97,6 +99,7 @@ func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockR
 		limits:         limits,
 		pool:           chunkenc.NewPool(),
 		blockRanges:    blockRanges,
+		fetcherMetrics: block.NewFetcherMetrics(registerer, nil, nil),
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
@@ -108,15 +111,6 @@ func (c *Converter) starting(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	indexLoaderConfig := bucketindex.LoaderConfig{
-		CheckInterval:         time.Minute,
-		UpdateOnStaleInterval: c.storageCfg.BucketStore.SyncInterval,
-		UpdateOnErrorInterval: c.storageCfg.BucketStore.BucketIndex.UpdateOnErrorInterval,
-		IdleTimeout:           c.storageCfg.BucketStore.BucketIndex.IdleTimeout,
-	}
-
-	c.loader = bucketindex.NewLoader(indexLoaderConfig, bkt, c.limits, util_log.Logger, prometheus.DefaultRegisterer)
 
 	c.bkt = bkt
 	lifecyclerCfg := c.cfg.Ring.ToLifecyclerConfig()
@@ -150,14 +144,6 @@ func (c *Converter) starting(ctx context.Context) error {
 		return err
 	}
 
-	if err := c.loader.StartAsync(context.Background()); err != nil {
-		return errors.Wrap(err, "failed to start loader")
-	}
-
-	if err := c.loader.AwaitRunning(ctx); err != nil {
-		return errors.Wrap(err, "failed to start loader")
-	}
-
 	return nil
 }
 
@@ -177,97 +163,30 @@ func (c *Converter) running(ctx context.Context) error {
 				continue
 			}
 			for _, userID := range users {
-				owned, err := c.ownUser(userID)
-				if err != nil {
-					level.Error(c.logger).Log("msg", "failed to check if user is owned by the user", "user", userID, "err", err)
-					continue
-				}
-				if !owned {
-					level.Info(c.logger).Log("msg", "user not owned", "user", userID)
-					continue
-				}
-				level.Info(c.logger).Log("msg", "scanned user", "user", userID)
-				userLogger := util_log.WithUserID(userID, c.logger)
+
 				var ring ring.ReadRing
 				ring = c.ring
 				if c.limits.ParquetConverterTenantShardSize(userID) > 0 {
 					ring = c.ring.ShuffleShard(userID, c.limits.ParquetConverterTenantShardSize(userID))
 				}
 
-				idx, _, err := c.loader.GetIndex(ctx, userID)
+				userLogger := util_log.WithUserID(userID, c.logger)
+
+				owned, err := c.ownUser(ring, userID)
 				if err != nil {
-					level.Error(userLogger).Log("msg", "failed to get index", "err", err)
+					level.Error(userLogger).Log("msg", "failed to check if user is owned by the user", "user", userID, "err", err)
 					continue
 				}
+				if !owned {
+					level.Info(userLogger).Log("msg", "user not owned", "user", userID)
+					continue
+				}
+				level.Info(userLogger).Log("msg", "scanned user", "user", userID)
 
-				for _, b := range idx.Blocks {
-					ok, err := c.ownBlock(ring, b.ID.String())
-					if err != nil {
-						level.Error(userLogger).Log("msg", "failed to get own block", "block", b.ID.String(), "err", err)
-						continue
-					}
+				err = c.convertUser(ctx, userLogger, ring, userID)
 
-					if !ok {
-						continue
-					}
-					uBucket := bucket.NewUserBucketClient(userID, c.bkt, c.limits)
-
-					marker, err := ReadConverterMark(ctx, b.ID, uBucket, userLogger)
-					if err != nil {
-						level.Error(userLogger).Log("msg", "failed to read marker", "block", b.ID.String(), "err", err)
-						continue
-					}
-
-					if marker.Version == CurrentVersion {
-						continue
-					}
-
-					// Do not convert 2 hours blocks
-					if getBlockTimeRange(b, c.blockRanges) == c.blockRanges[0] {
-						continue
-					}
-
-					if err := os.RemoveAll(c.compactRootDir()); err != nil {
-						level.Error(userLogger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
-					}
-
-					bdir := filepath.Join(c.compactDirForUser(userID), b.ID.String())
-
-					level.Info(userLogger).Log("msg", "downloading block", "block", b.ID.String(), "dir", bdir)
-					if err := block.Download(ctx, userLogger, uBucket, b.ID, bdir, objstore.WithFetchConcurrency(10)); err != nil {
-						level.Error(userLogger).Log("msg", "Error downloading block", "err", err)
-						continue
-					}
-
-					tsdbBlock, err := tsdb.OpenBlock(logutil.GoKitLogToSlog(userLogger), bdir, c.pool, tsdb.DefaultPostingsDecoderFactory)
-					if err != nil {
-						level.Error(userLogger).Log("msg", "Error opening block", "err", err)
-						continue
-					}
-					// Add converter logic
-					level.Info(userLogger).Log("msg", "converting block", "block", b.ID.String(), "dir", bdir)
-					_, err = convert.ConvertTSDBBlock(
-						ctx,
-						uBucket,
-						tsdbBlock.MinTime(),
-						tsdbBlock.MaxTime(),
-						[]convert.Convertible{tsdbBlock},
-						convert.WithSortBy(labels.MetricName),
-						convert.WithColDuration(time.Hour*8),
-						convert.WithName(b.ID.String()),
-						convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")),
-					)
-
-					_ = tsdbBlock.Close()
-
-					if err != nil {
-						level.Error(userLogger).Log("msg", "Error converting block", "err", err)
-					}
-
-					err = WriteCompactMark(ctx, b.ID, uBucket)
-					if err != nil {
-						level.Error(userLogger).Log("msg", "Error writing block", "err", err)
-					}
+				if err != nil {
+					level.Error(userLogger).Log("msg", "failed to convert user", "user", userID, "err", err)
 				}
 			}
 		}
@@ -276,7 +195,6 @@ func (c *Converter) running(ctx context.Context) error {
 
 func (c *Converter) stopping(_ error) error {
 	ctx := context.Background()
-	services.StopAndAwaitTerminated(ctx, c.loader) //nolint:errcheck
 	if c.ringSubservices != nil {
 		return services.StopManagerAndAwaitStopped(ctx, c.ringSubservices)
 	}
@@ -294,7 +212,134 @@ func (c *Converter) discoverUsers(ctx context.Context) ([]string, error) {
 	return users, err
 }
 
-func (c *Converter) ownUser(userID string) (bool, error) {
+func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring ring.ReadRing, userID string) error {
+
+	uBucket := bucket.NewUserBucketClient(userID, c.bkt, c.limits)
+
+	var blockLister block.Lister
+	switch cortex_tsdb.BlockDiscoveryStrategy(c.storageCfg.BucketStore.BlockDiscoveryStrategy) {
+	case cortex_tsdb.ConcurrentDiscovery:
+		blockLister = block.NewConcurrentLister(logger, uBucket)
+	case cortex_tsdb.RecursiveDiscovery:
+		blockLister = block.NewRecursiveLister(logger, uBucket)
+	case cortex_tsdb.BucketIndexDiscovery:
+		if !c.storageCfg.BucketStore.BucketIndex.Enabled {
+			return cortex_tsdb.ErrInvalidBucketIndexBlockDiscoveryStrategy
+		}
+		blockLister = bucketindex.NewBlockLister(logger, c.bkt, userID, c.limits)
+	default:
+		return cortex_tsdb.ErrBlockDiscoveryStrategy
+	}
+
+	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(
+		logger,
+		uBucket,
+		0,
+		c.cfg.MetaSyncConcurrency)
+
+	var baseFetcherMetrics block.BaseFetcherMetrics
+	baseFetcherMetrics.Syncs = c.fetcherMetrics.Syncs
+	// Create the blocks finder.
+	fetcher, err := block.NewMetaFetcherWithMetrics(
+		logger,
+		c.cfg.MetaSyncConcurrency,
+		uBucket,
+		blockLister,
+		c.metaSyncDirForUser(userID),
+		&baseFetcherMetrics,
+		c.fetcherMetrics,
+		[]block.MetadataFilter{ignoreDeletionMarkFilter},
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "error creating block fetcher")
+	}
+
+	blocks, _, err := fetcher.Fetch(ctx)
+	if err != nil {
+		return errors.Wrapf(err, "failed to fetch blocks for user %s", userID)
+	}
+
+	for _, b := range blocks {
+		ok, err := c.ownBlock(ring, b.ULID.String())
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to get own block", "block", b.ULID.String(), "err", err)
+			continue
+		}
+
+		if !ok {
+			continue
+		}
+
+		marker, err := ReadConverterMark(ctx, b.ULID, uBucket, logger)
+
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to read marker", "block", b.ULID.String(), "err", err)
+			continue
+		}
+
+		if marker.Version == CurrentVersion {
+			continue
+		}
+
+		// Do not convert 2 hours blocks
+		if getBlockTimeRange(b, c.blockRanges) == c.blockRanges[0] {
+			continue
+		}
+
+		if err := os.RemoveAll(c.compactRootDir()); err != nil {
+			level.Error(logger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
+		}
+
+		bdir := filepath.Join(c.compactDirForUser(userID), b.ULID.String())
+
+		level.Info(logger).Log("msg", "downloading block", "block", b.ULID.String(), "dir", bdir)
+
+		if err := block.Download(ctx, logger, uBucket, b.ULID, bdir, objstore.WithFetchConcurrency(10)); err != nil {
+			level.Error(logger).Log("msg", "Error downloading block", "err", err)
+			continue
+		}
+
+		tsdbBlock, err := tsdb.OpenBlock(logutil.GoKitLogToSlog(logger), bdir, c.pool, tsdb.DefaultPostingsDecoderFactory)
+
+		if err != nil {
+			level.Error(logger).Log("msg", "Error opening block", "err", err)
+			continue
+		}
+
+		level.Info(logger).Log("msg", "converting block", "block", b.ULID.String(), "dir", bdir)
+		_, err = convert.ConvertTSDBBlock(
+			ctx,
+			uBucket,
+			tsdbBlock.MinTime(),
+			tsdbBlock.MaxTime(),
+			[]convert.Convertible{tsdbBlock},
+			convert.WithSortBy(labels.MetricName),
+			convert.WithColDuration(time.Hour*8),
+			convert.WithName(b.ULID.String()),
+			convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")),
+		)
+
+		_ = tsdbBlock.Close()
+
+		if err != nil {
+			level.Error(logger).Log("msg", "Error converting block", "err", err)
+		}
+
+		err = WriteCompactMark(ctx, b.ULID, uBucket)
+		if err != nil {
+			level.Error(logger).Log("msg", "Error writing block", "err", err)
+		}
+	}
+
+	return nil
+}
+
+func (c *Converter) metaSyncDirForUser(userID string) string {
+	return filepath.Join(c.cfg.DataDir, "converter-meta-"+userID)
+}
+
+func (c *Converter) ownUser(r ring.ReadRing, userID string) (bool, error) {
 	if !c.allowedTenants.IsAllowed(userID) {
 		return false, nil
 	}
@@ -303,9 +348,7 @@ func (c *Converter) ownUser(userID string) (bool, error) {
 		return true, nil
 	}
 
-	subRing := c.ring.ShuffleShard(userID, c.limits.ParquetConverterTenantShardSize(userID))
-
-	rs, err := subRing.GetAllHealthy(RingOp)
+	rs, err := r.GetAllHealthy(RingOp)
 	if err != nil {
 		return false, err
 	}
@@ -340,7 +383,7 @@ func (c *Converter) compactDirForUser(userID string) string {
 	return filepath.Join(c.compactRootDir(), userID)
 }
 
-func getBlockTimeRange(b *bucketindex.Block, timeRanges []int64) int64 {
+func getBlockTimeRange(b *metadata.Meta, timeRanges []int64) int64 {
 	timeRange := int64(0)
 	// fallback logic to guess block time range based
 	// on MaxTime and MinTime

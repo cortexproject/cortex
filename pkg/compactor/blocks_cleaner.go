@@ -864,19 +864,5 @@ func listBlocksOutsideRetentionPeriod(idx *bucketindex.Index, threshold time.Tim
 		}
 	}
 
-	// Check parquet blocks for retention.
-	for _, b := range idx.ParquetBlocks {
-		maxTime := time.Unix(b.MaxTime/1000, 0)
-		if maxTime.Before(threshold) {
-			if _, isMarked := marked[b.ID]; !isMarked {
-				result = append(result, &bucketindex.Block{
-					ID:      b.ID,
-					MinTime: b.MinTime,
-					MaxTime: b.MaxTime,
-				})
-			}
-		}
-	}
-
 	return
 }

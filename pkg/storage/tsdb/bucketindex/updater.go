@@ -27,6 +27,7 @@ var (
 	ErrBlockMetaCorrupted         = block.ErrorSyncMetaCorrupted
 	ErrBlockDeletionMarkNotFound  = errors.New("block deletion mark not found")
 	ErrBlockDeletionMarkCorrupted = errors.New("block deletion mark corrupted")
+	ErrBlockParquetMarkCorrupted  = errors.New("block parquet mark corrupted")
 
 	errBlockMetaKeyAccessDeniedErr = errors.New("block meta file key access denied error")
 )
@@ -49,7 +50,6 @@ func NewUpdater(bkt objstore.Bucket, userID string, cfgProvider bucket.TenantCon
 func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid.ULID]error, int64, error) {
 	var (
 		oldBlocks             []*Block
-		oldParquetBlocks      []*ParquetBlock
 		oldBlockDeletionMarks []*BlockDeletionMark
 	)
 
@@ -57,7 +57,6 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 	if old != nil {
 		oldBlocks = old.Blocks
 		oldBlockDeletionMarks = old.BlockDeletionMarks
-		oldParquetBlocks = old.ParquetBlocks
 	}
 
 	blockDeletionMarks, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, err := w.updateBlockMarks(ctx, oldBlockDeletionMarks)
@@ -65,7 +64,7 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 		return nil, nil, 0, err
 	}
 
-	blocks, parquetBlocks, partials, err := w.updateBlocks(ctx, oldBlocks, oldParquetBlocks, deletedBlocks)
+	blocks, partials, err := w.updateBlocks(ctx, oldBlocks, deletedBlocks)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -73,13 +72,12 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 	return &Index{
 		Version:            IndexVersion1,
 		Blocks:             blocks,
-		ParquetBlocks:      parquetBlocks,
 		BlockDeletionMarks: blockDeletionMarks,
 		UpdatedAt:          time.Now().Unix(),
 	}, partials, totalBlocksBlocksMarkedForNoCompaction, nil
 }
 
-func (w *Updater) updateBlocks(ctx context.Context, old []*Block, oldParquetBlocks []*ParquetBlock, deletedBlocks map[ulid.ULID]struct{}) (blocks []*Block, parquetBlocks []*ParquetBlock, partials map[ulid.ULID]error, _ error) {
+func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks map[ulid.ULID]struct{}) (blocks []*Block, partials map[ulid.ULID]error, _ error) {
 	discovered := map[ulid.ULID]struct{}{}
 	partials = map[ulid.ULID]error{}
 
@@ -91,7 +89,7 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, oldParquetBloc
 		return nil
 	})
 	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "list blocks")
+		return nil, nil, errors.Wrap(err, "list blocks")
 	}
 
 	// Since blocks are immutable, all blocks already existing in the index can just be copied.
@@ -107,33 +105,15 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, oldParquetBloc
 		}
 	}
 
-	// It is possible that parquet file exists in the block path but deleted later if we rollback to use
-	// TSDB block.
-	// To reduce calls to object store we leave old parquet blocks in the index but deleting bucket index
-	// is required to clean up parquet blocks from it for the scenario mentioned above.
-	for _, b := range oldParquetBlocks {
-		if _, ok := discovered[b.ID]; ok {
-			delete(discovered, b.ID)
-
-			if _, ok := deletedBlocks[b.ID]; ok {
-				level.Warn(w.logger).Log("msg", "skipped parquet block with missing global deletion marker", "block", b.ID.String())
-				continue
-			}
-			parquetBlocks = append(parquetBlocks, b)
-		}
-	}
-
-	var pb *ParquetBlock
 	// Remaining blocks are new ones and we have to fetch the meta.json for each of them, in order
 	// to find out if their upload has been completed (meta.json is uploaded last) and get the block
 	// information to store in the bucket index.
 	for id := range discovered {
 		b, err := w.updateBlockIndexEntry(ctx, id)
 		if err == nil {
-			blocks = append(blocks, b)
-			pb, err = w.updateParquetBlockIndexEntry(ctx, id, b)
+			err = w.updateParquetBlockIndexEntry(ctx, id, b)
 			if err == nil {
-				parquetBlocks = append(parquetBlocks, pb)
+				blocks = append(blocks, b)
 				continue
 			}
 		}
@@ -153,10 +133,10 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, oldParquetBloc
 			level.Error(w.logger).Log("msg", "skipped block with corrupted meta.json when updating bucket index", "block", id.String(), "err", err)
 			continue
 		}
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	return blocks, parquetBlocks, partials, nil
+	return blocks, partials, nil
 }
 
 func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Block, error) {
@@ -206,28 +186,34 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 	return block, nil
 }
 
-func (w *Updater) updateParquetBlockIndexEntry(ctx context.Context, id ulid.ULID, block *Block) (*ParquetBlock, error) {
+func (w *Updater) updateParquetBlockIndexEntry(ctx context.Context, id ulid.ULID, block *Block) error {
 	// TODO: don't hardcode it
 	parquetMarkFile := path.Join(id.String(), "parquet-converter-mark.json")
 
-	exists, err := w.bkt.ReaderWithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(w.bkt.IsObjNotFoundErr, w.bkt.IsAccessDeniedErr)).Exists(ctx, parquetMarkFile)
-	// Expected to miss the marker.
-	// Access deny error for metadata is marked as partial block. We don't mark it as partial block
-	// but don't include this parquet block for this scenario.
-	if w.bkt.IsObjNotFoundErr(err) || w.bkt.IsAccessDeniedErr(err) || !exists {
-		return nil, nil
+	// Get the block's parquet marker file.
+	r, err := w.bkt.ReaderWithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(w.bkt.IsObjNotFoundErr, w.bkt.IsAccessDeniedErr)).Get(ctx, parquetMarkFile)
+	// Not found error is expected.
+	// If access deny, don't return error. Just treat it as no parquet block available.
+	if w.bkt.IsObjNotFoundErr(err) || w.bkt.IsAccessDeniedErr(err) {
+		return nil
 	}
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "get parquet converter marker file: %v", parquetMarkFile)
+		return errors.Wrapf(err, "get parquet converter marker file: %v", parquetMarkFile)
 	}
-	// We don't check marker file content. If it exists, we think parquet file exists as we upload parquet marker as last step.
+	defer runutil.CloseWithLogOnErr(w.logger, r, "close get block meta file")
 
-	return &ParquetBlock{
-		ID:      id,
-		MinTime: block.MinTime,
-		MaxTime: block.MaxTime,
-	}, nil
+	markContent, err := io.ReadAll(r)
+	if err != nil {
+		return errors.Wrapf(err, "read parquet converter marker file: %v", parquetMarkFile)
+	}
+
+	m := ParquetMeta{}
+	if err := json.Unmarshal(markContent, &m); err != nil {
+		return errors.Wrapf(ErrBlockParquetMarkCorrupted, "unmarshal parquet converter marker file %s: %v", parquetMarkFile, err)
+	}
+	block.Parquet = &m
+	return nil
 }
 
 func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, map[ulid.ULID]struct{}, int64, error) {

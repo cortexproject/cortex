@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/parquet-go/parquet-go"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -38,9 +40,7 @@ const (
 	ringKey = "parquet-converter"
 )
 
-var (
-	RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
-)
+var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
 type Config struct {
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
@@ -84,6 +84,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.Var(&cfg.EnabledTenants, "parquet-converter.enabled-tenants", "Comma separated list of tenants that can be converted. If specified, only these tenants will be converted, otherwise all tenants can be converted.")
 	f.Var(&cfg.DisabledTenants, "parquet-converter.disabled-tenants", "Comma separated list of tenants that cannot converted.")
+	f.StringVar(&cfg.DataDir, "parquet-converter.data-dir", "./data", "Data directory in which to cache blocks and process conversions.")
 }
 
 func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) *Converter {
@@ -120,6 +121,10 @@ func (c *Converter) starting(ctx context.Context) error {
 	c.bkt = bkt
 	lifecyclerCfg := c.cfg.Ring.ToLifecyclerConfig()
 	c.ringLifecycler, err = ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "parquet-converter", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.reg))
+
+	if err != nil {
+		return errors.Wrap(err, "unable to initialize converter ring lifecycler")
+	}
 
 	c.ring, err = ring.New(lifecyclerCfg.RingConfig, "parquet-converter", ringKey, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.reg))
 	if err != nil {
@@ -201,65 +206,70 @@ func (c *Converter) running(ctx context.Context) error {
 						level.Error(userLogger).Log("msg", "failed to get own block", "block", b.ID.String(), "err", err)
 						continue
 					}
-					if ok {
-						marker, err := ReadConverterMark(ctx, b.ID, c.bkt, userLogger)
-						if err != nil {
-							level.Error(userLogger).Log("msg", "failed to read marker", "block", b.ID.String(), "err", err)
-							continue
-						}
 
-						if marker.Version == CurrentVersion {
-							continue
-						}
+					if !ok {
+						continue
+					}
+					uBucket := bucket.NewUserBucketClient(userID, c.bkt, c.limits)
 
-						// Do not convert 2 hours blocks
-						if getBlockTimeRange(b, c.blockRanges) == c.blockRanges[0] {
-							continue
-						}
+					marker, err := ReadConverterMark(ctx, b.ID, uBucket, userLogger)
+					if err != nil {
+						level.Error(userLogger).Log("msg", "failed to read marker", "block", b.ID.String(), "err", err)
+						continue
+					}
 
-						if err := os.RemoveAll(c.compactRootDir()); err != nil {
-							level.Error(userLogger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
-						}
+					if marker.Version == CurrentVersion {
+						continue
+					}
 
-						bdir := filepath.Join(c.compactDirForUser(userID), b.ID.String())
-						uBucket := bucket.NewUserBucketClient(userID, c.bkt, c.limits)
+					// Do not convert 2 hours blocks
+					if getBlockTimeRange(b, c.blockRanges) == c.blockRanges[0] {
+						continue
+					}
 
-						level.Info(userLogger).Log("msg", "downloading block", "block", b.ID.String(), "dir", bdir)
-						if err := block.Download(ctx, userLogger, uBucket, b.ID, bdir, objstore.WithFetchConcurrency(10)); err != nil {
-							level.Error(userLogger).Log("msg", "Error downloading block", "err", err)
-							continue
-						}
+					if err := os.RemoveAll(c.compactRootDir()); err != nil {
+						level.Error(userLogger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
+					}
 
-						tsdbBlock, err := tsdb.OpenBlock(logutil.GoKitLogToSlog(userLogger), bdir, c.pool, tsdb.DefaultPostingsDecoderFactory)
-						if err != nil {
-							level.Error(userLogger).Log("msg", "Error opening block", "err", err)
-							continue
-						}
-						// Add converter logic
-						level.Info(userLogger).Log("msg", "converting block", "block", b.ID.String(), "dir", bdir)
-						_, err = convert.ConvertTSDBBlock(
-							ctx,
-							uBucket,
-							tsdbBlock.MinTime(),
-							tsdbBlock.MaxTime(),
-							[]convert.Convertible{tsdbBlock},
-							convert.WithSortBy(labels.MetricName),
-							convert.WithColDuration(time.Hour*8),
-							convert.WithName(b.ID.String()),
-						)
+					bdir := filepath.Join(c.compactDirForUser(userID), b.ID.String())
 
-						if err != nil {
-							level.Error(userLogger).Log("msg", "Error converting block", "err", err)
-						}
+					level.Info(userLogger).Log("msg", "downloading block", "block", b.ID.String(), "dir", bdir)
+					if err := block.Download(ctx, userLogger, uBucket, b.ID, bdir, objstore.WithFetchConcurrency(10)); err != nil {
+						level.Error(userLogger).Log("msg", "Error downloading block", "err", err)
+						continue
+					}
 
-						err = WriteCompactMark(ctx, b.ID, uBucket)
-						if err != nil {
-							level.Error(userLogger).Log("msg", "Error writing block", "err", err)
-						}
+					tsdbBlock, err := tsdb.OpenBlock(logutil.GoKitLogToSlog(userLogger), bdir, c.pool, tsdb.DefaultPostingsDecoderFactory)
+					if err != nil {
+						level.Error(userLogger).Log("msg", "Error opening block", "err", err)
+						continue
+					}
+					// Add converter logic
+					level.Info(userLogger).Log("msg", "converting block", "block", b.ID.String(), "dir", bdir)
+					_, err = convert.ConvertTSDBBlock(
+						ctx,
+						uBucket,
+						tsdbBlock.MinTime(),
+						tsdbBlock.MaxTime(),
+						[]convert.Convertible{tsdbBlock},
+						convert.WithSortBy(labels.MetricName),
+						convert.WithColDuration(time.Hour*8),
+						convert.WithName(b.ID.String()),
+						convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")),
+					)
+
+					_ = tsdbBlock.Close()
+
+					if err != nil {
+						level.Error(userLogger).Log("msg", "Error converting block", "err", err)
+					}
+
+					err = WriteCompactMark(ctx, b.ID, uBucket)
+					if err != nil {
+						level.Error(userLogger).Log("msg", "Error writing block", "err", err)
 					}
 				}
 			}
-
 		}
 	}
 }
@@ -346,7 +356,7 @@ func getBlockTimeRange(b *bucketindex.Block, timeRanges []int64) int64 {
 	return timeRange
 }
 
-func getRangeStart(mint int64, tr int64) int64 {
+func getRangeStart(mint, tr int64) int64 {
 	// Compute start of aligned time range of size tr closest to the current block's start.
 	// This code has been copied from TSDB.
 	if mint >= 0 {

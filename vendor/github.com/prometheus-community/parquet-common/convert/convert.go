@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -29,7 +30,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
-	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
 	"github.com/thanos-io/objstore"
@@ -37,13 +37,15 @@ import (
 
 var DefaultConvertOpts = convertOpts{
 	name:              "block",
-	rowGroupSize:      1_000_000,
+	rowGroupSize:      1e6,
 	colDuration:       time.Hour * 8,
 	numRowGroups:      math.MaxInt32,
 	sortedLabels:      []string{labels.MetricName},
 	bloomfilterLabels: []string{labels.MetricName},
 	pageBufferSize:    parquet.DefaultPageBufferSize,
 	writeBufferSize:   parquet.DefaultWriteBufferSize,
+	columnPageBuffers: parquet.DefaultWriterConfig().ColumnPageBuffers,
+	concurrency:       runtime.GOMAXPROCS(0),
 }
 
 type Convertible interface {
@@ -62,6 +64,8 @@ type convertOpts struct {
 	bloomfilterLabels []string
 	pageBufferSize    int
 	writeBufferSize   int
+	columnPageBuffers parquet.BufferPool
+	concurrency       int
 }
 
 func (cfg convertOpts) buildBloomfilterColumns() []parquet.BloomFilterColumn {
@@ -115,6 +119,18 @@ func WithName(name string) ConvertOption {
 	}
 }
 
+func WithConcurrency(concurrency int) ConvertOption {
+	return func(opts *convertOpts) {
+		opts.concurrency = concurrency
+	}
+}
+
+func WithColumnPageBuffers(buffers parquet.BufferPool) ConvertOption {
+	return func(opts *convertOpts) {
+		opts.columnPageBuffers = buffers
+	}
+}
+
 func ConvertTSDBBlock(
 	ctx context.Context,
 	bkt objstore.Bucket,
@@ -128,7 +144,7 @@ func ConvertTSDBBlock(
 		opt(&cfg)
 	}
 
-	rr, err := NewTsdbRowReader(ctx, mint, maxt, cfg.colDuration.Milliseconds(), blks, cfg.sortedLabels...)
+	rr, err := NewTsdbRowReader(ctx, mint, maxt, cfg.colDuration.Milliseconds(), blks, cfg)
 	if err != nil {
 		return 0, err
 	}
@@ -150,11 +166,12 @@ type TsdbRowReader struct {
 	rowBuilder *parquet.RowBuilder
 	tsdbSchema *schema.TSDBSchema
 
-	encoder   *schema.PrometheusParquetChunksEncoder
-	totalRead int64
+	encoder     *schema.PrometheusParquetChunksEncoder
+	totalRead   int64
+	concurrency int
 }
 
-func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks []Convertible, sortedLabels ...string) (*TsdbRowReader, error) {
+func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks []Convertible, ops convertOpts) (*TsdbRowReader, error) {
 	var (
 		seriesSets = make([]storage.ChunkSeriesSet, 0, len(blks))
 		closers    = make([]io.Closer, 0, len(blks))
@@ -163,7 +180,7 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 	b := schema.NewBuilder(mint, maxt, colDuration)
 
 	compareFunc := func(a, b labels.Labels) int {
-		for _, lb := range sortedLabels {
+		for _, lb := range ops.sortedLabels {
 			if c := strings.Compare(a.Get(lb), b.Get(lb)); c != 0 {
 				return c
 			}
@@ -196,7 +213,7 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 			return nil, fmt.Errorf("unable to get label names from block: %s", err)
 		}
 
-		postings := sortedPostings(ctx, indexr, compareFunc, sortedLabels...)
+		postings := sortedPostings(ctx, indexr, compareFunc, ops.sortedLabels...)
 		seriesSet := tsdb.NewBlockChunkSeriesSet(blk.Meta().ULID, indexr, chunkr, tombsr, postings, mint, maxt, false)
 		seriesSets = append(seriesSets, seriesSet)
 
@@ -211,10 +228,11 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 	}
 
 	return &TsdbRowReader{
-		ctx:        ctx,
-		seriesSet:  cseriesSet,
-		closers:    closers,
-		tsdbSchema: s,
+		ctx:         ctx,
+		seriesSet:   cseriesSet,
+		closers:     closers,
+		tsdbSchema:  s,
+		concurrency: ops.concurrency,
 
 		rowBuilder: parquet.NewRowBuilder(s.Schema),
 		encoder:    schema.NewPrometheusParquetChunksEncoder(s),
@@ -271,35 +289,60 @@ func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, compare func(a
 }
 
 func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
-	select {
-	case <-rr.ctx.Done():
-		return 0, rr.ctx.Err()
-	default:
+	type chunkSeriesPromise struct {
+		s              storage.ChunkSeries
+		chunkBytesChan chan [][]byte
+		err            error
 	}
 
-	var it chunks.Iterator
+	c := make(chan chunkSeriesPromise, rr.concurrency)
 
-	i := 0
-	for i < len(buf) && rr.seriesSet.Next() {
+	go func() {
+		i := 0
+		defer close(c)
+		for i < len(buf) && rr.seriesSet.Next() {
+			s := rr.seriesSet.At()
+			it := s.Iterator(nil)
+
+			promise := chunkSeriesPromise{
+				s:              s,
+				chunkBytesChan: make(chan [][]byte, 1),
+			}
+
+			select {
+			case c <- promise:
+			case <-rr.ctx.Done():
+				return
+			}
+			go func() {
+				chkBytes, err := rr.encoder.Encode(it)
+				promise.err = err
+				promise.chunkBytesChan <- chkBytes
+			}()
+			i++
+		}
+	}()
+
+	i, j := 0, 0
+	for promise := range c {
+		j++
+		if promise.err != nil {
+			return i, promise.err
+		}
+
 		rr.rowBuilder.Reset()
-		s := rr.seriesSet.At()
-		it = s.Iterator(it)
 
-		chkBytes, err := rr.encoder.Encode(it)
-		if err != nil {
-			return i, fmt.Errorf("unable to collect chunks: %s", err)
-		}
-
-		// skip series that have no chunks in the requested time
-		if allChunksEmpty(chkBytes) {
-			continue
-		}
-
-		s.Labels().Range(func(l labels.Label) {
+		promise.s.Labels().Range(func(l labels.Label) {
 			colName := schema.LabelToColumn(l.Name)
 			lc, _ := rr.tsdbSchema.Schema.Lookup(colName)
 			rr.rowBuilder.Add(lc.ColumnIndex, parquet.ValueOf(l.Value))
 		})
+
+		chkBytes := <-promise.chunkBytesChan
+		// skip series that have no chunks in the requested time
+		if allChunksEmpty(chkBytes) {
+			continue
+		}
 
 		for idx, chk := range chkBytes {
 			if len(chk) == 0 {
@@ -311,9 +354,15 @@ func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
 		i++
 	}
 	rr.totalRead += int64(i)
-	if i < len(buf) {
+
+	if rr.ctx.Err() != nil {
+		return i, rr.ctx.Err()
+	}
+
+	if j < len(buf) {
 		return i, io.EOF
 	}
+
 	return i, rr.seriesSet.Err()
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/parquet-go/parquet-go"
 	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/prometheus-community/parquet-common/util"
+	"github.com/prometheus/prometheus/util/zeropool"
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 )
@@ -101,6 +102,7 @@ func (c *ShardedWriter) writeFile(ctx context.Context, schema *schema.TSDBSchema
 		parquet.BloomFilters(c.ops.buildBloomfilterColumns()...),
 		parquet.PageBufferSize(c.ops.pageBufferSize),
 		parquet.WriteBufferSize(c.ops.writeBufferSize),
+		parquet.ColumnPageBuffers(c.ops.columnPageBuffers),
 	}
 
 	for k, v := range schema.Metadata {
@@ -114,7 +116,7 @@ func (c *ShardedWriter) writeFile(ctx context.Context, schema *schema.TSDBSchema
 		return 0, fmt.Errorf("unable to create row writer: %s", err)
 	}
 
-	n, err := parquet.CopyRows(writer, newLimitReader(c.rr, rowsToWrite))
+	n, err := parquet.CopyRows(writer, newBufferedReader(ctx, newLimitReader(c.rr, rowsToWrite)))
 	if err != nil {
 		return 0, fmt.Errorf("unable to copy rows: %s", err)
 	}
@@ -178,22 +180,26 @@ func newSplitFileWriter(ctx context.Context, bkt objstore.Bucket, inSchema *parq
 }
 
 func (s *splitPipeFileWriter) WriteRows(rows []parquet.Row) (int, error) {
+	errGroup := &errgroup.Group{}
 	for _, writer := range s.fileWriters {
-		convertedRows := util.CloneRows(rows)
-		_, err := writer.conv.Convert(convertedRows)
-		if err != nil {
-			return 0, fmt.Errorf("unable to convert rows: %d", err)
-		}
-		n, err := writer.pw.WriteRows(convertedRows)
-		if err != nil {
-			return 0, fmt.Errorf("unable to write rows: %d", err)
-		}
-		if n != len(rows) {
-			return 0, fmt.Errorf("unable to write rows: %d != %d", n, len(rows))
-		}
+		errGroup.Go(func() error {
+			convertedRows := util.CloneRows(rows)
+			_, err := writer.conv.Convert(convertedRows)
+			if err != nil {
+				return fmt.Errorf("unable to convert rows: %d", err)
+			}
+			n, err := writer.pw.WriteRows(convertedRows)
+			if err != nil {
+				return fmt.Errorf("unable to write rows: %d", err)
+			}
+			if n != len(rows) {
+				return fmt.Errorf("unable to write rows: %d != %d", n, len(rows))
+			}
+			return nil
+		})
 	}
 
-	return len(rows), nil
+	return len(rows), errGroup.Wait()
 }
 
 func (s *splitPipeFileWriter) Close() error {
@@ -236,4 +242,88 @@ func (lr *limitReader) ReadRows(buf []parquet.Row) (int, error) {
 		return n, io.EOF
 	}
 	return n, nil
+}
+
+var _ parquet.RowReader = &bufferedReader{}
+
+type bufferedReader struct {
+	rr parquet.RowReader
+
+	ctx     context.Context
+	c       chan []parquet.Row
+	errCh   chan error
+	rowPool zeropool.Pool[[]parquet.Row]
+
+	current      []parquet.Row
+	currentIndex int
+}
+
+func newBufferedReader(ctx context.Context, rr parquet.RowReader) *bufferedReader {
+	br := &bufferedReader{
+		rr:    rr,
+		ctx:   ctx,
+		c:     make(chan []parquet.Row, 128),
+		errCh: make(chan error, 1),
+		rowPool: zeropool.New[[]parquet.Row](func() []parquet.Row {
+			return make([]parquet.Row, 128)
+		}),
+	}
+
+	go br.readRows()
+
+	return br
+}
+
+func (b *bufferedReader) ReadRows(rows []parquet.Row) (int, error) {
+	if b.current == nil {
+		select {
+		case next, ok := <-b.c:
+			if !ok {
+				return 0, io.EOF
+			}
+			b.current = next
+			b.currentIndex = 0
+		case err := <-b.errCh:
+			return 0, err
+		}
+	}
+
+	current := b.current[b.currentIndex:]
+	i := min(len(current), len(rows))
+	copy(rows[:i], current[:i])
+	b.currentIndex += i
+	if b.currentIndex >= len(b.current) {
+		b.rowPool.Put(b.current[0:cap(b.current)])
+		b.current = nil
+	}
+	return i, nil
+}
+
+func (b *bufferedReader) Close() {
+	close(b.c)
+	close(b.errCh)
+}
+
+func (b *bufferedReader) readRows() {
+	for {
+		select {
+		case <-b.ctx.Done():
+			b.errCh <- b.ctx.Err()
+			return
+		default:
+			rows := b.rowPool.Get()
+			n, err := b.rr.ReadRows(rows)
+			if n > 0 {
+				b.c <- rows[:n]
+			}
+			if err != nil {
+				if err == io.EOF {
+					close(b.c)
+					return
+				}
+				b.errCh <- err
+				return
+			}
+		}
+	}
 }

@@ -74,6 +74,7 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 					return nil, fmt.Errorf("found value type %v in float chunk", vt)
 				}
 				t, v := sampleIt.At()
+
 				chkIdx := e.schema.DataColumIdx(t)
 				reEncodedChunksAppenders[chkIdx].Append(t, v)
 				if t < reEncodedChunks[chkIdx].MinTime {
@@ -91,6 +92,9 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 	result := make([][]byte, dataColSize)
 
 	for i, chk := range reEncodedChunks {
+		if chk.Chunk.NumSamples() == 0 {
+			continue
+		}
 		var b [varint.MaxLen64]byte
 		n := binary.PutUvarint(b[:], uint64(chk.Chunk.Encoding()))
 		result[i] = append(result[i], b[:n]...)

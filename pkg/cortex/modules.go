@@ -770,9 +770,11 @@ func (t *Cortex) initQueryScheduler() (services.Service, error) {
 }
 
 func (t *Cortex) initResourceMonitor() (services.Service, error) {
-	if len(t.Cfg.MonitoredResources) == 0 {
+	if t.Cfg.MonitoredResources.String() == "" || len(t.Cfg.MonitoredResources) == 0 {
 		return nil, nil
 	}
+
+	util_log.WarnExperimentalUse(fmt.Sprintf("resource monitor for [%s]", t.Cfg.MonitoredResources.String()))
 
 	containerLimits := make(map[resource.Type]float64)
 	for _, res := range t.Cfg.MonitoredResources {
@@ -781,15 +783,13 @@ func (t *Cortex) initResourceMonitor() (services.Service, error) {
 			containerLimits[resource.Type(res)] = float64(runtime.GOMAXPROCS(0))
 		case resource.Heap:
 			containerLimits[resource.Type(res)] = float64(debug.SetMemoryLimit(-1))
+		default:
+			return nil, fmt.Errorf("unknown resource type: %s", res)
 		}
 	}
 
 	var err error
 	t.ResourceMonitor, err = resource.NewMonitor(containerLimits, prometheus.DefaultRegisterer)
-	if t.ResourceMonitor != nil {
-		util_log.WarnExperimentalUse("resource monitor")
-	}
-
 	return t.ResourceMonitor, err
 }
 
@@ -798,7 +798,7 @@ func (t *Cortex) setupModuleManager() error {
 
 	// Register all modules here.
 	// RegisterModule(name string, initFn func()(services.Service, error))
-	mm.RegisterModule(ResourceMonitor, t.initResourceMonitor)
+	mm.RegisterModule(ResourceMonitor, t.initResourceMonitor, modules.UserInvisibleModule)
 	mm.RegisterModule(Server, t.initServer, modules.UserInvisibleModule)
 	mm.RegisterModule(API, t.initAPI, modules.UserInvisibleModule)
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)

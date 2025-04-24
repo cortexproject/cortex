@@ -109,6 +109,8 @@ func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockR
 
 func (c *Converter) starting(ctx context.Context) error {
 	bkt, err := bucket.NewClient(ctx, c.storageCfg.Bucket, nil, "parquet-converter", c.logger, c.reg)
+	bkt = bucketindex.BucketWithGlobalMarkers(bkt)
+	
 	if err != nil {
 		return err
 	}

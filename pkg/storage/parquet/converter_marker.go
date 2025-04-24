@@ -16,18 +16,16 @@ import (
 )
 
 const (
-	Name           = "parquet-converter-mark.json"
-	CurrentVersion = 1
+	ConverterMarkerFileName = "parquet-converter-mark.json"
+	CurrentVersion          = 1
 )
 
 type ConverterMark struct {
 	Version int `json:"version"`
 }
 
-func (m *ConverterMark) markerFilename() string { return Name }
-
 func ReadConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.InstrumentedBucket, logger log.Logger) (*ConverterMark, error) {
-	markerPath := path.Join(id.String(), Name)
+	markerPath := path.Join(id.String(), ConverterMarkerFileName)
 	reader, err := userBkt.WithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(userBkt.IsAccessDeniedErr, userBkt.IsObjNotFoundErr)).Get(ctx, markerPath)
 	if err != nil {
 		if userBkt.IsObjNotFoundErr(err) {
@@ -40,7 +38,7 @@ func ReadConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Instr
 
 	metaContent, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, errors.Wrapf(err, "read file: %s", Name)
+		return nil, errors.Wrapf(err, "read file: %s", ConverterMarkerFileName)
 	}
 
 	marker := ConverterMark{}
@@ -52,7 +50,7 @@ func WriteConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Buck
 	marker := ConverterMark{
 		Version: CurrentVersion,
 	}
-	markerPath := path.Join(id.String(), Name)
+	markerPath := path.Join(id.String(), ConverterMarkerFileName)
 	b, err := json.Marshal(marker)
 	if err != nil {
 		return err

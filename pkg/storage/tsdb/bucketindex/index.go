@@ -3,6 +3,7 @@ package bucketindex
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,8 +33,11 @@ type Index struct {
 	// Version of the index format.
 	Version int `json:"version"`
 
-	// List of complete blocks (partial blocks are excluded from the index).
+	// List of complete TSDB blocks (partial blocks are excluded from the index).
 	Blocks Blocks `json:"blocks"`
+
+	// List of Parquet blocks.
+	ParquetBlocks []*ParquetBlock `json:"parquet_blocks,omitempty"`
 
 	// List of block deletion marks.
 	BlockDeletionMarks BlockDeletionMarks `json:"block_deletion_marks"`
@@ -47,25 +51,31 @@ func (idx *Index) GetUpdatedAt() time.Time {
 	return time.Unix(idx.UpdatedAt, 0)
 }
 
-// RemoveBlock removes block and its deletion mark (if any) from index.
+// RemoveBlock removes block, parquet block and its deletion mark (if any) from index.
 func (idx *Index) RemoveBlock(id ulid.ULID) {
 	for i := 0; i < len(idx.Blocks); i++ {
 		if idx.Blocks[i].ID == id {
-			idx.Blocks = append(idx.Blocks[:i], idx.Blocks[i+1:]...)
+			idx.Blocks = slices.Delete(idx.Blocks, i, i+1)
+			break
+		}
+	}
+	for i := 0; i < len(idx.ParquetBlocks); i++ {
+		if idx.ParquetBlocks[i].ID == id {
+			idx.ParquetBlocks = slices.Delete(idx.ParquetBlocks, i, i+1)
 			break
 		}
 	}
 
 	for i := 0; i < len(idx.BlockDeletionMarks); i++ {
 		if idx.BlockDeletionMarks[i].ID == id {
-			idx.BlockDeletionMarks = append(idx.BlockDeletionMarks[:i], idx.BlockDeletionMarks[i+1:]...)
+			idx.BlockDeletionMarks = slices.Delete(idx.BlockDeletionMarks, i, i+1)
 			break
 		}
 	}
 }
 
 func (idx *Index) IsEmpty() bool {
-	return len(idx.Blocks) == 0 && len(idx.BlockDeletionMarks) == 0
+	return len(idx.Blocks) == 0 && len(idx.ParquetBlocks) == 0 && len(idx.BlockDeletionMarks) == 0
 }
 
 // Block holds the information about a block in the index.
@@ -144,6 +154,24 @@ func (m *Block) String() string {
 	maxT := util.TimeFromMillis(m.MaxTime).UTC()
 
 	return fmt.Sprintf("%s (min time: %s max time: %s)", m.ID, minT.String(), maxT.String())
+}
+
+// ParquetBlock holds the information about a block with Parquet file in the index.
+// Use a separate struct from TSDB Block to extend for Parquet specific fields in the future.
+type ParquetBlock struct {
+	// Block ID.
+	ID ulid.ULID `json:"block_id"`
+
+	// MinTime and MaxTime specify the time range all samples in the block are in (millis precision).
+	MinTime int64 `json:"min_time"`
+	MaxTime int64 `json:"max_time"`
+}
+
+// Within returns whether the block contains samples within the provided range.
+// Input minT and maxT are both inclusive.
+func (m *ParquetBlock) Within(minT, maxT int64) bool {
+	// NOTE: Block intervals are half-open: [MinTime, MaxTime).
+	return m.MinTime <= maxT && minT < m.MaxTime
 }
 
 func BlockFromThanosMeta(meta metadata.Meta) *Block {

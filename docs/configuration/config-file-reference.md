@@ -3512,9 +3512,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # [max_series]
 [limits_per_label_set: <list of LimitsPerLabelSet> | default = []]
 
-# [Experimental] True to enable native histogram per user.
-# CLI flag: -ingester.enable_native_histogram_per_user
-[enable_native_histogram_per_user: <boolean> | default = false]
+# [EXPERIMENTAL] True to enable native histogram.
+# CLI flag: -blocks-storage.tsdb.enable-native-histograms
+[enable_native_histograms: <boolean> | default = false]
 
 # The maximum number of active metrics with metadata per user, per ingester. 0
 # to disable.

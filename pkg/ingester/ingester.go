@@ -1347,7 +1347,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			return nil, wrapWithUser(err, userID)
 		}
 
-		if i.limits.EnableNativeHistogramPerUser(userID) {
+		if i.limits.EnableNativeHistograms(userID) {
 			for _, hp := range ts.Histograms {
 				var (
 					err error
@@ -1494,7 +1494,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
-	if !i.limits.EnableNativeHistogramPerUser(userID) && discardedNativeHistogramCount > 0 {
+	if !i.limits.EnableNativeHistograms(userID) && discardedNativeHistogramCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
 	}
 

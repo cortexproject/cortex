@@ -124,7 +124,7 @@ func seriesSetFromResponseStream(s *mockQueryStreamServer) (storage.SeriesSet, e
 
 func TestMatcherCache(t *testing.T) {
 	limits := defaultLimitsTestConfig()
-	limits.EnableNativeHistogramPerUser = true
+	limits.EnableNativeHistograms = true
 	userID := "1"
 	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
 	registry := prometheus.NewRegistry()
@@ -255,7 +255,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 
 func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
-	limits.EnableNativeHistogramPerUser = true
+	limits.EnableNativeHistograms = true
 	userID := "1"
 	registry := prometheus.NewRegistry()
 
@@ -663,7 +663,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 func TestPushRace(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	l := defaultLimitsTestConfig()
-	l.EnableNativeHistogramPerUser = true
+	l.EnableNativeHistograms = true
 	cfg.LabelsStringInterningEnabled = true
 	cfg.LifecyclerConfig.JoinAfter = 0
 
@@ -750,7 +750,7 @@ func TestPushRace(t *testing.T) {
 
 func TestIngesterUserLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
-	limits.EnableNativeHistogramPerUser = true
+	limits.EnableNativeHistograms = true
 	limits.MaxLocalSeriesPerUser = 1
 	limits.MaxLocalMetricsWithMetadataPerUser = 1
 
@@ -882,7 +882,7 @@ func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []cortexp
 
 func TestIngesterMetricLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
-	limits.EnableNativeHistogramPerUser = true
+	limits.EnableNativeHistograms = true
 	limits.MaxLocalSeriesPerMetric = 1
 	limits.MaxLocalMetadataPerMetric = 1
 
@@ -1938,7 +1938,7 @@ func TestIngester_Push(t *testing.T) {
 			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
 
 			limits := defaultLimitsTestConfig()
-			limits.EnableNativeHistogramPerUser = !testData.disableNativeHistogram
+			limits.EnableNativeHistograms = !testData.disableNativeHistogram
 			limits.MaxExemplars = testData.maxExemplars
 			limits.OutOfOrderTimeWindow = model.Duration(testData.oooTimeWindow)
 			limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
@@ -2180,7 +2180,7 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 			cfg.LifecyclerConfig.JoinAfter = 0
 
 			limits := defaultLimitsTestConfig()
-			limits.EnableNativeHistogramPerUser = true
+			limits.EnableNativeHistograms = true
 			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -2669,7 +2669,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 					cfg.LifecyclerConfig.JoinAfter = 0
 
 					limits := defaultLimitsTestConfig()
-					limits.EnableNativeHistogramPerUser = true
+					limits.EnableNativeHistograms = true
 					if !testData.prepareConfig(&limits, instanceLimits) {
 						b.SkipNow()
 					}
@@ -3955,7 +3955,9 @@ func mockHistogramWriteRequest(t *testing.T, lbls labels.Labels, value int64, ti
 }
 
 func prepareIngesterWithBlocksStorage(t testing.TB, ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, error) {
-	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, defaultLimitsTestConfig(), nil, "", registerer)
+	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
+	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, limits, nil, "", registerer)
 }
 
 func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, tenantLimits validation.TenantLimits, dataDir string, registerer prometheus.Registerer) (*Ingester, error) {
@@ -6439,7 +6441,7 @@ func TestIngester_MaxExemplarsFallBack(t *testing.T) {
 	dir := t.TempDir()
 	blocksDir := filepath.Join(dir, "blocks")
 	limits := defaultLimitsTestConfig()
-	limits.EnableNativeHistogramPerUser = true
+	limits.EnableNativeHistograms = true
 	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry())
 	require.NoError(t, err)
 
@@ -6823,7 +6825,7 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
 	reg := prometheus.NewRegistry()
 	limits := defaultLimitsTestConfig()
-	limits.EnableNativeHistogramPerUser = true
+	limits.EnableNativeHistograms = true
 	userID := "1"
 	ctx := user.InjectOrgID(context.Background(), userID)
 

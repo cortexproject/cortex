@@ -45,8 +45,10 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	verticalShardSize := validation.SmallestPositiveIntPerTenant(tenantIDs, s.limits.QueryVerticalShardSize)
+	maxVerticalShardSize := validation.SmallestPositiveIntPerTenant(tenantIDs, s.limits.QueryVerticalShardSize)
+
 	// Check if vertical shard size is set by dynamic query splitting
+	verticalShardSize := maxVerticalShardSize
 	if dynamicVerticalShardSize, ok := VerticalShardSizeFromContext(ctx); ok {
 		verticalShardSize = dynamicVerticalShardSize
 	}
@@ -64,6 +66,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 
 	stats.AddExtraFields(
 		"shard_by.is_shardable", analysis.IsShardable(),
+		"shard_by.max_num_shards", maxVerticalShardSize,
 		"shard_by.num_shards", verticalShardSize,
 		"shard_by.sharding_labels", analysis.ShardingLabels(),
 	)

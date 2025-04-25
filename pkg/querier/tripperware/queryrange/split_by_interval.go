@@ -167,21 +167,26 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 			return ctx, baseInterval, nil
 		}
 
-		maxVerticalShardSize, isShardable, err := getMaxVerticalShardSize(ctx, r, limits, queryAnalyzer)
-		if err != nil {
-			return ctx, baseInterval, err
-		}
-
 		queryExpr, err := parser.ParseExpr(r.GetQuery())
 		if err != nil {
 			return ctx, baseInterval, err
 		}
 
+		maxVerticalShardSize, isShardable, err := getMaxVerticalShardSize(ctx, r, limits, queryAnalyzer)
+		if err != nil {
+			return ctx, baseInterval, err
+		}
+
+		minVerticalShardSize := maxVerticalShardSize
+		if dynamicSplitCfg.EnableDynamicVerticalSharding {
+			minVerticalShardSize = 1
+		}
+
 		interval := baseInterval
-		verticalShardSize := 1
+		verticalShardSize := maxVerticalShardSize
 		totalShards := 0
 		// Find the combination of horizontal splits and vertical shards that will result in the largest total number of shards
-		for candidateVerticalShardSize := 1; candidateVerticalShardSize <= maxVerticalShardSize; candidateVerticalShardSize++ {
+		for candidateVerticalShardSize := minVerticalShardSize; candidateVerticalShardSize <= maxVerticalShardSize; candidateVerticalShardSize++ {
 			maxSplitsFromMaxShards := getMaxSplitsFromMaxQueryShards(dynamicSplitCfg.MaxShardsPerQuery, candidateVerticalShardSize)
 			maxSplitsFromDurationFetched := getMaxSplitsFromDurationFetched(dynamicSplitCfg.MaxFetchedDataDurationPerQuery, candidateVerticalShardSize, queryExpr, r.GetStart(), r.GetEnd(), r.GetStep(), baseInterval, lookbackDelta)
 

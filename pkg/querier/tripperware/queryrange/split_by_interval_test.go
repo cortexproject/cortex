@@ -760,6 +760,7 @@ func Test_dynamicIntervalFn_verticalSharding(t *testing.T) {
 				DynamicQuerySplitsConfig: DynamicQuerySplitsConfig{
 					MaxShardsPerQuery:              tc.maxShardsPerQuery,
 					MaxFetchedDataDurationPerQuery: tc.maxFetchedDataDuration,
+					EnableDynamicVerticalSharding:  true,
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), "1")

@@ -2032,11 +2032,9 @@ func (i *Ingester) userStats() []UserIDStats {
 	i.stoppedMtx.RLock()
 	defer i.stoppedMtx.RUnlock()
 
-	perUserTotals := make(map[string]UserStats)
-
 	users := i.TSDBState.dbs
 
-	response := make([]UserIDStats, 0, len(perUserTotals))
+	response := make([]UserIDStats, 0, len(users))
 	for id, db := range users {
 		response = append(response, UserIDStats{
 			UserID:    id,

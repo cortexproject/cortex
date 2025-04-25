@@ -179,18 +179,16 @@ func (c *Converter) running(ctx context.Context) error {
 
 				owned, err := c.ownUser(ring, userID)
 				if err != nil {
-					level.Error(userLogger).Log("msg", "failed to check if user is owned by the user", "user", userID, "err", err)
+					level.Error(userLogger).Log("msg", "failed to check if user is owned by the user", "err", err)
 					continue
 				}
 				if !owned {
-					level.Info(userLogger).Log("msg", "user not owned", "user", userID)
 					continue
 				}
-				level.Info(userLogger).Log("msg", "scanned user", "user", userID)
 
 				err = c.convertUser(ctx, userLogger, ring, userID)
 				if err != nil {
-					level.Error(userLogger).Log("msg", "failed to convert user", "user", userID, "err", err)
+					level.Error(userLogger).Log("msg", "failed to convert user", "err", err)
 				}
 			}
 		}
@@ -217,6 +215,8 @@ func (c *Converter) discoverUsers(ctx context.Context) ([]string, error) {
 }
 
 func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring ring.ReadRing, userID string) error {
+	level.Info(logger).Log("msg", "start converting user")
+
 	uBucket := bucket.NewUserBucketClient(userID, c.bkt, c.limits)
 
 	var blockLister block.Lister
@@ -290,6 +290,7 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 
 		if err := os.RemoveAll(c.compactRootDir()); err != nil {
 			level.Error(logger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
+			continue
 		}
 
 		bdir := filepath.Join(c.compactDirForUser(userID), b.ULID.String())

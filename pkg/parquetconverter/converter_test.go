@@ -7,6 +7,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/oklog/ulid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
+
 	"github.com/cortexproject/cortex/integration/e2e"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
@@ -18,16 +29,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/go-kit/log"
-	"github.com/oklog/ulid"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/tsdb"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
-	"github.com/thanos-io/thanos/pkg/block"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
 
 func TestConverter(t *testing.T) {
@@ -37,7 +38,7 @@ func TestConverter(t *testing.T) {
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 	dir := t.TempDir()
 
-	cfg.Ring.InstanceID = "compactor-1"
+	cfg.Ring.InstanceID = "parquet-converter-1"
 	cfg.Ring.InstanceAddr = "1.2.3.4"
 	cfg.Ring.KVStore.Mock = ringStore
 	bucketClient := objstore.NewInMemBucket()
@@ -73,6 +74,7 @@ func TestConverter(t *testing.T) {
 	// Try to start the compactor with a bad consul kv-store. The
 	err := services.StartAndAwaitRunning(context.Background(), c)
 	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(ctx, c) // nolint:errcheck
 
 	blocksConverted := []ulid.ULID{}
 

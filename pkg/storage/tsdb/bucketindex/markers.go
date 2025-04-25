@@ -3,7 +3,6 @@ package bucketindex
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	"path"
 	"path/filepath"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 )
 
 const (

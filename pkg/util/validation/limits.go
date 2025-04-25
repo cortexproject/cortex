@@ -201,7 +201,7 @@ type Limits struct {
 	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
 
 	// Parquet converter
-	ParquetConverterTenantShardSize int `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size"`
+	ParquetConverterTenantShardSize int `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size" doc:"hidden"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.

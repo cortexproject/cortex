@@ -47,6 +47,7 @@ type Config struct {
 	EnabledTenants      flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants     flagext.StringSliceCSV `yaml:"disabled_tenants"`
 	MetaSyncConcurrency int                    `yaml:"meta_sync_concurrency"`
+	ConversionInterval  time.Duration          `yaml:"conversion_interval"`
 
 	DataDir string `yaml:"data_dir"`
 
@@ -70,7 +71,7 @@ type Converter struct {
 	ringSubservices        *services.Manager
 	ringSubservicesWatcher *services.FailureWatcher
 
-	bkt objstore.InstrumentedBucket
+	bkt objstore.Bucket
 
 	// chunk pool
 	pool chunkenc.Pool
@@ -88,9 +89,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.DisabledTenants, "parquet-converter.disabled-tenants", "Comma separated list of tenants that cannot converted.")
 	f.StringVar(&cfg.DataDir, "parquet-converter.data-dir", "./data", "Data directory in which to cache blocks and process conversions.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "parquet-converter.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
+	f.DurationVar(&cfg.ConversionInterval, "parquet-converter.conversion-interval", time.Minute, "The frequency at which the conversion job runs.")
 }
 
-func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) *Converter {
+func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Converter, error) {
+	bkt, err := bucket.NewClient(context.Background(), storageCfg.Bucket, nil, "parquet-converter", logger, registerer)
+
+	return newConverter(cfg, bkt, storageCfg, blockRanges, logger, registerer, limits), err
+}
+
+func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) *Converter {
+	bkt = bucketindex.BucketWithGlobalMarkers(bkt)
 	c := &Converter{
 		cfg:            cfg,
 		reg:            registerer,
@@ -101,6 +110,7 @@ func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockR
 		pool:           chunkenc.NewPool(),
 		blockRanges:    blockRanges,
 		fetcherMetrics: block.NewFetcherMetrics(registerer, nil, nil),
+		bkt:            bkt,
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
@@ -108,17 +118,9 @@ func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockR
 }
 
 func (c *Converter) starting(ctx context.Context) error {
-	bkt, err := bucket.NewClient(ctx, c.storageCfg.Bucket, nil, "parquet-converter", c.logger, c.reg)
-	bkt = bucketindex.BucketWithGlobalMarkers(bkt)
-	
-	if err != nil {
-		return err
-	}
-
-	c.bkt = bkt
 	lifecyclerCfg := c.cfg.Ring.ToLifecyclerConfig()
+	var err error
 	c.ringLifecycler, err = ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "parquet-converter", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.reg))
-
 	if err != nil {
 		return errors.Wrap(err, "unable to initialize converter ring lifecycler")
 	}
@@ -152,7 +154,7 @@ func (c *Converter) starting(ctx context.Context) error {
 
 func (c *Converter) running(ctx context.Context) error {
 	level.Info(c.logger).Log("msg", "parquet-converter started")
-	t := time.NewTicker(time.Second * 10)
+	t := time.NewTicker(c.cfg.ConversionInterval)
 	defer t.Stop()
 	for {
 		select {
@@ -187,7 +189,6 @@ func (c *Converter) running(ctx context.Context) error {
 				level.Info(userLogger).Log("msg", "scanned user", "user", userID)
 
 				err = c.convertUser(ctx, userLogger, ring, userID)
-
 				if err != nil {
 					level.Error(userLogger).Log("msg", "failed to convert user", "user", userID, "err", err)
 				}
@@ -216,7 +217,6 @@ func (c *Converter) discoverUsers(ctx context.Context) ([]string, error) {
 }
 
 func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring ring.ReadRing, userID string) error {
-
 	uBucket := bucket.NewUserBucketClient(userID, c.bkt, c.limits)
 
 	var blockLister block.Lister
@@ -253,7 +253,6 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		c.fetcherMetrics,
 		[]block.MetadataFilter{ignoreDeletionMarkFilter},
 	)
-
 	if err != nil {
 		return errors.Wrap(err, "error creating block fetcher")
 	}
@@ -275,7 +274,6 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		}
 
 		marker, err := cortex_parquet.ReadConverterMark(ctx, b.ULID, uBucket, logger)
-
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to read marker", "block", b.ULID.String(), "err", err)
 			continue
@@ -304,7 +302,6 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		}
 
 		tsdbBlock, err := tsdb.OpenBlock(logutil.GoKitLogToSlog(logger), bdir, c.pool, tsdb.DefaultPostingsDecoderFactory)
-
 		if err != nil {
 			level.Error(logger).Log("msg", "Error opening block", "err", err)
 			continue

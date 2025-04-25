@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"log/slog"
 	"net/http"
 	"runtime"
@@ -37,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
@@ -696,8 +696,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 
 func (t *Cortex) initParquetConverter() (serv services.Service, err error) {
 	t.Cfg.ParquetConverter.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Parquetconverter = parquetconverter.NewConverter(t.Cfg.ParquetConverter, t.Cfg.BlocksStorage, t.Cfg.Compactor.BlockRanges.ToMilliseconds(), util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
-	return t.Parquetconverter, nil
+	return parquetconverter.NewConverter(t.Cfg.ParquetConverter, t.Cfg.BlocksStorage, t.Cfg.Compactor.BlockRanges.ToMilliseconds(), util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
 }
 
 func (t *Cortex) initCompactor() (serv services.Service, err error) {

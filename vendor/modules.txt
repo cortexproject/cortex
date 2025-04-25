@@ -995,6 +995,7 @@ github.com/prometheus/prometheus/util/osutil
 github.com/prometheus/prometheus/util/pool
 github.com/prometheus/prometheus/util/stats
 github.com/prometheus/prometheus/util/strutil
+github.com/prometheus/prometheus/util/teststorage
 github.com/prometheus/prometheus/util/testutil
 github.com/prometheus/prometheus/util/zeropool
 github.com/prometheus/prometheus/web/api/v1

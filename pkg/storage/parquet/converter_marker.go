@@ -7,12 +7,13 @@ import (
 	"io"
 	"path"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 const (

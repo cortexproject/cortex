@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/providers/filesystem"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
@@ -41,7 +42,8 @@ func TestConverter(t *testing.T) {
 	cfg.Ring.InstanceID = "parquet-converter-1"
 	cfg.Ring.InstanceAddr = "1.2.3.4"
 	cfg.Ring.KVStore.Mock = ringStore
-	bucketClient := objstore.NewInMemBucket()
+	bucketClient, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
 	userBucket := bucket.NewPrefixedBucketClient(bucketClient, user)
 
 	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), nil)
@@ -72,7 +74,7 @@ func TestConverter(t *testing.T) {
 	}
 
 	// Try to start the compactor with a bad consul kv-store. The
-	err := services.StartAndAwaitRunning(context.Background(), c)
+	err = services.StartAndAwaitRunning(context.Background(), c)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, c) // nolint:errcheck
 

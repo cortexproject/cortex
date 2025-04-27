@@ -2,6 +2,9 @@
 date: 2025-04-26
 title: "Introducing the Cortex Blog: Sharing Our Journey"
 linkTitle: Hello Cortex!
+tags: [ "blog", "cortex", "community", "updates" ]
+categories: [ "blog" ]
+projects: [ "cortex" ]
 description: >
   Welcome to the Cortex blog! We're excited to share updates, best practices, and community highlights around everything Cortex. Stay tuned for technical deep-dives, deployment strategies, and more.
 author: Charlie Le ([@charlietle](https://twitter.com/charlietle))

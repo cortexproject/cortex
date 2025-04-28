@@ -22,7 +22,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 )
 
@@ -324,7 +324,7 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	require.NoError(t, err)
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2},
-		[]*metadata.DeletionMark{block2Mark}, map[string]*cortex_tsdb.ParquetMeta{
+		[]*metadata.DeletionMark{block2Mark}, map[string]*parquet.ParquetMeta{
 			block1.ULID.String(): block1ParquetMark,
 		})
 
@@ -338,7 +338,7 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2, block3, block4},
 		[]*metadata.DeletionMark{block2Mark, block4Mark},
-		map[string]*cortex_tsdb.ParquetMeta{
+		map[string]*parquet.ParquetMeta{
 			block1.ULID.String(): block1ParquetMark,
 		})
 
@@ -349,7 +349,7 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	require.NoError(t, err)
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block3, block4},
-		[]*metadata.DeletionMark{block4Mark}, map[string]*cortex_tsdb.ParquetMeta{
+		[]*metadata.DeletionMark{block4Mark}, map[string]*parquet.ParquetMeta{
 			block1.ULID.String(): block1ParquetMark,
 		})
 
@@ -359,7 +359,7 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	require.NoError(t, err)
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block3, block4},
-		[]*metadata.DeletionMark{block4Mark}, map[string]*cortex_tsdb.ParquetMeta{
+		[]*metadata.DeletionMark{block4Mark}, map[string]*parquet.ParquetMeta{
 			block1.ULID.String(): block1ParquetMark,
 			block3.ULID.String(): block3ParquetMark,
 		})
@@ -375,22 +375,22 @@ func TestUpdater_UpdateParquetBlockIndexEntry(t *testing.T) {
 		setupBucket       func(t *testing.T, bkt objstore.InstrumentedBucket, blockID ulid.ULID) objstore.InstrumentedBucket
 		expectedError     error
 		expectParquet     bool
-		expectParquetMeta *cortex_tsdb.ParquetMeta
+		expectParquetMeta *parquet.ParquetMeta
 	}{
 		{
 			name: "should successfully read parquet marker",
 			setupBucket: func(t *testing.T, bkt objstore.InstrumentedBucket, blockID ulid.ULID) objstore.InstrumentedBucket {
-				parquetMark := cortex_tsdb.ParquetMeta{
+				parquetMark := parquet.ParquetMeta{
 					Version: 1,
 				}
 				data, err := json.Marshal(parquetMark)
 				require.NoError(t, err)
-				require.NoError(t, bkt.Upload(ctx, path.Join(userID, blockID.String(), cortex_tsdb.ParquetConverterMakerFileName), bytes.NewReader(data)))
+				require.NoError(t, bkt.Upload(ctx, path.Join(userID, blockID.String(), parquet.ConverterMakerFileName), bytes.NewReader(data)))
 				return bkt
 			},
 			expectedError:     nil,
 			expectParquet:     true,
-			expectParquetMeta: &cortex_tsdb.ParquetMeta{Version: 1},
+			expectParquetMeta: &parquet.ParquetMeta{Version: 1},
 		},
 		{
 			name: "should handle missing parquet marker",
@@ -407,7 +407,7 @@ func TestUpdater_UpdateParquetBlockIndexEntry(t *testing.T) {
 				return &testutil.MockBucketFailure{
 					Bucket: bkt,
 					GetFailures: map[string]error{
-						path.Join(userID, blockID.String(), cortex_tsdb.ParquetConverterMakerFileName): testutil.ErrKeyAccessDeniedError,
+						path.Join(userID, blockID.String(), parquet.ConverterMakerFileName): testutil.ErrKeyAccessDeniedError,
 					},
 				}
 			},
@@ -417,7 +417,7 @@ func TestUpdater_UpdateParquetBlockIndexEntry(t *testing.T) {
 		{
 			name: "should handle corrupted parquet marker",
 			setupBucket: func(t *testing.T, bkt objstore.InstrumentedBucket, blockID ulid.ULID) objstore.InstrumentedBucket {
-				require.NoError(t, bkt.Upload(ctx, path.Join(userID, blockID.String(), cortex_tsdb.ParquetConverterMakerFileName), bytes.NewReader([]byte("invalid json"))))
+				require.NoError(t, bkt.Upload(ctx, path.Join(userID, blockID.String(), parquet.ConverterMakerFileName), bytes.NewReader([]byte("invalid json"))))
 				return bkt
 			},
 			expectedError: ErrBlockParquetMarkCorrupted,
@@ -494,7 +494,7 @@ func assertBucketIndexEqual(t testing.TB, idx *Index, bkt objstore.Bucket, userI
 	assert.ElementsMatch(t, expectedMarkEntries, idx.BlockDeletionMarks)
 }
 
-func assertBucketIndexEqualWithParquet(t testing.TB, idx *Index, bkt objstore.Bucket, userID string, expectedBlocks []tsdb.BlockMeta, expectedDeletionMarks []*metadata.DeletionMark, parquetBlocks map[string]*cortex_tsdb.ParquetMeta) {
+func assertBucketIndexEqualWithParquet(t testing.TB, idx *Index, bkt objstore.Bucket, userID string, expectedBlocks []tsdb.BlockMeta, expectedDeletionMarks []*metadata.DeletionMark, parquetBlocks map[string]*parquet.ParquetMeta) {
 	assert.Equal(t, IndexVersion1, idx.Version)
 	assert.InDelta(t, time.Now().Unix(), idx.UpdatedAt, 2)
 

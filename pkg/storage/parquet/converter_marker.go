@@ -59,3 +59,7 @@ func WriteConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Buck
 	}
 	return userBkt.Upload(ctx, markerPath, bytes.NewReader(b))
 }
+
+type ParquetMeta struct {
+	Version int `json:"version"`
+}

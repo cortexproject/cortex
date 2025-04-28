@@ -15,6 +15,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -65,12 +66,12 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 		oldBlockDeletionMarks = old.BlockDeletionMarks
 	}
 
-	blockDeletionMarks, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, err := w.updateBlockMarks(ctx, oldBlockDeletionMarks)
+	blockDeletionMarks, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, discoveredParquetBlocks, err := w.updateBlockMarks(ctx, oldBlockDeletionMarks)
 	if err != nil {
 		return nil, nil, 0, err
 	}
 
-	blocks, partials, err := w.updateBlocks(ctx, oldBlocks, deletedBlocks)
+	blocks, partials, err := w.updateBlocks(ctx, oldBlocks, deletedBlocks, discoveredParquetBlocks)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -83,7 +84,7 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 	}, partials, totalBlocksBlocksMarkedForNoCompaction, nil
 }
 
-func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks map[ulid.ULID]struct{}) (blocks []*Block, partials map[ulid.ULID]error, _ error) {
+func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks map[ulid.ULID]struct{}, discoveredParquetBlocks map[ulid.ULID]struct{}) (blocks []*Block, partials map[ulid.ULID]error, _ error) {
 	discovered := map[ulid.ULID]struct{}{}
 	partials = map[ulid.ULID]error{}
 
@@ -107,12 +108,14 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks 
 				level.Warn(w.logger).Log("msg", "skipped block with missing global deletion marker", "block", b.ID.String())
 				continue
 			}
-			// Check if parquet mark has been uploaded for the old block.
-			// TODO: this should be optimized to have all parquet marker in a global path.
-			// We assume parquet marker cannot be removed from a block if it exists before.
-			if w.parquetEnabled && b.Parquet == nil {
-				if err := w.updateParquetBlockIndexEntry(ctx, b.ID, b); err != nil {
-					return nil, nil, err
+			// Check if parquet mark has been uploaded or deleted for the old block.
+			if w.parquetEnabled {
+				if _, ok := discoveredParquetBlocks[b.ID]; ok {
+					if err := w.updateParquetBlockIndexEntry(ctx, b.ID, b); err != nil {
+						return nil, nil, err
+					}
+				} else if b.Parquet != nil {
+					b.Parquet = nil
 				}
 			}
 			blocks = append(blocks, b)
@@ -126,7 +129,11 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks 
 		b, err := w.updateBlockIndexEntry(ctx, id)
 		if err == nil {
 			if w.parquetEnabled {
-				err = w.updateParquetBlockIndexEntry(ctx, id, b)
+				if _, ok := discoveredParquetBlocks[b.ID]; ok {
+					if err := w.updateParquetBlockIndexEntry(ctx, b.ID, b); err != nil {
+						return nil, nil, err
+					}
+				}
 			}
 			if err == nil {
 				blocks = append(blocks, b)
@@ -203,7 +210,7 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 }
 
 func (w *Updater) updateParquetBlockIndexEntry(ctx context.Context, id ulid.ULID, block *Block) error {
-	parquetMarkFile := path.Join(id.String(), tsdb.ParquetConverterMakerFileName)
+	parquetMarkFile := path.Join(id.String(), parquet.ConverterMakerFileName)
 
 	// Get the block's parquet marker file.
 	r, err := w.bkt.ReaderWithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(w.bkt.IsObjNotFoundErr, w.bkt.IsAccessDeniedErr)).Get(ctx, parquetMarkFile)
@@ -223,7 +230,7 @@ func (w *Updater) updateParquetBlockIndexEntry(ctx context.Context, id ulid.ULID
 		return errors.Wrapf(err, "read parquet converter marker file: %v", parquetMarkFile)
 	}
 
-	m := tsdb.ParquetMeta{}
+	m := parquet.ParquetMeta{}
 	if err := json.Unmarshal(markContent, &m); err != nil {
 		return errors.Wrapf(ErrBlockParquetMarkCorrupted, "unmarshal parquet converter marker file %s: %v", parquetMarkFile, err)
 	}
@@ -231,10 +238,11 @@ func (w *Updater) updateParquetBlockIndexEntry(ctx context.Context, id ulid.ULID
 	return nil
 }
 
-func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, map[ulid.ULID]struct{}, int64, error) {
+func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, map[ulid.ULID]struct{}, int64, map[ulid.ULID]struct{}, error) {
 	out := make([]*BlockDeletionMark, 0, len(old))
 	deletedBlocks := map[ulid.ULID]struct{}{}
 	discovered := map[ulid.ULID]struct{}{}
+	discoveredParquetBlocks := map[ulid.ULID]struct{}{}
 	totalBlocksBlocksMarkedForNoCompaction := int64(0)
 
 	// Find all markers in the storage.
@@ -247,10 +255,16 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 			totalBlocksBlocksMarkedForNoCompaction++
 		}
 
+		if w.parquetEnabled {
+			if blockID, ok := IsBlockParquetConverterMarkFilename(path.Base(name)); ok {
+				discoveredParquetBlocks[blockID] = struct{}{}
+			}
+		}
+
 		return nil
 	})
 	if err != nil {
-		return nil, nil, totalBlocksBlocksMarkedForNoCompaction, errors.Wrap(err, "list block deletion marks")
+		return nil, nil, totalBlocksBlocksMarkedForNoCompaction, discoveredParquetBlocks, errors.Wrap(err, "list block deletion marks")
 	}
 
 	// Since deletion marks are immutable, all markers already existing in the index can just be copied.
@@ -276,13 +290,13 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 			continue
 		}
 		if err != nil {
-			return nil, nil, totalBlocksBlocksMarkedForNoCompaction, err
+			return nil, nil, totalBlocksBlocksMarkedForNoCompaction, discoveredParquetBlocks, err
 		}
 
 		out = append(out, m)
 	}
 
-	return out, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, nil
+	return out, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, discoveredParquetBlocks, nil
 }
 
 func (w *Updater) updateBlockDeletionMarkIndexEntry(ctx context.Context, id ulid.ULID) (*BlockDeletionMark, error) {

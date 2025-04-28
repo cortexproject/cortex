@@ -12,6 +12,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -94,7 +95,7 @@ type Block struct {
 	UploadedAt int64 `json:"uploaded_at"`
 
 	// Parquet metadata if exists. If doesn't exist it will be nil.
-	Parquet *cortex_tsdb.ParquetMeta `json:"parquet,omitempty"`
+	Parquet *parquet.ParquetMeta `json:"parquet,omitempty"`
 }
 
 // Within returns whether the block contains samples within the provided range.

@@ -15,7 +15,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 )
 
 func MockStorageBlock(t testing.TB, bucket objstore.Bucket, userID string, minT, maxT int64) tsdb.BlockMeta {
@@ -89,8 +89,8 @@ func MockStorageNonCompactionMark(t testing.TB, bucket objstore.Bucket, userID s
 	return &mark
 }
 
-func MockStorageParquetMark(t testing.TB, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *cortex_tsdb.ParquetMeta {
-	mark := cortex_tsdb.ParquetMeta{
+func MockStorageParquetMark(t testing.TB, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *parquet.ParquetMeta {
+	mark := parquet.ParquetMeta{
 		Version: 1,
 	}
 
@@ -100,7 +100,7 @@ func MockStorageParquetMark(t testing.TB, bucket objstore.Bucket, userID string,
 	}
 
 	markContentReader := strings.NewReader(string(markContent))
-	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), cortex_tsdb.ParquetConverterMakerFileName)
+	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), parquet.ConverterMakerFileName)
 	require.NoError(t, bucket.Upload(context.Background(), markPath, markContentReader))
 
 	return &mark

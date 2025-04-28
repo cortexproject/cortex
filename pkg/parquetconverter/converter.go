@@ -39,6 +39,8 @@ import (
 const (
 	// ringKey is the key under which we store the compactors ring in the KVStore.
 	ringKey = "parquet-converter"
+
+	converterMetaPrefix = "converter-meta-"
 )
 
 var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
@@ -167,8 +169,8 @@ func (c *Converter) running(ctx context.Context) error {
 				level.Error(c.logger).Log("msg", "failed to scan users", "err", err)
 				continue
 			}
+			ownedUsers := map[string]struct{}{}
 			for _, userID := range users {
-
 				var ring ring.ReadRing
 				ring = c.ring
 				if c.limits.ParquetConverterTenantShardSize(userID) > 0 {
@@ -186,9 +188,46 @@ func (c *Converter) running(ctx context.Context) error {
 					continue
 				}
 
+				if markedForDeletion, err := cortex_tsdb.TenantDeletionMarkExists(ctx, c.bkt, userID); err != nil {
+					level.Warn(userLogger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
+					continue
+				} else if markedForDeletion {
+					level.Info(userLogger).Log("msg", "skipping user because it is marked for deletion", "user", userID)
+					continue
+				}
+
+				ownedUsers[userID] = struct{}{}
+
 				err = c.convertUser(ctx, userLogger, ring, userID)
 				if err != nil {
 					level.Error(userLogger).Log("msg", "failed to convert user", "err", err)
+				}
+			}
+
+			// Delete local files for unowned tenants, if there are any. This cleans up
+			// leftover local files for tenants that belong to different converter now,
+			// or have been deleted completely.
+			for userID := range c.listTenantsWithMetaSyncDirectories() {
+				if _, owned := ownedUsers[userID]; owned {
+					continue
+				}
+
+				dir := c.metaSyncDirForUser(userID)
+				s, err := os.Stat(dir)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						level.Warn(c.logger).Log("msg", "failed to stat local directory with user data", "dir", dir, "err", err)
+					}
+					continue
+				}
+
+				if s.IsDir() {
+					err := os.RemoveAll(dir)
+					if err == nil {
+						level.Info(c.logger).Log("msg", "deleted directory for user not owned by this shard", "dir", dir)
+					} else {
+						level.Warn(c.logger).Log("msg", "failed to delete directory for user not owned by this shard", "dir", dir, "err", err)
+					}
 				}
 			}
 		}
@@ -336,10 +375,6 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 	return nil
 }
 
-func (c *Converter) metaSyncDirForUser(userID string) string {
-	return filepath.Join(c.cfg.DataDir, "converter-meta-"+userID)
-}
-
 func (c *Converter) ownUser(r ring.ReadRing, userID string) (bool, error) {
 	if !c.allowedTenants.IsAllowed(userID) {
 		return false, nil
@@ -382,6 +417,34 @@ func (c *Converter) compactRootDir() string {
 
 func (c *Converter) compactDirForUser(userID string) string {
 	return filepath.Join(c.compactRootDir(), userID)
+}
+
+func (c *Converter) metaSyncDirForUser(userID string) string {
+	return filepath.Join(c.cfg.DataDir, converterMetaPrefix+userID)
+}
+
+// This function returns tenants with meta sync directories found on local disk. On error, it returns nil map.
+func (c *Converter) listTenantsWithMetaSyncDirectories() map[string]struct{} {
+	result := map[string]struct{}{}
+
+	files, err := os.ReadDir(c.cfg.DataDir)
+	if err != nil {
+		return nil
+	}
+
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+
+		if !strings.HasPrefix(f.Name(), converterMetaPrefix) {
+			continue
+		}
+
+		result[f.Name()[len(converterMetaPrefix):]] = struct{}{}
+	}
+
+	return result
 }
 
 func getBlockTimeRange(b *metadata.Meta, timeRanges []int64) int64 {

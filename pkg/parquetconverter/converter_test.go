@@ -68,7 +68,6 @@ func TestConverter(t *testing.T) {
 		blockDir := fmt.Sprintf("%s/%s", dir, bIds.String())
 		b, err := tsdb.OpenBlock(nil, blockDir, nil, nil)
 		require.NoError(t, err)
-		fmt.Println(b.Dir())
 		err = block.Upload(ctx, logger, userBucket, b.Dir(), metadata.NoneFunc)
 		require.NoError(t, err)
 	}
@@ -105,6 +104,18 @@ func TestConverter(t *testing.T) {
 			require.True(t, ok)
 		}
 	}
+
+	syncedTenants := c.listTenantsWithMetaSyncDirectories()
+	require.Len(t, syncedTenants, 1)
+	require.Contains(t, syncedTenants, user)
+
+	// Mark user as deleted
+	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucketClient), user, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+
+	// Should clean sync folders
+	test.Poll(t, time.Minute, 0, func() interface{} {
+		return len(c.listTenantsWithMetaSyncDirectories())
+	})
 }
 
 func prepareConfig() Config {

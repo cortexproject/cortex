@@ -43,7 +43,7 @@ func NoCompactMarkFilenameMarkFilepath(blockID ulid.ULID) string {
 }
 
 func ConverterMarkFilePath(blockID ulid.ULID) string {
-	return fmt.Sprintf("%s/%s-%s", MarkersPathname, blockID.String(), parquet.ConverterMarkerFileName)
+	return fmt.Sprintf("%s/%s-%s", parquet.ConverterMarkerPrefix, blockID.String(), parquet.ConverterMarkerFileName)
 }
 
 // IsBlockDeletionMarkFilename returns whether the input filename matches the expected pattern

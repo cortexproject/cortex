@@ -21,6 +21,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
@@ -161,6 +162,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", tsdb.NewTenantDeletionMark(time.Now())))
 	block9 := createTSDBBlock(t, bucketClient, "user-3", 10, 30, nil)
 	block10 := createTSDBBlock(t, bucketClient, "user-3", 30, 50, nil)
+	createParquetMarker(t, bucketClient, "user-3", block10)
 
 	// User-4 with no more blocks, but couple of mark and debug files. Should be fully deleted.
 	user4Mark := tsdb.NewTenantDeletionMark(time.Now())
@@ -173,6 +175,10 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	createTSDBBlock(t, bucketClient, "user-5", 10, 30, nil)
 	block12 := createTSDBBlock(t, bucketClient, "user-5", 30, 50, nil)
 	createNoCompactionMark(t, bucketClient, "user-5", block12)
+
+	// Create Parquet marker
+	block13 := createTSDBBlock(t, bucketClient, "user-6", 30, 50, nil)
+	createParquetMarker(t, bucketClient, "user-6", block13)
 
 	// The fixtures have been created. If the bucket client wasn't wrapped to write
 	// deletion marks to the global location too, then this is the right time to do it.
@@ -230,7 +236,9 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		{path: path.Join("user-3", block9.String(), "index"), expectedExists: false},
 		{path: path.Join("user-3", block10.String(), metadata.MetaFilename), expectedExists: false},
 		{path: path.Join("user-3", block10.String(), "index"), expectedExists: false},
+		{path: path.Join("user-3", block10.String(), parquet.ConverterMarkerFileName), expectedExists: false},
 		{path: path.Join("user-4", block.DebugMetas, "meta.json"), expectedExists: options.user4FilesExist},
+		{path: path.Join("user-6", block13.String(), parquet.ConverterMarkerFileName), expectedExists: true},
 	} {
 		exists, err := bucketClient.Exists(ctx, tc.path)
 		require.NoError(t, err)
@@ -298,21 +306,25 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		cortex_bucket_blocks_count{user="user-1"} 2
 		cortex_bucket_blocks_count{user="user-2"} 1
 		cortex_bucket_blocks_count{user="user-5"} 2
+		cortex_bucket_blocks_count{user="user-6"} 1
 		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-5"} 0
+		cortex_bucket_blocks_marked_for_deletion_count{user="user-6"} 0
 		# HELP cortex_bucket_blocks_marked_for_no_compaction_count Total number of blocks marked for no compaction in the bucket.
 		# TYPE cortex_bucket_blocks_marked_for_no_compaction_count gauge
 		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-1"} 0
 		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-2"} 0
 		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-5"} 1
+		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-6"} 0
 		# HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
 		# TYPE cortex_bucket_blocks_partials_count gauge
 		cortex_bucket_blocks_partials_count{user="user-1"} 2
 		cortex_bucket_blocks_partials_count{user="user-2"} 0
 		cortex_bucket_blocks_partials_count{user="user-5"} 0
+		cortex_bucket_blocks_partials_count{user="user-6"} 0
 	`),
 		"cortex_bucket_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",

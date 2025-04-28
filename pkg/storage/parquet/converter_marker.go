@@ -17,6 +17,7 @@ import (
 )
 
 const (
+	ConverterMarkerPrefix   = "parquet-markers"
 	ConverterMarkerFileName = "parquet-converter-mark.json"
 	CurrentVersion          = 1
 )
@@ -29,7 +30,7 @@ func ReadConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Instr
 	markerPath := path.Join(id.String(), ConverterMarkerFileName)
 	reader, err := userBkt.WithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(userBkt.IsAccessDeniedErr, userBkt.IsObjNotFoundErr)).Get(ctx, markerPath)
 	if err != nil {
-		if userBkt.IsObjNotFoundErr(err) {
+		if userBkt.IsObjNotFoundErr(err) || userBkt.IsAccessDeniedErr(err) {
 			return &ConverterMark{}, nil
 		}
 

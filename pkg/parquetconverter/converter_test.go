@@ -96,7 +96,7 @@ func TestConverter(t *testing.T) {
 	for _, block := range blocksConverted {
 		for _, file := range []string{
 			fmt.Sprintf("%s/parquet-converter-mark.json", block.String()),
-			fmt.Sprintf("markers/%s-parquet-converter-mark.json", block.String()),
+			fmt.Sprintf("parquet-markers/%s-parquet-converter-mark.json", block.String()),
 			fmt.Sprintf("%s/0.chunks.parquet", block.String()),
 			fmt.Sprintf("%s/0.labels.parquet", block.String()),
 		} {

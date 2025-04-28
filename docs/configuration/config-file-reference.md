@@ -4354,6 +4354,11 @@ dynamic_query_splits:
   # CLI flag: -querier.max-fetched-data-duration-per-query
   [max_fetched_data_duration_per_query: <duration> | default = 0s]
 
+  # [EXPERIMENTAL] Dynamically adjust vertical shard size to maximize the total
+  # combined number of query shards and splits.
+  # CLI flag: -querier.enable-dynamic-vertical-sharding
+  [enable_dynamic_vertical_sharding: <boolean> | default = false]
+
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step
 [align_queries_with_step: <boolean> | default = false]

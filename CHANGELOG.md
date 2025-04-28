@@ -10,6 +10,7 @@
 * [FEATURE] Ruler: Add support for percentage based sharding for rulers. #6680
 * [FEATURE] Ruler: Add support for group labels. #6665
 * [FEATURE] Support Parquet format: Implement parquet converter service to convert a TSDB block into Parquet. #6716
+* [ENHANCEMENT] Query Frontend: Change to return 400 when the tenant resolving fail. #6715
 * [ENHANCEMENT] Querier: Support query parameters to metadata api (/api/v1/metadata) to allow user to limit metadata to return. #6681
 * [ENHANCEMENT] Ingester: Add a `cortex_ingester_active_native_histogram_series` metric to track # of active NH series. #6695
 * [ENHANCEMENT] Query Frontend: Add new limit `-frontend.max-query-response-size` for total query response size after decompression in query frontend. #6607

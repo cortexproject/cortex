@@ -81,12 +81,14 @@ func (cfg *Config) Validate(qCfg querier.Config) error {
 type DynamicQuerySplitsConfig struct {
 	MaxShardsPerQuery              int           `yaml:"max_shards_per_query"`
 	MaxFetchedDataDurationPerQuery time.Duration `yaml:"max_fetched_data_duration_per_query"`
+	EnableDynamicVerticalSharding  bool          `yaml:"enable_dynamic_vertical_sharding"`
 }
 
 // RegisterFlags registers flags foy dynamic query splits
 func (cfg *DynamicQuerySplitsConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxShardsPerQuery, "querier.max-shards-per-query", 0, "[EXPERIMENTAL] Maximum number of shards for a query, 0 disables it. Dynamically uses a multiple of split interval to maintain a total number of shards below the set value. If vertical sharding is enabled for a query, the combined total number of interval splits and vertical shards is kept below this value.")
 	f.DurationVar(&cfg.MaxFetchedDataDurationPerQuery, "querier.max-fetched-data-duration-per-query", 0, "[EXPERIMENTAL] Max total duration of data fetched from storage by all query shards, 0 disables it. Dynamically uses a multiple of split interval to maintain a total fetched duration of data lower than the value set. It takes into account additional duration fetched by matrix selectors and subqueries.")
+	f.BoolVar(&cfg.EnableDynamicVerticalSharding, "querier.enable-dynamic-vertical-sharding", false, "[EXPERIMENTAL] Dynamically adjust vertical shard size to maximize the total combined number of query shards and splits.")
 }
 
 // Middlewares returns list of middlewares that should be applied for range query.

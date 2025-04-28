@@ -1,4 +1,4 @@
-// Copyright 2021 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -52,6 +52,8 @@ func (b *Builder) AddLabelNameColumn(lbls ...string) {
 
 func (b *Builder) Build() (*TSDBSchema, error) {
 	colIdx := 0
+
+	b.g[ColIndexes] = parquet.Encoded(parquet.Leaf(parquet.ByteArrayType), &parquet.DeltaByteArray)
 	for i := b.mint; i <= b.maxt; i += b.dataColDurationMs {
 		b.g[DataColumn(colIdx)] = parquet.Encoded(parquet.Leaf(parquet.ByteArrayType), &parquet.DeltaLengthByteArray)
 		colIdx++
@@ -87,6 +89,11 @@ type TSDBSchema struct {
 	DataColDurationMs int64
 }
 
+type TSDBProjection struct {
+	Schema       *parquet.Schema
+	ExtraOptions []parquet.WriterOption
+}
+
 func (s *TSDBSchema) DataColumIdx(t int64) int {
 	colIdx := 0
 
@@ -97,8 +104,14 @@ func (s *TSDBSchema) DataColumIdx(t int64) int {
 	return colIdx
 }
 
-func (s *TSDBSchema) LabelsProjection() *parquet.Schema {
+func (s *TSDBSchema) LabelsProjection() (*TSDBProjection, error) {
 	g := make(parquet.Group)
+
+	lc, ok := s.Schema.Lookup(ColIndexes)
+	if !ok {
+		return nil, fmt.Errorf("column %v not found", ColIndexes)
+	}
+	g[ColIndexes] = lc.Node
 
 	for _, c := range s.Schema.Columns() {
 		if _, ok := ExtractLabelFromColumn(c[0]); !ok {
@@ -106,15 +119,18 @@ func (s *TSDBSchema) LabelsProjection() *parquet.Schema {
 		}
 		lc, ok := s.Schema.Lookup(c...)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("column %v not found", c)
 		}
 		g[c[0]] = lc.Node
 	}
-	return parquet.NewSchema("labels-projection", g)
+	return &TSDBProjection{
+		Schema: WithCompression(parquet.NewSchema("labels-projection", g)),
+	}, nil
 }
 
-func (s *TSDBSchema) ChunksProjection() *parquet.Schema {
+func (s *TSDBSchema) ChunksProjection() (*TSDBProjection, error) {
 	g := make(parquet.Group)
+	skipPageBoundsOpts := make([]parquet.WriterOption, 0, len(s.DataColsIndexes))
 
 	for _, c := range s.Schema.Columns() {
 		if ok := IsDataColumn(c[0]); !ok {
@@ -122,9 +138,14 @@ func (s *TSDBSchema) ChunksProjection() *parquet.Schema {
 		}
 		lc, ok := s.Schema.Lookup(c...)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("column %v not found", c)
 		}
 		g[c[0]] = lc.Node
+		skipPageBoundsOpts = append(skipPageBoundsOpts, parquet.SkipPageBounds(c...))
 	}
-	return parquet.NewSchema("chunk-projection", g)
+
+	return &TSDBProjection{
+		Schema:       WithCompression(parquet.NewSchema("chunk-projection", g)),
+		ExtraOptions: skipPageBoundsOpts,
+	}, nil
 }

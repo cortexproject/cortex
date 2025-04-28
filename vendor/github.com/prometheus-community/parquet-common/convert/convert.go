@@ -1,4 +1,4 @@
-// Copyright 2021 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -186,7 +186,7 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 			}
 		}
 
-		return 0
+		return labels.Compare(a, b)
 	}
 
 	for _, blk := range blks {
@@ -272,7 +272,7 @@ func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, compare func(a
 			return index.ErrPostings(fmt.Errorf("expand series: %w", err))
 		}
 
-		series = append(series, s{labels: lb.Labels().MatchLabels(true, sortedLabels...), ref: p.At()})
+		series = append(series, s{labels: lb.Labels(), ref: p.At()})
 	}
 	if err := p.Err(); err != nil {
 		return index.ErrPostings(fmt.Errorf("expand postings: %w", err))
@@ -324,6 +324,12 @@ func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
 	}()
 
 	i, j := 0, 0
+	lblsIdxs := []int{}
+	colIndex, ok := rr.tsdbSchema.Schema.Lookup(schema.ColIndexes)
+	if !ok {
+		return 0, fmt.Errorf("unable to find indexes")
+	}
+
 	for promise := range c {
 		j++
 		if promise.err != nil {
@@ -331,12 +337,16 @@ func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
 		}
 
 		rr.rowBuilder.Reset()
+		lblsIdxs = lblsIdxs[:0]
 
 		promise.s.Labels().Range(func(l labels.Label) {
 			colName := schema.LabelToColumn(l.Name)
 			lc, _ := rr.tsdbSchema.Schema.Lookup(colName)
 			rr.rowBuilder.Add(lc.ColumnIndex, parquet.ValueOf(l.Value))
+			lblsIdxs = append(lblsIdxs, lc.ColumnIndex)
 		})
+
+		rr.rowBuilder.Add(colIndex.ColumnIndex, parquet.ValueOf(schema.EncodeIntSlice(lblsIdxs)))
 
 		chkBytes := <-promise.chunkBytesChan
 		// skip series that have no chunks in the requested time

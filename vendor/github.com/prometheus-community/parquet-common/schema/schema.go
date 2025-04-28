@@ -1,4 +1,4 @@
-// Copyright 2021 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -25,6 +25,7 @@ import (
 const (
 	LabelColumnPrefix = "l_"
 	DataColumnPrefix  = "s_data_"
+	ColIndexes        = "s_col_indexes"
 
 	DataColSizeMd = "data_col_duration_ms"
 	MinTMd        = "minT"
@@ -67,7 +68,7 @@ func WithCompression(s *parquet.Schema) *parquet.Schema {
 		g[lc.Path[0]] = parquet.Compressed(lc.Node, &zstd.Codec{Level: zstd.SpeedBetterCompression})
 	}
 
-	return parquet.NewSchema("uncompressed", g)
+	return parquet.NewSchema("compressed", g)
 }
 
 func MetadataToMap(md []format.KeyValue) map[string]string {

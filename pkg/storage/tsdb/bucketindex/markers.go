@@ -83,15 +83,15 @@ func IsBlockNoCompactMarkFilename(name string) (ulid.ULID, bool) {
 }
 
 // IsBlockParquetConverterMarkFilename returns whether the input filename matches the expected pattern
-// of block parquet conveter markers stored in the markers location.
+// of block parquet converter markers stored in the markers location.
 func IsBlockParquetConverterMarkFilename(name string) (ulid.ULID, bool) {
 	parts := strings.SplitN(name, "-", 2)
 	if len(parts) != 2 {
 		return ulid.ULID{}, false
 	}
 
-	// Ensure the 2nd part matches the parquet conveter mark filename.
-	if parts[1] != parquet.ConverterMakerFileName {
+	// Ensure the 2nd part matches the parquet converter mark filename.
+	if parts[1] != parquet.ConverterMarkerFileName {
 		return ulid.ULID{}, false
 	}
 

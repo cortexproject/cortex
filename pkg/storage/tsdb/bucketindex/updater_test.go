@@ -317,15 +317,15 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	block2Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block2)
 	// Add parquet marker to block 1.
-	block1ParquetMark := testutil.MockStorageParquetMark(t, bkt, userID, block1)
+	block1ParquetMark := testutil.MockStorageParquetConverterMark(t, bkt, userID, block1)
 
 	w := NewUpdater(bkt, userID, nil, logger).EnableParquet()
 	returnedIdx, _, _, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2},
-		[]*metadata.DeletionMark{block2Mark}, map[string]*parquet.ParquetMeta{
-			block1.ULID.String(): block1ParquetMark,
+		[]*metadata.DeletionMark{block2Mark}, map[string]*parquet.ConverterMarkMeta{
+			block1.ULID.String(): {Version: block1ParquetMark.Version},
 		})
 
 	// Create new blocks, and update the index.
@@ -338,8 +338,8 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2, block3, block4},
 		[]*metadata.DeletionMark{block2Mark, block4Mark},
-		map[string]*parquet.ParquetMeta{
-			block1.ULID.String(): block1ParquetMark,
+		map[string]*parquet.ConverterMarkMeta{
+			block1.ULID.String(): {Version: block1ParquetMark.Version},
 		})
 
 	// Hard delete a block and update the index.
@@ -349,19 +349,19 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	require.NoError(t, err)
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block3, block4},
-		[]*metadata.DeletionMark{block4Mark}, map[string]*parquet.ParquetMeta{
-			block1.ULID.String(): block1ParquetMark,
+		[]*metadata.DeletionMark{block4Mark}, map[string]*parquet.ConverterMarkMeta{
+			block1.ULID.String(): {Version: block1ParquetMark.Version},
 		})
 
 	// Upload parquet marker to an old block and update index
-	block3ParquetMark := testutil.MockStorageParquetMark(t, bkt, userID, block3)
+	block3ParquetMark := testutil.MockStorageParquetConverterMark(t, bkt, userID, block3)
 	returnedIdx, _, _, err = w.UpdateIndex(ctx, returnedIdx)
 	require.NoError(t, err)
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block3, block4},
-		[]*metadata.DeletionMark{block4Mark}, map[string]*parquet.ParquetMeta{
-			block1.ULID.String(): block1ParquetMark,
-			block3.ULID.String(): block3ParquetMark,
+		[]*metadata.DeletionMark{block4Mark}, map[string]*parquet.ConverterMarkMeta{
+			block1.ULID.String(): {Version: block1ParquetMark.Version},
+			block3.ULID.String(): {Version: block3ParquetMark.Version},
 		})
 }
 
@@ -375,22 +375,22 @@ func TestUpdater_UpdateParquetBlockIndexEntry(t *testing.T) {
 		setupBucket       func(t *testing.T, bkt objstore.InstrumentedBucket, blockID ulid.ULID) objstore.InstrumentedBucket
 		expectedError     error
 		expectParquet     bool
-		expectParquetMeta *parquet.ParquetMeta
+		expectParquetMeta *parquet.ConverterMarkMeta
 	}{
 		{
 			name: "should successfully read parquet marker",
 			setupBucket: func(t *testing.T, bkt objstore.InstrumentedBucket, blockID ulid.ULID) objstore.InstrumentedBucket {
-				parquetMark := parquet.ParquetMeta{
+				parquetMark := parquet.ConverterMarkMeta{
 					Version: 1,
 				}
 				data, err := json.Marshal(parquetMark)
 				require.NoError(t, err)
-				require.NoError(t, bkt.Upload(ctx, path.Join(userID, blockID.String(), parquet.ConverterMakerFileName), bytes.NewReader(data)))
+				require.NoError(t, bkt.Upload(ctx, path.Join(userID, blockID.String(), parquet.ConverterMarkerFileName), bytes.NewReader(data)))
 				return bkt
 			},
 			expectedError:     nil,
 			expectParquet:     true,
-			expectParquetMeta: &parquet.ParquetMeta{Version: 1},
+			expectParquetMeta: &parquet.ConverterMarkMeta{Version: 1},
 		},
 		{
 			name: "should handle missing parquet marker",
@@ -407,20 +407,11 @@ func TestUpdater_UpdateParquetBlockIndexEntry(t *testing.T) {
 				return &testutil.MockBucketFailure{
 					Bucket: bkt,
 					GetFailures: map[string]error{
-						path.Join(userID, blockID.String(), parquet.ConverterMakerFileName): testutil.ErrKeyAccessDeniedError,
+						path.Join(userID, blockID.String(), parquet.ConverterMarkerFileName): testutil.ErrKeyAccessDeniedError,
 					},
 				}
 			},
 			expectedError: nil,
-			expectParquet: false,
-		},
-		{
-			name: "should handle corrupted parquet marker",
-			setupBucket: func(t *testing.T, bkt objstore.InstrumentedBucket, blockID ulid.ULID) objstore.InstrumentedBucket {
-				require.NoError(t, bkt.Upload(ctx, path.Join(userID, blockID.String(), parquet.ConverterMakerFileName), bytes.NewReader([]byte("invalid json"))))
-				return bkt
-			},
-			expectedError: ErrBlockParquetMarkCorrupted,
 			expectParquet: false,
 		},
 	}
@@ -494,7 +485,7 @@ func assertBucketIndexEqual(t testing.TB, idx *Index, bkt objstore.Bucket, userI
 	assert.ElementsMatch(t, expectedMarkEntries, idx.BlockDeletionMarks)
 }
 
-func assertBucketIndexEqualWithParquet(t testing.TB, idx *Index, bkt objstore.Bucket, userID string, expectedBlocks []tsdb.BlockMeta, expectedDeletionMarks []*metadata.DeletionMark, parquetBlocks map[string]*parquet.ParquetMeta) {
+func assertBucketIndexEqualWithParquet(t testing.TB, idx *Index, bkt objstore.Bucket, userID string, expectedBlocks []tsdb.BlockMeta, expectedDeletionMarks []*metadata.DeletionMark, parquetBlocks map[string]*parquet.ConverterMarkMeta) {
 	assert.Equal(t, IndexVersion1, idx.Version)
 	assert.InDelta(t, time.Now().Unix(), idx.UpdatedAt, 2)
 

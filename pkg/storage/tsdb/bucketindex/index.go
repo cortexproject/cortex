@@ -95,7 +95,7 @@ type Block struct {
 	UploadedAt int64 `json:"uploaded_at"`
 
 	// Parquet metadata if exists. If doesn't exist it will be nil.
-	Parquet *parquet.ParquetMeta `json:"parquet,omitempty"`
+	Parquet *parquet.ConverterMarkMeta `json:"parquet,omitempty"`
 }
 
 // Within returns whether the block contains samples within the provided range.

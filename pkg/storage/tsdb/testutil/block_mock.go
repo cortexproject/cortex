@@ -89,18 +89,18 @@ func MockStorageNonCompactionMark(t testing.TB, bucket objstore.Bucket, userID s
 	return &mark
 }
 
-func MockStorageParquetMark(t testing.TB, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *parquet.ParquetMeta {
-	mark := parquet.ParquetMeta{
+func MockStorageParquetConverterMark(t testing.TB, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *parquet.ConverterMark {
+	mark := parquet.ConverterMark{
 		Version: 1,
 	}
 
 	markContent, err := json.Marshal(mark)
 	if err != nil {
-		panic("failed to marshal mocked parquet meta")
+		panic("failed to marshal mocked parquet converter marker")
 	}
 
 	markContentReader := strings.NewReader(string(markContent))
-	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), parquet.ConverterMakerFileName)
+	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), parquet.ConverterMarkerFileName)
 	require.NoError(t, bucket.Upload(context.Background(), markPath, markContentReader))
 
 	return &mark

@@ -15,6 +15,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 )
 
 const (
@@ -23,8 +24,9 @@ const (
 
 var (
 	MarkersMap = map[string]func(ulid.ULID) string{
-		metadata.DeletionMarkFilename:  BlockDeletionMarkFilepath,
-		metadata.NoCompactMarkFilename: NoCompactMarkFilenameMarkFilepath,
+		metadata.DeletionMarkFilename:   BlockDeletionMarkFilepath,
+		metadata.NoCompactMarkFilename:  NoCompactMarkFilenameMarkFilepath,
+		parquet.ConverterMarkerFileName: ConverterMarkFilePath,
 	}
 )
 
@@ -38,6 +40,10 @@ func BlockDeletionMarkFilepath(blockID ulid.ULID) string {
 // of a block no compact mark in the bucket markers location.
 func NoCompactMarkFilenameMarkFilepath(blockID ulid.ULID) string {
 	return fmt.Sprintf("%s/%s-%s", MarkersPathname, blockID.String(), metadata.NoCompactMarkFilename)
+}
+
+func ConverterMarkFilePath(blockID ulid.ULID) string {
+	return fmt.Sprintf("%s/%s-%s", parquet.ConverterMarkerPrefix, blockID.String(), parquet.ConverterMarkerFileName)
 }
 
 // IsBlockDeletionMarkFilename returns whether the input filename matches the expected pattern

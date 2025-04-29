@@ -36,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
@@ -83,6 +84,7 @@ const (
 	Configs                  string = "configs"
 	AlertManager             string = "alertmanager"
 	Compactor                string = "compactor"
+	ParquetConverter         string = "parquet-converter"
 	StoreGateway             string = "store-gateway"
 	MemberlistKV             string = "memberlist-kv"
 	TenantDeletion           string = "tenant-deletion"
@@ -692,6 +694,11 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	return t.Alertmanager, nil
 }
 
+func (t *Cortex) initParquetConverter() (serv services.Service, err error) {
+	t.Cfg.ParquetConverter.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+	return parquetconverter.NewConverter(t.Cfg.ParquetConverter, t.Cfg.BlocksStorage, t.Cfg.Compactor.BlockRanges.ToMilliseconds(), util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
+}
+
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	ingestionReplicationFactor := t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor
@@ -822,6 +829,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Configs, t.initConfig)
 	mm.RegisterModule(AlertManager, t.initAlertManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(ParquetConverter, t.initParquetConverter)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 	mm.RegisterModule(TenantDeletion, t.initTenantDeletionAPI, modules.UserInvisibleModule)
 	mm.RegisterModule(Purger, nil)
@@ -853,6 +861,7 @@ func (t *Cortex) setupModuleManager() error {
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV, Overrides},
 		Compactor:                {API, MemberlistKV, Overrides},
+		ParquetConverter:         {API, MemberlistKV, Overrides},
 		StoreGateway:             {API, Overrides, MemberlistKV, ResourceMonitor},
 		TenantDeletion:           {API, Overrides},
 		Purger:                   {TenantDeletion},

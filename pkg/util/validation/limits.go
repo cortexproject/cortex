@@ -200,6 +200,9 @@ type Limits struct {
 	CompactorPartitionIndexSizeBytes int64          `yaml:"compactor_partition_index_size_bytes" json:"compactor_partition_index_size_bytes"`
 	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
 
+	// Parquet converter
+	ParquetConverterTenantShardSize int `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size" doc:"hidden"`
+
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
@@ -293,6 +296,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// Default to 64GB because this is the hard limit of index size in Cortex
 	f.Int64Var(&l.CompactorPartitionIndexSizeBytes, "compactor.partition-index-size-bytes", 68719476736, "Index size limit in bytes for each compaction partition. 0 means no limit")
 	f.Int64Var(&l.CompactorPartitionSeriesCount, "compactor.partition-series-count", 0, "Time series count limit for each compaction partition. 0 means no limit")
+
+	f.IntVar(&l.ParquetConverterTenantShardSize, "parquet-converter.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the parquet converter. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 
 	// Store-gateway.
 	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
@@ -820,6 +825,11 @@ func (o *Overrides) CompactorBlocksRetentionPeriod(userID string) time.Duration 
 // CompactorTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) CompactorTenantShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).CompactorTenantShardSize
+}
+
+// ParquetConverterTenantShardSize returns shard size (number of converters) used by this tenant when using shuffle-sharding strategy.
+func (o *Overrides) ParquetConverterTenantShardSize(userID string) int {
+	return o.GetOverridesForUser(userID).ParquetConverterTenantShardSize
 }
 
 // CompactorPartitionIndexSizeBytes returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.

@@ -2,7 +2,7 @@ name: ✏️ New blog post
 description: Create a blog post to share
 title: "[BLOG] <title>"
 labels: ['new blog, enhancement, untriaged']
-projects: ["cortex/Digital Marketing Content"]
+projects: ["cortexproject/Digital Marketing Content"]
 body:
 
   - type: markdown

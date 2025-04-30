@@ -36,7 +36,7 @@ func ReadConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Instr
 
 		return &ConverterMark{}, err
 	}
-	defer runutil.CloseWithLogOnErr(logger, reader, "close bucket index reader")
+	defer runutil.CloseWithLogOnErr(logger, reader, "close parquet converter marker file reader")
 
 	metaContent, err := io.ReadAll(reader)
 	if err != nil {
@@ -58,4 +58,9 @@ func WriteConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Buck
 		return err
 	}
 	return userBkt.Upload(ctx, markerPath, bytes.NewReader(b))
+}
+
+// ConverterMarkMeta is used in Bucket Index. It might not be the same as ConverterMark.
+type ConverterMarkMeta struct {
+	Version int `json:"version"`
 }

@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 )
 
 func MockStorageBlock(t testing.TB, bucket objstore.Bucket, userID string, minT, maxT int64) tsdb.BlockMeta {
@@ -82,6 +84,23 @@ func MockStorageNonCompactionMark(t testing.TB, bucket objstore.Bucket, userID s
 
 	markContentReader := strings.NewReader(string(markContent))
 	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), metadata.NoCompactMarkFilename)
+	require.NoError(t, bucket.Upload(context.Background(), markPath, markContentReader))
+
+	return &mark
+}
+
+func MockStorageParquetConverterMark(t testing.TB, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *parquet.ConverterMark {
+	mark := parquet.ConverterMark{
+		Version: 1,
+	}
+
+	markContent, err := json.Marshal(mark)
+	if err != nil {
+		panic("failed to marshal mocked parquet converter marker")
+	}
+
+	markContentReader := strings.NewReader(string(markContent))
+	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), parquet.ConverterMarkerFileName)
 	require.NoError(t, bucket.Upload(context.Background(), markPath, markContentReader))
 
 	return &mark

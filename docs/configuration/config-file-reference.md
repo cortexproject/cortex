@@ -2130,10 +2130,6 @@ tsdb:
   # CLI flag: -blocks-storage.tsdb.out-of-order-cap-max
   [out_of_order_cap_max: <int> | default = 32]
 
-  # [EXPERIMENTAL] True to enable native histogram.
-  # CLI flag: -blocks-storage.tsdb.enable-native-histograms
-  [enable_native_histograms: <boolean> | default = false]
-
   # [EXPERIMENTAL] If enabled, ingesters will cache expanded postings when
   # querying blocks. Caching can be configured separately for the head and
   # compacted blocks.
@@ -3515,6 +3511,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # [Experimental] Enable limits per LabelSet. Supported limits per labelSet:
 # [max_series]
 [limits_per_label_set: <list of LimitsPerLabelSet> | default = []]
+
+# [EXPERIMENTAL] True to enable native histogram.
+# CLI flag: -blocks-storage.tsdb.enable-native-histograms
+[enable_native_histograms: <boolean> | default = false]
 
 # The maximum number of active metrics with metadata per user, per ingester. 0
 # to disable.

@@ -149,6 +149,7 @@ type Limits struct {
 	MaxGlobalSeriesPerUser   int                 `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
 	MaxGlobalSeriesPerMetric int                 `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
 	LimitsPerLabelSet        []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
+	EnableNativeHistograms   bool                `yaml:"enable_native_histograms" json:"enable_native_histograms"`
 
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
@@ -260,6 +261,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster before replication. 0 to disable.")
+	f.BoolVar(&l.EnableNativeHistograms, "blocks-storage.tsdb.enable-native-histograms", false, "[EXPERIMENTAL] True to enable native histogram.")
 	f.IntVar(&l.MaxExemplars, "ingester.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.")
 	f.Var(&l.OutOfOrderTimeWindow, "ingester.out-of-order-time-window", "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.")
 
@@ -662,6 +664,11 @@ func (o *Overrides) MaxLocalSeriesPerMetric(userID string) int {
 // MaxGlobalSeriesPerUser returns the maximum number of series a user is allowed to store across the cluster.
 func (o *Overrides) MaxGlobalSeriesPerUser(userID string) int {
 	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerUser
+}
+
+// EnableNativeHistograms returns whether the Ingester should accept NativeHistograms samples from this user.
+func (o *Overrides) EnableNativeHistograms(userID string) bool {
+	return o.GetOverridesForUser(userID).EnableNativeHistograms
 }
 
 // OutOfOrderTimeWindow returns the allowed time window for ingestion of out-of-order samples.

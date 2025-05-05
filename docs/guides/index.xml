@@ -824,7 +824,6 @@ through the following config parameters:&lt;/p>
 &lt;p>However, in a &lt;strong>multi-tenant&lt;/strong> cluster, this approach also introduces some &lt;strong>downsides&lt;/strong>:&lt;/p>
 &lt;ol>
 &lt;li>An outage affects all tenants&lt;/li>
-&lt;li>&lt;/li>
 &lt;li>A misbehaving tenant (eg. causing out-of-memory) could affect all other tenants.&lt;/li>
 &lt;/ol>
 &lt;p>The goal of &lt;strong>shuffle sharding&lt;/strong> is to provide an alternative sharding strategy to reduce the blast radius of an outage and better isolate tenants.&lt;/p>

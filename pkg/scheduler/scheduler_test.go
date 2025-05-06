@@ -267,7 +267,7 @@ func TestSchedulerShutdown_FrontendLoop(t *testing.T) {
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 
 	// Stop the scheduler. This will disable receiving new requests from frontends.
-	scheduler.StopAsync()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), scheduler))
 
 	// We can still send request to scheduler, but we get shutdown error back.
 	require.NoError(t, frontendLoop.Send(&schedulerpb.FrontendToScheduler{

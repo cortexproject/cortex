@@ -1,0 +1,85 @@
+name: ✏️ New blog post
+description: Create a blog post to share
+title: "[BLOG] <title>"
+labels: ['new blog, enhancement, untriaged']
+projects: ["cortexproject/Digital Marketing Content"]
+body:
+
+  - type: markdown
+    attributes:
+      value: "## Required information "
+  - type: markdown
+    attributes:
+      value: |
+        Provide a rough description, the title, and the expected category of the blog post.
+  - type: textarea
+    attributes:
+      label: Describe the blog post
+      description: A clear and concise description of what subject the blog post will cover.
+      placeholder: What will it cover?
+    validations:
+      required: true
+  
+  - type: input
+    attributes:
+      label: Expected Title
+      description: What might the title of this post be?
+      placeholder: Title
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Authors Name
+      placeholder: First Last
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Authors Email
+      placeholder: email@example.com or Github profile
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Target Draft Date
+      placeholder: mm/dd/yyyy
+    validations:
+      required: false 
+  - type: dropdown
+    attributes:
+      label: Blog Post Category
+      description: Select all that apply
+      multiple: true
+      options:
+        - technical
+        - community
+        - partners
+        - events
+        - releases
+      default: 0
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: "<br/> <br/> "
+
+  - type: markdown
+    attributes:
+      value: "## Additional context "
+  - type: markdown
+    attributes:
+      value: |
+        Provide any additional info or context
+  - type: input
+    attributes:
+      label: Target Publication Date
+      placeholder: mm/dd/yyyy
+    validations:
+      required: false 
+
+  - type: textarea
+    attributes:
+      label: Additional Info
+      description: Provide any additional context or content that you would like to include for this blog post.
+    validations:
+      required: false

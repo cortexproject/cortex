@@ -171,6 +171,18 @@ tenant_federation:
   # CLI flag: -tenant-federation.max-tenant
   [max_tenant: <int> | default = 0]
 
+  # [Experimental] If enabled, the `X-Scope-OrgID` header value can accept a
+  # regex and the matched tenantIDs are automatically involved. The regex
+  # matching rule follows the Prometheus, see the detail:
+  # https://prometheus.io/docs/prometheus/latest/querying/basics/#regular-expressions.
+  # CLI flag: -tenant-federation.regex-matcher-enabled
+  [regex_matcher_enabled: <boolean> | default = false]
+
+  # If the regex matcher is enabled, it specifies how frequently to scan users.
+  # The scanned users are used to calculate matched tenantIDs.
+  # CLI flag: -tenant-federation.user-sync-interval
+  [user_sync_interval: <duration> | default = 5m]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 

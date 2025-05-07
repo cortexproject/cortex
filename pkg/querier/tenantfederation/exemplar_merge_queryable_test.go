@@ -5,7 +5,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -14,7 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 var (
@@ -295,6 +299,112 @@ func Test_MergeExemplarQuerier_Select(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
 			exemplarQueryable := NewExemplarQueryable(&test.upstream, defaultMaxConcurrency, true, reg)
+			ctx := user.InjectOrgID(context.Background(), test.orgId)
+			q, err := exemplarQueryable.ExemplarQuerier(ctx)
+			require.NoError(t, err)
+
+			result, err := q.Select(mint, maxt, test.matcher...)
+			if test.expectedErr != nil {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(test.expectedMetrics), "cortex_querier_federated_tenants_per_exemplar_query"))
+				require.Equal(t, test.expectedResult, result)
+			}
+		})
+	}
+}
+
+func Test_MergeExemplarQuerier_Select_WhenUseRegexResolver(t *testing.T) {
+	// set a regex tenant resolver
+	reg := prometheus.NewRegistry()
+	userStat := ingester.UserStats{}
+	regexResolver := NewRegexResolver(reg, time.Second, log.NewNopLogger(), func(ctx context.Context) ([]ingester.UserIDStats, error) {
+		return []ingester.UserIDStats{
+			{UserID: "user-1", UserStats: userStat},
+			{UserID: "user-2", UserStats: userStat},
+		}, nil
+	})
+	tenant.WithDefaultResolver(regexResolver)
+
+	// wait update knownUsers
+	test.Poll(t, time.Second*10, true, func() interface{} {
+		return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0
+	})
+
+	tests := []struct {
+		name            string
+		upstream        mockExemplarQueryable
+		matcher         [][]*labels.Matcher
+		orgId           string
+		expectedResult  []exemplar.QueryResult
+		expectedErr     error
+		expectedMetrics string
+	}{
+		{
+			name: "result labels should contains __tenant_id__ even if one tenant is queried",
+			upstream: mockExemplarQueryable{exemplarQueriers: map[string]storage.ExemplarQuerier{
+				"user-1": &mockExemplarQuerier{res: getFixtureExemplarResult1()},
+				"user-2": &mockExemplarQuerier{res: getFixtureExemplarResult2()},
+			}},
+			matcher: [][]*labels.Matcher{{
+				labels.MustNewMatcher(labels.MatchEqual, "__name__", "exemplar_series"),
+			}},
+			orgId: ".+-1",
+			expectedResult: []exemplar.QueryResult{
+				{
+					SeriesLabels: labels.FromStrings("__name__", "exemplar_series", "__tenant_id__", "user-1"),
+					Exemplars: []exemplar.Exemplar{
+						{
+							Labels: labels.FromStrings("traceID", "123"),
+							Value:  123,
+							Ts:     1734942337900,
+						},
+					},
+				},
+			},
+			expectedMetrics: expectedSingleTenantsExemplarMetrics,
+		},
+		{
+			name: "two tenants results should be aggregated",
+			upstream: mockExemplarQueryable{exemplarQueriers: map[string]storage.ExemplarQuerier{
+				"user-1": &mockExemplarQuerier{res: getFixtureExemplarResult1()},
+				"user-2": &mockExemplarQuerier{res: getFixtureExemplarResult2()},
+			}},
+			matcher: [][]*labels.Matcher{{
+				labels.MustNewMatcher(labels.MatchEqual, "__name__", "exemplar_series"),
+			}},
+			orgId: "user-.+",
+			expectedResult: []exemplar.QueryResult{
+				{
+					SeriesLabels: labels.FromStrings("__name__", "exemplar_series", "__tenant_id__", "user-1"),
+					Exemplars: []exemplar.Exemplar{
+						{
+							Labels: labels.FromStrings("traceID", "123"),
+							Value:  123,
+							Ts:     1734942337900,
+						},
+					},
+				},
+				{
+					SeriesLabels: labels.FromStrings("__name__", "exemplar_series", "__tenant_id__", "user-2"),
+					Exemplars: []exemplar.Exemplar{
+						{
+							Labels: labels.FromStrings("traceID", "456"),
+							Value:  456,
+							Ts:     1734942338000,
+						},
+					},
+				},
+			},
+			expectedMetrics: expectedTwoTenantsExemplarMetrics,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			reg := prometheus.NewPedanticRegistry()
+			exemplarQueryable := NewExemplarQueryable(&test.upstream, defaultMaxConcurrency, false, reg)
 			ctx := user.InjectOrgID(context.Background(), test.orgId)
 			q, err := exemplarQueryable.ExemplarQuerier(ctx)
 			require.NoError(t, err)

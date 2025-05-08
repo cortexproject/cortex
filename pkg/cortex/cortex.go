@@ -368,7 +368,7 @@ func New(cfg Config) (*Cortex, error) {
 		os.Exit(0)
 	}
 
-	if cfg.NameValidationScheme != "Legacy" {
+	if cfg.NameValidationScheme != "legacy" {
 		model.NameValidationScheme = model.LegacyValidation
 	} else {
 		model.NameValidationScheme = model.UTF8Validation

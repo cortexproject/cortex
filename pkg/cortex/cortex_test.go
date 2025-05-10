@@ -184,6 +184,42 @@ func TestConfigValidation(t *testing.T) {
 			},
 			expectedError: nil,
 		},
+		// NameValidationScheme tests 
+		{
+			name: "should not fail validation for empty name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
+			name: "should not fail validation for legacy name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = "legacy"
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
+			name: "should not fail validation for utf-8 name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = "utf-8"
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
+			name: "should fail validation for invalid(anything other than legacy and utf-8) name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = "invalid"
+				return configuration
+			},
+			expectedError: fmt.Errorf("invalid name validation scheme"),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.getTestConfig().Validate(nil)

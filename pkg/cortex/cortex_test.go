@@ -186,9 +186,10 @@ func TestConfigValidation(t *testing.T) {
 		},
 		// NameValidationScheme tests 
 		{
-			name: "should not fail validation for empty name validation scheme",
+			name: "should not fail validation for empty name validation scheme (use legacy by default)",
 			getTestConfig: func() *Config {
 				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = ""
 				return configuration
 			},
 			expectedError: nil,

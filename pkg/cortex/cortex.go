@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	prom_storage "github.com/prometheus/prometheus/storage"
+	prom_config "github.com/prometheus/prometheus/config"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -32,7 +33,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -66,6 +66,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	
 )
 
 var (
@@ -148,7 +149,13 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
-	f.StringVar(&c.NameValidationScheme, "name.validation.scheme", "strict", "Used to set name validation scheme in prometheus common. legacy by default")
+	f.StringVar(&c.NameValidationScheme, "name.validation_scheme", prom_config.LegacyValidationConfig, "Validation scheme for metric and label names. Set to utf8 to allow UTF-8 characters. legacy by default")
+
+
+	// Setting name validation scheme as legacy if provided with an empty string
+	if (c.NameValidationScheme == "") {
+		c.NameValidationScheme = prom_config.LegacyValidationConfig
+	}
 
 	c.MonitoredResources = []string{}
 	f.Var(&c.MonitoredResources, "monitored.resources", "Comma-separated list of resources to monitor. "+
@@ -196,7 +203,7 @@ func (c *Config) Validate(log log.Logger) error {
 		return errInvalidHTTPPrefix
 	}
 
-	if c.NameValidationScheme != "" && c.NameValidationScheme != "legacy" && c.NameValidationScheme != "utf-8" {
+	if c.NameValidationScheme != "" && c.NameValidationScheme != prom_config.LegacyValidationConfig && c.NameValidationScheme != prom_config.UTF8ValidationConfig {
 		return fmt.Errorf("invalid name validation scheme")
 	}
 

@@ -39,6 +39,7 @@
 * [BUGFIX] Querier: Fix panic when marshaling QueryResultRequest. #6601
 * [BUGFIX] Ingester: Avoid resharding for query when restart readonly ingesters. #6642
 * [BUGFIX] Query Frontend: Fix query frontend per `user` metrics clean up. #6698
+* [FEATURE] Config: Name validation scheme for metric and label names can be set using the config file (`name_validation_scheme`) as well as a CLI flag (`-name.validation_scheme`)
 
 ## 1.19.0 2025-02-27
 

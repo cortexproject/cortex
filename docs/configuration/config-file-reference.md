@@ -68,9 +68,9 @@ Where default_value is the value to use if the environment variable is undefined
 # CLI flag: -http.prefix
 [http_prefix: <string> | default = "/api/prom"]
 
-# NameValidationScheme for prometheus
+# Validation scheme for metric and label names. Set to utf8 to allow UTF-8 characters.
 # Set to legacy as default
-# CLI flag: -name.validation.scheme
+# CLI flag: -name.validation_scheme
 [name_validation_scheme: <string> | default = "legacy"]
 
 # Comma-separated list of resources to monitor. Supported values are cpu and

@@ -15,9 +15,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	prom_config "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	prom_storage "github.com/prometheus/prometheus/storage"
-	prom_config "github.com/prometheus/prometheus/config"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -66,7 +66,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	
 )
 
 var (
@@ -151,9 +150,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 	f.StringVar(&c.NameValidationScheme, "name.validation_scheme", prom_config.LegacyValidationConfig, "Validation scheme for metric and label names. Set to utf8 to allow UTF-8 characters. legacy by default")
 
-
 	// Setting name validation scheme as legacy if provided with an empty string
-	if (c.NameValidationScheme == "") {
+	if c.NameValidationScheme == "" {
 		c.NameValidationScheme = prom_config.LegacyValidationConfig
 	}
 
@@ -376,10 +374,13 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	// Sets the NameValidationScheme in prometheus/common
-	if cfg.NameValidationScheme != "legacy" {
+	switch cfg.NameValidationScheme {
+	case "", prom_config.LegacyValidationConfig:
 		model.NameValidationScheme = model.LegacyValidation
-	} else {
+	case prom_config.UTF8ValidationConfig:
 		model.NameValidationScheme = model.UTF8Validation
+	default:
+		fmt.Errorf("invalid name validation scheme")
 	}
 
 	// Swap out the default resolver to support multiple tenant IDs separated by a '|'

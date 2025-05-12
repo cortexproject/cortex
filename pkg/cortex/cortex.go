@@ -150,10 +150,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 	f.StringVar(&c.NameValidationScheme, "name.validation_scheme", prom_config.LegacyValidationConfig, "Validation scheme for metric and label names. Set to utf8 to allow UTF-8 characters. legacy by default")
 
-	// Setting name validation scheme as legacy if provided with an empty string
-	if c.NameValidationScheme == "" {
-		c.NameValidationScheme = prom_config.LegacyValidationConfig
-	}
 
 	c.MonitoredResources = []string{}
 	f.Var(&c.MonitoredResources, "monitored.resources", "Comma-separated list of resources to monitor. "+
@@ -199,10 +195,6 @@ func (c *Config) Validate(log log.Logger) error {
 
 	if c.HTTPPrefix != "" && !strings.HasPrefix(c.HTTPPrefix, "/") {
 		return errInvalidHTTPPrefix
-	}
-
-	if c.NameValidationScheme != "" && c.NameValidationScheme != prom_config.LegacyValidationConfig && c.NameValidationScheme != prom_config.UTF8ValidationConfig {
-		return fmt.Errorf("invalid name validation scheme")
 	}
 
 	if err := c.API.Validate(); err != nil {

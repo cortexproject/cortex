@@ -372,7 +372,7 @@ func New(cfg Config) (*Cortex, error) {
 	case prom_config.UTF8ValidationConfig:
 		model.NameValidationScheme = model.UTF8Validation
 	default:
-		fmt.Errorf("invalid name validation scheme")
+		return nil, fmt.Errorf("invalid name validation scheme")
 	}
 
 	// Swap out the default resolver to support multiple tenant IDs separated by a '|'

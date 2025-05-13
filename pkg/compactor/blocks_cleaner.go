@@ -662,18 +662,17 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		}
 		level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
+	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
+	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
+	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(float64(totalBlocksBlocksMarkedForNoCompaction))
+	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(len(partials)))
+	c.tenantBucketIndexLastUpdate.WithLabelValues(userID).SetToCurrentTime()
 
 	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 		begin = time.Now()
 		c.cleanPartitionedGroupInfo(ctx, userBucket, userLogger, userID)
 		level.Info(userLogger).Log("msg", "finish cleaning partitioned group info files", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
-
-	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
-	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
-	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(float64(totalBlocksBlocksMarkedForNoCompaction))
-	c.tenantBucketIndexLastUpdate.WithLabelValues(userID).SetToCurrentTime()
-	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(len(partials)))
 	return nil
 }
 

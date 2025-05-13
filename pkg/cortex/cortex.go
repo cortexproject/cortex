@@ -150,7 +150,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 	f.StringVar(&c.NameValidationScheme, "name.validation_scheme", prom_config.LegacyValidationConfig, "Validation scheme for metric and label names. Set to utf8 to allow UTF-8 characters. legacy by default")
 
-
 	c.MonitoredResources = []string{}
 	f.Var(&c.MonitoredResources, "monitored.resources", "Comma-separated list of resources to monitor. "+
 		"Supported values are cpu and heap, which tracks metrics from github.com/prometheus/procfs and runtime/metrics "+

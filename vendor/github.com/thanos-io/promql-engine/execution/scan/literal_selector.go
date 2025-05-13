@@ -9,12 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 // numberLiteralSelector returns []model.StepVector with same sample value across time range.

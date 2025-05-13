@@ -88,7 +88,7 @@ func TestOTLP(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"__name__", "foo"}, labelNames)
 
-	metadataResult, err := c.Metadata("series_1", "")
+	metadataResult, err := c.Metadata("series_1_total", "")
 	require.NoError(t, err)
 	require.Equal(t, 1, len(metadataResult))
 

@@ -11,7 +11,7 @@
 
 # Cortex
 
-Cortex is a horizontally scalable, highly available, multi-tenant, long term storage for [Prometheus](https://prometheus.io).
+Cortex is a horizontally scalable, highly available, multi-tenant, long term storage solution for [Prometheus](https://prometheus.io) and [OpenTelemetry Metrics](https://opentelemetry.io/docs/specs/otel/metrics/)
 
 ## Features
 
@@ -20,20 +20,14 @@ Cortex is a horizontally scalable, highly available, multi-tenant, long term sto
 - **Multi-tenant:** Cortex can isolate data and queries from multiple different independent Prometheus sources in a single cluster.
 - **Long term storage:** Cortex supports S3, GCS, Swift and Microsoft Azure for long term storage of metric data.
 
-## Getting Started
-
-To get started with Cortex, follow these steps:
-
-1. [Installation](https://cortexmetrics.io/docs/getting-started/)
-2. [Basic Setup](https://cortexmetrics.io/docs/configuration/)
-3. [Example Usage](https://cortexmetrics.io/docs/guides/)
-
 ## Documentation
 
+- [Getting Started](https://cortexmetrics.io/docs/getting-started/)
 - [Architecture Overview](https://cortexmetrics.io/docs/architecture/)
-- [Configuration Guide](https://cortexmetrics.io/docs/configuration/)
-- [Security Guide](https://cortexmetrics.io/docs/guides/security/)
-- [Contributor Guidelines](https://cortexmetrics.io/docs/contributing/)
+- [Configuration](https://cortexmetrics.io/docs/configuration/)
+- [Guides](https://cortexmetrics.io/docs/guides/)
+- [Security](https://cortexmetrics.io/docs/guides/security/)
+- [Contributing](https://cortexmetrics.io/docs/contributing/)
 
 ## Community and Support
 
@@ -72,6 +66,8 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 
 ### Talks
 
+- Apr 2025 KubeCon talk "Cortex: Insights, Updates and Roadmap" ([video](https://youtu.be/3aUg2qxfoZU), [slides](https://static.sched.com/hosted_files/kccnceu2025/6c/Cortex%20Talk%20KubeCon%20EU%202025.pdf))
+- Apr 2025 KubeCon talk "Taming 50 Billion Time Series: Operating Global-Scale Prometheus Deployments on Kubernetes" ([video](https://youtu.be/OqLpKJwKZlk), [slides](https://static.sched.com/hosted_files/kccnceu2025/b2/kubecon%20-%2050b%20-%20final.pdf))
 - Nov 2024 KubeCon talk "Cortex Intro: Multi-Tenant Scalable Prometheus" ([video](https://youtu.be/OGAEWCoM6Tw), [slides](https://static.sched.com/hosted_files/kccncna2024/0f/Cortex%20Talk%20KubeCon%20US%202024.pdf))
 - Mar 2024 KubeCon talk "Cortex Intro: Multi-Tenant Scalable Prometheus" ([video](https://youtu.be/by538PPSPQ0), [slides](https://static.sched.com/hosted_files/kccnceu2024/a1/Cortex%20Talk%20KubeConEU24.pptx.pdf))
 - Apr 2023 KubeCon talk "How to Run a Rock Solid Multi-Tenant Prometheus" ([video](https://youtu.be/Pl5hEoRPLJU), [slides](https://static.sched.com/hosted_files/kccnceu2023/49/Kubecon2023.pptx.pdf))
@@ -158,8 +154,6 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 [promcon-2016-slides]: http://www.slideshare.net/weaveworks/project-frankenstein-a-multitenant-horizontally-scalable-prometheus-as-a-service
 
 ## Hosted Cortex
-
-There are several commercial services where you can use Cortex on-demand:
 
 ### Amazon Managed Service for Prometheus (AMP)
 

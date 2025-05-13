@@ -123,6 +123,7 @@ type Distributor struct {
 	ingesterAppendFailures           *prometheus.CounterVec
 	ingesterQueries                  *prometheus.CounterVec
 	ingesterQueryFailures            *prometheus.CounterVec
+	ingesterPartialDataQueries       prometheus.Counter
 	replicationFactor                prometheus.Gauge
 	latestSeenSampleTimestampPerUser *prometheus.GaugeVec
 
@@ -377,6 +378,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name:      "distributor_ingester_query_failures_total",
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
+		ingesterPartialDataQueries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "distributor_ingester_partial_data_queries_total",
+			Help:      "The total number of queries sent to ingesters that may have returned partial data.",
+		}),
 		replicationFactor: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "distributor_replication_factor",
@@ -732,12 +738,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			if errors.Is(err, ha.ReplicasNotMatchError{}) {
 				// These samples have been deduped.
 				d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numFloatSamples + numHistogramSamples))
-				return nil, httpgrpc.Errorf(http.StatusAccepted, err.Error())
+				return nil, httpgrpc.Errorf(http.StatusAccepted, "%s", err.Error())
 			}
 
 			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
 				d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numFloatSamples + numHistogramSamples))
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 
 			return nil, err
@@ -1055,7 +1061,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		if validationErr != nil && firstPartialErr == nil {
 			// The series labels may be retained by validationErr but that's not a problem for this
 			// use case because we format it calling Error() and then we discard it.
-			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
+			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErr.Error())
 		}
 
 		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
@@ -1372,8 +1378,8 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time, hint 
 }
 
 // MetricsForLabelMatchers gets the metrics that match said matchers
-func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
-	return d.metricsForLabelMatchersCommon(ctx, from, through, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
+func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	return d.metricsForLabelMatchersCommon(ctx, from, through, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]labels.Labels, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
 		_, err := d.ForReplicationSet(ctx, rs, false, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			resp, err := client.MetricsForLabelMatchers(ctx, req)
 			if err != nil {
@@ -1385,8 +1391,8 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 			s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
 			for _, m := range resp.Metric {
 				s = append(s, m.Labels)
-				m := cortexpb.FromLabelAdaptersToMetric(m.Labels)
-				fingerprint := m.Fingerprint()
+				m := cortexpb.FromLabelAdaptersToLabels(m.Labels)
+				fingerprint := cortexpb.LabelsToFingerprint(m)
 				mutex.Lock()
 				(*metrics)[fingerprint] = m
 				mutex.Unlock()
@@ -1401,8 +1407,8 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 	}, matchers...)
 }
 
-func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
-	return d.metricsForLabelMatchersCommon(ctx, from, through, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
+func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	return d.metricsForLabelMatchersCommon(ctx, from, through, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]labels.Labels, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
 		_, err := d.ForReplicationSet(ctx, rs, false, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			stream, err := client.MetricsForLabelMatchersStream(ctx, req)
 			if err != nil {
@@ -1422,9 +1428,9 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 
 				s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
 				for _, metric := range resp.Metric {
-					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)
+					m := cortexpb.FromLabelAdaptersToLabels(metric.Labels)
 					s = append(s, metric.Labels)
-					fingerprint := m.Fingerprint()
+					fingerprint := cortexpb.LabelsToFingerprint(m)
 					mutex.Lock()
 					(*metrics)[fingerprint] = m
 					mutex.Unlock()
@@ -1441,7 +1447,7 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 	}, matchers...)
 }
 
-func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, through model.Time, hints *storage.SelectHints, f func(context.Context, ring.ReplicationSet, *ingester_client.MetricsForLabelMatchersRequest, *map[model.Fingerprint]model.Metric, *sync.Mutex, *limiter.QueryLimiter) error, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, through model.Time, hints *storage.SelectHints, f func(context.Context, ring.ReplicationSet, *ingester_client.MetricsForLabelMatchersRequest, *map[model.Fingerprint]labels.Labels, *sync.Mutex, *limiter.QueryLimiter) error, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
 	if err != nil {
@@ -1453,7 +1459,7 @@ func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, t
 		return nil, err
 	}
 	mutex := sync.Mutex{}
-	metrics := map[model.Fingerprint]model.Metric{}
+	metrics := map[model.Fingerprint]labels.Labels{}
 
 	err = f(ctx, replicationSet, req, &metrics, &mutex, queryLimiter)
 
@@ -1462,7 +1468,7 @@ func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, t
 	}
 
 	mutex.Lock()
-	result := make([]model.Metric, 0, len(metrics))
+	result := make([]labels.Labels, 0, len(metrics))
 	for _, m := range metrics {
 		result = append(result, m)
 	}
@@ -1471,13 +1477,12 @@ func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, t
 }
 
 // MetricsMetadata returns all metric metadata of a user.
-func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+func (d *Distributor) MetricsMetadata(ctx context.Context, req *ingester_client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	req := &ingester_client.MetricsMetadataRequest{}
 	// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
 	resps, err := d.ForReplicationSet(ctx, replicationSet, d.cfg.ZoneResultsQuorumMetadata, false, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 		return client.MetricsMetadata(ctx, req)
@@ -1499,10 +1504,10 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 			dedupTracker[*m] = struct{}{}
 
 			result = append(result, scrape.MetricMetadata{
-				Metric: m.MetricFamilyName,
-				Help:   m.Help,
-				Unit:   m.Unit,
-				Type:   cortexpb.MetricMetadataMetricTypeToMetricType(m.GetType()),
+				MetricFamily: m.MetricFamilyName,
+				Help:         m.Help,
+				Unit:         m.Unit,
+				Type:         cortexpb.MetricMetadataMetricTypeToMetricType(m.GetType()),
 			})
 		}
 	}

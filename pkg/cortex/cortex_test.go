@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -165,11 +166,29 @@ func TestConfigValidation(t *testing.T) {
 			},
 			expectedError: errInvalidHTTPPrefix,
 		},
+		{
+			name: "should fail validation for invalid resource to monitor",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.MonitoredResources = []string{"wrong"}
+				return configuration
+			},
+			expectedError: fmt.Errorf("unsupported resource type to monitor: %s", "wrong"),
+		},
+		{
+			name: "should not fail validation for valid resources to monitor",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.MonitoredResources = []string{"cpu", "heap"}
+				return configuration
+			},
+			expectedError: nil,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.getTestConfig().Validate(nil)
 			if tc.expectedError != nil {
-				require.Equal(t, tc.expectedError, err)
+				require.ErrorContains(t, err, tc.expectedError.Error())
 			} else {
 				require.NoError(t, err)
 			}

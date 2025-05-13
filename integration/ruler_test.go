@@ -311,6 +311,16 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 	expectedNames := make([]string, numRulesGroups)
 	alertCount := 0
 	evalInterval, _ := model.ParseDuration("1s")
+	groupLabels := map[string]string{
+		"group_label_1":   "val1",
+		"group_label_2":   "val2",
+		"duplicate_label": "group_val",
+	}
+	ruleLabels := map[string]string{
+		"rule_label_1":    "val1",
+		"rule_label_2":    "val2",
+		"duplicate_label": "rule_val",
+	}
 	for i := 0; i < numRulesGroups; i++ {
 		num := random.Intn(100)
 		var ruleNode yaml.Node
@@ -319,7 +329,6 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 		ruleNode.SetString(fmt.Sprintf("rule_%d", i))
 		exprNode.SetString(strconv.Itoa(i))
 		ruleName := fmt.Sprintf("test_%d", i)
-
 		expectedNames[i] = ruleName
 		if num%2 == 0 {
 			alertCount++
@@ -327,9 +336,11 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				Name:     ruleName,
 				Interval: evalInterval,
 				Rules: []rulefmt.RuleNode{{
-					Alert: ruleNode,
-					Expr:  exprNode,
+					Alert:  ruleNode,
+					Expr:   exprNode,
+					Labels: ruleLabels,
 				}},
+				Labels: groupLabels,
 			}
 		} else {
 			ruleGroups[i] = rulefmt.RuleGroup{
@@ -337,8 +348,9 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				Interval: evalInterval,
 				Rules: []rulefmt.RuleNode{{
 					Record: ruleNode,
-					Expr:   exprNode,
+					Labels: ruleLabels,
 				}},
+				Labels: groupLabels,
 			}
 		}
 	}
@@ -485,6 +497,32 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 					}
 				}
 				assert.Greater(t, alertsCount, 0, "Expected greater than 0 alerts but got %d", alertsCount)
+			},
+		},
+		"Filter Rules and verify Group Labels exist": {
+			filter: e2ecortex.RuleFilter{
+				RuleType: "alert",
+			},
+			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
+				for _, ruleGroup := range ruleGroups {
+					rule := ruleGroup.Rules[0].(map[string]interface{})
+					ruleType := rule["type"]
+					assert.Equal(t, "alerting", ruleType, "Expected 'alerting' rule type but got %s", ruleType)
+					responseJson, err := json.Marshal(rule)
+					assert.NoError(t, err)
+					ar := &alertingRule{}
+					assert.NoError(t, json.Unmarshal(responseJson, ar))
+					if !ar.LastEvaluation.IsZero() {
+						// Labels will be merged only if groups are loaded to Prometheus rule manager
+						assert.Equal(t, 5, len(ar.Labels))
+					}
+					for _, label := range ar.Labels {
+						if label.Name == "duplicate_label" {
+							// rule label should override group label
+							assert.Equal(t, ruleLabels["duplicate_label"], label.Value)
+						}
+					}
+				}
 			},
 		},
 	}

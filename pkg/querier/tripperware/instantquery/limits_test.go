@@ -37,7 +37,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 		"even though failed to parse expression, should return no error since request will pass to next middleware": {
 			query:          `up[`,
 			maxQueryLength: thirtyDays,
-			expectedErr:    httpgrpc.Errorf(http.StatusBadRequest, parserErr.Error()).Error(),
+			expectedErr:    httpgrpc.Errorf(http.StatusBadRequest, "%s", parserErr.Error()).Error(),
 		},
 		"should succeed on a query not exceeding time range": {
 			query:          `up`,

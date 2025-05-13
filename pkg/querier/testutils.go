@@ -49,16 +49,16 @@ func (m *MockDistributor) LabelNamesStream(ctx context.Context, from model.Time,
 	args := m.Called(ctx, from, to, hints, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, hints *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (m *MockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, hints *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	args := m.Called(ctx, from, to, hints, matchers)
-	return args.Get(0).([]model.Metric), args.Error(1)
+	return args.Get(0).([]labels.Labels), args.Error(1)
 }
-func (m *MockDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, to model.Time, hints *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]model.Metric, error) {
+func (m *MockDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, to model.Time, hints *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	args := m.Called(ctx, from, to, hints, matchers)
-	return args.Get(0).([]model.Metric), args.Error(1)
+	return args.Get(0).([]labels.Labels), args.Error(1)
 }
 
-func (m *MockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+func (m *MockDistributor) MetricsMetadata(ctx context.Context, request *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error) {
 	args := m.Called(ctx)
 	return args.Get(0).([]scrape.MetricMetadata), args.Error(1)
 }

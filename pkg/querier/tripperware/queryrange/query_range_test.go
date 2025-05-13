@@ -269,7 +269,7 @@ func TestResponse(t *testing.T) {
 			t.Parallel()
 			protobuf, err := proto.Marshal(tc.promBody)
 			require.NoError(t, err)
-			ctx, cancelCtx := context.WithCancel(context.Background())
+			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))
 
 			var response *http.Response
 			if tc.isProtobuf {
@@ -420,7 +420,8 @@ func TestResponseWithStats(t *testing.T) {
 				tc.promBody.Headers = respHeadersJson
 			}
 
-			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
+			ctx := user.InjectOrgID(context.Background(), "1")
+			resp, err := PrometheusCodec.DecodeResponse(ctx, response, nil)
 			require.NoError(t, err)
 			assert.Equal(t, tc.promBody, resp)
 
@@ -1183,7 +1184,7 @@ func TestMergeAPIResponses(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ctx, cancelCtx := context.WithCancel(context.Background())
+			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))
 			if tc.cancelCtx {
 				cancelCtx()
 			}
@@ -1286,7 +1287,9 @@ func TestCompressedResponse(t *testing.T) {
 				Header:     h,
 				Body:       io.NopCloser(responseBody),
 			}
-			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
+
+			ctx := user.InjectOrgID(context.Background(), "1")
+			resp, err := PrometheusCodec.DecodeResponse(ctx, response, nil)
 			require.Equal(t, tc.err, err)
 
 			if err == nil {

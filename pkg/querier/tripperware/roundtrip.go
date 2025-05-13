@@ -34,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -179,7 +180,7 @@ func NewQueryTripperware(
 				tenantIDs, err := tenant.TenantIDs(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
-					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 				}
 				now := time.Now()
 				userStr := tenant.JoinTenantIDs(tenantIDs)
@@ -193,6 +194,16 @@ func NewQueryTripperware(
 					if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, maxSubQuerySteps); err != nil {
 						return nil, err
 					}
+				}
+
+				var maxResponseSize int64 = 0
+				if limits != nil {
+					maxResponseSize = limits.MaxQueryResponseSize(userStr)
+				}
+				if maxResponseSize > 0 && (isQuery || isQueryRange) {
+					responseSizeLimiter := limiter.NewResponseSizeLimiter(maxResponseSize)
+					context := limiter.AddResponseSizeLimiterToContext(r.Context(), responseSizeLimiter)
+					r = r.WithContext(context)
 				}
 
 				if err := rejectQueryOrSetPriority(r, now, lookbackDelta, limits, userStr, rejectedQueriesPerTenant); err != nil {
@@ -255,7 +266,7 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	response, err := q.next.RoundTrip(request)

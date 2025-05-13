@@ -16,7 +16,15 @@ defaultContentLanguageInSubdir = false
 # Useful when translating.
 enableMissingTranslationPlaceholders = true
 
-disableKinds = ["taxonomy", "taxonomyTerm"]
+disableKinds = []
+[taxonomies]
+tag = "tags"
+category = "categories"
+project = "projects"
+[params.taxonomy]
+taxonomyCloud = ["projects", "tags"] # set taxonomyCloud = [] to hide taxonomy clouds
+taxonomyCloudTitle = ["Our Projects", "Tag Cloud"] # if used, must have same length as taxonomyCloud
+taxonomyPageHeader = ["tags", "categories"] # set taxonomyPageHeader = [] to hide taxonomies on the page headers
 
 # Highlighting config
 pygmentsCodeFences = true
@@ -53,7 +61,7 @@ id = "G-SRR0DSREGX"
 [languages]
 [languages.en]
 title = "Cortex"
-description = "A horizontally scalable, highly available, multi-tenant, long term storage for Prometheus."
+description = "The horizontally scalable, highly available, multi-tenant, long term storage solution for Prometheus and OpenTelemetry Metrics."
 languageName ="English"
 # Weight used for sorting.
 weight = 1

@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/query"
+
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 var (
@@ -244,6 +244,12 @@ func replacePrometheusNodes(plan parser.Expr) Node {
 	case *parser.NumberLiteral:
 		return &NumberLiteral{Val: t.Val}
 	case *parser.StepInvariantExpr:
+		// We expect functions to be pushed down into matrix selectors. This means that
+		// parents of matrixselector nodes are always expected to be functions, not step invariant
+		// operators.
+		if m, ok := t.Expr.(*parser.MatrixSelector); ok {
+			return replacePrometheusNodes(m)
+		}
 		return &StepInvariantExpr{Expr: replacePrometheusNodes(t.Expr)}
 	case *parser.MatrixSelector:
 		return &MatrixSelector{

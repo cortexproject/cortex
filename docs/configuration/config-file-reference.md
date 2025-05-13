@@ -68,6 +68,12 @@ Where default_value is the value to use if the environment variable is undefined
 # CLI flag: -http.prefix
 [http_prefix: <string> | default = "/api/prom"]
 
+# Comma-separated list of resources to monitor. Supported values are cpu and
+# heap, which tracks metrics from github.com/prometheus/procfs and
+# runtime/metrics that are close estimates. Empty string to disable.
+# CLI flag: -monitored.resources
+[monitored_resources: <string> | default = ""]
+
 api:
   # Use GZIP compression for API responses. Some endpoints serve large YAML or
   # JSON blobs which can benefit from compression.
@@ -388,6 +394,11 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # File path where tokens are stored. If empty, tokens are not stored at
+  # shutdown and restored at startup.
+  # CLI flag: -alertmanager.sharding-ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
   # The sleep seconds when alertmanager is shutting down. Need to be close to or
   # larger than KV Store information propagation delay
   # CLI flag: -alertmanager.sharding-ring.final-sleep
@@ -396,6 +407,10 @@ sharding_ring:
   # Timeout for waiting on alertmanager to become desired state in the ring.
   # CLI flag: -alertmanager.sharding-ring.wait-instance-state-timeout
   [wait_instance_state_timeout: <duration> | default = 10m]
+
+  # Keep instance in the ring on shut down.
+  # CLI flag: -alertmanager.sharding-ring.keep-instance-in-the-ring-on-shutdown
+  [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
 
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
@@ -2115,10 +2130,6 @@ tsdb:
   # CLI flag: -blocks-storage.tsdb.out-of-order-cap-max
   [out_of_order_cap_max: <int> | default = 32]
 
-  # [EXPERIMENTAL] True to enable native histogram.
-  # CLI flag: -blocks-storage.tsdb.enable-native-histograms
-  [enable_native_histograms: <boolean> | default = false]
-
   # [EXPERIMENTAL] If enabled, ingesters will cache expanded postings when
   # querying blocks. Caching can be configured separately for the head and
   # compacted blocks.
@@ -3193,6 +3204,20 @@ lifecycler:
 [upload_compacted_blocks_enabled: <boolean> | default = true]
 
 instance_limits:
+  # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+  # rejecting new query request (across all tenants) in percentage, between 0
+  # and 1. monitored_resources config must include the resource type. 0 to
+  # disable.
+  # CLI flag: -ingester.instance-limits.cpu-utilization
+  [cpu_utilization: <float> | default = 0]
+
+  # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+  # rejecting new query request (across all tenants) in percentage, between 0
+  # and 1. monitored_resources config must include the resource type. 0 to
+  # disable.
+  # CLI flag: -ingester.instance-limits.heap-utilization
+  [heap_utilization: <float> | default = 0]
+
   # Max ingestion rate (samples/sec) that ingester will accept. This limit is
   # per-ingester, not per-tenant. Additional push requests will be rejected.
   # Current ingestion rate is computed as exponentially weighted moving average,
@@ -3492,6 +3517,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # [max_series]
 [limits_per_label_set: <list of LimitsPerLabelSet> | default = []]
 
+# [EXPERIMENTAL] True to enable native histogram.
+# CLI flag: -blocks-storage.tsdb.enable-native-histograms
+[enable_native_histograms: <boolean> | default = false]
+
 # The maximum number of active metrics with metadata per user, per ingester. 0
 # to disable.
 # CLI flag: -ingester.max-metadata-per-user
@@ -3564,6 +3593,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 14]
 
+# The maximum total uncompressed query response size. If the query was sharded
+# the limit is applied to the total response size of all shards. This limit is
+# enforced in query-frontend for `query` and `query_range` APIs. 0 to disable.
+# CLI flag: -frontend.max-query-response-size
+[max_query_response_size: <int> | default = 0]
+
 # Most recent allowed cacheable result per-tenant, to prevent caching very
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
@@ -3625,9 +3660,10 @@ query_rejection:
 
 # The default tenant's shard size when the shuffle-sharding strategy is used by
 # ruler. When this setting is specified in the per-tenant overrides, a value of
-# 0 disables shuffle sharding for the tenant.
+# 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size
+# will be a percentage of the total rulers.
 # CLI flag: -ruler.tenant-shard-size
-[ruler_tenant_shard_size: <int> | default = 0]
+[ruler_tenant_shard_size: <float> | default = 0]
 
 # Maximum number of rules per rule group per-tenant. 0 to disable.
 # CLI flag: -ruler.max-rules-per-rule-group
@@ -4322,6 +4358,11 @@ dynamic_query_splits:
   # into account additional duration fetched by matrix selectors and subqueries.
   # CLI flag: -querier.max-fetched-data-duration-per-query
   [max_fetched_data_duration_per_query: <duration> | default = 0s]
+
+  # [EXPERIMENTAL] Dynamically adjust vertical shard size to maximize the total
+  # combined number of query shards and splits.
+  # CLI flag: -querier.enable-dynamic-vertical-sharding
+  [enable_dynamic_vertical_sharding: <boolean> | default = false]
 
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step
@@ -5845,6 +5886,21 @@ sharding_ring:
 # tenant(s) for processing will ignore them instead.
 # CLI flag: -store-gateway.disabled-tenants
 [disabled_tenants: <string> | default = ""]
+
+instance_limits:
+  # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+  # rejecting new query request (across all tenants) in percentage, between 0
+  # and 1. monitored_resources config must include the resource type. 0 to
+  # disable.
+  # CLI flag: -store-gateway.instance-limits.cpu-utilization
+  [cpu_utilization: <float> | default = 0]
+
+  # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+  # rejecting new query request (across all tenants) in percentage, between 0
+  # and 1. monitored_resources config must include the resource type. 0 to
+  # disable.
+  # CLI flag: -store-gateway.instance-limits.heap-utilization
+  [heap_utilization: <float> | default = 0]
 
 hedged_request:
   # If true, hedged requests are applied to object store calls. It can help with

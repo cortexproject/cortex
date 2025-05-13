@@ -3,12 +3,12 @@ package tsdb
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )

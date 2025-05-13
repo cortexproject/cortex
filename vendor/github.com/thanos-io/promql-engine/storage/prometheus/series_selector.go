@@ -7,10 +7,10 @@ import (
 	"context"
 	"sync"
 
+	"github.com/thanos-io/promql-engine/execution/warnings"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-
-	"github.com/thanos-io/promql-engine/execution/warnings"
 )
 
 type SeriesSelector interface {

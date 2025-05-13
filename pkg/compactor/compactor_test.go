@@ -36,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_storage_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
@@ -1429,6 +1430,14 @@ func createBlockVisitMarker(t *testing.T, bkt objstore.Bucket, userID string, bl
 	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
 }
 
+func createParquetMarker(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID) {
+	content := mockParquetMarker()
+	blockPath := path.Join(userID, blockID.String())
+	markPath := path.Join(blockPath, parquet.ConverterMarkerFileName)
+
+	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
+}
+
 func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuffer, userID string) (*Compactor, *concurrency.SyncBuffer, error) {
 	var compactor *Compactor
 	var log *concurrency.SyncBuffer
@@ -1720,6 +1729,19 @@ func mockBlockVisitMarker() string {
 	}
 
 	content, err := json.Marshal(blockVisitMarker)
+	if err != nil {
+		panic("failed to marshal mocked block visit marker")
+	}
+
+	return string(content)
+}
+
+func mockParquetMarker() string {
+	parquetMarker := parquet.ConverterMark{
+		Version: 1,
+	}
+
+	content, err := json.Marshal(parquetMarker)
 	if err != nil {
 		panic("failed to marshal mocked block visit marker")
 	}

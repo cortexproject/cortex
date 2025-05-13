@@ -21,6 +21,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
+
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -34,9 +36,9 @@ var (
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: false,
 	}.Froze()
-	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
-	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
+	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "%s", "end timestamp must not be before start time")
+	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "%s", "zero or negative query resolution step widths are not accepted. Try a positive integer")
+	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "%s", "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 
 	// Name of the cache control header.
 	cacheControlHeader = "Cache-Control"
@@ -198,18 +200,20 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		return nil, err
 	}
 
-	buf, err := tripperware.BodyBuffer(r, log)
+	responseSizeLimiter := limiter.ResponseSizeLimiterFromContextWithFallback(ctx)
+	body, err := tripperware.BodyBytes(r, responseSizeLimiter, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
+
 	if r.StatusCode/100 != 2 {
-		return nil, httpgrpc.Errorf(r.StatusCode, string(buf))
+		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(body))
 	}
-	log.LogFields(otlog.Int("bytes", len(buf)))
+	log.LogFields(otlog.Int("bytes", len(body)))
 
 	var resp tripperware.PrometheusResponse
-	err = tripperware.UnmarshalResponse(r, buf, &resp)
+	err = tripperware.UnmarshalResponse(r, body, &resp)
 
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)

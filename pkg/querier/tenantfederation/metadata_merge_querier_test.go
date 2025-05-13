@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
 )
 
@@ -51,7 +52,7 @@ type mockMetadataQuerier struct {
 	tenantIdToMetadata map[string][]scrape.MetricMetadata
 }
 
-func (m *mockMetadataQuerier) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+func (m *mockMetadataQuerier) MetricsMetadata(ctx context.Context, _ *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error) {
 	// Due to lint check for `ensure the query path is supporting multiple tenants`
 	ids, err := tenant.TenantIDs(ctx)
 	if err != nil {
@@ -81,12 +82,12 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 			name: "single tenant",
 			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
 				"user-1": {
-					{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+					{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
 				},
 			},
 			orgId: "user-1",
 			expectedResults: []scrape.MetricMetadata{
-				{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+				{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
 			},
 			expectedMetrics: expectedSingleTenantsMetadataMetrics,
 		},
@@ -94,18 +95,18 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 			name: "should be merged two tenants results",
 			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
 				"user-1": {
-					{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+					{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
 				},
 				"user-2": {
-					{Metric: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
-					{Metric: "metadata3", Help: "metadata3 help", Type: "gauge", Unit: ""},
+					{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+					{MetricFamily: "metadata3", Help: "metadata3 help", Type: "gauge", Unit: ""},
 				},
 			},
 			orgId: "user-1|user-2",
 			expectedResults: []scrape.MetricMetadata{
-				{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
-				{Metric: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
-				{Metric: "metadata3", Help: "metadata3 help", Type: "gauge", Unit: ""},
+				{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+				{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+				{MetricFamily: "metadata3", Help: "metadata3 help", Type: "gauge", Unit: ""},
 			},
 			expectedMetrics: expectedTwoTenantsMetadataMetrics,
 		},
@@ -113,17 +114,17 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 			name: "should be deduplicated when the same metadata exist",
 			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
 				"user-1": {
-					{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
-					{Metric: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+					{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+					{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
 				},
 				"user-2": {
-					{Metric: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+					{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
 				},
 			},
 			orgId: "user-1|user-2",
 			expectedResults: []scrape.MetricMetadata{
-				{Metric: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
-				{Metric: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+				{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+				{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
 			},
 			expectedMetrics: expectedTwoTenantsMetadataMetrics,
 		},
@@ -137,7 +138,7 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 			}
 
 			mergeMetadataQuerier := NewMetadataQuerier(&upstream, defaultMaxConcurrency, reg)
-			metadata, err := mergeMetadataQuerier.MetricsMetadata(user.InjectOrgID(context.Background(), test.orgId))
+			metadata, err := mergeMetadataQuerier.MetricsMetadata(user.InjectOrgID(context.Background(), test.orgId), &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
 			require.NoError(t, err)
 			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(test.expectedMetrics), "cortex_querier_federated_tenants_per_metadata_query"))
 			require.Equal(t, test.expectedResults, metadata)

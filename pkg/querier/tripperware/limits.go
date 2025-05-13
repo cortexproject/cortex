@@ -19,6 +19,9 @@ type Limits interface {
 	// frontend will process in parallel.
 	MaxQueryParallelism(string) int
 
+	// MaxQueryResponseSize returns the max total response size of a query in bytes.
+	MaxQueryResponseSize(string) int64
+
 	// MaxCacheFreshness returns the period after which results are cacheable,
 	// to prevent caching of very recent results.
 	MaxCacheFreshness(string) time.Duration

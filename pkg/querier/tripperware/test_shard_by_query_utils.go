@@ -473,12 +473,13 @@ http_requests_total`,
 }
 
 type mockLimits struct {
-	maxQueryLookback  time.Duration
-	maxQueryLength    time.Duration
-	maxCacheFreshness time.Duration
-	shardSize         int
-	queryPriority     validation.QueryPriority
-	queryRejection    validation.QueryRejection
+	maxQueryLookback     time.Duration
+	maxQueryLength       time.Duration
+	maxCacheFreshness    time.Duration
+	maxQueryResponseSize int64
+	shardSize            int
+	queryPriority        validation.QueryPriority
+	queryRejection       validation.QueryRejection
 }
 
 func (m mockLimits) MaxQueryLookback(string) time.Duration {
@@ -495,6 +496,10 @@ func (mockLimits) MaxQueryParallelism(string) int {
 
 func (m mockLimits) MaxCacheFreshness(string) time.Duration {
 	return m.maxCacheFreshness
+}
+
+func (m mockLimits) MaxQueryResponseSize(string) int64 {
+	return m.maxQueryResponseSize
 }
 
 func (m mockLimits) QueryVerticalShardSize(userID string) int {

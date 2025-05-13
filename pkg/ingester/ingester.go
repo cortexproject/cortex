@@ -57,8 +57,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -168,29 +171,27 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 
 	f.BoolVar(&cfg.UploadCompactedBlocksEnabled, "ingester.upload-compacted-blocks-enabled", true, "Enable uploading compacted blocks.")
-	f.Float64Var(&cfg.DefaultLimits.MaxIngestionRate, "ingester.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that ingester will accept. This limit is per-ingester, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. This limit only works when using blocks engine. 0 = unlimited.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryTenants, "ingester.instance-limits.max-tenants", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.instance-limits.max-series", 0, "Max series that this ingester can hold (across all tenants). Requests to create additional series will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInflightQueryRequests, "ingester.instance-limits.max-inflight-query-requests", 0, "Max inflight query requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
-
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
-
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
-
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
 
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
+
+	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
 }
 
-func (cfg *Config) Validate() error {
+func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
 	if err := cfg.LifecyclerConfig.Validate(); err != nil {
 		return err
 	}
 
 	if cfg.LabelsStringInterningEnabled {
 		logutil.WarnExperimentalUse("String interning for metrics labels Enabled")
+	}
+
+	if err := cfg.DefaultLimits.Validate(monitoredResources); err != nil {
+		return err
 	}
 
 	return nil
@@ -229,10 +230,11 @@ type Ingester struct {
 
 	logger log.Logger
 
-	lifecycler         *ring.Lifecycler
-	limits             *validation.Overrides
-	limiter            *Limiter
-	subservicesWatcher *services.FailureWatcher
+	lifecycler           *ring.Lifecycler
+	limits               *validation.Overrides
+	limiter              *Limiter
+	resourceBasedLimiter *limiter.ResourceBasedLimiter
+	subservicesWatcher   *services.FailureWatcher
 
 	stoppedMtx sync.RWMutex // protects stopped
 	stopped    bool         // protected by stoppedMtx
@@ -700,7 +702,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 }
 
 // New returns a new Ingester that uses Cortex block storage instead of chunks storage.
-func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
+func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger, resourceMonitor *resource.Monitor) (*Ingester, error) {
 	defaultInstanceLimits = &cfg.DefaultLimits
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
@@ -780,6 +782,20 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 	// Apply positive jitter only to ensure that the minimum timeout is adhered to.
 	i.TSDBState.compactionIdleTimeout = util.DurationWithPositiveJitter(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout, compactionIdleTimeoutJitter)
 	level.Info(i.logger).Log("msg", "TSDB idle compaction timeout set", "timeout", i.TSDBState.compactionIdleTimeout)
+
+	if resourceMonitor != nil {
+		resourceLimits := make(map[resource.Type]float64)
+		if cfg.DefaultLimits.CPUUtilization > 0 {
+			resourceLimits[resource.CPU] = cfg.DefaultLimits.CPUUtilization
+		}
+		if cfg.DefaultLimits.HeapUtilization > 0 {
+			resourceLimits[resource.Heap] = cfg.DefaultLimits.HeapUtilization
+		}
+		i.resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits, registerer, "ingester")
+		if err != nil {
+			return nil, errors.Wrap(err, "error creating resource based limiter")
+		}
+	}
 
 	i.BasicService = services.NewBasicService(i.starting, i.updateLoop, i.stopping)
 	return i, nil
@@ -1039,6 +1055,7 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 
 		userDB.activeSeries.Purge(purgeTime)
 		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
+		i.metrics.activeNHSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.ActiveNativeHistogram()))
 		if err := userDB.labelSetCounter.UpdateMetric(ctx, userDB, i.metrics); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
 		}
@@ -1169,7 +1186,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	i.stoppedMtx.RUnlock()
 
 	if err := db.acquireAppendLock(); err != nil {
-		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
+		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, "%s", wrapWithUser(err, userID).Error())
 	}
 	defer db.releaseAppendLock()
 
@@ -1261,6 +1278,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			case errors.Is(cause, histogram.ErrHistogramCountMismatch):
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
+			case errors.Is(cause, storage.ErrOOONativeHistogramsDisabled):
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
 			default:
 				rollback = true
 			}
@@ -1328,7 +1348,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			return nil, wrapWithUser(err, userID)
 		}
 
-		if i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms {
+		if i.limits.EnableNativeHistograms(userID) {
 			for _, hp := range ts.Histograms {
 				var (
 					err error
@@ -1374,9 +1394,11 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		} else {
 			discardedNativeHistogramCount += len(ts.Histograms)
 		}
-		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || (succeededHistogramsCount > oldSucceededHistogramsCount)
+
+		isNHAppended := succeededHistogramsCount > oldSucceededHistogramsCount
+		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || isNHAppended
 		if i.cfg.ActiveSeriesMetricsEnabled && shouldUpdateSeries {
-			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, func(l labels.Labels) labels.Labels {
+			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, isNHAppended, func(l labels.Labels) labels.Labels {
 				// we must already have copied the labels if succeededSamplesCount or succeededHistogramsCount has been incremented.
 				return copiedLabels
 			})
@@ -1473,7 +1495,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
-	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && discardedNativeHistogramCount > 0 {
+	if !i.limits.EnableNativeHistograms(userID) && discardedNativeHistogramCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
 	}
 
@@ -1504,7 +1526,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			code = ve.code
 		}
 		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "totalHistograms", succeededHistogramsCount+failedHistogramsCount, "failedHistograms", failedHistogramsCount, "firstPartialErr", firstPartialErr)
-		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
+		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, "%s", wrapWithUser(firstPartialErr, userID).Error())
 	}
 
 	return &cortexpb.WriteResponse{}, nil
@@ -1978,7 +2000,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 }
 
 // MetricsMetadata returns all the metric metadata of a user.
-func (i *Ingester) MetricsMetadata(ctx context.Context, _ *client.MetricsMetadataRequest) (*client.MetricsMetadataResponse, error) {
+func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) (*client.MetricsMetadataResponse, error) {
 	i.stoppedMtx.RLock()
 	if err := i.checkRunningOrStopping(); err != nil {
 		i.stoppedMtx.RUnlock()
@@ -1997,7 +2019,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, _ *client.MetricsMetadat
 		return &client.MetricsMetadataResponse{}, nil
 	}
 
-	return &client.MetricsMetadataResponse{Metadata: userMetadata.toClientMetadata()}, nil
+	return &client.MetricsMetadataResponse{Metadata: userMetadata.toClientMetadata(req)}, nil
 }
 
 // CheckReady is the readiness handler used to indicate to k8s when the ingesters
@@ -2041,11 +2063,9 @@ func (i *Ingester) userStats() []UserIDStats {
 	i.stoppedMtx.RLock()
 	defer i.stoppedMtx.RUnlock()
 
-	perUserTotals := make(map[string]UserStats)
-
 	users := i.TSDBState.dbs
 
-	response := make([]UserIDStats, 0, len(perUserTotals))
+	response := make([]UserIDStats, 0, len(users))
 	for id, db := range users {
 		response = append(response, UserIDStats{
 			UserID:    id,
@@ -2180,6 +2200,14 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 	}
 
 	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
+
+	if i.resourceBasedLimiter != nil {
+		if err := i.resourceBasedLimiter.AcceptNewRequest(); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to accept request", "err", err)
+			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "failed to query: %s", limiter.ErrResourceLimitReachedStr)
+		}
+	}
+
 	return func() {
 		i.inflightQueryRequests.Dec()
 	}, nil
@@ -2414,7 +2442,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 		instanceLimitsFn:             i.getInstanceLimits,
 		instanceSeriesCount:          &i.TSDBState.seriesCount,
-		interner:                     util.NewLruInterner(),
+		interner:                     util.NewLruInterner(i.cfg.LabelsStringInterningEnabled),
 		labelsStringInterningEnabled: i.cfg.LabelsStringInterningEnabled,
 
 		blockRetentionPeriod: i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
@@ -2452,8 +2480,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
+		EnableOOONativeHistograms:      true,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
-		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
+		EnableNativeHistograms:         true,  // Always enable Native Histograms. Gate keeping is done though a per-tenant limit at ingestion.
 		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
 	}, nil)
 	if err != nil {
@@ -2553,6 +2582,7 @@ func (i *Ingester) closeAllTSDB() {
 
 			i.metrics.memUsers.Dec()
 			i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
+			i.metrics.activeNHSeriesPerUser.DeleteLabelValues(userID)
 		}(userDB)
 	}
 

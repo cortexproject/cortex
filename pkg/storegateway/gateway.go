@@ -16,8 +16,10 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
 
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -25,6 +27,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -64,6 +68,8 @@ type Config struct {
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
 
+	InstanceLimits configs.InstanceLimits `yaml:"instance_limits"`
+
 	// Hedged Request
 	HedgedRequest bucket.HedgedRequestConfig `yaml:"hedged_request"`
 }
@@ -77,10 +83,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.EnabledTenants, "store-gateway.enabled-tenants", "Comma separated list of tenants whose store metrics this storegateway can process. If specified, only these tenants will be handled by storegateway, otherwise this storegateway will be enabled for all the tenants in the store-gateway cluster.")
 	f.Var(&cfg.DisabledTenants, "store-gateway.disabled-tenants", "Comma separated list of tenants whose store metrics this storegateway cannot process. If specified, a storegateway that would normally pick the specified tenant(s) for processing will ignore them instead.")
 	cfg.HedgedRequest.RegisterFlagsWithPrefix(f, "store-gateway.")
+	cfg.InstanceLimits.RegisterFlagsWithPrefix(f, "store-gateway.")
 }
 
 // Validate the Config.
-func (cfg *Config) Validate(limits validation.Limits) error {
+func (cfg *Config) Validate(limits validation.Limits, monitoredResources flagext.StringSliceCSV) error {
 	if cfg.ShardingEnabled {
 		if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
 			return errInvalidShardingStrategy
@@ -92,6 +99,10 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 	}
 
 	if err := cfg.HedgedRequest.Validate(); err != nil {
+		return err
+	}
+
+	if err := cfg.InstanceLimits.Validate(monitoredResources); err != nil {
 		return err
 	}
 
@@ -117,10 +128,12 @@ type StoreGateway struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
+	resourceBasedLimiter *util_limiter.ResourceBasedLimiter
+
 	bucketSync *prometheus.CounterVec
 }
 
-func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*StoreGateway, error) {
+func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer, resourceMonitor *resource.Monitor) (*StoreGateway, error) {
 	var ringStore kv.Client
 
 	bucketClient, err := createBucketClient(storageCfg, gatewayCfg.HedgedRequest.GetHedgedRoundTripper(), logger, reg)
@@ -140,10 +153,10 @@ func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		}
 	}
 
-	return newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, limits, logLevel, logger, reg)
+	return newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, limits, logLevel, logger, reg, resourceMonitor)
 }
 
-func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, ringStore kv.Client, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*StoreGateway, error) {
+func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, ringStore kv.Client, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer, resourceMonitor *resource.Monitor) (*StoreGateway, error) {
 	var err error
 
 	g := &StoreGateway{
@@ -227,6 +240,20 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 	g.stores, err = NewBucketStores(storageCfg, shardingStrategy, bucketClient, limits, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-gateway"}, reg))
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket stores")
+	}
+
+	if resourceMonitor != nil {
+		resourceLimits := make(map[resource.Type]float64)
+		if gatewayCfg.InstanceLimits.CPUUtilization > 0 {
+			resourceLimits[resource.CPU] = gatewayCfg.InstanceLimits.CPUUtilization
+		}
+		if gatewayCfg.InstanceLimits.HeapUtilization > 0 {
+			resourceLimits[resource.Heap] = gatewayCfg.InstanceLimits.HeapUtilization
+		}
+		g.resourceBasedLimiter, err = util_limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits, reg, "store-gateway")
+		if err != nil {
+			return nil, errors.Wrap(err, "error creating resource based limiter")
+		}
 	}
 
 	g.Service = services.NewBasicService(g.starting, g.running, g.stopping)
@@ -381,17 +408,39 @@ func (g *StoreGateway) syncStores(ctx context.Context, reason string) {
 }
 
 func (g *StoreGateway) Series(req *storepb.SeriesRequest, srv storegatewaypb.StoreGateway_SeriesServer) error {
+	if err := g.checkResourceUtilization(); err != nil {
+		return err
+	}
 	return g.stores.Series(req, srv)
 }
 
 // LabelNames implements the Storegateway proto service.
 func (g *StoreGateway) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	if err := g.checkResourceUtilization(); err != nil {
+		return nil, err
+	}
 	return g.stores.LabelNames(ctx, req)
 }
 
 // LabelValues implements the Storegateway proto service.
 func (g *StoreGateway) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	if err := g.checkResourceUtilization(); err != nil {
+		return nil, err
+	}
 	return g.stores.LabelValues(ctx, req)
+}
+
+func (g *StoreGateway) checkResourceUtilization() error {
+	if g.resourceBasedLimiter == nil {
+		return nil
+	}
+
+	if err := g.resourceBasedLimiter.AcceptNewRequest(); err != nil {
+		level.Warn(g.logger).Log("msg", "failed to accept request", "err", err)
+		return httpgrpc.Errorf(http.StatusTooManyRequests, "failed to query: %s", util_limiter.ErrResourceLimitReachedStr)
+	}
+
+	return nil
 }
 
 func (g *StoreGateway) OnRingInstanceRegister(lc *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {

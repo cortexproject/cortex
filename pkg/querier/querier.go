@@ -19,8 +19,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
-	"github.com/thanos-io/promql-engine/engine"
-	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
@@ -208,7 +206,6 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	// The cortex supports holt_winters for users using this function.
 	EnableExperimentalPromQLFunctions(cfg.EnablePromQLExperimentalFunctions, true)
 
-	var queryEngine promql.QueryEngine
 	opts := promql.EngineOpts{
 		Logger:               util_log.GoKitLogToSlog(logger),
 		Reg:                  reg,
@@ -223,15 +220,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
 	}
-	if cfg.ThanosEngine {
-		queryEngine = engine.New(engine.Opts{
-			EngineOpts:        opts,
-			LogicalOptimizers: logicalplan.AllOptimizers,
-			EnableAnalysis:    true,
-		})
-	} else {
-		queryEngine = promql.NewEngine(opts)
-	}
+	queryEngine := NewEngineFactory(opts, cfg.ThanosEngine, reg)
 	return NewSampleAndChunkQueryable(lazyQueryable), exemplarQueryable, queryEngine
 }
 
@@ -442,7 +431,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 
 // LabelValues implements storage.Querier.
 func (q querier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, userID, mint, maxt, _, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -452,6 +441,12 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 	defer func() {
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
+
+	// For label values queries without specifying the start time, we prefer to
+	// only query ingesters and not to query maxQueryLength to avoid OOM kill.
+	if mint == 0 {
+		return metadataQuerier.LabelValues(ctx, name, hints, matchers...)
+	}
 
 	startTime := model.Time(mint)
 	endTime := model.Time(maxt)
@@ -505,7 +500,7 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 }
 
 func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, userID, mint, maxt, _, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -515,6 +510,12 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 	defer func() {
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
+
+	// For label names queries without specifying the start time, we prefer to
+	// only query ingesters and not to query maxQueryLength to avoid OOM kill.
+	if mint == 0 {
+		return metadataQuerier.LabelNames(ctx, hints, matchers...)
+	}
 
 	startTime := model.Time(mint)
 	endTime := model.Time(maxt)

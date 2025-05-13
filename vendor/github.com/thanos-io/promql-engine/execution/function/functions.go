@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 )
 
@@ -143,7 +144,19 @@ var instantVectorFuncs = map[string]functionCall{
 		if h == nil || len(vargs) != 2 {
 			return 0., false
 		}
-		return histogramFraction(vargs[0], vargs[1], h), true
+		return promql.HistogramFraction(vargs[0], vargs[1], h), true
+	},
+	"histogram_stddev": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h == nil {
+			return 0., false
+		}
+		return histogramStdDev(h), true
+	},
+	"histogram_stdvar": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
+		if h == nil {
+			return 0., false
+		}
+		return histogramStdVar(h), true
 	},
 	// variants of date time functions with an argument
 	"days_in_month": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {

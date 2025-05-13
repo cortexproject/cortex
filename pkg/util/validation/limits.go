@@ -149,6 +149,7 @@ type Limits struct {
 	MaxGlobalSeriesPerUser   int                 `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
 	MaxGlobalSeriesPerMetric int                 `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
 	LimitsPerLabelSet        []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
+	EnableNativeHistograms   bool                `yaml:"enable_native_histograms" json:"enable_native_histograms"`
 
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
@@ -168,6 +169,7 @@ type Limits struct {
 	MaxQueryLookback             model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength               model.Duration `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	MaxQueryResponseSize         int64          `yaml:"max_query_response_size" json:"max_query_response_size"`
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
@@ -182,7 +184,7 @@ type Limits struct {
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
-	RulerTenantShardSize        int            `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
+	RulerTenantShardSize        float64        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
 	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
@@ -198,6 +200,9 @@ type Limits struct {
 	CompactorTenantShardSize         int            `yaml:"compactor_tenant_shard_size" json:"compactor_tenant_shard_size"`
 	CompactorPartitionIndexSizeBytes int64          `yaml:"compactor_partition_index_size_bytes" json:"compactor_partition_index_size_bytes"`
 	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
+
+	// Parquet converter
+	ParquetConverterTenantShardSize int `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size" doc:"hidden"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -256,6 +261,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster before replication. 0 to disable.")
+	f.BoolVar(&l.EnableNativeHistograms, "blocks-storage.tsdb.enable-native-histograms", false, "[EXPERIMENTAL] True to enable native histogram.")
 	f.IntVar(&l.MaxExemplars, "ingester.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.")
 	f.Var(&l.OutOfOrderTimeWindow, "ingester.out-of-order-time-window", "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.")
 
@@ -271,6 +277,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
 	_ = l.MaxCacheFreshness.Set("1m")
+	f.Int64Var(&l.MaxQueryResponseSize, "frontend.max-query-response-size", 0, "The maximum total uncompressed query response size. If the query was sharded the limit is applied to the total response size of all shards. This limit is enforced in query-frontend for `query` and `query_range` APIs. 0 to disable.")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 	f.Float64Var(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. If the value is < 1, it will be treated as a percentage and the gets a percentage of the total queriers. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
@@ -281,7 +288,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
 
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0: Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
-	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	f.Float64Var(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total rulers.")
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 	f.Var(&l.RulerQueryOffset, "ruler.query-offset", "Duration to offset all rule evaluation queries per-tenant.")
@@ -291,6 +298,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// Default to 64GB because this is the hard limit of index size in Cortex
 	f.Int64Var(&l.CompactorPartitionIndexSizeBytes, "compactor.partition-index-size-bytes", 68719476736, "Index size limit in bytes for each compaction partition. 0 means no limit")
 	f.Int64Var(&l.CompactorPartitionSeriesCount, "compactor.partition-series-count", 0, "Time series count limit for each compaction partition. 0 means no limit")
+
+	f.IntVar(&l.ParquetConverterTenantShardSize, "parquet-converter.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the parquet converter. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 
 	// Store-gateway.
 	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
@@ -657,6 +666,11 @@ func (o *Overrides) MaxGlobalSeriesPerUser(userID string) int {
 	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerUser
 }
 
+// EnableNativeHistograms returns whether the Ingester should accept NativeHistograms samples from this user.
+func (o *Overrides) EnableNativeHistograms(userID string) bool {
+	return o.GetOverridesForUser(userID).EnableNativeHistograms
+}
+
 // OutOfOrderTimeWindow returns the allowed time window for ingestion of out-of-order samples.
 func (o *Overrides) OutOfOrderTimeWindow(userID string) model.Duration {
 	return o.GetOverridesForUser(userID).OutOfOrderTimeWindow
@@ -714,6 +728,11 @@ func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 	return time.Duration(o.GetOverridesForUser(userID).MaxQueryLength)
+}
+
+// MaxQueryResponseSize returns the max total response size of a query in bytes.
+func (o *Overrides) MaxQueryResponseSize(userID string) int64 {
+	return o.GetOverridesForUser(userID).MaxQueryResponseSize
 }
 
 // MaxCacheFreshness returns the period after which results are cacheable,
@@ -815,6 +834,11 @@ func (o *Overrides) CompactorTenantShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).CompactorTenantShardSize
 }
 
+// ParquetConverterTenantShardSize returns shard size (number of converters) used by this tenant when using shuffle-sharding strategy.
+func (o *Overrides) ParquetConverterTenantShardSize(userID string) int {
+	return o.GetOverridesForUser(userID).ParquetConverterTenantShardSize
+}
+
 // CompactorPartitionIndexSizeBytes returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) CompactorPartitionIndexSizeBytes(userID string) int64 {
 	return o.GetOverridesForUser(userID).CompactorPartitionIndexSizeBytes
@@ -831,7 +855,7 @@ func (o *Overrides) MetricRelabelConfigs(userID string) []*relabel.Config {
 }
 
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
-func (o *Overrides) RulerTenantShardSize(userID string) int {
+func (o *Overrides) RulerTenantShardSize(userID string) float64 {
 	return o.GetOverridesForUser(userID).RulerTenantShardSize
 }
 

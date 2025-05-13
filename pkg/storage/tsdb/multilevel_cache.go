@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/cacheutil"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
-	"golang.org/x/exp/slices"
 )
 
 type multiLevelCache struct {

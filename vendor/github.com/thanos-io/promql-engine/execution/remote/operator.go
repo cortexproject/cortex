@@ -9,18 +9,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/execution/warnings"
+	"github.com/thanos-io/promql-engine/query"
+	promstorage "github.com/thanos-io/promql-engine/storage/prometheus"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/stats"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/execution/warnings"
-	"github.com/thanos-io/promql-engine/query"
-	promstorage "github.com/thanos-io/promql-engine/storage/prometheus"
 )
 
 type Execution struct {
@@ -128,12 +127,7 @@ func (s *storageAdapter) executeQuery(ctx context.Context) {
 		warnings.AddToContext(w, ctx)
 	}
 	if result.Err != nil {
-		err := errors.Wrapf(result.Err, "remote exec error [%s]", s.lbls)
-		if s.opts.EnablePartialResponses {
-			warnings.AddToContext(err, ctx)
-		} else {
-			s.err = err
-		}
+		s.err = errors.Wrapf(result.Err, "remote exec error [%s]", s.lbls)
 		return
 	}
 	switch val := result.Value.(type) {

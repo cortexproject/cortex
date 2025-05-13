@@ -22,6 +22,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
@@ -30,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
+	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -38,6 +40,7 @@ import (
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -87,10 +90,11 @@ var (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target      flagext.StringSliceCSV `yaml:"target"`
-	AuthEnabled bool                   `yaml:"auth_enabled"`
-	PrintConfig bool                   `yaml:"-"`
-	HTTPPrefix  string                 `yaml:"http_prefix"`
+	Target             flagext.StringSliceCSV `yaml:"target"`
+	AuthEnabled        bool                   `yaml:"auth_enabled"`
+	PrintConfig        bool                   `yaml:"-"`
+	HTTPPrefix         string                 `yaml:"http_prefix"`
+	MonitoredResources flagext.StringSliceCSV `yaml:"monitored_resources"`
 
 	ExternalQueryable prom_storage.Queryable `yaml:"-"`
 	ExternalPusher    ruler.Pusher           `yaml:"-"`
@@ -110,6 +114,7 @@ type Config struct {
 	QueryRange       queryrange.Config               `yaml:"query_range"`
 	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
 	Compactor        compactor.Config                `yaml:"compactor"`
+	ParquetConverter parquetconverter.Config         `yaml:"parquet_converter" doc:"hidden"`
 	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
@@ -142,6 +147,11 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 
+	c.MonitoredResources = []string{}
+	f.Var(&c.MonitoredResources, "monitored.resources", "Comma-separated list of resources to monitor. "+
+		"Supported values are cpu and heap, which tracks metrics from github.com/prometheus/procfs and runtime/metrics "+
+		"that are close estimates. Empty string to disable.")
+
 	c.API.RegisterFlags(f)
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Distributor.RegisterFlags(f)
@@ -157,6 +167,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.QueryRange.RegisterFlags(f)
 	c.BlocksStorage.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
+	c.ParquetConverter.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
 	c.TenantFederation.RegisterFlags(f)
 
@@ -215,7 +226,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.QueryRange.Validate(c.Querier); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
-	if err := c.StoreGateway.Validate(c.LimitsConfig); err != nil {
+	if err := c.StoreGateway.Validate(c.LimitsConfig, c.MonitoredResources); err != nil {
 		return errors.Wrap(err, "invalid store-gateway config")
 	}
 	if err := c.Compactor.Validate(c.LimitsConfig); err != nil {
@@ -228,12 +239,22 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
-	if err := c.Ingester.Validate(); err != nil {
+	if err := c.Ingester.Validate(c.MonitoredResources); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
 
 	if err := c.Tracing.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tracing config")
+	}
+
+	for _, r := range c.MonitoredResources {
+		switch resource.Type(r) {
+		case resource.CPU, resource.Heap:
+		default:
+			if len(r) > 0 {
+				return fmt.Errorf("unsupported resource type to monitor: %s", r)
+			}
+		}
 	}
 
 	return nil
@@ -314,15 +335,17 @@ type Cortex struct {
 	MetadataQuerier          querier.MetadataQuerier
 	QuerierEngine            promql.QueryEngine
 	QueryFrontendTripperware tripperware.Tripperware
+	ResourceMonitor          *resource.Monitor
 
-	Ruler        *ruler.Ruler
-	RulerStorage rulestore.RuleStore
-	ConfigAPI    *configAPI.API
-	ConfigDB     db.DB
-	Alertmanager *alertmanager.MultitenantAlertmanager
-	Compactor    *compactor.Compactor
-	StoreGateway *storegateway.StoreGateway
-	MemberlistKV *memberlist.KVInitService
+	Ruler            *ruler.Ruler
+	RulerStorage     rulestore.RuleStore
+	ConfigAPI        *configAPI.API
+	ConfigDB         db.DB
+	Alertmanager     *alertmanager.MultitenantAlertmanager
+	Compactor        *compactor.Compactor
+	Parquetconverter *parquetconverter.Converter
+	StoreGateway     *storegateway.StoreGateway
+	MemberlistKV     *memberlist.KVInitService
 
 	// Queryables that the querier should use to query the long
 	// term storage. It depends on the storage engine used.

@@ -50,64 +50,71 @@ func (l remoteEngine) NewRangeQuery(ctx context.Context, opts promql.QueryOpts, 
 }
 
 type DistributedEngine struct {
-	endpoints    api.RemoteEndpoints
-	remoteEngine *Engine
+	engine *Engine
 }
 
-func NewDistributedEngine(opts Opts, endpoints api.RemoteEndpoints) *DistributedEngine {
-	opts.LogicalOptimizers = []logicalplan.Optimizer{
-		logicalplan.PassthroughOptimizer{Endpoints: endpoints},
-		logicalplan.DistributedExecutionOptimizer{Endpoints: endpoints},
-	}
-
+func NewDistributedEngine(opts Opts) *DistributedEngine {
 	return &DistributedEngine{
-		endpoints:    endpoints,
-		remoteEngine: New(opts),
+		engine: New(opts),
 	}
 }
 
-func (l DistributedEngine) SetQueryLogger(log promql.QueryLogger) {}
-
-func (l DistributedEngine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
-	return l.MakeInstantQuery(ctx, q, fromPromQLOpts(opts), qs, ts)
-}
-
-func (l DistributedEngine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
-	return l.MakeRangeQuery(ctx, q, fromPromQLOpts(opts), qs, start, end, interval)
-}
-
-func (l DistributedEngine) MakeInstantQueryFromPlan(ctx context.Context, q storage.Queryable, opts *QueryOpts, plan logicalplan.Node, ts time.Time) (promql.Query, error) {
+func (l DistributedEngine) MakeInstantQueryFromPlan(ctx context.Context, q storage.Queryable, e api.RemoteEndpoints, opts promql.QueryOpts, plan logicalplan.Node, ts time.Time) (promql.Query, error) {
 	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
 	// Some clients might only support second precision when executing queries.
 	ts = ts.Truncate(time.Second)
 
-	return l.remoteEngine.MakeInstantQueryFromPlan(ctx, q, opts, plan, ts)
+	qOpts := fromPromQLOpts(opts)
+	qOpts.LogicalOptimizers = []logicalplan.Optimizer{
+		logicalplan.PassthroughOptimizer{Endpoints: e},
+		logicalplan.DistributedExecutionOptimizer{Endpoints: e},
+	}
+
+	return l.engine.MakeInstantQueryFromPlan(ctx, q, qOpts, plan, ts)
 }
 
-func (l DistributedEngine) MakeRangeQueryFromPlan(ctx context.Context, q storage.Queryable, opts *QueryOpts, plan logicalplan.Node, start, end time.Time, interval time.Duration) (promql.Query, error) {
+func (l DistributedEngine) MakeRangeQueryFromPlan(ctx context.Context, q storage.Queryable, e api.RemoteEndpoints, opts promql.QueryOpts, plan logicalplan.Node, start, end time.Time, interval time.Duration) (promql.Query, error) {
 	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
 	// Some clients might only support second precision when executing queries.
 	start = start.Truncate(time.Second)
 	end = end.Truncate(time.Second)
 	interval = interval.Truncate(time.Second)
 
-	return l.remoteEngine.MakeRangeQueryFromPlan(ctx, q, opts, plan, start, end, interval)
+	qOpts := fromPromQLOpts(opts)
+	qOpts.LogicalOptimizers = []logicalplan.Optimizer{
+		logicalplan.PassthroughOptimizer{Endpoints: e},
+		logicalplan.DistributedExecutionOptimizer{Endpoints: e},
+	}
+
+	return l.engine.MakeRangeQueryFromPlan(ctx, q, qOpts, plan, start, end, interval)
 }
 
-func (l DistributedEngine) MakeInstantQuery(ctx context.Context, q storage.Queryable, opts *QueryOpts, qs string, ts time.Time) (promql.Query, error) {
+func (l DistributedEngine) MakeInstantQuery(ctx context.Context, q storage.Queryable, e api.RemoteEndpoints, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
 	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
 	// Some clients might only support second precision when executing queries.
 	ts = ts.Truncate(time.Second)
 
-	return l.remoteEngine.MakeInstantQuery(ctx, q, opts, qs, ts)
+	qOpts := fromPromQLOpts(opts)
+	qOpts.LogicalOptimizers = []logicalplan.Optimizer{
+		logicalplan.PassthroughOptimizer{Endpoints: e},
+		logicalplan.DistributedExecutionOptimizer{Endpoints: e},
+	}
+
+	return l.engine.MakeInstantQuery(ctx, q, qOpts, qs, ts)
 }
 
-func (l DistributedEngine) MakeRangeQuery(ctx context.Context, q storage.Queryable, opts *QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
+func (l DistributedEngine) MakeRangeQuery(ctx context.Context, q storage.Queryable, e api.RemoteEndpoints, opts promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
 	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
 	// Some clients might only support second precision when executing queries.
 	start = start.Truncate(time.Second)
 	end = end.Truncate(time.Second)
 	interval = interval.Truncate(time.Second)
 
-	return l.remoteEngine.MakeRangeQuery(ctx, q, opts, qs, start, end, interval)
+	qOpts := fromPromQLOpts(opts)
+	qOpts.LogicalOptimizers = []logicalplan.Optimizer{
+		logicalplan.PassthroughOptimizer{Endpoints: e},
+		logicalplan.DistributedExecutionOptimizer{Endpoints: e},
+	}
+
+	return l.engine.MakeRangeQuery(ctx, q, qOpts, qs, start, end, interval)
 }

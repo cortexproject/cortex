@@ -1,0 +1,21 @@
+security:
+  readonly: false
+  enable_auth: false
+  cookie:
+    same_site: lax
+    secure: false
+
+database:
+  file:
+    extension: yaml
+    folder: /perses
+
+schemas:
+  datasources_path: /etc/perses/cue/schemas/datasources
+  interval: 5m
+  panels_path: /etc/perses/cue/schemas/panels
+  queries_path: /etc/perses/cue/schemas/queries
+  variables_path: /etc/perses/cue/schemas/variables
+provisioning:
+  folders:
+    - /etc/perses/resources

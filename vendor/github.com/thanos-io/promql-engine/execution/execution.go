@@ -21,11 +21,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/efficientgo/core/errors"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
-	promstorage "github.com/prometheus/prometheus/storage"
-
 	"github.com/thanos-io/promql-engine/execution/aggregate"
 	"github.com/thanos-io/promql-engine/execution/binary"
 	"github.com/thanos-io/promql-engine/execution/exchange"
@@ -40,6 +35,11 @@ import (
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/storage"
+
+	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
+	promstorage "github.com/prometheus/prometheus/storage"
 )
 
 // New creates new physical query execution for a given query expression which represents logical plan.

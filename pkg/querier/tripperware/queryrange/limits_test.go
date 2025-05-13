@@ -138,7 +138,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 			reqStartTime:   now.Add(-time.Hour),
 			reqEndTime:     now,
 			maxQueryLength: thirtyDays,
-			expectedErr:    httpgrpc.Errorf(http.StatusBadRequest, parserErr.Error()).Error(),
+			expectedErr:    httpgrpc.Errorf(http.StatusBadRequest, "%s", parserErr.Error()).Error(),
 		},
 		"should succeed on a query on short time range, ending now": {
 			maxQueryLength: thirtyDays,
@@ -236,6 +236,7 @@ type mockLimits struct {
 	maxQueryLookback       time.Duration
 	maxQueryLength         time.Duration
 	maxCacheFreshness      time.Duration
+	maxQueryResponseSize   int64
 	queryVerticalShardSize int
 }
 
@@ -253,6 +254,10 @@ func (mockLimits) MaxQueryParallelism(string) int {
 
 func (m mockLimits) MaxCacheFreshness(string) time.Duration {
 	return m.maxCacheFreshness
+}
+
+func (m mockLimits) MaxQueryResponseSize(string) int64 {
+	return m.maxQueryResponseSize
 }
 
 func (m mockLimits) QueryVerticalShardSize(userID string) int {

@@ -603,10 +603,6 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		return err
 	}
 	level.Info(userLogger).Log("msg", "finish updating index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
-	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
-	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
-	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(float64(totalBlocksBlocksMarkedForNoCompaction))
-	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(len(partials)))
 
 	// Delete blocks marked for deletion. We iterate over a copy of deletion marks because
 	// we'll need to manipulate the index (removing blocks which get deleted).
@@ -666,6 +662,10 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		}
 		level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
+	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
+	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
+	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(float64(totalBlocksBlocksMarkedForNoCompaction))
+	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(len(partials)))
 	c.tenantBucketIndexLastUpdate.WithLabelValues(userID).SetToCurrentTime()
 
 	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {

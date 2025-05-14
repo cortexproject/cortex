@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	errNoMetricNameLabel = fmt.Errorf("No metric name label")
+	errNoMetricNameLabel = fmt.Errorf("no metric name label")
 )
 
 // MetricNameFromLabelAdapters extracts the metric name from a list of LabelPairs.

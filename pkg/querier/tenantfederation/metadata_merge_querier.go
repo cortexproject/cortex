@@ -48,7 +48,7 @@ type metadataSelectJob struct {
 // MetricsMetadata returns aggregated metadata for multiple tenants
 func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error) {
 	log, ctx := spanlogger.New(ctx, "mergeMetadataQuerier.MetricsMetadata")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	tenantIds, err := tenant.TenantIDs(ctx)
 	if err != nil {

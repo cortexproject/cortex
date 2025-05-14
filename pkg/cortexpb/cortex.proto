@@ -5,6 +5,7 @@ package cortexpb;
 option go_package = "cortexpb";
 
 import "gogoproto/gogo.proto";
+import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -26,7 +27,9 @@ message StreamWriteRequest {
   WriteRequest Request = 2;
 }
 
-message WriteResponse {}
+message WriteResponse {
+  httpgrpc.HTTPResponse GRPCResponse = 1;
+}
 
 message TimeSeries {
   repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];

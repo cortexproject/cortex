@@ -1537,6 +1537,7 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 	for {
 		select {
 		case <-ctx.Done():
+			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "PushStream closed")
 			return ctx.Err()
 		default:
 		}
@@ -1553,7 +1554,12 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 		ctx = user.InjectOrgID(ctx, req.TenantID)
 		resp, err := i.Push(ctx, req.Request)
 		if err != nil {
-			level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "error pushing from PushStream", "err", err)
+			response, isGRPCError := httpgrpc.HTTPResponseFromError(err)
+			if !isGRPCError {
+				err = httpgrpc.Errorf(http.StatusInternalServerError, "%s", err)
+				response, _ = httpgrpc.HTTPResponseFromError(err)
+			}
+			resp.GRPCResponse = response
 		}
 		err = srv.Send(resp)
 		if err != nil {

@@ -3,12 +3,16 @@ package client
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
+	"sync"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
@@ -33,7 +37,7 @@ var ingesterClientInflightPushRequests = promauto.NewGaugeVec(prometheus.GaugeOp
 
 var errTooManyInflightPushRequests = errors.New("too many inflight push requests in ingester client")
 
-const INGESTER_CLIENT_STREAM_WORKER_COUNT = 1024
+const INGESTER_CLIENT_STREAM_WORKER_COUNT = 100
 
 // ClosableClientConn is grpc.ClientConnInterface with Close function
 type ClosableClientConn interface {
@@ -194,23 +198,22 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 	c.streamCtx = streamCtx
 	c.streamCancel = streamCancel
 
-	errChan := make(chan error)
-	defer close(errChan)
+	var workerErr error
+	var wg sync.WaitGroup
 	for i := 0; i < INGESTER_CLIENT_STREAM_WORKER_COUNT; i++ {
+		workerName := fmt.Sprintf("stream-push-worker-%d", i)
+		wg.Add(1)
 		go func() {
-			workerErr := c.worker(streamCtx)
-			if workerErr != nil {
-				errChan <- workerErr
+			workerCtx := user.InjectOrgID(streamCtx, workerName)
+			err := c.worker(workerCtx)
+			if err != nil {
+				workerErr = err
 			}
+			wg.Done()
 		}()
 	}
-	for err := range errChan {
-		if err != nil {
-			c.streamCancel()
-			return errors.Wrap(err, err.Error())
-		}
-	}
-	return nil
+	wg.Wait()
+	return workerErr
 }
 
 func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {
@@ -218,33 +221,39 @@ func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case job := <-c.streamPushChan:
-			err = stream.Send(job.req)
-			if err == io.EOF {
-				job.resp = &cortexpb.WriteResponse{}
-				job.cancel()
-				return nil
-			}
-			if err != nil {
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case job := <-c.streamPushChan:
+				err = stream.Send(job.req)
+				if err == io.EOF {
+					job.resp = &cortexpb.WriteResponse{}
+					job.cancel()
+					return
+				}
+				if err != nil {
+					job.err = err
+					job.cancel()
+					continue
+				}
+				resp, err := stream.Recv()
+				if err == io.EOF {
+					job.resp = &cortexpb.WriteResponse{}
+					job.cancel()
+					return
+				}
+				job.resp = resp
 				job.err = err
+				if err == nil && job.resp.GetGRPCResponse() != nil {
+					job.err = httpgrpc.ErrorFromHTTPResponse(job.resp.GetGRPCResponse())
+				}
 				job.cancel()
-				continue
 			}
-			resp, err := stream.Recv()
-			if err == io.EOF {
-				job.resp = &cortexpb.WriteResponse{}
-				job.cancel()
-				return nil
-			}
-			job.resp = resp
-			job.err = err
-			job.cancel()
 		}
-	}
+	}()
+	return nil
 }
 
 // Config is the configuration struct for the ingester client

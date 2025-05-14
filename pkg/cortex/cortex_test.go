@@ -220,7 +220,7 @@ func TestConfigValidation(t *testing.T) {
 				configuration.NameValidationScheme = "invalid"
 				return configuration
 			},
-			expectedError: fmt.Errorf("invalid name validation scheme"),
+			expectedError: errInvalidNameValidationScheme,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

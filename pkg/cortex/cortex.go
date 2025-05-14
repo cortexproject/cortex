@@ -70,6 +70,7 @@ import (
 
 var (
 	errInvalidHTTPPrefix = errors.New("HTTP prefix should be empty or start with /")
+	errInvalidNameValidationScheme = errors.New("Name validation scheme should either be empty, legacy or utf-8")
 )
 
 // The design pattern for Cortex is a series of config objects, which are
@@ -194,6 +195,10 @@ func (c *Config) Validate(log log.Logger) error {
 
 	if c.HTTPPrefix != "" && !strings.HasPrefix(c.HTTPPrefix, "/") {
 		return errInvalidHTTPPrefix
+	}
+
+	if (c.NameValidationScheme != "" && c.NameValidationScheme != prom_config.LegacyValidationConfig && c.NameValidationScheme != prom_config.UTF8ValidationConfig) {
+		return errInvalidNameValidationScheme
 	}
 
 	if err := c.API.Validate(); err != nil {

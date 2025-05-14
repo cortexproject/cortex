@@ -14,6 +14,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	prom_config "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/server"
@@ -31,7 +33,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -69,6 +70,7 @@ import (
 
 var (
 	errInvalidHTTPPrefix = errors.New("HTTP prefix should be empty or start with /")
+	errInvalidNameValidationScheme = errors.New("Name validation scheme should either be empty, legacy or utf-8")
 )
 
 // The design pattern for Cortex is a series of config objects, which are
@@ -90,11 +92,12 @@ var (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target             flagext.StringSliceCSV `yaml:"target"`
-	AuthEnabled        bool                   `yaml:"auth_enabled"`
-	PrintConfig        bool                   `yaml:"-"`
-	HTTPPrefix         string                 `yaml:"http_prefix"`
-	MonitoredResources flagext.StringSliceCSV `yaml:"monitored_resources"`
+	Target               flagext.StringSliceCSV `yaml:"target"`
+	AuthEnabled          bool                   `yaml:"auth_enabled"`
+	PrintConfig          bool                   `yaml:"-"`
+	HTTPPrefix           string                 `yaml:"http_prefix"`
+	NameValidationScheme string                 `yaml:"name_validation_scheme"`
+	MonitoredResources   flagext.StringSliceCSV `yaml:"monitored_resources"`
 
 	ExternalQueryable prom_storage.Queryable `yaml:"-"`
 	ExternalPusher    ruler.Pusher           `yaml:"-"`
@@ -146,6 +149,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
+	f.StringVar(&c.NameValidationScheme, "name.validation_scheme", prom_config.LegacyValidationConfig, "Validation scheme for metric and label names. Set to utf8 to allow UTF-8 characters. legacy by default")
 
 	c.MonitoredResources = []string{}
 	f.Var(&c.MonitoredResources, "monitored.resources", "Comma-separated list of resources to monitor. "+
@@ -191,6 +195,10 @@ func (c *Config) Validate(log log.Logger) error {
 
 	if c.HTTPPrefix != "" && !strings.HasPrefix(c.HTTPPrefix, "/") {
 		return errInvalidHTTPPrefix
+	}
+
+	if (c.NameValidationScheme != "" && c.NameValidationScheme != prom_config.LegacyValidationConfig && c.NameValidationScheme != prom_config.UTF8ValidationConfig) {
+		return errInvalidNameValidationScheme
 	}
 
 	if err := c.API.Validate(); err != nil {
@@ -359,6 +367,16 @@ func New(cfg Config) (*Cortex, error) {
 			fmt.Println("Error encoding config:", err)
 		}
 		os.Exit(0)
+	}
+
+	// Sets the NameValidationScheme in prometheus/common
+	switch cfg.NameValidationScheme {
+	case "", prom_config.LegacyValidationConfig:
+		model.NameValidationScheme = model.LegacyValidation
+	case prom_config.UTF8ValidationConfig:
+		model.NameValidationScheme = model.UTF8Validation
+	default:
+		return nil, fmt.Errorf("invalid name validation scheme")
 	}
 
 	// Swap out the default resolver to support multiple tenant IDs separated by a '|'

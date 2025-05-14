@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"slices"
 	"sort"
@@ -49,19 +50,36 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 
 	dataColSize := len(e.schema.DataColsIndexes)
 
-	reEncodedChunks := make([]chunks.Meta, dataColSize)
-	reEncodedChunksAppenders := make([]chunkenc.Appender, dataColSize)
+	reEncodedChunks := make([]map[chunkenc.Encoding][]*chunks.Meta, dataColSize)
+	reEncodedChunksAppenders := make([]map[chunkenc.Encoding]chunkenc.Appender, dataColSize)
 
 	for i := 0; i < dataColSize; i++ {
-		reEncodedChunks[i] = chunks.Meta{
-			Chunk:   chunkenc.NewXORChunk(),
-			MinTime: math.MaxInt64,
+		reEncodedChunks[i] = make(map[chunkenc.Encoding][]*chunks.Meta)
+		reEncodedChunksAppenders[i] = make(map[chunkenc.Encoding]chunkenc.Appender)
+
+		for _, enc := range []chunkenc.Encoding{chunkenc.EncXOR, chunkenc.EncHistogram, chunkenc.EncFloatHistogram} {
+			var chunk chunkenc.Chunk
+			switch enc {
+			case chunkenc.EncXOR:
+				chunk = chunkenc.NewXORChunk()
+			case chunkenc.EncHistogram:
+				chunk = chunkenc.NewHistogramChunk()
+			case chunkenc.EncFloatHistogram:
+				chunk = chunkenc.NewFloatHistogramChunk()
+			default:
+				return nil, fmt.Errorf("unknown encoding %v", enc)
+			}
+
+			reEncodedChunks[i][enc] = append(reEncodedChunks[i][enc], &chunks.Meta{
+				Chunk:   chunk,
+				MinTime: math.MaxInt64,
+			})
+			app, err := reEncodedChunks[i][enc][0].Chunk.Appender()
+			if err != nil {
+				return nil, err
+			}
+			reEncodedChunksAppenders[i][enc] = app
 		}
-		app, err := reEncodedChunks[i].Chunk.Appender()
-		if err != nil {
-			return nil, err
-		}
-		reEncodedChunksAppenders[i] = app
 	}
 
 	var sampleIt chunkenc.Iterator
@@ -70,42 +88,103 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 		switch chk.Chunk.Encoding() {
 		case chunkenc.EncXOR:
 			for vt := sampleIt.Next(); vt != chunkenc.ValNone; vt = sampleIt.Next() {
-				// TODO: Native histograms support
 				if vt != chunkenc.ValFloat {
 					return nil, fmt.Errorf("found value type %v in float chunk", vt)
 				}
 				t, v := sampleIt.At()
 
 				chkIdx := e.schema.DataColumIdx(t)
-				reEncodedChunksAppenders[chkIdx].Append(t, v)
-				if t < reEncodedChunks[chkIdx].MinTime {
-					reEncodedChunks[chkIdx].MinTime = t
+				reEncodedChunksAppenders[chkIdx][chunkenc.EncXOR].Append(t, v)
+				if t < reEncodedChunks[chkIdx][chunkenc.EncXOR][len(reEncodedChunks[chkIdx][chunkenc.EncXOR])-1].MinTime {
+					reEncodedChunks[chkIdx][chunkenc.EncXOR][len(reEncodedChunks[chkIdx][chunkenc.EncXOR])-1].MinTime = t
 				}
-				if t > reEncodedChunks[chkIdx].MaxTime {
-					reEncodedChunks[chkIdx].MaxTime = t
+				if t > reEncodedChunks[chkIdx][chunkenc.EncXOR][len(reEncodedChunks[chkIdx][chunkenc.EncXOR])-1].MaxTime {
+					reEncodedChunks[chkIdx][chunkenc.EncXOR][len(reEncodedChunks[chkIdx][chunkenc.EncXOR])-1].MaxTime = t
+				}
+			}
+		case chunkenc.EncFloatHistogram:
+			for vt := sampleIt.Next(); vt != chunkenc.ValNone; vt = sampleIt.Next() {
+				if vt != chunkenc.ValFloatHistogram {
+					return nil, fmt.Errorf("found value type %v in float histogram chunk", vt)
+				}
+				t, v := sampleIt.AtFloatHistogram(nil)
+
+				chkIdx := e.schema.DataColumIdx(t)
+				newC, recoded, app, err := reEncodedChunksAppenders[chkIdx][chunkenc.EncFloatHistogram].AppendFloatHistogram(nil, t, v, false)
+				if err != nil {
+					return nil, err
+				}
+				reEncodedChunksAppenders[chkIdx][chunkenc.EncFloatHistogram] = app
+				if newC != nil {
+					if !recoded {
+						reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram] = append(reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram], &chunks.Meta{
+							MinTime: math.MaxInt64,
+						})
+					}
+					reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram][len(reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram])-1].Chunk = newC
+				}
+
+				if t < reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram][len(reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram])-1].MinTime {
+					reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram][len(reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram])-1].MinTime = t
+				}
+				if t > reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram][len(reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram])-1].MaxTime {
+					reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram][len(reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram])-1].MaxTime = t
+				}
+			}
+		case chunkenc.EncHistogram:
+			for vt := sampleIt.Next(); vt != chunkenc.ValNone; vt = sampleIt.Next() {
+				if vt != chunkenc.ValHistogram {
+					return nil, fmt.Errorf("found value type %v in histogram chunk", vt)
+				}
+				t, v := sampleIt.AtHistogram(nil)
+
+				chkIdx := e.schema.DataColumIdx(t)
+				newC, recoded, app, err := reEncodedChunksAppenders[chkIdx][chunkenc.EncHistogram].AppendHistogram(nil, t, v, false)
+				if err != nil {
+					return nil, err
+				}
+				reEncodedChunksAppenders[chkIdx][chunkenc.EncHistogram] = app
+				if newC != nil {
+					if !recoded {
+						reEncodedChunks[chkIdx][chunkenc.EncHistogram] = append(reEncodedChunks[chkIdx][chunkenc.EncHistogram], &chunks.Meta{
+							MinTime: math.MaxInt64,
+						})
+					}
+					reEncodedChunks[chkIdx][chunkenc.EncHistogram][len(reEncodedChunks[chkIdx][chunkenc.EncHistogram])-1].Chunk = newC
+				}
+
+				if t < reEncodedChunks[chkIdx][chunkenc.EncHistogram][len(reEncodedChunks[chkIdx][chunkenc.EncHistogram])-1].MinTime {
+					reEncodedChunks[chkIdx][chunkenc.EncHistogram][len(reEncodedChunks[chkIdx][chunkenc.EncHistogram])-1].MinTime = t
+				}
+				if t > reEncodedChunks[chkIdx][chunkenc.EncHistogram][len(reEncodedChunks[chkIdx][chunkenc.EncHistogram])-1].MaxTime {
+					reEncodedChunks[chkIdx][chunkenc.EncHistogram][len(reEncodedChunks[chkIdx][chunkenc.EncHistogram])-1].MaxTime = t
 				}
 			}
 		default:
-			continue
+			return nil, fmt.Errorf("unknown encoding %v", chk.Chunk.Encoding())
 		}
 	}
 
 	result := make([][]byte, dataColSize)
 
-	for i, chk := range reEncodedChunks {
-		if chk.Chunk.NumSamples() == 0 {
-			continue
+	for i, chunks := range reEncodedChunks {
+		for _, enc := range []chunkenc.Encoding{chunkenc.EncXOR, chunkenc.EncHistogram, chunkenc.EncFloatHistogram} {
+			for _, chk := range chunks[enc] {
+				if chk.Chunk.NumSamples() == 0 {
+					continue
+				}
+				var b [varint.MaxLen64]byte
+				n := binary.PutUvarint(b[:], uint64(chk.Chunk.Encoding()))
+				result[i] = append(result[i], b[:n]...)
+				n = binary.PutUvarint(b[:], uint64(chk.MinTime))
+				result[i] = append(result[i], b[:n]...)
+				n = binary.PutUvarint(b[:], uint64(chk.MaxTime))
+				result[i] = append(result[i], b[:n]...)
+				n = binary.PutUvarint(b[:], uint64(len(chk.Chunk.Bytes())))
+				result[i] = append(result[i], b[:n]...)
+				result[i] = append(result[i], chk.Chunk.Bytes()...)
+			}
 		}
-		var b [varint.MaxLen64]byte
-		n := binary.PutUvarint(b[:], uint64(chk.Chunk.Encoding()))
-		result[i] = append(result[i], b[:n]...)
-		n = binary.PutUvarint(b[:], uint64(chk.MinTime))
-		result[i] = append(result[i], b[:n]...)
-		n = binary.PutUvarint(b[:], uint64(chk.MaxTime))
-		result[i] = append(result[i], b[:n]...)
-		n = binary.PutUvarint(b[:], uint64(len(chk.Chunk.Bytes())))
-		result[i] = append(result[i], b[:n]...)
-		result[i] = append(result[i], chk.Chunk.Bytes()...)
 	}
 	return result, nil
 }
@@ -125,39 +204,47 @@ func (e *PrometheusParquetChunksDecoder) Decode(data []byte, mint, maxt int64) (
 
 	b := bytes.NewBuffer(data)
 
-	chkEnc, err := binary.ReadUvarint(b)
-	if err != nil {
-		return nil, err
-	}
+	for {
+		chkEnc, err := binary.ReadUvarint(b)
+		if err == io.EOF {
+			break
+		}
 
-	minTime, err := binary.ReadUvarint(b)
-	if err != nil {
-		return nil, err
-	}
-	if int64(minTime) > maxt {
-		return nil, nil
-	}
+		if err != nil {
+			return nil, err
+		}
 
-	maxTime, err := binary.ReadUvarint(b)
-	if err != nil {
-		return nil, err
-	}
-	size, err := binary.ReadUvarint(b)
-	if err != nil {
-		return nil, err
-	}
-	cData := b.Bytes()[:size]
-	chk, err := e.Pool.Get(chunkenc.Encoding(chkEnc), cData)
-	if err != nil {
-		return nil, err
-	}
+		minTime, err := binary.ReadUvarint(b)
+		if err != nil {
+			return nil, err
+		}
 
-	if int64(maxTime) >= mint {
-		result = append(result, chunks.Meta{
-			MinTime: int64(minTime),
-			MaxTime: int64(maxTime),
-			Chunk:   chk,
-		})
+		maxTime, err := binary.ReadUvarint(b)
+		if err != nil {
+			return nil, err
+		}
+		size, err := binary.ReadUvarint(b)
+		if err != nil {
+			return nil, err
+		}
+		cData := b.Bytes()[:size]
+		chk, err := e.Pool.Get(chunkenc.Encoding(chkEnc), cData)
+		if err != nil {
+			return nil, err
+		}
+		b.Next(int(size))
+
+		if int64(minTime) > maxt {
+			continue
+		}
+
+		if int64(maxTime) >= mint {
+			result = append(result, chunks.Meta{
+				MinTime: int64(minTime),
+				MaxTime: int64(maxTime),
+				Chunk:   chk,
+			})
+		}
 	}
 
 	return result, nil

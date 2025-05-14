@@ -40,8 +40,7 @@ func ExtractLabelFromColumn(col string) (string, bool) {
 	if !strings.HasPrefix(col, LabelColumnPrefix) {
 		return "", false
 	}
-
-	return strings.TrimPrefix(col, LabelColumnPrefix), true
+	return col[len(LabelColumnPrefix):], true
 }
 
 func IsDataColumn(col string) bool {

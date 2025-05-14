@@ -16,6 +16,8 @@ package convert
 import (
 	"container/heap"
 
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
@@ -123,4 +125,78 @@ func (h *heapChunkSeries) Pop() any {
 	x := old[n-1]
 	h.heap = old[0 : n-1]
 	return x
+}
+
+func NewChunksSeriesSet(series []storage.ChunkSeries) storage.ChunkSeriesSet {
+	return &concreteChunkSeries{
+		series: series,
+		curr:   -1,
+	}
+}
+
+type concreteChunkSeries struct {
+	series []storage.ChunkSeries
+	curr   int
+}
+
+func (c *concreteChunkSeries) Next() bool {
+	c.curr++
+	return c.curr < len(c.series)
+}
+
+func (c *concreteChunkSeries) At() storage.ChunkSeries {
+	return c.series[c.curr]
+}
+
+func (c *concreteChunkSeries) Err() error {
+	return nil
+}
+
+func (c *concreteChunkSeries) Warnings() annotations.Annotations {
+	return nil
+}
+
+// NewSeriesSetFromChunkSeriesSet is an adaptor to transform ChunkSeriesSet to SeriesSet when the
+func NewSeriesSetFromChunkSeriesSet(ss storage.ChunkSeriesSet, skipChunks bool) storage.SeriesSet {
+	if skipChunks {
+		return seriesSetFromChunksSeriesSet{chunkSeriesSet: ss}
+	}
+	return storage.NewSeriesSetFromChunkSeriesSet(ss)
+}
+
+var (
+	_ storage.SeriesSet = (*seriesSetFromChunksSeriesSet)(nil)
+	_ storage.Series    = (*seriesSetFromChunksSeries)(nil)
+)
+
+type seriesSetFromChunksSeries struct {
+	chunkSeries storage.ChunkSeries
+}
+
+func (s seriesSetFromChunksSeries) Labels() labels.Labels {
+	return s.chunkSeries.Labels()
+}
+
+func (s seriesSetFromChunksSeries) Iterator(_ chunkenc.Iterator) chunkenc.Iterator {
+	return storage.NewListSeriesIterator(nil)
+}
+
+type seriesSetFromChunksSeriesSet struct {
+	chunkSeriesSet storage.ChunkSeriesSet
+}
+
+func (s seriesSetFromChunksSeriesSet) Next() bool {
+	return s.chunkSeriesSet.Next()
+}
+
+func (s seriesSetFromChunksSeriesSet) At() storage.Series {
+	return &seriesSetFromChunksSeries{chunkSeries: s.chunkSeriesSet.At()}
+}
+
+func (s seriesSetFromChunksSeriesSet) Err() error {
+	return nil
+}
+
+func (s seriesSetFromChunksSeriesSet) Warnings() annotations.Annotations {
+	return nil
 }

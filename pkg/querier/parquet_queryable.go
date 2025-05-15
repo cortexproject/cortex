@@ -35,7 +35,7 @@ type parquetQueryableWithFallback struct {
 
 	queryStoreAfter       time.Duration
 	parquetQueryable      storage.Queryable
-	blockStorageQueryable BlocksStoreQueryable
+	blockStorageQueryable *BlocksStoreQueryable
 
 	finder BlocksFinder
 
@@ -44,11 +44,11 @@ type parquetQueryableWithFallback struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func newParquetQueryable(
+func NewParquetQueryable(
+	config Config,
 	storageCfg cortex_tsdb.BlocksStorageConfig,
 	limits BlocksStoreLimits,
-	config Config,
-	blockStorageQueryable BlocksStoreQueryable,
+	blockStorageQueryable *BlocksStoreQueryable,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (storage.Queryable, error) {
@@ -112,7 +112,7 @@ func newParquetQueryable(
 		return shards, nil
 	})
 
-	q := &parquetQueryableWithFallback{
+	p := &parquetQueryableWithFallback{
 		subservices:           manager,
 		blockStorageQueryable: blockStorageQueryable,
 		parquetQueryable:      pq,
@@ -121,7 +121,7 @@ func newParquetQueryable(
 		finder:                finder,
 	}
 
-	q.Service = services.NewBasicService(q.starting, q.running, q.stopping)
+	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
 
 	return pq, nil
 }

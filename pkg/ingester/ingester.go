@@ -40,6 +40,7 @@ import (
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
@@ -141,7 +142,7 @@ type Config struct {
 	IgnoreSeriesLimitForMetricNames string `yaml:"ignore_series_limit_for_metric_names"`
 
 	// For testing, you can override the address and ID of this ingester.
-	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
+	ingesterClientFactory func(addr string, cfg client.Config, useStreamConnection bool) (client.HealthAndIngesterClient, error)
 
 	// For admin contact details
 	AdminLimitMessage string `yaml:"admin_limit_message"`
@@ -1529,6 +1530,44 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 
 	return &cortexpb.WriteResponse{}, nil
+}
+
+func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
+	ctx := srv.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "PushStream closed")
+			return ctx.Err()
+		default:
+		}
+
+		req, err := srv.Recv()
+
+		if err == io.EOF {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+		ctx = user.InjectOrgID(ctx, req.TenantID)
+		resp, err := i.Push(ctx, req.Request)
+		resp.Code = http.StatusOK
+		if err != nil {
+			httpResponse, isGRPCError := httpgrpc.HTTPResponseFromError(err)
+			if !isGRPCError {
+				err = httpgrpc.Errorf(http.StatusInternalServerError, "%s", err)
+				httpResponse, _ = httpgrpc.HTTPResponseFromError(err)
+			}
+			resp.Code = httpResponse.Code
+			resp.Message = string(httpResponse.Body)
+		}
+		err = srv.Send(resp)
+		if err != nil {
+			level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "error sending from PushStream", "err", err)
+		}
+	}
 }
 
 func (u *userTSDB) acquireReadLock() error {

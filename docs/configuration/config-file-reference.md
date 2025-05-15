@@ -2690,6 +2690,11 @@ ha_tracker:
 # CLI flag: -distributor.sign-write-requests
 [sign_write_requests: <boolean> | default = false]
 
+# EXPERIMENTAL: If enabled, distributor would use stream connection to send
+# requests to ingesters.
+# CLI flag: -distributor.use-stream-push
+[use_stream_push: <boolean> | default = false]
+
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,

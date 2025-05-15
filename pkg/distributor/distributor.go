@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	io "io"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -151,6 +151,7 @@ type Config struct {
 	ShardByAllLabels         bool   `yaml:"shard_by_all_labels"`
 	ExtendWrites             bool   `yaml:"extend_writes"`
 	SignWriteRequestsEnabled bool   `yaml:"sign_write_requests"`
+	UseStreamPush            bool   `yaml:"use_stream_push"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -205,6 +206,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 	f.BoolVar(&cfg.SignWriteRequestsEnabled, "distributor.sign-write-requests", false, "EXPERIMENTAL: If enabled, sign the write request between distributors and ingesters.")
+	f.BoolVar(&cfg.UseStreamPush, "distributor.use-stream-push", false, "EXPERIMENTAL: If enabled, distributor would use stream connection to send requests to ingesters.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
 	f.BoolVar(&cfg.ZoneResultsQuorumMetadata, "distributor.zone-results-quorum-metadata", false, "Experimental, this flag may change in the future. If zone awareness and this both enabled, when querying metadata APIs (labels names and values for now), only results from quorum number of zones will be included.")
@@ -243,7 +245,7 @@ const (
 func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool, reg prometheus.Registerer, log log.Logger) (*Distributor, error) {
 	if cfg.IngesterClientFactory == nil {
 		cfg.IngesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
-			return ingester_client.MakeIngesterClient(addr, clientConfig)
+			return ingester_client.MakeIngesterClient(addr, clientConfig, cfg.UseStreamPush)
 		}
 	}
 
@@ -1140,20 +1142,29 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 
 	c := h.(ingester_client.HealthAndIngesterClient)
 
-	req := cortexpb.PreallocWriteRequestFromPool()
-	req.Timeseries = timeseries
-	req.Metadata = metadata
-	req.Source = source
-
 	d.inflightClientRequests.Inc()
 	defer d.inflightClientRequests.Dec()
 
-	_, err = c.PushPreAlloc(ctx, req)
+	if d.cfg.UseStreamPush {
+		req := &cortexpb.WriteRequest{
+			Timeseries: timeseries,
+			Metadata:   metadata,
+			Source:     source,
+		}
+		_, err = c.PushStreamConnection(ctx, req)
+	} else {
+		req := cortexpb.PreallocWriteRequestFromPool()
+		req.Timeseries = timeseries
+		req.Metadata = metadata
+		req.Source = source
 
-	// We should not reuse the req in case of errors:
-	// See: https://github.com/grpc/grpc-go/issues/6355
-	if err == nil {
-		cortexpb.ReuseWriteRequest(req)
+		_, err = c.PushPreAlloc(ctx, req)
+
+		// We should not reuse the req in case of errors:
+		// See: https://github.com/grpc/grpc-go/issues/6355
+		if err == nil {
+			cortexpb.ReuseWriteRequest(req)
+		}
 	}
 
 	if len(metadata) > 0 {

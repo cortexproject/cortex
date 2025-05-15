@@ -352,46 +352,50 @@ func TestDistributor_Push(t *testing.T) {
 			`,
 		},
 	} {
-		for _, shardByAllLabels := range []bool{true, false} {
-			tc := tc
-			name := name
-			shardByAllLabels := shardByAllLabels
-			t.Run(fmt.Sprintf("[%s](shardByAllLabels=%v)", name, shardByAllLabels), func(t *testing.T) {
-				t.Parallel()
-				limits := &validation.Limits{}
-				flagext.DefaultValues(limits)
-				limits.IngestionRate = 20
-				limits.IngestionBurstSize = 20
+		for _, useStreamPush := range []bool{false, true} {
+			for _, shardByAllLabels := range []bool{true, false} {
+				tc := tc
+				name := name
+				shardByAllLabels := shardByAllLabels
+				useStreamPush := useStreamPush
+				t.Run(fmt.Sprintf("[%s](shardByAllLabels=%v,useStreamPush=%v)", name, shardByAllLabels, useStreamPush), func(t *testing.T) {
+					t.Parallel()
+					limits := &validation.Limits{}
+					flagext.DefaultValues(limits)
+					limits.IngestionRate = 20
+					limits.IngestionBurstSize = 20
 
-				ds, _, regs, _ := prepare(t, prepConfig{
-					numIngesters:     tc.numIngesters,
-					happyIngesters:   tc.happyIngesters,
-					numDistributors:  1,
-					shardByAllLabels: shardByAllLabels,
-					limits:           limits,
-					errFail:          tc.ingesterError,
-				})
-
-				var request *cortexpb.WriteRequest
-				if !tc.histogramSamples {
-					request = makeWriteRequest(tc.samples.startTimestampMs, tc.samples.num, tc.metadata, 0)
-				} else {
-					request = makeWriteRequest(tc.samples.startTimestampMs, 0, tc.metadata, tc.samples.num)
-				}
-				response, err := ds[0].Push(ctx, request)
-				assert.Equal(t, tc.expectedResponse, response)
-				assert.Equal(t, status.Code(tc.expectedError), status.Code(err))
-
-				// Check tracked Prometheus metrics. Since the Push() response is sent as soon as the quorum
-				// is reached, when we reach this point the 3rd ingester may not have received series/metadata
-				// yet. To avoid flaky test we retry metrics assertion until we hit the desired state (no error)
-				// within a reasonable timeout.
-				if tc.expectedMetrics != "" {
-					test.Poll(t, time.Second, nil, func() interface{} {
-						return testutil.GatherAndCompare(regs[0], strings.NewReader(tc.expectedMetrics), tc.metricNames...)
+					ds, _, regs, _ := prepare(t, prepConfig{
+						numIngesters:     tc.numIngesters,
+						happyIngesters:   tc.happyIngesters,
+						numDistributors:  1,
+						shardByAllLabels: shardByAllLabels,
+						limits:           limits,
+						errFail:          tc.ingesterError,
+						useStreamPush:    useStreamPush,
 					})
-				}
-			})
+
+					var request *cortexpb.WriteRequest
+					if !tc.histogramSamples {
+						request = makeWriteRequest(tc.samples.startTimestampMs, tc.samples.num, tc.metadata, 0)
+					} else {
+						request = makeWriteRequest(tc.samples.startTimestampMs, 0, tc.metadata, tc.samples.num)
+					}
+					response, err := ds[0].Push(ctx, request)
+					assert.Equal(t, tc.expectedResponse, response)
+					assert.Equal(t, status.Code(tc.expectedError), status.Code(err))
+
+					// Check tracked Prometheus metrics. Since the Push() response is sent as soon as the quorum
+					// is reached, when we reach this point the 3rd ingester may not have received series/metadata
+					// yet. To avoid flaky test we retry metrics assertion until we hit the desired state (no error)
+					// within a reasonable timeout.
+					if tc.expectedMetrics != "" {
+						test.Poll(t, time.Second, nil, func() interface{} {
+							return testutil.GatherAndCompare(regs[0], strings.NewReader(tc.expectedMetrics), tc.metricNames...)
+						})
+					}
+				})
+			}
 		}
 	}
 }
@@ -2341,6 +2345,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			distributorCfg.IngesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
 				return &noopIngester{}, nil
 			}
+			distributorCfg.UseStreamPush = false
 
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(b, err)
@@ -2837,6 +2842,7 @@ type prepConfig struct {
 	enableTracker                bool
 	errFail                      error
 	tokens                       [][]uint32
+	useStreamPush                bool
 }
 
 type prepState struct {
@@ -2951,6 +2957,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		distributorCfg.InstanceLimits.MaxInflightPushRequests = cfg.maxInflightRequests
 		distributorCfg.InstanceLimits.MaxInflightClientRequests = cfg.maxInflightClientRequests
 		distributorCfg.InstanceLimits.MaxIngestionRate = cfg.maxIngestionRate
+		distributorCfg.UseStreamPush = cfg.useStreamPush
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle
@@ -3308,6 +3315,10 @@ func (i *mockIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWr
 	return i.Push(ctx, &in.WriteRequest, opts...)
 }
 
+func (i *mockIngester) PushStreamConnection(ctx context.Context, in *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return i.Push(ctx, in, opts...)
+}
+
 func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
 	i.Lock()
 	defer i.Unlock()
@@ -3559,6 +3570,10 @@ func (i *noopIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWr
 }
 
 func (i *noopIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return nil, nil
+}
+
+func (i *noopIngester) PushStreamConnection(ctx context.Context, in *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
 	return nil, nil
 }
 

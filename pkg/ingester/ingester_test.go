@@ -2365,6 +2365,33 @@ func TestIngester_Push_DecreaseInactiveSeries(t *testing.T) {
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
 }
 
+func TestIngester_Push_OutOfOrderLabels(t *testing.T) {
+	// Create ingester
+	cfg := defaultIngesterTestConfig(t)
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+
+	outOfOrderLabels := labels.Labels{
+		{Name: labels.MetricName, Value: "test_metric"},
+		{Name: "c", Value: "3"},
+		{Name: "a", Value: "1"}, // Out of order (a comes before c)
+	}
+
+	req, _ := mockWriteRequest(t, outOfOrderLabels, 1, 2)
+	_, err = i.Push(ctx, req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out-of-order label set found")
+}
+
 func BenchmarkIngesterPush(b *testing.B) {
 	limits := defaultLimitsTestConfig()
 	benchmarkIngesterPush(b, limits, false)

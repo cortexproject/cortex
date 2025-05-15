@@ -1132,6 +1132,17 @@ type extendedAppender interface {
 	storage.GetRef
 }
 
+func (i *Ingester) isLabelSetOutOfOrder(labels labels.Labels) bool {
+	last := ""
+	for _, l := range labels {
+		if strings.Compare(last, l.Name) > 0 {
+			return true
+		}
+		last = l.Name
+	}
+	return false
+}
+
 // Push adds metrics to a block
 func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	if err := i.checkRunning(); err != nil {
@@ -1297,6 +1308,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 		// Look up a reference for this series.
 		tsLabels := cortexpb.FromLabelAdaptersToLabels(ts.Labels)
+		if i.isLabelSetOutOfOrder(tsLabels) {
+			return nil, wrapWithUser(errors.Errorf("out-of-order label set found when push: %s", tsLabels), userID)
+		}
 		tsLabelsHash := tsLabels.Hash()
 		ref, copiedLabels := app.GetRef(tsLabels, tsLabelsHash)
 

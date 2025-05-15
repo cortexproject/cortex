@@ -25,8 +25,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
-const retryMinBackoff = time.Second
-const retryMaxBackoff = 5 * time.Second
+const retryMinBackoff = time.Millisecond
+const retryMaxBackoff = 5 * time.Millisecond
 
 // Distributor is the read interface to the distributor, made an interface here
 // to reduce package coupling.
@@ -203,7 +203,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, pa
 }
 
 func (q *distributorQuerier) queryWithRetry(ctx context.Context, queryFunc func() (*client.QueryStreamResponse, error)) (*client.QueryStreamResponse, error) {
-	if q.ingesterQueryMaxAttempts == 1 {
+	if q.ingesterQueryMaxAttempts <= 1 {
 		return queryFunc()
 	}
 

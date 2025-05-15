@@ -238,7 +238,7 @@ querier:
   [store_gateway_consistency_check_max_attempts: <int> | default = 3]
 
   # The maximum number of times we attempt fetching data from ingesters for
-  # retryable errors.
+  # retryable errors (ex. partial data returned).
   # CLI flag: -querier.ingester-query-max-attempts
   [ingester_query_max_attempts: <int> | default = 1]
 

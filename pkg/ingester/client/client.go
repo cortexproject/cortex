@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -246,8 +247,8 @@ func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {
 				}
 				job.resp = resp
 				job.err = err
-				if err == nil && job.resp.GetGRPCResponse() != nil {
-					job.err = httpgrpc.ErrorFromHTTPResponse(job.resp.GetGRPCResponse())
+				if err == nil && job.resp.Code != http.StatusOK {
+					job.err = httpgrpc.Errorf(int(job.resp.Code), "%s", job.resp.Message)
 				}
 				job.cancel()
 			}

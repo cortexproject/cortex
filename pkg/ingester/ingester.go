@@ -1553,13 +1553,15 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 		}
 		ctx = user.InjectOrgID(ctx, req.TenantID)
 		resp, err := i.Push(ctx, req.Request)
+		resp.Code = http.StatusOK
 		if err != nil {
-			response, isGRPCError := httpgrpc.HTTPResponseFromError(err)
+			httpResponse, isGRPCError := httpgrpc.HTTPResponseFromError(err)
 			if !isGRPCError {
 				err = httpgrpc.Errorf(http.StatusInternalServerError, "%s", err)
-				response, _ = httpgrpc.HTTPResponseFromError(err)
+				httpResponse, _ = httpgrpc.HTTPResponseFromError(err)
 			}
-			resp.GRPCResponse = response
+			resp.Code = httpResponse.Code
+			resp.Message = string(httpResponse.Body)
 		}
 		err = srv.Send(resp)
 		if err != nil {

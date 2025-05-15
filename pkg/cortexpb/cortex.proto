@@ -5,7 +5,6 @@ package cortexpb;
 option go_package = "cortexpb";
 
 import "gogoproto/gogo.proto";
-import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -28,7 +27,8 @@ message StreamWriteRequest {
 }
 
 message WriteResponse {
-  httpgrpc.HTTPResponse GRPCResponse = 1;
+  int32 code = 1;
+  string message = 2;
 }
 
 message TimeSeries {

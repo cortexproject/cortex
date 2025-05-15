@@ -150,6 +150,9 @@ func (m *mergeQuerier) LabelValues(ctx context.Context, name string, hints *stor
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {
+		// If use the regex resolver, the orgID could be set to input regex.
+		// So, we inject the resolved orgID.
+		ctx = user.InjectOrgID(ctx, ids[0])
 		return queriers[0].LabelValues(ctx, name, hints, matchers...)
 	}
 	log, _ := spanlogger.New(ctx, "mergeQuerier.LabelValues")
@@ -191,6 +194,9 @@ func (m *mergeQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {
+		// If use the regex resolver, the orgID could be set to input regex.
+		// So, we inject the resolved orgID.
+		ctx = user.InjectOrgID(ctx, ids[0])
 		return queriers[0].LabelNames(ctx, hints, matchers...)
 	}
 	log, _ := spanlogger.New(ctx, "mergeQuerier.LabelNames")
@@ -333,6 +339,9 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {
+		// If use the regex resolver, the orgID could be set to input regex.
+		// So, we inject the resolved orgID.
+		ctx = user.InjectOrgID(ctx, ids[0])
 		return queriers[0].Select(ctx, sortSeries, hints, matchers...)
 	}
 

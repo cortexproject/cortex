@@ -2625,6 +2625,11 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -distributor.sign-write-requests&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[sign_write_requests&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># EXPERIMENTAL: If enabled, distributor would use stream connection to send&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># requests to ingesters.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -distributor.use-stream-push&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[use_stream_push&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ring&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">kvstore&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Backend storage to use for the ring. Supported values are: consul, etcd,&lt;/span>
@@ -6577,6 +6582,11 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>&lt;code>-ingester.instance-limits.heap-utilization&lt;/code>&lt;/li>
 &lt;li>&lt;code>-store-gateway.instance-limits.cpu-utilization&lt;/code>&lt;/li>
 &lt;li>&lt;code>-store-gateway.instance-limits.heap-utilization&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Distributor/Ingester: Stream push connection
+&lt;ul>
+&lt;li>Enable stream push connection between distributor and ingester by setting &lt;code>-distributor.use-stream-push=true&lt;/code> on Distributor.&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;/ul></description></item></channel></rss>

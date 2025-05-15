@@ -31,6 +31,7 @@ type ingesterMetrics struct {
 	ingestedHistogramsFail  prometheus.Counter
 	ingestedExemplarsFail   prometheus.Counter
 	ingestedMetadataFail    prometheus.Counter
+	oooLabelsTotal          *prometheus.CounterVec
 	queries                 prometheus.Counter
 	queriedSamples          prometheus.Histogram
 	queriedExemplars        prometheus.Histogram
@@ -112,6 +113,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_ingested_metadata_failures_total",
 			Help: "The total number of metadata that errored on ingestion.",
 		}),
+		oooLabelsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_out_of_order_labels_total",
+			Help: "The total number of out of order label found per user.",
+		}, []string{"user"}),
 		queries: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_queries_total",
 			Help: "The total number of queries the ingester has handled.",
@@ -283,6 +288,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 }
 
 func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
+	m.oooLabelsTotal.DeleteLabelValues(userID)
 	m.memMetadataCreatedTotal.DeleteLabelValues(userID)
 	m.memMetadataRemovedTotal.DeleteLabelValues(userID)
 	m.activeSeriesPerUser.DeleteLabelValues(userID)

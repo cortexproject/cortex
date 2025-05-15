@@ -2368,7 +2368,8 @@ func TestIngester_Push_DecreaseInactiveSeries(t *testing.T) {
 func TestIngester_Push_OutOfOrderLabels(t *testing.T) {
 	// Create ingester
 	cfg := defaultIngesterTestConfig(t)
-	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+	r := prometheus.NewRegistry()
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, r)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -2390,6 +2391,14 @@ func TestIngester_Push_OutOfOrderLabels(t *testing.T) {
 	_, err = i.Push(ctx, req)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "out-of-order label set found")
+
+	metric := `
+		# HELP cortex_ingester_out_of_order_labels_total The total number of out of order label found per user.
+		# TYPE cortex_ingester_out_of_order_labels_total counter
+		cortex_ingester_out_of_order_labels_total{user="test-user"} 1
+`
+	err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_out_of_order_labels_total")
+	require.NoError(t, err)
 }
 
 func BenchmarkIngesterPush(b *testing.B) {

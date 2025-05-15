@@ -1309,6 +1309,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		// Look up a reference for this series.
 		tsLabels := cortexpb.FromLabelAdaptersToLabels(ts.Labels)
 		if i.isLabelSetOutOfOrder(tsLabels) {
+			i.metrics.oooLabelsTotal.WithLabelValues(userID).Inc()
 			return nil, wrapWithUser(errors.Errorf("out-of-order label set found when push: %s", tsLabels), userID)
 		}
 		tsLabelsHash := tsLabels.Hash()

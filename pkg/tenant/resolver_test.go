@@ -67,14 +67,32 @@ var commonResolverTestCases = []resolverTestCase{
 	{
 		name:         "parent-dir",
 		headerValue:  strptr(".."),
-		errTenantID:  errInvalidTenantID,
-		errTenantIDs: errInvalidTenantID,
+		errTenantID:  errTenantIDUnsafe,
+		errTenantIDs: errTenantIDUnsafe,
 	},
 	{
 		name:         "current-dir",
 		headerValue:  strptr("."),
-		errTenantID:  errInvalidTenantID,
-		errTenantIDs: errInvalidTenantID,
+		errTenantID:  errTenantIDUnsafe,
+		errTenantIDs: errTenantIDUnsafe,
+	},
+	{
+		name:         "white space",
+		headerValue:  strptr(" "),
+		errTenantID:  &errTenantIDUnsupportedCharacter{pos: 0, tenantID: " "},
+		errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 0, tenantID: " "},
+	},
+	{
+		name:         "containing-forward-slash",
+		headerValue:  strptr("forward/slash"),
+		errTenantID:  &errTenantIDUnsupportedCharacter{pos: 7, tenantID: "forward/slash"},
+		errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 7, tenantID: "forward/slash"},
+	},
+	{
+		name:         "containing-backward-slash",
+		headerValue:  strptr(`backward\slash`),
+		errTenantID:  &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "backward\\slash"},
+		errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "backward\\slash"},
 	},
 }
 
@@ -82,22 +100,16 @@ func TestSingleResolver(t *testing.T) {
 	r := NewSingleResolver()
 	for _, tc := range append(commonResolverTestCases, []resolverTestCase{
 		{
-			name:        "multi-tenant",
-			headerValue: strptr("tenant-a|tenant-b"),
-			tenantID:    "tenant-a|tenant-b",
-			tenantIDs:   []string{"tenant-a|tenant-b"},
+			name:         "multi-tenant",
+			headerValue:  strptr("tenant-a|tenant-b"),
+			errTenantID:  &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "tenant-a|tenant-b"},
+			errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "tenant-a|tenant-b"},
 		},
 		{
-			name:         "containing-forward-slash",
-			headerValue:  strptr("forward/slash"),
-			errTenantID:  errInvalidTenantID,
-			errTenantIDs: errInvalidTenantID,
-		},
-		{
-			name:         "containing-backward-slash",
-			headerValue:  strptr(`backward\slash`),
-			errTenantID:  errInvalidTenantID,
-			errTenantIDs: errInvalidTenantID,
+			name:         "containing-invalid-character",
+			headerValue:  strptr("+"),
+			errTenantID:  &errTenantIDUnsupportedCharacter{pos: 0, tenantID: "+"},
+			errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 0, tenantID: "+"},
 		},
 	}...) {
 		t.Run(tc.name, tc.test(r))
@@ -126,22 +138,16 @@ func TestMultiResolver(t *testing.T) {
 			tenantIDs:   []string{"tenant-a", "tenant-b"},
 		},
 		{
-			name:         "multi-tenant-with-relative-path",
+			name:         "multi-tenant-with-unsafe-path-segment(.)",
+			headerValue:  strptr("tenant-a|tenant-b|."),
+			errTenantID:  errTenantIDUnsafe,
+			errTenantIDs: errTenantIDUnsafe,
+		},
+		{
+			name:         "multi-tenant-with-unsafe-path-segment(..)",
 			headerValue:  strptr("tenant-a|tenant-b|.."),
-			errTenantID:  errInvalidTenantID,
-			errTenantIDs: errInvalidTenantID,
-		},
-		{
-			name:         "containing-forward-slash",
-			headerValue:  strptr("forward/slash"),
-			errTenantID:  &errTenantIDUnsupportedCharacter{pos: 7, tenantID: "forward/slash"},
-			errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 7, tenantID: "forward/slash"},
-		},
-		{
-			name:         "containing-backward-slash",
-			headerValue:  strptr(`backward\slash`),
-			errTenantID:  &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "backward\\slash"},
-			errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "backward\\slash"},
+			errTenantID:  errTenantIDUnsafe,
+			errTenantIDs: errTenantIDUnsafe,
 		},
 	}...) {
 		t.Run(tc.name, tc.test(r))

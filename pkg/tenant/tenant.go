@@ -12,6 +12,7 @@ import (
 
 var (
 	errTenantIDTooLong = errors.New("tenant ID is too long: max 150 characters")
+	errTenantIDUnsafe  = errors.New("tenant ID is '.' or '..'")
 )
 
 type errTenantIDUnsupportedCharacter struct {
@@ -63,6 +64,10 @@ func ValidTenantID(s string) error {
 
 	if len(s) > 150 {
 		return errTenantIDTooLong
+	}
+
+	if containsUnsafePathSegments(s) {
+		return errTenantIDUnsafe
 	}
 
 	return nil

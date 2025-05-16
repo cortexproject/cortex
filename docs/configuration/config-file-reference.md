@@ -3267,6 +3267,10 @@ instance_limits:
 # Maximum number of entries in the regex matchers cache. 0 to disable.
 # CLI flag: -ingester.matchers-cache-max-items
 [matchers_cache_max_items: <int> | default = 0]
+
+# If enabled, the metadata API returns all metadata regardless of the limits.
+# CLI flag: -ingester.skip-metadata-limits
+[skip_metadata_limits: <boolean> | default = true]
 ```
 
 ### `ingester_client_config`

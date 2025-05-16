@@ -14,11 +14,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-const (
-	defaultLimit          = -1
-	defaultLimitPerMetric = -1
-)
-
 func Test_UserMetricsMetadata(t *testing.T) {
 	userId := "user-1"
 
@@ -43,33 +38,13 @@ func Test_UserMetricsMetadata(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(overrides, nil, util.ShardingStrategyDefault, true, 1, false, "")
 
-	userMetricsMetadata := newMetadataMap(limiter, m, validation.NewValidateMetrics(reg), userId)
-
-	addMetricMetadata := func(name string, i int) {
-		metadata := &cortexpb.MetricMetadata{
-			MetricFamilyName: fmt.Sprintf("%s_%d", name, i),
-			Type:             cortexpb.GAUGE,
-			Help:             fmt.Sprintf("a help for %s", name),
-			Unit:             fmt.Sprintf("a unit for %s", name),
-		}
-
-		err := userMetricsMetadata.add(name, metadata)
-		require.NoError(t, err)
-	}
-
-	metadataNumPerMetric := 3
-	for _, m := range []string{"metric1", "metric2"} {
-		for i := range metadataNumPerMetric {
-			addMetricMetadata(m, i)
-		}
-	}
-
 	tests := []struct {
-		description    string
-		limit          int64
-		limitPerMetric int64
-		metric         string
-		expectedLength int
+		description        string
+		limit              int64
+		limitPerMetric     int64
+		metric             string
+		expectedLength     int
+		skipMetadataLimits bool
 	}{
 		{
 			description:    "limit: 1",
@@ -122,10 +97,38 @@ func Test_UserMetricsMetadata(t *testing.T) {
 			metric:         "dummy",
 			expectedLength: 0,
 		},
+		{
+			description:        "enable skipMetadataLimits",
+			limit:              1,
+			limitPerMetric:     2,
+			expectedLength:     2 * 3, // # of metric * metadataNumPerMetric
+			skipMetadataLimits: true,
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
+			userMetricsMetadata := newMetadataMap(limiter, m, validation.NewValidateMetrics(reg), userId, test.skipMetadataLimits)
+
+			addMetricMetadata := func(name string, i int) {
+				metadata := &cortexpb.MetricMetadata{
+					MetricFamilyName: fmt.Sprintf("%s_%d", name, i),
+					Type:             cortexpb.GAUGE,
+					Help:             fmt.Sprintf("a help for %s", name),
+					Unit:             fmt.Sprintf("a unit for %s", name),
+				}
+
+				err := userMetricsMetadata.add(name, metadata)
+				require.NoError(t, err)
+			}
+
+			metadataNumPerMetric := 3
+			for _, m := range []string{"metric1", "metric2"} {
+				for i := range metadataNumPerMetric {
+					addMetricMetadata(m, i)
+				}
+			}
+
 			req := &client.MetricsMetadataRequest{Limit: test.limit, LimitPerMetric: test.limitPerMetric, Metric: test.metric}
 
 			r := userMetricsMetadata.toClientMetadata(req)

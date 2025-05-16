@@ -123,6 +123,83 @@ func TestNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T) {
 	}
 }
 
+// Test for #6744. When the querier is running on an older version, while the ingester is running on a newer
+// version, the ingester should return all metadata.
+func TestMetadataAPIWhenDeployment(t *testing.T) {
+	oldImage := "quay.io/cortexproject/cortex:v1.19.0"
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
+
+	minio := e2edb.NewMinio(9000, baseFlags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	oldFlags := mergeFlags(baseFlags, map[string]string{
+		// alert manager
+		"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		// consul
+		"-ring.store":      "consul",
+		"-consul.hostname": consul.NetworkHTTPEndpoint(),
+	})
+
+	newFlags := mergeFlags(oldFlags, map[string]string{
+		// ingester
+		"-ingester.skip-metadata-limits": "true",
+	})
+
+	// Start Cortex components
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), newFlags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), newFlags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), oldFlags, oldImage)
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
+
+	// Wait until distributor has updated the ring.
+	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	// Wait until querier has updated the ring.
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	metadataMetricNum := 5
+	metadataPerMetrics := 2
+	metadata := make([]prompb.MetricMetadata, 0, metadataMetricNum)
+	for i := 0; i < metadataMetricNum; i++ {
+		for j := 0; j < metadataPerMetrics; j++ {
+			metadata = append(metadata, prompb.MetricMetadata{
+				MetricFamilyName: fmt.Sprintf("metadata_name_%d", i),
+				Help:             fmt.Sprintf("metadata_help_%d_%d", i, j),
+				Unit:             fmt.Sprintf("metadata_unit_%d_%d", i, j),
+			})
+		}
+	}
+	res, err := client.Push(nil, metadata...)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// should return all metadata regardless of the limit
+	maxLimit := metadataMetricNum * metadataPerMetrics
+	for i := -1; i <= maxLimit; i++ {
+		result, err := client.Metadata("", strconv.Itoa(i))
+		require.NoError(t, err)
+		require.Equal(t, metadataMetricNum, len(result))
+		for _, metadata := range result {
+			require.Equal(t, metadataPerMetrics, len(metadata))
+		}
+	}
+}
+
 // Test cortex which uses Prometheus v3.x can support holt_winters function
 func TestCanSupportHoltWintersFunc(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)

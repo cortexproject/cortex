@@ -42,9 +42,10 @@ func NewDistributorWithConfigFile(name string, store RingStore, address, configF
 
 	// Configure the ingesters ring backend
 	flags["-ring.store"] = string(store)
-	if store == RingStoreConsul {
+	switch store {
+	case RingStoreConsul:
 		flags["-consul.hostname"] = address
-	} else if store == RingStoreEtcd {
+	case RingStoreEtcd:
 		flags["-etcd.endpoints"] = address
 	}
 
@@ -82,10 +83,11 @@ func NewQuerierWithConfigFile(name string, store RingStore, address, configFile 
 		"-store-gateway.sharding-ring.store": string(store),
 	}
 
-	if store == RingStoreConsul {
+	switch store {
+	case RingStoreConsul:
 		ringBackendFlags["-consul.hostname"] = address
 		ringBackendFlags["-store-gateway.sharding-ring.consul.hostname"] = address
-	} else if store == RingStoreEtcd {
+	case RingStoreEtcd:
 		ringBackendFlags["-etcd.endpoints"] = address
 		ringBackendFlags["-store-gateway.sharding-ring.etcd.endpoints"] = address
 	}
@@ -130,10 +132,11 @@ func NewStoreGatewayWithConfigFile(name string, store RingStore, address string,
 		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
 	}
 
-	if store == RingStoreConsul {
+	switch store {
+	case RingStoreConsul:
 		flags["-consul.hostname"] = address
 		flags["-store-gateway.sharding-ring.consul.hostname"] = address
-	} else if store == RingStoreEtcd {
+	case RingStoreEtcd:
 		flags["-etcd.endpoints"] = address
 		flags["-store-gateway.sharding-ring.etcd.endpoints"] = address
 	}
@@ -173,9 +176,10 @@ func NewIngesterWithConfigFile(name string, store RingStore, address, configFile
 
 	// Configure the ingesters ring backend
 	flags["-ring.store"] = string(store)
-	if store == RingStoreConsul {
+	switch store {
+	case RingStoreConsul:
 		flags["-consul.hostname"] = address
-	} else if store == RingStoreEtcd {
+	case RingStoreEtcd:
 		flags["-etcd.endpoints"] = address
 	}
 

@@ -76,10 +76,10 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 
 	cfg, err := am.store.GetAlertConfig(r.Context(), userID)
 	if err != nil {
-		switch {
-		case err == alertspb.ErrNotFound:
+		switch err {
+		case alertspb.ErrNotFound:
 			http.Error(w, err.Error(), http.StatusNotFound)
-		case err == alertspb.ErrAccessDenied:
+		case alertspb.ErrAccessDenied:
 			http.Error(w, err.Error(), http.StatusForbidden)
 		default:
 			http.Error(w, err.Error(), http.StatusInternalServerError)

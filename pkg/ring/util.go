@@ -177,7 +177,7 @@ func getFirstAddressOf(names []string, logger log.Logger) (string, error) {
 		return ipAddr, nil
 	}
 	if ipAddr == "" {
-		return "", fmt.Errorf("No address found for %s", names)
+		return "", fmt.Errorf("no address found for %s", names)
 	}
 	if strings.HasPrefix(ipAddr, `169.254.`) {
 		level.Warn(logger).Log("msg", "using automatic private ip", "address", ipAddr)

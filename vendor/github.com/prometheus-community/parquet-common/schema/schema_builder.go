@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/efficientgo/core/errors"
+
 	"github.com/parquet-go/parquet-go"
 )
 
@@ -42,6 +44,44 @@ func NewBuilder(mint, maxt, colDuration int64) *Builder {
 	}
 
 	return b
+}
+
+func FromLabelsFile(lf *parquet.File) (*TSDBSchema, error) {
+	md := MetadataToMap(lf.Metadata().KeyValueMetadata)
+	mint, err := strconv.ParseInt(md[MinTMd], 0, 64)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to convert mint to int")
+	}
+
+	maxt, err := strconv.ParseInt(md[MaxTMd], 10, 64)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to convert max to int")
+	}
+
+	dataColDurationMs, err := strconv.ParseInt(md[DataColSizeMd], 10, 64)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to convert dataColDurationMs to int")
+	}
+	g := make(parquet.Group)
+
+	b := &Builder{
+		g:                 g,
+		metadata:          md,
+		mint:              mint,
+		maxt:              maxt,
+		dataColDurationMs: dataColDurationMs,
+	}
+
+	for _, c := range lf.Schema().Columns() {
+		lbl, ok := ExtractLabelFromColumn(c[0])
+		if !ok {
+			continue
+		}
+
+		b.AddLabelNameColumn(lbl)
+	}
+
+	return b.Build()
 }
 
 func (b *Builder) AddLabelNameColumn(lbls ...string) {

@@ -23,16 +23,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/efficientgo/core/errors"
 	"github.com/hashicorp/go-multierror"
 	"github.com/parquet-go/parquet-go"
-	"github.com/pkg/errors"
-	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
 	"github.com/thanos-io/objstore"
+
+	"github.com/prometheus-community/parquet-common/schema"
 )
 
 var DefaultConvertOpts = convertOpts{
@@ -116,6 +117,18 @@ func WithPageBufferSize(s int) ConvertOption {
 func WithName(name string) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.name = name
+	}
+}
+
+func WithNumRowGroups(n int) ConvertOption {
+	return func(opts *convertOpts) {
+		opts.numRowGroups = n
+	}
+}
+
+func WithRowGroupSize(size int) ConvertOption {
+	return func(opts *convertOpts) {
+		opts.rowGroupSize = size
 	}
 }
 

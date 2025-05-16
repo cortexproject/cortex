@@ -11,26 +11,33 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+const (
+	defaultLimit          = -1
+	defaultLimitPerMetric = -1
+)
+
 // userMetricsMetadata allows metric metadata of a tenant to be held by the ingester.
 // Metadata is kept as a set as it can come from multiple targets that Prometheus scrapes
 // with the same metric name.
 type userMetricsMetadata struct {
-	limiter         *Limiter
-	metrics         *ingesterMetrics
-	validateMetrics *validation.ValidateMetrics
-	userID          string
+	limiter            *Limiter
+	metrics            *ingesterMetrics
+	validateMetrics    *validation.ValidateMetrics
+	userID             string
+	skipMetadataLimits bool
 
 	mtx              sync.RWMutex
 	metricToMetadata map[string]metricMetadataSet
 }
 
-func newMetadataMap(l *Limiter, m *ingesterMetrics, v *validation.ValidateMetrics, userID string) *userMetricsMetadata {
+func newMetadataMap(l *Limiter, m *ingesterMetrics, v *validation.ValidateMetrics, userID string, skipMetadataLimits bool) *userMetricsMetadata {
 	return &userMetricsMetadata{
-		metricToMetadata: map[string]metricMetadataSet{},
-		limiter:          l,
-		metrics:          m,
-		validateMetrics:  v,
-		userID:           userID,
+		metricToMetadata:   map[string]metricMetadataSet{},
+		limiter:            l,
+		metrics:            m,
+		validateMetrics:    v,
+		userID:             userID,
+		skipMetadataLimits: skipMetadataLimits,
 	}
 }
 
@@ -88,8 +95,17 @@ func (mm *userMetricsMetadata) purge(deadline time.Time) {
 func (mm *userMetricsMetadata) toClientMetadata(req *client.MetricsMetadataRequest) []*cortexpb.MetricMetadata {
 	mm.mtx.RLock()
 	defer mm.mtx.RUnlock()
+
 	r := make([]*cortexpb.MetricMetadata, 0, len(mm.metricToMetadata))
-	if req.Limit == 0 {
+	limit := req.Limit
+	limitPerMetric := req.LimitPerMetric
+
+	if mm.skipMetadataLimits {
+		// set limit and limitPerMetric to default
+		limit = defaultLimit
+		limitPerMetric = defaultLimitPerMetric
+	}
+	if limit == 0 {
 		return r
 	}
 
@@ -99,16 +115,16 @@ func (mm *userMetricsMetadata) toClientMetadata(req *client.MetricsMetadataReque
 			return r
 		}
 
-		metadataSet.add(req.LimitPerMetric, &r)
+		metadataSet.add(limitPerMetric, &r)
 		return r
 	}
 
 	var metrics int64
 	for _, set := range mm.metricToMetadata {
-		if req.Limit > 0 && metrics >= req.Limit {
+		if limit > 0 && metrics >= limit {
 			break
 		}
-		set.add(req.LimitPerMetric, &r)
+		set.add(limitPerMetric, &r)
 		metrics++
 	}
 	return r

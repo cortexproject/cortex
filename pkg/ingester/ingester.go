@@ -156,6 +156,9 @@ type Config struct {
 
 	// Maximum number of entries in the matchers cache. 0 to disable.
 	MatchersCacheMaxItems int `yaml:"matchers_cache_max_items"`
+
+	// If enabled, the metadata API returns all metadata regardless of the limits.
+	SkipMetadataLimits bool `yaml:"skip_metadata_limits"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -177,6 +180,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
+	f.BoolVar(&cfg.SkipMetadataLimits, "ingester.skip-metadata-limits", true, "If enabled, the metadata API returns all metadata regardless of the limits.")
 
 	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
 }
@@ -3096,7 +3100,7 @@ func (i *Ingester) getOrCreateUserMetadata(userID string) *userMetricsMetadata {
 	// Ensure it was not created between switching locks.
 	userMetadata, ok := i.usersMetadata[userID]
 	if !ok {
-		userMetadata = newMetadataMap(i.limiter, i.metrics, i.validateMetrics, userID)
+		userMetadata = newMetadataMap(i.limiter, i.metrics, i.validateMetrics, userID, i.cfg.SkipMetadataLimits)
 		i.usersMetadata[userID] = userMetadata
 	}
 	return userMetadata

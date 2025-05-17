@@ -13,7 +13,7 @@ updates:
       actions-dependencies:
         dependency-type: "production"
     labels:
-      - "infra"
+      - "ci/cd"
   - package-ecosystem: "gomod"
     directories:
       - "/"

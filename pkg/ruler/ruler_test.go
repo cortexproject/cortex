@@ -2797,9 +2797,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	}
 
 	// Define a no-op GroupEvalIterationFunc to avoid races between the scheduled Eval() execution and the evaluations invoked by this test.
-	evalFunc := func(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
-		return
-	}
+	evalFunc := func(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {}
 
 	r, _ := buildRulerWithIterFunc(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, store, nil, evalFunc)
 	r.syncRules(context.Background(), rulerSyncReasonInitial)

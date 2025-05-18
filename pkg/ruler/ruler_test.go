@@ -340,6 +340,26 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.Tes
 	return ruler, manager
 }
 
+func buildRulerWithIterFunc(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, store rulestore.RuleStore, rulerAddrMap map[string]*Ruler, ruleGroupIterFunc promRules.GroupEvalIterationFunc) (*Ruler, *DefaultMultiTenantManager) {
+	engine, queryable, pusher, logger, overrides, reg := testSetup(t, querierTestConfig)
+	metrics := NewRuleEvalMetrics(rulerConfig, reg)
+	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, metrics, reg)
+	manager, err := NewDefaultMultiTenantManagerWithIterationFunc(ruleGroupIterFunc, rulerConfig, &ruleLimits{}, managerFactory, metrics, reg, log.NewNopLogger())
+	require.NoError(t, err)
+
+	ruler, err := newRuler(
+		rulerConfig,
+		manager,
+		reg,
+		logger,
+		store,
+		overrides,
+		newMockClientsPool(rulerConfig, logger, reg, rulerAddrMap),
+	)
+	require.NoError(t, err)
+	return ruler, manager
+}
+
 func newTestRuler(t *testing.T, rulerConfig Config, store rulestore.RuleStore, querierTestConfig *querier.TestConfig) *Ruler {
 	ruler, _ := buildRuler(t, rulerConfig, querierTestConfig, store, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
@@ -2776,8 +2796,12 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 		querier.UseAlwaysQueryable(newEmptyQueryable()),
 	}
 
-	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
-	r, _ := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, store, nil)
+	// Define a no-op GroupEvalIterationFunc to avoid races between the scheduled Eval() execution and the evaluations invoked by this test.
+	evalFunc := func(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
+		return
+	}
+
+	r, _ := buildRulerWithIterFunc(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, store, nil, evalFunc)
 	r.syncRules(context.Background(), rulerSyncReasonInitial)
 
 	// assert initial state of rule group

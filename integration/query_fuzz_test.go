@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -970,15 +971,34 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		return l == r || (compareFloats(float64(l.Count), float64(r.Count)) && compareFloats(float64(l.Sum), float64(r.Sum)) && compareHistogramBuckets(l.Buckets, r.Buckets))
 	}
 
+	fetchValuesFromNH := func(nhString string) []float64 {
+		// Regex to match float numbers
+		re := regexp.MustCompile(`-?\d+(\.\d+)?`)
+
+		matches := re.FindAllString(nhString, -1)
+
+		var ret []float64
+		for _, match := range matches {
+			f, err := strconv.ParseFloat(match, 64)
+			if err != nil {
+				continue
+			}
+			ret = append(ret, f)
+		}
+		return ret
+	}
+
 	// count_values returns a metrics with one label {"value": "1.012321"}
+	// or {"value": "{count:114, sum:226.93333333333334, [-4,-2.82842712474619):12.333333333333332, [-2.82842712474619,-2):12.333333333333332, [-1.414213562373095,-1):13.333333333333334, [-1,-0.7071067811865475):12.333333333333332, [-0.001,0.001]:13.333333333333334, (0.7071067811865475,1]:12.333333333333332, (1,1.414213562373095]:13.333333333333334, (2,2.82842712474619]:12.333333333333332, (2.82842712474619,4]:12.333333333333332}"}}
 	compareValueMetrics := func(l, r model.Metric) (valueMetric bool, equals bool) {
 		lLabels := model.LabelSet(l).Clone()
 		rLabels := model.LabelSet(r).Clone()
 		var (
-			lVal, rVal     model.LabelValue
-			lFloat, rFloat float64
-			ok             bool
-			err            error
+			lVal, rVal       model.LabelValue
+			lFloats, rFloats []float64 // when NH, these contain float64 values in NH
+			lFloat, rFloat   float64
+			ok               bool
+			err              error
 		)
 
 		if lVal, ok = lLabels["value"]; !ok {
@@ -987,6 +1007,24 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 
 		if rVal, ok = rLabels["value"]; !ok {
 			return false, false
+		}
+
+		if strings.Contains(string(lVal), "count") && strings.Contains(string(rVal), "count") {
+			// the values are histograms
+			lFloats = fetchValuesFromNH(string(lVal))
+			rFloats = fetchValuesFromNH(string(rVal))
+
+			if len(lFloats) != len(rFloats) {
+				return true, false
+			}
+
+			for i := 0; i < len(lFloats); i++ {
+				if !compareFloats(lFloats[i], rFloats[i]) {
+					return true, false
+				}
+			}
+
+			return true, true
 		}
 
 		if lFloat, err = strconv.ParseFloat(string(lVal), 64); err != nil {

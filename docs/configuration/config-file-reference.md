@@ -2130,10 +2130,6 @@ tsdb:
   # CLI flag: -blocks-storage.tsdb.out-of-order-cap-max
   [out_of_order_cap_max: <int> | default = 32]
 
-  # [EXPERIMENTAL] True to enable native histogram.
-  # CLI flag: -blocks-storage.tsdb.enable-native-histograms
-  [enable_native_histograms: <boolean> | default = false]
-
   # [EXPERIMENTAL] If enabled, ingesters will cache expanded postings when
   # querying blocks. Caching can be configured separately for the head and
   # compacted blocks.
@@ -2693,6 +2689,11 @@ ha_tracker:
 # ingesters.
 # CLI flag: -distributor.sign-write-requests
 [sign_write_requests: <boolean> | default = false]
+
+# EXPERIMENTAL: If enabled, distributor would use stream connection to send
+# requests to ingesters.
+# CLI flag: -distributor.use-stream-push
+[use_stream_push: <boolean> | default = false]
 
 ring:
   kvstore:
@@ -3271,6 +3272,10 @@ instance_limits:
 # Maximum number of entries in the regex matchers cache. 0 to disable.
 # CLI flag: -ingester.matchers-cache-max-items
 [matchers_cache_max_items: <int> | default = 0]
+
+# If enabled, the metadata API returns all metadata regardless of the limits.
+# CLI flag: -ingester.skip-metadata-limits
+[skip_metadata_limits: <boolean> | default = true]
 ```
 
 ### `ingester_client_config`
@@ -3515,6 +3520,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # [Experimental] Enable limits per LabelSet. Supported limits per labelSet:
 # [max_series]
 [limits_per_label_set: <list of LimitsPerLabelSet> | default = []]
+
+# [EXPERIMENTAL] True to enable native histogram.
+# CLI flag: -blocks-storage.tsdb.enable-native-histograms
+[enable_native_histograms: <boolean> | default = false]
 
 # The maximum number of active metrics with metadata per user, per ingester. 0
 # to disable.
@@ -4358,6 +4367,11 @@ dynamic_query_splits:
   # into account additional duration fetched by matrix selectors and subqueries.
   # CLI flag: -querier.max-fetched-data-duration-per-query
   [max_fetched_data_duration_per_query: <duration> | default = 0s]
+
+  # [EXPERIMENTAL] Dynamically adjust vertical shard size to maximize the total
+  # combined number of query shards and splits.
+  # CLI flag: -querier.enable-dynamic-vertical-sharding
+  [enable_dynamic_vertical_sharding: <boolean> | default = false]
 
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step

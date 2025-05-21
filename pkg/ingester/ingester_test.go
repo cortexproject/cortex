@@ -124,6 +124,7 @@ func seriesSetFromResponseStream(s *mockQueryStreamServer) (storage.SeriesSet, e
 
 func TestMatcherCache(t *testing.T) {
 	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
 	userID := "1"
 	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
 	registry := prometheus.NewRegistry()
@@ -135,7 +136,7 @@ func TestMatcherCache(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 	cfg := defaultIngesterTestConfig(t)
 	cfg.MatchersCacheMaxItems = 50
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry, true)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -204,7 +205,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry, false)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, registry)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
@@ -254,6 +255,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 
 func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
 	userID := "1"
 	registry := prometheus.NewRegistry()
 
@@ -287,7 +289,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry, true)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	// Wait until it's ACTIVE
@@ -630,7 +632,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	// Should persist between restarts
 	services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	registry = prometheus.NewRegistry()
-	ing, err = prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry, true)
+	ing, err = prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	ing.updateActiveSeries(ctx)
@@ -661,6 +663,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 func TestPushRace(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	l := defaultLimitsTestConfig()
+	l.EnableNativeHistograms = true
 	cfg.LabelsStringInterningEnabled = true
 	cfg.LifecyclerConfig.JoinAfter = 0
 
@@ -686,7 +689,7 @@ func TestPushRace(t *testing.T) {
 	blocksDir := filepath.Join(dir, "blocks")
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, l, nil, blocksDir, prometheus.NewRegistry(), true)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, l, nil, blocksDir, prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
@@ -747,6 +750,7 @@ func TestPushRace(t *testing.T) {
 
 func TestIngesterUserLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
 	limits.MaxLocalSeriesPerUser = 1
 	limits.MaxLocalMetricsWithMetadataPerUser = 1
 
@@ -778,7 +782,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	blocksIngesterGenerator := func(reg prometheus.Registerer) *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg, true)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -878,6 +882,7 @@ func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []cortexp
 
 func TestIngesterMetricLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
 	limits.MaxLocalSeriesPerMetric = 1
 	limits.MaxLocalMetadataPerMetric = 1
 
@@ -909,7 +914,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	blocksIngesterGenerator := func(reg prometheus.Registerer) *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg, true)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -1933,6 +1938,7 @@ func TestIngester_Push(t *testing.T) {
 			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
 
 			limits := defaultLimitsTestConfig()
+			limits.EnableNativeHistograms = !testData.disableNativeHistogram
 			limits.MaxExemplars = testData.maxExemplars
 			limits.OutOfOrderTimeWindow = model.Duration(testData.oooTimeWindow)
 			limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
@@ -1945,7 +1951,7 @@ func TestIngester_Push(t *testing.T) {
 					Hash:     1,
 				},
 			}
-			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry, !testData.disableNativeHistogram)
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -2174,7 +2180,8 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 			cfg.LifecyclerConfig.JoinAfter = 0
 
 			limits := defaultLimitsTestConfig()
-			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry, true)
+			limits.EnableNativeHistograms = true
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -2356,6 +2363,42 @@ func TestIngester_Push_DecreaseInactiveSeries(t *testing.T) {
 	`
 
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
+}
+
+func TestIngester_Push_OutOfOrderLabels(t *testing.T) {
+	// Create ingester
+	cfg := defaultIngesterTestConfig(t)
+	r := prometheus.NewRegistry()
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, r)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+
+	outOfOrderLabels := labels.Labels{
+		{Name: labels.MetricName, Value: "test_metric"},
+		{Name: "c", Value: "3"},
+		{Name: "a", Value: "1"}, // Out of order (a comes before c)
+	}
+
+	req, _ := mockWriteRequest(t, outOfOrderLabels, 1, 2)
+	_, err = i.Push(ctx, req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out-of-order label set found")
+
+	metric := `
+		# HELP cortex_ingester_out_of_order_labels_total The total number of out of order label found per user.
+		# TYPE cortex_ingester_out_of_order_labels_total counter
+		cortex_ingester_out_of_order_labels_total{user="test-user"} 1
+`
+	err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_out_of_order_labels_total")
+	require.NoError(t, err)
 }
 
 func BenchmarkIngesterPush(b *testing.B) {
@@ -2662,6 +2705,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 					cfg.LifecyclerConfig.JoinAfter = 0
 
 					limits := defaultLimitsTestConfig()
+					limits.EnableNativeHistograms = true
 					if !testData.prepareConfig(&limits, instanceLimits) {
 						b.SkipNow()
 					}
@@ -2670,7 +2714,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 						return instanceLimits
 					}
 
-					ingester, err := prepareIngesterWithBlocksStorageAndLimits(b, cfg, limits, nil, "", registry, true)
+					ingester, err := prepareIngesterWithBlocksStorageAndLimits(b, cfg, limits, nil, "", registry)
 					require.NoError(b, err)
 					require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingester))
 					defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
@@ -2722,8 +2766,8 @@ func Test_Ingester_LabelNames(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
 		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
 	}
 
@@ -2778,8 +2822,8 @@ func Test_Ingester_LabelValues(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
 		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
 	}
 
@@ -2856,7 +2900,7 @@ func Test_Ingester_LabelValue_MaxInflightQueryRequest(t *testing.T) {
 	// Mock request
 	ctx := user.InjectOrgID(context.Background(), "test")
 
-	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000)
+	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000)
 	_, err = i.Push(ctx, wreq)
 	require.NoError(t, err)
 
@@ -3015,7 +3059,7 @@ func Test_Ingester_Query_MaxInflightQueryRequest(t *testing.T) {
 	// Mock request
 	ctx := user.InjectOrgID(context.Background(), "test")
 
-	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000)
+	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000)
 	_, err = i.Push(ctx, wreq)
 	require.NoError(t, err)
 
@@ -3571,7 +3615,7 @@ func TestIngester_QueryStream(t *testing.T) {
 			}()
 
 			// Query back the series using GRPC streaming.
-			c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+			c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig(), false)
 			require.NoError(t, err)
 			defer c.Close()
 
@@ -3662,7 +3706,7 @@ func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
 	}()
 
 	// Query back the series using GRPC streaming.
-	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig(), false)
 	require.NoError(t, err)
 	defer c.Close()
 
@@ -3947,10 +3991,12 @@ func mockHistogramWriteRequest(t *testing.T, lbls labels.Labels, value int64, ti
 }
 
 func prepareIngesterWithBlocksStorage(t testing.TB, ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, error) {
-	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, defaultLimitsTestConfig(), nil, "", registerer, true)
+	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
+	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, limits, nil, "", registerer)
 }
 
-func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, tenantLimits validation.TenantLimits, dataDir string, registerer prometheus.Registerer, nativeHistograms bool) (*Ingester, error) {
+func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, tenantLimits validation.TenantLimits, dataDir string, registerer prometheus.Registerer) (*Ingester, error) {
 	// Create a data dir if none has been provided.
 	if dataDir == "" {
 		dataDir = t.TempDir()
@@ -3966,7 +4012,6 @@ func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config,
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dataDir
 	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "filesystem"
 	ingesterCfg.BlocksStorageConfig.Bucket.Filesystem.Directory = bucketDir
-	ingesterCfg.BlocksStorageConfig.TSDB.EnableNativeHistograms = nativeHistograms
 
 	ingester, err := New(ingesterCfg, overrides, registerer, log.NewNopLogger(), nil)
 	if err != nil {
@@ -4895,8 +4940,8 @@ func Test_Ingester_UserStats(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
 		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
 	}
 
@@ -4941,8 +4986,8 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
-		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
 		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_2"}}, 2, 200000},
 		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_1"}}, 2, 200000},
 		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_2"}}, 2, 200000},
@@ -5009,8 +5054,8 @@ func Test_Ingester_AllUserStatsHandler(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
-		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
 		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_2"}}, 2, 200000},
 		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_1"}}, 2, 200000},
 		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_2"}}, 2, 200000},
@@ -6432,7 +6477,8 @@ func TestIngester_MaxExemplarsFallBack(t *testing.T) {
 	dir := t.TempDir()
 	blocksDir := filepath.Join(dir, "blocks")
 	limits := defaultLimitsTestConfig()
-	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry(), true)
+	limits.EnableNativeHistograms = true
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	maxExemplars := i.getMaxExemplars("someTenant")
@@ -6440,7 +6486,7 @@ func TestIngester_MaxExemplarsFallBack(t *testing.T) {
 
 	// set max exemplars value in limits, and re-initialize the ingester
 	limits.MaxExemplars = 5
-	i, err = prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry(), true)
+	i, err = prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// validate this value is picked up now
@@ -6466,7 +6512,7 @@ func Test_Ingester_QueryExemplar_MaxInflightQueryRequest(t *testing.T) {
 	// Mock request
 	ctx := user.InjectOrgID(context.Background(), "test")
 
-	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000)
+	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000)
 	_, err = i.Push(ctx, wreq)
 	require.NoError(t, err)
 
@@ -6815,6 +6861,7 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
 	reg := prometheus.NewRegistry()
 	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
 	userID := "1"
 	ctx := user.InjectOrgID(context.Background(), userID)
 
@@ -6839,7 +6886,7 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, reg, false)
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, blocksDir, reg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck

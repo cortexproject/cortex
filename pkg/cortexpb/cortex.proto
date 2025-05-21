@@ -21,7 +21,15 @@ message WriteRequest {
   bool skip_label_name_validation = 1000; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
 }
 
-message WriteResponse {}
+message StreamWriteRequest {
+  string TenantID = 1;
+  WriteRequest Request = 2;
+}
+
+message WriteResponse {
+  int32 code = 1;
+  string message = 2;
+}
 
 message TimeSeries {
   repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];

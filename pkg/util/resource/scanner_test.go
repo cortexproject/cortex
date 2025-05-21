@@ -12,3 +12,8 @@ func Test_NoopScanner(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, val)
 }
+
+func Test_HeapScanner(t *testing.T) {
+	_, err := newHeapScanner()
+	require.NoError(t, err)
+}

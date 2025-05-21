@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
@@ -130,4 +131,99 @@ func (m *mockClientConn) Invoke(_ context.Context, _ string, _ any, _ any, _ ...
 
 func (m *mockClientConn) Close() error {
 	return nil
+}
+
+func TestClosableHealthAndIngesterClient_Close_Basic(t *testing.T) {
+	client := &closableHealthAndIngesterClient{
+		conn:                 &mockClientConn{},
+		addr:                 "test-addr",
+		inflightPushRequests: prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"ingester"}),
+	}
+
+	err := client.Close()
+	assert.NoError(t, err)
+}
+
+func TestClosableHealthAndIngesterClient_Close_WithActiveStream(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	streamChan := make(chan *streamWriteJob, 1)
+
+	jobCtx, jobCancel := context.WithCancel(context.Background())
+	job := &streamWriteJob{
+		ctx:    jobCtx,
+		cancel: jobCancel,
+	}
+	streamChan <- job
+
+	client := &closableHealthAndIngesterClient{
+		conn:                 &mockClientConn{},
+		addr:                 "test-addr",
+		inflightPushRequests: prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"ingester"}),
+		streamCtx:            ctx,
+		streamCancel:         cancel,
+		streamPushChan:       streamChan,
+	}
+
+	err := client.Close()
+	assert.NoError(t, err)
+
+	// Verify stream channel is closed
+	_, ok := <-client.streamPushChan
+	assert.False(t, ok, "stream channel should be closed")
+
+	// Verify context is cancelled
+	select {
+	case <-client.streamCtx.Done():
+		// Success - context was cancelled
+	case <-time.After(100 * time.Millisecond):
+		t.Error("stream context was not cancelled")
+	}
+}
+
+func TestClosableHealthAndIngesterClient_Close_WithPendingJobs(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	streamChan := make(chan *streamWriteJob, 2)
+
+	job1Cancelled := false
+	job2Cancelled := false
+
+	job1 := &streamWriteJob{
+		ctx: context.Background(),
+		cancel: func() {
+			job1Cancelled = true
+		},
+	}
+	job2 := &streamWriteJob{
+		ctx: context.Background(),
+		cancel: func() {
+			job2Cancelled = true
+		},
+	}
+	streamChan <- job1
+	streamChan <- job2
+
+	client := &closableHealthAndIngesterClient{
+		conn:                 &mockClientConn{},
+		addr:                 "test-addr",
+		inflightPushRequests: prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"ingester"}),
+		streamCtx:            ctx,
+		streamCancel:         cancel,
+		streamPushChan:       streamChan,
+	}
+
+	err := client.Close()
+	assert.NoError(t, err)
+
+	_, ok := <-client.streamPushChan
+	assert.False(t, ok, "stream channel should be closed")
+
+	select {
+	case <-client.streamCtx.Done():
+	case <-time.After(500 * time.Millisecond):
+		t.Error("stream context was not cancelled")
+	}
+
+	// Verify jobs were cancelled
+	assert.True(t, job1Cancelled, "job1 should have been cancelled")
+	assert.True(t, job2Cancelled, "job2 should have been cancelled")
 }

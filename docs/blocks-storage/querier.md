@@ -1566,10 +1566,6 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.out-of-order-cap-max
     [out_of_order_cap_max: <int> | default = 32]
 
-    # [EXPERIMENTAL] True to enable native histogram.
-    # CLI flag: -blocks-storage.tsdb.enable-native-histograms
-    [enable_native_histograms: <boolean> | default = false]
-
     # [EXPERIMENTAL] If enabled, ingesters will cache expanded postings when
     # querying blocks. Caching can be configured separately for the head and
     # compacted blocks.

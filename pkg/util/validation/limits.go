@@ -149,6 +149,7 @@ type Limits struct {
 	MaxGlobalSeriesPerUser   int                 `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
 	MaxGlobalSeriesPerMetric int                 `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
 	LimitsPerLabelSet        []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
+	EnableNativeHistograms   bool                `yaml:"enable_native_histograms" json:"enable_native_histograms"`
 
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
@@ -199,6 +200,9 @@ type Limits struct {
 	CompactorTenantShardSize         int            `yaml:"compactor_tenant_shard_size" json:"compactor_tenant_shard_size"`
 	CompactorPartitionIndexSizeBytes int64          `yaml:"compactor_partition_index_size_bytes" json:"compactor_partition_index_size_bytes"`
 	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
+
+	// Parquet converter
+	ParquetConverterTenantShardSize int `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size" doc:"hidden"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -257,6 +261,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster before replication. 0 to disable.")
+	f.BoolVar(&l.EnableNativeHistograms, "blocks-storage.tsdb.enable-native-histograms", false, "[EXPERIMENTAL] True to enable native histogram.")
 	f.IntVar(&l.MaxExemplars, "ingester.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.")
 	f.Var(&l.OutOfOrderTimeWindow, "ingester.out-of-order-time-window", "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.")
 
@@ -293,6 +298,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// Default to 64GB because this is the hard limit of index size in Cortex
 	f.Int64Var(&l.CompactorPartitionIndexSizeBytes, "compactor.partition-index-size-bytes", 68719476736, "Index size limit in bytes for each compaction partition. 0 means no limit")
 	f.Int64Var(&l.CompactorPartitionSeriesCount, "compactor.partition-series-count", 0, "Time series count limit for each compaction partition. 0 means no limit")
+
+	f.IntVar(&l.ParquetConverterTenantShardSize, "parquet-converter.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the parquet converter. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 
 	// Store-gateway.
 	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
@@ -659,6 +666,11 @@ func (o *Overrides) MaxGlobalSeriesPerUser(userID string) int {
 	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerUser
 }
 
+// EnableNativeHistograms returns whether the Ingester should accept NativeHistograms samples from this user.
+func (o *Overrides) EnableNativeHistograms(userID string) bool {
+	return o.GetOverridesForUser(userID).EnableNativeHistograms
+}
+
 // OutOfOrderTimeWindow returns the allowed time window for ingestion of out-of-order samples.
 func (o *Overrides) OutOfOrderTimeWindow(userID string) model.Duration {
 	return o.GetOverridesForUser(userID).OutOfOrderTimeWindow
@@ -820,6 +832,11 @@ func (o *Overrides) CompactorBlocksRetentionPeriod(userID string) time.Duration 
 // CompactorTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) CompactorTenantShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).CompactorTenantShardSize
+}
+
+// ParquetConverterTenantShardSize returns shard size (number of converters) used by this tenant when using shuffle-sharding strategy.
+func (o *Overrides) ParquetConverterTenantShardSize(userID string) int {
+	return o.GetOverridesForUser(userID).ParquetConverterTenantShardSize
 }
 
 // CompactorPartitionIndexSizeBytes returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.

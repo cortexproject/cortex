@@ -40,6 +40,7 @@ import (
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
@@ -141,7 +142,7 @@ type Config struct {
 	IgnoreSeriesLimitForMetricNames string `yaml:"ignore_series_limit_for_metric_names"`
 
 	// For testing, you can override the address and ID of this ingester.
-	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
+	ingesterClientFactory func(addr string, cfg client.Config, useStreamConnection bool) (client.HealthAndIngesterClient, error)
 
 	// For admin contact details
 	AdminLimitMessage string `yaml:"admin_limit_message"`
@@ -155,6 +156,9 @@ type Config struct {
 
 	// Maximum number of entries in the matchers cache. 0 to disable.
 	MatchersCacheMaxItems int `yaml:"matchers_cache_max_items"`
+
+	// If enabled, the metadata API returns all metadata regardless of the limits.
+	SkipMetadataLimits bool `yaml:"skip_metadata_limits"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -176,6 +180,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
+	f.BoolVar(&cfg.SkipMetadataLimits, "ingester.skip-metadata-limits", true, "If enabled, the metadata API returns all metadata regardless of the limits.")
 
 	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
 }
@@ -1132,6 +1137,17 @@ type extendedAppender interface {
 	storage.GetRef
 }
 
+func (i *Ingester) isLabelSetOutOfOrder(labels labels.Labels) bool {
+	last := ""
+	for _, l := range labels {
+		if strings.Compare(last, l.Name) > 0 {
+			return true
+		}
+		last = l.Name
+	}
+	return false
+}
+
 // Push adds metrics to a block
 func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	if err := i.checkRunning(); err != nil {
@@ -1297,6 +1313,10 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 		// Look up a reference for this series.
 		tsLabels := cortexpb.FromLabelAdaptersToLabels(ts.Labels)
+		if i.isLabelSetOutOfOrder(tsLabels) {
+			i.metrics.oooLabelsTotal.WithLabelValues(userID).Inc()
+			return nil, wrapWithUser(errors.Errorf("out-of-order label set found when push: %s", tsLabels), userID)
+		}
 		tsLabelsHash := tsLabels.Hash()
 		ref, copiedLabels := app.GetRef(tsLabels, tsLabelsHash)
 
@@ -1347,7 +1367,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			return nil, wrapWithUser(err, userID)
 		}
 
-		if i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms {
+		if i.limits.EnableNativeHistograms(userID) {
 			for _, hp := range ts.Histograms {
 				var (
 					err error
@@ -1494,7 +1514,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
-	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && discardedNativeHistogramCount > 0 {
+	if !i.limits.EnableNativeHistograms(userID) && discardedNativeHistogramCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
 	}
 
@@ -1529,6 +1549,44 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 
 	return &cortexpb.WriteResponse{}, nil
+}
+
+func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
+	ctx := srv.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "PushStream closed")
+			return ctx.Err()
+		default:
+		}
+
+		req, err := srv.Recv()
+
+		if err == io.EOF {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+		ctx = user.InjectOrgID(ctx, req.TenantID)
+		resp, err := i.Push(ctx, req.Request)
+		resp.Code = http.StatusOK
+		if err != nil {
+			httpResponse, isGRPCError := httpgrpc.HTTPResponseFromError(err)
+			if !isGRPCError {
+				err = httpgrpc.Errorf(http.StatusInternalServerError, "%s", err)
+				httpResponse, _ = httpgrpc.HTTPResponseFromError(err)
+			}
+			resp.Code = httpResponse.Code
+			resp.Message = string(httpResponse.Body)
+		}
+		err = srv.Send(resp)
+		if err != nil {
+			level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "error sending from PushStream", "err", err)
+		}
+	}
 }
 
 func (u *userTSDB) acquireReadLock() error {
@@ -2032,11 +2090,9 @@ func (i *Ingester) userStats() []UserIDStats {
 	i.stoppedMtx.RLock()
 	defer i.stoppedMtx.RUnlock()
 
-	perUserTotals := make(map[string]UserStats)
-
 	users := i.TSDBState.dbs
 
-	response := make([]UserIDStats, 0, len(perUserTotals))
+	response := make([]UserIDStats, 0, len(users))
 	for id, db := range users {
 		response = append(response, UserIDStats{
 			UserID:    id,
@@ -2451,9 +2507,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
-		EnableOOONativeHistograms:      i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms, // Automatically enabled when EnableNativeHistograms is true.
-		EnableOverlappingCompaction:    false,                                                 // Always let compactors handle overlapped blocks, e.g. OOO blocks.
-		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
+		EnableOOONativeHistograms:      true,
+		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
+		EnableNativeHistograms:         true,  // Always enable Native Histograms. Gate keeping is done though a per-tenant limit at ingestion.
 		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
 	}, nil)
 	if err != nil {
@@ -3059,7 +3115,7 @@ func (i *Ingester) getOrCreateUserMetadata(userID string) *userMetricsMetadata {
 	// Ensure it was not created between switching locks.
 	userMetadata, ok := i.usersMetadata[userID]
 	if !ok {
-		userMetadata = newMetadataMap(i.limiter, i.metrics, i.validateMetrics, userID)
+		userMetadata = newMetadataMap(i.limiter, i.metrics, i.validateMetrics, userID, i.cfg.SkipMetadataLimits)
 		i.usersMetadata[userID] = userMetadata
 	}
 	return userMetadata

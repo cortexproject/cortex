@@ -128,3 +128,5 @@ Currently experimental features are:
   - `-ingester.instance-limits.heap-utilization`
   - `-store-gateway.instance-limits.cpu-utilization`
   - `-store-gateway.instance-limits.heap-utilization`
+- Distributor/Ingester: Stream push connection
+  - Enable stream push connection between distributor and ingester by setting `-distributor.use-stream-push=true` on Distributor.

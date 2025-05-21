@@ -1,9 +1,29 @@
 package querier
 
 import (
+	"context"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
+
+type contextKey int
+
+var (
+	blockCtxKey contextKey = 0
+)
+
+func InjectBlocksIntoContext(ctx context.Context, blocks ...*bucketindex.Block) context.Context {
+	return context.WithValue(ctx, blockCtxKey, blocks)
+}
+
+func ExtractBlocksFromContext(ctx context.Context) ([]*bucketindex.Block, bool) {
+	if blocks := ctx.Value(blockCtxKey); blocks != nil {
+		return blocks.([]*bucketindex.Block), true
+	}
+	
+	return nil, false
+}
 
 func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {
 	var converted []storepb.LabelMatcher

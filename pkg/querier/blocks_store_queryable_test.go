@@ -1648,6 +1648,49 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 	}
 }
 
+func TestOverrideBlockDiscovery(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	minT := int64(10)
+	maxT := int64(20)
+
+	stores := &blocksStoreSetMock{mockedResponses: []interface{}{
+		map[BlocksStoreClient][]ulid.ULID{
+			&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+				mockHintsResponse(block1),
+			}}: {block1},
+		},
+	},
+	}
+	finder := &blocksFinderMock{}
+	// return block 1 and 2 on finder but only query block 1
+	finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
+		&bucketindex.Block{ID: block1},
+		&bucketindex.Block{ID: block2},
+	}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
+
+	q := &blocksStoreQuerier{
+		minT:        minT,
+		maxT:        maxT,
+		finder:      finder,
+		stores:      stores,
+		consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+		logger:      log.NewNopLogger(),
+		metrics:     newBlocksStoreQueryableMetrics(prometheus.NewPedanticRegistry()),
+		limits:      &blocksStoreLimitsMock{},
+
+		storeGatewayConsistencyCheckMaxAttempts: 3,
+	}
+
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "name"),
+	}
+	ctx := user.InjectOrgID(context.Background(), "user-1")
+	ctx = InjectBlocksIntoContext(ctx, &bucketindex.Block{ID: block1})
+	ss := q.Select(ctx, true, nil, matchers...)
+	require.NoError(t, ss.Err())
+}
+
 func TestBlocksStoreQuerier_Labels(t *testing.T) {
 	t.Parallel()
 

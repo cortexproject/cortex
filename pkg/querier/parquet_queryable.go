@@ -24,12 +24,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-type contextKey int
-
-var (
-	blockIdsCtxKey contextKey = 0
-)
-
 type parquetQueryableWithFallback struct {
 	services.Service
 
@@ -95,7 +89,10 @@ func NewParquetQueryable(
 			return nil, err
 		}
 
-		blocks := ctx.Value(blockIdsCtxKey).([]*bucketindex.Block)
+		blocks, ok := ExtractBlocksFromContext(ctx)
+		if !ok {
+			return nil, errors.Errorf("failed to extract blocks from context")
+		}
 		userBkt := bucket.NewUserBucketClient(userID, bucketClient, limits)
 
 		shards := make([]*parquet_storage.ParquetShard, 0, len(blocks))
@@ -123,7 +120,7 @@ func NewParquetQueryable(
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
 
-	return pq, nil
+	return pq, err
 }
 
 func (p *parquetQueryableWithFallback) starting(ctx context.Context) error {
@@ -201,7 +198,7 @@ func (q *parquetQuerier) LabelValues(ctx context.Context, name string, hints *st
 	)
 
 	if len(parquet) > 0 {
-		res, ann, qErr := q.parquetQuerier.LabelValues(context.WithValue(ctx, blockIdsCtxKey, parquet), name, hints, matchers...)
+		res, ann, qErr := q.parquetQuerier.LabelValues(InjectBlocksIntoContext(ctx, parquet...), name, hints, matchers...)
 		if qErr != nil {
 			return nil, nil, err
 		}
@@ -210,7 +207,7 @@ func (q *parquetQuerier) LabelValues(ctx context.Context, name string, hints *st
 	}
 
 	if len(remaining) > 0 {
-		res, ann, qErr := q.blocksStoreQuerier.LabelValues(context.WithValue(ctx, blockIdsCtxKey, remaining), name, hints, matchers...)
+		res, ann, qErr := q.blocksStoreQuerier.LabelValues(InjectBlocksIntoContext(ctx, remaining...), name, hints, matchers...)
 		if qErr != nil {
 			return nil, nil, err
 		}
@@ -247,7 +244,7 @@ func (q *parquetQuerier) LabelNames(ctx context.Context, hints *storage.LabelHin
 	)
 
 	if len(parquet) > 0 {
-		res, ann, qErr := q.parquetQuerier.LabelNames(context.WithValue(ctx, blockIdsCtxKey, parquet), hints, matchers...)
+		res, ann, qErr := q.parquetQuerier.LabelNames(InjectBlocksIntoContext(ctx, parquet...), hints, matchers...)
 		if qErr != nil {
 			return nil, nil, err
 		}
@@ -256,7 +253,7 @@ func (q *parquetQuerier) LabelNames(ctx context.Context, hints *storage.LabelHin
 	}
 
 	if len(remaining) > 0 {
-		res, ann, qErr := q.blocksStoreQuerier.LabelNames(context.WithValue(ctx, blockIdsCtxKey, remaining), hints, matchers...)
+		res, ann, qErr := q.blocksStoreQuerier.LabelNames(InjectBlocksIntoContext(ctx, remaining...), hints, matchers...)
 		if qErr != nil {
 			return nil, nil, err
 		}
@@ -290,11 +287,11 @@ func (q *parquetQuerier) Select(ctx context.Context, sortSeries bool, hints *sto
 	serieSets := []storage.SeriesSet{}
 
 	if len(parquet) > 0 {
-		serieSets = append(serieSets, q.parquetQuerier.Select(context.WithValue(ctx, blockIdsCtxKey, parquet), sortSeries, hints, matchers...))
+		serieSets = append(serieSets, q.parquetQuerier.Select(InjectBlocksIntoContext(ctx, parquet...), sortSeries, hints, matchers...))
 	}
 
 	if len(remaining) > 0 {
-		serieSets = append(serieSets, q.blocksStoreQuerier.Select(context.WithValue(ctx, blockIdsCtxKey, remaining), sortSeries, hints, matchers...))
+		serieSets = append(serieSets, q.blocksStoreQuerier.Select(InjectBlocksIntoContext(ctx, remaining...), sortSeries, hints, matchers...))
 	}
 
 	if len(serieSets) == 1 {

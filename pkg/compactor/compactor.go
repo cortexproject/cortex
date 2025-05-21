@@ -388,6 +388,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 // ConfigProvider defines the per-tenant config provider for the Compactor.
 type ConfigProvider interface {
 	bucket.TenantConfigProvider
+	ParquetConverterEnabled(userID string) bool
 	CompactorBlocksRetentionPeriod(user string) time.Duration
 }
 

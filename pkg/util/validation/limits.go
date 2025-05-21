@@ -202,7 +202,8 @@ type Limits struct {
 	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
 
 	// Parquet converter
-	ParquetConverterTenantShardSize int `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size" doc:"hidden"`
+	ParquetConverterEnabled         bool `yaml:"parquet_converter_enabled" doc:"hidden"`
+	ParquetConverterTenantShardSize int  `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size" doc:"hidden"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -300,6 +301,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&l.CompactorPartitionSeriesCount, "compactor.partition-series-count", 0, "Time series count limit for each compaction partition. 0 means no limit")
 
 	f.IntVar(&l.ParquetConverterTenantShardSize, "parquet-converter.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the parquet converter. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	f.BoolVar(&l.ParquetConverterEnabled, "parquet-converter.enabled", false, "If set, enables the Parquet converter to create the parquet files.")
 
 	// Store-gateway.
 	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
@@ -837,6 +839,11 @@ func (o *Overrides) CompactorTenantShardSize(userID string) float64 {
 // ParquetConverterTenantShardSize returns shard size (number of converters) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) ParquetConverterTenantShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).ParquetConverterTenantShardSize
+}
+
+// ParquetConverterEnabled returns true is parquet is enabled.
+func (o *Overrides) ParquetConverterEnabled(userID string) bool {
+	return o.GetOverridesForUser(userID).ParquetConverterEnabled
 }
 
 // CompactorPartitionIndexSizeBytes returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.

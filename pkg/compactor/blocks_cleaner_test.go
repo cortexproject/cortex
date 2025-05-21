@@ -984,6 +984,10 @@ type mockConfigProvider struct {
 	userRetentionPeriods map[string]time.Duration
 }
 
+func (m *mockConfigProvider) ParquetConverterEnabled(userID string) bool {
+	return false
+}
+
 func newMockConfigProvider() *mockConfigProvider {
 	return &mockConfigProvider{
 		userRetentionPeriods: make(map[string]time.Duration),

@@ -171,6 +171,10 @@ func (c *Converter) running(ctx context.Context) error {
 			}
 			ownedUsers := map[string]struct{}{}
 			for _, userID := range users {
+				if !c.limits.ParquetConverterEnabled(userID) {
+					continue
+				}
+
 				var ring ring.ReadRing
 				ring = c.ring
 				if c.limits.ParquetConverterTenantShardSize(userID) > 0 {

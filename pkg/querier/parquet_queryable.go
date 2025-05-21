@@ -84,7 +84,7 @@ func NewParquetQueryable(
 		}, bucketClient, limits, logger, reg)
 	}
 
-	manager, err := services.NewManager(finder)
+	manager, err := services.NewManager(finder, blockStorageQueryable)
 	if err != nil {
 		return nil, err
 	}

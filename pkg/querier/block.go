@@ -2,9 +2,11 @@ package querier
 
 import (
 	"context"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 )
 
 type contextKey int
@@ -21,7 +23,7 @@ func ExtractBlocksFromContext(ctx context.Context) ([]*bucketindex.Block, bool) 
 	if blocks := ctx.Value(blockCtxKey); blocks != nil {
 		return blocks.([]*bucketindex.Block), true
 	}
-	
+
 	return nil, false
 }
 

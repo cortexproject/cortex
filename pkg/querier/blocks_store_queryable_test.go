@@ -2502,12 +2502,14 @@ type blocksStoreSetMock struct {
 
 	mockedResponses []interface{}
 	nextResult      int
+	queriedBlocks   []ulid.ULID
 }
 
-func (m *blocksStoreSetMock) GetClientsFor(_ string, _ []ulid.ULID, _ map[ulid.ULID][]string, _ map[ulid.ULID]map[string]int) (map[BlocksStoreClient][]ulid.ULID, error) {
+func (m *blocksStoreSetMock) GetClientsFor(_ string, b []ulid.ULID, _ map[ulid.ULID][]string, _ map[ulid.ULID]map[string]int) (map[BlocksStoreClient][]ulid.ULID, error) {
 	if m.nextResult >= len(m.mockedResponses) {
 		panic("not enough mocked results")
 	}
+	m.queriedBlocks = append(m.queriedBlocks, b...)
 
 	res := m.mockedResponses[m.nextResult]
 	m.nextResult++
@@ -2520,6 +2522,11 @@ func (m *blocksStoreSetMock) GetClientsFor(_ string, _ []ulid.ULID, _ map[ulid.U
 	}
 
 	return nil, errors.New("unknown data type in the mocked result")
+}
+
+func (m *blocksStoreSetMock) Reset() {
+	m.nextResult = 0
+	m.queriedBlocks = nil
 }
 
 type blocksFinderMock struct {

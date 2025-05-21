@@ -412,7 +412,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 			}
 			queriable = pq
 		}
-		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(q))
+		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(queriable))
 		if s, ok := queriable.(services.Service); ok {
 			servs = append(servs, s)
 		}

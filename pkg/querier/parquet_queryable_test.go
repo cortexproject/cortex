@@ -69,7 +69,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		}
 
 		mParquetQuerier := &mockParquetQuerier{}
-		pq := &parquetQuerier{
+		pq := &parquetQuerierWithFallback{
 			minT:               minT,
 			maxT:               maxT,
 			finder:             finder,
@@ -126,7 +126,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		}
 
 		mParquetQuerier := &mockParquetQuerier{}
-		pq := &parquetQuerier{
+		pq := &parquetQuerierWithFallback{
 			minT:               minT,
 			maxT:               maxT,
 			finder:             finder,
@@ -189,7 +189,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		}
 
 		mParquetQuerier := &mockParquetQuerier{}
-		pq := &parquetQuerier{
+		pq := &parquetQuerierWithFallback{
 			minT:               minT,
 			maxT:               maxT,
 			finder:             finder,

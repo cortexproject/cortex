@@ -401,7 +401,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 
 	//nolint:revive // I prefer this form over removing 'else', because it allows q to have smaller scope.
 	var queriable prom_storage.Queryable
-	if q, err := initQueryableForEngine(t.Cfg, t.Overrides, prometheus.DefaultRegisterer); err != nil {
+	if q, err := initBlockStoreQueryable(t.Cfg, t.Overrides, prometheus.DefaultRegisterer); err != nil {
 		return nil, fmt.Errorf("failed to initialize querier: %v", err)
 	} else {
 		queriable = q
@@ -433,7 +433,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	}
 }
 
-func initQueryableForEngine(cfg Config, limits *validation.Overrides, reg prometheus.Registerer) (*querier.BlocksStoreQueryable, error) {
+func initBlockStoreQueryable(cfg Config, limits *validation.Overrides, reg prometheus.Registerer) (*querier.BlocksStoreQueryable, error) {
 	// When running in single binary, if the blocks sharding is disabled and no custom
 	// store-gateway address has been configured, we can set it to the running process.
 	if cfg.isModuleEnabled(All) && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {

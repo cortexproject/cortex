@@ -151,7 +151,7 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		return nil, err
 	}
 
-	return &parquetQuerier{
+	return &parquetQuerierWithFallback{
 		minT:               mint,
 		maxT:               maxt,
 		parquetQuerier:     pq,
@@ -162,7 +162,7 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 	}, nil
 }
 
-type parquetQuerier struct {
+type parquetQuerierWithFallback struct {
 	minT, maxT int64
 
 	finder BlocksFinder
@@ -178,7 +178,7 @@ type parquetQuerier struct {
 	metrics *parquetQueryableFallbackMetrics
 }
 
-func (q *parquetQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
 	if err != nil {
 		return nil, nil, err
@@ -223,7 +223,7 @@ func (q *parquetQuerier) LabelValues(ctx context.Context, name string, hints *st
 	return result, rAnnotations, nil
 }
 
-func (q *parquetQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
 	if err != nil {
 		return nil, nil, err
@@ -269,7 +269,7 @@ func (q *parquetQuerier) LabelNames(ctx context.Context, hints *storage.LabelHin
 	return result, rAnnotations, nil
 }
 
-func (q *parquetQuerier) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	mint, maxt, limit := q.minT, q.maxT, 0
 
 	if hints != nil {
@@ -298,14 +298,14 @@ func (q *parquetQuerier) Select(ctx context.Context, sortSeries bool, hints *sto
 	return storage.NewMergeSeriesSet(serieSets, limit, storage.ChainedSeriesMerge)
 }
 
-func (q *parquetQuerier) Close() error {
+func (q *parquetQuerierWithFallback) Close() error {
 	mErr := multierror.MultiError{}
 	mErr.Add(q.parquetQuerier.Close())
 	mErr.Add(q.blocksStoreQuerier.Close())
 	return mErr.Err()
 }
 
-func (q *parquetQuerier) getBlocks(ctx context.Context, minT, maxT int64) ([]*bucketindex.Block, []*bucketindex.Block, error) {
+func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT int64) ([]*bucketindex.Block, []*bucketindex.Block, error) {
 	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
 	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
 	// optimization is particularly important for the blocks storage because can be used to skip

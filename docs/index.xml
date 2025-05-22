@@ -4254,6 +4254,11 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -querier.store-gateway-consistency-check-max-attempts&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[store_gateway_consistency_check_max_attempts&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 3]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># The maximum number of times we attempt fetching data from ingesters for&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># retryable errors (ex. partial data returned).&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -querier.ingester-query-max-attempts&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[ingester_query_max_attempts&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 1]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># When distributor&amp;#39;s sharding strategy is shuffle-sharding and this setting is &amp;gt;&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># 0, queriers fetch in-memory series from the minimum set of required ingesters,&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># selecting only ingesters which may have received series since &amp;#39;now - lookback&lt;/span>
@@ -9140,6 +9145,11 @@ The domain name after the prefix is looked up as a SRV query, with no A/AAAA loo
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># lower replication factor) than we&amp;#39;ll end the retries earlier&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -querier.store-gateway-consistency-check-max-attempts&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[store_gateway_consistency_check_max_attempts&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 3]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># The maximum number of times we attempt fetching data from ingesters for&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># retryable errors (ex. partial data returned).&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -querier.ingester-query-max-attempts&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[ingester_query_max_attempts&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 1]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># When distributor&amp;#39;s sharding strategy is shuffle-sharding and this setting is&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># &amp;gt; 0, queriers fetch in-memory series from the minimum set of required&lt;/span>

@@ -87,7 +87,7 @@ func (r *GenericRingBuffer) Push(t int64, v Value) {
 
 func (r *GenericRingBuffer) Reset(mint int64, evalt int64) {
 	r.currentStep = evalt
-	if len(r.items) == 0 || r.items[len(r.items)-1].T < mint {
+	if r.extLookback == 0 && (len(r.items) == 0 || r.items[len(r.items)-1].T < mint) {
 		r.items = r.items[:0]
 		return
 	}

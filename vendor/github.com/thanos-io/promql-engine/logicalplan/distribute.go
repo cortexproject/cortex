@@ -141,13 +141,15 @@ func (r Noop) Type() NodeType { return NoopNode }
 // distributiveAggregations are all PromQL aggregations which support
 // distributed execution.
 var distributiveAggregations = map[parser.ItemType]struct{}{
-	parser.SUM:     {},
-	parser.MIN:     {},
-	parser.MAX:     {},
-	parser.GROUP:   {},
-	parser.COUNT:   {},
-	parser.BOTTOMK: {},
-	parser.TOPK:    {},
+	parser.SUM:         {},
+	parser.MIN:         {},
+	parser.MAX:         {},
+	parser.GROUP:       {},
+	parser.COUNT:       {},
+	parser.BOTTOMK:     {},
+	parser.TOPK:        {},
+	parser.LIMITK:      {},
+	parser.LIMIT_RATIO: {},
 }
 
 // DistributedExecutionOptimizer produces a logical plan suitable for

@@ -273,16 +273,16 @@ func newAggregateExpression(ctx context.Context, e *logicalplan.Aggregation, sca
 		return aggregate.NewCountValues(model.NewVectorPool(opts.StepsBatch), next, param, !e.Without, e.Grouping, opts), nil
 	}
 
-	// parameter is only required for count_values, quantile, topk and bottomk.
+	// parameter is only required for count_values, quantile, topk, bottomk, limitk, and limit_ratio.
 	var paramOp model.VectorOperator
 	switch e.Op {
-	case parser.QUANTILE, parser.TOPK, parser.BOTTOMK:
+	case parser.QUANTILE, parser.TOPK, parser.BOTTOMK, parser.LIMITK, parser.LIMIT_RATIO:
 		paramOp, err = newOperator(ctx, e.Param, scanners, opts, hints)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if e.Op == parser.TOPK || e.Op == parser.BOTTOMK {
+	if e.Op == parser.TOPK || e.Op == parser.BOTTOMK || e.Op == parser.LIMITK || e.Op == parser.LIMIT_RATIO {
 		next, err = aggregate.NewKHashAggregate(model.NewVectorPool(opts.StepsBatch), next, paramOp, e.Op, !e.Without, e.Grouping, opts)
 	} else {
 		next, err = aggregate.NewHashAggregate(model.NewVectorPool(opts.StepsBatch), next, paramOp, e.Op, !e.Without, e.Grouping, opts)

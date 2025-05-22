@@ -98,7 +98,7 @@ type distributorQuerier struct {
 // The bool passed is ignored because the series is always sorted.
 func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	log, ctx := spanlogger.New(ctx, "distributorQuerier.Select")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	minT, maxT := q.mint, q.maxt
 	if sp != nil {
@@ -263,7 +263,7 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 	}
 
 	log, ctx := spanlogger.New(ctx, "distributorQuerier.LabelNames")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	var (
 		ln  []string
@@ -318,7 +318,7 @@ func (q *distributorQuerier) labelsWithRetry(ctx context.Context, labelsFunc fun
 // labelNamesWithMatchers performs the LabelNames call by calling ingester's MetricsForLabelMatchers method
 func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	log, ctx := spanlogger.New(ctx, "distributorQuerier.labelNamesWithMatchers")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	var (
 		ms  []labels.Labels

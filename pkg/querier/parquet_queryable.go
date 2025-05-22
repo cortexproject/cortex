@@ -2,16 +2,18 @@ package querier
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/prometheus-community/parquet-common/search"
 	parquet_storage "github.com/prometheus-community/parquet-common/storage"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/thanos/pkg/strutil"
 
@@ -23,6 +25,19 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
+
+type parquetQueryableFallbackMetrics struct {
+	blocksQueriedTotal *prometheus.CounterVec
+}
+
+func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQueryableFallbackMetrics {
+	return &parquetQueryableFallbackMetrics{
+		blocksQueriedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_parquet_queryable_blocks_queried_total",
+			Help: "Total number of blocks found to query.",
+		}, []string{"type"}),
+	}
+}
 
 type parquetQueryableWithFallback struct {
 	services.Service
@@ -36,6 +51,9 @@ type parquetQueryableWithFallback struct {
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
+
+	// metrics
+	metrics *parquetQueryableFallbackMetrics
 }
 
 func NewParquetQueryable(
@@ -51,39 +69,14 @@ func NewParquetQueryable(
 	if err != nil {
 		return nil, err
 	}
-
-	// Create the blocks finder.
-	var finder BlocksFinder
-	if storageCfg.BucketStore.BucketIndex.Enabled {
-		finder = NewBucketIndexBlocksFinder(BucketIndexBlocksFinderConfig{
-			IndexLoader: bucketindex.LoaderConfig{
-				CheckInterval:         time.Minute,
-				UpdateOnStaleInterval: storageCfg.BucketStore.SyncInterval,
-				UpdateOnErrorInterval: storageCfg.BucketStore.BucketIndex.UpdateOnErrorInterval,
-				IdleTimeout:           storageCfg.BucketStore.BucketIndex.IdleTimeout,
-			},
-			MaxStalePeriod:           storageCfg.BucketStore.BucketIndex.MaxStalePeriod,
-			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
-			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
-		}, bucketClient, limits, logger, reg)
-	} else {
-		finder = NewBucketScanBlocksFinder(BucketScanBlocksFinderConfig{
-			ScanInterval:             storageCfg.BucketStore.SyncInterval,
-			TenantsConcurrency:       storageCfg.BucketStore.TenantSyncConcurrency,
-			MetasConcurrency:         storageCfg.BucketStore.MetaSyncConcurrency,
-			CacheDir:                 storageCfg.BucketStore.SyncDir,
-			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
-			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
-			BlockDiscoveryStrategy:   storageCfg.BucketStore.BlockDiscoveryStrategy,
-		}, bucketClient, limits, logger, reg)
-	}
-
-	manager, err := services.NewManager(finder, blockStorageQueryable)
+	manager, err := services.NewManager(blockStorageQueryable)
 	if err != nil {
 		return nil, err
 	}
 
-	pq, err := search.NewParquetQueryable(nil, func(ctx context.Context, mint, maxt int64) ([]*parquet_storage.ParquetShard, error) {
+	cDecoder := schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool())
+
+	parquetQueryable, err := search.NewParquetQueryable(cDecoder, func(ctx context.Context, mint, maxt int64) ([]*parquet_storage.ParquetShard, error) {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
@@ -98,8 +91,8 @@ func NewParquetQueryable(
 		shards := make([]*parquet_storage.ParquetShard, 0, len(blocks))
 
 		for _, block := range blocks {
-			blockName := fmt.Sprintf("%v/block", block.ID.String())
-			shard, err := parquet_storage.OpenParquetShard(ctx, userBkt, blockName, 0)
+			// we always only have 1 shard - shard 0
+			shard, err := parquet_storage.OpenParquetShard(ctx, userBkt, block.ID.String(), 0)
 			if err != nil {
 				return nil, err
 			}
@@ -112,15 +105,16 @@ func NewParquetQueryable(
 	p := &parquetQueryableWithFallback{
 		subservices:           manager,
 		blockStorageQueryable: blockStorageQueryable,
-		parquetQueryable:      pq,
+		parquetQueryable:      parquetQueryable,
 		queryStoreAfter:       config.QueryStoreAfter,
 		subservicesWatcher:    services.NewFailureWatcher(),
-		finder:                finder,
+		finder:                blockStorageQueryable.finder,
+		metrics:               newParquetQueryableFallbackMetrics(reg),
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
 
-	return pq, err
+	return p, err
 }
 
 func (p *parquetQueryableWithFallback) starting(ctx context.Context) error {
@@ -164,6 +158,7 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		queryStoreAfter:    p.queryStoreAfter,
 		blocksStoreQuerier: bsq,
 		finder:             p.finder,
+		metrics:            p.metrics,
 	}, nil
 }
 
@@ -178,6 +173,9 @@ type parquetQuerier struct {
 	// If set, the querier manipulates the max time to not be greater than
 	// "now - queryStoreAfter" so that most recent blocks are not queried.
 	queryStoreAfter time.Duration
+
+	// metrics
+	metrics *parquetQueryableFallbackMetrics
 }
 
 func (q *parquetQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -185,7 +183,6 @@ func (q *parquetQuerier) LabelValues(ctx context.Context, name string, hints *st
 	if err != nil {
 		return nil, nil, err
 	}
-
 	limit := 0
 
 	if hints != nil {
@@ -341,6 +338,9 @@ func (q *parquetQuerier) getBlocks(ctx context.Context, minT, maxT int64) ([]*bu
 		}
 		remaining = append(remaining, b)
 	}
+
+	q.metrics.blocksQueriedTotal.WithLabelValues("parquet").Add(float64(len(parquetBlocks)))
+	q.metrics.blocksQueriedTotal.WithLabelValues("tsdb").Add(float64(len(remaining)))
 
 	return remaining, parquetBlocks, nil
 }

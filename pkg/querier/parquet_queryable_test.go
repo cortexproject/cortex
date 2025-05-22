@@ -75,6 +75,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			finder:             finder,
 			blocksStoreQuerier: q,
 			parquetQuerier:     mParquetQuerier,
+			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
@@ -131,6 +132,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			finder:             finder,
 			blocksStoreQuerier: q,
 			parquetQuerier:     mParquetQuerier,
+			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
@@ -193,6 +195,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			finder:             finder,
 			blocksStoreQuerier: q,
 			parquetQuerier:     mParquetQuerier,
+			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{

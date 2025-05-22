@@ -28,6 +28,7 @@ import (
 
 type parquetQueryableFallbackMetrics struct {
 	blocksQueriedTotal *prometheus.CounterVec
+	selectCount        *prometheus.CounterVec
 }
 
 func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQueryableFallbackMetrics {
@@ -35,6 +36,10 @@ func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQuery
 		blocksQueriedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_parquet_queryable_blocks_queried_total",
 			Help: "Total number of blocks found to query.",
+		}, []string{"type"}),
+		selectCount: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_parquet_queryable_selects_queried_total",
+			Help: "Total number of selects.",
 		}, []string{"type"}),
 	}
 }
@@ -341,6 +346,15 @@ func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT i
 
 	q.metrics.blocksQueriedTotal.WithLabelValues("parquet").Add(float64(len(parquetBlocks)))
 	q.metrics.blocksQueriedTotal.WithLabelValues("tsdb").Add(float64(len(remaining)))
+
+	switch {
+	case len(remaining) > 0 && len(parquetBlocks) > 0:
+		q.metrics.selectCount.WithLabelValues("tsdb+parquet").Inc()
+	case len(remaining) > 0 && len(parquetBlocks) == 0:
+		q.metrics.selectCount.WithLabelValues("tsdb").Inc()
+	case len(remaining) == 0 && len(parquetBlocks) > 0:
+		q.metrics.selectCount.WithLabelValues("parquet").Inc()
+	}
 
 	return remaining, parquetBlocks, nil
 }

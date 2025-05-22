@@ -35,8 +35,8 @@ func CloneRows(rows []parquet.Row) []parquet.Row {
 // https://github.com/thanos-io/thanos/blob/2a5a856e34adb2653dda700c4d87637236afb2dd/pkg/store/bucket.go#L3466
 
 type Part struct {
-	Start uint64
-	End   uint64
+	Start int
+	End   int
 
 	ElemRng [2]int
 }
@@ -46,14 +46,14 @@ type Partitioner interface {
 	// input ranges
 	// It supports overlapping ranges.
 	// NOTE: It expects range to be sorted by start time.
-	Partition(length int, rng func(int) (uint64, uint64)) []Part
+	Partition(length int, rng func(int) (int, int)) []Part
 }
 
 type gapBasedPartitioner struct {
-	maxGapSize uint64
+	maxGapSize int
 }
 
-func NewGapBasedPartitioner(maxGapSize uint64) Partitioner {
+func NewGapBasedPartitioner(maxGapSize int) Partitioner {
 	return gapBasedPartitioner{
 		maxGapSize: maxGapSize,
 	}
@@ -62,7 +62,7 @@ func NewGapBasedPartitioner(maxGapSize uint64) Partitioner {
 // Partition partitions length entries into n <= length ranges that cover all
 // input ranges by combining entries that are separated by reasonably small gaps.
 // It is used to combine multiple small ranges from object storage into bigger, more efficient/cheaper ones.
-func (g gapBasedPartitioner) Partition(length int, rng func(int) (uint64, uint64)) (parts []Part) {
+func (g gapBasedPartitioner) Partition(length int, rng func(int) (int, int)) (parts []Part) {
 	j := 0
 	k := 0
 	for k < length {

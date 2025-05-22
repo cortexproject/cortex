@@ -17,9 +17,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"runtime"
+	"maps"
 	"slices"
 	"sort"
+	"sync"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/parquet-go/parquet-go"
@@ -34,9 +35,10 @@ import (
 )
 
 type Materializer struct {
-	b *storage.ParquetShard
-	s *schema.TSDBSchema
-	d *schema.PrometheusParquetChunksDecoder
+	b           *storage.ParquetShard
+	s           *schema.TSDBSchema
+	d           *schema.PrometheusParquetChunksDecoder
+	partitioner util.Partitioner
 
 	colIdx      int
 	concurrency int
@@ -44,7 +46,12 @@ type Materializer struct {
 	dataColToIndex []int
 }
 
-func NewMaterializer(s *schema.TSDBSchema, d *schema.PrometheusParquetChunksDecoder, block *storage.ParquetShard) (*Materializer, error) {
+func NewMaterializer(s *schema.TSDBSchema,
+	d *schema.PrometheusParquetChunksDecoder,
+	block *storage.ParquetShard,
+	concurrency int,
+	maxGapPartitioning int,
+) (*Materializer, error) {
 	colIdx, ok := block.LabelsFile().Schema().Lookup(schema.ColIndexes)
 	if !ok {
 		return nil, errors.New(fmt.Sprintf("schema index %s not found", schema.ColIndexes))
@@ -65,7 +72,8 @@ func NewMaterializer(s *schema.TSDBSchema, d *schema.PrometheusParquetChunksDeco
 		d:              d,
 		b:              block,
 		colIdx:         colIdx.ColumnIndex,
-		concurrency:    runtime.GOMAXPROCS(0),
+		concurrency:    concurrency,
+		partitioner:    util.NewGapBasedPartitioner(maxGapPartitioning),
 		dataColToIndex: dataColToIndex,
 	}, nil
 }
@@ -257,15 +265,19 @@ func (m *Materializer) materializeAllLabels(ctx context.Context, rgi int, rr []R
 	return results, nil
 }
 
+func totalRows(rr []RowRange) int64 {
+	res := int64(0)
+	for _, r := range rr {
+		res += r.count
+	}
+	return res
+}
+
 func (m *Materializer) materializeChunks(ctx context.Context, rgi int, mint, maxt int64, rr []RowRange) ([][]chunks.Meta, error) {
 	minDataCol := m.s.DataColumIdx(mint)
 	maxDataCol := m.s.DataColumIdx(maxt)
 	rg := m.b.ChunksFile().RowGroups()[rgi]
-	totalRows := int64(0)
-	for _, r := range rr {
-		totalRows += r.count
-	}
-	r := make([][]chunks.Meta, totalRows)
+	r := make([][]chunks.Meta, totalRows(rr))
 
 	for i := minDataCol; i <= min(maxDataCol, len(m.dataColToIndex)-1); i++ {
 		values, err := m.materializeColumn(ctx, m.b.ChunksFile(), rg, rg.ColumnChunks()[m.dataColToIndex[i]], rr)
@@ -314,20 +326,25 @@ func (m *Materializer) materializeColumn(ctx context.Context, file *storage.Parq
 
 		for _, r := range rr {
 			if pageRowRange.Overlaps(r) {
-				pagesToRowsMap[i] = append(pagesToRowsMap[i], r)
+				pagesToRowsMap[i] = append(pagesToRowsMap[i], pageRowRange.Intersection(r))
 			}
 		}
 	}
 
-	r := make(map[RowRange][]parquet.Value, len(rr))
-	for _, v := range rr {
-		r[v] = []parquet.Value{}
+	pageRanges := m.coalescePageRanges(pagesToRowsMap, oidx)
+
+	r := make(map[RowRange][]parquet.Value, len(pageRanges))
+	rMutex := &sync.Mutex{}
+	for _, v := range pageRanges {
+		for _, rs := range v.rows {
+			r[rs] = make([]parquet.Value, 0, rs.count)
+		}
 	}
 
 	errGroup := &errgroup.Group{}
 	errGroup.SetLimit(m.concurrency)
 
-	for _, p := range coalescePageRanges(pagesToRowsMap, oidx) {
+	for _, p := range pageRanges {
 		errGroup.Go(func() error {
 			pgs := file.GetPages(ctx, cc)
 			defer func() { _ = pgs.Close() }()
@@ -352,7 +369,9 @@ func (m *Materializer) materializeColumn(ctx context.Context, file *storage.Parq
 				vi.Reset(page)
 				for vi.Next() {
 					if currentRow == next {
+						rMutex.Lock()
 						r[currentRr] = append(r[currentRr], vi.At())
+						rMutex.Unlock()
 						remaining--
 						if remaining > 0 {
 							next = next + 1
@@ -379,11 +398,16 @@ func (m *Materializer) materializeColumn(ctx context.Context, file *storage.Parq
 		return nil, errors.Wrap(err, "failed to materialize columns")
 	}
 
-	values := make([]parquet.Value, 0, len(rr))
-	for _, v := range rr {
-		values = append(values, r[v]...)
+	ranges := slices.Collect(maps.Keys(r))
+	slices.SortFunc(ranges, func(a, b RowRange) int {
+		return int(a.from - b.from)
+	})
+
+	res := make([]parquet.Value, 0, totalRows(rr))
+	for _, v := range ranges {
+		res = append(res, r[v]...)
 	}
-	return values, err
+	return res, nil
 }
 
 type pageEntryRead struct {
@@ -393,9 +417,7 @@ type pageEntryRead struct {
 
 // Merge nearby pages to enable efficient sequential reads.
 // Pages that are not close to each other will be scheduled for concurrent reads.
-func coalescePageRanges(pagedIdx map[int][]RowRange, offset parquet.OffsetIndex) []pageEntryRead {
-	// TODO: Add the max gap size as parameter
-	partitioner := util.NewGapBasedPartitioner(10 * 1024)
+func (m *Materializer) coalescePageRanges(pagedIdx map[int][]RowRange, offset parquet.OffsetIndex) []pageEntryRead {
 	if len(pagedIdx) == 0 {
 		return []pageEntryRead{}
 	}
@@ -406,8 +428,8 @@ func coalescePageRanges(pagedIdx map[int][]RowRange, offset parquet.OffsetIndex)
 
 	slices.Sort(idxs)
 
-	parts := partitioner.Partition(len(idxs), func(i int) (uint64, uint64) {
-		return uint64(offset.Offset(idxs[i])), uint64(offset.Offset(idxs[i]) + offset.CompressedPageSize(idxs[i]))
+	parts := m.partitioner.Partition(len(idxs), func(i int) (int, int) {
+		return int(offset.Offset(idxs[i])), int(offset.Offset(idxs[i]) + offset.CompressedPageSize(idxs[i]))
 	})
 
 	r := make([]pageEntryRead, 0, len(parts))

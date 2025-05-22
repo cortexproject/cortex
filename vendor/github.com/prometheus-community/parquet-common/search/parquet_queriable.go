@@ -15,6 +15,7 @@ package search
 
 import (
 	"context"
+	"runtime"
 	"sort"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -29,15 +30,49 @@ import (
 
 type ShardsFinderFunction func(ctx context.Context, mint, maxt int64) ([]*storage.ParquetShard, error)
 
+type queryableOpts struct {
+	concurrency                int
+	pagePartitioningMaxGapSize int
+}
+
+var DefaultQueryableOpts = queryableOpts{
+	concurrency:                runtime.GOMAXPROCS(0),
+	pagePartitioningMaxGapSize: 10 * 1024,
+}
+
+type QueryableOpts func(*queryableOpts)
+
+// WithConcurrency set the concurrency that can be used to run the query
+func WithConcurrency(concurrency int) QueryableOpts {
+	return func(opts *queryableOpts) {
+		opts.concurrency = concurrency
+	}
+}
+
+// WithPageMaxGapSize set the max gap size between pages that should be downloaded together in a single read call
+func WithPageMaxGapSize(pagePartitioningMaxGapSize int) QueryableOpts {
+	return func(opts *queryableOpts) {
+		opts.pagePartitioningMaxGapSize = pagePartitioningMaxGapSize
+	}
+}
+
 type parquetQueryable struct {
 	shardsFinder ShardsFinderFunction
 	d            *schema.PrometheusParquetChunksDecoder
+	opts         *queryableOpts
 }
 
-func NewParquetQueryable(d *schema.PrometheusParquetChunksDecoder, shardFinder ShardsFinderFunction) (prom_storage.Queryable, error) {
+func NewParquetQueryable(d *schema.PrometheusParquetChunksDecoder, shardFinder ShardsFinderFunction, opts ...QueryableOpts) (prom_storage.Queryable, error) {
+	cfg := DefaultQueryableOpts
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	return &parquetQueryable{
 		shardsFinder: shardFinder,
 		d:            d,
+		opts:         &cfg,
 	}, nil
 }
 
@@ -47,6 +82,7 @@ func (p parquetQueryable) Querier(mint, maxt int64) (prom_storage.Querier, error
 		maxt:         maxt,
 		shardsFinder: p.shardsFinder,
 		d:            p.d,
+		opts:         p.opts,
 	}, nil
 }
 
@@ -54,6 +90,7 @@ type parquetQuerier struct {
 	mint, maxt   int64
 	shardsFinder ShardsFinderFunction
 	d            *schema.PrometheusParquetChunksDecoder
+	opts         *queryableOpts
 }
 
 func (p parquetQuerier) LabelValues(ctx context.Context, name string, hints *prom_storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -144,7 +181,7 @@ func (p parquetQuerier) queryableShards(ctx context.Context, mint, maxt int64) (
 	}
 	qBlocks := make([]*queryableShard, len(shards))
 	for i, shard := range shards {
-		qb, err := newQueryableShard(shard, p.d)
+		qb, err := newQueryableShard(p.opts, shard, p.d)
 		if err != nil {
 			return nil, err
 		}
@@ -158,12 +195,12 @@ type queryableShard struct {
 	m     *Materializer
 }
 
-func newQueryableShard(block *storage.ParquetShard, d *schema.PrometheusParquetChunksDecoder) (*queryableShard, error) {
+func newQueryableShard(opts *queryableOpts, block *storage.ParquetShard, d *schema.PrometheusParquetChunksDecoder) (*queryableShard, error) {
 	s, err := block.TSDBSchema()
 	if err != nil {
 		return nil, err
 	}
-	m, err := NewMaterializer(s, d, block)
+	m, err := NewMaterializer(s, d, block, opts.concurrency, opts.pagePartitioningMaxGapSize)
 	if err != nil {
 		return nil, err
 	}

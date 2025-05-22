@@ -349,7 +349,7 @@ func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT i
 
 	switch {
 	case len(remaining) > 0 && len(parquetBlocks) > 0:
-		q.metrics.selectCount.WithLabelValues("tsdb+parquet").Inc()
+		q.metrics.selectCount.WithLabelValues("mixed").Inc()
 	case len(remaining) > 0 && len(parquetBlocks) == 0:
 		q.metrics.selectCount.WithLabelValues("tsdb").Inc()
 	case len(remaining) == 0 && len(parquetBlocks) > 0:

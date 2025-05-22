@@ -19,6 +19,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/compact"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type ShuffleShardingGrouper struct {
@@ -279,7 +280,8 @@ func (g *ShuffleShardingGrouper) isGroupVisited(blocks []*metadata.Meta, compact
 
 // Check whether this compactor exists on the subring based on user ID
 func (g *ShuffleShardingGrouper) checkSubringForCompactor() (bool, error) {
-	subRing := g.ring.ShuffleShard(g.userID, g.limits.CompactorTenantShardSize(g.userID))
+	shardSize := util.DynamicShardSize(g.limits.CompactorTenantShardSize(g.userID), g.ring.InstancesCount())
+	subRing := g.ring.ShuffleShard(g.userID, shardSize)
 
 	rs, err := subRing.GetAllHealthy(RingOp)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -2205,4 +2206,185 @@ func TestCompactor_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T
 		healthy, unhealthy, _ := compactor.ring.GetAllInstanceDescs(ring.Reporting)
 		return len(healthy) == 1 && len(unhealthy) == 0
 	})
+}
+
+func TestCompactor_GetShardSizeForUser(t *testing.T) {
+
+	// User to shardsize
+	users := []struct {
+		userID                        string
+		tenantShardSize               float64
+		expectedShardSize             int
+		expectedShardSizeAfterScaleup int
+	}{
+		{
+			userID:                        "user-1",
+			tenantShardSize:               6,
+			expectedShardSize:             6,
+			expectedShardSizeAfterScaleup: 6,
+		},
+		{
+			userID:                        "user-2",
+			tenantShardSize:               1,
+			expectedShardSize:             1,
+			expectedShardSizeAfterScaleup: 1,
+		},
+		{
+			userID:                        "user-3",
+			tenantShardSize:               0.4,
+			expectedShardSize:             2,
+			expectedShardSizeAfterScaleup: 4,
+		},
+		{
+			userID:                        "user-4",
+			tenantShardSize:               0.01,
+			expectedShardSize:             1,
+			expectedShardSizeAfterScaleup: 1,
+		},
+	}
+
+	inmem := objstore.WithNoopInstr(objstore.NewInMemBucket())
+	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{})
+
+	for _, user := range users {
+		id, err := ulid.New(ulid.Now(), rand.Reader)
+		require.NoError(t, err)
+		require.NoError(t, inmem.Upload(context.Background(), user.userID+"/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+		limits := validation.Limits{}
+		flagext.DefaultValues(&limits)
+		limits.CompactorTenantShardSize = user.tenantShardSize
+		tenantLimits.setLimits(user.userID, &limits)
+	}
+
+	// Create a shared KV Store
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	// Create compactors
+	var compactors []*Compactor
+	for i := 0; i < 5; i++ {
+		// Setup config
+		cfg := prepareConfig()
+
+		cfg.ShardingEnabled = true
+		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
+		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
+		cfg.ShardingRing.KVStore.Mock = kvstore
+
+		// Compactor will get its own temp dir for storing local files.
+		overrides, _ := validation.NewOverrides(validation.Limits{}, tenantLimits)
+		compactor, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil)
+		compactor.limits = overrides
+		//compactor.limits.tenantLimits = tenantLimits
+		compactor.logger = log.NewNopLogger()
+		defer services.StopAndAwaitTerminated(context.Background(), compactor) //nolint:errcheck
+
+		compactors = append(compactors, compactor)
+
+		// Mock the planner as if there's no compaction to do,
+		// in order to simplify tests (all in all, we just want to
+		// test our logic and not TSDB compactor which we expect to
+		// be already tested).
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	}
+
+	// Start all compactors
+	for _, c := range compactors {
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+	}
+
+	// Wait until a run has been completed on each compactor
+	for _, c := range compactors {
+		cortex_testutil.Poll(t, 120*time.Second, true, func() interface{} {
+			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
+		})
+	}
+
+	assert.Equal(t, 5, compactors[0].ring.InstancesCount())
+
+	for _, user := range users {
+		assert.Equal(t, user.expectedShardSize, compactors[0].getShardSizeForUser(user.userID))
+	}
+
+	// Scaleup compactors
+	// Create compactors
+	var compactors2 []*Compactor
+	for i := 5; i < 10; i++ {
+		// Setup config
+		cfg := prepareConfig()
+
+		cfg.ShardingEnabled = true
+		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
+		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
+		cfg.ShardingRing.KVStore.Mock = kvstore
+
+		// Compactor will get its own temp dir for storing local files.
+		overrides, _ := validation.NewOverrides(validation.Limits{}, tenantLimits)
+		compactor, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil)
+		compactor.limits = overrides
+		//compactor.limits.tenantLimits = tenantLimits
+		compactor.logger = log.NewNopLogger()
+		defer services.StopAndAwaitTerminated(context.Background(), compactor) //nolint:errcheck
+
+		compactors2 = append(compactors2, compactor)
+
+		// Mock the planner as if there's no compaction to do,
+		// in order to simplify tests (all in all, we just want to
+		// test our logic and not TSDB compactor which we expect to
+		// be already tested).
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	}
+
+	// Start all compactors
+	for _, c := range compactors2 {
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+	}
+
+	// Wait until a run has been completed on each compactor
+	for _, c := range compactors2 {
+		cortex_testutil.Poll(t, 120*time.Second, true, func() interface{} {
+			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
+		})
+	}
+
+	assert.Equal(t, 10, compactors[0].ring.InstancesCount())
+
+	for _, user := range users {
+		assert.Equal(t, user.expectedShardSizeAfterScaleup, compactors[0].getShardSizeForUser(user.userID))
+	}
+}
+
+type mockTenantLimits struct {
+	limits map[string]*validation.Limits
+	m      sync.Mutex
+}
+
+// newMockTenantLimits creates a new mockTenantLimits that returns per-tenant limits based on
+// the given map
+func newMockTenantLimits(limits map[string]*validation.Limits) *mockTenantLimits {
+	return &mockTenantLimits{
+		limits: limits,
+	}
+}
+
+func (l *mockTenantLimits) ByUserID(userID string) *validation.Limits {
+	l.m.Lock()
+	defer l.m.Unlock()
+	return l.limits[userID]
+}
+
+func (l *mockTenantLimits) AllByUserID() map[string]*validation.Limits {
+	l.m.Lock()
+	defer l.m.Unlock()
+	return l.limits
+}
+
+func (l *mockTenantLimits) setLimits(userID string, limits *validation.Limits) {
+	l.m.Lock()
+	defer l.m.Unlock()
+	l.limits[userID] = limits
 }

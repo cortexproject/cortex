@@ -22,6 +22,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
@@ -146,7 +147,8 @@ func (g *PartitionCompactionGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta)
 
 // Check whether this compactor exists on the subring based on user ID
 func (g *PartitionCompactionGrouper) checkSubringForCompactor() (bool, error) {
-	subRing := g.ring.ShuffleShard(g.userID, g.limits.CompactorTenantShardSize(g.userID))
+	shardSize := util.DynamicShardSize(g.limits.CompactorTenantShardSize(g.userID), g.ring.InstancesCount())
+	subRing := g.ring.ShuffleShard(g.userID, shardSize)
 
 	rs, err := subRing.GetAllHealthy(RingOp)
 	if err != nil {

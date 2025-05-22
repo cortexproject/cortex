@@ -32,7 +32,7 @@ func (m SelectorBatchSize) Optimize(plan Node, _ *query.Options) (Node, annotati
 		case *Binary:
 			canBatch = false
 		case *Aggregation:
-			if e.Op == parser.QUANTILE || e.Op == parser.TOPK || e.Op == parser.BOTTOMK {
+			if e.Op == parser.QUANTILE || e.Op == parser.TOPK || e.Op == parser.BOTTOMK || e.Op == parser.LIMITK || e.Op == parser.LIMIT_RATIO {
 				canBatch = false
 				return
 			}

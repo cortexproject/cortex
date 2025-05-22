@@ -134,7 +134,7 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 	}
 	if opts.ExtLookbackDelta == 0 {
 		opts.ExtLookbackDelta = 1 * time.Hour
-		opts.Logger.Debug("external lookback delta is zero, setting to default value", "value", 1*24*time.Hour)
+		opts.Logger.Debug("external lookback delta is zero, setting to default value", "value", 1*time.Hour)
 	}
 	if len(opts.LogicalOptimizers) == 0 {
 		opts.LogicalOptimizers = append(

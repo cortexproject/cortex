@@ -52,6 +52,7 @@ const (
 	reasonTooManyRequests          = "too_many_requests"
 	reasonResourceExhausted        = "resource_exhausted"
 	reasonTimeRangeExceeded        = "time_range_exceeded"
+	reasonResponseSizeExceeded     = "response_size_exceeded"
 	reasonTooManySamples           = "too_many_samples"
 	reasonSeriesFetched            = "series_fetched"
 	reasonChunksFetched            = "chunks_fetched"
@@ -61,12 +62,13 @@ const (
 	reasonChunksLimitStoreGateway  = "store_gateway_chunks_limit"
 	reasonBytesLimitStoreGateway   = "store_gateway_bytes_limit"
 
-	limitTooManySamples    = `query processing would load too many samples into memory`
-	limitTimeRangeExceeded = `the query time range exceeds the limit`
-	limitSeriesFetched     = `the query hit the max number of series limit`
-	limitChunksFetched     = `the query hit the max number of chunks limit`
-	limitChunkBytesFetched = `the query hit the aggregated chunks size limit`
-	limitDataBytesFetched  = `the query hit the aggregated data size limit`
+	limitTooManySamples       = `query processing would load too many samples into memory`
+	limitTimeRangeExceeded    = `the query time range exceeds the limit`
+	limitResponseSizeExceeded = `the query response size exceeds limit`
+	limitSeriesFetched        = `the query hit the max number of series limit`
+	limitChunksFetched        = `the query hit the max number of chunks limit`
+	limitChunkBytesFetched    = `the query hit the aggregated chunks size limit`
+	limitDataBytesFetched     = `the query hit the aggregated data size limit`
 
 	// Store gateway limits.
 	limitSeriesStoreGateway = `exceeded series limit`
@@ -529,6 +531,8 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonTooManySamples
 		} else if strings.Contains(errMsg, limitTimeRangeExceeded) {
 			reason = reasonTimeRangeExceeded
+		} else if strings.Contains(errMsg, limitResponseSizeExceeded)  {
+			reason = reasonResponseSizeExceeded
 		} else if strings.Contains(errMsg, limitSeriesFetched) {
 			reason = reasonSeriesFetched
 		} else if strings.Contains(errMsg, limitChunksFetched) {

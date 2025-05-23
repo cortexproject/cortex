@@ -5,15 +5,19 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 var (
@@ -133,6 +137,80 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
+			upstream := mockMetadataQuerier{
+				tenantIdToMetadata: test.tenantIdToMetadata,
+			}
+
+			mergeMetadataQuerier := NewMetadataQuerier(&upstream, defaultMaxConcurrency, reg)
+			metadata, err := mergeMetadataQuerier.MetricsMetadata(user.InjectOrgID(context.Background(), test.orgId), &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
+			require.NoError(t, err)
+			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(test.expectedMetrics), "cortex_querier_federated_tenants_per_metadata_query"))
+			require.Equal(t, test.expectedResults, metadata)
+		})
+	}
+}
+
+func Test_mergeMetadataQuerier_MetricsMetadata_WhenUseRegexResolver(t *testing.T) {
+	// set a regex tenant resolver
+	reg := prometheus.NewRegistry()
+	userStat := ingester.UserStats{}
+	regexResolver := NewRegexResolver(reg, time.Second, log.NewNopLogger(), func(ctx context.Context) ([]ingester.UserIDStats, error) {
+		return []ingester.UserIDStats{
+			{UserID: "user-1", UserStats: userStat},
+			{UserID: "user-2", UserStats: userStat},
+		}, nil
+	})
+	tenant.WithDefaultResolver(regexResolver)
+
+	// wait update knownUsers
+	test.Poll(t, time.Second*10, true, func() interface{} {
+		return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0
+	})
+
+	tests := []struct {
+		name               string
+		tenantIdToMetadata map[string][]scrape.MetricMetadata
+		orgId              string
+		expectedResults    []scrape.MetricMetadata
+		expectedMetrics    string
+	}{
+		{
+			name: "single tenant",
+			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
+				"user-1": {
+					{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+				},
+			},
+			orgId: "user-1",
+			expectedResults: []scrape.MetricMetadata{
+				{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+			},
+			expectedMetrics: expectedSingleTenantsMetadataMetrics,
+		},
+		{
+			name: "should be merged two tenants results",
+			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
+				"user-1": {
+					{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+				},
+				"user-2": {
+					{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+					{MetricFamily: "metadata3", Help: "metadata3 help", Type: "gauge", Unit: ""},
+				},
+			},
+			orgId: "user-.+",
+			expectedResults: []scrape.MetricMetadata{
+				{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge", Unit: ""},
+				{MetricFamily: "metadata2", Help: "metadata2 help", Type: "counter", Unit: ""},
+				{MetricFamily: "metadata3", Help: "metadata3 help", Type: "gauge", Unit: ""},
+			},
+			expectedMetrics: expectedTwoTenantsMetadataMetrics,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			reg = prometheus.NewPedanticRegistry()
 			upstream := mockMetadataQuerier{
 				tenantIdToMetadata: test.tenantIdToMetadata,
 			}

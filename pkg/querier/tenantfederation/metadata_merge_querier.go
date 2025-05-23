@@ -58,6 +58,9 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 	m.tenantsPerMetadataQuery.Observe(float64(len(tenantIds)))
 
 	if len(tenantIds) == 1 {
+		// If use the regex resolver, the orgID could be set to input regex.
+		// So, we inject the resolved orgID.
+		ctx = user.InjectOrgID(ctx, tenantIds[0])
 		return m.upstream.MetricsMetadata(ctx, req)
 	}
 

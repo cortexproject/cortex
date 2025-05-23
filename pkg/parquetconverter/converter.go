@@ -29,8 +29,7 @@ import (
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -46,10 +45,8 @@ const (
 var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
 type Config struct {
-	EnabledTenants      flagext.StringSliceCSV `yaml:"enabled_tenants"`
-	DisabledTenants     flagext.StringSliceCSV `yaml:"disabled_tenants"`
-	MetaSyncConcurrency int                    `yaml:"meta_sync_concurrency"`
-	ConversionInterval  time.Duration          `yaml:"conversion_interval"`
+	MetaSyncConcurrency int           `yaml:"meta_sync_concurrency"`
+	ConversionInterval  time.Duration `yaml:"conversion_interval"`
 
 	DataDir string `yaml:"data_dir"`
 
@@ -64,8 +61,7 @@ type Converter struct {
 	cfg        Config
 	storageCfg cortex_tsdb.BlocksStorageConfig
 
-	allowedTenants *util.AllowedTenants
-	limits         *validation.Overrides
+	limits *validation.Overrides
 
 	// Ring used for sharding compactions.
 	ringLifecycler         *ring.Lifecycler
@@ -87,8 +83,6 @@ type Converter struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Ring.RegisterFlags(f)
 
-	f.Var(&cfg.EnabledTenants, "parquet-converter.enabled-tenants", "Comma separated list of tenants that can be converted. If specified, only these tenants will be converted, otherwise all tenants can be converted.")
-	f.Var(&cfg.DisabledTenants, "parquet-converter.disabled-tenants", "Comma separated list of tenants that cannot converted.")
 	f.StringVar(&cfg.DataDir, "parquet-converter.data-dir", "./data", "Data directory in which to cache blocks and process conversions.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "parquet-converter.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
 	f.DurationVar(&cfg.ConversionInterval, "parquet-converter.conversion-interval", time.Minute, "The frequency at which the conversion job runs.")
@@ -107,7 +101,6 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 		reg:            registerer,
 		storageCfg:     storageCfg,
 		logger:         logger,
-		allowedTenants: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 		limits:         limits,
 		pool:           chunkenc.NewPool(),
 		blockRanges:    blockRanges,
@@ -171,6 +164,10 @@ func (c *Converter) running(ctx context.Context) error {
 			}
 			ownedUsers := map[string]struct{}{}
 			for _, userID := range users {
+				if !c.limits.ParquetConverterEnabled(userID) {
+					continue
+				}
+
 				var ring ring.ReadRing
 				ring = c.ring
 				if c.limits.ParquetConverterTenantShardSize(userID) > 0 {
@@ -375,15 +372,11 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 	return nil
 }
 
-func (c *Converter) ownUser(r ring.ReadRing, userID string) (bool, error) {
-	if !c.allowedTenants.IsAllowed(userID) {
+func (c *Converter) ownUser(r ring.ReadRing, userId string) (bool, error) {
+	if userId == tenant.GlobalMarkersDir {
+		// __markers__ is reserved for global markers and no tenant should be allowed to have that name.
 		return false, nil
 	}
-
-	if c.limits.ParquetConverterTenantShardSize(userID) <= 0 {
-		return true, nil
-	}
-
 	rs, err := r.GetAllHealthy(RingOp)
 	if err != nil {
 		return false, err

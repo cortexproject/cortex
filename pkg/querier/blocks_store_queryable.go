@@ -513,6 +513,11 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 
 	// Find the list of blocks we need to query given the time range.
 	knownBlocks, knownDeletionMarks, err := q.finder.GetBlocks(ctx, userID, minT, maxT)
+
+	// if blocks were already discovered, we should use then
+	if b, ok := ExtractBlocksFromContext(ctx); ok {
+		knownBlocks = b
+	}
 	if err != nil {
 		return err
 	}

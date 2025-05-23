@@ -400,11 +400,20 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	var servs []services.Service
 
 	//nolint:revive // I prefer this form over removing 'else', because it allows q to have smaller scope.
-	if q, err := initQueryableForEngine(t.Cfg, t.Overrides, prometheus.DefaultRegisterer); err != nil {
+	var queriable prom_storage.Queryable
+	if q, err := initBlockStoreQueryable(t.Cfg, t.Overrides, prometheus.DefaultRegisterer); err != nil {
 		return nil, fmt.Errorf("failed to initialize querier: %v", err)
 	} else {
-		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(q))
-		if s, ok := q.(services.Service); ok {
+		queriable = q
+		if t.Cfg.Querier.QueryParquetFiles {
+			pq, err := querier.NewParquetQueryable(t.Cfg.Querier, t.Cfg.BlocksStorage, t.Overrides, q, util_log.Logger, prometheus.DefaultRegisterer)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize parquet querier: %v", err)
+			}
+			queriable = pq
+		}
+		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(queriable))
+		if s, ok := queriable.(services.Service); ok {
 			servs = append(servs, s)
 		}
 	}
@@ -424,7 +433,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	}
 }
 
-func initQueryableForEngine(cfg Config, limits *validation.Overrides, reg prometheus.Registerer) (prom_storage.Queryable, error) {
+func initBlockStoreQueryable(cfg Config, limits *validation.Overrides, reg prometheus.Registerer) (*querier.BlocksStoreQueryable, error) {
 	// When running in single binary, if the blocks sharding is disabled and no custom
 	// store-gateway address has been configured, we can set it to the running process.
 	if cfg.isModuleEnabled(All) && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {

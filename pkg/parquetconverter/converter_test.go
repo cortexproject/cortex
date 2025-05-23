@@ -45,8 +45,11 @@ func TestConverter(t *testing.T) {
 	bucketClient, err := filesystem.NewBucket(t.TempDir())
 	require.NoError(t, err)
 	userBucket := bucket.NewPrefixedBucketClient(bucketClient, user)
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ParquetConverterEnabled = true
 
-	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), nil)
+	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits)
 
 	ctx := context.Background()
 

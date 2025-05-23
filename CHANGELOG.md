@@ -11,7 +11,7 @@
 * [FEATURE] Ingester: Support out-of-order native histogram ingestion. It automatically enabled when `-ingester.out-of-order-time-window > 0` and `-blocks-storage.tsdb.enable-native-histograms=true`. #6626 #6663
 * [FEATURE] Ruler: Add support for percentage based sharding for rulers. #6680
 * [FEATURE] Ruler: Add support for group labels. #6665
-* [FEATURE] Support Parquet format: Implement parquet converter service to convert a TSDB block into Parquet. #6716
+* [FEATURE] Experimental Support Parquet format: Implement parquet converter service to convert a TSDB block into Parquet and Parquet Queryable. #6716 #6743
 * [FEATURE] Distributor/Ingester: Implemented experimental feature to use gRPC stream connection for push requests. This can be enabled by setting `-distributor.use-stream-push=true`. #6580
 * [FEATURE] Compactor: Add support for percentage based sharding for compactors. #6738
 * [ENHANCEMENT] Query Frontend: Change to return 400 when the tenant resolving fail. #6715

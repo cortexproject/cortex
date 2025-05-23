@@ -597,6 +597,11 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 	// Generate an updated in-memory version of the bucket index.
 	begin = time.Now()
 	w := bucketindex.NewUpdater(c.bucketClient, userID, c.cfgProvider, c.logger)
+
+	if c.cfgProvider.ParquetConverterEnabled(userID) {
+		w.EnableParquet()
+	}
+
 	idx, partials, totalBlocksBlocksMarkedForNoCompaction, err := w.UpdateIndex(ctx, idx)
 	if err != nil {
 		idxs.Status = bucketindex.GenericError

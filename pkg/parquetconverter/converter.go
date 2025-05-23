@@ -29,7 +29,7 @@ import (
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -373,7 +373,7 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 }
 
 func (c *Converter) ownUser(r ring.ReadRing, userId string) (bool, error) {
-	if userId == util.GlobalMarkersDir {
+	if userId == tenant.GlobalMarkersDir {
 		// __markers__ is reserved for global markers and no tenant should be allowed to have that name.
 		return false, nil
 	}

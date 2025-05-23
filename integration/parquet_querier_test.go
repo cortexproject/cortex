@@ -1,11 +1,24 @@
-//go:build integration
-// +build integration
+//go:build integration_query_fuzz
+// +build integration_query_fuzz
 
 package integration
 
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"path/filepath"
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/cortexproject/promqlsmith"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
+
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
@@ -13,17 +26,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/log"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
-	"github.com/cortexproject/promqlsmith"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
-	"github.com/thanos-io/thanos/pkg/block"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
-	"math/rand"
-	"path/filepath"
-	"strconv"
-	"testing"
-	"time"
 )
 
 func TestParquetFuzz(t *testing.T) {
@@ -111,6 +113,7 @@ func TestParquetFuzz(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(cortex))
 
 	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, err)
 	bkt := bucket.NewUserBucketClient("user-1", storage.GetBucket(), nil)
 
 	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
@@ -120,13 +123,14 @@ func TestParquetFuzz(t *testing.T) {
 	cortex_testutil.Poll(t, 30*time.Second, true, func() interface{} {
 		found := false
 
-		bkt.Iter(context.Background(), "", func(name string) error {
+		err := bkt.Iter(context.Background(), "", func(name string) error {
 			fmt.Println(name)
 			if name == fmt.Sprintf("parquet-markers/%v-parquet-converter-mark.json", id.String()) {
 				found = true
 			}
 			return nil
 		}, objstore.WithRecursiveIter())
+		require.NoError(t, err)
 		return found
 	})
 
@@ -167,7 +171,6 @@ func TestParquetFuzz(t *testing.T) {
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
 	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 500, false)
-	fmt.Println(cortex.Metrics())
 
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_queryable_blocks_queried_total"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "type", "parquet"))))

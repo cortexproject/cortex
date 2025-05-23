@@ -37,6 +37,10 @@ func TestValidTenantIDs(t *testing.T) {
 			name: "..",
 			err:  strptr("tenant ID is '.' or '..'"),
 		},
+		{
+			name: "__markers__",
+			err:  strptr("tenant ID '__markers__' is not allowed"),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := ValidTenantID(tc.name)

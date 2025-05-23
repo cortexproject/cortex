@@ -44,6 +44,7 @@
 * [BUGFIX] Querier: Fix panic when marshaling QueryResultRequest. #6601
 * [BUGFIX] Ingester: Avoid resharding for query when restart readonly ingesters. #6642
 * [BUGFIX] Query Frontend: Fix query frontend per `user` metrics clean up. #6698
+* [BUGFIX] Add `__markers__` tenant ID validation. #6761
 
 ## 1.19.0 2025-02-27
 

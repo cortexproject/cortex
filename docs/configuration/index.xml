@@ -3608,9 +3608,10 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># The default tenant&amp;#39;s shard size when the shuffle-sharding strategy is used by&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># the compactor. When this setting is specified in the per-tenant overrides, a&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># value of 0 disables shuffle sharding for the tenant.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># value of 0 disables shuffle sharding for the tenant. If the value is &amp;lt; 1 and &amp;gt;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># 0 the shard size will be a percentage of the total compactors&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -compactor.tenant-shard-size&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[compactor_tenant_shard_size&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 0]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[compactor_tenant_shard_size&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;float&amp;gt; | default = 0]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Index size limit in bytes for each compaction partition. 0 means no limit&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -compactor.partition-index-size-bytes&lt;/span>

@@ -3808,9 +3808,10 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># The default tenant&amp;#39;s shard size when the shuffle-sharding strategy is used by&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># the compactor. When this setting is specified in the per-tenant overrides, a&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># value of 0 disables shuffle sharding for the tenant.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># value of 0 disables shuffle sharding for the tenant. If the value is &amp;lt; 1 and &amp;gt;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># 0 the shard size will be a percentage of the total compactors&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -compactor.tenant-shard-size&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[compactor_tenant_shard_size&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 0]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[compactor_tenant_shard_size&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;float&amp;gt; | default = 0]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Index size limit in bytes for each compaction partition. 0 means no limit&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -compactor.partition-index-size-bytes&lt;/span>
@@ -6777,7 +6778,168 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;h4 id="consistency">Consistency&lt;/h4>
 &lt;p>On resharding of compactor schedulers, a tenant might move to a different scheduler. We can either drop the current compactor job in order to prevent duplicate compaction jobs, or continue compaction. I propose that the compactor drops the compaction job if the compaction group no longer belongs to the original compactor scheduler. This way, we do not have duplicate compactions happening, and we can minimize work wasted.&lt;/p>
 &lt;h3 id="contribute-to-thanos-for-a-more-scalable-compactor">Contribute to Thanos for a more scalable compactor&lt;/h3>
-&lt;p>Instead of introducing parallelism on the Cortex compactor level, we move the parallelism to the Thanos compactor itself. Thanos has a &lt;a href="https://docs.google.com/document/d/1xi0V8DB0hE54XgkogJRnNL6yH7C5JThJywlLFoC6dCQ/">proposal to make compactor more scalable&lt;/a>, and a &lt;a href="https://github.com/thanos-io/thanos/pull/3807">PR&lt;/a>. Cortex will enjoy higher throughput per tenant if Thanos is able to speed up the compaction, and we can keep the Cortex architecture the same. However, this approach means that a single tenant is still sharded to a single compactor. In order to compact more groups at once, we must scale up compactor vertically. Although vertical scaling can get us far, we should scale horizontally where we can.&lt;/p></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
+&lt;p>Instead of introducing parallelism on the Cortex compactor level, we move the parallelism to the Thanos compactor itself. Thanos has a &lt;a href="https://docs.google.com/document/d/1xi0V8DB0hE54XgkogJRnNL6yH7C5JThJywlLFoC6dCQ/">proposal to make compactor more scalable&lt;/a>, and a &lt;a href="https://github.com/thanos-io/thanos/pull/3807">PR&lt;/a>. Cortex will enjoy higher throughput per tenant if Thanos is able to speed up the compaction, and we can keep the Cortex architecture the same. However, this approach means that a single tenant is still sharded to a single compactor. In order to compact more groups at once, we must scale up compactor vertically. Although vertical scaling can get us far, we should scale horizontally where we can.&lt;/p></description></item><item><title>Docs: Parquet-based Storage</title><link>/docs/proposals/parquet-storage/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/parquet-storage/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/alanprot">Alan Protasio&lt;/a>, &lt;a href="https://github.com/yeya24">Ben Ye&lt;/a>&lt;/li>
+&lt;li>Date: April 2025&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;h2 id="background">Background&lt;/h2>
+&lt;p>Since the introduction of Block Storage in Cortex, TSDB format and Store Gateway is the de-facto way to query long term data on object storage. However, it presents several significant challenges:&lt;/p>
+&lt;h3 id="tsdb-format-limitations">TSDB Format Limitations&lt;/h3>
+&lt;p>TSDB format, while efficient for write-heavy workloads on local SSDs, is not designed for object storage:&lt;/p>
+&lt;ul>
+&lt;li>Index relies heavily on random reads to serve queries, where each random read becomes a request to object store&lt;/li>
+&lt;li>In order to reduce requests to object store, requests needs to be merged, leading to higher overfetch&lt;/li>
+&lt;li>Index relies on postings, which can be a huge bottleneck for high cardinality data&lt;/li>
+&lt;/ul>
+&lt;h3 id="store-gateway-operational-challenges">Store Gateway Operational Challenges&lt;/h3>
+&lt;p>Store Gateway is originally introduced in &lt;a href="https://thanos.io/">Thanos&lt;/a>. Both Cortex and Thanos community have been collaborating to add a lot of optimizations to Store Gateway. However, it has its own problems related to the design.&lt;/p>
+&lt;ol>
+&lt;li>
+&lt;p>Resource Intensive&lt;/p>
+&lt;ul>
+&lt;li>Requires significant local disk space to store index headers&lt;/li>
+&lt;li>High memory utilization due to index header mmap&lt;/li>
+&lt;li>Often needs over-provisioning to handle query spikes&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>State Management and Scaling Difficulties&lt;/p>
+&lt;ul>
+&lt;li>Requires complex data sharding when scaling. Often causing issues such as consistency check failure. Hard to configure for users&lt;/li>
+&lt;li>Initial sync causes long startup time. This affects service availability on both scaling and failure recovery scenario&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>Query Inefficiencies&lt;/p>
+&lt;ul>
+&lt;li>Attempts to minimize storage requests often lead to overfetching, causing high bandwidth usage&lt;/li>
+&lt;li>Complex caching logic with varying effectiveness. Latency varies a lot when cache miss&lt;/li>
+&lt;li>Processes single block with one goroutine, leading to high latency for large blocks and cannot scale without complex data partitioning&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ol>
+&lt;h3 id="why-parquet">Why Parquet?&lt;/h3>
+&lt;p>&lt;a href="https://parquet.apache.org/">Apache Parquet&lt;/a> is a columnar storage format designed specifically for efficient data storage and retrieval from object storage systems. It offers several key advantages that directly address the problems we face with TSDB and Store Gateway:&lt;/p>
+&lt;ul>
+&lt;li>Data organized by columns rather than rows, reduces number of requests to object storage as only limited IO is required to fetch the whole column&lt;/li>
+&lt;li>Rich file metadata and index, no local state like index header required to query the data, making it stateless&lt;/li>
+&lt;li>Advanced compression techniques reduce storage costs and improve query performance&lt;/li>
+&lt;li>Parallel processing friendly using Parquet Row Group&lt;/li>
+&lt;/ul>
+&lt;p>There are other benefits of Parquet formats, but they are not directly related to the proposal:&lt;/p>
+&lt;ul>
+&lt;li>Wide ecosystem and tooling support&lt;/li>
+&lt;li>Column pruning opportunity using projection pushdown&lt;/li>
+&lt;/ul>
+&lt;h2 id="out-of-scope">Out of Scope&lt;/h2>
+&lt;ul>
+&lt;li>Allow Ingester and Compactor to create Parquet files instead of TSDB blocks directly. This could be in the future roadmap but this proposal only focuses on converting and querying Parquet files.&lt;/li>
+&lt;/ul>
+&lt;h2 id="proposed-design">Proposed Design&lt;/h2>
+&lt;h3 id="components">Components&lt;/h3>
+&lt;p>There are 2 new Cortex components/modules introduced in this design.&lt;/p>
+&lt;h4 id="1-parquet-converter">1. Parquet Converter&lt;/h4>
+&lt;p>Parquet Converter is a new component that converts TSDB blocks on object store to Parquet file format.&lt;/p>
+&lt;p>It is similar to compactor, however, it only converts single block. The converted Parquet files will be stored in the same TSDB block folder so that the lifecycle of Parquet file will be managed together with the block.&lt;/p>
+&lt;p>Only certain blocks can be configured to convert to Parquet file and it can be block duration based, for example we only convert if block duration is &amp;gt;= 12h.&lt;/p>
+&lt;h4 id="2-parquet-queryable">2. Parquet Queryable&lt;/h4>
+&lt;p>Similar to the existing &lt;code>distributorQueryable&lt;/code> and &lt;code>blockStorageQueryable&lt;/code>, Parquet queryable is a queryable implementation which allows Cortex to query parquet files and can be used in both Cortex Querier and Ruler.&lt;/p>
+&lt;p>If Parquet queryable is enabled, block storage queryable will be disabled and Cortex querier will not query Store Gateway anymore. &lt;code>distributorQueryable&lt;/code> remains unchanged so it still queries Ingesters.&lt;/p>
+&lt;p>Parquet queryable uses bucket index to discovers parquet files in object storage. The bucket index is the same as the existing TSDB bucket index file, but using a different name &lt;code>bucket-index-parquet.json.gz&lt;/code>. It is updated periodically by Cortex Compactor/Parquet Converter if parquet storage is enabled.&lt;/p>
+&lt;p>Cortex querier remains a stateless component when Parquet queryable is enabled.&lt;/p>
+&lt;h3 id="architecture">Architecture&lt;/h3>
+&lt;pre tabindex="0">&lt;code>┌──────────┐ ┌─────────────┐ ┌──────────────┐
+│ Ingester │───&amp;gt;│ TSDB │───&amp;gt;│ Parquet │
+└──────────┘ │ Blocks │ │ Converter │
+└─────────────┘ └──────────────┘
+│
+v
+┌──────────┐ ┌─────────────┐ ┌──────────────┐
+│ Query │───&amp;gt;│ Parquet │───&amp;gt;│ Parquet │
+│ Frontend │ │ Querier │ │ Files │
+└──────────┘ └─────────────┘ └──────────────┘
+&lt;/code>&lt;/pre>&lt;h3 id="data-format">Data Format&lt;/h3>
+&lt;p>Parquet file is converted from TSDB block so it follows the same time range constraint.&lt;/p>
+&lt;p>If the largest block is 1 day then parquet file can go up to 1 day. Max block range is configurable in Cortex but default value is 24h. So following schema will use 24h as example.&lt;/p>
+&lt;h4 id="schema-overview">Schema Overview&lt;/h4>
+&lt;p>The Parquet format consists of two types of files:&lt;/p>
+&lt;ol>
+&lt;li>
+&lt;p>&lt;strong>Labels Parquet File&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Each row represents a unique time series&lt;/li>
+&lt;li>Each column corresponds to a label name (e.g., &lt;code>__name__&lt;/code>, &lt;code>label1&lt;/code>, &amp;hellip;, &lt;code>labelN&lt;/code>)&lt;/li>
+&lt;li>Row groups are sorted by &lt;code>__name__&lt;/code> alphabetically in ascending order&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>Chunks Parquet File&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Maintains row and row group order matching the Labels file&lt;/li>
+&lt;li>Contains multiple chunk columns for time-series data ordered by time. With 3 chunk columns for example, each column covers 8h of chunks: 0-8h, 8h-16h, 16-24h. It is possible that a single TSDB chunk spans over time ranges of 2 columns and Parquet file writer needs to split and re-encode chunks for each chunk column.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ol>
+&lt;h4 id="column-specifications">Column Specifications&lt;/h4>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Column Name&lt;/th>
+&lt;th>Description&lt;/th>
+&lt;th>Type&lt;/th>
+&lt;th>Encoding/Compression/skipPageBounds&lt;/th>
+&lt;th>Required&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>s_hash&lt;/code>&lt;/td>
+&lt;td>Hash of all labels&lt;/td>
+&lt;td>INT64&lt;/td>
+&lt;td>None/Zstd/Yes&lt;/td>
+&lt;td>No&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>s_col_indexes&lt;/code>&lt;/td>
+&lt;td>Bitmap indicating which columns store the label set for this row (series)&lt;/td>
+&lt;td>ByteArray (bitmap)&lt;/td>
+&lt;td>DeltaByteArray/Zstd/Yes&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>s_lbl_{labelName}&lt;/code>&lt;/td>
+&lt;td>Values for a given label name. Rows are sorted by metric name&lt;/td>
+&lt;td>ByteArray (string)&lt;/td>
+&lt;td>RLE_DICTIONARY/Zstd/No&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>s_data_{n}&lt;/code>&lt;/td>
+&lt;td>Chunks columns (0 to data_cols_count). Each column contains data from &lt;code>[n*duration, (n+1)*duration]&lt;/code> where duration is &lt;code>24h/data_cols_count&lt;/code>&lt;/td>
+&lt;td>ByteArray (encoded chunks)&lt;/td>
+&lt;td>DeltaByteArray/Zstd/Yes&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>data_cols_count will be a parquet file metadata and its value is default to 3 but it can be configurable to adjust for different usecases.&lt;/p>
+&lt;h2 id="open-questions">Open Questions&lt;/h2>
+&lt;ol>
+&lt;li>Should we use Parquet Gateway to replace Store Gateway
+&lt;ul>
+&lt;li>Separate query engine and storage&lt;/li>
+&lt;li>We can make Parquet Gateway semi-stateful like data locality for better performance&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ol>
+&lt;h2 id="acknowledgement">Acknowledgement&lt;/h2>
+&lt;p>We&amp;rsquo;d like to give huge credits for people from the Thanos community who started this initiative.&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="https://github.com/fpetkovski">Filip Petkovski&lt;/a> and his initial &lt;a href="https://www.youtube.com/watch?v=V8Y4VuUwg8I">talk about Parquet&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://github.com/MichaHoffmann">Michael Hoffmann&lt;/a> and his great work of &lt;a href="https://github.com/cloudflare/parquet-tsdb-poc">parquet poc&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/Allenzhli">Allenzhli&lt;/a>&lt;/li>
 &lt;li>Date: January 2021&lt;/li>
@@ -13470,179 +13632,4 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;ul>
 &lt;li>Scanner supports only BigTable and DynamoDB for chunks index backend, and cannot currently scan other databases.&lt;/li>
 &lt;li>Supports only chunks schema versions v9 for DynamoDB; v9, v10 and v11 for Bigtable.&lt;/li>
-&lt;/ul></description></item><item><title>Docs: v1.x Guarantees</title><link>/docs/configuration/v1guarantees/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/v1guarantees/</guid><description>
-&lt;p>For the v1.0 release, we want to provide the following guarantees:&lt;/p>
-&lt;h2 id="flags-config-and-minor-version-upgrades">Flags, Config and minor version upgrades&lt;/h2>
-&lt;p>Upgrading cortex from one minor version to the next should &amp;ldquo;just work&amp;rdquo;; that being said, we don&amp;rsquo;t want to bump the major version every time we remove a flag, so we will will keep deprecated flags around for 2 minor release. There is a metric (&lt;code>deprecated_flags_inuse_total&lt;/code>) you can alert on to find out if you&amp;rsquo;re using a deprecated flag.&lt;/p>
-&lt;p>Similarly to flags, minor version upgrades using config files should &amp;ldquo;just work&amp;rdquo;. If we do need to change config, we will keep the old way working for two minor version. There will be a metric you can alert on for this too.&lt;/p>
-&lt;p>These guarantees don&amp;rsquo;t apply for &lt;a href="#experimental-features">experimental features&lt;/a>.&lt;/p>
-&lt;h2 id="reading-old-data">Reading old data&lt;/h2>
-&lt;p>The Cortex maintainers commit to ensuring future version of Cortex can read data written by versions up to two years old. In practice we expect to be able to read more, but this is our guarantee.&lt;/p>
-&lt;h2 id="api-compatibility">API Compatibility&lt;/h2>
-&lt;p>Cortex strives to be 100% API compatible with Prometheus (under &lt;code>/prometheus/*&lt;/code> and &lt;code>/api/prom/*&lt;/code>); any deviation from this is considered a bug, except:&lt;/p>
-&lt;ul>
-&lt;li>Additional API endpoints for creating, removing and modifying alerts and recording rules.&lt;/li>
-&lt;li>Additional API around pushing metrics (under &lt;code>/api/push&lt;/code>).&lt;/li>
-&lt;li>Additional API endpoints for management of Cortex itself, such as the ring. These APIs are not part of the any compatibility guarantees.&lt;/li>
-&lt;/ul>
-&lt;p>&lt;em>For more information, please refer to the &lt;a href="/docs/guides/limitations/">limitations&lt;/a> doc.&lt;/em>&lt;/p>
-&lt;h2 id="experimental-features">Experimental features&lt;/h2>
-&lt;p>Cortex is an actively developed project and we want to encourage the introduction of new features and capability. As such, not everything in each release of Cortex is considered &amp;ldquo;production-ready&amp;rdquo;. We don&amp;rsquo;t provide any backwards compatibility guarantees on these and the config and flags might break.&lt;/p>
-&lt;p>Currently experimental features are:&lt;/p>
-&lt;ul>
-&lt;li>Ruler
-&lt;ul>
-&lt;li>Evaluate rules to query frontend instead of ingesters (enabled via &lt;code>-ruler.frontend-address&lt;/code>).&lt;/li>
-&lt;li>When &lt;code>-ruler.frontend-address&lt;/code> is specified, the response format can be specified (via &lt;code>-ruler.query-response-format&lt;/code>).&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).&lt;/li>
-&lt;li>Azure blob storage.&lt;/li>
-&lt;li>Zone awareness based replication.&lt;/li>
-&lt;li>Ruler API (to PUT rules).&lt;/li>
-&lt;li>Alertmanager:
-&lt;ul>
-&lt;li>API (enabled via &lt;code>-experimental.alertmanager.enable-api&lt;/code>)&lt;/li>
-&lt;li>Sharding of tenants across multiple instances (enabled via &lt;code>-alertmanager.sharding-enabled&lt;/code>)&lt;/li>
-&lt;li>Receiver integrations firewall (configured via &lt;code>-alertmanager.receivers-firewall.*&lt;/code>)&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Memcached client DNS-based service discovery.&lt;/li>
-&lt;li>In-memory (FIFO) and Redis cache.&lt;/li>
-&lt;li>gRPC Store.&lt;/li>
-&lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
-&lt;li>TLS configuration in Etcd client.&lt;/li>
-&lt;li>Blocksconvert tools&lt;/li>
-&lt;li>OpenStack Swift storage support.&lt;/li>
-&lt;li>Metric relabeling in the distributor.&lt;/li>
-&lt;li>Scalable query-frontend (when using query-scheduler)&lt;/li>
-&lt;li>Ingester: do not unregister from ring on shutdown (&lt;code>-ingester.unregister-on-shutdown=false&lt;/code>)&lt;/li>
-&lt;li>Distributor:
-&lt;ul>
-&lt;li>Do not extend writes on unhealthy ingesters (&lt;code>-distributor.extend-writes=false&lt;/code>)&lt;/li>
-&lt;li>Accept multiple HA pairs in the same request (enabled via &lt;code>-experimental.distributor.ha-tracker.mixed-ha-samples=true&lt;/code>)&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Tenant Deletion in Purger, for blocks storage.&lt;/li>
-&lt;li>Query-frontend: query stats tracking (&lt;code>-frontend.query-stats-enabled&lt;/code>)&lt;/li>
-&lt;li>Blocks storage bucket index
-&lt;ul>
-&lt;li>The bucket index support in the querier and store-gateway (enabled via &lt;code>-blocks-storage.bucket-store.bucket-index.enabled=true&lt;/code>) is experimental&lt;/li>
-&lt;li>The block deletion marks migration support in the compactor (&lt;code>-compactor.block-deletion-marks-migration-enabled&lt;/code>) is temporarily and will be removed in future versions&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Querier: tenant federation&lt;/li>
-&lt;li>The thanosconvert tool for converting Thanos block metadata to Cortex&lt;/li>
-&lt;li>HA Tracker: cleanup of old replicas from KV Store.&lt;/li>
-&lt;li>Instance limits in ingester and distributor&lt;/li>
-&lt;li>Exemplar storage, currently in-memory only within the Ingester based on Prometheus exemplar storage (&lt;code>-blocks-storage.tsdb.max-exemplars&lt;/code>)&lt;/li>
-&lt;li>Querier limits:
-&lt;ul>
-&lt;li>&lt;code>-querier.max-fetched-chunks-per-query&lt;/code>&lt;/li>
-&lt;li>&lt;code>-querier.max-fetched-chunk-bytes-per-query&lt;/code>&lt;/li>
-&lt;li>&lt;code>-querier.max-fetched-series-per-query&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Alertmanager limits
-&lt;ul>
-&lt;li>notification rate (&lt;code>-alertmanager.notification-rate-limit&lt;/code> and &lt;code>-alertmanager.notification-rate-limit-per-integration&lt;/code>)&lt;/li>
-&lt;li>dispatcher groups (&lt;code>-alertmanager.max-dispatcher-aggregation-groups&lt;/code>)&lt;/li>
-&lt;li>user config size (&lt;code>-alertmanager.max-config-size-bytes&lt;/code>)&lt;/li>
-&lt;li>templates count in user config (&lt;code>-alertmanager.max-templates-count&lt;/code>)&lt;/li>
-&lt;li>max template size (&lt;code>-alertmanager.max-template-size-bytes&lt;/code>)&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Disabling ring heartbeat timeouts
-&lt;ul>
-&lt;li>&lt;code>-distributor.ring.heartbeat-timeout=0&lt;/code>&lt;/li>
-&lt;li>&lt;code>-ring.heartbeat-timeout=0&lt;/code>&lt;/li>
-&lt;li>&lt;code>-ruler.ring.heartbeat-timeout=0&lt;/code>&lt;/li>
-&lt;li>&lt;code>-alertmanager.sharding-ring.heartbeat-timeout=0&lt;/code>&lt;/li>
-&lt;li>&lt;code>-compactor.ring.heartbeat-timeout=0&lt;/code>&lt;/li>
-&lt;li>&lt;code>-store-gateway.sharding-ring.heartbeat-timeout=0&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Disabling ring heartbeats
-&lt;ul>
-&lt;li>&lt;code>-distributor.ring.heartbeat-period=0&lt;/code>&lt;/li>
-&lt;li>&lt;code>-ingester.heartbeat-period=0&lt;/code>&lt;/li>
-&lt;li>&lt;code>-ruler.ring.heartbeat-period=0&lt;/code>&lt;/li>
-&lt;li>&lt;code>-alertmanager.sharding-ring.heartbeat-period=0&lt;/code>&lt;/li>
-&lt;li>&lt;code>-compactor.ring.heartbeat-period=0&lt;/code>&lt;/li>
-&lt;li>&lt;code>-store-gateway.sharding-ring.heartbeat-period=0&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Compactor shuffle sharding
-&lt;ul>
-&lt;li>Enabled via &lt;code>-compactor.sharding-enabled=true&lt;/code>, &lt;code>-compactor.sharding-strategy=shuffle-sharding&lt;/code>, and &lt;code>-compactor.tenant-shard-size&lt;/code> set to a value larger than 0.&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Vertical sharding at query frontend for range/instant queries
-&lt;ul>
-&lt;li>&lt;code>-frontend.query-vertical-shard-size&lt;/code> (int) CLI flag&lt;/li>
-&lt;li>&lt;code>query_vertical_shard_size&lt;/code> (int) field in runtime config file&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Snapshotting of in-memory TSDB on disk during shutdown
-&lt;ul>
-&lt;li>&lt;code>-blocks-storage.tsdb.memory-snapshot-on-shutdown&lt;/code> (boolean) CLI flag&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Out of order samples support
-&lt;ul>
-&lt;li>&lt;code>-blocks-storage.tsdb.out-of-order-cap-max&lt;/code> (int) CLI flag&lt;/li>
-&lt;li>&lt;code>-ingester.out-of-order-time-window&lt;/code> (duration) CLI flag&lt;/li>
-&lt;li>&lt;code>out_of_order_time_window&lt;/code> (duration) field in runtime config file&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Store Gateway Zone Stable Shuffle Sharding
-&lt;ul>
-&lt;li>&lt;code>-store-gateway.sharding-ring.zone-stable-shuffle-sharding&lt;/code> CLI flag&lt;/li>
-&lt;li>&lt;code>zone_stable_shuffle_sharding&lt;/code> (boolean) field in config file&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Basic Lifecycler (Storegateway, Alertmanager, Ruler) Final Sleep on shutdown, which tells the pod wait before shutdown, allowing a delay to propagate ring changes.
-&lt;ul>
-&lt;li>&lt;code>-ruler.ring.final-sleep&lt;/code> (duration) CLI flag&lt;/li>
-&lt;li>&lt;code>store-gateway.sharding-ring.final-sleep&lt;/code> (duration) CLI flag&lt;/li>
-&lt;li>&lt;code>alertmanager-sharding-ring.final-sleep&lt;/code> (duration) CLI flag&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>OTLP Receiver&lt;/li>
-&lt;li>Persistent tokens in the Ruler Ring:
-&lt;ul>
-&lt;li>&lt;code>-ruler.ring.tokens-file-path&lt;/code> (path) CLI flag&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Native Histograms
-&lt;ul>
-&lt;li>Ingestion can be enabled by setting &lt;code>-blocks-storage.tsdb.enable-native-histograms=true&lt;/code> on Ingester.&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>String interning for metrics labels
-&lt;ul>
-&lt;li>Enable string interning for metrics labels by setting &lt;code>-ingester.labels-string-interning-enabled&lt;/code> on Ingester.&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Query-frontend: query rejection (&lt;code>-frontend.query-rejection.enabled&lt;/code>)&lt;/li>
-&lt;li>Querier: protobuf codec (&lt;code>-api.querier-default-codec&lt;/code>)&lt;/li>
-&lt;li>Query-frontend: dynamic query splits
-&lt;ul>
-&lt;li>&lt;code>querier.max-shards-per-query&lt;/code> (int) CLI flag&lt;/li>
-&lt;li>&lt;code>querier.max-fetched-data-duration-per-query&lt;/code> (duration) CLI flag&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Ingester/Store-Gateway: Resource-based throttling
-&lt;ul>
-&lt;li>&lt;code>-ingester.instance-limits.cpu-utilization&lt;/code>&lt;/li>
-&lt;li>&lt;code>-ingester.instance-limits.heap-utilization&lt;/code>&lt;/li>
-&lt;li>&lt;code>-store-gateway.instance-limits.cpu-utilization&lt;/code>&lt;/li>
-&lt;li>&lt;code>-store-gateway.instance-limits.heap-utilization&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Distributor/Ingester: Stream push connection
-&lt;ul>
-&lt;li>Enable stream push connection between distributor and ingester by setting &lt;code>-distributor.use-stream-push=true&lt;/code> on Distributor.&lt;/li>
-&lt;/ul>
-&lt;/li>
 &lt;/ul></description></item></channel></rss>

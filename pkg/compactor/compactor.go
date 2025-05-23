@@ -244,7 +244,7 @@ type BlockDeletableCheckerFactory func(
 
 // Limits defines limits used by the Compactor.
 type Limits interface {
-	CompactorTenantShardSize(userID string) int
+	CompactorTenantShardSize(userID string) float64
 	CompactorPartitionIndexSizeBytes(userID string) int64
 	CompactorPartitionSeriesCount(userID string) int64
 }
@@ -1122,6 +1122,10 @@ func (c *Compactor) ownUserForCleanUp(userID string) (bool, error) {
 	return c.ownUser(userID, true)
 }
 
+func (c *Compactor) getShardSizeForUser(userID string) int {
+	return util.DynamicShardSize(c.limits.CompactorTenantShardSize(userID), c.ring.InstancesCount())
+}
+
 func (c *Compactor) ownUser(userID string, isCleanUp bool) (bool, error) {
 	if !c.allowedTenants.IsAllowed(userID) {
 		return false, nil
@@ -1135,7 +1139,8 @@ func (c *Compactor) ownUser(userID string, isCleanUp bool) (bool, error) {
 	// If we aren't cleaning up user blocks, and we are using shuffle-sharding, ownership is determined by a subring
 	// Cleanup should only be owned by a single compactor, as there could be race conditions during block deletion
 	if !isCleanUp && c.compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		subRing := c.ring.ShuffleShard(userID, c.limits.CompactorTenantShardSize(userID))
+		shardSize := c.getShardSizeForUser(userID)
+		subRing := c.ring.ShuffleShard(userID, shardSize)
 
 		rs, err := subRing.GetAllHealthy(RingOp)
 		if err != nil {

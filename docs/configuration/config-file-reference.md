@@ -3708,9 +3708,10 @@ query_rejection:
 
 # The default tenant's shard size when the shuffle-sharding strategy is used by
 # the compactor. When this setting is specified in the per-tenant overrides, a
-# value of 0 disables shuffle sharding for the tenant.
+# value of 0 disables shuffle sharding for the tenant. If the value is < 1 and >
+# 0 the shard size will be a percentage of the total compactors
 # CLI flag: -compactor.tenant-shard-size
-[compactor_tenant_shard_size: <int> | default = 0]
+[compactor_tenant_shard_size: <float> | default = 0]
 
 # Index size limit in bytes for each compaction partition. 0 means no limit
 # CLI flag: -compactor.partition-index-size-bytes

@@ -77,6 +77,12 @@ var commonResolverTestCases = []resolverTestCase{
 		errTenantIDs: errTenantIDUnsafe,
 	},
 	{
+		name:         "__markers__",
+		headerValue:  strptr("__markers__"),
+		errTenantID:  errTenantIDMarkers,
+		errTenantIDs: errTenantIDMarkers,
+	},
+	{
 		name:         "white space",
 		headerValue:  strptr(" "),
 		errTenantID:  &errTenantIDUnsupportedCharacter{pos: 0, tenantID: " "},

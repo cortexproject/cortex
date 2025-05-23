@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -77,7 +77,7 @@ func GetLocalDeletionMarkPath(userID string) string {
 }
 
 func GetGlobalDeletionMarkPath(userID string) string {
-	return path.Join(util.GlobalMarkersDir, userID, TenantDeletionMarkFile)
+	return path.Join(tenant.GlobalMarkersDir, userID, TenantDeletionMarkFile)
 }
 
 func exists(ctx context.Context, bkt objstore.BucketReader, markerFile string) (bool, error) {

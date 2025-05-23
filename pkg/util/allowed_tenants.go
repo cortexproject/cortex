@@ -1,6 +1,6 @@
 package util
 
-const GlobalMarkersDir = "__markers__"
+import "github.com/cortexproject/cortex/pkg/tenant"
 
 // AllowedTenants that can answer whether tenant is allowed or not based on configuration.
 // Default value (nil) allows all tenants.
@@ -36,7 +36,7 @@ func NewAllowedTenants(enabled []string, disabled []string) *AllowedTenants {
 }
 
 func (a *AllowedTenants) IsAllowed(tenantID string) bool {
-	if tenantID == GlobalMarkersDir {
+	if tenantID == tenant.GlobalMarkersDir {
 		// __markers__ is reserved for global markers and no tenant should be allowed to have that name.
 		return false
 	}

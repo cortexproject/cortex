@@ -8,13 +8,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/tenant"
 )
 
 // AllUsers returns true to each call and should be used whenever the UsersScanner should not filter out
 // any user due to sharding.
 func AllUsers(user string) (bool, error) {
-	if user == util.GlobalMarkersDir {
+	if user == tenant.GlobalMarkersDir {
 		return false, nil
 	}
 	return true, nil
@@ -52,7 +52,7 @@ func (s *UsersScanner) ScanUsers(ctx context.Context) (users, markedForDeletion 
 	}
 
 	// Scan users from the __markers__ directory.
-	err = s.bucketClient.Iter(ctx, util.GlobalMarkersDir, func(entry string) error {
+	err = s.bucketClient.Iter(ctx, tenant.GlobalMarkersDir, func(entry string) error {
 		// entry will be of the form __markers__/<user>/
 		parts := strings.Split(entry, objstore.DirDelim)
 		userID := parts[1]

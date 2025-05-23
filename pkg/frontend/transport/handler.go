@@ -531,7 +531,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonTooManySamples
 		} else if strings.Contains(errMsg, limitTimeRangeExceeded) {
 			reason = reasonTimeRangeExceeded
-		} else if strings.Contains(errMsg, limitResponseSizeExceeded)  {
+		} else if strings.Contains(errMsg, limitResponseSizeExceeded) {
 			reason = reasonResponseSizeExceeded
 		} else if strings.Contains(errMsg, limitSeriesFetched) {
 			reason = reasonSeriesFetched

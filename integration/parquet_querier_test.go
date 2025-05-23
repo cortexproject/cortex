@@ -70,7 +70,7 @@ func TestParquetFuzz(t *testing.T) {
 			"-parquet-converter.conversion-interval":  "1s",
 			"-parquet-converter.enabled":              "true",
 			// Querier
-			"-querier.query-parquet-files": "true",
+			"-querier.enable-parquet-queryable": "true",
 		},
 	)
 

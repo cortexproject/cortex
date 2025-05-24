@@ -405,7 +405,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 		return nil, fmt.Errorf("failed to initialize querier: %v", err)
 	} else {
 		queriable = q
-		if t.Cfg.Querier.QueryParquetFiles {
+		if t.Cfg.Querier.EnableParquetQueryable {
 			pq, err := querier.NewParquetQueryable(t.Cfg.Querier, t.Cfg.BlocksStorage, t.Overrides, q, util_log.Logger, prometheus.DefaultRegisterer)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize parquet querier: %v", err)

@@ -92,7 +92,7 @@ type Config struct {
 	EnablePromQLExperimentalFunctions bool `yaml:"enable_promql_experimental_functions"`
 
 	// Query Parquet files if available
-	QueryParquetFiles bool `yaml:"query_parquet_files" doc:"hidden"`
+	EnableParquetQueryable bool `yaml:"enable_parquet_queryable" doc:"hidden"`
 }
 
 var (
@@ -138,7 +138,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.MaxSubQuerySteps, "querier.max-subquery-steps", 0, "Max number of steps allowed for every subquery expression in query. Number of steps is calculated using subquery range / step. A value > 0 enables it.")
 	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
 	f.BoolVar(&cfg.EnablePromQLExperimentalFunctions, "querier.enable-promql-experimental-functions", false, "[Experimental] If true, experimental promQL functions are enabled.")
-	f.BoolVar(&cfg.QueryParquetFiles, "querier.query-parquet-files", false, "[Experimental] If true, querier will try to query the parquet files if available.")
+	f.BoolVar(&cfg.EnableParquetQueryable, "querier.enable-parquet-queryable", false, "[Experimental] If true, querier will try to query the parquet files if available.")
 }
 
 // Validate the config

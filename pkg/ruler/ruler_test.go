@@ -1806,8 +1806,8 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 		// Wait a bit to make sure ruler's ring is updated.
 		time.Sleep(100 * time.Millisecond)
 
-		rulerAddrMap["ruler1"].Service.StopAsync()
-		if err := rulerAddrMap["ruler1"].Service.AwaitTerminated(context.Background()); err != nil {
+		rulerAddrMap["ruler1"].StopAsync()
+		if err := rulerAddrMap["ruler1"].AwaitTerminated(context.Background()); err != nil {
 			t.Errorf("ruler %s was not terminated with error %s", "ruler1", err.Error())
 		}
 

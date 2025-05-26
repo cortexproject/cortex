@@ -169,7 +169,7 @@ func (m mockTenantQuerier) Select(ctx context.Context, _ bool, sp *storage.Selec
 	}
 
 	log, _ := spanlogger.New(ctx, "mockTenantQuerier.select")
-	defer log.Span.Finish()
+	defer log.Finish()
 	var matrix model.Matrix
 
 	for _, s := range m.matrix(tenantIDs[0]) {
@@ -835,14 +835,14 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 
 			t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
 				t.Parallel()
-				labelNames, warnings, err := querier.LabelNames(ctx, nil, scenario.labelNamesTestCase.matchers...)
-				if scenario.labelNamesTestCase.expectedQueryErr != nil {
-					require.EqualError(t, err, scenario.labelNamesTestCase.expectedQueryErr.Error())
+				labelNames, warnings, err := querier.LabelNames(ctx, nil, scenario.matchers...)
+				if scenario.expectedQueryErr != nil {
+					require.EqualError(t, err, scenario.expectedQueryErr.Error())
 				} else {
 					require.NoError(t, err)
 					assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(scenario.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
-					assert.Equal(t, scenario.labelNamesTestCase.expectedLabelNames, labelNames)
-					assertEqualWarnings(t, scenario.labelNamesTestCase.expectedWarnings, warnings)
+					assert.Equal(t, scenario.expectedLabelNames, labelNames)
+					assertEqualWarnings(t, scenario.expectedWarnings, warnings)
 				}
 			})
 		})

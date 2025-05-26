@@ -2485,9 +2485,10 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 						// Check sample timestamp is expected.
 						require.Equal(t, h.T, int64(from)+int64(i)*15000)
 						expectedH := tsdbutil.GenerateTestGaugeFloatHistogram(h.T)
-						if enc == encoding.PrometheusHistogramChunk {
+						switch enc {
+						case encoding.PrometheusHistogramChunk:
 							require.Equal(t, expectedH, h.H)
-						} else if enc == encoding.PrometheusFloatHistogramChunk {
+						case encoding.PrometheusFloatHistogramChunk:
 							require.Equal(t, expectedH, h.H)
 						}
 					}

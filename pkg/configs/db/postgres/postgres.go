@@ -215,7 +215,7 @@ func (d DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newCon
 		// The supplied oldConfig must match the current config. If no config
 		// exists, then oldConfig must be nil. Otherwise, it must exactly
 		// equal the existing config.
-		if !((err == sql.ErrNoRows && oldConfig.Files == nil) || oldConfig.Equal(current.Config.RulesConfig)) {
+		if !((err == sql.ErrNoRows && oldConfig.Files == nil) || oldConfig.Equal(current.Config.RulesConfig)) { //nolint:staticcheck
 			return nil
 		}
 		new := userconfig.Config{

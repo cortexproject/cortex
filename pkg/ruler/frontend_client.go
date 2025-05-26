@@ -89,7 +89,7 @@ func (p *FrontendClient) makeRequest(ctx context.Context, qs string, ts time.Tim
 
 func (p *FrontendClient) InstantQuery(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 	log, ctx := spanlogger.New(ctx, "FrontendClient.InstantQuery")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	req, err := p.makeRequest(ctx, qs, t)
 	if err != nil {

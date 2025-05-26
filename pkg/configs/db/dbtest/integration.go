@@ -19,7 +19,7 @@ var (
 	done          chan error
 	dbAddr        string
 	migrationsDir string
-	errRollback   = fmt.Errorf("Rolling back test data")
+	errRollback   = fmt.Errorf("rolling back test data")
 )
 
 func init() {

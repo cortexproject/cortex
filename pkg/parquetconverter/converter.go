@@ -82,6 +82,8 @@ type Converter struct {
 	blockRanges []int64
 
 	fetcherMetrics *block.FetcherMetrics
+
+	baseConverterOptions []convert.ConvertOption
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -112,6 +114,11 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 		blockRanges:    blockRanges,
 		fetcherMetrics: block.NewFetcherMetrics(registerer, nil, nil),
 		bkt:            bkt,
+		baseConverterOptions: []convert.ConvertOption{
+			convert.WithSortBy(labels.MetricName),
+			convert.WithColDuration(time.Hour * 8),
+			convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
+		},
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
@@ -364,15 +371,11 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		}
 
 		level.Info(logger).Log("msg", "converting block", "block", b.ULID.String(), "dir", bdir)
-		extraOpts := []convert.ConvertOption{
-			convert.WithSortBy(labels.MetricName),
-			convert.WithColDuration(time.Hour * 8),
-			convert.WithRowGroupSize(c.cfg.MaxRowsPerRowGroup),
-			convert.WithName(b.ULID.String()),
-		}
+
+		converterOpts := append(c.baseConverterOptions, convert.WithName(b.ULID.String()))
 
 		if c.cfg.FileBufferEnabled {
-			extraOpts = append(extraOpts, convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")))
+			converterOpts = append(converterOpts, convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")))
 		}
 
 		_, err = convert.ConvertTSDBBlock(
@@ -381,7 +384,7 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			tsdbBlock.MinTime(),
 			tsdbBlock.MaxTime(),
 			[]convert.Convertible{tsdbBlock},
-			extraOpts...,
+			converterOpts...,
 		)
 
 		_ = tsdbBlock.Close()

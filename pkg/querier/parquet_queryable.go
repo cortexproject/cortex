@@ -2,12 +2,12 @@ package querier
 
 import (
 	"context"
-	"github.com/parquet-go/parquet-go"
 	"golang.org/x/sync/errgroup"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/prometheus-community/parquet-common/search"

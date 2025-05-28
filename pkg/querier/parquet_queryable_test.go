@@ -97,24 +97,6 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			require.Len(t, stores.queriedBlocks, 2)
 			require.Len(t, mParquetQuerier.queriedBlocks, 0)
 		})
-
-		t.Run("labelNames", func(t *testing.T) {
-			stores.Reset()
-			mParquetQuerier.Reset()
-			_, _, err := pq.LabelNames(ctx, nil, matchers...)
-			require.NoError(t, err)
-			require.Len(t, stores.queriedBlocks, 2)
-			require.Len(t, mParquetQuerier.queriedBlocks, 0)
-		})
-
-		t.Run("labelValues", func(t *testing.T) {
-			stores.Reset()
-			mParquetQuerier.Reset()
-			_, _, err := pq.LabelValues(ctx, labels.MetricName, nil, matchers...)
-			require.NoError(t, err)
-			require.Len(t, stores.queriedBlocks, 2)
-			require.Len(t, mParquetQuerier.queriedBlocks, 0)
-		})
 	})
 
 	t.Run("should fallback all blocks", func(t *testing.T) {

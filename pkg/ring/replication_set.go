@@ -3,8 +3,11 @@ package ring
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sort"
 	"time"
+
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 )
@@ -78,6 +81,12 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 			if res.err != nil {
 				if tracker.failed() && (!partialDataEnabled || tracker.failedCompletely()) {
 					return nil, res.err
+				}
+
+				if httpRes, ok := httpgrpc.HTTPResponseFromError(res.err); ok {
+					if httpRes.Code == http.StatusUnprocessableEntity {
+						return nil, res.err
+					}
 				}
 
 				// force one of the delayed requests to start

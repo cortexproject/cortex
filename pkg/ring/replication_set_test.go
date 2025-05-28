@@ -3,11 +3,13 @@ package ring
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
@@ -211,6 +213,19 @@ func TestReplicationSet_Do(t *testing.T) {
 			f:                   failingFunctionOnZones("zone1", "zone2", "zone3"),
 			maxUnavailableZones: 1,
 			expectedError:       errZoneFailure,
+			queryPartialData:    true,
+		},
+		{
+			name:      "with partial data enabled, should fail on instances returning 422 in one zone",
+			instances: []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
+			f: func(ctx context.Context, ing *InstanceDesc) (interface{}, error) {
+				if ing.Zone == "zone1" {
+					return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "breached limit")
+				}
+				return 1, nil
+			},
+			maxUnavailableZones: 1,
+			expectedError:       httpgrpc.Errorf(http.StatusUnprocessableEntity, "breached limit"),
 			queryPartialData:    true,
 		},
 		{

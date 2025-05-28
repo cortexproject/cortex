@@ -163,13 +163,14 @@ func (s *TSDBSchema) LabelsProjection() (*TSDBProjection, error) {
 		g[c[0]] = lc.Node
 	}
 	return &TSDBProjection{
-		Schema: WithCompression(parquet.NewSchema("labels-projection", g)),
+		Schema:       WithCompression(parquet.NewSchema("labels-projection", g)),
+		ExtraOptions: []parquet.WriterOption{parquet.SkipPageBounds(ColIndexes)},
 	}, nil
 }
 
 func (s *TSDBSchema) ChunksProjection() (*TSDBProjection, error) {
 	g := make(parquet.Group)
-	skipPageBoundsOpts := make([]parquet.WriterOption, 0, len(s.DataColsIndexes))
+	writeOptions := make([]parquet.WriterOption, 0, len(s.DataColsIndexes))
 
 	for _, c := range s.Schema.Columns() {
 		if ok := IsDataColumn(c[0]); !ok {
@@ -180,11 +181,11 @@ func (s *TSDBSchema) ChunksProjection() (*TSDBProjection, error) {
 			return nil, fmt.Errorf("column %v not found", c)
 		}
 		g[c[0]] = lc.Node
-		skipPageBoundsOpts = append(skipPageBoundsOpts, parquet.SkipPageBounds(c...))
+		writeOptions = append(writeOptions, parquet.SkipPageBounds(c...))
 	}
 
 	return &TSDBProjection{
 		Schema:       WithCompression(parquet.NewSchema("chunk-projection", g)),
-		ExtraOptions: skipPageBoundsOpts,
+		ExtraOptions: writeOptions,
 	}, nil
 }

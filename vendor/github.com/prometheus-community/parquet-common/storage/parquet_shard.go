@@ -19,6 +19,7 @@ import (
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/thanos-io/objstore"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/prometheus-community/parquet-common/schema"
 )
@@ -108,23 +109,33 @@ type ParquetShard struct {
 func OpenParquetShard(ctx context.Context, bkt objstore.Bucket, name string, shard int, opts ...ShardOption) (*ParquetShard, error) {
 	labelsFileName := schema.LabelsPfileNameForShard(name, shard)
 	chunksFileName := schema.ChunksPfileNameForShard(name, shard)
-	labelsAttr, err := bkt.Attributes(ctx, labelsFileName)
-	if err != nil {
-		return nil, err
-	}
-	labelsFile, err := OpenFile(NewBucketReadAt(ctx, labelsFileName, bkt), labelsAttr.Size, opts...)
-	if err != nil {
+
+	errGroup := errgroup.Group{}
+
+	var labelsFile, chunksFile *ParquetFile
+
+	errGroup.Go(func() error {
+		labelsAttr, err := bkt.Attributes(ctx, labelsFileName)
+		if err != nil {
+			return err
+		}
+		labelsFile, err = OpenFile(NewBucketReadAt(ctx, labelsFileName, bkt), labelsAttr.Size, opts...)
+		return err
+	})
+
+	errGroup.Go(func() error {
+		chunksFileAttr, err := bkt.Attributes(ctx, chunksFileName)
+		if err != nil {
+			return err
+		}
+		chunksFile, err = OpenFile(NewBucketReadAt(ctx, chunksFileName, bkt), chunksFileAttr.Size, opts...)
+		return err
+	})
+
+	if err := errGroup.Wait(); err != nil {
 		return nil, err
 	}
 
-	chunksFileAttr, err := bkt.Attributes(ctx, chunksFileName)
-	if err != nil {
-		return nil, err
-	}
-	chunksFile, err := OpenFile(NewBucketReadAt(ctx, chunksFileName, bkt), chunksFileAttr.Size, opts...)
-	if err != nil {
-		return nil, err
-	}
 	return &ParquetShard{
 		labelsFile: labelsFile,
 		chunksFile: chunksFile,

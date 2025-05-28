@@ -467,6 +467,18 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.True(t, tracker.failedCompletely())
 			},
 		},
+		"failedCompletely() should return true if failed() is true and half of the fleet are unavailable": {
+			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
+			maxUnavailableZones: 1,
+			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
+				tracker.done(&instance1, nil, errors.New("test")) // Zone-a
+				tracker.done(&instance2, nil, errors.New("test")) // Zone-a
+				tracker.done(&instance3, nil, errors.New("test")) // Zone-b
+
+				assert.True(t, tracker.failed())
+				assert.True(t, tracker.failedCompletely())
+			},
+		},
 		"finished() should return true only if all instances are done": {
 			instances:           []InstanceDesc{instance1, instance2},
 			maxUnavailableZones: 1,

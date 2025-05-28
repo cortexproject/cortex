@@ -1,6 +1,8 @@
 package ring
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type replicationSetResultTracker interface {
 	// Signals an instance has done the execution, either successful (no error)
@@ -160,7 +162,9 @@ func (t *zoneAwareResultTracker) failed() bool {
 
 func (t *zoneAwareResultTracker) failedCompletely() bool {
 	failedZones := len(t.failuresByZone)
-	return failedZones == t.zoneCount
+	allZonesFailed := failedZones == t.zoneCount
+	atLeastHalfOfFleetFailed := len(t.errors) >= t.numInstances/2
+	return allZonesFailed || (t.failed() && atLeastHalfOfFleetFailed)
 }
 
 func (t *zoneAwareResultTracker) getResults() []interface{} {

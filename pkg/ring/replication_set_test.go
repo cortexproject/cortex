@@ -198,12 +198,17 @@ func TestReplicationSet_Do(t *testing.T) {
 			expectedError:       errZoneFailure,
 		},
 		{
-			name:                "with partial data enabled and max unavailable zones = 1, should succeed on instances failing in 2 out of 3 zones (3 instances)",
-			instances:           []InstanceDesc{{Addr: "10.0.0.1", Zone: "zone1"}, {Addr: "10.0.0.2", Zone: "zone2"}, {Addr: "10.0.0.3", Zone: "zone3"}},
-			f:                   failingFunctionOnZones("zone1", "zone2"),
+			name:      "with partial data enabled and max unavailable zones = 1, should succeed on instances failing in 2 out of 3 zones (6 instances)",
+			instances: []InstanceDesc{{Addr: "10.0.0.1", Zone: "zone1"}, {Addr: "10.0.0.2", Zone: "zone2"}, {Addr: "10.0.0.3", Zone: "zone3"}, {Addr: "10.0.0.4", Zone: "zone1"}, {Addr: "10.0.0.5", Zone: "zone2"}, {Addr: "10.0.0.6", Zone: "zone3"}},
+			f: func(ctx context.Context, ing *InstanceDesc) (interface{}, error) {
+				if ing.Addr == "10.0.0.1" || ing.Addr == "10.0.0.2" {
+					return nil, errZoneFailure
+				}
+				return 1, nil
+			},
 			maxUnavailableZones: 1,
 			queryPartialData:    true,
-			want:                []interface{}{1},
+			want:                []interface{}{1, 1, 1, 1},
 			expectedError:       partialdata.ErrPartialData,
 			errStrContains:      []string{"10.0.0.1", "10.0.0.2", "zone failed"},
 		},
@@ -216,10 +221,10 @@ func TestReplicationSet_Do(t *testing.T) {
 			queryPartialData:    true,
 		},
 		{
-			name:      "with partial data enabled, should fail on instances returning 422 in one zone",
+			name:      "with partial data enabled, should fail on instances returning 422 in two zones",
 			instances: []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
 			f: func(ctx context.Context, ing *InstanceDesc) (interface{}, error) {
-				if ing.Zone == "zone1" {
+				if ing.Zone == "zone1" || ing.Zone == "zone2" {
 					return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "breached limit")
 				}
 				return 1, nil
@@ -281,7 +286,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			}
 			got, err := r.Do(ctx, tt.delay, tt.zoneResultsQuorum, tt.queryPartialData, tt.f)
 			if tt.expectedError != nil {
-				assert.ErrorIs(t, err, tt.expectedError)
+				assert.ErrorContains(t, err, tt.expectedError.Error())
 				for _, str := range tt.errStrContains {
 					assert.ErrorContains(t, err, str)
 				}

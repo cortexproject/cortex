@@ -17,6 +17,7 @@ import (
 	"context"
 	"runtime"
 	"sort"
+	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
 	prom_storage "github.com/prometheus/prometheus/storage"
@@ -209,8 +210,9 @@ func (p parquetQuerier) queryableShards(ctx context.Context, mint, maxt int64) (
 }
 
 type queryableShard struct {
-	shard *storage.ParquetShard
-	m     *Materializer
+	shard       *storage.ParquetShard
+	m           *Materializer
+	concurrency int
 }
 
 func newQueryableShard(opts *queryableOpts, block *storage.ParquetShard, d *schema.PrometheusParquetChunksDecoder) (*queryableShard, error) {
@@ -224,8 +226,9 @@ func newQueryableShard(opts *queryableOpts, block *storage.ParquetShard, d *sche
 	}
 
 	return &queryableShard{
-		shard: block,
-		m:     m,
+		shard:       block,
+		m:           m,
+		concurrency: opts.concurrency,
 	}, nil
 }
 
@@ -239,17 +242,36 @@ func (b queryableShard) Query(ctx context.Context, sorted bool, mint, maxt int64
 		return nil, err
 	}
 
+	errGroup, ctx := errgroup.WithContext(ctx)
+	errGroup.SetLimit(b.concurrency)
+
 	results := make([]prom_storage.ChunkSeries, 0, 1024)
+	rMtx := sync.Mutex{}
+
 	for i, group := range b.shard.LabelsFile().RowGroups() {
-		rr, err := Filter(ctx, group, cs...)
-		if err != nil {
-			return nil, err
-		}
-		series, err := b.m.Materialize(ctx, i, mint, maxt, skipChunks, rr)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, series...)
+		errGroup.Go(func() error {
+			rr, err := Filter(ctx, group, append([]Constraint{}, cs...)...)
+			if err != nil {
+				return err
+			}
+
+			if len(rr) == 0 {
+				return nil
+			}
+
+			series, err := b.m.Materialize(ctx, i, mint, maxt, skipChunks, rr)
+			if err != nil {
+				return err
+			}
+			rMtx.Lock()
+			results = append(results, series...)
+			rMtx.Unlock()
+			return nil
+		})
+	}
+
+	if err := errGroup.Wait(); err != nil {
+		return nil, err
 	}
 
 	if sorted {
@@ -271,17 +293,28 @@ func (b queryableShard) LabelNames(ctx context.Context, limit int64, matchers []
 		return nil, err
 	}
 
+	errGroup, ctx := errgroup.WithContext(ctx)
+	errGroup.SetLimit(b.concurrency)
+
 	results := make([][]string, len(b.shard.LabelsFile().RowGroups()))
+
 	for i, group := range b.shard.LabelsFile().RowGroups() {
-		rr, err := Filter(ctx, group, cs...)
-		if err != nil {
-			return nil, err
-		}
-		series, err := b.m.MaterializeLabelNames(ctx, i, rr)
-		if err != nil {
-			return nil, err
-		}
-		results[i] = series
+		errGroup.Go(func() error {
+			rr, err := Filter(ctx, group, append([]Constraint{}, cs...)...)
+			if err != nil {
+				return err
+			}
+			series, err := b.m.MaterializeLabelNames(ctx, i, rr)
+			if err != nil {
+				return err
+			}
+			results[i] = series
+			return nil
+		})
+	}
+
+	if err := errGroup.Wait(); err != nil {
+		return nil, err
 	}
 
 	return util.MergeUnsortedSlices(int(limit), results...), nil
@@ -300,30 +333,52 @@ func (b queryableShard) LabelValues(ctx context.Context, name string, limit int6
 		return nil, err
 	}
 
+	errGroup, ctx := errgroup.WithContext(ctx)
+	errGroup.SetLimit(b.concurrency)
+
 	results := make([][]string, len(b.shard.LabelsFile().RowGroups()))
+
 	for i, group := range b.shard.LabelsFile().RowGroups() {
-		rr, err := Filter(ctx, group, cs...)
-		if err != nil {
-			return nil, err
-		}
-		series, err := b.m.MaterializeLabelValues(ctx, name, i, rr)
-		if err != nil {
-			return nil, err
-		}
-		results[i] = series
+		errGroup.Go(func() error {
+			rr, err := Filter(ctx, group, append([]Constraint{}, cs...)...)
+			if err != nil {
+				return err
+			}
+			series, err := b.m.MaterializeLabelValues(ctx, name, i, rr)
+			if err != nil {
+				return err
+			}
+			results[i] = series
+			return nil
+		})
+	}
+
+	if err := errGroup.Wait(); err != nil {
+		return nil, err
 	}
 
 	return util.MergeUnsortedSlices(int(limit), results...), nil
 }
 
 func (b queryableShard) allLabelValues(ctx context.Context, name string, limit int64) ([]string, error) {
+	errGroup, ctx := errgroup.WithContext(ctx)
+	errGroup.SetLimit(b.concurrency)
+
 	results := make([][]string, len(b.shard.LabelsFile().RowGroups()))
+
 	for i := range b.shard.LabelsFile().RowGroups() {
-		series, err := b.m.MaterializeAllLabelValues(ctx, name, i)
-		if err != nil {
-			return nil, err
-		}
-		results[i] = series
+		errGroup.Go(func() error {
+			series, err := b.m.MaterializeAllLabelValues(ctx, name, i)
+			if err != nil {
+				return err
+			}
+			results[i] = series
+			return nil
+		})
+	}
+
+	if err := errGroup.Wait(); err != nil {
+		return nil, err
 	}
 
 	return util.MergeUnsortedSlices(int(limit), results...), nil

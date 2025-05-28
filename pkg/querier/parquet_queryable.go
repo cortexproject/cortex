@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"github.com/parquet-go/parquet-go"
+	"golang.org/x/sync/errgroup"
 	"time"
 
 	"github.com/go-kit/log"
@@ -100,27 +101,28 @@ func NewParquetQueryable(
 		}
 		userBkt := bucket.NewUserBucketClient(userID, bucketClient, limits)
 
-		shards := make([]*parquet_storage.ParquetShard, 0, len(blocks))
+		shards := make([]*parquet_storage.ParquetShard, len(blocks))
+		errGroup := &errgroup.Group{}
 
-		for _, block := range blocks {
-			// we always only have 1 shard - shard 0
-			shard, err := parquet_storage.OpenParquetShard(ctx,
-				userBkt,
-				block.ID.String(),
-				0,
-				parquet_storage.WithFileOptions(
-					parquet.SkipMagicBytes(true),
-					parquet.ReadBufferSize(100*1024),
-					parquet.SkipBloomFilters(true),
-				),
-			)
-			if err != nil {
-				return nil, err
-			}
-			shards = append(shards, shard)
+		for i, block := range blocks {
+			errGroup.Go(func() error {
+				// we always only have 1 shard - shard 0
+				shard, err := parquet_storage.OpenParquetShard(ctx,
+					userBkt,
+					block.ID.String(),
+					0,
+					parquet_storage.WithFileOptions(
+						parquet.SkipMagicBytes(true),
+						parquet.ReadBufferSize(100*1024),
+						parquet.SkipBloomFilters(true),
+					),
+				)
+				shards[i] = shard
+				return err
+			})
 		}
 
-		return shards, nil
+		return shards, errGroup.Wait()
 	})
 
 	p := &parquetQueryableWithFallback{

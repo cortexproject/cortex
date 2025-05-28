@@ -495,11 +495,11 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			maxUnavailableZones: 1,
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				tracker.done(&instance1, nil, errors.New("test1"))
-				err1 := fmt.Errorf("(%s) %w", instance1.GetAddr(), errors.New("test1"))
+				err1 := fmt.Errorf("(%s, %s) %w", instance1.GetAddr(), instance2.GetZone(), errors.New("test1"))
 				assert.ElementsMatch(t, []error{err1}, tracker.getErrors())
 
 				tracker.done(&instance2, nil, errors.New("test2"))
-				err2 := fmt.Errorf("(%s) %w", instance2.GetAddr(), errors.New("test2"))
+				err2 := fmt.Errorf("(%s, %s) %w", instance2.GetAddr(), instance2.GetZone(), errors.New("test2"))
 				assert.ElementsMatch(t, []error{err1, err2}, tracker.getErrors())
 			},
 		},

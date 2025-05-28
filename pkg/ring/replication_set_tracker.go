@@ -123,7 +123,7 @@ func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int
 func (t *zoneAwareResultTracker) done(instance *InstanceDesc, result interface{}, err error) {
 	if err != nil {
 		t.failuresByZone[instance.Zone]++
-		t.errors = append(t.errors, fmt.Errorf("(%s) %w", instance.GetAddr(), err))
+		t.errors = append(t.errors, fmt.Errorf("(%s, %s) %w", instance.GetAddr(), instance.GetZone(), err))
 	} else {
 		if _, ok := t.resultsPerZone[instance.Zone]; !ok {
 			// If it is the first result in the zone, then total number of instances

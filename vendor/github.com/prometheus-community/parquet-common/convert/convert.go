@@ -302,10 +302,13 @@ func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, compare func(a
 }
 
 func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
+	type chkBytesOrError struct {
+		chkBytes [][]byte
+		err      error
+	}
 	type chunkSeriesPromise struct {
-		s              storage.ChunkSeries
-		chunkBytesChan chan [][]byte
-		err            error
+		s storage.ChunkSeries
+		c chan chkBytesOrError
 	}
 
 	c := make(chan chunkSeriesPromise, rr.concurrency)
@@ -318,8 +321,8 @@ func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
 			it := s.Iterator(nil)
 
 			promise := chunkSeriesPromise{
-				s:              s,
-				chunkBytesChan: make(chan [][]byte, 1),
+				s: s,
+				c: make(chan chkBytesOrError, 1),
 			}
 
 			select {
@@ -329,8 +332,7 @@ func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
 			}
 			go func() {
 				chkBytes, err := rr.encoder.Encode(it)
-				promise.err = err
-				promise.chunkBytesChan <- chkBytes
+				promise.c <- chkBytesOrError{chkBytes: chkBytes, err: err}
 			}()
 			i++
 		}
@@ -345,9 +347,12 @@ func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
 
 	for promise := range c {
 		j++
-		if promise.err != nil {
-			return i, promise.err
+
+		chkBytesOrErr := <-promise.c
+		if err := chkBytesOrErr.err; err != nil {
+			return 0, fmt.Errorf("unable encode chunks: %w", err)
 		}
+		chkBytes := chkBytesOrErr.chkBytes
 
 		rr.rowBuilder.Reset()
 		lblsIdxs = lblsIdxs[:0]
@@ -361,7 +366,6 @@ func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
 
 		rr.rowBuilder.Add(colIndex.ColumnIndex, parquet.ValueOf(schema.EncodeIntSlice(lblsIdxs)))
 
-		chkBytes := <-promise.chunkBytesChan
 		// skip series that have no chunks in the requested time
 		if allChunksEmpty(chkBytes) {
 			continue

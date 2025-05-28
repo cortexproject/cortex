@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus-community/parquet-common/schema"
@@ -105,15 +106,20 @@ func (p parquetQuerier) LabelValues(ctx context.Context, name string, hints *pro
 		limit = int64(hints.Limit)
 	}
 
-	resNameValues := [][]string{}
+	resNameValues := make([][]string, len(shards))
+	errGroup, ctx := errgroup.WithContext(ctx)
+	errGroup.SetLimit(p.opts.concurrency)
 
-	for _, s := range shards {
-		r, err := s.LabelValues(ctx, name, matchers)
-		if err != nil {
-			return nil, nil, err
-		}
+	for i, s := range shards {
+		errGroup.Go(func() error {
+			r, err := s.LabelValues(ctx, name, limit, matchers)
+			resNameValues[i] = r
+			return err
+		})
+	}
 
-		resNameValues = append(resNameValues, r...)
+	if err := errGroup.Wait(); err != nil {
+		return nil, nil, err
 	}
 
 	return util.MergeUnsortedSlices(int(limit), resNameValues...), nil, nil
@@ -131,15 +137,20 @@ func (p parquetQuerier) LabelNames(ctx context.Context, hints *prom_storage.Labe
 		limit = int64(hints.Limit)
 	}
 
-	resNameSets := [][]string{}
+	resNameSets := make([][]string, len(shards))
+	errGroup, ctx := errgroup.WithContext(ctx)
+	errGroup.SetLimit(p.opts.concurrency)
 
-	for _, s := range shards {
-		r, err := s.LabelNames(ctx, matchers)
-		if err != nil {
-			return nil, nil, err
-		}
+	for i, s := range shards {
+		errGroup.Go(func() error {
+			r, err := s.LabelNames(ctx, limit, matchers)
+			resNameSets[i] = r
+			return err
+		})
+	}
 
-		resNameSets = append(resNameSets, r...)
+	if err := errGroup.Wait(); err != nil {
+		return nil, nil, err
 	}
 
 	return util.MergeUnsortedSlices(int(limit), resNameSets...), nil, nil
@@ -161,14 +172,21 @@ func (p parquetQuerier) Select(ctx context.Context, sorted bool, sp *prom_storag
 		minT, maxT = sp.Start, sp.End
 	}
 	skipChunks := sp != nil && sp.Func == "series"
+	errGroup, ctx := errgroup.WithContext(ctx)
+	errGroup.SetLimit(p.opts.concurrency)
 
 	for i, shard := range shards {
-		ss, err := shard.Query(ctx, sorted, minT, maxT, skipChunks, matchers)
-		if err != nil {
-			return prom_storage.ErrSeriesSet(err)
-		}
-		seriesSet[i] = ss
+		errGroup.Go(func() error {
+			ss, err := shard.Query(ctx, sorted, minT, maxT, skipChunks, matchers)
+			seriesSet[i] = ss
+			return err
+		})
 	}
+
+	if err := errGroup.Wait(); err != nil {
+		return prom_storage.ErrSeriesSet(err)
+	}
+
 	ss := convert.NewMergeChunkSeriesSet(seriesSet, labels.Compare, prom_storage.NewConcatenatingChunkSeriesMerger())
 
 	return convert.NewSeriesSetFromChunkSeriesSet(ss, skipChunks)
@@ -240,9 +258,9 @@ func (b queryableShard) Query(ctx context.Context, sorted bool, mint, maxt int64
 	return convert.NewChunksSeriesSet(results), nil
 }
 
-func (b queryableShard) LabelNames(ctx context.Context, matchers []*labels.Matcher) ([][]string, error) {
+func (b queryableShard) LabelNames(ctx context.Context, limit int64, matchers []*labels.Matcher) ([]string, error) {
 	if len(matchers) == 0 {
-		return [][]string{b.m.MaterializeAllLabelNames()}, nil
+		return b.m.MaterializeAllLabelNames(), nil
 	}
 	cs, err := MatchersToConstraint(matchers...)
 	if err != nil {
@@ -266,12 +284,12 @@ func (b queryableShard) LabelNames(ctx context.Context, matchers []*labels.Match
 		results[i] = series
 	}
 
-	return results, nil
+	return util.MergeUnsortedSlices(int(limit), results...), nil
 }
 
-func (b queryableShard) LabelValues(ctx context.Context, name string, matchers []*labels.Matcher) ([][]string, error) {
+func (b queryableShard) LabelValues(ctx context.Context, name string, limit int64, matchers []*labels.Matcher) ([]string, error) {
 	if len(matchers) == 0 {
-		return b.allLabelValues(ctx, name)
+		return b.allLabelValues(ctx, name, limit)
 	}
 	cs, err := MatchersToConstraint(matchers...)
 	if err != nil {
@@ -295,10 +313,10 @@ func (b queryableShard) LabelValues(ctx context.Context, name string, matchers [
 		results[i] = series
 	}
 
-	return results, nil
+	return util.MergeUnsortedSlices(int(limit), results...), nil
 }
 
-func (b queryableShard) allLabelValues(ctx context.Context, name string) ([][]string, error) {
+func (b queryableShard) allLabelValues(ctx context.Context, name string, limit int64) ([]string, error) {
 	results := make([][]string, len(b.shard.LabelsFile().RowGroups()))
 	for i := range b.shard.LabelsFile().RowGroups() {
 		series, err := b.m.MaterializeAllLabelValues(ctx, name, i)
@@ -308,7 +326,7 @@ func (b queryableShard) allLabelValues(ctx context.Context, name string) ([][]st
 		results[i] = series
 	}
 
-	return results, nil
+	return util.MergeUnsortedSlices(int(limit), results...), nil
 }
 
 type byLabels []prom_storage.ChunkSeries

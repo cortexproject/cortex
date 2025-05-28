@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"github.com/parquet-go/parquet-go"
 	"time"
 
 	"github.com/go-kit/log"
@@ -103,7 +104,16 @@ func NewParquetQueryable(
 
 		for _, block := range blocks {
 			// we always only have 1 shard - shard 0
-			shard, err := parquet_storage.OpenParquetShard(ctx, userBkt, block.ID.String(), 0)
+			shard, err := parquet_storage.OpenParquetShard(ctx,
+				userBkt,
+				block.ID.String(),
+				0,
+				parquet_storage.WithFileOptions(
+					parquet.SkipMagicBytes(true),
+					parquet.ReadBufferSize(100*1024),
+					parquet.SkipBloomFilters(true),
+				),
+			)
 			if err != nil {
 				return nil, err
 			}

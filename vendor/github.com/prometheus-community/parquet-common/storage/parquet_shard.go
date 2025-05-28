@@ -23,25 +23,77 @@ import (
 	"github.com/prometheus-community/parquet-common/schema"
 )
 
+var DefaultShardOptions = shardOptions{
+	optimisticReader: true,
+}
+
+type shardOptions struct {
+	fileOptions      []parquet.FileOption
+	optimisticReader bool
+}
+
 type ParquetFile struct {
 	*parquet.File
 	ReadAtWithContext
+	BloomFiltersLoaded bool
+
+	optimisticReader bool
 }
 
-func (f *ParquetFile) GetPages(ctx context.Context, cc parquet.ColumnChunk) *parquet.FilePages {
+type ShardOption func(*shardOptions)
+
+func WithFileOptions(fileOptions ...parquet.FileOption) ShardOption {
+	return func(opts *shardOptions) {
+		opts.fileOptions = append(opts.fileOptions, fileOptions...)
+	}
+}
+
+func WithOptimisticReader(optimisticReader bool) ShardOption {
+	return func(opts *shardOptions) {
+		opts.optimisticReader = optimisticReader
+	}
+}
+
+func (f *ParquetFile) GetPages(ctx context.Context, cc parquet.ColumnChunk, pagesToRead ...int) (*parquet.FilePages, error) {
 	colChunk := cc.(*parquet.FileColumnChunk)
-	pages := colChunk.PagesFrom(f.WithContext(ctx))
-	return pages
+	reader := f.WithContext(ctx)
+
+	if len(pagesToRead) > 0 && f.optimisticReader {
+		offset, err := cc.OffsetIndex()
+		if err != nil {
+			return nil, err
+		}
+		minOffset := offset.Offset(pagesToRead[0])
+		maxOffset := offset.Offset(pagesToRead[len(pagesToRead)-1]) + offset.CompressedPageSize(pagesToRead[len(pagesToRead)-1])
+		reader = newOptimisticReaderAt(reader, minOffset, maxOffset)
+	}
+
+	pages := colChunk.PagesFrom(reader)
+	return pages, nil
 }
 
-func OpenFile(r ReadAtWithContext, size int64, options ...parquet.FileOption) (*ParquetFile, error) {
-	file, err := parquet.OpenFile(r, size, options...)
+func OpenFile(r ReadAtWithContext, size int64, opts ...ShardOption) (*ParquetFile, error) {
+	cfg := DefaultShardOptions
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	c, err := parquet.NewFileConfig(cfg.fileOptions...)
 	if err != nil {
 		return nil, err
 	}
+
+	file, err := parquet.OpenFile(r, size, cfg.fileOptions...)
+	if err != nil {
+		return nil, err
+	}
+
 	return &ParquetFile{
-		File:              file,
-		ReadAtWithContext: r,
+		File:               file,
+		ReadAtWithContext:  r,
+		BloomFiltersLoaded: !c.SkipBloomFilters,
+		optimisticReader:   cfg.optimisticReader,
 	}, nil
 }
 
@@ -53,14 +105,14 @@ type ParquetShard struct {
 
 // OpenParquetShard opens the sharded parquet block,
 // using the options param.
-func OpenParquetShard(ctx context.Context, bkt objstore.Bucket, name string, shard int, options ...parquet.FileOption) (*ParquetShard, error) {
+func OpenParquetShard(ctx context.Context, bkt objstore.Bucket, name string, shard int, opts ...ShardOption) (*ParquetShard, error) {
 	labelsFileName := schema.LabelsPfileNameForShard(name, shard)
 	chunksFileName := schema.ChunksPfileNameForShard(name, shard)
 	labelsAttr, err := bkt.Attributes(ctx, labelsFileName)
 	if err != nil {
 		return nil, err
 	}
-	labelsFile, err := OpenFile(NewBucketReadAt(ctx, labelsFileName, bkt), labelsAttr.Size, options...)
+	labelsFile, err := OpenFile(NewBucketReadAt(ctx, labelsFileName, bkt), labelsAttr.Size, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +121,7 @@ func OpenParquetShard(ctx context.Context, bkt objstore.Bucket, name string, sha
 	if err != nil {
 		return nil, err
 	}
-	chunksFile, err := OpenFile(NewBucketReadAt(ctx, chunksFileName, bkt), chunksFileAttr.Size, options...)
+	chunksFile, err := OpenFile(NewBucketReadAt(ctx, chunksFileName, bkt), chunksFileAttr.Size, opts...)
 	if err != nil {
 		return nil, err
 	}

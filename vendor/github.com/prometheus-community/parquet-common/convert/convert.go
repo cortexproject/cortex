@@ -23,9 +23,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/efficientgo/core/errors"
 	"github.com/hashicorp/go-multierror"
 	"github.com/parquet-go/parquet-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"

@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/efficientgo/core/errors"
 	"github.com/hashicorp/go-multierror"
 	"github.com/parquet-go/parquet-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/util/zeropool"
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"

@@ -17,9 +17,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/efficientgo/core/errors"
-
 	"github.com/parquet-go/parquet-go"
+	"github.com/pkg/errors"
 )
 
 type Builder struct {

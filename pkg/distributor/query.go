@@ -333,7 +333,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	if partialdata.IsPartialDataError(err) {
 		level.Warn(util_log.WithContext(ctx, d.log)).Log("msg", "returning partial data", "err", err.Error())
 		d.ingesterPartialDataQueries.Inc()
-		return resp, err
+		return resp, partialdata.ErrPartialData
 	}
 
 	return resp, nil

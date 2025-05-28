@@ -116,6 +116,7 @@ func NewParquetQueryable(
 						parquet.ReadBufferSize(100*1024),
 						parquet.SkipBloomFilters(true),
 					),
+					parquet_storage.WithOptimisticReader(true),
 				)
 				shards[i] = shard
 				return err

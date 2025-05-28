@@ -209,18 +209,6 @@ type parquetQuerierWithFallback struct {
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if q.limits.QueryVerticalShardSize(userID) > 1 {
-		uLogger := util_log.WithUserID(userID, q.logger)
-		level.Warn(uLogger).Log("msg", "parquet queryable enabled but vertival sharding > 0. Falling back to the block storage")
-
-		return q.blocksStoreQuerier.LabelValues(ctx, name, hints, matchers...)
-	}
-
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
 	if err != nil {
 		return nil, nil, err
@@ -266,18 +254,6 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 }
 
 func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if q.limits.QueryVerticalShardSize(userID) > 1 {
-		uLogger := util_log.WithUserID(userID, q.logger)
-		level.Warn(uLogger).Log("msg", "parquet queryable enabled but vertival sharding > 0. Falling back to the block storage")
-
-		return q.blocksStoreQuerier.LabelNames(ctx, hints, matchers...)
-	}
-
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
 	if err != nil {
 		return nil, nil, err
@@ -331,7 +307,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 
 	if q.limits.QueryVerticalShardSize(userID) > 1 {
 		uLogger := util_log.WithUserID(userID, q.logger)
-		level.Warn(uLogger).Log("msg", "parquet queryable enabled but vertival sharding > 0. Falling back to the block storage")
+		level.Warn(uLogger).Log("msg", "parquet queryable enabled but vertical sharding > 1. Falling back to the block storage")
 
 		return q.blocksStoreQuerier.Select(ctx, sortSeries, hints, matchers...)
 	}

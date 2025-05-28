@@ -91,7 +91,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MetaSyncConcurrency, "parquet-converter.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
 	f.IntVar(&cfg.MaxRowsPerRowGroup, "parquet-converter.max-rows-per-row-group", 1e6, "Max number of rows per parquet row group.")
 	f.DurationVar(&cfg.ConversionInterval, "parquet-converter.conversion-interval", time.Minute, "The frequency at which the conversion job runs.")
-	f.BoolVar(&cfg.FileBufferEnabled, "parquet-converter.file_buffer_enabled", true, "Whether to enable buffering the writes in disk to reduce memory utilization.")
+	f.BoolVar(&cfg.FileBufferEnabled, "parquet-converter.file-buffer-enabled", true, "Whether to enable buffering the writes in disk to reduce memory utilization.")
 }
 
 func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Converter, error) {
@@ -172,7 +172,7 @@ func (c *Converter) running(ctx context.Context) error {
 			rand.Shuffle(len(users), func(i, j int) {
 				users[i], users[j] = users[j], users[i]
 			})
-			
+
 			for _, userID := range users {
 				if !c.limits.ParquetConverterEnabled(userID) {
 					continue

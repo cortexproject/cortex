@@ -22,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -330,7 +331,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	reqStats.AddFetchedSamples(uint64(resp.SamplesCount()))
 
 	if partialdata.IsPartialDataError(err) {
-		level.Warn(d.log).Log("msg", "returning partial data", "err", err.Error())
+		level.Warn(util_log.WithContext(ctx, d.log)).Log("msg", "returning partial data", "err", err.Error())
 		d.ingesterPartialDataQueries.Inc()
 		return resp, err
 	}

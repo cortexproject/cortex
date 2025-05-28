@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"golang.org/x/sync/errgroup"
 	"time"
 
 	"github.com/go-kit/log"
@@ -19,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/thanos/pkg/strutil"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"

@@ -203,7 +203,9 @@ func NewPrometheusParquetChunksDecoder(pool chunkenc.Pool) *PrometheusParquetChu
 }
 
 func (e *PrometheusParquetChunksDecoder) Decode(data []byte, mint, maxt int64) ([]chunks.Meta, error) {
-	result := make([]chunks.Meta, 0, len(data))
+	// We usually have only 1 chunk per column as the chunks got re-encoded. Lets create a slice with capacity of 5
+	// just in case of re-encoding.
+	result := make([]chunks.Meta, 0, 5)
 
 	b := bytes.NewBuffer(data)
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -1637,8 +1638,9 @@ func (u *userTSDB) releaseAppendLock() {
 }
 
 // QueryExemplars implements service.IngesterServer
-func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.ExemplarQueryResponse, error) {
-	if err := i.checkRunning(); err != nil {
+func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (resp *client.ExemplarQueryResponse, err error) {
+	defer recoverIngester(i.logger, &err)
+	if err = i.checkRunning(); err != nil {
 		return nil, err
 	}
 
@@ -1659,7 +1661,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return &client.ExemplarQueryResponse{}, nil
 	}
 
-	if err := db.acquireReadLock(); err != nil {
+	if err = db.acquireReadLock(); err != nil {
 		return &client.ExemplarQueryResponse{}, nil
 	}
 	defer db.releaseReadLock()
@@ -1701,14 +1703,16 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 }
 
 // LabelValues returns all label values that are associated with a given label name.
-func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (resp *client.LabelValuesResponse, err error) {
+	defer recoverIngester(i.logger, &err)
 	resp, cleanup, err := i.labelsValuesCommon(ctx, req)
 	defer cleanup()
 	return resp, err
 }
 
 // LabelValuesStream returns all label values that are associated with a given label name.
-func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
+func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) (err error) {
+	defer recoverIngester(i.logger, &err)
 	resp, cleanup, err := i.labelsValuesCommon(stream.Context(), req)
 	defer cleanup()
 
@@ -1796,14 +1800,16 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 }
 
 // LabelNames return all the label names.
-func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (resp *client.LabelNamesResponse, err error) {
+	defer recoverIngester(i.logger, &err)
 	resp, cleanup, err := i.labelNamesCommon(ctx, req)
 	defer cleanup()
 	return resp, err
 }
 
 // LabelNamesStream return all the label names.
-func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
+func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) (err error) {
+	defer recoverIngester(i.logger, &err)
 	resp, cleanup, err := i.labelNamesCommon(stream.Context(), req)
 	defer cleanup()
 
@@ -1819,7 +1825,7 @@ func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client
 		resp := &client.LabelNamesStreamResponse{
 			LabelNames: resp.LabelNames[i:j],
 		}
-		err := client.SendLabelNamesStream(stream, resp)
+		err = client.SendLabelNamesStream(stream, resp)
 		if err != nil {
 			return err
 		}
@@ -1891,8 +1897,9 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 }
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
-func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
-	result := &client.MetricsForLabelMatchersResponse{}
+func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (result *client.MetricsForLabelMatchersResponse, err error) {
+	defer recoverIngester(i.logger, &err)
+	result = &client.MetricsForLabelMatchersResponse{}
 	cleanup, err := i.metricsForLabelMatchersCommon(ctx, req, func(l labels.Labels) error {
 		result.Metric = append(result.Metric, &cortexpb.Metric{
 			Labels: cortexpb.FromLabelsToLabelAdapters(l),
@@ -1903,7 +1910,8 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	return result, err
 }
 
-func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) error {
+func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) (err error) {
+	defer recoverIngester(i.logger, &err)
 	result := &client.MetricsForLabelMatchersStreamResponse{}
 
 	cleanup, err := i.metricsForLabelMatchersCommon(stream.Context(), req, func(l labels.Labels) error {
@@ -1927,7 +1935,7 @@ func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatc
 
 	// Send last batch
 	if len(result.Metric) > 0 {
-		err := client.SendMetricsForLabelMatchersStream(stream, result)
+		err = client.SendMetricsForLabelMatchersStream(stream, result)
 		if err != nil {
 			return err
 		}
@@ -2160,8 +2168,10 @@ const queryStreamBatchMessageSize = 1 * 1024 * 1024
 
 // QueryStream implements service.IngesterServer
 // Streams metrics from a TSDB. This implements the client.IngesterServer interface
-func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
-	if err := i.checkRunning(); err != nil {
+func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) (err error) {
+	defer recoverIngester(i.logger, &err)
+
+	if err = i.checkRunning(); err != nil {
 		return err
 	}
 
@@ -3441,5 +3451,22 @@ func (c *labelSetReasonCounters) increment(matchedLabelSetLimits []validation.Li
 				lbls: l.LabelSet,
 			}
 		}
+	}
+}
+
+func recoverIngester(logger log.Logger, errp *error) {
+	e := recover()
+	if e == nil {
+		return
+	}
+
+	switch err := e.(type) {
+	case runtime.Error:
+		// Print the stack trace but do not inhibit the running application.
+		buf := make([]byte, 64<<10)
+		buf = buf[:runtime.Stack(buf, false)]
+
+		level.Error(logger).Log("msg", "runtime panic in ingester", "err", err, "stacktrace", string(buf))
+		*errp = errors.Wrap(err, "unexpected error")
 	}
 }

@@ -887,7 +887,7 @@ func TestLimitsPerLabelSetsForSeries(t *testing.T) {
 	}
 }
 
-func TestIsLimitsError(t *testing.T) {
+func TestIsLimitError(t *testing.T) {
 	assert.False(t, IsLimitError(fmt.Errorf("test error")))
 	assert.True(t, IsLimitError(LimitError("test error")))
 }

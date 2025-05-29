@@ -1245,7 +1245,7 @@ github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.121.0/go.mod h1:swPiDfFHEiy9x2TwNO3uexCkwppLWfPRVoJdpJvKIQE=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.121.0/go.mod h1:YczZl2MmjOUdg5eXg+fAW0my/EG+77b27ue6vj7xPHU=
 github.com/opentracing-contrib/go-grpc v0.1.2/go.mod h1:glU6rl1Fhfp9aXUHkE36K2mR4ht8vih0ekOVlWKEUHM=
-github.com/opentracing-contrib/go-stdlib v1.1.0/go.mod h1:S0p+X9p6dcBkoMTL+Qq2VOvxKs9ys5PpYWXWqlCS0bQ=
+github.com/opentracing-contrib/go-stdlib v1.1.0/go.mod h1:cZBWc4pA4e65tqTJddbflK435S0tDImj6c9BMvkdUH0=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=

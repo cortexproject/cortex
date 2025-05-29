@@ -21,6 +21,7 @@ import (
 	"sort"
 
 	"github.com/parquet-go/parquet-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/prometheus-community/parquet-common/schema"
@@ -214,7 +215,10 @@ func (ec *equalConstraint) filter(ctx context.Context, rg parquet.RowGroup, prim
 		return nil, nil
 	}
 
-	pgs := ec.f.GetPages(ctx, cc)
+	pgs, err := ec.f.GetPages(ctx, cc)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get pages")
+	}
 	defer func() { _ = pgs.Close() }()
 
 	oidx, err := cc.OffsetIndex()
@@ -333,6 +337,10 @@ func (ec *equalConstraint) matches(v parquet.Value) bool {
 }
 
 func (ec *equalConstraint) skipByBloomfilter(cc parquet.ColumnChunk) (bool, error) {
+	if !ec.f.BloomFiltersLoaded {
+		return false, nil
+	}
+
 	bf := cc.BloomFilter()
 	if bf == nil {
 		return false, nil
@@ -376,7 +384,11 @@ func (rc *regexConstraint) filter(ctx context.Context, rg parquet.RowGroup, prim
 	}
 	cc := rg.ColumnChunks()[col.ColumnIndex]
 
-	pgs := rc.f.GetPages(ctx, cc)
+	pgs, err := rc.f.GetPages(ctx, cc)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get pages")
+	}
+
 	defer func() { _ = pgs.Close() }()
 
 	oidx, err := cc.OffsetIndex()

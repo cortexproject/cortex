@@ -59,3 +59,30 @@ func (b *bReadAt) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 	return
 }
+
+type optimisticReaderAt struct {
+	r      io.ReaderAt
+	b      []byte
+	offset int64
+}
+
+func (b optimisticReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	if off >= b.offset && off < b.offset+int64(len(b.b)) {
+		diff := off - b.offset
+		n := copy(p, b.b[diff:])
+		return n, nil
+	}
+
+	return b.r.ReadAt(p, off)
+}
+
+func newOptimisticReaderAt(r io.ReaderAt, minOffset, maxOffset int64) io.ReaderAt {
+	if minOffset < maxOffset {
+		b := make([]byte, maxOffset-minOffset)
+		n, err := r.ReadAt(b, minOffset)
+		if err == nil {
+			return &optimisticReaderAt{r: r, b: b[:n], offset: minOffset}
+		}
+	}
+	return r
+}

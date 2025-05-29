@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
+	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -47,6 +49,8 @@ var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 type Config struct {
 	MetaSyncConcurrency int           `yaml:"meta_sync_concurrency"`
 	ConversionInterval  time.Duration `yaml:"conversion_interval"`
+	MaxRowsPerRowGroup  int           `yaml:"max_rows_per_row_group"`
+	FileBufferEnabled   bool          `yaml:"file_buffer_enabled"`
 
 	DataDir string `yaml:"data_dir"`
 
@@ -78,6 +82,8 @@ type Converter struct {
 	blockRanges []int64
 
 	fetcherMetrics *block.FetcherMetrics
+
+	baseConverterOptions []convert.ConvertOption
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -85,7 +91,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&cfg.DataDir, "parquet-converter.data-dir", "./data", "Data directory in which to cache blocks and process conversions.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "parquet-converter.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
+	f.IntVar(&cfg.MaxRowsPerRowGroup, "parquet-converter.max-rows-per-row-group", 1e6, "Max number of rows per parquet row group.")
 	f.DurationVar(&cfg.ConversionInterval, "parquet-converter.conversion-interval", time.Minute, "The frequency at which the conversion job runs.")
+	f.BoolVar(&cfg.FileBufferEnabled, "parquet-converter.file-buffer-enabled", true, "Whether to enable buffering the writes in disk to reduce memory utilization.")
 }
 
 func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Converter, error) {
@@ -106,6 +114,11 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 		blockRanges:    blockRanges,
 		fetcherMetrics: block.NewFetcherMetrics(registerer, nil, nil),
 		bkt:            bkt,
+		baseConverterOptions: []convert.ConvertOption{
+			convert.WithSortBy(labels.MetricName),
+			convert.WithColDuration(time.Hour * 8),
+			convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
+		},
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
@@ -163,6 +176,10 @@ func (c *Converter) running(ctx context.Context) error {
 				continue
 			}
 			ownedUsers := map[string]struct{}{}
+			rand.Shuffle(len(users), func(i, j int) {
+				users[i], users[j] = users[j], users[i]
+			})
+
 			for _, userID := range users {
 				if !c.limits.ParquetConverterEnabled(userID) {
 					continue
@@ -293,10 +310,19 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		return errors.Wrap(err, "error creating block fetcher")
 	}
 
-	blocks, _, err := fetcher.Fetch(ctx)
+	blks, _, err := fetcher.Fetch(ctx)
 	if err != nil {
 		return errors.Wrapf(err, "failed to fetch blocks for user %s", userID)
 	}
+
+	blocks := make([]*metadata.Meta, 0, len(blks))
+	for _, blk := range blks {
+		blocks = append(blocks, blk)
+	}
+
+	sort.Slice(blocks, func(i, j int) bool {
+		return blocks[i].MinTime > blocks[j].MinTime
+	})
 
 	for _, b := range blocks {
 		ok, err := c.ownBlock(ring, b.ULID.String())
@@ -345,22 +371,27 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		}
 
 		level.Info(logger).Log("msg", "converting block", "block", b.ULID.String(), "dir", bdir)
+
+		converterOpts := append(c.baseConverterOptions, convert.WithName(b.ULID.String()))
+
+		if c.cfg.FileBufferEnabled {
+			converterOpts = append(converterOpts, convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")))
+		}
+
 		_, err = convert.ConvertTSDBBlock(
 			ctx,
 			uBucket,
 			tsdbBlock.MinTime(),
 			tsdbBlock.MaxTime(),
 			[]convert.Convertible{tsdbBlock},
-			convert.WithSortBy(labels.MetricName),
-			convert.WithColDuration(time.Hour*8),
-			convert.WithName(b.ULID.String()),
-			convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")),
+			converterOpts...,
 		)
 
 		_ = tsdbBlock.Close()
 
 		if err != nil {
 			level.Error(logger).Log("msg", "Error converting block", "err", err)
+			continue
 		}
 
 		err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket)

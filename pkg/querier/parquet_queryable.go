@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/prometheus-community/parquet-common/search"
@@ -16,14 +18,17 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/thanos/pkg/strutil"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 type parquetQueryableFallbackMetrics struct {
@@ -59,12 +64,15 @@ type parquetQueryableWithFallback struct {
 
 	// metrics
 	metrics *parquetQueryableFallbackMetrics
+
+	limits *validation.Overrides
+	logger log.Logger
 }
 
 func NewParquetQueryable(
 	config Config,
 	storageCfg cortex_tsdb.BlocksStorageConfig,
-	limits BlocksStoreLimits,
+	limits *validation.Overrides,
 	blockStorageQueryable *BlocksStoreQueryable,
 	logger log.Logger,
 	reg prometheus.Registerer,
@@ -93,18 +101,29 @@ func NewParquetQueryable(
 		}
 		userBkt := bucket.NewUserBucketClient(userID, bucketClient, limits)
 
-		shards := make([]*parquet_storage.ParquetShard, 0, len(blocks))
+		shards := make([]*parquet_storage.ParquetShard, len(blocks))
+		errGroup := &errgroup.Group{}
 
-		for _, block := range blocks {
-			// we always only have 1 shard - shard 0
-			shard, err := parquet_storage.OpenParquetShard(ctx, userBkt, block.ID.String(), 0)
-			if err != nil {
-				return nil, err
-			}
-			shards = append(shards, shard)
+		for i, block := range blocks {
+			errGroup.Go(func() error {
+				// we always only have 1 shard - shard 0
+				shard, err := parquet_storage.OpenParquetShard(ctx,
+					userBkt,
+					block.ID.String(),
+					0,
+					parquet_storage.WithFileOptions(
+						parquet.SkipMagicBytes(true),
+						parquet.ReadBufferSize(100*1024),
+						parquet.SkipBloomFilters(true),
+					),
+					parquet_storage.WithOptimisticReader(true),
+				)
+				shards[i] = shard
+				return err
+			})
 		}
 
-		return shards, nil
+		return shards, errGroup.Wait()
 	})
 
 	p := &parquetQueryableWithFallback{
@@ -115,6 +134,8 @@ func NewParquetQueryable(
 		subservicesWatcher:    services.NewFailureWatcher(),
 		finder:                blockStorageQueryable.finder,
 		metrics:               newParquetQueryableFallbackMetrics(reg),
+		limits:                limits,
+		logger:                logger,
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -164,6 +185,8 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		blocksStoreQuerier: bsq,
 		finder:             p.finder,
 		metrics:            p.metrics,
+		limits:             p.limits,
+		logger:             p.logger,
 	}, nil
 }
 
@@ -181,6 +204,9 @@ type parquetQuerierWithFallback struct {
 
 	// metrics
 	metrics *parquetQueryableFallbackMetrics
+
+	limits *validation.Overrides
+	logger log.Logger
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -275,6 +301,18 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 }
 
 func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		storage.ErrSeriesSet(err)
+	}
+
+	if q.limits.QueryVerticalShardSize(userID) > 1 {
+		uLogger := util_log.WithUserID(userID, q.logger)
+		level.Warn(uLogger).Log("msg", "parquet queryable enabled but vertical sharding > 1. Falling back to the block storage")
+
+		return q.blocksStoreQuerier.Select(ctx, sortSeries, hints, matchers...)
+	}
+
 	mint, maxt, limit := q.minT, q.maxT, 0
 
 	if hints != nil {
@@ -287,6 +325,11 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	}
 
 	serieSets := []storage.SeriesSet{}
+
+	// Lets sort the series to merge
+	if len(parquet) > 0 && len(remaining) > 0 {
+		sortSeries = true
+	}
 
 	if len(parquet) > 0 {
 		serieSets = append(serieSets, q.parquetQuerier.Select(InjectBlocksIntoContext(ctx, parquet...), sortSeries, hints, matchers...))

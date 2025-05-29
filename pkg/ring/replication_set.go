@@ -3,13 +3,11 @@ package ring
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sort"
 	"time"
 
-	"github.com/weaveworks/common/httpgrpc"
-
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // ReplicationSet describes the instances to talk to for a given key, and how
@@ -83,10 +81,8 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 					return nil, res.err
 				}
 
-				if httpRes, ok := httpgrpc.HTTPResponseFromError(res.err); ok {
-					if httpRes.Code == http.StatusUnprocessableEntity {
-						return nil, res.err
-					}
+				if validation.IsLimitError(res.err) {
+					return nil, res.err
 				}
 
 				// force one of the delayed requests to start

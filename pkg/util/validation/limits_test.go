@@ -2,6 +2,7 @@ package validation
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
@@ -884,4 +885,9 @@ func TestLimitsPerLabelSetsForSeries(t *testing.T) {
 			require.Equal(t, tc.expectedLimits, matched)
 		})
 	}
+}
+
+func TestIsLimitsError(t *testing.T) {
+	assert.False(t, IsLimitError(fmt.Errorf("test error")))
+	assert.True(t, IsLimitError(LimitError("test error")))
 }

@@ -50,6 +50,11 @@ func (e LimitError) Error() string {
 	return string(e)
 }
 
+func IsLimitError(e error) bool {
+	var limitError LimitError
+	return errors.As(e, &limitError)
+}
+
 type DisabledRuleGroup struct {
 	Namespace string `yaml:"namespace" doc:"nocli|description=namespace in which the rule group belongs"`
 	Name      string `yaml:"name" doc:"nocli|description=name of the rule group"`

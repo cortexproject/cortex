@@ -3,16 +3,15 @@ package ring
 import (
 	"context"
 	"errors"
-	"net/http"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestReplicationSet_GetAddresses(t *testing.T) {
@@ -221,16 +220,16 @@ func TestReplicationSet_Do(t *testing.T) {
 			queryPartialData:    true,
 		},
 		{
-			name:      "with partial data enabled, should fail on instances returning 422 in two zones",
-			instances: []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
+			name:      "with partial data enabled, should fail on instances returning 422",
+			instances: []InstanceDesc{{Addr: "1", Zone: "zone1"}, {Addr: "2", Zone: "zone2"}, {Addr: "3", Zone: "zone3"}, {Addr: "4", Zone: "zone1"}, {Addr: "5", Zone: "zone2"}, {Addr: "6", Zone: "zone3"}},
 			f: func(ctx context.Context, ing *InstanceDesc) (interface{}, error) {
-				if ing.Zone == "zone1" || ing.Zone == "zone2" {
-					return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "breached limit")
+				if ing.Addr == "1" || ing.Addr == "2" {
+					return nil, validation.LimitError("limit breached")
 				}
 				return 1, nil
 			},
 			maxUnavailableZones: 1,
-			expectedError:       httpgrpc.Errorf(http.StatusUnprocessableEntity, "breached limit"),
+			expectedError:       validation.LimitError("limit breached"),
 			queryPartialData:    true,
 		},
 		{

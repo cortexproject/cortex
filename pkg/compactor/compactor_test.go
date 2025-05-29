@@ -611,12 +611,6 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", mockDeletionMarkJSON("01DTVP434PA9VFXSW2JKB3392D", time.Now()), nil)
 	bucketClient.MockGet("user-1/markers/01DTVP434PA9VFXSW2JKB3392D-deletion-mark.json", mockDeletionMarkJSON("01DTVP434PA9VFXSW2JKB3392D", time.Now()), nil)
-	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
-
-	// This block will be deleted by cleaner.
-	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
-	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", mockDeletionMarkJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ", time.Now().Add(-cfg.DeletionDelay)), nil)
-	bucketClient.MockGet("user-1/markers/01DTW0ZCPDDNV4BV83Q2SV4QAZ-deletion-mark.json", mockDeletionMarkJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ", time.Now().Add(-cfg.DeletionDelay)), nil)
 
 	bucketClient.MockIter("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", []string{
 		"user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json",
@@ -1552,6 +1546,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Instrument
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 	storageCfg.BucketStore.BlockDiscoveryStrategy = string(cortex_tsdb.RecursiveDiscovery)
+	storageCfg.UsersScanner.Strategy = cortex_tsdb.UserScanStrategyUserIndex
 
 	// Create a temporary directory for compactor data.
 	compactorCfg.DataDir = t.TempDir()
@@ -2387,4 +2382,45 @@ func (l *mockTenantLimits) setLimits(userID string, limits *validation.Limits) {
 	l.m.Lock()
 	defer l.m.Unlock()
 	l.limits[userID] = limits
+}
+
+func TestCompactor_UserIndexUpdateLoop(t *testing.T) {
+	// Prepare test dependencies
+	bucketClient, _ := cortex_storage_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	cfg := prepareConfig()
+	cfg.ShardingEnabled = true
+	cfg.ShardingRing.InstanceID = "compactor-1"
+	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
+	cfg.ShardingRing.KVStore.Mock = ringStore
+	cfg.CleanupInterval = 100 * time.Millisecond // Short interval for testing
+
+	compactor, _, _, _, _ := prepare(t, cfg, bucketClient, &validation.Limits{})
+
+	// Start the compactor service
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), compactor))
+
+	// Wait for the user index file to be created
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Poll for the user index file
+	for {
+		exists, err := bucketClient.Exists(ctx, "user-index.json.gz")
+		require.NoError(t, err)
+		if exists {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			t.Fatal("Timeout waiting for user index file to be created")
+		case <-time.After(100 * time.Millisecond):
+			// Continue polling
+		}
+	}
 }

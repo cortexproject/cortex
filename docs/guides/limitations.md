@@ -38,6 +38,7 @@ The following tenant IDs are considered invalid in Cortex.
 - Current directory (`.`)
 - Parent directory (`..`)
 - Markers directory (`__markers__`)
+- User Index File (`user-index.json.gz`)
 
 ### Length
 

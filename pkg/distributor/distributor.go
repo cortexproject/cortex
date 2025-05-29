@@ -655,7 +655,6 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, h.TimestampMs); err != nil {
 				return emptyPreallocSeries, err
 			}
-			// TODO(yeya24): add max schema validation for native histogram if needed.
 			convertedHistogram, err := validation.ValidateNativeHistogram(d.validateMetrics, limits, userID, ts.Labels, h)
 			if err != nil {
 				return emptyPreallocSeries, err

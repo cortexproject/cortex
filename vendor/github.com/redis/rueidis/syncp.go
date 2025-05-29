@@ -1,6 +1,10 @@
 package rueidis
 
-import "github.com/redis/rueidis/internal/util"
+import (
+	"time"
+
+	"github.com/redis/rueidis/internal/util"
+)
 
 var (
 	resultsp = util.NewPool(func(capacity int) *redisresults {
@@ -215,8 +219,10 @@ func (r *conncount) ResetLen(n int) {
 }
 
 type connretry struct {
-	m map[conn]*retry
-	n int
+	m          map[conn]*retry
+	n          int
+	RetryDelay time.Duration // NOTE: This is not thread-safe.
+	Redirects  uint32        // NOTE: This is not thread-safe.
 }
 
 func (r *connretry) Capacity() int {
@@ -225,11 +231,15 @@ func (r *connretry) Capacity() int {
 
 func (r *connretry) ResetLen(n int) {
 	clear(r.m)
+	r.Redirects = 0
+	r.RetryDelay = time.Duration(-1) // No retry.
 }
 
 type connretrycache struct {
-	m map[conn]*retrycache
-	n int
+	m          map[conn]*retrycache
+	n          int
+	RetryDelay time.Duration // NOTE: This is not thread-safe.
+	Redirects  uint32        // NOTE: This is not thread-safe.
 }
 
 func (r *connretrycache) Capacity() int {
@@ -238,4 +248,6 @@ func (r *connretrycache) Capacity() int {
 
 func (r *connretrycache) ResetLen(n int) {
 	clear(r.m)
+	r.Redirects = 0
+	r.RetryDelay = time.Duration(-1) // No retry.
 }

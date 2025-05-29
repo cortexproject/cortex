@@ -522,6 +522,11 @@ func (c ClusterSetslot) Slot(slot int64) ClusterSetslotSlot {
 
 type ClusterSetslotNodeId Incomplete
 
+func (c ClusterSetslotNodeId) Timeout(timeout int64) ClusterSetslotTimeout {
+	c.cs.s = append(c.cs.s, "TIMEOUT", strconv.FormatInt(timeout, 10))
+	return (ClusterSetslotTimeout)(c)
+}
+
 func (c ClusterSetslotNodeId) Build() Completed {
 	c.cs.Build()
 	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
@@ -556,6 +561,11 @@ func (c ClusterSetslotSubcommandImporting) NodeId(nodeId string) ClusterSetslotN
 	return (ClusterSetslotNodeId)(c)
 }
 
+func (c ClusterSetslotSubcommandImporting) Timeout(timeout int64) ClusterSetslotTimeout {
+	c.cs.s = append(c.cs.s, "TIMEOUT", strconv.FormatInt(timeout, 10))
+	return (ClusterSetslotTimeout)(c)
+}
+
 func (c ClusterSetslotSubcommandImporting) Build() Completed {
 	c.cs.Build()
 	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
@@ -566,6 +576,11 @@ type ClusterSetslotSubcommandMigrating Incomplete
 func (c ClusterSetslotSubcommandMigrating) NodeId(nodeId string) ClusterSetslotNodeId {
 	c.cs.s = append(c.cs.s, nodeId)
 	return (ClusterSetslotNodeId)(c)
+}
+
+func (c ClusterSetslotSubcommandMigrating) Timeout(timeout int64) ClusterSetslotTimeout {
+	c.cs.s = append(c.cs.s, "TIMEOUT", strconv.FormatInt(timeout, 10))
+	return (ClusterSetslotTimeout)(c)
 }
 
 func (c ClusterSetslotSubcommandMigrating) Build() Completed {
@@ -580,6 +595,11 @@ func (c ClusterSetslotSubcommandNode) NodeId(nodeId string) ClusterSetslotNodeId
 	return (ClusterSetslotNodeId)(c)
 }
 
+func (c ClusterSetslotSubcommandNode) Timeout(timeout int64) ClusterSetslotTimeout {
+	c.cs.s = append(c.cs.s, "TIMEOUT", strconv.FormatInt(timeout, 10))
+	return (ClusterSetslotTimeout)(c)
+}
+
 func (c ClusterSetslotSubcommandNode) Build() Completed {
 	c.cs.Build()
 	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
@@ -592,7 +612,19 @@ func (c ClusterSetslotSubcommandStable) NodeId(nodeId string) ClusterSetslotNode
 	return (ClusterSetslotNodeId)(c)
 }
 
+func (c ClusterSetslotSubcommandStable) Timeout(timeout int64) ClusterSetslotTimeout {
+	c.cs.s = append(c.cs.s, "TIMEOUT", strconv.FormatInt(timeout, 10))
+	return (ClusterSetslotTimeout)(c)
+}
+
 func (c ClusterSetslotSubcommandStable) Build() Completed {
+	c.cs.Build()
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}
+
+type ClusterSetslotTimeout Incomplete
+
+func (c ClusterSetslotTimeout) Build() Completed {
 	c.cs.Build()
 	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
@@ -628,6 +660,105 @@ type ClusterSlavesNodeId Incomplete
 func (c ClusterSlavesNodeId) Build() Completed {
 	c.cs.Build()
 	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}
+
+type ClusterSlotStats Incomplete
+
+func (b Builder) ClusterSlotStats() (c ClusterSlotStats) {
+	c = ClusterSlotStats{cs: get(), ks: b.ks}
+	c.cs.s = append(c.cs.s, "CLUSTER", "SLOT-STATS")
+	return c
+}
+
+func (c ClusterSlotStats) Slotsrange() ClusterSlotStatsFilterSlotsrangeSlotsrange {
+	c.cs.s = append(c.cs.s, "SLOTSRANGE")
+	return (ClusterSlotStatsFilterSlotsrangeSlotsrange)(c)
+}
+
+func (c ClusterSlotStats) Orderby() ClusterSlotStatsFilterOrderbyOrderby {
+	c.cs.s = append(c.cs.s, "ORDERBY")
+	return (ClusterSlotStatsFilterOrderbyOrderby)(c)
+}
+
+type ClusterSlotStatsFilterOrderbyLimit Incomplete
+
+func (c ClusterSlotStatsFilterOrderbyLimit) Asc() ClusterSlotStatsFilterOrderbyOrderAsc {
+	c.cs.s = append(c.cs.s, "ASC")
+	return (ClusterSlotStatsFilterOrderbyOrderAsc)(c)
+}
+
+func (c ClusterSlotStatsFilterOrderbyLimit) Desc() ClusterSlotStatsFilterOrderbyOrderDesc {
+	c.cs.s = append(c.cs.s, "DESC")
+	return (ClusterSlotStatsFilterOrderbyOrderDesc)(c)
+}
+
+func (c ClusterSlotStatsFilterOrderbyLimit) Build() Completed {
+	c.cs.Build()
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}
+
+type ClusterSlotStatsFilterOrderbyMetric Incomplete
+
+func (c ClusterSlotStatsFilterOrderbyMetric) Limit(limit int64) ClusterSlotStatsFilterOrderbyLimit {
+	c.cs.s = append(c.cs.s, "LIMIT", strconv.FormatInt(limit, 10))
+	return (ClusterSlotStatsFilterOrderbyLimit)(c)
+}
+
+func (c ClusterSlotStatsFilterOrderbyMetric) Asc() ClusterSlotStatsFilterOrderbyOrderAsc {
+	c.cs.s = append(c.cs.s, "ASC")
+	return (ClusterSlotStatsFilterOrderbyOrderAsc)(c)
+}
+
+func (c ClusterSlotStatsFilterOrderbyMetric) Desc() ClusterSlotStatsFilterOrderbyOrderDesc {
+	c.cs.s = append(c.cs.s, "DESC")
+	return (ClusterSlotStatsFilterOrderbyOrderDesc)(c)
+}
+
+func (c ClusterSlotStatsFilterOrderbyMetric) Build() Completed {
+	c.cs.Build()
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}
+
+type ClusterSlotStatsFilterOrderbyOrderAsc Incomplete
+
+func (c ClusterSlotStatsFilterOrderbyOrderAsc) Build() Completed {
+	c.cs.Build()
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}
+
+type ClusterSlotStatsFilterOrderbyOrderDesc Incomplete
+
+func (c ClusterSlotStatsFilterOrderbyOrderDesc) Build() Completed {
+	c.cs.Build()
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}
+
+type ClusterSlotStatsFilterOrderbyOrderby Incomplete
+
+func (c ClusterSlotStatsFilterOrderbyOrderby) Metric(metric string) ClusterSlotStatsFilterOrderbyMetric {
+	c.cs.s = append(c.cs.s, metric)
+	return (ClusterSlotStatsFilterOrderbyMetric)(c)
+}
+
+type ClusterSlotStatsFilterSlotsrangeEndSlot Incomplete
+
+func (c ClusterSlotStatsFilterSlotsrangeEndSlot) Build() Completed {
+	c.cs.Build()
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}
+
+type ClusterSlotStatsFilterSlotsrangeSlotsrange Incomplete
+
+func (c ClusterSlotStatsFilterSlotsrangeSlotsrange) StartSlot(startSlot int64) ClusterSlotStatsFilterSlotsrangeStartSlot {
+	c.cs.s = append(c.cs.s, strconv.FormatInt(startSlot, 10))
+	return (ClusterSlotStatsFilterSlotsrangeStartSlot)(c)
+}
+
+type ClusterSlotStatsFilterSlotsrangeStartSlot Incomplete
+
+func (c ClusterSlotStatsFilterSlotsrangeStartSlot) EndSlot(endSlot int64) ClusterSlotStatsFilterSlotsrangeEndSlot {
+	c.cs.s = append(c.cs.s, strconv.FormatInt(endSlot, 10))
+	return (ClusterSlotStatsFilterSlotsrangeEndSlot)(c)
 }
 
 type ClusterSlots Incomplete

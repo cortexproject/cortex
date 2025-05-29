@@ -942,3 +942,23 @@ func (c ScriptLoadScript) Build() Completed {
 	c.cs.Build()
 	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
+
+type ScriptShow Incomplete
+
+func (b Builder) ScriptShow() (c ScriptShow) {
+	c = ScriptShow{cs: get(), ks: b.ks}
+	c.cs.s = append(c.cs.s, "SCRIPT", "SHOW")
+	return c
+}
+
+func (c ScriptShow) Sha1(sha1 string) ScriptShowSha1 {
+	c.cs.s = append(c.cs.s, sha1)
+	return (ScriptShowSha1)(c)
+}
+
+type ScriptShowSha1 Incomplete
+
+func (c ScriptShowSha1) Build() Completed {
+	c.cs.Build()
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}

@@ -4,7 +4,7 @@
 
 // Package go4.org/unsafe/assume-no-moving-gc exists so you can depend
 // on it from unsafe code that wants to declare that it assumes that
-// the Go runtime does not using a moving garbage collector. Specifically,
+// the Go runtime does not use a moving garbage collector. Specifically,
 // it asserts that the caller is playing stupid games with the addresses
 // of heap-allocated values. It says nothing about values that Go's escape
 // analysis keeps on the stack. Ensuring things aren't stack-allocated

@@ -55,7 +55,7 @@ func checkDirectPathEndPoint(endpoint string) bool {
 	return true
 }
 
-func isTokenProviderDirectPathCompatible(tp auth.TokenProvider, o *Options) bool {
+func isTokenProviderComputeEngine(tp auth.TokenProvider) bool {
 	if tp == nil {
 		return false
 	}
@@ -69,13 +69,20 @@ func isTokenProviderDirectPathCompatible(tp auth.TokenProvider, o *Options) bool
 	if tok.MetadataString("auth.google.tokenSource") != "compute-metadata" {
 		return false
 	}
-	if o.InternalOptions != nil && o.InternalOptions.EnableNonDefaultSAForDirectPath {
-		return true
-	}
 	if tok.MetadataString("auth.google.serviceAccount") != "default" {
 		return false
 	}
 	return true
+}
+
+func isTokenProviderDirectPathCompatible(tp auth.TokenProvider, o *Options) bool {
+	if tp == nil {
+		return false
+	}
+	if o.InternalOptions != nil && o.InternalOptions.EnableNonDefaultSAForDirectPath {
+		return true
+	}
+	return isTokenProviderComputeEngine(tp)
 }
 
 func isDirectPathXdsUsed(o *Options) bool {

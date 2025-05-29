@@ -21,6 +21,7 @@ A fast Golang Redis client that does auto pipelining and supports server-assiste
 * Pub/Sub, Sharded Pub/Sub, Streams
 * Redis Cluster, Sentinel, RedisJSON, RedisBloom, RediSearch, RedisTimeseries, etc.
 * [Probabilistic Data Structures without Redis Stack](./rueidisprob)
+* [Availability zone affinity routing](#availability-zone-affinity-routing)
 
 ---
 
@@ -65,12 +66,11 @@ Once a command is built, use either `client.Do()` or `client.DoMulti()` to send 
 
 To reuse a command, use `Pin()` after `Build()` and it will prevent the command from being recycled.
 
-
 ## [Pipelining](https://redis.io/docs/manual/pipelining/)
 
 ### Auto Pipelining
 
-All concurrent non-blocking redis commands (such as `GET`, `SET`) are automatically pipelined,
+All concurrent non-blocking redis commands (such as `GET`, `SET`) are automatically pipelined by default,
 which reduces the overall round trips and system calls and gets higher throughput. You can easily get the benefit
 of [pipelining technique](https://redis.io/docs/manual/pipelining/) by just calling `client.Do()` from multiple goroutines concurrently.
 For example:
@@ -87,7 +87,7 @@ func BenchmarkPipelining(b *testing.B, client rueidis.Client) {
 }
 ```
 
-### Benchmark comparison with go-redis v9
+### Benchmark Comparison with go-redis v9
 
 Compared to go-redis, Rueidis has higher throughput across 1, 8, and 64 parallelism settings.
 
@@ -98,6 +98,21 @@ It is even able to achieve **~14x** throughput over go-redis in a local benchmar
 Benchmark source code: https://github.com/rueian/rueidis-benchmark
 
 A benchmark result performed on two GCP n2-highcpu-2 machines also shows that rueidis can achieve higher throughput with lower latencies: https://github.com/redis/rueidis/pull/93
+
+### Disable Auto Pipelining
+
+While auto pipelining maximizes throughput, it relies on additional goroutines to process requests and responses and may add some latencies due to goroutine scheduling and head of line blocking.
+
+You can avoid this by setting `DisableAutoPipelining` to true, then it will switch to connection pooling approach and serve each request with dedicated connection on the same goroutine.
+
+When `DisableAutoPipelining` is set to true, you can still send commands for auto pipelining with `ToPipe()`:
+
+``` golang
+cmd := client.B().Get().Key("key").Build().ToPipe()
+client.Do(ctx, cmd)
+```
+
+This allows you to use connection pooling approach by default but opt in auto pipelining for a subset of requests.
 
 ### Manual Pipelining
 
@@ -151,6 +166,7 @@ client.DoCache(ctx, client.B().Get().Key("k1").Cache(), time.Minute).IsCacheHit(
 ```
 
 If the OpenTelemetry is enabled by the `rueidisotel.NewClient(option)`, then there are also two metrics instrumented:
+
 * rueidis_do_cache_miss
 * rueidis_do_cache_hits
 
@@ -210,7 +226,7 @@ This will also fall back `client.DoCache()` and `client.DoMultiCache()` to `clie
 
 ## Context Cancellation
 
-`client.Do()`, `client.DoMulti()`, `client.DoCache()`, and `client.DoMultiCache()` can return early if the context is canceled or the deadline is reached.
+`client.Do()`, `client.DoMulti()`, `client.DoCache()`, and `client.DoMultiCache()` can return early if the context deadline is reached.
 
 ```golang
 ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -219,6 +235,17 @@ client.Do(ctx, client.B().Set().Key("key").Value("val").Nx().Build()).Error() ==
 ```
 
 Please note that though operations can return early, the command is likely sent already.
+
+### Canceling a Context Before Its Deadline
+
+Manually canceling a context is only work in pipeline mode, as it requires an additional goroutine to monitor the context.
+Pipeline mode will be started automatically when there are concurrent requests on the same connection, but you can start it in advance with `ClientOption.AlwaysPipelining`
+to make sure manually cancellation is respected, especially for blocking requests which are sent with a dedicated connection where pipeline mode isn't started.
+
+### Disable Auto Retry
+
+All read-only commands are automatically retried on failures by default before their context deadlines exceeded.
+You can disable this by setting `DisableRetry` or adjust the number of retries and durations between retries using `RetryDelay` function.
 
 ## Pub/Sub
 
@@ -233,7 +260,8 @@ err = client.Receive(context.Background(), client.B().Subscribe().Channel("ch1",
 The provided handler will be called with the received message.
 
 It is important to note that `client.Receive()` will keep blocking until returning a value in the following cases:
-1. return `nil` when receiving any unsubscribe/punsubscribe message related to the provided `subscribe` command.
+
+1. return `nil` when receiving any unsubscribe/punsubscribe message related to the provided `subscribe` command, including `sunsubscribe` messages caused by slot migrations.
 2. return `rueidis.ErrClosing` when the client is closed manually.
 3. return `ctx.Err()` when the `ctx` is done.
 4. return non-nil `err` when the provided `subscribe` command fails.
@@ -354,6 +382,19 @@ client, err := rueidis.NewClient(rueidis.ClientOption{
     InitAddress: []string{"127.0.0.1:6379"},
 })
 
+// Connect to a standalone redis with replicas
+client, err := rueidis.NewClient(rueidis.ClientOption{
+    InitAddress: []string{"127.0.0.1:6379"},
+    Standalone: rueidis.StandaloneOption{
+        // Note that these addresses must be online and can not be promoted.
+        // An example use case is the reader endpoint provided by cloud vendors.
+        ReplicaAddress: []string{"reader_endpoint:port"},
+    },
+    SendToReplicas: func(cmd rueidis.Completed) bool {
+        return cmd.IsReadOnly()
+    },
+})
+
 // Connect to a redis cluster
 client, err := rueidis.NewClient(rueidis.ClientOption{
     InitAddress: []string{"127.0.0.1:7001", "127.0.0.1:7002", "127.0.0.1:7003"},
@@ -394,6 +435,29 @@ client, err = rueidis.NewClient(rueidis.MustParseURL("redis://127.0.0.1:6379/0")
 client, err = rueidis.NewClient(rueidis.MustParseURL("redis://127.0.0.1:26379/0?master_set=my_master"))
 ```
 
+### Availability Zone Affinity Routing
+
+Starting from Valkey 8.1, Valkey server provides the `availability-zone` information for clients to know where the server is located.
+For using this information to route requests to the replica located in the same availability zone,
+set the `EnableReplicaAZInfo` option and your `ReplicaSelector` function. For example:
+
+```go
+client, err := rueidis.NewClient(rueidis.ClientOption{
+	InitAddress:         []string{"address.example.com:6379"},
+	EnableReplicaAZInfo: true,
+	SendToReplicas: func(cmd rueidis.Completed) bool {
+		return cmd.IsReadOnly()
+	},
+	ReplicaSelector: func(slot uint16, replicas []rueidis.ReplicaInfo) int {
+		for i, replica := range replicas {
+			if replica.AZ == "us-east-1a" {
+				return i // return the index of the replica.
+			}
+		}
+		return -1 // send to the primary.
+	},
+})
+```
 
 ## Arbitrary Command
 
@@ -499,7 +563,7 @@ client.Do(ctx, client.B().FtSearch().Index("idx").Query("@f:v").Build()).AsFtSea
 client.Do(ctx, client.B().Geosearch().Key("k").Fromlonlat(1, 1).Bybox(1).Height(1).Km().Build()).AsGeosearch()
 ```
 
-## Use DecodeSliceOfJSON to scan array result
+## Use DecodeSliceOfJSON to Scan Array Result
 
 DecodeSliceOfJSON is useful when you would like to scan the results of an array into a slice of a specific struct.
 
@@ -557,7 +621,13 @@ if err := rueidis.DecodeSliceOfJSON(client.Do(ctx, client.B().Mget().Key("user1"
 Contributions are welcome, including [issues](https://github.com/redis/rueidis/issues), [pull requests](https://github.com/redis/rueidis/pulls), and [discussions](https://github.com/redis/rueidis/discussions).
 Contributions mean a lot to us and help us improve this library and the community!
 
-### Generate command builders
+Thanks to all the people who already contributed!
+
+<a href="https://github.com/redis/rueidis/graphs/contributors">
+  <img src="https://contributors-img.web.app/image?repo=redis/rueidis" />
+</a>
+
+### Generate Command Builders
 
 Command builders are generated based on the definitions in [./hack/cmds](./hack/cmds) by running:
 

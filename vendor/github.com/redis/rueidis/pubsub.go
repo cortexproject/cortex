@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 )
 
-// PubSubMessage represent a pubsub message from redis
+// PubSubMessage represents a pubsub message from redis
 type PubSubMessage struct {
 	// Pattern is only available with pmessage.
 	Pattern string
@@ -21,7 +21,7 @@ type PubSubSubscription struct {
 	Kind string
 	// Channel is the event subject.
 	Channel string
-	// Count is the current number of subscriptions for connection.
+	// Count is the current number of subscriptions for a connection.
 	Count int64
 }
 
@@ -42,9 +42,9 @@ func newSubs() *subs {
 }
 
 type subs struct {
-	cnt uint64
 	chs map[string]chs
 	sub map[uint64]*sub
+	cnt uint64
 	mu  sync.RWMutex
 }
 

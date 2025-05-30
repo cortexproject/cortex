@@ -1,6 +1,8 @@
 package ring
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type replicationSetResultTracker interface {
 	// Signals an instance has done the execution, either successful (no error)
@@ -121,7 +123,7 @@ func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int
 func (t *zoneAwareResultTracker) done(instance *InstanceDesc, result interface{}, err error) {
 	if err != nil {
 		t.failuresByZone[instance.Zone]++
-		t.errors = append(t.errors, fmt.Errorf("(%s) %w", instance.GetAddr(), err))
+		t.errors = append(t.errors, fmt.Errorf("(%s, %s) %w", instance.GetAddr(), instance.GetZone(), err))
 	} else {
 		if _, ok := t.resultsPerZone[instance.Zone]; !ok {
 			// If it is the first result in the zone, then total number of instances
@@ -160,7 +162,9 @@ func (t *zoneAwareResultTracker) failed() bool {
 
 func (t *zoneAwareResultTracker) failedCompletely() bool {
 	failedZones := len(t.failuresByZone)
-	return failedZones == t.zoneCount
+	allZonesFailed := failedZones == t.zoneCount
+	atLeastHalfOfFleetFailed := len(t.errors) >= t.numInstances/2
+	return allZonesFailed || (t.failed() && atLeastHalfOfFleetFailed)
 }
 
 func (t *zoneAwareResultTracker) getResults() []interface{} {

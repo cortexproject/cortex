@@ -29,12 +29,12 @@ func Test_ResourceBasedLimiter_shouldStartWithoutError(t *testing.T) {
 
 	// Start Cortex components.
 	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-ingester.instance-limits.cpu-utilization":  "0.8",
-		"-ingester.instance-limits.heap-utilization": "0.8",
+		"-ingester.query-protection.rejection.threshold.cpu-utilization":  "0.8",
+		"-ingester.query-protection.rejection.threshold.heap-utilization": "0.8",
 	}), "")
 	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-store-gateway.instance-limits.cpu-utilization":  "0.8",
-		"-store-gateway.instance-limits.heap-utilization": "0.8",
+		"-store-gateway.query-protection.rejection.threshold.cpu-utilization":  "0.8",
+		"-store-gateway.query-protection.rejection.threshold.heap-utilization": "0.8",
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(ingester, storeGateway))
 }

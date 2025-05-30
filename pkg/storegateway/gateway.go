@@ -68,7 +68,7 @@ type Config struct {
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
 
-	InstanceLimits configs.InstanceLimits `yaml:"instance_limits"`
+	QueryProtection configs.QueryProtection `yaml:"query_protection"`
 
 	// Hedged Request
 	HedgedRequest bucket.HedgedRequestConfig `yaml:"hedged_request"`
@@ -83,7 +83,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.EnabledTenants, "store-gateway.enabled-tenants", "Comma separated list of tenants whose store metrics this storegateway can process. If specified, only these tenants will be handled by storegateway, otherwise this storegateway will be enabled for all the tenants in the store-gateway cluster.")
 	f.Var(&cfg.DisabledTenants, "store-gateway.disabled-tenants", "Comma separated list of tenants whose store metrics this storegateway cannot process. If specified, a storegateway that would normally pick the specified tenant(s) for processing will ignore them instead.")
 	cfg.HedgedRequest.RegisterFlagsWithPrefix(f, "store-gateway.")
-	cfg.InstanceLimits.RegisterFlagsWithPrefix(f, "store-gateway.")
+	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "store-gateway.")
 }
 
 // Validate the Config.
@@ -102,7 +102,7 @@ func (cfg *Config) Validate(limits validation.Limits, monitoredResources flagext
 		return err
 	}
 
-	if err := cfg.InstanceLimits.Validate(monitoredResources); err != nil {
+	if err := cfg.QueryProtection.Validate(monitoredResources); err != nil {
 		return err
 	}
 
@@ -244,11 +244,11 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 
 	if resourceMonitor != nil {
 		resourceLimits := make(map[resource.Type]float64)
-		if gatewayCfg.InstanceLimits.CPUUtilization > 0 {
-			resourceLimits[resource.CPU] = gatewayCfg.InstanceLimits.CPUUtilization
+		if gatewayCfg.QueryProtection.Rejection.Threshold.CPUUtilization > 0 {
+			resourceLimits[resource.CPU] = gatewayCfg.QueryProtection.Rejection.Threshold.CPUUtilization
 		}
-		if gatewayCfg.InstanceLimits.HeapUtilization > 0 {
-			resourceLimits[resource.Heap] = gatewayCfg.InstanceLimits.HeapUtilization
+		if gatewayCfg.QueryProtection.Rejection.Threshold.HeapUtilization > 0 {
+			resourceLimits[resource.Heap] = gatewayCfg.QueryProtection.Rejection.Threshold.HeapUtilization
 		}
 		g.resourceBasedLimiter, err = util_limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits, reg, "store-gateway")
 		if err != nil {
@@ -437,7 +437,7 @@ func (g *StoreGateway) checkResourceUtilization() error {
 
 	if err := g.resourceBasedLimiter.AcceptNewRequest(); err != nil {
 		level.Warn(g.logger).Log("msg", "failed to accept request", "err", err)
-		return httpgrpc.Errorf(http.StatusTooManyRequests, "failed to query: %s", util_limiter.ErrResourceLimitReachedStr)
+		return httpgrpc.Errorf(http.StatusServiceUnavailable, "failed to query: %s", util_limiter.ErrResourceLimitReachedStr)
 	}
 
 	return nil

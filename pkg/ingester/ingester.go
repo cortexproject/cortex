@@ -47,6 +47,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querysharding"
@@ -160,6 +161,8 @@ type Config struct {
 
 	// If enabled, the metadata API returns all metadata regardless of the limits.
 	SkipMetadataLimits bool `yaml:"skip_metadata_limits"`
+
+	QueryProtection configs.QueryProtection `yaml:"query_protection"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -184,6 +187,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SkipMetadataLimits, "ingester.skip-metadata-limits", true, "If enabled, the metadata API returns all metadata regardless of the limits.")
 
 	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
+	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "ingester.")
 }
 
 func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
@@ -195,7 +199,7 @@ func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
 		logutil.WarnExperimentalUse("String interning for metrics labels Enabled")
 	}
 
-	if err := cfg.DefaultLimits.Validate(monitoredResources); err != nil {
+	if err := cfg.QueryProtection.Validate(monitoredResources); err != nil {
 		return err
 	}
 
@@ -790,11 +794,11 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 
 	if resourceMonitor != nil {
 		resourceLimits := make(map[resource.Type]float64)
-		if cfg.DefaultLimits.CPUUtilization > 0 {
-			resourceLimits[resource.CPU] = cfg.DefaultLimits.CPUUtilization
+		if cfg.QueryProtection.Rejection.Threshold.CPUUtilization > 0 {
+			resourceLimits[resource.CPU] = cfg.QueryProtection.Rejection.Threshold.CPUUtilization
 		}
-		if cfg.DefaultLimits.HeapUtilization > 0 {
-			resourceLimits[resource.Heap] = cfg.DefaultLimits.HeapUtilization
+		if cfg.QueryProtection.Rejection.Threshold.HeapUtilization > 0 {
+			resourceLimits[resource.Heap] = cfg.QueryProtection.Rejection.Threshold.HeapUtilization
 		}
 		i.resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits, registerer, "ingester")
 		if err != nil {
@@ -2241,7 +2245,7 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 	if i.resourceBasedLimiter != nil {
 		if err := i.resourceBasedLimiter.AcceptNewRequest(); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to accept request", "err", err)
-			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "failed to query: %s", limiter.ErrResourceLimitReachedStr)
+			return nil, httpgrpc.Errorf(http.StatusServiceUnavailable, "failed to query: %s", limiter.ErrResourceLimitReachedStr)
 		}
 	}
 

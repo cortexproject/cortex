@@ -438,15 +438,15 @@ func newCacheMetrics(reg prometheus.Registerer) *cacheMetrics {
 			Help: "Total number of parquet cache hits",
 		}, []string{"name"}),
 		misses: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_parquet_queryable_misses_total",
+			Name: "cortex_parquet_queryable_cache_misses_total",
 			Help: "Total number of parquet cache misses",
 		}, []string{"name"}),
 		evictions: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_parquet_queryable_evictions_total",
+			Name: "cortex_parquet_queryable_cache_evictions_total",
 			Help: "Total number of parquet cache evictions",
 		}, []string{"name"}),
 		size: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_parquet_queryable_size",
+			Name: "cortex_parquet_queryable_cache_item_count",
 			Help: "Current number of cached parquet items",
 		}, []string{"name"}),
 	}
@@ -497,10 +497,10 @@ func (c *Cache[T]) Set(path string, reader T) {
 type noopCache[T any] struct {
 }
 
-func (n noopCache[T]) Get(path string) (r T) {
+func (n noopCache[T]) Get(_ string) (r T) {
 	return
 }
 
-func (n noopCache[T]) Set(path string, reader T) {
-	return
+func (n noopCache[T]) Set(_ string, _ T) {
+
 }

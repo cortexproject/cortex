@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,7 +24,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -40,6 +41,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/shipper"
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -3814,12 +3816,16 @@ func (w *wrappedExpandedPostingsCache) PurgeExpiredItems() {
 
 type mockQueryStreamServer struct {
 	grpc.ServerStream
-	ctx context.Context
+	ctx         context.Context
+	shouldPanic bool
 
 	series []client.TimeSeriesChunk
 }
 
 func (m *mockQueryStreamServer) Send(response *client.QueryStreamResponse) error {
+	if m.shouldPanic {
+		panic("runtime error")
+	}
 	m.series = append(m.series, response.Chunkseries...)
 	return nil
 }
@@ -6937,6 +6943,74 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 }
 
+func TestIngesterPanicHandling(t *testing.T) {
+	ctx := context.Background()
+	cfg := defaultIngesterTestConfig(t)
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
+	cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown = true
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	// Induce panic in matchers cache calls
+	i.matchersCache = &panickingMatchersCache{}
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, i))
+	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	pushSingleSampleAtTime(t, i, 1*time.Minute.Milliseconds())
+
+	ctx = user.InjectOrgID(context.Background(), userID)
+	checkRuntimeError := func(err error) {
+		var re runtime.Error
+		ok := errors.As(err, &re)
+		require.True(t, ok, "expected runtime.Error")
+	}
+
+	err = i.QueryStream(&client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   math.MaxInt64,
+		Matchers:         []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: "foo"}},
+	}, &mockQueryStreamServer{ctx: ctx})
+	require.Error(t, err)
+	checkRuntimeError(err)
+
+	_, err = i.LabelNames(ctx, &client.LabelNamesRequest{
+		Matchers: &client.LabelMatchers{
+			Matchers: []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: "foo"}},
+		},
+		Limit: int64(1),
+	})
+	require.Error(t, err)
+	checkRuntimeError(err)
+
+	_, err = i.LabelValues(ctx, &client.LabelValuesRequest{
+		Matchers: &client.LabelMatchers{
+			Matchers: []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: "foo"}},
+		},
+		Limit: int64(1),
+	})
+	require.Error(t, err)
+	checkRuntimeError(err)
+
+	_, err = i.MetricsForLabelMatchers(ctx, &client.MetricsForLabelMatchersRequest{
+		MatchersSet: []*client.LabelMatchers{{
+			Matchers: []*client.LabelMatcher{
+				{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "unknown"},
+			},
+		}},
+		Limit: int64(1),
+	})
+	require.Error(t, err)
+	checkRuntimeError(err)
+}
+
 // mockTenantLimits exposes per-tenant limits based on a provided map
 type mockTenantLimits struct {
 	limits map[string]*validation.Limits
@@ -7003,4 +7077,12 @@ func CreateBlock(t *testing.T, ctx context.Context, dir string, mint, maxt int64
 	require.NoError(t, err)
 
 	return block
+}
+
+type panickingMatchersCache struct{}
+
+func (_ *panickingMatchersCache) GetOrSet(_ storecache.ConversionLabelMatcher, _ storecache.NewItemFunc) (*labels.Matcher, error) {
+	var a []int
+	a[1] = 2 // index out of range
+	return nil, nil
 }

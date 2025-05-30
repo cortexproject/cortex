@@ -92,7 +92,8 @@ type Config struct {
 	EnablePromQLExperimentalFunctions bool `yaml:"enable_promql_experimental_functions"`
 
 	// Query Parquet files if available
-	EnableParquetQueryable bool `yaml:"enable_parquet_queryable" doc:"hidden"`
+	EnableParquetQueryable         bool `yaml:"enable_parquet_queryable" doc:"hidden"`
+	ParquetQueryableShardCacheSize int  `yaml:"parquet_queryable_shard_cache_size" doc:"hidden"`
 }
 
 var (
@@ -139,6 +140,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
 	f.BoolVar(&cfg.EnablePromQLExperimentalFunctions, "querier.enable-promql-experimental-functions", false, "[Experimental] If true, experimental promQL functions are enabled.")
 	f.BoolVar(&cfg.EnableParquetQueryable, "querier.enable-parquet-queryable", false, "[Experimental] If true, querier will try to query the parquet files if available.")
+	f.IntVar(&cfg.ParquetQueryableShardCacheSize, "querier.parquet-queryable-shard-cache-size", 512, "[Experimental] [Experimental] Maximum size of the Parquet queryable shard cache. 0 to disable.")
 }
 
 // Validate the config

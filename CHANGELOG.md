@@ -46,6 +46,7 @@
 * [BUGFIX] Query Frontend: Fix query frontend per `user` metrics clean up. #6698
 * [BUGFIX] Add `__markers__` tenant ID validation. #6761
 * [BUGFIX] Ring: Fix nil pointer exception when token is shared. #6768
+* [BUGFIX] Fix race condition in active user. #6773
 
 ## 1.19.0 2025-02-27
 

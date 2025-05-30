@@ -68,6 +68,31 @@ func (c ClientCachingModeYes) Build() Completed {
 	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }
 
+type ClientCapa Incomplete
+
+func (b Builder) ClientCapa() (c ClientCapa) {
+	c = ClientCapa{cs: get(), ks: b.ks}
+	c.cs.s = append(c.cs.s, "CLIENT", "CAPA")
+	return c
+}
+
+func (c ClientCapa) Capability(capability ...string) ClientCapaCapability {
+	c.cs.s = append(c.cs.s, capability...)
+	return (ClientCapaCapability)(c)
+}
+
+type ClientCapaCapability Incomplete
+
+func (c ClientCapaCapability) Capability(capability ...string) ClientCapaCapability {
+	c.cs.s = append(c.cs.s, capability...)
+	return c
+}
+
+func (c ClientCapaCapability) Build() Completed {
+	c.cs.Build()
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}
+
 type ClientGetname Incomplete
 
 func (b Builder) ClientGetname() (c ClientGetname) {
@@ -184,7 +209,7 @@ func (c ClientKill) SkipmeNo() ClientKillSkipmeNo {
 }
 
 func (c ClientKill) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -211,7 +236,7 @@ func (c ClientKillAddr) SkipmeNo() ClientKillSkipmeNo {
 }
 
 func (c ClientKillAddr) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -268,7 +293,7 @@ func (c ClientKillId) SkipmeNo() ClientKillSkipmeNo {
 }
 
 func (c ClientKillId) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -330,7 +355,7 @@ func (c ClientKillIpPort) SkipmeNo() ClientKillSkipmeNo {
 }
 
 func (c ClientKillIpPort) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -352,7 +377,7 @@ func (c ClientKillLaddr) SkipmeNo() ClientKillSkipmeNo {
 }
 
 func (c ClientKillLaddr) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -371,7 +396,7 @@ func (c ClientKillMaxage) Build() Completed {
 type ClientKillSkipmeNo Incomplete
 
 func (c ClientKillSkipmeNo) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -383,7 +408,7 @@ func (c ClientKillSkipmeNo) Build() Completed {
 type ClientKillSkipmeYes Incomplete
 
 func (c ClientKillSkipmeYes) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -420,7 +445,7 @@ func (c ClientKillTypeMaster) SkipmeNo() ClientKillSkipmeNo {
 }
 
 func (c ClientKillTypeMaster) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -457,7 +482,7 @@ func (c ClientKillTypeNormal) SkipmeNo() ClientKillSkipmeNo {
 }
 
 func (c ClientKillTypeNormal) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -494,7 +519,7 @@ func (c ClientKillTypePubsub) SkipmeNo() ClientKillSkipmeNo {
 }
 
 func (c ClientKillTypePubsub) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -531,7 +556,7 @@ func (c ClientKillTypeReplica) SkipmeNo() ClientKillSkipmeNo {
 }
 
 func (c ClientKillTypeReplica) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -563,7 +588,7 @@ func (c ClientKillUser) SkipmeNo() ClientKillSkipmeNo {
 }
 
 func (c ClientKillUser) Maxage(maxage int64) ClientKillMaxage {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(maxage, 10))
+	c.cs.s = append(c.cs.s, "MAXAGE", strconv.FormatInt(maxage, 10))
 	return (ClientKillMaxage)(c)
 }
 
@@ -842,12 +867,12 @@ func (b Builder) ClientSetinfo() (c ClientSetinfo) {
 }
 
 func (c ClientSetinfo) Libname(libname string) ClientSetinfoAttrLibname {
-	c.cs.s = append(c.cs.s, libname)
+	c.cs.s = append(c.cs.s, "LIB-NAME", libname)
 	return (ClientSetinfoAttrLibname)(c)
 }
 
 func (c ClientSetinfo) Libver(libver string) ClientSetinfoAttrLibver {
-	c.cs.s = append(c.cs.s, libver)
+	c.cs.s = append(c.cs.s, "LIB-VER", libver)
 	return (ClientSetinfoAttrLibver)(c)
 }
 

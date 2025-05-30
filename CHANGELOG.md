@@ -2,6 +2,7 @@
 
 ## master / unreleased
 * [ENHANCEMENT] Distributor: Add min/max schema validation for NativeHistograms. #6766
+* [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
 * [CHANGE] Validate a tenantID when to use a single tenant resolver. #6727
@@ -46,6 +47,8 @@
 * [BUGFIX] Ingester: Avoid resharding for query when restart readonly ingesters. #6642
 * [BUGFIX] Query Frontend: Fix query frontend per `user` metrics clean up. #6698
 * [BUGFIX] Add `__markers__` tenant ID validation. #6761
+* [BUGFIX] Ring: Fix nil pointer exception when token is shared. #6768
+* [BUGFIX] Fix race condition in active user. #6773
 
 ## 1.19.0 2025-02-27
 

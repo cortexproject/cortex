@@ -95,8 +95,8 @@ func (m *ActiveUsers) PurgeInactiveUsers(deadline int64) []string {
 }
 
 func (m *ActiveUsers) ActiveUsers(deadline int64) []string {
-	active := make([]string, 0, len(m.timestamps))
 	m.mu.RLock()
+	active := make([]string, 0, len(m.timestamps))
 	defer m.mu.RUnlock()
 	for userID, ts := range m.timestamps {
 		if ts.Load() > deadline {

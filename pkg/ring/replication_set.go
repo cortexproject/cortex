@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // ReplicationSet describes the instances to talk to for a given key, and how
@@ -77,6 +78,10 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 			tracker.done(res.instance, res.res, res.err)
 			if res.err != nil {
 				if tracker.failed() && (!partialDataEnabled || tracker.failedCompletely()) {
+					return nil, res.err
+				}
+
+				if validation.IsLimitError(res.err) {
 					return nil, res.err
 				}
 

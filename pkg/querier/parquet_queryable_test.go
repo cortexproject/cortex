@@ -19,6 +19,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestParquetQueryableFallbackLogic(t *testing.T) {
@@ -27,33 +29,37 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 	minT := int64(10)
 	maxT := int64(20)
 
-	stores := &blocksStoreSetMock{mockedResponses: []interface{}{
-		map[BlocksStoreClient][]ulid.ULID{
-			&storeGatewayClientMock{remoteAddr: "1.1.1.1",
-				mockedSeriesResponses: []*storepb.SeriesResponse{
-					mockSeriesResponse(labels.Labels{{Name: labels.MetricName, Value: "fromSg"}}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
-					mockHintsResponse(block1, block2),
-				},
-				mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-					Names:    namesFromSeries(labels.FromMap(map[string]string{labels.MetricName: "fromSg", "fromSg": "fromSg"})),
-					Warnings: []string{},
-					Hints:    mockNamesHints(block1, block2),
-				},
-				mockedLabelValuesResponse: &storepb.LabelValuesResponse{
-					Values:   valuesFromSeries(labels.MetricName, labels.FromMap(map[string]string{labels.MetricName: "fromSg", "fromSg": "fromSg"})),
-					Warnings: []string{},
-					Hints:    mockValuesHints(block1, block2),
-				},
-			}: {block1, block2}},
-	},
+	createStore := func() *blocksStoreSetMock {
+		return &blocksStoreSetMock{mockedResponses: []interface{}{
+			map[BlocksStoreClient][]ulid.ULID{
+				&storeGatewayClientMock{remoteAddr: "1.1.1.1",
+					mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{{Name: labels.MetricName, Value: "fromSg"}}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockHintsResponse(block1, block2),
+					},
+					mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+						Names:    namesFromSeries(labels.FromMap(map[string]string{labels.MetricName: "fromSg", "fromSg": "fromSg"})),
+						Warnings: []string{},
+						Hints:    mockNamesHints(block1, block2),
+					},
+					mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+						Values:   valuesFromSeries(labels.MetricName, labels.FromMap(map[string]string{labels.MetricName: "fromSg", "fromSg": "fromSg"})),
+						Warnings: []string{},
+						Hints:    mockValuesHints(block1, block2),
+					},
+				}: {block1, block2}},
+		},
+		}
 	}
 
 	matchers := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "fromSg"),
 	}
 	ctx := user.InjectOrgID(context.Background(), "user-1")
-	t.Run("should fallback all blocks", func(t *testing.T) {
+
+	t.Run("should fallback when vertical sharding is enabled", func(t *testing.T) {
 		finder := &blocksFinderMock{}
+		stores := createStore()
 
 		q := &blocksStoreQuerier{
 			minT:        minT,
@@ -76,6 +82,50 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			blocksStoreQuerier: q,
 			parquetQuerier:     mParquetQuerier,
 			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:             defaultOverrides(t, 4),
+			logger:             log.NewNopLogger(),
+		}
+
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
+
+		t.Run("select", func(t *testing.T) {
+			ss := pq.Select(ctx, true, nil, matchers...)
+			require.NoError(t, ss.Err())
+			require.Len(t, stores.queriedBlocks, 2)
+			require.Len(t, mParquetQuerier.queriedBlocks, 0)
+		})
+	})
+
+	t.Run("should fallback all blocks", func(t *testing.T) {
+		finder := &blocksFinderMock{}
+		stores := createStore()
+
+		q := &blocksStoreQuerier{
+			minT:        minT,
+			maxT:        maxT,
+			finder:      finder,
+			stores:      stores,
+			consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+			logger:      log.NewNopLogger(),
+			metrics:     newBlocksStoreQueryableMetrics(prometheus.NewPedanticRegistry()),
+			limits:      &blocksStoreLimitsMock{},
+
+			storeGatewayConsistencyCheckMaxAttempts: 3,
+		}
+
+		mParquetQuerier := &mockParquetQuerier{}
+		pq := &parquetQuerierWithFallback{
+			minT:               minT,
+			maxT:               maxT,
+			finder:             finder,
+			blocksStoreQuerier: q,
+			parquetQuerier:     mParquetQuerier,
+			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:             defaultOverrides(t, 0),
+			logger:             log.NewNopLogger(),
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
@@ -111,6 +161,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 
 	t.Run("should fallback partial blocks", func(t *testing.T) {
 		finder := &blocksFinderMock{}
+		stores := createStore()
 
 		q := &blocksStoreQuerier{
 			minT:        minT,
@@ -133,6 +184,8 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			blocksStoreQuerier: q,
 			parquetQuerier:     mParquetQuerier,
 			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:             defaultOverrides(t, 0),
+			logger:             log.NewNopLogger(),
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
@@ -174,6 +227,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 
 	t.Run("should query only parquet blocks when possible", func(t *testing.T) {
 		finder := &blocksFinderMock{}
+		stores := createStore()
 
 		q := &blocksStoreQuerier{
 			minT:        minT,
@@ -196,6 +250,8 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			blocksStoreQuerier: q,
 			parquetQuerier:     mParquetQuerier,
 			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:             defaultOverrides(t, 0),
+			logger:             log.NewNopLogger(),
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
@@ -235,6 +291,16 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		})
 	})
 
+}
+
+func defaultOverrides(t *testing.T, queryVerticalShardSize int) *validation.Overrides {
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	limits.QueryVerticalShardSize = queryVerticalShardSize
+
+	overrides, err := validation.NewOverrides(limits, nil)
+	require.NoError(t, err)
+	return overrides
 }
 
 type mockParquetQuerier struct {

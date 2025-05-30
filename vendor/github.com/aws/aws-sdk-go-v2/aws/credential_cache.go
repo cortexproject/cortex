@@ -172,10 +172,27 @@ func (p *CredentialsCache) getCreds() (Credentials, bool) {
 	return *c, true
 }
 
+// ProviderSources returns a list of where the underlying credential provider
+// has been sourced, if available. Returns empty if the provider doesn't implement
+// the interface
+func (p *CredentialsCache) ProviderSources() []CredentialSource {
+	asSource, ok := p.provider.(CredentialProviderSource)
+	if !ok {
+		return []CredentialSource{}
+	}
+	return asSource.ProviderSources()
+}
+
 // Invalidate will invalidate the cached credentials. The next call to Retrieve
 // will cause the provider's Retrieve method to be called.
 func (p *CredentialsCache) Invalidate() {
 	p.creds.Store((*Credentials)(nil))
+}
+
+// IsCredentialsProvider returns whether credential provider wrapped by CredentialsCache
+// matches the target provider type.
+func (p *CredentialsCache) IsCredentialsProvider(target CredentialsProvider) bool {
+	return IsCredentialsProvider(p.provider, target)
 }
 
 // HandleFailRefreshCredentialsCacheStrategy is an interface for

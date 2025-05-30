@@ -57,6 +57,7 @@ var (
 type options struct {
 	levelFunc               CodeToLevel
 	loggableEvents          []LoggableEvent
+	errorToFieldsFunc       ErrorToFields
 	codeFunc                ErrorToCode
 	durationFieldFunc       DurationToFields
 	timestampFormat         string
@@ -88,6 +89,9 @@ func evaluateClientOpt(opts []Option) *options {
 
 // DurationToFields function defines how to produce duration fields for logging.
 type DurationToFields func(duration time.Duration) Fields
+
+// ErrorToFields function extract fields from error.
+type ErrorToFields func(err error) Fields
 
 // ErrorToCode function determines the error code of an error.
 // This makes using custom errors with grpc middleware easier.
@@ -138,7 +142,11 @@ type (
 	fieldsFromCtxCallMetaFn func(ctx context.Context, c interceptors.CallMeta) Fields
 )
 
-// WithFieldsFromContext allows overriding existing or adding extra fields to all log messages per given context
+// WithFieldsFromContext allows overriding existing or adding extra fields to all log messages per given context.
+// If called multiple times, it overwrites the existing FieldsFromContext/WithFieldsFromContextAndCallMeta function.
+// If you need to use multiple FieldsFromContext functions then you should combine them in a wrapper fieldsFromCtxFn.
+// Only one of WithFieldsFromContextAndCallMeta or WithFieldsFromContext should
+// be used, using both will result in the last one overwriting the previous.
 func WithFieldsFromContext(f fieldsFromCtxFn) Option {
 	return func(o *options) {
 		o.fieldsFromCtxCallMetaFn = func(ctx context.Context, _ interceptors.CallMeta) Fields {
@@ -148,6 +156,10 @@ func WithFieldsFromContext(f fieldsFromCtxFn) Option {
 }
 
 // WithFieldsFromContextAndCallMeta allows overriding existing or adding extra fields to all log messages per given context and interceptor.CallMeta
+// If called multiple times, it overwrites the existing FieldsFromContext/WithFieldsFromContextAndCallMeta function.
+// If you need to use multiple WithFieldsFromContextAndCallMeta functions then you should combine them in a wrapper fieldsFromCtxCallMetaFn.
+// Only one of WithFieldsFromContextAndCallMeta or WithFieldsFromContext should
+// be used, using both will result in the last one overwriting the previous.
 func WithFieldsFromContextAndCallMeta(f fieldsFromCtxCallMetaFn) Option {
 	return func(o *options) {
 		o.fieldsFromCtxCallMetaFn = f
@@ -158,6 +170,13 @@ func WithFieldsFromContextAndCallMeta(f fieldsFromCtxCallMetaFn) Option {
 func WithLogOnEvents(events ...LoggableEvent) Option {
 	return func(o *options) {
 		o.loggableEvents = events
+	}
+}
+
+// WithErrorFields allows to extract logging fields from an error.
+func WithErrorFields(f ErrorToFields) Option {
+	return func(o *options) {
+		o.errorToFieldsFunc = f
 	}
 }
 

@@ -13,8 +13,8 @@ import (
 	"os"
 	"regexp"
 
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/pkg/errors"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 // PathOrContent is a flag type that defines two flags to fetch bytes. Either from file (*-file flag) or content (* flag).

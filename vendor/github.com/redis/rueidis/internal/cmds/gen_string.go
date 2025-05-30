@@ -729,6 +729,63 @@ func (c Set) Key(key string) SetKey {
 	return (SetKey)(c)
 }
 
+type SetConditionIfeq Incomplete
+
+func (c SetConditionIfeq) Get() SetGet {
+	c.cs.s = append(c.cs.s, "GET")
+	return (SetGet)(c)
+}
+
+func (c SetConditionIfeq) ExSeconds(seconds int64) SetExpirationExSeconds {
+	c.cs.s = append(c.cs.s, "EX", strconv.FormatInt(seconds, 10))
+	return (SetExpirationExSeconds)(c)
+}
+
+func (c SetConditionIfeq) PxMilliseconds(milliseconds int64) SetExpirationPxMilliseconds {
+	c.cs.s = append(c.cs.s, "PX", strconv.FormatInt(milliseconds, 10))
+	return (SetExpirationPxMilliseconds)(c)
+}
+
+func (c SetConditionIfeq) ExatTimestamp(timestamp int64) SetExpirationExatTimestamp {
+	c.cs.s = append(c.cs.s, "EXAT", strconv.FormatInt(timestamp, 10))
+	return (SetExpirationExatTimestamp)(c)
+}
+
+func (c SetConditionIfeq) PxatMillisecondsTimestamp(millisecondsTimestamp int64) SetExpirationPxatMillisecondsTimestamp {
+	c.cs.s = append(c.cs.s, "PXAT", strconv.FormatInt(millisecondsTimestamp, 10))
+	return (SetExpirationPxatMillisecondsTimestamp)(c)
+}
+
+func (c SetConditionIfeq) Keepttl() SetExpirationKeepttl {
+	c.cs.s = append(c.cs.s, "KEEPTTL")
+	return (SetExpirationKeepttl)(c)
+}
+
+func (c SetConditionIfeq) Ex(duration time.Duration) SetExpirationExSecTyped {
+	c.cs.s = append(c.cs.s, "EX", strconv.FormatInt(int64(duration/time.Second), 10))
+	return (SetExpirationExSecTyped)(c)
+}
+
+func (c SetConditionIfeq) Px(duration time.Duration) SetExpirationPxMsTyped {
+	c.cs.s = append(c.cs.s, "PX", strconv.FormatInt(int64(duration/time.Millisecond), 10))
+	return (SetExpirationPxMsTyped)(c)
+}
+
+func (c SetConditionIfeq) Exat(timestamp time.Time) SetExpirationExatTimestampTyped {
+	c.cs.s = append(c.cs.s, "EXAT", strconv.FormatInt(timestamp.Unix(), 10))
+	return (SetExpirationExatTimestampTyped)(c)
+}
+
+func (c SetConditionIfeq) Pxat(timestamp time.Time) SetExpirationPxatMsTimestampTyped {
+	c.cs.s = append(c.cs.s, "PXAT", strconv.FormatInt(timestamp.UnixMilli(), 10))
+	return (SetExpirationPxatMsTimestampTyped)(c)
+}
+
+func (c SetConditionIfeq) Build() Completed {
+	c.cs.Build()
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}
+
 type SetConditionNx Incomplete
 
 func (c SetConditionNx) Get() SetGet {
@@ -975,6 +1032,11 @@ func (c SetValue) Nx() SetConditionNx {
 func (c SetValue) Xx() SetConditionXx {
 	c.cs.s = append(c.cs.s, "XX")
 	return (SetConditionXx)(c)
+}
+
+func (c SetValue) Ifeq(ifeq string) SetConditionIfeq {
+	c.cs.s = append(c.cs.s, "IFEQ", ifeq)
+	return (SetConditionIfeq)(c)
 }
 
 func (c SetValue) Get() SetGet {

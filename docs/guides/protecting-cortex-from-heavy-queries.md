@@ -57,4 +57,4 @@ ingester:
         heap_utilization: 0.8
 ```
 
-See https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=instance_limits for details.
+See https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=query_protection for details.

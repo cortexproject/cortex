@@ -3,7 +3,6 @@ package instantquery
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -17,8 +16,8 @@ import (
 	"github.com/prometheus/common/model"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/httpgrpc"
-	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -67,7 +66,7 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 	var err error
 	result.Time, err = util.ParseTimeParam(r, "time", c.now().Unix())
 	if err != nil {
-		return nil, decorateWithParamName(err, "time")
+		return nil, queryapi.DecorateWithParamName(err, "time")
 	}
 
 	result.Query = r.FormValue("query")
@@ -226,14 +225,6 @@ func (instantQueryCodec) MergeResponse(ctx context.Context, req tripperware.Requ
 	}
 
 	return tripperware.MergeResponse(ctx, true, req, responses...)
-}
-
-func decorateWithParamName(err error, field string) error {
-	errTmpl := "invalid parameter %q; %v"
-	if status, ok := status.FromError(err); ok {
-		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
-	}
-	return fmt.Errorf(errTmpl, field, err)
 }
 
 func marshalResponse(resp *tripperware.PrometheusResponse, acceptHeader string) (string, []byte, error) {

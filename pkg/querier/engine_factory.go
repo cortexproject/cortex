@@ -26,7 +26,7 @@ func NewEngineFactory(opts promql.EngineOpts, enableThanosEngine bool, reg prome
 	if enableThanosEngine {
 		thanosEngine = engine.New(engine.Opts{
 			EngineOpts:        opts,
-			LogicalOptimizers: logicalplan.AllOptimizers,
+			LogicalOptimizers: logicalplan.DefaultOptimizers,
 			EnableAnalysis:    true,
 		})
 	}

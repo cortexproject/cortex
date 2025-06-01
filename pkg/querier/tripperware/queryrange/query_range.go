@@ -3,7 +3,6 @@ package queryrange
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -11,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -36,9 +35,6 @@ var (
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: false,
 	}.Froze()
-	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "%s", "end timestamp must not be before start time")
-	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "%s", "zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "%s", "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 
 	// Name of the cache control header.
 	cacheControlHeader = "Cache-Control"
@@ -104,31 +100,31 @@ func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwa
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
 	if err != nil {
-		return nil, decorateWithParamName(err, "start")
+		return nil, queryapi.DecorateWithParamName(err, "start")
 	}
 
 	result.End, err = util.ParseTime(r.FormValue("end"))
 	if err != nil {
-		return nil, decorateWithParamName(err, "end")
+		return nil, queryapi.DecorateWithParamName(err, "end")
 	}
 
 	if result.End < result.Start {
-		return nil, errEndBeforeStart
+		return nil, queryapi.ErrEndBeforeStart
 	}
 
 	result.Step, err = util.ParseDurationMs(r.FormValue("step"))
 	if err != nil {
-		return nil, decorateWithParamName(err, "step")
+		return nil, queryapi.DecorateWithParamName(err, "step")
 	}
 
 	if result.Step <= 0 {
-		return nil, errNegativeStep
+		return nil, queryapi.ErrNegativeStep
 	}
 
 	// For safety, limit the number of returned points per timeseries.
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
 	if (result.End-result.Start)/result.Step > 11000 {
-		return nil, errStepTooSmall
+		return nil, queryapi.ErrStepTooSmall
 	}
 
 	result.Query = r.FormValue("query")
@@ -271,12 +267,4 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, _ *http.Request, res 
 
 func encodeDurationMs(d int64) string {
 	return strconv.FormatFloat(float64(d)/float64(time.Second/time.Millisecond), 'f', -1, 64)
-}
-
-func decorateWithParamName(err error, field string) error {
-	errTmpl := "invalid parameter %q; %v"
-	if status, ok := status.FromError(err); ok {
-		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
-	}
-	return fmt.Errorf(errTmpl, field, err)
 }

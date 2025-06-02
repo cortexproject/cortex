@@ -25,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -149,6 +150,10 @@ func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket,
 	overrides, err := validation.NewOverrides(*limits, nil)
 	require.NoError(t, err)
 
-	c := newConverter(cfg, bucketClient, storageCfg, blockRanges.ToMilliseconds(), logger, registry, overrides)
+	scanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
+		Strategy: cortex_tsdb.UserScanStrategyList,
+	}, bucketClient, logger)
+	require.NoError(t, err)
+	c := newConverter(cfg, bucketClient, storageCfg, blockRanges.ToMilliseconds(), logger, registry, overrides, scanner)
 	return c, logger, registry
 }

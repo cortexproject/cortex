@@ -650,8 +650,17 @@ func (c *Compactor) starting(ctx context.Context) error {
 	// Wrap the bucket client to write block deletion marks in the global location too.
 	c.bucketClient = bucketindex.BucketWithGlobalMarkers(c.bucketClient)
 
+	cleanerBucketClient := c.bucketClient
+
+	if c.compactorCfg.CachingBucketEnabled {
+		cleanerBucketClient, err = cortex_tsdb.CreateCachingBucketForCompactor(c.storageCfg.BucketStore.MetadataCache, true, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "cleaner"}, c.registerer))
+		if err != nil {
+			return errors.Wrap(err, "create caching bucket")
+		}
+	}
+
 	// Create the users scanner.
-	c.usersScanner = cortex_tsdb.NewUsersScanner(c.bucketClient, c.ownUserForCleanUp, c.parentLogger)
+	c.usersScanner = cortex_tsdb.NewUsersScanner(cleanerBucketClient, c.ownUserForCleanUp, c.parentLogger)
 
 	var cleanerRingLifecyclerID = "default-cleaner"
 	// Initialize the compactors ring if sharding is enabled.
@@ -727,16 +736,11 @@ func (c *Compactor) starting(ctx context.Context) error {
 		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
 		ShardingStrategy:                   c.compactorCfg.ShardingStrategy,
 		CompactionStrategy:                 c.compactorCfg.CompactionStrategy,
-	}, c.bucketClient, c.usersScanner, c.compactorCfg.CompactionVisitMarkerTimeout, c.limits, c.parentLogger, cleanerRingLifecyclerID, c.registerer, c.compactorCfg.CleanerVisitMarkerTimeout, c.compactorCfg.CleanerVisitMarkerFileUpdateInterval,
+	}, cleanerBucketClient, c.usersScanner, c.compactorCfg.CompactionVisitMarkerTimeout, c.limits, c.parentLogger, cleanerRingLifecyclerID, c.registerer, c.compactorCfg.CleanerVisitMarkerTimeout, c.compactorCfg.CleanerVisitMarkerFileUpdateInterval,
 		c.compactorMetrics.syncerBlocksMarkedForDeletion, c.compactorMetrics.remainingPlannedCompactions)
 
 	if c.compactorCfg.CachingBucketEnabled {
-		matchers := cortex_tsdb.NewMatchers()
-		// Do not cache tenant deletion marker and block deletion marker for compactor
-		matchers.SetMetaFileMatcher(func(name string) bool {
-			return strings.HasSuffix(name, "/"+metadata.MetaFilename)
-		})
-		c.bucketClient, err = cortex_tsdb.CreateCachingBucket(cortex_tsdb.ChunksCacheConfig{}, c.storageCfg.BucketStore.MetadataCache, matchers, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
+		c.bucketClient, err = cortex_tsdb.CreateCachingBucketForCompactor(c.storageCfg.BucketStore.MetadataCache, false, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
 		if err != nil {
 			return errors.Wrap(err, "create caching bucket")
 		}

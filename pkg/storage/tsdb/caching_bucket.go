@@ -245,6 +245,47 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 	return storecache.NewCachingBucket(bkt, cfg, logger, reg)
 }
 
+func CreateCachingBucketForCompactor(metadataConfig MetadataCacheConfig, cleaner bool, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
+	matchers := NewMatchers()
+	// Do not cache block deletion marker for compactor
+	matchers.SetMetaFileMatcher(func(name string) bool {
+		return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+TenantDeletionMarkFile)
+	})
+	cfg := cache.NewCachingBucketConfig()
+	cachingConfigured := false
+
+	metadataCache, err := createMetadataCache("metadata-cache", &metadataConfig.MetadataCacheBackend, logger, reg)
+	if err != nil {
+		return nil, errors.Wrapf(err, "metadata-cache")
+	}
+	if metadataCache != nil {
+		cachingConfigured = true
+		metadataCache = cache.NewTracingCache(metadataCache)
+
+		codec := snappyIterCodec{storecache.JSONIterCodec{}}
+		cfg.CacheIter("tenants-iter", metadataCache, matchers.GetTenantsIterMatcher(), metadataConfig.TenantsListTTL, codec, "")
+		cfg.CacheAttributes("metafile", metadataCache, matchers.GetMetafileMatcher(), metadataConfig.MetafileAttributesTTL)
+
+		// Don't cache bucket index get and tenant blocks iter if it is cleaner.
+		if !cleaner {
+			cfg.CacheExists("metafile", metadataCache, matchers.GetMetafileMatcher(), metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
+			cfg.CacheGet("metafile", metadataCache, matchers.GetMetafileMatcher(), metadataConfig.MetafileMaxSize, metadataConfig.MetafileContentTTL, metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
+			cfg.CacheGet("bucket-index", metadataCache, matchers.GetBucketIndexMatcher(), metadataConfig.BucketIndexMaxSize, metadataConfig.BucketIndexContentTTL /* do not cache exist / not exist: */, 0, 0)
+			cfg.CacheIter("tenant-blocks-iter", metadataCache, matchers.GetTenantBlocksIterMatcher(), metadataConfig.TenantBlocksListTTL, codec, "")
+		} else {
+			// Cache only GET for metadata and don't cache exists and not exists.
+			cfg.CacheGet("metafile", metadataCache, matchers.GetMetafileMatcher(), metadataConfig.MetafileMaxSize, metadataConfig.MetafileContentTTL, 0, 0)
+		}
+	}
+
+	if !cachingConfigured {
+		// No caching is configured.
+		return bkt, nil
+	}
+
+	return storecache.NewCachingBucket(bkt, cfg, logger, reg)
+}
+
 func createMetadataCache(cacheName string, cacheBackend *MetadataCacheBackend, logger log.Logger, reg prometheus.Registerer) (cache.Cache, error) {
 	switch cacheBackend.Backend {
 	case "":

@@ -195,11 +195,11 @@ func TestConfigValidation(t *testing.T) {
 				configuration := newDefaultConfig()
 				configuration.ResourceMonitor = configs.ResourceMonitor{
 					Interval:        time.Second,
-					CPURateInterval: -1,
+					CPURateInterval: time.Millisecond,
 				}
 				return configuration
 			},
-			expectedError: fmt.Errorf("resource monitor cpu rate interval must be greater than zero"),
+			expectedError: fmt.Errorf("resource monitor cpu rate interval cannot be smaller than resource monitor interval"),
 		},
 		{
 			name: "should not fail validation for valid resources to monitor",

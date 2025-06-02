@@ -40,8 +40,8 @@ func (cfg *ResourceMonitor) Validate() error {
 		return fmt.Errorf("resource monitor interval must be greater than zero")
 	}
 
-	if cfg.CPURateInterval <= 0 {
-		return fmt.Errorf("resource monitor cpu rate interval must be greater than zero")
+	if cfg.CPURateInterval < cfg.Interval {
+		return fmt.Errorf("resource monitor cpu rate interval cannot be smaller than resource monitor interval")
 	}
 
 	return nil

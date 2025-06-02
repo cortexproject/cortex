@@ -805,7 +805,7 @@ func (t *Cortex) initResourceMonitor() (services.Service, error) {
 	}
 
 	var err error
-	t.ResourceMonitor, err = resource.NewMonitor(containerLimits, prometheus.DefaultRegisterer)
+	t.ResourceMonitor, err = resource.NewMonitor(containerLimits, t.Cfg.ResourceMonitor.Interval, t.Cfg.ResourceMonitor.CPURateInterval, prometheus.DefaultRegisterer)
 	return t.ResourceMonitor, err
 }
 

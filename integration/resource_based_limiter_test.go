@@ -19,7 +19,7 @@ func Test_ResourceBasedLimiter_shouldStartWithoutError(t *testing.T) {
 	defer s.Close()
 
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
-		"-monitored.resources": "cpu,heap",
+		"-resource-monitor.resources": "cpu,heap",
 	})
 
 	// Start dependencies.

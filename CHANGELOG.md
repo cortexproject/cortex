@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] Querier: Allow choosing PromQL engine via header. #6777
 * [BUGFIX] ThanosEngine: Only enable default optimizers. #6776
 * [ENHANCEMENT] Distributor: Add min/max schema validation for NativeHistograms. #6766
 * [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769

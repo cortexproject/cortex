@@ -68,11 +68,20 @@ Where default_value is the value to use if the environment variable is undefined
 # CLI flag: -http.prefix
 [http_prefix: <string> | default = "/api/prom"]
 
-# Comma-separated list of resources to monitor. Supported values are cpu and
-# heap, which tracks metrics from github.com/prometheus/procfs and
-# runtime/metrics that are close estimates. Empty string to disable.
-# CLI flag: -monitored.resources
-[monitored_resources: <string> | default = ""]
+resource_monitor:
+  # Comma-separated list of resources to monitor. Supported values are cpu and
+  # heap, which tracks metrics from github.com/prometheus/procfs and
+  # runtime/metrics that are close estimates. Empty string to disable.
+  # CLI flag: -resource-monitor.resources
+  [resources: <string> | default = ""]
+
+  # Update interval of resource monitor. Must be greater than 0.
+  # CLI flag: -resource-monitor.interval
+  [interval: <duration> | default = 100ms]
+
+  # Interval to calculate average CPU rate. Must be greater than 0.
+  # CLI flag: -resource-monitor.cpu-rate-interval
+  [cpu_rate_interval: <duration> | default = 1m]
 
 api:
   # Use GZIP compression for API responses. Some endpoints serve large YAML or

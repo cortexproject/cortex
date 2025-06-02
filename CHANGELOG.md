@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [BUGFIX] ThanosEngine: Only enable default optimizers. #6776
 * [ENHANCEMENT] Distributor: Add min/max schema validation for NativeHistograms. #6766
 * [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718

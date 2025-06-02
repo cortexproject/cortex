@@ -300,8 +300,9 @@ type Config struct {
 	CleanerVisitMarkerTimeout            time.Duration `yaml:"cleaner_visit_marker_timeout"`
 	CleanerVisitMarkerFileUpdateInterval time.Duration `yaml:"cleaner_visit_marker_file_update_interval"`
 
-	AcceptMalformedIndex bool `yaml:"accept_malformed_index"`
-	CachingBucketEnabled bool `yaml:"caching_bucket_enabled"`
+	AcceptMalformedIndex        bool `yaml:"accept_malformed_index"`
+	CachingBucketEnabled        bool `yaml:"caching_bucket_enabled"`
+	CleanerCachingBucketEnabled bool `yaml:"cleaner_caching_bucket_enabled"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -345,6 +346,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.AcceptMalformedIndex, "compactor.accept-malformed-index", false, "When enabled, index verification will ignore out of order label names.")
 	f.BoolVar(&cfg.CachingBucketEnabled, "compactor.caching-bucket-enabled", false, "When enabled, caching bucket will be used for compactor, except cleaner service, which serves as the source of truth for block status")
+	f.BoolVar(&cfg.CleanerCachingBucketEnabled, "compactor.cleaner-caching-bucket-enabled", false, "When enabled, caching bucket will be used for cleaner")
 
 	f.DurationVar(&cfg.ShardingPlannerDelay, "compactor.sharding-planner-delay", 10*time.Second, "How long shuffle sharding planner would wait before running planning code. This delay would prevent double compaction when two compactors claimed same partition in grouper at same time.")
 }
@@ -652,10 +654,10 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 	cleanerBucketClient := c.bucketClient
 
-	if c.compactorCfg.CachingBucketEnabled {
+	if c.compactorCfg.CleanerCachingBucketEnabled {
 		cleanerBucketClient, err = cortex_tsdb.CreateCachingBucketForCompactor(c.storageCfg.BucketStore.MetadataCache, true, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "cleaner"}, c.registerer))
 		if err != nil {
-			return errors.Wrap(err, "create caching bucket")
+			return errors.Wrap(err, "create caching bucket for cleaner")
 		}
 	}
 
@@ -742,7 +744,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 	if c.compactorCfg.CachingBucketEnabled {
 		c.bucketClient, err = cortex_tsdb.CreateCachingBucketForCompactor(c.storageCfg.BucketStore.MetadataCache, false, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
 		if err != nil {
-			return errors.Wrap(err, "create caching bucket")
+			return errors.Wrap(err, "create caching bucket for compactor")
 		}
 	}
 	return nil

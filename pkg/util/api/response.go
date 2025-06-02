@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -9,6 +10,7 @@ import (
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -84,4 +86,12 @@ func RespondError(logger log.Logger, w http.ResponseWriter, errorType v1.ErrorTy
 	if n, err := w.Write(b); err != nil {
 		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
 	}
+}
+
+func DecorateWithParamName(err error, field string) error {
+	errTmpl := "invalid parameter %q; %v"
+	if status, ok := status.FromError(err); ok {
+		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
+	}
+	return fmt.Errorf(errTmpl, field, err)
 }

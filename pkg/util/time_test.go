@@ -1,14 +1,10 @@
 package util
 
 import (
-	"bytes"
 	"fmt"
-	"net/http"
-	"strconv"
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -61,56 +57,6 @@ func TestDurationWithPositiveJitter_ZeroInputDuration(t *testing.T) {
 	assert.Equal(t, time.Duration(0), DurationWithPositiveJitter(time.Duration(0), 0.5))
 }
 
-func TestParseTime(t *testing.T) {
-	var tests = []struct {
-		input  string
-		fail   bool
-		result time.Time
-	}{
-		{
-			input: "",
-			fail:  true,
-		}, {
-			input: "abc",
-			fail:  true,
-		}, {
-			input: "30s",
-			fail:  true,
-		}, {
-			input:  "123",
-			result: time.Unix(123, 0),
-		}, {
-			input:  "123.123",
-			result: time.Unix(123, 123000000),
-		}, {
-			input:  "2015-06-03T13:21:58.555Z",
-			result: time.Unix(1433337718, 555*time.Millisecond.Nanoseconds()),
-		}, {
-			input:  "2015-06-03T14:21:58.555+01:00",
-			result: time.Unix(1433337718, 555*time.Millisecond.Nanoseconds()),
-		}, {
-			// Test nanosecond rounding.
-			input:  "2015-06-03T13:21:58.56789Z",
-			result: time.Unix(1433337718, 567*1e6),
-		}, {
-			// Test float rounding.
-			input:  "1543578564.705",
-			result: time.Unix(1543578564, 705*1e6),
-		},
-	}
-
-	for _, test := range tests {
-		ts, err := ParseTime(test.input)
-		if test.fail {
-			require.Error(t, err)
-			continue
-		}
-
-		require.NoError(t, err)
-		assert.Equal(t, TimeToMillis(test.result), ts)
-	}
-}
-
 func TestNewDisableableTicker_Enabled(t *testing.T) {
 	stop, ch := NewDisableableTicker(10 * time.Millisecond)
 	defer stop()
@@ -136,59 +82,6 @@ func TestNewDisableableTicker_Disabled(t *testing.T) {
 		t.Error("ticker should not have ticked when disabled")
 	default:
 		break
-	}
-}
-
-func TestFindMinMaxTime(t *testing.T) {
-	now := time.Now()
-
-	type testCase struct {
-		query           string
-		lookbackDelta   time.Duration
-		queryStartTime  time.Time
-		queryEndTime    time.Time
-		expectedMinTime time.Time
-		expectedMaxTime time.Time
-	}
-
-	tests := map[string]testCase{
-		"should consider min and max of the query param": {
-			query:           "up",
-			queryStartTime:  now.Add(-1 * time.Hour),
-			queryEndTime:    now,
-			expectedMinTime: now.Add(-1 * time.Hour),
-			expectedMaxTime: now,
-		},
-		"should consider min and max of inner queries": {
-			query:           "go_gc_duration_seconds_count[2h] offset 30m + go_gc_duration_seconds_count[3h] offset 1h",
-			queryStartTime:  now.Add(-1 * time.Hour),
-			queryEndTime:    now,
-			expectedMinTime: now.Add(-5 * time.Hour),
-			expectedMaxTime: now.Add(-30 * time.Minute),
-		},
-		"should consider lookback delta": {
-			query:           "up",
-			lookbackDelta:   1 * time.Hour,
-			queryStartTime:  now.Add(-1 * time.Hour),
-			queryEndTime:    now,
-			expectedMinTime: now.Add(-2 * time.Hour),
-			expectedMaxTime: now,
-		},
-	}
-
-	for testName, testData := range tests {
-		t.Run(testName, func(t *testing.T) {
-			expr, _ := parser.ParseExpr(testData.query)
-
-			url := "/query_range?query=" + testData.query +
-				"&start=" + strconv.FormatInt(testData.queryStartTime.Truncate(time.Minute).Unix(), 10) +
-				"&end=" + strconv.FormatInt(testData.queryEndTime.Truncate(time.Minute).Unix(), 10)
-			req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte{}))
-
-			minTime, maxTime := FindMinMaxTime(req, expr, testData.lookbackDelta, now)
-			assert.Equal(t, testData.expectedMinTime.Truncate(time.Minute).UnixMilli()+1, minTime) // refer to https://github.com/prometheus/prometheus/issues/13213 for the reason +1
-			assert.Equal(t, testData.expectedMaxTime.Truncate(time.Minute).UnixMilli(), maxTime)
-		})
 	}
 }
 

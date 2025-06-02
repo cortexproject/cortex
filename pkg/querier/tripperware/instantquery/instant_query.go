@@ -17,10 +17,9 @@ import (
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -64,9 +63,9 @@ func NewInstantQueryCodec(compressionStr string, defaultCodecTypeStr string) ins
 func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	result := tripperware.PrometheusRequest{Headers: map[string][]string{}}
 	var err error
-	result.Time, err = util.ParseTimeParam(r, "time", c.now().Unix())
+	result.Time, err = api.ParseTimeParamMillis(r, "time", c.now())
 	if err != nil {
-		return nil, queryapi.DecorateWithParamName(err, "time")
+		return nil, api.DecorateWithParamName(err, "time")
 	}
 
 	result.Query = r.FormValue("query")

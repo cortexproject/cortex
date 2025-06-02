@@ -20,9 +20,9 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/util/api"
 )
 
 func sortPrometheusResponseHeader(headers []*tripperware.PrometheusResponseHeader) {
@@ -56,7 +56,7 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=0",
-			expectedErr: queryapi.ErrEndBeforeStart,
+			expectedErr: api.ErrEndBeforeStart,
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=456&step=baz",
@@ -64,11 +64,11 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=456&step=-1",
-			expectedErr: queryapi.ErrNegativeStep,
+			expectedErr: api.ErrNegativeStep,
 		},
 		{
 			url:         "api/v1/query_range?start=0&end=11001&step=1",
-			expectedErr: queryapi.ErrStepTooSmall,
+			expectedErr: api.ErrStepTooSmall,
 		},
 	} {
 		tc := tc

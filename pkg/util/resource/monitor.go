@@ -45,7 +45,7 @@ type Monitor struct {
 	lock sync.RWMutex
 }
 
-func NewMonitor(limits map[Type]float64, interval, cpuAverageInterval time.Duration, registerer prometheus.Registerer) (*Monitor, error) {
+func NewMonitor(limits map[Type]float64, interval, cpuRateInterval time.Duration, registerer prometheus.Registerer) (*Monitor, error) {
 	m := &Monitor{
 		containerLimit: limits,
 		scanners:       make(map[Type]scanner),
@@ -56,7 +56,7 @@ func NewMonitor(limits map[Type]float64, interval, cpuAverageInterval time.Durat
 	}
 
 	m.interval = interval
-	m.cpuDataPoints = int(cpuAverageInterval.Nanoseconds() / interval.Nanoseconds())
+	m.cpuDataPoints = int(cpuRateInterval.Nanoseconds() / interval.Nanoseconds())
 	m.cpuRates = make([]float64, m.cpuDataPoints)
 	m.cpuIntervals = make([]float64, m.cpuDataPoints)
 

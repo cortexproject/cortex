@@ -786,14 +786,14 @@ func (t *Cortex) initQueryScheduler() (services.Service, error) {
 }
 
 func (t *Cortex) initResourceMonitor() (services.Service, error) {
-	if t.Cfg.MonitoredResources.String() == "" || len(t.Cfg.MonitoredResources) == 0 {
+	if t.Cfg.ResourceMonitor.Resources.String() == "" || len(t.Cfg.ResourceMonitor.Resources) == 0 {
 		return nil, nil
 	}
 
-	util_log.WarnExperimentalUse(fmt.Sprintf("resource monitor for [%s]", t.Cfg.MonitoredResources.String()))
+	util_log.WarnExperimentalUse(fmt.Sprintf("resource monitor for [%s]", t.Cfg.ResourceMonitor.Resources.String()))
 
 	containerLimits := make(map[resource.Type]float64)
-	for _, res := range t.Cfg.MonitoredResources {
+	for _, res := range t.Cfg.ResourceMonitor.Resources {
 		switch resource.Type(res) {
 		case resource.CPU:
 			containerLimits[resource.Type(res)] = float64(runtime.GOMAXPROCS(0))

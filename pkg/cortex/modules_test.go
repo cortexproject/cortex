@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
 
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
@@ -237,7 +238,9 @@ func Test_initResourceMonitor_shouldFailOnInvalidResource(t *testing.T) {
 	cortex := &Cortex{
 		Server: &server.Server{},
 		Cfg: Config{
-			MonitoredResources: []string{"invalid"},
+			ResourceMonitor: configs.ResourceMonitor{
+				Resources: []string{"invalid"},
+			},
 		},
 	}
 

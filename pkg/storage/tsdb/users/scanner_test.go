@@ -129,7 +129,7 @@ func TestUserIndexScanner_ScanUsers(t *testing.T) {
 				require.NoError(t, err)
 				require.NoError(t, gw.Close())
 
-				b.MockGet(userIndexCompressedFilename, buf.String(), nil)
+				b.MockGet(UserIndexCompressedFilename, buf.String(), nil)
 			},
 			maxStalePeriod:   1 * time.Hour,
 			expectedActive:   []string{"user-1", "user-2"},
@@ -156,7 +156,7 @@ func TestUserIndexScanner_ScanUsers(t *testing.T) {
 				require.NoError(t, err)
 				require.NoError(t, gw.Close())
 
-				b.MockGet(userIndexCompressedFilename, buf.String(), nil)
+				b.MockGet(UserIndexCompressedFilename, buf.String(), nil)
 
 				// Base scanner results
 				b.MockIter("", []string{"user-2/"}, nil)
@@ -172,7 +172,7 @@ func TestUserIndexScanner_ScanUsers(t *testing.T) {
 		},
 		"index read error falls back to base scanner": {
 			bucketSetup: func(b *bucket.ClientMock) {
-				b.MockGet(userIndexCompressedFilename, "", errors.New("failed to read index"))
+				b.MockGet(UserIndexCompressedFilename, "", errors.New("failed to read index"))
 				b.MockIter("", []string{"user-1/"}, nil)
 				b.MockIter("__markers__", []string{}, nil)
 				b.MockExists(tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)

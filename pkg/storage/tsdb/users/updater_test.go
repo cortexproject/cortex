@@ -117,7 +117,7 @@ func TestUserIndexUpdater_UpdateUserIndex_WriteError(t *testing.T) {
 	}
 
 	// Mock the bucket to return an error on upload
-	bkt.MockUpload(userIndexCompressedFilename, assert.AnError)
+	bkt.MockUpload(UserIndexCompressedFilename, assert.AnError)
 
 	updater := NewUserIndexUpdater(bkt, scanner)
 	err := updater.UpdateUserIndex(ctx)

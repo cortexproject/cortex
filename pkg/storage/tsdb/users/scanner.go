@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -129,13 +130,17 @@ type userIndexScanner struct {
 func (s *userIndexScanner) ScanUsers(ctx context.Context) ([]string, []string, []string, error) {
 	userIndex, err := ReadUserIndex(ctx, s.bkt, s.logger)
 	if err != nil {
-		// Always fallback to the list scanner if failed to read the user index.
-		level.Error(s.logger).Log("msg", "failed to read user index, fallback to base scanner", "error", err)
+		if errors.Is(err, ErrIndexNotFound) {
+			level.Info(s.logger).Log("msg", "user index not found, fallback to base scanner")
+		} else {
+			// Always fallback to the list scanner if failed to read the user index.
+			level.Error(s.logger).Log("msg", "failed to read user index, fallback to base scanner", "error", err)
+		}
 		return s.baseScanner.ScanUsers(ctx)
 	}
 
 	if userIndex.GetUpdatedAt().Before(time.Now().Add(-s.maxStalePeriod)) {
-		level.Error(s.logger).Log("msg", "user index is stale, fallback to base scanner", "updated_at", userIndex.GetUpdatedAt(), "max_stale_period", s.maxStalePeriod)
+		level.Warn(s.logger).Log("msg", "user index is stale, fallback to base scanner", "updated_at", userIndex.GetUpdatedAt(), "max_stale_period", s.maxStalePeriod)
 		return s.baseScanner.ScanUsers(ctx)
 	}
 

@@ -16,8 +16,8 @@ import (
 
 const (
 	userIndexVersion            = 1
-	userIndexFilename           = "user-index.json"
-	userIndexCompressedFilename = userIndexFilename + ".gz"
+	UserIndexFilename           = "user-index.json"
+	UserIndexCompressedFilename = UserIndexFilename + ".gz"
 )
 
 var (
@@ -49,7 +49,7 @@ func WriteUserIndex(ctx context.Context, bkt objstore.Bucket, idx *UserIndex) er
 	// Compress it.
 	var gzipContent bytes.Buffer
 	gzip := gzip.NewWriter(&gzipContent)
-	gzip.Name = userIndexFilename
+	gzip.Name = UserIndexFilename
 
 	if _, err := gzip.Write(content); err != nil {
 		return errors.Wrap(err, "gzip user index")
@@ -59,7 +59,7 @@ func WriteUserIndex(ctx context.Context, bkt objstore.Bucket, idx *UserIndex) er
 	}
 
 	// Upload the index to the storage.
-	if err := bkt.Upload(ctx, userIndexCompressedFilename, bytes.NewReader(gzipContent.Bytes())); err != nil {
+	if err := bkt.Upload(ctx, UserIndexCompressedFilename, bytes.NewReader(gzipContent.Bytes())); err != nil {
 		return errors.Wrap(err, "upload user index")
 	}
 
@@ -68,7 +68,7 @@ func WriteUserIndex(ctx context.Context, bkt objstore.Bucket, idx *UserIndex) er
 
 func ReadUserIndex(ctx context.Context, bkt objstore.InstrumentedBucket, logger log.Logger) (*UserIndex, error) {
 	// Get the user index.
-	reader, err := bkt.WithExpectedErrs(bkt.IsObjNotFoundErr).Get(ctx, userIndexCompressedFilename)
+	reader, err := bkt.WithExpectedErrs(bkt.IsObjNotFoundErr).Get(ctx, UserIndexCompressedFilename)
 	if err != nil {
 		if bkt.IsObjNotFoundErr(err) {
 			return nil, ErrIndexNotFound

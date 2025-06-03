@@ -333,4 +333,8 @@ compactor:
   # service, which serves as the source of truth for block status
   # CLI flag: -compactor.caching-bucket-enabled
   [caching_bucket_enabled: <boolean> | default = false]
+
+  # When enabled, caching bucket will be used for cleaner
+  # CLI flag: -compactor.cleaner-caching-bucket-enabled
+  [cleaner_caching_bucket_enabled: <boolean> | default = false]
 ```

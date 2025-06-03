@@ -3,7 +3,6 @@ package storegateway
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"math"
 	"math/rand"
 	"os"
@@ -40,6 +39,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_limiter "github.com/cortexproject/cortex/pkg/util/limiter"

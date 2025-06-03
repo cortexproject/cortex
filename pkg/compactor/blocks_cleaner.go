@@ -80,6 +80,7 @@ type BlocksCleaner struct {
 	remainingPlannedCompactions       *prometheus.GaugeVec
 	inProgressCompactions             *prometheus.GaugeVec
 	oldestPartitionGroupOffset        *prometheus.GaugeVec
+	oldestUncompactedBlockOffset      *prometheus.GaugeVec
 }
 
 func NewBlocksCleaner(
@@ -99,6 +100,7 @@ func NewBlocksCleaner(
 
 	var inProgressCompactions *prometheus.GaugeVec
 	var oldestPartitionGroupOffset *prometheus.GaugeVec
+	var oldestUncompactedBlockOffset *prometheus.GaugeVec
 	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 		inProgressCompactions = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_compactor_in_progress_compactions",
@@ -107,6 +109,10 @@ func NewBlocksCleaner(
 		oldestPartitionGroupOffset = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_compactor_oldest_partition_offset",
 			Help: "Time in seconds between now and the oldest created partition group not completed. Only available with shuffle-sharding strategy and partitioning compaction strategy",
+		}, commonLabels)
+		oldestUncompactedBlockOffset = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_compactor_oldest_uncompacted_block_offset",
+			Help: "Time in seconds between now and the oldest uncompacted block within a partition group plan. Only available with shuffle-sharding strategy and partitioning compaction strategy",
 		}, commonLabels)
 	}
 
@@ -177,9 +183,10 @@ func NewBlocksCleaner(
 			Name: "cortex_bucket_clean_duration_seconds",
 			Help: "Duration of cleaner runtime for a tenant in seconds",
 		}, commonLabels),
-		remainingPlannedCompactions: remainingPlannedCompactions,
-		inProgressCompactions:       inProgressCompactions,
-		oldestPartitionGroupOffset:  oldestPartitionGroupOffset,
+		remainingPlannedCompactions:  remainingPlannedCompactions,
+		inProgressCompactions:        inProgressCompactions,
+		oldestPartitionGroupOffset:   oldestPartitionGroupOffset,
+		oldestUncompactedBlockOffset: oldestUncompactedBlockOffset,
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.loop, nil)
@@ -715,6 +722,7 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 	remainingCompactions := 0
 	inProgressCompactions := 0
 	var oldestPartitionGroup *PartitionedGroupInfo
+	var oldestBlockCreationTime int64
 	defer func() {
 		c.remainingPlannedCompactions.WithLabelValues(userID).Set(float64(remainingCompactions))
 		c.inProgressCompactions.WithLabelValues(userID).Set(float64(inProgressCompactions))
@@ -724,6 +732,13 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 				level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTime)
 			} else {
 				c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(0)
+			}
+		}
+		if c.oldestUncompactedBlockOffset != nil {
+			if oldestBlockCreationTime > 0 {
+				c.oldestUncompactedBlockOffset.WithLabelValues(userID).Set(float64(time.Now().Unix() - oldestBlockCreationTime))
+			} else {
+				c.oldestUncompactedBlockOffset.WithLabelValues(userID).Set(0)
 			}
 		}
 	}()
@@ -761,6 +776,9 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 			} else {
 				level.Info(userLogger).Log("msg", "deleted partition visit markers for partitioned group", "partitioned_group_info", partitionedGroupInfoFile)
 			}
+		}
+		if oldestBlockCreationTime == 0 || extraInfo.status.OldestBlockCreationTime < oldestBlockCreationTime {
+			oldestBlockCreationTime = extraInfo.status.OldestBlockCreationTime
 		}
 	}
 }

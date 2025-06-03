@@ -45,6 +45,7 @@ type PartitionedGroupStatus struct {
 	PendingPartitions         int
 	InProgressPartitions      int
 	PendingOrFailedPartitions []Partition
+	OldestBlockCreationTime   int64
 }
 
 func (s PartitionedGroupStatus) String() string {
@@ -128,6 +129,7 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 		PendingPartitions:         0,
 		InProgressPartitions:      0,
 		PendingOrFailedPartitions: []Partition{},
+		OldestBlockCreationTime:   p.CreationTime,
 	}
 	allPartitionCompleted := true
 	hasInProgressPartitions := false
@@ -164,6 +166,20 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 			status.PendingOrFailedPartitions = append(status.PendingOrFailedPartitions, partition)
 		}
 	}
+
+	oldestBlockCreationTime := p.CreationTime
+	for _, partition := range status.PendingOrFailedPartitions {
+		for _, blockID := range partition.Blocks {
+			attributes, err := userBucket.Attributes(ctx, path.Join(blockID.String(), metadata.MetaFilename))
+			if err == nil {
+				blockCreationTime := attributes.LastModified.Unix()
+				if blockCreationTime < oldestBlockCreationTime {
+					oldestBlockCreationTime = blockCreationTime
+				}
+			}
+		}
+	}
+	status.OldestBlockCreationTime = oldestBlockCreationTime
 
 	if hasInProgressPartitions {
 		return status

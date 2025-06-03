@@ -96,7 +96,7 @@ func (a *PusherAppender) Commit() error {
 	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), req)
 	if err != nil {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
-		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 != 4 {
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 == 5 {
 			a.failedWrites.Inc()
 		}
 	}

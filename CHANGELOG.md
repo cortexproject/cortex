@@ -51,6 +51,7 @@
 * [BUGFIX] Add `__markers__` tenant ID validation. #6761
 * [BUGFIX] Ring: Fix nil pointer exception when token is shared. #6768
 * [BUGFIX] Fix race condition in active user. #6773
+* [BUGFIX] Ruler: Prevent counting 2xx and 4XX responses as failed writes. #6785
 * [BUGFIX] Ingester: Allow shipper to skip corrupted blocks. #6786
 
 ## 1.19.0 2025-02-27

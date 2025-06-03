@@ -187,6 +187,11 @@ func TestTSDBMetrics(t *testing.T) {
 			# 4*(12345 + 85787 + 999)
 			cortex_ingester_shipper_upload_failures_total 396524
 
+            # HELP cortex_ingester_shipper_corrupted_blocks_total Total number of TSDB blocks corrupted
+			# TYPE cortex_ingester_shipper_corrupted_blocks_total counter
+			# 30*(12345 + 85787 + 999)
+			cortex_ingester_shipper_corrupted_blocks_total 2973930
+
 			# HELP cortex_ingester_tsdb_compactions_total Total number of TSDB compactions that were executed.
 			# TYPE cortex_ingester_tsdb_compactions_total counter
 			cortex_ingester_tsdb_compactions_total 693917
@@ -446,6 +451,12 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# 4*(12345 + 85787 + 999)
 			cortex_ingester_shipper_upload_failures_total 396524
 
+            # HELP cortex_ingester_shipper_corrupted_blocks_total Total number of TSDB blocks corrupted
+			# TYPE cortex_ingester_shipper_corrupted_blocks_total counter
+			# 30*(12345 + 85787 + 999)
+			cortex_ingester_shipper_corrupted_blocks_total 2973930
+
+
 			# HELP cortex_ingester_tsdb_compactions_total Total number of TSDB compactions that were executed.
 			# TYPE cortex_ingester_tsdb_compactions_total counter
 			cortex_ingester_tsdb_compactions_total 693917
@@ -687,6 +698,12 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of block upload failures",
 	})
 	uploadFailures.Add(4 * base)
+
+	corruptedBlocks := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_shipper_corrupted_blocks_total",
+		Help: "Total number of corrupted blocks",
+	})
+	corruptedBlocks.Add(30 * base)
 
 	// TSDB Head
 	seriesCreated := promauto.With(r).NewCounter(prometheus.CounterOpts{

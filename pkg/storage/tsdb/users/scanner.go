@@ -3,6 +3,7 @@ package users
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -13,6 +14,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
+)
+
+var (
+	userIDsToSkip = []string{tenant.GlobalMarkersDir, UserIndexCompressedFilename}
 )
 
 type Scanner interface {
@@ -68,7 +73,7 @@ func (s *listScanner) ScanUsers(ctx context.Context) (active, deleting, deleted 
 	// Scan users in the bucket.
 	err = s.bkt.Iter(ctx, "", func(entry string) error {
 		userID := strings.TrimSuffix(entry, "/")
-		if userID == tenant.GlobalMarkersDir {
+		if slices.Contains(userIDsToSkip, userID) {
 			return nil
 		}
 		scannedActiveUsers[userID] = struct{}{}

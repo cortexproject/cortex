@@ -1199,8 +1199,8 @@ func (c *Compactor) ownUser(userID string, isCleanUp bool) (bool, error) {
 }
 
 func (c *Compactor) userIndexUpdateLoop(ctx context.Context) {
-	// Hardcode an ID to check which compactor owns updating user index.
-	userID := "user-index"
+	// Hardcode ID to check which compactor owns updating user index.
+	userID := users.UserIndexCompressedFilename
 	// Align with clean up interval.
 	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1))
 	defer ticker.Stop()

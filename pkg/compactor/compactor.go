@@ -1198,7 +1198,7 @@ func (c *Compactor) ownUser(userID string, isCleanUp bool) (bool, error) {
 	return rs.Instances[0].Addr == c.ringLifecycler.Addr, nil
 }
 
-func (c *Compactor) userIndexUpdateLoop(ctx context.Context) error {
+func (c *Compactor) userIndexUpdateLoop(ctx context.Context) {
 	// Hardcode an ID to check which compactor owns updating user index.
 	userID := "user-index"
 	// Align with clean up interval.
@@ -1208,7 +1208,8 @@ func (c *Compactor) userIndexUpdateLoop(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			level.Error(c.logger).Log("msg", "context timeout, exit user index update loop", "err", ctx.Err())
+			return
 		case <-ticker.C:
 			owned, err := c.ownUser(userID, true)
 			if err != nil {

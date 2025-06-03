@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -110,6 +111,9 @@ func (s *listScanner) ScanUsers(ctx context.Context) (active, deleting, deleted 
 		deleting = append(deleting, userID)
 	}
 
+	sort.Strings(active)
+	sort.Strings(deleting)
+	sort.Strings(deleted)
 	return active, deleting, deleted, nil
 }
 

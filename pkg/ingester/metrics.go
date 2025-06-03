@@ -312,6 +312,7 @@ type tsdbMetrics struct {
 	dirSyncFailures *prometheus.Desc // sum(thanos_shipper_dir_sync_failures_total)
 	uploads         *prometheus.Desc // sum(thanos_shipper_uploads_total)
 	uploadFailures  *prometheus.Desc // sum(thanos_shipper_upload_failures_total)
+	corruptedBlocks *prometheus.Desc // sum(thanos_shipper_corrupted_blocks_total)
 
 	// Metrics aggregated from TSDB.
 	tsdbCompactionsTotal               *prometheus.Desc
@@ -389,6 +390,10 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 		uploadFailures: prometheus.NewDesc(
 			"cortex_ingester_shipper_upload_failures_total",
 			"Total number of TSDB block upload failures",
+			nil, nil),
+		corruptedBlocks: prometheus.NewDesc(
+			"cortex_ingester_shipper_corrupted_blocks_total",
+			"Total number of TSDB blocks corrupted",
 			nil, nil),
 		tsdbCompactionsTotal: prometheus.NewDesc(
 			"cortex_ingester_tsdb_compactions_total",
@@ -579,6 +584,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.dirSyncFailures
 	out <- sm.uploads
 	out <- sm.uploadFailures
+	out <- sm.corruptedBlocks
 
 	out <- sm.tsdbCompactionsTotal
 	out <- sm.tsdbCompactionDuration
@@ -636,6 +642,7 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.dirSyncFailures, "thanos_shipper_dir_sync_failures_total")
 	data.SendSumOfCounters(out, sm.uploads, "thanos_shipper_uploads_total")
 	data.SendSumOfCounters(out, sm.uploadFailures, "thanos_shipper_upload_failures_total")
+	data.SendSumOfCounters(out, sm.corruptedBlocks, "thanos_shipper_corrupted_blocks_total")
 
 	data.SendSumOfCounters(out, sm.tsdbCompactionsTotal, "prometheus_tsdb_compactions_total")
 	data.SendSumOfHistograms(out, sm.tsdbCompactionDuration, "prometheus_tsdb_compaction_duration_seconds")

@@ -331,6 +331,7 @@ GET,POST <legacy-http-prefix>/api/v1/query
 ```
 
 Prometheus-compatible instant query endpoint.
+PromQL engine can be selected using `X-PromQL-EngineType` header with values `prometheus` (default) and `thanos`.
 
 _For more information, please check out the Prometheus [instant query](https://prometheus.io/docs/prometheus/latest/querying/api/#instant-queries) documentation._
 
@@ -346,6 +347,7 @@ GET,POST <legacy-http-prefix>/api/v1/query_range
 ```
 
 Prometheus-compatible range query endpoint. When the request is sent through the query-frontend, the query will be accelerated by query-frontend (results caching and execution parallelisation).
+PromQL engine can be selected using `X-PromQL-EngineType` header with values `prometheus` (default) and `thanos`.
 
 _For more information, please check out the Prometheus [range query](https://prometheus.io/docs/prometheus/latest/querying/api/#range-queries) documentation._
 

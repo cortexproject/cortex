@@ -1,10 +1,6 @@
 # Changelog
 
 ## master / unreleased
-* [FEATURE] Querier: Allow choosing PromQL engine via header. #6777
-* [BUGFIX] ThanosEngine: Only enable default optimizers. #6776
-* [ENHANCEMENT] Distributor: Add min/max schema validation for NativeHistograms. #6766
-* [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
 * [CHANGE] Validate a tenantID when to use a single tenant resolver. #6727
@@ -18,6 +14,7 @@
 * [FEATURE] Experimental Support Parquet format: Implement parquet converter service to convert a TSDB block into Parquet and Parquet Queryable. #6716 #6743
 * [FEATURE] Distributor/Ingester: Implemented experimental feature to use gRPC stream connection for push requests. This can be enabled by setting `-distributor.use-stream-push=true`. #6580
 * [FEATURE] Compactor: Add support for percentage based sharding for compactors. #6738
+* [FEATURE] Querier: Allow choosing PromQL engine via header. #6777
 * [ENHANCEMENT] Query Frontend: Change to return 400 when the tenant resolving fail. #6715
 * [ENHANCEMENT] Querier: Support query parameters to metadata api (/api/v1/metadata) to allow user to limit metadata to return. Add a `-ingester.return-all-metadata` flag to make the metadata API run when the deployment. Please set this flag to `false` to use the metadata API with the limits later. #6681 #6744
 * [ENHANCEMENT] Ingester: Add a `cortex_ingester_active_native_histogram_series` metric to track # of active NH series. #6695
@@ -37,6 +34,8 @@
 * [ENHANCEMENT] Querier: Add metric and enhanced logging for query partial data. #6676
 * [ENHANCEMENT] Ingester: Push request should fail when label set is out of order #6746
 * [ENHANCEMENT] Querier: Add `querier.ingester-query-max-attempts` to retry on partial data. #6714
+* [ENHANCEMENT] Distributor: Add min/max schema validation for NativeHistograms. #6766
+* [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576
@@ -124,6 +123,7 @@
 * [BUGFIX] Ingester: Fix possible race condition when `active series per LabelSet` is configured. #6409
 * [BUGFIX] Query Frontend: Fix @ modifier not being applied correctly on sub queries. #6450
 * [BUGFIX] Cortex Redis flags with multiple dots #6476
+* [BUGFIX] ThanosEngine: Only enable default optimizers. #6776
 
 ## 1.18.1 2024-10-14
 

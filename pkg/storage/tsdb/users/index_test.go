@@ -34,7 +34,7 @@ func TestWriteAndReadUserIndex(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify the index was written with the correct filename
-	_, err = bkt.Get(ctx, userIndexFilename)
+	_, err = bkt.Get(ctx, UserIndexFilename)
 	require.Error(t, err)
 	require.True(t, bkt.IsObjNotFoundErr(err))
 
@@ -70,7 +70,7 @@ func TestReadUserIndex_Corrupted(t *testing.T) {
 	bkt := &bucket.ClientMock{}
 
 	// Mock a corrupted index file
-	bkt.MockGet(userIndexCompressedFilename, "invalid gzip content", nil)
+	bkt.MockGet(UserIndexCompressedFilename, "invalid gzip content", nil)
 
 	// Test reading corrupted index
 	_, err := ReadUserIndex(ctx, bkt, log.NewNopLogger())
@@ -97,7 +97,7 @@ func TestWriteUserIndex_Error(t *testing.T) {
 	bkt := &bucket.ClientMock{}
 
 	// Mock upload error
-	bkt.MockUpload(userIndexCompressedFilename, assert.AnError)
+	bkt.MockUpload(UserIndexCompressedFilename, assert.AnError)
 
 	// Test writing index with error
 	err := WriteUserIndex(ctx, bkt, &UserIndex{})

@@ -39,20 +39,6 @@ var (
 	maxTimeFormatted = MaxTime.Format(time.RFC3339Nano)
 )
 
-func ExtractQueryOpts(r *http.Request) (promql.QueryOpts, error) {
-	var duration time.Duration
-
-	if strDuration := r.FormValue("lookback_delta"); strDuration != "" {
-		parsedDuration, err := ParseDuration(strDuration)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing lookback delta duration: %w", err)
-		}
-		duration = parsedDuration
-	}
-
-	return promql.NewPrometheusQueryOpts(r.FormValue("stats") == "all", duration), nil
-}
-
 func ParseTime(s string) (time.Time, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {
 		s, ns := math.Modf(t)

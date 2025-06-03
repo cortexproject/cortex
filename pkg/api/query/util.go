@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/annotations"
+
+	"github.com/cortexproject/cortex/pkg/util/api"
 )
 
 const (
@@ -78,4 +81,18 @@ func invalidParamError(err error, parameter string) apiFuncResult {
 	return apiFuncResult{nil, &apiError{
 		errorBadData, fmt.Errorf("invalid parameter %q: %w", parameter, err),
 	}, nil, nil}
+}
+
+func ExtractQueryOpts(r *http.Request) (promql.QueryOpts, error) {
+	var duration time.Duration
+
+	if strDuration := r.FormValue("lookback_delta"); strDuration != "" {
+		parsedDuration, err := api.ParseDuration(strDuration)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing lookback delta duration: %w", err)
+		}
+		duration = parsedDuration
+	}
+
+	return promql.NewPrometheusQueryOpts(r.FormValue("stats") == "all", duration), nil
 }

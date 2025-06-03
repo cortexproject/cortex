@@ -93,7 +93,7 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 		defer cancel()
 	}
 
-	opts, err := api.ExtractQueryOpts(r)
+	opts, err := ExtractQueryOpts(r)
 	if err != nil {
 		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
@@ -147,7 +147,7 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 		defer cancel()
 	}
 
-	opts, err := api.ExtractQueryOpts(r)
+	opts, err := ExtractQueryOpts(r)
 	if err != nil {
 		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}

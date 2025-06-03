@@ -2566,18 +2566,16 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	// Create a new shipper for this database
 	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
 		userDB.shipper = shipper.New(
-			userLogger,
-			tsdbPromReg,
-			udir,
 			bucket.NewUserBucketClient(userID, i.TSDBState.bucket, i.limits),
-			func() labels.Labels { return l },
-			metadata.ReceiveSource,
-			func() bool {
-				return i.cfg.UploadCompactedBlocksEnabled
-			},
-			true, // Allow out of order uploads. It's fine in Cortex's context.
-			metadata.NoneFunc,
-			"",
+			udir,
+			shipper.WithLogger(userLogger),
+			shipper.WithRegisterer(tsdbPromReg),
+			shipper.WithLabels(func() labels.Labels { return l }),
+			shipper.WithSource(metadata.ReceiveSource),
+			shipper.WithHashFunc(metadata.NoneFunc),
+			shipper.WithUploadCompacted(i.cfg.UploadCompactedBlocksEnabled),
+			shipper.WithAllowOutOfOrderUploads(true), // Allow out of order uploads. It's fine in Cortex's context.
+			shipper.WithSkipCorruptedBlocks(true),    // We allow out of order uploads. This is the same behavior. We should track error with metrics
 		)
 		userDB.shipperMetadataFilePath = filepath.Join(userDB.db.Dir(), filepath.Clean(shipper.DefaultMetaFilename))
 

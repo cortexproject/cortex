@@ -1114,7 +1114,7 @@ github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
-# github.com/thanos-io/thanos v0.37.3-0.20250529092349-12649d8be797
+# github.com/thanos-io/thanos v0.37.3-0.20250603135757-4ad45948cd10
 ## explicit; go 1.24.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block

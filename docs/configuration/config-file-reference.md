@@ -3208,20 +3208,6 @@ lifecycler:
 [upload_compacted_blocks_enabled: <boolean> | default = true]
 
 instance_limits:
-  # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
-  # rejecting new query request (across all tenants) in percentage, between 0
-  # and 1. monitored_resources config must include the resource type. 0 to
-  # disable.
-  # CLI flag: -ingester.instance-limits.cpu-utilization
-  [cpu_utilization: <float> | default = 0]
-
-  # EXPERIMENTAL: Max heap utilization that this ingester can reach before
-  # rejecting new query request (across all tenants) in percentage, between 0
-  # and 1. monitored_resources config must include the resource type. 0 to
-  # disable.
-  # CLI flag: -ingester.instance-limits.heap-utilization
-  [heap_utilization: <float> | default = 0]
-
   # Max ingestion rate (samples/sec) that ingester will accept. This limit is
   # per-ingester, not per-tenant. Additional push requests will be rejected.
   # Current ingestion rate is computed as exponentially weighted moving average,
@@ -3280,6 +3266,29 @@ instance_limits:
 # If enabled, the metadata API returns all metadata regardless of the limits.
 # CLI flag: -ingester.skip-metadata-limits
 [skip_metadata_limits: <boolean> | default = true]
+
+query_protection:
+  rejection:
+    # EXPERIMENTAL: Enable query rejection feature, where the component return
+    # 503 to all incoming query requests when the configured thresholds are
+    # breached.
+    # CLI flag: -ingester.query-protection.rejection.enabled
+    [enabled: <boolean> | default = false]
+
+    threshold:
+      # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+      # rejecting new query request (across all tenants) in percentage, between
+      # 0 and 1. monitored_resources config must include the resource type. 0 to
+      # disable.
+      # CLI flag: -ingester.query-protection.rejection.threshold.cpu-utilization
+      [cpu_utilization: <float> | default = 0]
+
+      # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+      # rejecting new query request (across all tenants) in percentage, between
+      # 0 and 1. monitored_resources config must include the resource type. 0 to
+      # disable.
+      # CLI flag: -ingester.query-protection.rejection.threshold.heap-utilization
+      [heap_utilization: <float> | default = 0]
 ```
 
 ### `ingester_client_config`
@@ -5901,20 +5910,28 @@ sharding_ring:
 # CLI flag: -store-gateway.disabled-tenants
 [disabled_tenants: <string> | default = ""]
 
-instance_limits:
-  # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
-  # rejecting new query request (across all tenants) in percentage, between 0
-  # and 1. monitored_resources config must include the resource type. 0 to
-  # disable.
-  # CLI flag: -store-gateway.instance-limits.cpu-utilization
-  [cpu_utilization: <float> | default = 0]
+query_protection:
+  rejection:
+    # EXPERIMENTAL: Enable query rejection feature, where the component return
+    # 503 to all incoming query requests when the configured thresholds are
+    # breached.
+    # CLI flag: -store-gateway.query-protection.rejection.enabled
+    [enabled: <boolean> | default = false]
 
-  # EXPERIMENTAL: Max heap utilization that this ingester can reach before
-  # rejecting new query request (across all tenants) in percentage, between 0
-  # and 1. monitored_resources config must include the resource type. 0 to
-  # disable.
-  # CLI flag: -store-gateway.instance-limits.heap-utilization
-  [heap_utilization: <float> | default = 0]
+    threshold:
+      # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+      # rejecting new query request (across all tenants) in percentage, between
+      # 0 and 1. monitored_resources config must include the resource type. 0 to
+      # disable.
+      # CLI flag: -store-gateway.query-protection.rejection.threshold.cpu-utilization
+      [cpu_utilization: <float> | default = 0]
+
+      # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+      # rejecting new query request (across all tenants) in percentage, between
+      # 0 and 1. monitored_resources config must include the resource type. 0 to
+      # disable.
+      # CLI flag: -store-gateway.query-protection.rejection.threshold.heap-utilization
+      [heap_utilization: <float> | default = 0]
 
 hedged_request:
   # If true, hedged requests are applied to object store calls. It can help with

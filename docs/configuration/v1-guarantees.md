@@ -123,10 +123,8 @@ Currently experimental features are:
 - Query-frontend: dynamic query splits
   - `querier.max-shards-per-query` (int) CLI flag
   - `querier.max-fetched-data-duration-per-query` (duration) CLI flag
-- Ingester/Store-Gateway: Resource-based throttling
-  - `-ingester.instance-limits.cpu-utilization`
-  - `-ingester.instance-limits.heap-utilization`
-  - `-store-gateway.instance-limits.cpu-utilization`
-  - `-store-gateway.instance-limits.heap-utilization`
+- Ingester/Store-Gateway: Query rejection
+  - `-ingester.query-protection.rejection`
+  - `-store-gateway.query-protection.rejection`
 - Distributor/Ingester: Stream push connection
   - Enable stream push connection between distributor and ingester by setting `-distributor.use-stream-push=true` on Distributor.

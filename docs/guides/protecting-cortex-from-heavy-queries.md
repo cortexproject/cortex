@@ -48,9 +48,13 @@ For example, the following configuration will start throttling query requests if
 ```
 target: ingester
 monitored_resources: cpu,heap
-instance_limits:
-  cpu_utilization: 0.8
-  heap_utilization: 0.8
+ingester:
+  query_protection:
+    rejection:
+      enabled: true
+      threshold:
+        cpu_utilization: 0.8
+        heap_utilization: 0.8
 ```
 
-See https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=instance_limits for details.
+See https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=query_protection for details.

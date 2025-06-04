@@ -129,6 +129,7 @@ func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwa
 
 	result.Query = r.FormValue("query")
 	result.Stats = r.FormValue("stats")
+	result.Analyze = r.FormValue("analyze")
 	result.Path = r.URL.Path
 
 	// Include the specified headers from http request in prometheusRequest.
@@ -162,6 +163,9 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		"step":  []string{encodeDurationMs(promReq.Step)},
 		"query": []string{promReq.Query},
 		"stats": []string{promReq.Stats},
+	}
+	if promReq.Analyze != "" {
+		params.Add("analyze", promReq.Analyze)
 	}
 	u := &url.URL{
 		Path:     promReq.Path,

@@ -1,6 +1,7 @@
 package codec
 
 import (
+	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -9,8 +10,11 @@ import (
 	"github.com/prometheus/prometheus/util/stats"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/util/analysis"
 )
 
 type ProtobufCodec struct {
@@ -48,7 +52,7 @@ func (p ProtobufCodec) Encode(resp *v1.Response) ([]byte, error) {
 }
 
 func createPrometheusQueryResponse(resp *v1.Response, cortexInternal bool) (*tripperware.PrometheusResponse, error) {
-	var data = resp.Data.(*v1.QueryData)
+	var data = resp.Data.(*queryapi.QueryData)
 
 	var queryResult tripperware.PrometheusQueryResult
 	switch string(data.ResultType) {
@@ -82,12 +86,18 @@ func createPrometheusQueryResponse(resp *v1.Response, cortexInternal bool) (*tri
 		stats = &tripperware.PrometheusResponseStats{Samples: getStats(&builtin)}
 	}
 
+	var analyze *tripperware.Analysis
+	if data.Analysis != nil {
+		analyze = queryTelemetryToAnalysis(data.Analysis)
+	}
+
 	return &tripperware.PrometheusResponse{
 		Status: string(resp.Status),
 		Data: tripperware.PrometheusData{
 			ResultType: string(data.ResultType),
 			Result:     queryResult,
 			Stats:      stats,
+			Analysis:   analyze,
 		},
 		ErrorType: string(resp.ErrorType),
 		Error:     resp.Error,
@@ -95,7 +105,30 @@ func createPrometheusQueryResponse(resp *v1.Response, cortexInternal bool) (*tri
 	}, nil
 }
 
-func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
+func queryTelemetryToAnalysis(telemetry *analysis.QueryTelemetry) *tripperware.Analysis {
+	if telemetry == nil {
+		return nil
+	}
+
+	duration, _ := time.ParseDuration(telemetry.Execution)
+	result := &tripperware.Analysis{
+		Name:          telemetry.OperatorName,
+		ExecutionTime: tripperware.Duration(duration),
+		PeakSamples:   telemetry.PeakSamples,
+		TotalSamples:  telemetry.TotalSamples,
+	}
+
+	if len(telemetry.Children) > 0 {
+		result.Children = make([]*tripperware.Analysis, len(telemetry.Children))
+		for i, child := range telemetry.Children {
+			result.Children[i] = queryTelemetryToAnalysis(&child)
+		}
+	}
+
+	return result
+}
+
+func getMatrixSampleStreams(data *queryapi.QueryData) *[]tripperware.SampleStream {
 	sampleStreamsLen := len(data.Result.(promql.Matrix))
 	sampleStreams := make([]tripperware.SampleStream, sampleStreamsLen)
 
@@ -150,7 +183,7 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 	return &sampleStreams
 }
 
-func getVectorSamples(data *v1.QueryData, cortexInternal bool) *[]tripperware.Sample {
+func getVectorSamples(data *queryapi.QueryData, cortexInternal bool) *[]tripperware.Sample {
 	vectorSamplesLen := len(data.Result.(promql.Vector))
 	vectorSamples := make([]tripperware.Sample, vectorSamplesLen)
 

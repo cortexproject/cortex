@@ -43,13 +43,17 @@ func MergeResponse(ctx context.Context, sumStats bool, req Request, responses ..
 	promResponses := make([]*PrometheusResponse, 0, len(responses))
 	warnings := make([][]string, 0, len(responses))
 	infos := make([][]string, 0, len(responses))
-	for _, resp := range responses {
+	analyzes := make([]*Analysis, 0, len(responses))
+	for i, resp := range responses {
 		promResponses = append(promResponses, resp.(*PrometheusResponse))
 		if w := resp.(*PrometheusResponse).Warnings; w != nil {
 			warnings = append(warnings, w)
 		}
 		if i := resp.(*PrometheusResponse).Infos; i != nil {
 			infos = append(infos, i)
+		}
+		if promResponses[i].GetData().Analysis != nil {
+			analyzes = append(analyzes, promResponses[i].GetData().Analysis)
 		}
 	}
 
@@ -73,7 +77,8 @@ func MergeResponse(ctx context.Context, sumStats bool, req Request, responses ..
 					Vector: v,
 				},
 			},
-			Stats: statsMerge(sumStats, promResponses),
+			Stats:    statsMerge(sumStats, promResponses),
+			Analysis: AnalyzesMerge(analyzes...),
 		}
 	case model.ValMatrix.String():
 		sampleStreams, err := matrixMerge(ctx, promResponses)
@@ -90,7 +95,8 @@ func MergeResponse(ctx context.Context, sumStats bool, req Request, responses ..
 					},
 				},
 			},
-			Stats: statsMerge(sumStats, promResponses),
+			Stats:    statsMerge(sumStats, promResponses),
+			Analysis: AnalyzesMerge(analyzes...),
 		}
 	default:
 		return nil, fmt.Errorf("unexpected result type: %s", promResponses[0].Data.ResultType)
@@ -256,6 +262,40 @@ func statsMerge(shouldSumStats bool, resps []*PrometheusResponse) *PrometheusRes
 	result.Samples.PeakSamples = peakSamples
 
 	return result
+}
+
+func traverseAnalysis(a *Analysis, results *[]*Analysis) {
+	if a == nil {
+		return
+	}
+
+	*results = append(*results, a)
+
+	for _, ch := range a.Children {
+		traverseAnalysis(ch, results)
+	}
+}
+
+func AnalyzesMerge(analysis ...*Analysis) *Analysis {
+	if len(analysis) == 0 {
+		return &Analysis{}
+	}
+
+	root := analysis[0]
+
+	var rootElements []*Analysis
+	traverseAnalysis(root, &rootElements)
+
+	for _, a := range analysis[1:] {
+		var elements []*Analysis
+		traverseAnalysis(a, &elements)
+
+		for i := 0; i < len(elements) && i < len(rootElements); i++ {
+			rootElements[i].ExecutionTime += analysis[i].ExecutionTime
+		}
+	}
+
+	return root
 }
 
 type sortPlan int

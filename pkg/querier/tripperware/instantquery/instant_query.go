@@ -71,6 +71,7 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 
 	result.Query = r.FormValue("query")
 	result.Stats = r.FormValue("stats")
+	result.Analyze = r.FormValue("analyze")
 	result.Path = r.URL.Path
 
 	isSourceRuler := strings.Contains(r.Header.Get("User-Agent"), tripperware.RulerUserAgent)
@@ -153,6 +154,10 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 
 	if promReq.Stats != "" {
 		params.Add("stats", promReq.Stats)
+	}
+
+	if promReq.Analyze != "" {
+		params.Add("analyze", promReq.Analyze)
 	}
 
 	u := &url.URL{

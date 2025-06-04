@@ -2,11 +2,13 @@ package users
 
 import (
 	"context"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 // cachedScanner is a scanner that caches the result of the underlying scanner.

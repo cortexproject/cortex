@@ -3,7 +3,6 @@ package queryapi
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/querier"
 	"net/http"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/engine"
+	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/api"
 )

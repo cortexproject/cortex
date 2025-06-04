@@ -56,10 +56,6 @@ func NewMonitor(limits map[Type]float64, interval, cpuRateInterval time.Duration
 	}
 
 	m.interval = interval
-	m.cpuDataPoints = int(cpuRateInterval.Nanoseconds() / interval.Nanoseconds())
-	m.cpuRates = make([]float64, m.cpuDataPoints)
-	m.cpuIntervals = make([]float64, m.cpuDataPoints)
-
 	m.Service = services.NewBasicService(nil, m.running, nil)
 
 	for resType, limit := range limits {
@@ -70,6 +66,10 @@ func NewMonitor(limits map[Type]float64, interval, cpuRateInterval time.Duration
 		case CPU:
 			scannerFunc = newCPUScanner
 			gaugeFunc = m.GetCPUUtilization
+
+			m.cpuDataPoints = int(cpuRateInterval.Nanoseconds() / interval.Nanoseconds())
+			m.cpuRates = make([]float64, m.cpuDataPoints)
+			m.cpuIntervals = make([]float64, m.cpuDataPoints)
 		case Heap:
 			scannerFunc = newHeapScanner
 			gaugeFunc = m.GetHeapUtilization

@@ -79,7 +79,8 @@ resource_monitor:
   # CLI flag: -resource-monitor.interval
   [interval: <duration> | default = 100ms]
 
-  # Interval to calculate average CPU rate. Must be greater than 0.
+  # Interval to calculate average CPU rate. Must be greater than resource
+  # monitor interval.
   # CLI flag: -resource-monitor.cpu-rate-interval
   [cpu_rate_interval: <duration> | default = 1m]
 

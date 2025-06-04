@@ -22,7 +22,7 @@ func (cfg *ResourceMonitor) RegisterFlags(f *flag.FlagSet) {
 		"Supported values are cpu and heap, which tracks metrics from github.com/prometheus/procfs and runtime/metrics "+
 		"that are close estimates. Empty string to disable.")
 	f.DurationVar(&cfg.Interval, "resource-monitor.interval", 100*time.Millisecond, "Update interval of resource monitor. Must be greater than 0.")
-	f.DurationVar(&cfg.CPURateInterval, "resource-monitor.cpu-rate-interval", time.Minute, "Interval to calculate average CPU rate. Must be greater than 0.")
+	f.DurationVar(&cfg.CPURateInterval, "resource-monitor.cpu-rate-interval", time.Minute, "Interval to calculate average CPU rate. Must be greater than resource monitor interval.")
 }
 
 func (cfg *ResourceMonitor) Validate() error {

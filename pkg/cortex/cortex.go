@@ -90,11 +90,11 @@ var (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target             flagext.StringSliceCSV `yaml:"target"`
-	AuthEnabled        bool                   `yaml:"auth_enabled"`
-	PrintConfig        bool                   `yaml:"-"`
-	HTTPPrefix         string                 `yaml:"http_prefix"`
-	MonitoredResources flagext.StringSliceCSV `yaml:"monitored_resources"`
+	Target          flagext.StringSliceCSV  `yaml:"target"`
+	AuthEnabled     bool                    `yaml:"auth_enabled"`
+	PrintConfig     bool                    `yaml:"-"`
+	HTTPPrefix      string                  `yaml:"http_prefix"`
+	ResourceMonitor configs.ResourceMonitor `yaml:"resource_monitor"`
 
 	ExternalQueryable prom_storage.Queryable `yaml:"-"`
 	ExternalPusher    ruler.Pusher           `yaml:"-"`
@@ -147,11 +147,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 
-	c.MonitoredResources = []string{}
-	f.Var(&c.MonitoredResources, "monitored.resources", "Comma-separated list of resources to monitor. "+
-		"Supported values are cpu and heap, which tracks metrics from github.com/prometheus/procfs and runtime/metrics "+
-		"that are close estimates. Empty string to disable.")
-
 	c.API.RegisterFlags(f)
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Distributor.RegisterFlags(f)
@@ -170,6 +165,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ParquetConverter.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
 	c.TenantFederation.RegisterFlags(f)
+	c.ResourceMonitor.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.RulerStorage.RegisterFlags(f)
@@ -211,6 +207,9 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
+	if err := c.ResourceMonitor.Validate(); err != nil {
+		return errors.Wrap(err, "invalid resource-monitor config")
+	}
 	if err := c.Distributor.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid distributor config")
 	}
@@ -226,7 +225,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.QueryRange.Validate(c.Querier); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
-	if err := c.StoreGateway.Validate(c.LimitsConfig, c.MonitoredResources); err != nil {
+	if err := c.StoreGateway.Validate(c.LimitsConfig, c.ResourceMonitor.Resources); err != nil {
 		return errors.Wrap(err, "invalid store-gateway config")
 	}
 	if err := c.Compactor.Validate(c.LimitsConfig); err != nil {
@@ -239,22 +238,12 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
-	if err := c.Ingester.Validate(c.MonitoredResources); err != nil {
+	if err := c.Ingester.Validate(c.ResourceMonitor.Resources); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
 
 	if err := c.Tracing.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tracing config")
-	}
-
-	for _, r := range c.MonitoredResources {
-		switch resource.Type(r) {
-		case resource.CPU, resource.Heap:
-		default:
-			if len(r) > 0 {
-				return fmt.Errorf("unsupported resource type to monitor: %s", r)
-			}
-		}
 	}
 
 	return nil

@@ -23,6 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -170,16 +171,45 @@ func TestConfigValidation(t *testing.T) {
 			name: "should fail validation for invalid resource to monitor",
 			getTestConfig: func() *Config {
 				configuration := newDefaultConfig()
-				configuration.MonitoredResources = []string{"wrong"}
+				configuration.ResourceMonitor = configs.ResourceMonitor{
+					Resources: []string{"wrong"},
+				}
 				return configuration
 			},
 			expectedError: fmt.Errorf("unsupported resource type to monitor: %s", "wrong"),
 		},
 		{
+			name: "should fail validation for invalid resource to monitor - 2",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.ResourceMonitor = configs.ResourceMonitor{
+					Interval: -1,
+				}
+				return configuration
+			},
+			expectedError: fmt.Errorf("resource monitor interval must be greater than zero"),
+		},
+		{
+			name: "should fail validation for invalid resource to monitor - 3",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.ResourceMonitor = configs.ResourceMonitor{
+					Interval:        time.Second,
+					CPURateInterval: time.Millisecond,
+				}
+				return configuration
+			},
+			expectedError: fmt.Errorf("resource monitor cpu rate interval cannot be smaller than resource monitor interval"),
+		},
+		{
 			name: "should not fail validation for valid resources to monitor",
 			getTestConfig: func() *Config {
 				configuration := newDefaultConfig()
-				configuration.MonitoredResources = []string{"cpu", "heap"}
+				configuration.ResourceMonitor = configs.ResourceMonitor{
+					Resources:       []string{"cpu", "heap"},
+					Interval:        time.Second,
+					CPURateInterval: time.Minute,
+				}
 				return configuration
 			},
 			expectedError: nil,

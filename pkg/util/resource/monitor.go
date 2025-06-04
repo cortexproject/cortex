@@ -15,9 +15,6 @@ import (
 const (
 	CPU  Type = "cpu"
 	Heap Type = "heap"
-
-	monitorInterval = 100 * time.Millisecond
-	dataPointsToAvg = 50
 )
 
 type Type string
@@ -33,31 +30,32 @@ type Monitor struct {
 	scanners       map[Type]scanner
 	containerLimit map[Type]float64
 	utilization    map[Type]float64
+	interval       time.Duration
 
 	// Variables to calculate average CPU utilization
 	index         int
-	cpuRates      [dataPointsToAvg]float64
-	cpuIntervals  [dataPointsToAvg]float64
+	cpuRates      []float64
+	cpuIntervals  []float64
 	totalCPU      float64
 	totalInterval float64
 	lastCPU       float64
 	lastUpdate    time.Time
+	cpuDataPoints int
 
 	lock sync.RWMutex
 }
 
-func NewMonitor(limits map[Type]float64, registerer prometheus.Registerer) (*Monitor, error) {
+func NewMonitor(limits map[Type]float64, interval, cpuRateInterval time.Duration, registerer prometheus.Registerer) (*Monitor, error) {
 	m := &Monitor{
 		containerLimit: limits,
 		scanners:       make(map[Type]scanner),
 		utilization:    make(map[Type]float64),
-
-		cpuRates:     [dataPointsToAvg]float64{},
-		cpuIntervals: [dataPointsToAvg]float64{},
+		interval:       interval,
 
 		lock: sync.RWMutex{},
 	}
 
+	m.interval = interval
 	m.Service = services.NewBasicService(nil, m.running, nil)
 
 	for resType, limit := range limits {
@@ -68,6 +66,10 @@ func NewMonitor(limits map[Type]float64, registerer prometheus.Registerer) (*Mon
 		case CPU:
 			scannerFunc = newCPUScanner
 			gaugeFunc = m.GetCPUUtilization
+
+			m.cpuDataPoints = int(cpuRateInterval.Nanoseconds() / interval.Nanoseconds())
+			m.cpuRates = make([]float64, m.cpuDataPoints)
+			m.cpuIntervals = make([]float64, m.cpuDataPoints)
 		case Heap:
 			scannerFunc = newHeapScanner
 			gaugeFunc = m.GetHeapUtilization
@@ -92,7 +94,7 @@ func NewMonitor(limits map[Type]float64, registerer prometheus.Registerer) (*Mon
 }
 
 func (m *Monitor) running(ctx context.Context) error {
-	ticker := time.NewTicker(monitorInterval)
+	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
 
 	for {
@@ -141,7 +143,7 @@ func (m *Monitor) storeCPUUtilization(cpuTime float64) {
 
 	m.lastCPU = cpuTime
 	m.lastUpdate = now
-	m.index = (m.index + 1) % dataPointsToAvg
+	m.index = (m.index + 1) % m.cpuDataPoints
 
 	if m.totalInterval > 0 && m.containerLimit[CPU] > 0 {
 		m.utilization[CPU] = m.totalCPU / m.totalInterval / m.containerLimit[CPU]

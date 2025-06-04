@@ -144,7 +144,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 			Help: "Number of tenants synced.",
 		}),
 	}
-	u.userScanner, err = users.NewScanner(cfg.UsersScanner, bucketClient, logger)
+	u.userScanner, err = users.NewScanner(cfg.UsersScanner, bucketClient, logger, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create users scanner")
 	}

@@ -671,7 +671,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 	}
 
 	// Create the users scanner.
-	c.usersScanner, err = users.NewScanner(c.storageCfg.UsersScanner, c.bucketClient, c.logger)
+	c.usersScanner, err = users.NewScanner(c.storageCfg.UsersScanner, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
 	if err != nil {
 		return errors.Wrap(err, "failed to create users scanner")
 	}
@@ -761,8 +761,8 @@ func (c *Compactor) starting(ctx context.Context) error {
 		// We hardcode strategy to be list so can ignore error.
 		baseScanner, _ := users.NewScanner(cortex_tsdb.UsersScannerConfig{
 			Strategy: cortex_tsdb.UserScanStrategyList,
-		}, c.bucketClient, c.logger)
-		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, baseScanner)
+		}, c.bucketClient, c.logger, c.registerer)
+		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, baseScanner, c.registerer)
 	}
 
 	return nil

@@ -78,7 +78,7 @@ func TestUserIndexUpdater_UpdateUserIndex(t *testing.T) {
 			t.Parallel()
 			bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
-			updater := NewUserIndexUpdater(bkt, testData.scanner)
+			updater := NewUserIndexUpdater(bkt, testData.scanner, nil)
 			err := updater.UpdateUserIndex(ctx)
 
 			if testData.expectErr {
@@ -119,7 +119,7 @@ func TestUserIndexUpdater_UpdateUserIndex_WriteError(t *testing.T) {
 	// Mock the bucket to return an error on upload
 	bkt.MockUpload(UserIndexCompressedFilename, assert.AnError)
 
-	updater := NewUserIndexUpdater(bkt, scanner)
+	updater := NewUserIndexUpdater(bkt, scanner, nil)
 	err := updater.UpdateUserIndex(ctx)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "upload user index")

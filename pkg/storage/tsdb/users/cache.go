@@ -2,6 +2,9 @@ package users
 
 import (
 	"context"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"sync"
 	"time"
 )
@@ -15,9 +18,28 @@ type cachedScanner struct {
 	ttl           time.Duration
 
 	active, deleting, deleted []string
+
+	requests prometheus.Counter
+	hits     prometheus.Counter
+}
+
+func newCachedScanner(scanner Scanner, cfg tsdb.UsersScannerConfig, reg prometheus.Registerer) *cachedScanner {
+	return &cachedScanner{
+		scanner: scanner,
+		ttl:     cfg.CacheTTL,
+		requests: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_cached_users_scanner_requests_total",
+			Help: "Total number of scans made to the cache scanner",
+		}),
+		hits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_cached_users_scanner_hits_total",
+			Help: "Total number of hits of scanner cache",
+		}),
+	}
 }
 
 func (s *cachedScanner) ScanUsers(ctx context.Context) ([]string, []string, []string, error) {
+	s.requests.Inc()
 	s.mtx.RLock()
 	// Check if we have a valid cached result
 	if !s.lastUpdatedAt.Before(time.Now().Add(-s.ttl)) {
@@ -25,6 +47,7 @@ func (s *cachedScanner) ScanUsers(ctx context.Context) ([]string, []string, []st
 		deleting := s.deleting
 		deleted := s.deleted
 		s.mtx.RUnlock()
+		s.hits.Inc()
 		return active, deleting, deleted, nil
 	}
 	s.mtx.RUnlock()

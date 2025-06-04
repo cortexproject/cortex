@@ -84,9 +84,10 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 	}
 
 	logger := log.NewNopLogger()
+	reg := prometheus.NewRegistry()
 	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
 		Strategy: tsdb.UserScanStrategyList,
-	}, mbucket, logger)
+	}, mbucket, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -95,7 +96,7 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 	}, append(commonLabels, reasonLabelName))
 	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
 
-	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, 60*time.Second, cfgProvider, logger, "test-cleaner", nil, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
+	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, 60*time.Second, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
 
 	// Clean User with no error
 	cleaner.bucketClient = bkt
@@ -202,7 +203,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	logger := log.NewNopLogger()
 	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
 		Strategy: tsdb.UserScanStrategyList,
-	}, bucketClient, logger)
+	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -371,9 +372,10 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	}
 
 	logger := log.NewNopLogger()
+	reg := prometheus.NewRegistry()
 	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
 		Strategy: tsdb.UserScanStrategyList,
-	}, bucketClient, logger)
+	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -439,9 +441,10 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 	}
 
 	logger := log.NewNopLogger()
+	reg := prometheus.NewRegistry()
 	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
 		Strategy: tsdb.UserScanStrategyList,
-	}, bucketClient, logger)
+	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -500,10 +503,10 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
-	reg := prometheus.NewPedanticRegistry()
+	reg := prometheus.NewRegistry()
 	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
 		Strategy: tsdb.UserScanStrategyList,
-	}, bucketClient, logger)
+	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -540,7 +543,7 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	// Override the users scanner to reconfigure it to only return a subset of users.
 	cleaner.usersScanner, err = users.NewScanner(tsdb.UsersScannerConfig{
 		Strategy: tsdb.UserScanStrategyList,
-	}, bucketClient, logger)
+	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cleaner.usersScanner = users.NewShardedScanner(cleaner.usersScanner, func(userID string) (bool, error) { return userID == "user-1", nil }, logger)
 
@@ -652,7 +655,7 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
 		Strategy: tsdb.UserScanStrategyList,
-	}, bucketClient, logger)
+	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -884,7 +887,7 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
 		Strategy: tsdb.UserScanStrategyList,
-	}, bucketClient, logger)
+	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -959,7 +962,7 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
 		Strategy: tsdb.UserScanStrategyList,
-	}, bucketClient, logger)
+	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{

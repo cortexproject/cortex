@@ -10,6 +10,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -27,27 +29,19 @@ type Scanner interface {
 	ScanUsers(ctx context.Context) (active, deleting, deleted []string, err error)
 }
 
-func NewScanner(cfg tsdb.UsersScannerConfig, bkt objstore.InstrumentedBucket, logger log.Logger) (Scanner, error) {
+func NewScanner(cfg tsdb.UsersScannerConfig, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (Scanner, error) {
 	var scanner Scanner
 	switch cfg.Strategy {
 	case tsdb.UserScanStrategyList:
 		scanner = &listScanner{bkt: bkt}
 	case tsdb.UserScanStrategyUserIndex:
-		scanner = &userIndexScanner{
-			bkt:            bkt,
-			logger:         logger,
-			baseScanner:    &listScanner{bkt: bkt},
-			maxStalePeriod: cfg.MaxStalePeriod,
-		}
+		scanner = newUserIndexScanner(&listScanner{bkt: bkt}, cfg, bkt, logger, reg)
 	default:
 		return nil, tsdb.ErrInvalidUserScannerStrategy
 	}
 
 	if cfg.CacheTTL > 0 {
-		scanner = &cachedScanner{
-			scanner: scanner,
-			ttl:     cfg.CacheTTL,
-		}
+		scanner = newCachedScanner(scanner, cfg, reg)
 	}
 
 	return scanner, nil
@@ -117,6 +111,7 @@ func (s *listScanner) ScanUsers(ctx context.Context) (active, deleting, deleted 
 		deleting = append(deleting, userID)
 	}
 
+	// Sort for deterministic results in testing. There is no contract for list of users to be sorted.
 	sort.Strings(active)
 	sort.Strings(deleting)
 	sort.Strings(deleted)
@@ -130,6 +125,31 @@ type userIndexScanner struct {
 
 	// Maximum period of time to consider the user index as stale.
 	maxStalePeriod time.Duration
+
+	fallbackScans        *prometheus.CounterVec
+	successfulScans      prometheus.Counter
+	userIndexUpdateDelay prometheus.Gauge
+}
+
+func newUserIndexScanner(baseScanner Scanner, cfg tsdb.UsersScannerConfig, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) *userIndexScanner {
+	return &userIndexScanner{
+		bkt:            bkt,
+		logger:         logger,
+		baseScanner:    baseScanner,
+		maxStalePeriod: cfg.MaxStalePeriod,
+		fallbackScans: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_user_index_scan_fallbacks_total",
+			Help: "Total number of fallbacks to base scanner",
+		}, []string{"reason"}),
+		successfulScans: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_user_index_scan_successful_total",
+			Help: "Total number of successful scans using user index",
+		}),
+		userIndexUpdateDelay: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_user_index_update_delay_seconds",
+			Help: "Time offset in seconds between now and user index file updated time",
+		}),
+	}
 }
 
 func (s *userIndexScanner) ScanUsers(ctx context.Context) ([]string, []string, []string, error) {
@@ -137,18 +157,25 @@ func (s *userIndexScanner) ScanUsers(ctx context.Context) ([]string, []string, [
 	if err != nil {
 		if errors.Is(err, ErrIndexNotFound) {
 			level.Info(s.logger).Log("msg", "user index not found, fallback to base scanner")
+			s.fallbackScans.WithLabelValues("not-found").Inc()
 		} else {
 			// Always fallback to the list scanner if failed to read the user index.
 			level.Error(s.logger).Log("msg", "failed to read user index, fallback to base scanner", "error", err)
+			s.fallbackScans.WithLabelValues("corrupted").Inc()
 		}
 		return s.baseScanner.ScanUsers(ctx)
 	}
 
-	if userIndex.GetUpdatedAt().Before(time.Now().Add(-s.maxStalePeriod)) {
+	now := time.Now()
+	updatedAt := userIndex.GetUpdatedAt()
+	s.userIndexUpdateDelay.Set(time.Since(updatedAt).Seconds())
+	if updatedAt.Before(now.Add(-s.maxStalePeriod)) {
 		level.Warn(s.logger).Log("msg", "user index is stale, fallback to base scanner", "updated_at", userIndex.GetUpdatedAt(), "max_stale_period", s.maxStalePeriod)
+		s.fallbackScans.WithLabelValues("too_old").Inc()
 		return s.baseScanner.ScanUsers(ctx)
 	}
 
+	s.successfulScans.Inc()
 	return userIndex.ActiveUsers, userIndex.DeletingUsers, userIndex.DeletedUsers, nil
 }
 

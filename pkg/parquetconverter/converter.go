@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"hash/fnv"
 	"math/rand"
 	"os"
@@ -105,7 +106,7 @@ func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockR
 		return nil, err
 	}
 	bkt = bucketindex.BucketWithGlobalMarkers(bkt)
-	usersScanner, err := users.NewScanner(storageCfg.UsersScanner, bkt, logger)
+	usersScanner, err := users.NewScanner(storageCfg.UsersScanner, bkt, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "parquet-converter"}, registerer))
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to initialize users scanner")
 	}

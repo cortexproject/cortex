@@ -214,7 +214,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
 		}, bucketClient, limits, logger, reg)
 	} else {
-		usersScanner, err := users.NewScanner(storageCfg.UsersScanner, bucketClient, logger)
+		usersScanner, err := users.NewScanner(storageCfg.UsersScanner, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create users scanner for bucket scan blocks finder")
 		}

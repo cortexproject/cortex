@@ -154,7 +154,7 @@ func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket,
 
 	scanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
 		Strategy: cortex_tsdb.UserScanStrategyList,
-	}, bucketClient, logger)
+	}, bucketClient, logger, registry)
 	require.NoError(t, err)
 	c := newConverter(cfg, bucketClient, storageCfg, blockRanges.ToMilliseconds(), logger, registry, overrides, scanner)
 	return c, logger, registry

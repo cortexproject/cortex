@@ -63,7 +63,7 @@ func (c ThanosBlockConverter) Run(ctx context.Context) (Results, error) {
 
 	// Hardcode user scan strategy to list.
 	// We can safely ignore the error as it only fails if the strategy is not supported.
-	usersScanner, _ := users.NewScanner(cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}, c.bkt, c.logger)
+	usersScanner, _ := users.NewScanner(cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}, c.bkt, c.logger, nil)
 	// Only active users are considered.
 	users, _, _, err := usersScanner.ScanUsers(ctx)
 	if err != nil {

@@ -195,12 +195,9 @@ func TestUserIndexScanner_ScanUsers(t *testing.T) {
 			testData.bucketSetup(bucketClient)
 
 			baseScanner := &listScanner{bkt: bucketClient}
-			scanner := &userIndexScanner{
-				bkt:            bucketClient,
-				logger:         logger,
-				baseScanner:    baseScanner,
-				maxStalePeriod: testData.maxStalePeriod,
-			}
+			scanner := newUserIndexScanner(baseScanner, tsdb.UsersScannerConfig{
+				MaxStalePeriod: testData.maxStalePeriod,
+			}, bucketClient, logger, nil)
 
 			active, deleting, deleted, err := scanner.ScanUsers(ctx)
 

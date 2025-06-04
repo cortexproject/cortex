@@ -5,8 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 func TestCachedScanner_ScanUsers(t *testing.T) {
@@ -70,10 +73,10 @@ func TestCachedScanner_ScanUsers(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			cachedScanner := &cachedScanner{
-				scanner: testData.scanner,
-				ttl:     testData.ttl,
-			}
+			reg := prometheus.NewRegistry()
+			cachedScanner := newCachedScanner(testData.scanner, tsdb.UsersScannerConfig{
+				CacheTTL: testData.ttl,
+			}, reg)
 
 			// First call
 			active, deleting, deleted, err := cachedScanner.ScanUsers(ctx)
@@ -114,16 +117,16 @@ func TestCachedScanner_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
+	reg := prometheus.NewRegistry()
 	scanner := &mockScanner{
 		active:   []string{"user-1"},
 		deleting: []string{"user-2"},
 		deleted:  []string{"user-3"},
 	}
 
-	cachedScanner := &cachedScanner{
-		scanner: scanner,
-		ttl:     1 * time.Hour,
-	}
+	cachedScanner := newCachedScanner(scanner, tsdb.UsersScannerConfig{
+		CacheTTL: 1 * time.Hour,
+	}, reg)
 
 	// Run multiple concurrent scans
 	const goroutines = 10

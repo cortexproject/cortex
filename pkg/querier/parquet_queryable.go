@@ -33,6 +33,39 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+type blockStorageType struct{}
+
+var blockStorageKey = blockStorageType{}
+
+const BlockStoreTypeHeader = "X-Cortex-BlockStore-Type"
+
+type blockStoreType string
+
+const (
+	tsdbBlockStore    blockStoreType = "tsdb"
+	parquetBlockStore blockStoreType = "parquet"
+)
+
+var validBlockStoreTypes = []blockStoreType{tsdbBlockStore, parquetBlockStore}
+
+// AddBlockStoreTypeToContext checks HTTP header and set block store key to context if
+// relevant header is set.
+func AddBlockStoreTypeToContext(ctx context.Context, storeType string) context.Context {
+	ng := blockStoreType(storeType)
+	switch ng {
+	case tsdbBlockStore, parquetBlockStore:
+		return context.WithValue(ctx, blockStorageKey, ng)
+	}
+	return ctx
+}
+
+func getBlockStoreType(ctx context.Context, defaultBlockStoreType blockStoreType) blockStoreType {
+	if ng, ok := ctx.Value(blockStorageKey).(blockStoreType); ok {
+		return ng
+	}
+	return defaultBlockStoreType
+}
+
 type parquetQueryableFallbackMetrics struct {
 	blocksQueriedTotal *prometheus.CounterVec
 	selectCount        *prometheus.CounterVec
@@ -69,6 +102,8 @@ type parquetQueryableWithFallback struct {
 
 	limits *validation.Overrides
 	logger log.Logger
+
+	defaultBlockStoreType blockStoreType
 }
 
 func NewParquetQueryable(
@@ -153,6 +188,7 @@ func NewParquetQueryable(
 		metrics:               newParquetQueryableFallbackMetrics(reg),
 		limits:                limits,
 		logger:                logger,
+		defaultBlockStoreType: blockStoreType(config.ParquetQueryableDefaultBlockStore),
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -195,15 +231,16 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 	}
 
 	return &parquetQuerierWithFallback{
-		minT:               mint,
-		maxT:               maxt,
-		parquetQuerier:     pq,
-		queryStoreAfter:    p.queryStoreAfter,
-		blocksStoreQuerier: bsq,
-		finder:             p.finder,
-		metrics:            p.metrics,
-		limits:             p.limits,
-		logger:             p.logger,
+		minT:                  mint,
+		maxT:                  maxt,
+		parquetQuerier:        pq,
+		queryStoreAfter:       p.queryStoreAfter,
+		blocksStoreQuerier:    bsq,
+		finder:                p.finder,
+		metrics:               p.metrics,
+		limits:                p.limits,
+		logger:                p.logger,
+		defaultBlockStoreType: p.defaultBlockStoreType,
 	}, nil
 }
 
@@ -224,6 +261,8 @@ type parquetQuerierWithFallback struct {
 
 	limits *validation.Overrides
 	logger log.Logger
+
+	defaultBlockStoreType blockStoreType
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -394,10 +433,11 @@ func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT i
 		return nil, nil, err
 	}
 
+	useParquet := getBlockStoreType(ctx, q.defaultBlockStoreType) == parquetBlockStore
 	parquetBlocks := make([]*bucketindex.Block, 0, len(blocks))
 	remaining := make([]*bucketindex.Block, 0, len(blocks))
 	for _, b := range blocks {
-		if b.Parquet != nil {
+		if useParquet && b.Parquet != nil {
 			parquetBlocks = append(parquetBlocks, b)
 			continue
 		}

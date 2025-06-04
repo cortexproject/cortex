@@ -3,6 +3,7 @@ package queryapi
 import (
 	"context"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/querier"
 	"net/http"
 	"time"
 
@@ -98,6 +99,7 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	}
 
 	ctx = engine.AddEngineTypeToContext(ctx, r)
+	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
 	qry, err := q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step))
 	if err != nil {
 		return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
@@ -153,6 +155,7 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 	}
 
 	ctx = engine.AddEngineTypeToContext(ctx, r)
+	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
 	qry, err := q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(ts))
 	if err != nil {
 		return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")

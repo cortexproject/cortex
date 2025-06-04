@@ -1,10 +1,12 @@
 # Changelog
 
 ## master / unreleased
+* [BUGFIX] ThanosEngine: Only enable default optimizers. #6776
+* [ENHANCEMENT] Distributor: Add min/max schema validation for NativeHistograms. #6766
+* [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
 * [CHANGE] Validate a tenantID when to use a single tenant resolver. #6727
-* [CHANGE] ResourceMonitor: Change configs. #6782
 * [FEATURE] Query Frontend: Add dynamic interval size for query splitting. This is enabled by configuring experimental flags `querier.max-shards-per-query` and/or `querier.max-fetched-data-duration-per-query`. The split interval size is dynamically increased to maintain a number of shards and total duration fetched below the configured values. #6458
 * [FEATURE] Querier/Ruler: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
 * [FEATURE] Update prometheus alertmanager version to v0.28.0 and add new integration msteamsv2, jira, and rocketchat. #6590
@@ -34,8 +36,6 @@
 * [ENHANCEMENT] Querier: Add metric and enhanced logging for query partial data. #6676
 * [ENHANCEMENT] Ingester: Push request should fail when label set is out of order #6746
 * [ENHANCEMENT] Querier: Add `querier.ingester-query-max-attempts` to retry on partial data. #6714
-* [ENHANCEMENT] Distributor: Add min/max schema validation for NativeHistograms. #6766
-* [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576
@@ -50,7 +50,6 @@
 * [BUGFIX] Add `__markers__` tenant ID validation. #6761
 * [BUGFIX] Ring: Fix nil pointer exception when token is shared. #6768
 * [BUGFIX] Fix race condition in active user. #6773
-* [BUGFIX] ThanosEngine: Only enable default optimizers. #6776
 
 ## 1.19.0 2025-02-27
 

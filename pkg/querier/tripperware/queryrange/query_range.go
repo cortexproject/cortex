@@ -96,12 +96,12 @@ func (c prometheusCodec) MergeResponse(ctx context.Context, req tripperware.Requ
 func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	result := tripperware.PrometheusRequest{Headers: map[string][]string{}}
 	var err error
-	result.Start, err = api.ParseTimeMillis(r.FormValue("start"))
+	result.Start, err = tripperware.ParseTimeMillis(r.FormValue("start"))
 	if err != nil {
 		return nil, api.DecorateWithParamName(err, "start")
 	}
 
-	result.End, err = api.ParseTimeMillis(r.FormValue("end"))
+	result.End, err = tripperware.ParseTimeMillis(r.FormValue("end"))
 	if err != nil {
 		return nil, api.DecorateWithParamName(err, "end")
 	}
@@ -110,7 +110,7 @@ func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwa
 		return nil, api.ErrEndBeforeStart
 	}
 
-	result.Step, err = api.ParseDurationMillis(r.FormValue("step"))
+	result.Step, err = tripperware.ParseDurationMillis(r.FormValue("step"))
 	if err != nil {
 		return nil, api.DecorateWithParamName(err, "step")
 	}

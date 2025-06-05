@@ -63,7 +63,7 @@ func NewInstantQueryCodec(compressionStr string, defaultCodecTypeStr string) ins
 func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	result := tripperware.PrometheusRequest{Headers: map[string][]string{}}
 	var err error
-	result.Time, err = api.ParseTimeParamMillis(r, "time", c.now())
+	result.Time, err = tripperware.ParseTimeParamMillis(r, "time", c.now())
 	if err != nil {
 		return nil, api.DecorateWithParamName(err, "time")
 	}

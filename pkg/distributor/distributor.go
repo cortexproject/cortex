@@ -95,7 +95,8 @@ type Distributor struct {
 	HATracker *ha.HATracker
 
 	// Per-user rate limiter.
-	ingestionRateLimiter *limiter.RateLimiter
+	ingestionRateLimiter                 *limiter.RateLimiter
+	nativeHistogramsIngestionRateLimiter *limiter.RateLimiter
 
 	// Manager for subservices (HA Tracker, distributor ring and client pool)
 	subservices        *services.Manager
@@ -267,11 +268,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	// it's an internal dependency and can't join the distributors ring, we skip rate
 	// limiting.
 	var ingestionRateStrategy limiter.RateLimiterStrategy
+	var nativeHistogramsIngestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsLifeCycler *ring.Lifecycler
 	var distributorsRing *ring.Ring
 
 	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
+		nativeHistogramsIngestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		distributorsLifeCycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, true, true, log, prometheus.WrapRegistererWithPrefix("cortex_", reg))
 		if err != nil {
@@ -285,21 +288,24 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		subservices = append(subservices, distributorsLifeCycler, distributorsRing)
 
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsLifeCycler)
+		nativeHistogramsIngestionRateStrategy = newGlobalNativeHistogramsIngestionRateStrategy(limits, distributorsLifeCycler)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(limits)
+		nativeHistogramsIngestionRateStrategy = newLocalNativeHistogramsIngestionRateStrategy(limits)
 	}
 
 	d := &Distributor{
-		cfg:                    cfg,
-		log:                    log,
-		ingestersRing:          ingestersRing,
-		ingesterPool:           NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
-		distributorsLifeCycler: distributorsLifeCycler,
-		distributorsRing:       distributorsRing,
-		limits:                 limits,
-		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		HATracker:              haTracker,
-		ingestionRate:          util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		cfg:                                  cfg,
+		log:                                  log,
+		ingestersRing:                        ingestersRing,
+		ingesterPool:                         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
+		distributorsLifeCycler:               distributorsLifeCycler,
+		distributorsRing:                     distributorsRing,
+		limits:                               limits,
+		ingestionRateLimiter:                 limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+		nativeHistogramsIngestionRateLimiter: limiter.NewRateLimiter(nativeHistogramsIngestionRateStrategy, 10*time.Second),
+		HATracker:                            haTracker,
+		ingestionRate:                        util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -774,6 +780,20 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	totalSamples := validatedFloatSamples + validatedHistogramSamples
 	totalN := totalSamples + validatedExemplars + len(validatedMetadata)
+
+	if !d.nativeHistogramsIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples) {
+		// Ensure the request slice is reused if the request is rate limited.
+		cortexpb.ReuseSlice(req.Timeseries)
+
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(totalSamples))
+		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(validatedExemplars))
+		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(len(validatedMetadata)))
+		// Return a 429 here to tell the client it is going too fast.
+		// Client may discard the data or slow down and re-send.
+		// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.nativeHistogramsIngestionRateLimiter.Limit(now, userID), totalSamples, len(validatedMetadata))
+	}
+
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
 		cortexpb.ReuseSlice(req.Timeseries)

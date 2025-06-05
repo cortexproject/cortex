@@ -351,6 +351,15 @@ func TestDistributor_Push(t *testing.T) {
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 25
 			`,
 		},
+		"A push not exceeding burst size but  exceeding nativeHistograms burst size should fail, histograms": {
+			numIngesters:     3,
+			happyIngesters:   3,
+			samples:          samplesIn{num: 15, startTimestampMs: 123456789000},
+			histogramSamples: true,
+			metadata:         5,
+			expectedError:    httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (10) exceeded while adding 15 samples and 5 metadata"),
+			metricNames:      []string{lastSeenTimestamp, distributorReceivedSamples},
+		},
 	} {
 		for _, useStreamPush := range []bool{false, true} {
 			for _, shardByAllLabels := range []bool{true, false} {
@@ -364,6 +373,8 @@ func TestDistributor_Push(t *testing.T) {
 					flagext.DefaultValues(limits)
 					limits.IngestionRate = 20
 					limits.IngestionBurstSize = 20
+					limits.NativeHistogramsIngestionRate = 10
+					limits.NativeHistogramsIngestionBurstSize = 10
 
 					ds, _, regs, _ := prepare(t, prepConfig{
 						numIngesters:     tc.numIngesters,

@@ -123,29 +123,31 @@ type LimitsPerLabelSet struct {
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRate             float64             `yaml:"ingestion_rate" json:"ingestion_rate"`
-	IngestionRateStrategy     string              `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
-	IngestionBurstSize        int                 `yaml:"ingestion_burst_size" json:"ingestion_burst_size"`
-	AcceptHASamples           bool                `yaml:"accept_ha_samples" json:"accept_ha_samples"`
-	AcceptMixedHASamples      bool                `yaml:"accept_mixed_ha_samples" json:"accept_mixed_ha_samples"`
-	HAClusterLabel            string              `yaml:"ha_cluster_label" json:"ha_cluster_label"`
-	HAReplicaLabel            string              `yaml:"ha_replica_label" json:"ha_replica_label"`
-	HAMaxClusters             int                 `yaml:"ha_max_clusters" json:"ha_max_clusters"`
-	DropLabels                flagext.StringSlice `yaml:"drop_labels" json:"drop_labels"`
-	MaxLabelNameLength        int                 `yaml:"max_label_name_length" json:"max_label_name_length"`
-	MaxLabelValueLength       int                 `yaml:"max_label_value_length" json:"max_label_value_length"`
-	MaxLabelNamesPerSeries    int                 `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
-	MaxLabelsSizeBytes        int                 `yaml:"max_labels_size_bytes" json:"max_labels_size_bytes"`
-	MaxMetadataLength         int                 `yaml:"max_metadata_length" json:"max_metadata_length"`
-	RejectOldSamples          bool                `yaml:"reject_old_samples" json:"reject_old_samples"`
-	RejectOldSamplesMaxAge    model.Duration      `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
-	CreationGracePeriod       model.Duration      `yaml:"creation_grace_period" json:"creation_grace_period"`
-	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name" json:"enforce_metadata_metric_name"`
-	EnforceMetricName         bool                `yaml:"enforce_metric_name" json:"enforce_metric_name"`
-	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
-	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
-	MaxNativeHistogramBuckets int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
-	PromoteResourceAttributes []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
+	IngestionRate                      float64             `yaml:"ingestion_rate" json:"ingestion_rate"`
+	NativeHistogramsIngestionRate      float64             `yaml:"native_histograms_ingestion_rate" json:"native_histograms_ingestion_rate"`
+	IngestionRateStrategy              string              `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
+	IngestionBurstSize                 int                 `yaml:"ingestion_burst_size" json:"ingestion_burst_size"`
+	NativeHistogramsIngestionBurstSize int                 `yaml:"native_histograms_ingestion_burst_size" json:"native_histograms_ingestion_burst_size"`
+	AcceptHASamples                    bool                `yaml:"accept_ha_samples" json:"accept_ha_samples"`
+	AcceptMixedHASamples               bool                `yaml:"accept_mixed_ha_samples" json:"accept_mixed_ha_samples"`
+	HAClusterLabel                     string              `yaml:"ha_cluster_label" json:"ha_cluster_label"`
+	HAReplicaLabel                     string              `yaml:"ha_replica_label" json:"ha_replica_label"`
+	HAMaxClusters                      int                 `yaml:"ha_max_clusters" json:"ha_max_clusters"`
+	DropLabels                         flagext.StringSlice `yaml:"drop_labels" json:"drop_labels"`
+	MaxLabelNameLength                 int                 `yaml:"max_label_name_length" json:"max_label_name_length"`
+	MaxLabelValueLength                int                 `yaml:"max_label_value_length" json:"max_label_value_length"`
+	MaxLabelNamesPerSeries             int                 `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
+	MaxLabelsSizeBytes                 int                 `yaml:"max_labels_size_bytes" json:"max_labels_size_bytes"`
+	MaxMetadataLength                  int                 `yaml:"max_metadata_length" json:"max_metadata_length"`
+	RejectOldSamples                   bool                `yaml:"reject_old_samples" json:"reject_old_samples"`
+	RejectOldSamplesMaxAge             model.Duration      `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
+	CreationGracePeriod                model.Duration      `yaml:"creation_grace_period" json:"creation_grace_period"`
+	EnforceMetadataMetricName          bool                `yaml:"enforce_metadata_metric_name" json:"enforce_metadata_metric_name"`
+	EnforceMetricName                  bool                `yaml:"enforce_metric_name" json:"enforce_metric_name"`
+	IngestionTenantShardSize           int                 `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
+	MetricRelabelConfigs               []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
+	MaxNativeHistogramBuckets          int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
+	PromoteResourceAttributes          []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
 
 	// Ingester enforced limits.
 	// Series
@@ -240,8 +242,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.IngestionTenantShardSize, "distributor.ingestion-tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set both on ingesters and distributors. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
+	f.Float64Var(&l.NativeHistogramsIngestionRate, "distributor.native-histograms-ingestion-rate-limit", 2500, "Per-user nativeHistograms ingestion rate limit in samples per second.")
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
+	f.IntVar(&l.NativeHistogramsIngestionBurstSize, "distributor.native-histograms-ingestion-burst-size", 5000, "Per-user allowed nativeHistograms ingestion burst size (in number of samples).")
 	f.BoolVar(&l.AcceptHASamples, "distributor.ha-tracker.enable-for-all-users", false, "Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup.")
 	f.BoolVar(&l.AcceptMixedHASamples, "experimental.distributor.ha-tracker.mixed-ha-samples", false, "[Experimental] Flag to enable handling of samples with mixed external labels identifying replicas in an HA Prometheus setup. Supported only if -distributor.ha-tracker.enable-for-all-users is true.")
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
@@ -577,6 +581,11 @@ func (o *Overrides) IngestionRate(userID string) float64 {
 	return o.GetOverridesForUser(userID).IngestionRate
 }
 
+// NativeHistogramsIngestionRate returns the limit on ingester rate (samples per second).
+func (o *Overrides) NativeHistogramsIngestionRate(userID string) float64 {
+	return o.GetOverridesForUser(userID).NativeHistogramsIngestionRate
+}
+
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
 // to each distributor instance (local) or evenly shared across the cluster (global).
 func (o *Overrides) IngestionRateStrategy() string {
@@ -587,6 +596,11 @@ func (o *Overrides) IngestionRateStrategy() string {
 // IngestionBurstSize returns the burst size for ingestion rate.
 func (o *Overrides) IngestionBurstSize(userID string) int {
 	return o.GetOverridesForUser(userID).IngestionBurstSize
+}
+
+// NativeHistogramsIngestionBurstSize returns the burst size for ingestion rate.
+func (o *Overrides) NativeHistogramsIngestionBurstSize(userID string) int {
+	return o.GetOverridesForUser(userID).NativeHistogramsIngestionBurstSize
 }
 
 // AcceptHASamples returns whether the distributor should track and accept samples from HA replicas for this user.

@@ -127,7 +127,7 @@ type userIndexScanner struct {
 	maxStalePeriod time.Duration
 
 	fallbackScans        *prometheus.CounterVec
-	successfulScans      prometheus.Counter
+	succeededScans       prometheus.Counter
 	userIndexUpdateDelay prometheus.Gauge
 }
 
@@ -141,8 +141,8 @@ func newUserIndexScanner(baseScanner Scanner, cfg tsdb.UsersScannerConfig, bkt o
 			Name: "cortex_user_index_scan_fallbacks_total",
 			Help: "Total number of fallbacks to base scanner",
 		}, []string{"reason"}),
-		successfulScans: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_user_index_scan_successful_total",
+		succeededScans: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_user_index_scan_succeeded_total",
 			Help: "Total number of successful scans using user index",
 		}),
 		userIndexUpdateDelay: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
@@ -175,7 +175,7 @@ func (s *userIndexScanner) ScanUsers(ctx context.Context) ([]string, []string, [
 		return s.baseScanner.ScanUsers(ctx)
 	}
 
-	s.successfulScans.Inc()
+	s.succeededScans.Inc()
 	return userIndex.ActiveUsers, userIndex.DeletingUsers, userIndex.DeletedUsers, nil
 }
 

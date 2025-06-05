@@ -40,5 +40,9 @@ func (u *UserIndexUpdater) UpdateUserIndex(ctx context.Context) error {
 		DeletedUsers:  deleted,
 		UpdatedAt:     time.Now().Unix(),
 	}
-	return WriteUserIndex(ctx, u.bkt, userIndex)
+	if err := WriteUserIndex(ctx, u.bkt, userIndex); err != nil {
+		return err
+	}
+	u.userIndexLastUpdated.SetToCurrentTime()
+	return nil
 }

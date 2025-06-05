@@ -14,14 +14,13 @@ slug: "distributed-query-execution"
 
 ### Background
 
-Cortex currently implements distributed query execution by rewriting queries into multiple subqueries, handled through middlewares in the query-frontend. These split queries are scheduled via the query-scheduler, evaluated by queriers, and merged back in the query-frontend. This proposal introduces a new distributed query execution model based on Thanos PromQL PromQL engine.
+Cortex currently implements distributed query execution by rewriting queries into multiple subqueries, handled through middlewares in the query-frontend. These split queries are scheduled via the query-scheduler, evaluated by queriers, and merged back in the query-frontend. This proposal introduces a new distributed query execution model based on Thanos PromQL engine.
 
 ### Terminology
 
 * Logical plan - Parsed PromQL expression represented as a tree of logical operators.
-* Physical plan - A tree of physical operators that execute the query. May not have a 1:1 mapping with logical operators.
-* Query Plan - The physical plan.
-* Optimization - Selecting the most efficient physical plan.
+* Query Plan - The logical query plan.
+* Optimization - Selecting the most efficient logical plan.
 * Planner/Optimizer - Component that performs optimization.
 * Fragment - A portion of the query plan.
 * Scheduling - Assigning fragments to queriers
@@ -55,8 +54,7 @@ Cortex currently supports only basic optimizations (e.g., time and by/without cl
 
 ### Architecture Overview
 
-This proposal introduces a new model based on the volcano-iterator from Thanos PromQL engine:
-The new query execution model will be implemented using the volcano-iterator model from the Thanos PromQL query engine. Here is a high level overview of the proposal of implementing query optimization and distributed query execution in Cortex:
+This proposal introduces a new query execution model that will be implemented using the volcano-iterator model from the Thanos PromQL query engine. Here is a high level overview of the proposal of implementing query optimization and distributed query execution in Cortex:
 
 * **Query Frontend**: Converts the logical plan into an optimized plan and sends the plan to the query-scheduler.
 * **Query Scheduler**: Fragments the plan and assigns plan fragments to queriers.
@@ -101,7 +99,7 @@ These fragments are then **enqueued** into the scheduler’s internal queue syst
 
 #### Assigning query fragments to queriers
 
-Each fragment is assigned to a querier based on resource availability, tenant isolation, and data locality (if applicable). The fragment include the plan, the remote fragment IDs it depends on. After child fragments are assigned to a particular querier, it’s parent fragment is updated with the location of the querier from which to read the results from.
+The fragment include the plan and the remote fragment IDs it depends on. Queriers pull fragments from the scheduler. After child fragments are assigned to a particular querier, it’s parent fragment is updated with the location of the querier from which to read the results from.
 
 At execution time, a `Remote` operator acts as a placeholder within the querier's execution engine to **pull results from other queriers** running dependent fragments.
 
@@ -109,10 +107,66 @@ At execution time, a `Remote` operator acts as a placeholder within the querier'
 
 ### Querier
 
-The **Querier** is enhanced to support both **executing** fragments and **serving results** to other queriers. It now implements two interfaces:
+The **Querier** is enhanced to support both **executing** query fragments and **serving** results to other queriers. In the distributed query model, a querier may either evaluate a plan fragment or provide intermediate results to other queriers that depend on its output.
 
-* **Executor** – Responsible for executing the root fragment (or any assigned fragment) of the physical query plan.
-* **Server** – Serves results for executed fragments to other queriers that depend on them (i.e., acts as a remote data source for `Remote` operators).
+To support this, the querier now implements two interfaces:
+* **QueryExecutor** – Executes assigned query plan root fragment.
+* **QueryServer** – Serves results to other queriers via streaming gRPC endpoints. (i.e., acts as a remote data source for `Remote` operators).
+
+#### QueryExecutor
+The QueryExecutor interface enables a querier to execute the root fragment of the distributed query plan.
+
+```
+type QueryExecutor interface {
+	ExecuteQuery(p LogicalPlan) (QueryResult, error)
+}
+```
+
+#### QueryServer
+The QueryServer interface enables a querier to expose query results to other queriers via a gRPC API. This is used when another querier is executing a fragment that depends on the results of this one (i.e., the child in the execution tree).
+
+```
+type QueryServer interface {
+	Enqueue(context.Context, p LogicalPlan) error
+    Series(SeriesRequest, querierpb.QueryServer_SeriesServer) error
+	Next(*executionpb.NextRequest, querierpb.QueryServer_NextServer) error
+}
+```
+
+* **Enqueue** - Schedules the provided logical plan fragment for execution on the querier. Enqueuing a plan on a quereir will block a concurrency until the query finishes, or times out if it exceeds the configured limit. It respects the querier’s concurrency limits and queue capacity.
+* **Series** - Streams the metadata (labels) for the series produced by the fragment, allowing parent queriers to understand the shape of incoming data.
+* **Next** - Streams the actual step vector results of the fragment, returning time-step-wise computed samples and histograms.
+
+These methods are implemented as streaming gRPC endpoints and used by `Remote` operators to pull data on-demand during execution.
+
+
+##### gRPC Service Definition
+
+```
+service QueryServer {
+  rpc Series(SeriesRequest) returns (stream OneSeries);
+  rpc Next(NextRequest) returns (stream StepVectorBatch);
+}
+
+message OneSeries {
+    repeated Label labels = 1;
+}
+
+message StepVectorBatch {
+    repeated StepVector step_vectors = 1;
+}
+
+message StepVector {
+	int64 t  = 1;
+	repeated uint64 sample_IDs = 2;
+	repeated double samples = 3;
+
+	repeated uint64 histogram_IDs = 4;
+	repeated FloatHistogram histograms = 5;
+}
+```
+
+Together, the QueryExecutor and QueryServer roles allow each querier to act as both a compute node and a data provider, enabling true parallel and distributed evaluation of PromQL queries across Cortex's infrastructure.
 
 #### Fragment Execution
 
@@ -122,10 +176,10 @@ Each fragment is evaluated using the **Thanos PromQL engine’s volcano iterator
 
 The querier assigned the **root fragment** also plays the role of **coordinator**. The co-ordinator will
 
-* trigger dependent fragment execution by invoking Next() on the child queriers
-* Waits for remote fragment results
-* Assembles the final result
-* Sends it back to the QueryFrontend
+* Trigger dependent fragment execution by invoking Next() on the child queriers
+* Wait for remote fragment results
+* Assemble the final result
+* Notify the QueryFrontend
 
 This keeps the query execution tree distributed and parallelized, but the final result is merged and returned by a single coordinator node for consistency and simplicity.
 
@@ -135,7 +189,7 @@ Not all types of queries are supported by Thanos PromQL engine. If any plan frag
 
 ### Error Handling
 
-If any individual fragment fails or if a querier handling a fragment is restarted during execution, the entire query is considered failed. No retries or partial results are supported in the initial version. The root querier reports the error back to the query frontend, which returns it to the client.
+If any individual fragment fails or if a querier handling a fragment is restarted during execution, the entire query is considered failed. No retries or partial results are supported in the initial version. The root querier reports the error back to the QueryFrontend, which returns it to the client.
 
 
 ## Conclusion

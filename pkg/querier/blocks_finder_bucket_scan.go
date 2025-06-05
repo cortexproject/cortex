@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
@@ -56,7 +57,7 @@ type BucketScanBlocksFinder struct {
 	logger          log.Logger
 	bucketClient    objstore.Bucket
 	fetchersMetrics *storegateway.MetadataFetcherMetrics
-	usersScanner    *cortex_tsdb.UsersScanner
+	usersScanner    users.Scanner
 
 	// We reuse the metadata fetcher instance for a given tenant both because of performance
 	// reasons (the fetcher keeps a in-memory cache) and being able to collect and group metrics.
@@ -73,18 +74,18 @@ type BucketScanBlocksFinder struct {
 	scanLastSuccess prometheus.Gauge
 }
 
-func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, bucketClient objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *BucketScanBlocksFinder {
+func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, usersScanner users.Scanner, bucketClient objstore.InstrumentedBucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *BucketScanBlocksFinder {
 	d := &BucketScanBlocksFinder{
 		cfg:               cfg,
 		cfgProvider:       cfgProvider,
 		logger:            logger,
 		bucketClient:      bucketClient,
 		fetchers:          make(map[string]userFetcher),
-		usersScanner:      cortex_tsdb.NewUsersScanner(bucketClient, cortex_tsdb.AllUsers, logger),
 		userMetas:         make(map[string]bucketindex.Blocks),
 		userMetasLookup:   make(map[string]map[ulid.ULID]*bucketindex.Block),
 		userDeletionMarks: map[string]map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 		fetchersMetrics:   storegateway.NewMetadataFetcherMetrics(),
+		usersScanner:      usersScanner,
 		scanDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_scan_duration_seconds",
 			Help:    "The total time it takes to run a full blocks scan across the storage.",
@@ -183,7 +184,8 @@ func (d *BucketScanBlocksFinder) scanBucket(ctx context.Context) (returnErr erro
 	}(time.Now())
 
 	// Discover all users first. This helps cacheability of the object store call.
-	userIDs, _, err := d.usersScanner.ScanUsers(ctx)
+	// Only active users are considered.
+	userIDs, _, _, err := d.usersScanner.ScanUsers(ctx)
 	if err != nil {
 		return err
 	}

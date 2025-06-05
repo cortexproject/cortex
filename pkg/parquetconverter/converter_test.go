@@ -25,6 +25,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -133,6 +135,7 @@ func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket,
 	blockRanges := cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
 	flagext.DefaultValues(&storageCfg)
 	storageCfg.BucketStore.BlockDiscoveryStrategy = string(cortex_tsdb.RecursiveDiscovery)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 
 	// Create a temporary directory for compactor data.
 	cfg.DataDir = t.TempDir()
@@ -149,6 +152,10 @@ func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket,
 	overrides, err := validation.NewOverrides(*limits, nil)
 	require.NoError(t, err)
 
-	c := newConverter(cfg, bucketClient, storageCfg, blockRanges.ToMilliseconds(), logger, registry, overrides)
+	scanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
+		Strategy: cortex_tsdb.UserScanStrategyList,
+	}, bucketClient, logger, registry)
+	require.NoError(t, err)
+	c := newConverter(cfg, bucketClient, storageCfg, blockRanges.ToMilliseconds(), logger, registry, overrides, scanner)
 	return c, logger, registry
 }

@@ -64,6 +64,7 @@ Currently experimental features are:
 - Blocks storage bucket index
   - The bucket index support in the querier and store-gateway (enabled via `-blocks-storage.bucket-store.bucket-index.enabled=true`) is experimental
   - The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions
+- Blocks storage user index
 - Querier: tenant federation
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.

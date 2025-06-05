@@ -67,9 +67,10 @@ var (
 //
 //nolint:revive
 type BlocksStorageConfig struct {
-	Bucket      bucket.Config     `yaml:",inline"`
-	BucketStore BucketStoreConfig `yaml:"bucket_store" doc:"description=This configures how the querier and store-gateway discover and synchronize blocks stored in the bucket."`
-	TSDB        TSDBConfig        `yaml:"tsdb"`
+	Bucket       bucket.Config      `yaml:",inline"`
+	BucketStore  BucketStoreConfig  `yaml:"bucket_store" doc:"description=This configures how the querier and store-gateway discover and synchronize blocks stored in the bucket."`
+	TSDB         TSDBConfig         `yaml:"tsdb"`
+	UsersScanner UsersScannerConfig `yaml:"users_scanner"`
 }
 
 // DurationList is the block ranges for a tsdb
@@ -109,11 +110,12 @@ func (d *DurationList) ToMilliseconds() []int64 {
 	return values
 }
 
-// RegisterFlags registers the TSDB flags
+// RegisterFlags registers the block storage flags
 func (cfg *BlocksStorageConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Bucket.RegisterFlagsWithPrefix("blocks-storage.", f)
 	cfg.BucketStore.RegisterFlags(f)
 	cfg.TSDB.RegisterFlags(f)
+	cfg.UsersScanner.RegisterFlagsWithPrefix("blocks-storage", f)
 }
 
 // Validate the config.
@@ -123,6 +125,10 @@ func (cfg *BlocksStorageConfig) Validate() error {
 	}
 
 	if err := cfg.TSDB.Validate(); err != nil {
+		return err
+	}
+
+	if err := cfg.UsersScanner.Validate(); err != nil {
 		return err
 	}
 

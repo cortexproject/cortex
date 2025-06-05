@@ -13,9 +13,10 @@ import (
 const GlobalMarkersDir = "__markers__"
 
 var (
-	errTenantIDTooLong = errors.New("tenant ID is too long: max 150 characters")
-	errTenantIDUnsafe  = errors.New("tenant ID is '.' or '..'")
-	errTenantIDMarkers = errors.New("tenant ID '__markers__' is not allowed")
+	errTenantIDTooLong   = errors.New("tenant ID is too long: max 150 characters")
+	errTenantIDUnsafe    = errors.New("tenant ID is '.' or '..'")
+	errTenantIDMarkers   = errors.New("tenant ID '__markers__' is not allowed")
+	errTenantIDUserIndex = errors.New("tenant ID 'user-index.json.gz' is not allowed")
 )
 
 type errTenantIDUnsupportedCharacter struct {
@@ -72,6 +73,10 @@ func ValidTenantID(s string) error {
 	// check tenantID is "__markers__"
 	if s == GlobalMarkersDir {
 		return errTenantIDMarkers
+	}
+
+	if s == "user-index.json.gz" {
+		return errTenantIDUserIndex
 	}
 
 	// check tenantID is "." or ".."

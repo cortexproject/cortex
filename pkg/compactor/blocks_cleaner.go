@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -51,7 +52,7 @@ type BlocksCleaner struct {
 	cfgProvider  ConfigProvider
 	logger       log.Logger
 	bucketClient objstore.InstrumentedBucket
-	usersScanner *cortex_tsdb.UsersScanner
+	usersScanner users.Scanner
 
 	ringLifecyclerID string
 
@@ -85,7 +86,7 @@ type BlocksCleaner struct {
 func NewBlocksCleaner(
 	cfg BlocksCleanerConfig,
 	bucketClient objstore.InstrumentedBucket,
-	usersScanner *cortex_tsdb.UsersScanner,
+	usersScanner users.Scanner,
 	compactionVisitMarkerTimeout time.Duration,
 	cfgProvider ConfigProvider,
 	logger log.Logger,
@@ -336,19 +337,22 @@ func (c *BlocksCleaner) cleanDeletedUsers(ctx context.Context, users []string) e
 }
 
 func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, error) {
-	users, deleted, err := c.usersScanner.ScanUsers(ctx)
+	active, deleting, deleted, err := c.usersScanner.ScanUsers(ctx)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to discover users from bucket")
 	}
 
-	isActive := util.StringsMap(users)
-	isDeleted := util.StringsMap(deleted)
-	allUsers := append(users, deleted...)
+	isActive := util.StringsMap(active)
+	markedForDeletion := make([]string, 0, len(deleting)+len(deleted))
+	markedForDeletion = append(markedForDeletion, deleting...)
+	markedForDeletion = append(markedForDeletion, deleted...)
+	isMarkedForDeletion := util.StringsMap(markedForDeletion)
+	allUsers := append(active, markedForDeletion...)
 	// Delete per-tenant metrics for all tenants not belonging anymore to this shard.
 	// Such tenants have been moved to a different shard, so their updated metrics will
 	// be exported by the new shard.
 	for _, userID := range c.lastOwnedUsers {
-		if !isActive[userID] && !isDeleted[userID] {
+		if !isActive[userID] && !isMarkedForDeletion[userID] {
 			c.tenantBlocks.DeleteLabelValues(userID)
 			c.tenantBlocksMarkedForDelete.DeleteLabelValues(userID)
 			c.tenantBlocksMarkedForNoCompaction.DeleteLabelValues(userID)
@@ -365,7 +369,7 @@ func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, erro
 	}
 	c.lastOwnedUsers = allUsers
 
-	return users, deleted, nil
+	return active, markedForDeletion, nil
 }
 
 func (c *BlocksCleaner) obtainVisitMarkerManager(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) (visitMarkerManager *VisitMarkerManager, isVisited bool, err error) {

@@ -43,6 +43,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -425,6 +426,16 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 
 			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", allUsers, nil)
+			bucketClient.MockIter(tenant.GlobalMarkersDir, []string{}, nil)
+			bucketClient.MockIter("user-1/", []string{}, nil)
+			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-1", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-1", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockIter("user-2/", []string{}, nil)
+			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-2", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-2", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockIter("user-3/", []string{}, nil)
+			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-3", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-3", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
 
 			stores, err := NewBucketStores(cfg, testData.shardingStrategy, bucketClient, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 			require.NoError(t, err)
@@ -437,7 +448,7 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 			})
 
 			assert.NoError(t, err)
-			bucketClient.AssertNumberOfCalls(t, "Iter", 1)
+			bucketClient.AssertNumberOfCalls(t, "Iter", 2)
 			assert.Equal(t, storesCount.Load(), testData.expectedStores)
 		})
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -83,7 +84,11 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 	}
 
 	logger := log.NewNopLogger()
-	scanner := tsdb.NewUsersScanner(mbucket, tsdb.AllUsers, logger)
+	reg := prometheus.NewRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, mbucket, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -91,13 +96,13 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 	}, append(commonLabels, reasonLabelName))
 	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
 
-	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, 60*time.Second, cfgProvider, logger, "test-cleaner", nil, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
+	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, 60*time.Second, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
 
 	// Clean User with no error
 	cleaner.bucketClient = bkt
 	userLogger := util_log.WithUserID(userID, cleaner.logger)
 	userBucket := bucket.NewUserBucketClient(userID, cleaner.bucketClient, cleaner.cfgProvider)
-	err := cleaner.cleanUser(ctx, userLogger, userBucket, userID, false)
+	err = cleaner.cleanUser(ctx, userLogger, userBucket, userID, false)
 	require.NoError(t, err)
 	s, err := bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
 	require.NoError(t, err)
@@ -196,7 +201,10 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 
 	reg := prometheus.NewPedanticRegistry()
 	logger := log.NewNopLogger()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -364,7 +372,11 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	}
 
 	logger := log.NewNopLogger()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	reg := prometheus.NewRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -429,7 +441,11 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 	}
 
 	logger := log.NewNopLogger()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	reg := prometheus.NewRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -487,8 +503,11 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
-	reg := prometheus.NewPedanticRegistry()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	reg := prometheus.NewRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -522,7 +541,11 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	))
 
 	// Override the users scanner to reconfigure it to only return a subset of users.
-	cleaner.usersScanner = tsdb.NewUsersScanner(bucketClient, func(userID string) (bool, error) { return userID == "user-1", nil }, logger)
+	cleaner.usersScanner, err = users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
+	cleaner.usersScanner = users.NewShardedScanner(cleaner.usersScanner, func(userID string) (bool, error) { return userID == "user-1", nil }, logger)
 
 	// Create new blocks, to double check expected metrics have changed.
 	createTSDBBlock(t, bucketClient, "user-1", 40, 50, nil)
@@ -630,7 +653,10 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewPedanticRegistry()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -859,7 +885,10 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewPedanticRegistry()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -885,7 +914,7 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 		CreationTime: time.Now().Add(-5 * time.Minute).Unix(),
 		Version:      PartitionedGroupInfoVersion1,
 	}
-	_, err := UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo)
+	_, err = UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo)
 	require.NoError(t, err)
 
 	visitMarker := &partitionVisitMarker{
@@ -931,7 +960,10 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewPedanticRegistry()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -960,7 +992,7 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 		CreationTime: time.Now().Add(-5 * time.Minute).Unix(),
 		Version:      PartitionedGroupInfoVersion1,
 	}
-	_, err := UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo)
+	_, err = UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo)
 	require.NoError(t, err)
 	partitionedGroupFile := GetPartitionedGroupFile(partitionedGroupInfo.PartitionedGroupID)
 

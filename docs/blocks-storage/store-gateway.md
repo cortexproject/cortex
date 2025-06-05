@@ -1720,4 +1720,19 @@ blocks_storage:
         # TTL for postings cache
         # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl
         [ttl: <duration> | default = 10m]
+
+  users_scanner:
+    # Strategy to use to scan users. Supported values are: list, user_index.
+    # CLI flag: -blocks-storage.users-scanner.strategy
+    [strategy: <string> | default = "list"]
+
+    # Maximum period of time to consider the user index as stale. Fall back to
+    # the base scanner if stale. Only valid when strategy is user_index.
+    # CLI flag: -blocks-storage.users-scanner.user-index.max-stale-period
+    [max_stale_period: <duration> | default = 1h]
+
+    # TTL of the cached users. 0 disables caching and relies on caching at
+    # bucket client level.
+    # CLI flag: -blocks-storage.users-scanner.cache-ttl
+    [cache_ttl: <duration> | default = 0s]
 ```

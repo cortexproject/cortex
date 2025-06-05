@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -34,6 +33,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
@@ -80,6 +80,8 @@ type BucketStores struct {
 
 	userTokenBucketsMu sync.RWMutex
 	userTokenBuckets   map[string]*util.TokenBucket
+
+	userScanner users.Scanner
 
 	// Keeps number of inflight requests
 	inflightRequestCnt int
@@ -141,6 +143,10 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 			Name: "cortex_bucket_stores_tenants_synced",
 			Help: "Number of tenants synced.",
 		}),
+	}
+	u.userScanner, err = users.NewScanner(cfg.UsersScanner, bucketClient, logger, reg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create users scanner")
 	}
 
 	u.matcherCache = storecache.NoopMatchersCache
@@ -242,9 +248,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 	errs := tsdb_errors.NewMulti()
 	errsMx := sync.Mutex{}
 
-	// Scan users in the bucket. In case of error, it may return a subset of users. If we sync a subset of users
-	// during a periodic sync, we may end up unloading blocks for users that still belong to this store-gateway
-	// so we do prefer to not run the sync at all.
+	// Scan users in the bucket.
 	userIDs, err := u.scanUsers(ctx)
 	if err != nil {
 		return err
@@ -442,18 +446,16 @@ func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValues
 	return store.LabelValues(ctx, req)
 }
 
-// scanUsers in the bucket and return the list of found users. If an error occurs while
-// iterating the bucket, it may return both an error and a subset of the users in the bucket.
+// scanUsers in the bucket and return the list of found users. It includes active and deleting users
+// but not deleted users.
 func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {
-	var users []string
-
-	// Iterate the bucket to find all users in the bucket. Due to how the bucket listing
-	// caching works, it's more likely to have a cache hit if there's no delay while
-	// iterating the bucket, so we do load all users in memory and later process them.
-	err := u.bucket.Iter(ctx, "", func(s string) error {
-		users = append(users, strings.TrimSuffix(s, "/"))
-		return nil
-	})
+	activeUsers, deletingUsers, _, err := u.userScanner.ScanUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	users := make([]string, 0, len(activeUsers)+len(deletingUsers))
+	users = append(users, activeUsers...)
+	users = append(users, deletingUsers...)
 
 	return users, err
 }

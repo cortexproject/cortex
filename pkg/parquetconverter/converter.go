@@ -24,6 +24,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/logutil"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -31,6 +32,7 @@ import (
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -73,6 +75,8 @@ type Converter struct {
 	ringSubservices        *services.Manager
 	ringSubservicesWatcher *services.FailureWatcher
 
+	usersScanner users.Scanner
+
 	bkt objstore.Bucket
 
 	// chunk pool
@@ -98,18 +102,26 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Converter, error) {
 	bkt, err := bucket.NewClient(context.Background(), storageCfg.Bucket, nil, "parquet-converter", logger, registerer)
+	if err != nil {
+		return nil, err
+	}
+	bkt = bucketindex.BucketWithGlobalMarkers(bkt)
+	usersScanner, err := users.NewScanner(storageCfg.UsersScanner, bkt, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "parquet-converter"}, registerer))
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to initialize users scanner")
+	}
 
-	return newConverter(cfg, bkt, storageCfg, blockRanges, logger, registerer, limits), err
+	return newConverter(cfg, bkt, storageCfg, blockRanges, logger, registerer, limits, usersScanner), err
 }
 
-func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) *Converter {
-	bkt = bucketindex.BucketWithGlobalMarkers(bkt)
+func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides, usersScanner users.Scanner) *Converter {
 	c := &Converter{
 		cfg:            cfg,
 		reg:            registerer,
 		storageCfg:     storageCfg,
 		logger:         logger,
 		limits:         limits,
+		usersScanner:   usersScanner,
 		pool:           chunkenc.NewPool(),
 		blockRanges:    blockRanges,
 		fetcherMetrics: block.NewFetcherMetrics(registerer, nil, nil),
@@ -257,14 +269,9 @@ func (c *Converter) stopping(_ error) error {
 }
 
 func (c *Converter) discoverUsers(ctx context.Context) ([]string, error) {
-	var users []string
-
-	err := c.bkt.Iter(ctx, "", func(entry string) error {
-		users = append(users, strings.TrimSuffix(entry, "/"))
-		return nil
-	})
-
-	return users, err
+	// Only active users are considered.
+	active, _, _, err := c.usersScanner.ScanUsers(ctx)
+	return active, err
 }
 
 func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring ring.ReadRing, userID string) error {

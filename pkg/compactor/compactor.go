@@ -33,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -413,7 +414,9 @@ type Compactor struct {
 	blocksCompactorFactory BlocksCompactorFactory
 
 	// Users scanner, used to discover users from the bucket.
-	usersScanner *cortex_tsdb.UsersScanner
+	usersScanner users.Scanner
+
+	userIndexUpdater *users.UserIndexUpdater
 
 	// Blocks cleaner is responsible to hard delete blocks marked for deletion.
 	blocksCleaner *BlocksCleaner
@@ -653,7 +656,6 @@ func (c *Compactor) starting(ctx context.Context) error {
 	c.bucketClient = bucketindex.BucketWithGlobalMarkers(c.bucketClient)
 
 	cleanerBucketClient := c.bucketClient
-
 	if c.compactorCfg.CleanerCachingBucketEnabled {
 		cleanerBucketClient, err = cortex_tsdb.CreateCachingBucketForCompactor(c.storageCfg.BucketStore.MetadataCache, true, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "cleaner"}, c.registerer))
 		if err != nil {
@@ -661,8 +663,18 @@ func (c *Compactor) starting(ctx context.Context) error {
 		}
 	}
 
+	if c.compactorCfg.CachingBucketEnabled {
+		c.bucketClient, err = cortex_tsdb.CreateCachingBucketForCompactor(c.storageCfg.BucketStore.MetadataCache, false, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
+		if err != nil {
+			return errors.Wrap(err, "create caching bucket for compactor")
+		}
+	}
+
 	// Create the users scanner.
-	c.usersScanner = cortex_tsdb.NewUsersScanner(cleanerBucketClient, c.ownUserForCleanUp, c.parentLogger)
+	c.usersScanner, err = users.NewScanner(c.storageCfg.UsersScanner, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
+	if err != nil {
+		return errors.Wrap(err, "failed to create users scanner")
+	}
 
 	var cleanerRingLifecyclerID = "default-cleaner"
 	// Initialize the compactors ring if sharding is enabled.
@@ -729,6 +741,8 @@ func (c *Compactor) starting(ctx context.Context) error {
 		}
 	}
 
+	// Cleaner needs a users scanner that is sharded.
+	cleanerUsersScanner := users.NewShardedScanner(c.usersScanner, c.ownUserForCleanUp, c.logger)
 	// Create the blocks cleaner (service).
 	c.blocksCleaner = NewBlocksCleaner(BlocksCleanerConfig{
 		DeletionDelay:                      c.compactorCfg.DeletionDelay,
@@ -738,15 +752,19 @@ func (c *Compactor) starting(ctx context.Context) error {
 		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
 		ShardingStrategy:                   c.compactorCfg.ShardingStrategy,
 		CompactionStrategy:                 c.compactorCfg.CompactionStrategy,
-	}, cleanerBucketClient, c.usersScanner, c.compactorCfg.CompactionVisitMarkerTimeout, c.limits, c.parentLogger, cleanerRingLifecyclerID, c.registerer, c.compactorCfg.CleanerVisitMarkerTimeout, c.compactorCfg.CleanerVisitMarkerFileUpdateInterval,
+	}, cleanerBucketClient, cleanerUsersScanner, c.compactorCfg.CompactionVisitMarkerTimeout, c.limits, c.parentLogger, cleanerRingLifecyclerID, c.registerer, c.compactorCfg.CleanerVisitMarkerTimeout, c.compactorCfg.CleanerVisitMarkerFileUpdateInterval,
 		c.compactorMetrics.syncerBlocksMarkedForDeletion, c.compactorMetrics.remainingPlannedCompactions)
 
-	if c.compactorCfg.CachingBucketEnabled {
-		c.bucketClient, err = cortex_tsdb.CreateCachingBucketForCompactor(c.storageCfg.BucketStore.MetadataCache, false, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
-		if err != nil {
-			return errors.Wrap(err, "create caching bucket for compactor")
-		}
+	// If sharding is disabled, there is no need to have every compactor to run the user index updater
+	// as it will be the same to fallback to list strategy.
+	if c.compactorCfg.ShardingEnabled && c.storageCfg.UsersScanner.Strategy == cortex_tsdb.UserScanStrategyUserIndex {
+		// We hardcode strategy to be list so can ignore error.
+		baseScanner, _ := users.NewScanner(cortex_tsdb.UsersScannerConfig{
+			Strategy: cortex_tsdb.UserScanStrategyList,
+		}, c.bucketClient, c.logger, c.registerer)
+		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, baseScanner, c.registerer)
 	}
+
 	return nil
 }
 
@@ -770,6 +788,10 @@ func (c *Compactor) running(ctx context.Context) error {
 	if err := services.StartAndAwaitRunning(ctx, c.blocksCleaner); err != nil {
 		c.ringSubservices.StopAsync()
 		return errors.Wrap(err, "failed to start the blocks cleaner")
+	}
+
+	if c.userIndexUpdater != nil {
+		go c.userIndexUpdateLoop(ctx)
 	}
 
 	// Run an initial compaction before starting the interval.
@@ -1110,15 +1132,16 @@ func (c *Compactor) discoverUsersWithRetries(ctx context.Context) ([]string, err
 	return nil, lastErr
 }
 
+// discoverUsers returns all users that are active and deleting. Deleted users are not included.
 func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
-	var users []string
-
-	err := c.bucketClient.Iter(ctx, "", func(entry string) error {
-		users = append(users, strings.TrimSuffix(entry, "/"))
-		return nil
-	})
-
-	return users, err
+	activeUsers, deletingUsers, _, err := c.usersScanner.ScanUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	users := make([]string, 0, len(activeUsers)+len(deletingUsers))
+	users = append(users, activeUsers...)
+	users = append(users, deletingUsers...)
+	return users, nil
 }
 
 func (c *Compactor) ownUserForCompaction(userID string) (bool, error) {
@@ -1173,6 +1196,37 @@ func (c *Compactor) ownUser(userID string, isCleanUp bool) (bool, error) {
 	}
 
 	return rs.Instances[0].Addr == c.ringLifecycler.Addr, nil
+}
+
+func (c *Compactor) userIndexUpdateLoop(ctx context.Context) {
+	// Hardcode ID to check which compactor owns updating user index.
+	userID := users.UserIndexCompressedFilename
+	// Align with clean up interval.
+	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1))
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			level.Error(c.logger).Log("msg", "context timeout, exit user index update loop", "err", ctx.Err())
+			return
+		case <-ticker.C:
+			owned, err := c.ownUser(userID, true)
+			if err != nil {
+				level.Error(c.logger).Log("msg", "failed to check if compactor owns updating user index", "err", err)
+				// Wait for next interval. Worst case, the user index scanner will fallback to list strategy.
+				continue
+			}
+			if !owned {
+				continue
+			}
+			if err := c.userIndexUpdater.UpdateUserIndex(ctx); err != nil {
+				level.Error(c.logger).Log("msg", "failed to update user index", "err", err)
+				// Wait for next interval. Worst case, the user index scanner will fallback to list strategy.
+				continue
+			}
+		}
+	}
 }
 
 const compactorMetaPrefix = "compactor-meta-"

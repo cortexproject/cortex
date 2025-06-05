@@ -44,6 +44,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -213,6 +214,10 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
 		}, bucketClient, limits, logger, reg)
 	} else {
+		usersScanner, err := users.NewScanner(storageCfg.UsersScanner, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create users scanner for bucket scan blocks finder")
+		}
 		finder = NewBucketScanBlocksFinder(BucketScanBlocksFinderConfig{
 			ScanInterval:             storageCfg.BucketStore.SyncInterval,
 			TenantsConcurrency:       storageCfg.BucketStore.TenantSyncConcurrency,
@@ -221,7 +226,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
 			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
 			BlockDiscoveryStrategy:   storageCfg.BucketStore.BlockDiscoveryStrategy,
-		}, bucketClient, limits, logger, reg)
+		}, usersScanner, bucketClient, limits, logger, reg)
 	}
 
 	if gatewayCfg.ShardingEnabled {

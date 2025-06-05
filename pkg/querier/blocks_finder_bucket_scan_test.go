@@ -23,6 +23,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -86,7 +87,13 @@ func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 	cfg := prepareBucketScanBlocksFinderConfig()
 	cfg.CacheDir = t.TempDir()
 
-	s := NewBucketScanBlocksFinder(cfg, bucket, nil, log.NewNopLogger(), reg)
+	usersScanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
+		Strategy:       cortex_tsdb.UserScanStrategyList,
+		MaxStalePeriod: time.Hour,
+		CacheTTL:       0,
+	}, bucket, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	s := NewBucketScanBlocksFinder(cfg, usersScanner, bucket, nil, log.NewNopLogger(), reg)
 	defer func() {
 		s.StopAsync()
 		s.AwaitTerminated(context.Background()) //nolint: errcheck
@@ -154,7 +161,14 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *t
 	cfg.MetasConcurrency = 1
 	cfg.TenantsConcurrency = 1
 
-	s := NewBucketScanBlocksFinder(cfg, bucket, nil, log.NewLogfmtLogger(os.Stdout), nil)
+	reg := prometheus.NewRegistry()
+	usersScanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
+		Strategy:       cortex_tsdb.UserScanStrategyList,
+		MaxStalePeriod: time.Hour,
+		CacheTTL:       0,
+	}, bucket, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	s := NewBucketScanBlocksFinder(cfg, usersScanner, bucket, nil, log.NewLogfmtLogger(os.Stdout), reg)
 
 	// Start the scanner, let it run for 1s and then issue a stop.
 	require.NoError(t, s.StartAsync(context.Background()))
@@ -191,7 +205,14 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyBlocks(t *te
 	cfg.MetasConcurrency = 1
 	cfg.TenantsConcurrency = 1
 
-	s := NewBucketScanBlocksFinder(cfg, bucket, nil, log.NewLogfmtLogger(os.Stdout), nil)
+	reg := prometheus.NewRegistry()
+	usersScanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
+		Strategy:       cortex_tsdb.UserScanStrategyList,
+		MaxStalePeriod: time.Hour,
+		CacheTTL:       0,
+	}, bucket, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	s := NewBucketScanBlocksFinder(cfg, usersScanner, bucket, nil, log.NewLogfmtLogger(os.Stdout), reg)
 
 	// Start the scanner, let it run for 1s and then issue a stop.
 	require.NoError(t, s.StartAsync(context.Background()))
@@ -504,7 +525,16 @@ func prepareBucketScanBlocksFinder(t *testing.T, cfg BucketScanBlocksFinderConfi
 
 	reg := prometheus.NewPedanticRegistry()
 	cfg.CacheDir = t.TempDir()
-	s := NewBucketScanBlocksFinder(cfg, bkt, nil, log.NewNopLogger(), reg)
+
+	// Create a user scanner with list strategy
+	usersScanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
+		Strategy:       cortex_tsdb.UserScanStrategyList,
+		MaxStalePeriod: time.Hour,
+		CacheTTL:       0,
+	}, bkt, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	s := NewBucketScanBlocksFinder(cfg, usersScanner, bkt, nil, log.NewNopLogger(), reg)
 
 	t.Cleanup(func() {
 		s.StopAsync()

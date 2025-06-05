@@ -10,8 +10,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestFindMinMaxTime(t *testing.T) {
@@ -106,13 +104,13 @@ func TestParseTime(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		ts, err := ParseTimeMillis(test.input)
+		ts, err := ParseTime(test.input)
 		if test.fail {
 			require.Error(t, err)
 			continue
 		}
 
 		require.NoError(t, err)
-		assert.Equal(t, util.TimeToMillis(test.result), ts)
+		assert.Equal(t, test.result.UnixMilli(), ts.UnixMilli())
 	}
 }

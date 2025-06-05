@@ -172,8 +172,8 @@ func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, op stri
 		}
 	}
 
-	startTime, _ := api.ParseTimeMillis(r.FormValue("start"))
-	endTime, _ := api.ParseTimeMillis(r.FormValue("end"))
+	startTime, _ := ParseTimeMillis(r.FormValue("start"))
+	endTime, _ := ParseTimeMillis(r.FormValue("end"))
 
 	if attribute.TimeWindow.Start != 0 || attribute.TimeWindow.End != 0 {
 		matched = true
@@ -236,8 +236,7 @@ func isWithinTimeRangeAttribute(limit validation.TimeRangeLimit, startTime, endT
 }
 
 func isWithinQueryStepLimit(queryStepLimit validation.QueryStepLimit, r *http.Request) bool {
-
-	step, err := api.ParseDurationMillis(r.FormValue("step"))
+	step, err := ParseDurationMillis(r.FormValue("step"))
 	if err != nil {
 		return false
 	}

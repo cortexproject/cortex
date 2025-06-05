@@ -11,9 +11,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/weaveworks/common/httpgrpc"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
@@ -62,15 +59,6 @@ func ParseTime(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("cannot parse %q to a valid timestamp", s)
 }
 
-func ParseTimeMillis(s string) (int64, error) {
-	t, err := ParseTime(s)
-	if err != nil {
-		return 0, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-	}
-
-	return util.TimeToMillis(t), nil
-}
-
 func ParseDuration(s string) (time.Duration, error) {
 	if d, err := strconv.ParseFloat(s, 64); err == nil {
 		ts := d * float64(time.Second)
@@ -85,15 +73,6 @@ func ParseDuration(s string) (time.Duration, error) {
 	return 0, fmt.Errorf("cannot parse %q to a valid duration", s)
 }
 
-func ParseDurationMillis(s string) (int64, error) {
-	d, err := ParseDuration(s)
-	if err != nil {
-		return 0, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-	}
-
-	return int64(d / (time.Millisecond / time.Nanosecond)), nil
-}
-
 func ParseTimeParam(r *http.Request, paramName string, defaultValue time.Time) (time.Time, error) {
 	val := r.FormValue(paramName)
 	if val == "" {
@@ -106,30 +85,21 @@ func ParseTimeParam(r *http.Request, paramName string, defaultValue time.Time) (
 	return result, nil
 }
 
-func ParseTimeParamMillis(r *http.Request, paramName string, defaultValue time.Time) (int64, error) {
-	t, err := ParseTimeParam(r, paramName, defaultValue)
-	if err != nil {
-		return 0, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-	}
-
-	return util.TimeToMillis(t), nil
-}
-
 // FindMinMaxTime returns the time in milliseconds of the earliest and latest point in time the statement will try to process.
 // This takes into account offsets, @ modifiers, and range selectors.
 // If the expression does not select series, then FindMinMaxTime returns (0, 0).
 func FindMinMaxTime(r *http.Request, expr parser.Expr, lookbackDelta time.Duration, now time.Time) (int64, int64) {
 	isQuery := strings.HasSuffix(r.URL.Path, "/query")
 
-	var startTime, endTime int64
+	var startTime, endTime time.Time
 	if isQuery {
-		if t, err := ParseTimeParamMillis(r, "time", now); err == nil {
+		if t, err := ParseTimeParam(r, "time", now); err == nil {
 			startTime = t
 			endTime = t
 		}
 	} else {
-		if st, err := ParseTimeMillis(r.FormValue("start")); err == nil {
-			if et, err := ParseTimeMillis(r.FormValue("end")); err == nil {
+		if st, err := ParseTime(r.FormValue("start")); err == nil {
+			if et, err := ParseTime(r.FormValue("end")); err == nil {
 				startTime = st
 				endTime = et
 			}
@@ -138,8 +108,8 @@ func FindMinMaxTime(r *http.Request, expr parser.Expr, lookbackDelta time.Durati
 
 	es := &parser.EvalStmt{
 		Expr:          expr,
-		Start:         util.TimeFromMillis(startTime),
-		End:           util.TimeFromMillis(endTime),
+		Start:         startTime,
+		End:           endTime,
 		LookbackDelta: lookbackDelta,
 	}
 

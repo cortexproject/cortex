@@ -51,7 +51,7 @@ require (
 	github.com/spf13/afero v1.11.0
 	github.com/stretchr/testify v1.10.0
 	github.com/thanos-io/objstore v0.0.0-20250317105316-a0136a6f898d
-	github.com/thanos-io/promql-engine v0.0.0-20250522103302-dd83bd8fdb50
+	github.com/thanos-io/promql-engine v0.0.0-20250605204400-0c7d03a38861
 	github.com/thanos-io/thanos v0.37.3-0.20250603135757-4ad45948cd10
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
@@ -136,7 +136,6 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/edsrzf/mmap-go v1.2.0 // indirect
 	github.com/efficientgo/tools/extkingpin v0.0.0-20230505153745-6b7392939a60 // indirect
-	github.com/envoyproxy/go-control-plane v0.12.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect

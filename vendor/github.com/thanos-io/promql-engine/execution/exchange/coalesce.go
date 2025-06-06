@@ -8,7 +8,6 @@ import (
 	"math"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -35,8 +34,6 @@ func (c errorChan) getError() error {
 // coalesce guarantees that samples from different input vectors will be added to the output in the same order
 // as the input vectors themselves are provided in NewCoalesce.
 type coalesce struct {
-	telemetry.OperatorTelemetry
-
 	once   sync.Once
 	series []labels.Labels
 
@@ -63,9 +60,7 @@ func NewCoalesce(pool *model.VectorPool, opts *query.Options, batchSize int64, o
 		batchSize:     batchSize,
 	}
 
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (c *coalesce) Explain() (next []model.VectorOperator) {
@@ -81,9 +76,6 @@ func (c *coalesce) GetPool() *model.VectorPool {
 }
 
 func (c *coalesce) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	c.once.Do(func() { err = c.loadSeries(ctx) })
 	if err != nil {
@@ -93,9 +85,6 @@ func (c *coalesce) Series(ctx context.Context) ([]labels.Labels, error) {
 }
 
 func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

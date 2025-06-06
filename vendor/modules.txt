@@ -363,8 +363,6 @@ github.com/efficientgo/core/testutil/internal
 # github.com/efficientgo/tools/extkingpin v0.0.0-20230505153745-6b7392939a60
 ## explicit; go 1.19
 github.com/efficientgo/tools/extkingpin
-# github.com/envoyproxy/go-control-plane v0.12.0
-## explicit; go 1.17
 # github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 ## explicit
 github.com/facette/natsort
@@ -1090,7 +1088,7 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing/opentracing
-# github.com/thanos-io/promql-engine v0.0.0-20250522103302-dd83bd8fdb50
+# github.com/thanos-io/promql-engine v0.0.0-20250605204400-0c7d03a38861
 ## explicit; go 1.24.0
 github.com/thanos-io/promql-engine/api
 github.com/thanos-io/promql-engine/engine

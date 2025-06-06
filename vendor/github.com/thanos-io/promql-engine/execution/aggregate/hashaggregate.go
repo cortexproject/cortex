@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
@@ -25,8 +24,6 @@ import (
 )
 
 type aggregate struct {
-	telemetry.OperatorTelemetry
-
 	next    model.VectorOperator
 	paramOp model.VectorOperator
 	// params holds the aggregate parameter for each step.
@@ -74,9 +71,7 @@ func NewHashAggregate(
 		stepsBatch:  opts.StepsBatch,
 	}
 
-	a.OperatorTelemetry = telemetry.NewTelemetry(a, opts)
-
-	return a, nil
+	return telemetry.NewOperator(telemetry.NewTelemetry(a, opts), a), nil
 }
 
 func (a *aggregate) String() string {
@@ -96,15 +91,11 @@ func (a *aggregate) Explain() (next []model.VectorOperator) {
 }
 
 func (a *aggregate) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	a.once.Do(func() { err = a.initializeTables(ctx) })
 	if err != nil {
 		return nil, err
 	}
-
 	return a.series, nil
 }
 
@@ -113,9 +104,6 @@ func (a *aggregate) GetPool() *model.VectorPool {
 }
 
 func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

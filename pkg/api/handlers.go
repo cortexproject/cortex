@@ -252,11 +252,6 @@ func NewQuerierHandler(
 		codec.NewInstrumentedCodec(codec.ProtobufCodec{CortexInternal: true}, cm),
 	}
 
-	// Install codecs
-	for _, c := range codecs {
-		api.InstallCodec(c)
-	}
-
 	router := mux.NewRouter()
 
 	// Use a separate metric for the querier in order to differentiate requests from the query-frontend when

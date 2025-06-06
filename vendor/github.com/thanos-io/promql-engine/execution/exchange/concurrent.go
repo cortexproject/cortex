@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -26,7 +25,6 @@ type concurrencyOperator struct {
 	next       model.VectorOperator
 	buffer     chan maybeStepVector
 	bufferSize int
-	telemetry.OperatorTelemetry
 }
 
 func NewConcurrent(next model.VectorOperator, bufferSize int, opts *query.Options) model.VectorOperator {
@@ -36,8 +34,7 @@ func NewConcurrent(next model.VectorOperator, bufferSize int, opts *query.Option
 		bufferSize: bufferSize,
 	}
 
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (c *concurrencyOperator) Explain() (next []model.VectorOperator) {
@@ -49,10 +46,11 @@ func (c *concurrencyOperator) String() string {
 }
 
 func (c *concurrencyOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
-
-	return c.next.Series(ctx)
+	series, err := c.next.Series(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return series, nil
 }
 
 func (c *concurrencyOperator) GetPool() *model.VectorPool {
@@ -60,9 +58,6 @@ func (c *concurrencyOperator) GetPool() *model.VectorPool {
 }
 
 func (c *concurrencyOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

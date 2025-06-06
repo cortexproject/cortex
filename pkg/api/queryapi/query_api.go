@@ -10,18 +10,30 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/regexp"
 	"github.com/munnerz/goautoneg"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/httputil"
+	"github.com/prometheus/prometheus/util/stats"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
+	thanosengine "github.com/thanos-io/promql-engine/engine"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/analysis"
 	"github.com/cortexproject/cortex/pkg/util/api"
 )
+
+type QueryData struct {
+	ResultType parser.ValueType         `json:"resultType"`
+	Result     parser.Value             `json:"result"`
+	Stats      stats.QueryStats         `json:"stats,omitempty"`
+	Analysis   *analysis.QueryTelemetry `json:"analysis,omitempty"`
+}
 
 type QueryAPI struct {
 	queryable     storage.SampleAndChunkQueryable
@@ -119,14 +131,20 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	if res.Err != nil {
 		return apiFuncResult{nil, returnAPIError(res.Err), res.Warnings, qry.Close}
 	}
+	var queryAnalysis analysis.QueryTelemetry
+	if q.parseQueryAnalyzeParam(r) {
+		engineType := engine.GetEngineType(ctx)
+		queryAnalysis, err = analyzeQueryOutput(qry, engineType)
+	}
 
 	warnings := res.Warnings
 	qs := q.statsRenderer(ctx, qry.Stats(), r.FormValue("stats"))
 
-	return apiFuncResult{&v1.QueryData{
+	return apiFuncResult{&QueryData{
 		ResultType: res.Value.Type(),
 		Result:     res.Value,
 		Stats:      qs,
+		Analysis:   &queryAnalysis,
 	}, nil, warnings, qry.Close}
 }
 
@@ -176,14 +194,20 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 	if res.Err != nil {
 		return apiFuncResult{nil, returnAPIError(res.Err), res.Warnings, qry.Close}
 	}
+	var queryAnalysis analysis.QueryTelemetry
+	if q.parseQueryAnalyzeParam(r) {
+		engineType := engine.GetEngineType(ctx)
+		queryAnalysis, err = analyzeQueryOutput(qry, engineType)
+	}
 
 	warnings := res.Warnings
 	qs := q.statsRenderer(ctx, qry.Stats(), r.FormValue("stats"))
 
-	return apiFuncResult{&v1.QueryData{
+	return apiFuncResult{&QueryData{
 		ResultType: res.Value.Type(),
 		Result:     res.Value,
 		Stats:      qs,
+		Analysis:   &queryAnalysis,
 	}, nil, warnings, qry.Close}
 }
 
@@ -254,4 +278,42 @@ func (q *QueryAPI) negotiateCodec(req *http.Request, resp *v1.Response) (v1.Code
 	}
 
 	return defaultCodec, nil
+}
+
+func (q *QueryAPI) parseQueryAnalyzeParam(r *http.Request) bool {
+	return r.FormValue("analyze") == "true"
+}
+
+func analyzeQueryOutput(query promql.Query, engineType engine.Type) (analysis.QueryTelemetry, error) {
+	if eq, ok := query.(thanosengine.ExplainableQuery); ok {
+		if analyze := eq.Analyze(); analyze != nil {
+			return processAnalysis(analyze), nil
+		} else {
+			return analysis.QueryTelemetry{}, errors.Errorf("Query: %v not analyzable", query)
+		}
+	}
+
+	var warning error
+	if engineType == engine.Thanos {
+		warning = errors.New("Query fallback to prometheus engine; not analyzable.")
+	} else {
+		warning = errors.New("Query not analyzable; change engine to 'thanos'.")
+	}
+
+	return analysis.QueryTelemetry{}, warning
+}
+
+func processAnalysis(a *thanosengine.AnalyzeOutputNode) analysis.QueryTelemetry {
+	var analysis analysis.QueryTelemetry
+	analysis.OperatorName = a.OperatorTelemetry.String()
+	analysis.Execution = a.OperatorTelemetry.ExecutionTimeTaken().String()
+	analysis.SeriesExecution = a.OperatorTelemetry.SeriesExecutionTime().String()
+	analysis.SamplesExecution = a.OperatorTelemetry.NextExecutionTime().String()
+	analysis.Series = a.OperatorTelemetry.MaxSeriesCount()
+	analysis.PeakSamples = a.PeakSamples()
+	analysis.TotalSamples = a.TotalSamples()
+	for _, c := range a.Children {
+		analysis.Children = append(analysis.Children, processAnalysis(c))
+	}
+	return analysis
 }

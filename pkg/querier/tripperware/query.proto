@@ -26,6 +26,7 @@ message PrometheusData {
   string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
   tripperware.PrometheusQueryResult Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
   tripperware.PrometheusResponseStats stats = 3 [(gogoproto.jsontag) = "stats,omitempty"];
+  Analysis analysis = 4 [(gogoproto.jsontag) = "analysis,omitempty", (gogoproto.nullable) = true];
 }
 
 message CachedResponse  {
@@ -111,4 +112,15 @@ message Sample {
 
 message Matrix {
   repeated SampleStream sampleStreams = 1 [(gogoproto.nullable) = false];
+}
+
+message Analysis {
+  string name = 1 [(gogoproto.jsontag) = "name"];
+  google.protobuf.Duration executionTime = 2 [(gogoproto.customtype) = "Duration", (gogoproto.nullable) = false, (gogoproto.jsontag) = "executionTime"];
+  google.protobuf.Duration seriesExecutionTime = 3 [(gogoproto.customtype) = "Duration", (gogoproto.nullable) = false, (gogoproto.jsontag) = "seriesExecutionTime"];
+  google.protobuf.Duration samplesExecutionTime = 4 [(gogoproto.customtype) = "Duration", (gogoproto.nullable) = false, (gogoproto.jsontag) = "samplesExecutionTime"];
+  int64 peakSamples = 5 [(gogoproto.jsontag) = "peakSamples,omitempty"];
+  int64 totalSamples = 6 [(gogoproto.jsontag) = "totalSamples,omitempty"];
+  int64 series = 7 [(gogoproto.jsontag) = "series,omitempty"];
+  repeated Analysis children = 99 [(gogoproto.jsontag) = "children,omitempty"];
 }

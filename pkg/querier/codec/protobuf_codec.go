@@ -1,7 +1,8 @@
 package codec
 
 import (
-	"github.com/cortexproject/cortex/pkg/api/queryapi"
+	"time"
+
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -10,8 +11,7 @@ import (
 	"github.com/prometheus/prometheus/util/stats"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 
-	"time"
-
+	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/analysis"

@@ -7,6 +7,8 @@ import (
 	"context"
 	"math"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
+
 	"github.com/prometheus/prometheus/model/histogram"
 )
 
@@ -48,6 +50,18 @@ func NewWithExtLookback(ctx context.Context, size int, selectRange, offset, extL
 }
 
 func (r *GenericRingBuffer) Len() int { return len(r.items) }
+
+func (r *GenericRingBuffer) SampleCount() int {
+	c := 0
+	for _, s := range r.items {
+		if s.V.H != nil {
+			c += telemetry.CalculateHistogramSampleCount(s.V.H)
+			continue
+		}
+		c++
+	}
+	return c
+}
 
 // MaxT returns the maximum timestamp of the ring buffer.
 // If the ring buffer is empty, it returns math.MinInt64.

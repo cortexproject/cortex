@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -58,8 +57,6 @@ type vectorOperator struct {
 
 	// If true then 1/0 needs to be returned instead of the value.
 	returnBool bool
-
-	telemetry.OperatorTelemetry
 }
 
 func NewVectorOperator(
@@ -81,9 +78,7 @@ func NewVectorOperator(
 		sigFunc:    signatureFunc(matching.On, matching.MatchingLabels...),
 	}
 
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper, nil
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper), nil
 }
 
 func (o *vectorOperator) String() string {
@@ -98,9 +93,6 @@ func (o *vectorOperator) Explain() (next []model.VectorOperator) {
 }
 
 func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := o.initOnce(ctx); err != nil {
 		return nil, err
 	}
@@ -108,9 +100,6 @@ func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {
 }
 
 func (o *vectorOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

@@ -8,6 +8,7 @@ import (
 	"math"
 	"slices"
 
+	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/prometheus/prometheus/model/histogram"
@@ -20,6 +21,7 @@ type Buffer interface {
 	Reset(mint int64, evalt int64)
 	Eval(ctx context.Context, _, _ float64, _ *int64) (float64, *histogram.FloatHistogram, bool, error)
 	ReadIntoLast(f func(*Sample))
+	SampleCount() int
 }
 
 // RateBuffer is a Buffer which can calculate rate, increase and delta for a
@@ -50,9 +52,10 @@ type RateBuffer struct {
 }
 
 type stepRange struct {
-	mint       int64
-	maxt       int64
-	numSamples int
+	mint        int64
+	maxt        int64
+	numSamples  int
+	sampleCount int
 }
 
 // NewRateBuffer creates a new RateBuffer.
@@ -94,6 +97,10 @@ func NewRateBuffer(ctx context.Context, opts query.Options, isCounter, isRate bo
 
 func (r *RateBuffer) Len() int { return r.stepRanges[0].numSamples }
 
+func (r *RateBuffer) SampleCount() int {
+	return r.stepRanges[0].sampleCount
+}
+
 func (r *RateBuffer) MaxT() int64 { return r.last.T }
 
 func (r *RateBuffer) Push(t int64, v Value) {
@@ -130,6 +137,11 @@ func (r *RateBuffer) Push(t int64, v Value) {
 	// Set the first sample for each evaluation step where the currently read sample is used.
 	for i := 0; i < len(r.stepRanges) && t > r.stepRanges[i].mint && t <= r.stepRanges[i].maxt; i++ {
 		r.stepRanges[i].numSamples++
+		if v.H != nil {
+			r.stepRanges[i].sampleCount += telemetry.CalculateHistogramSampleCount(v.H)
+		} else {
+			r.stepRanges[i].sampleCount++
+		}
 		sample := &r.firstSamples[i]
 		if t >= sample.T {
 			continue

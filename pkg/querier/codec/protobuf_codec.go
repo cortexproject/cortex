@@ -111,11 +111,16 @@ func queryTelemetryToAnalysis(telemetry *analysis.QueryTelemetry) *tripperware.A
 	}
 
 	duration, _ := time.ParseDuration(telemetry.Execution)
+	seriesDuration, _ := time.ParseDuration(telemetry.SeriesExecution)
+	samplesDuration, _ := time.ParseDuration(telemetry.SamplesExecution)
 	result := &tripperware.Analysis{
-		Name:          telemetry.OperatorName,
-		ExecutionTime: tripperware.Duration(duration),
-		PeakSamples:   telemetry.PeakSamples,
-		TotalSamples:  telemetry.TotalSamples,
+		Name:                 telemetry.OperatorName,
+		ExecutionTime:        tripperware.Duration(duration),
+		SeriesExecutionTime:  tripperware.Duration(seriesDuration),
+		SamplesExecutionTime: tripperware.Duration(samplesDuration),
+		Series:               int64(telemetry.Series),
+		PeakSamples:          telemetry.PeakSamples,
+		TotalSamples:         telemetry.TotalSamples,
 	}
 
 	if len(telemetry.Children) > 0 {

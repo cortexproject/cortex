@@ -117,7 +117,10 @@ message Matrix {
 message Analysis {
   string name = 1 [(gogoproto.jsontag) = "name"];
   google.protobuf.Duration executionTime = 2 [(gogoproto.customtype) = "Duration", (gogoproto.nullable) = false, (gogoproto.jsontag) = "executionTime"];
-  int64 peakSamples = 3 [(gogoproto.jsontag) = "peakSamples,omitempty"];
-  int64 totalSamples = 4 [(gogoproto.jsontag) = "totalSamples,omitempty"];
+  google.protobuf.Duration seriesExecutionTime = 3 [(gogoproto.customtype) = "Duration", (gogoproto.nullable) = false, (gogoproto.jsontag) = "seriesExecutionTime"];
+  google.protobuf.Duration samplesExecutionTime = 4 [(gogoproto.customtype) = "Duration", (gogoproto.nullable) = false, (gogoproto.jsontag) = "samplesExecutionTime"];
+  int64 peakSamples = 5 [(gogoproto.jsontag) = "peakSamples,omitempty"];
+  int64 totalSamples = 6 [(gogoproto.jsontag) = "totalSamples,omitempty"];
+  int64 series = 7 [(gogoproto.jsontag) = "series,omitempty"];
   repeated Analysis children = 99 [(gogoproto.jsontag) = "children,omitempty"];
 }

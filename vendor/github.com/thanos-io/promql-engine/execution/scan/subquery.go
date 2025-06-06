@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -21,7 +20,7 @@ import (
 )
 
 type subqueryOperator struct {
-	telemetry.OperatorTelemetry
+	telemetry telemetry.OperatorTelemetry
 
 	next     model.VectorOperator
 	paramOp  model.VectorOperator
@@ -81,9 +80,8 @@ func NewSubqueryOperator(pool *model.VectorPool, next, paramOp, paramOp2 model.V
 		params:        make([]float64, opts.StepsBatch),
 		params2:       make([]float64, opts.StepsBatch),
 	}
-	o.OperatorTelemetry = telemetry.NewSubqueryTelemetry(o, opts)
-
-	return o, nil
+	o.telemetry = telemetry.NewSubqueryTelemetry(o, opts)
+	return telemetry.NewOperator(o.telemetry, o), nil
 }
 
 func (o *subqueryOperator) String() string {
@@ -104,9 +102,6 @@ func (o *subqueryOperator) Explain() (next []model.VectorOperator) {
 func (o *subqueryOperator) GetPool() *model.VectorPool { return o.pool }
 
 func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.OperatorTelemetry.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -204,12 +199,12 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 					sv.AppendSample(o.pool, uint64(sampleId), f)
 				}
 			}
-			o.IncrementSamplesAtTimestamp(rangeSamples.Len(), sv.T)
+			o.telemetry.IncrementSamplesAtTimestamp(rangeSamples.SampleCount(), sv.T)
 		}
 		res = append(res, sv)
-
 		o.currentStep += o.step
 	}
+
 	return res, nil
 }
 
@@ -236,9 +231,6 @@ func (o *subqueryOperator) collect(v model.StepVector, mint int64) {
 }
 
 func (o *subqueryOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.OperatorTelemetry.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := o.initSeries(ctx); err != nil {
 		return nil, err
 	}

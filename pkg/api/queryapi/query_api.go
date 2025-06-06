@@ -3,28 +3,27 @@ package queryapi
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/util/stats"
 	"net/http"
 	"time"
-
-	"github.com/cortexproject/cortex/pkg/util/analysis"
-	thanosengine "github.com/thanos-io/promql-engine/engine"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/regexp"
 	"github.com/munnerz/goautoneg"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/httputil"
+	"github.com/prometheus/prometheus/util/stats"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
+	thanosengine "github.com/thanos-io/promql-engine/engine"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/analysis"
 	"github.com/cortexproject/cortex/pkg/util/api"
 )
 
@@ -305,6 +304,9 @@ func processAnalysis(a *thanosengine.AnalyzeOutputNode) analysis.QueryTelemetry 
 	var analysis analysis.QueryTelemetry
 	analysis.OperatorName = a.OperatorTelemetry.String()
 	analysis.Execution = a.OperatorTelemetry.ExecutionTimeTaken().String()
+	analysis.SeriesExecution = a.OperatorTelemetry.SeriesExecutionTime().String()
+	analysis.SamplesExecution = a.OperatorTelemetry.NextExecutionTime().String()
+	analysis.Series = a.OperatorTelemetry.MaxSeriesCount()
 	analysis.PeakSamples = a.PeakSamples()
 	analysis.TotalSamples = a.TotalSamples()
 	for _, c := range a.Children {

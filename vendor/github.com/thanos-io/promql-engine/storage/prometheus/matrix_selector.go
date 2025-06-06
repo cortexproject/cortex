@@ -39,7 +39,7 @@ type matrixScanner struct {
 }
 
 type matrixSelector struct {
-	telemetry.OperatorTelemetry
+	telemetry telemetry.OperatorTelemetry
 
 	vectorPool *model.VectorPool
 	storage    SeriesSelector
@@ -120,7 +120,6 @@ func NewMatrixSelector(
 
 		extLookbackDelta: opts.ExtLookbackDelta.Milliseconds(),
 	}
-	m.OperatorTelemetry = telemetry.NewTelemetry(m, opts)
 
 	// For instant queries, set the step to a positive value
 	// so that the operator can terminate.
@@ -128,7 +127,8 @@ func NewMatrixSelector(
 		m.step = 1
 	}
 
-	return m, nil
+	m.telemetry = telemetry.NewTelemetry(m, opts)
+	return telemetry.NewOperator(m.telemetry, m), nil
 }
 
 func (o *matrixSelector) Explain() []model.VectorOperator {
@@ -136,9 +136,6 @@ func (o *matrixSelector) Explain() []model.VectorOperator {
 }
 
 func (o *matrixSelector) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := o.loadSeries(ctx); err != nil {
 		return nil, err
 	}
@@ -150,9 +147,6 @@ func (o *matrixSelector) GetPool() *model.VectorPool {
 }
 
 func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -210,7 +204,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 					o.hasFloats = true
 				}
 			}
-			o.IncrementSamplesAtTimestamp(scanner.buffer.Len(), seriesTs)
+			o.telemetry.IncrementSamplesAtTimestamp(scanner.buffer.SampleCount(), seriesTs)
 			seriesTs += o.step
 		}
 	}

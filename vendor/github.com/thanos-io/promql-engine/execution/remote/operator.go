@@ -30,10 +30,9 @@ type Execution struct {
 	queryRangeEnd   time.Time
 
 	vectorSelector model.VectorOperator
-	telemetry.OperatorTelemetry
 }
 
-func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart, queryRangeEnd time.Time, engineLabels []labels.Labels, opts *query.Options, _ storage.SelectHints) *Execution {
+func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart, queryRangeEnd time.Time, engineLabels []labels.Labels, opts *query.Options, _ storage.SelectHints) model.VectorOperator {
 	storage := newStorageFromQuery(query, opts, engineLabels)
 	oper := &Execution{
 		storage:         storage,
@@ -44,18 +43,15 @@ func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart, q
 		vectorSelector:  promstorage.NewVectorSelector(pool, storage, opts, 0, 0, false, 0, 1),
 	}
 
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (e *Execution) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() {
-		e.AddExecutionTimeTaken(time.Since(start))
-	}()
-
-	return e.vectorSelector.Series(ctx)
+	series, err := e.vectorSelector.Series(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return series, nil
 }
 
 func (e *Execution) String() string {
@@ -63,9 +59,6 @@ func (e *Execution) String() string {
 }
 
 func (e *Execution) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { e.AddExecutionTimeTaken(time.Since(start)) }()
-
 	next, err := e.vectorSelector.Next(ctx)
 	if next == nil {
 		// Closing the storage prematurely can lead to results from the query

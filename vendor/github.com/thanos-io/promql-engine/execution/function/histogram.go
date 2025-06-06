@@ -9,7 +9,6 @@ import (
 	"math"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -33,7 +32,6 @@ type histogramSeries struct {
 
 // histogramOperator is a function operator that calculates percentiles.
 type histogramOperator struct {
-	telemetry.OperatorTelemetry
 	once   sync.Once
 	series []labels.Labels
 
@@ -60,7 +58,7 @@ func newHistogramOperator(
 	scalarOp model.VectorOperator,
 	vectorOp model.VectorOperator,
 	opts *query.Options,
-) *histogramOperator {
+) model.VectorOperator {
 	oper := &histogramOperator{
 		pool:         pool,
 		funcArgs:     funcArgs,
@@ -68,9 +66,7 @@ func newHistogramOperator(
 		vectorOp:     vectorOp,
 		scalarPoints: make([]float64, opts.StepsBatch),
 	}
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (o *histogramOperator) String() string {
@@ -82,15 +78,11 @@ func (o *histogramOperator) Explain() (next []model.VectorOperator) {
 }
 
 func (o *histogramOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	o.once.Do(func() { err = o.loadSeries(ctx) })
 	if err != nil {
 		return nil, err
 	}
-
 	return o.series, nil
 }
 
@@ -99,9 +91,6 @@ func (o *histogramOperator) GetPool() *model.VectorPool {
 }
 
 func (o *histogramOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

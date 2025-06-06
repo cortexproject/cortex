@@ -292,6 +292,11 @@ func AnalyzesMerge(analysis ...*Analysis) *Analysis {
 
 		for i := 0; i < len(elements) && i < len(rootElements); i++ {
 			rootElements[i].ExecutionTime += analysis[i].ExecutionTime
+			rootElements[i].SeriesExecutionTime += analysis[i].SeriesExecutionTime
+			rootElements[i].SamplesExecutionTime += analysis[i].SamplesExecutionTime
+			rootElements[i].Series += analysis[i].Series
+			rootElements[i].PeakSamples += analysis[i].PeakSamples
+			rootElements[i].TotalSamples += analysis[i].TotalSamples
 		}
 	}
 

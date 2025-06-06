@@ -54,6 +54,19 @@ func TestLimiter_maxSeriesPerUser(t *testing.T) {
 	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false)
 }
 
+func TestLimiter_maxNativeHistogramsSeriesPerUser(t *testing.T) {
+	applyLimits := func(limits *validation.Limits, localLimit, globalLimit int) {
+		limits.MaxLocalNativeHistogramsSeriesPerUser = localLimit
+		limits.MaxGlobalNativeHistogramsSeriesPerUser = globalLimit
+	}
+
+	runMaxFn := func(limiter *Limiter) int {
+		return limiter.maxNativeHistogramsSeriesPerUser("test")
+	}
+
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false)
+}
+
 func TestLimiter_maxMetadataPerUser(t *testing.T) {
 	applyLimits := func(limits *validation.Limits, localLimit, globalLimit int) {
 		limits.MaxLocalMetricsWithMetadataPerUser = localLimit
@@ -419,6 +432,69 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxSeriesPerUser("test", testData.series)
+
+			assert.Equal(t, testData.expected, actual)
+		})
+	}
+}
+
+func TestLimiter_AssertMaxNativeHistogramsSeriesPerUser(t *testing.T) {
+	tests := map[string]struct {
+		maxLocalNativeHistogramsSeriesPerUser  int
+		maxGlobalNativeHistogramsSeriesPerUser int
+		ringReplicationFactor                  int
+		ringIngesterCount                      int
+		shardByAllLabels                       bool
+		series                                 int
+		expected                               error
+	}{
+		"both local and global limit are disabled": {
+			maxLocalNativeHistogramsSeriesPerUser:  0,
+			maxGlobalNativeHistogramsSeriesPerUser: 0,
+			ringReplicationFactor:                  1,
+			ringIngesterCount:                      1,
+			shardByAllLabels:                       false,
+			series:                                 100,
+			expected:                               nil,
+		},
+		"current number of series is below the limit": {
+			maxLocalNativeHistogramsSeriesPerUser:  0,
+			maxGlobalNativeHistogramsSeriesPerUser: 1000,
+			ringReplicationFactor:                  3,
+			ringIngesterCount:                      10,
+			shardByAllLabels:                       true,
+			series:                                 299,
+			expected:                               nil,
+		},
+		"current number of series is above the limit": {
+			maxLocalNativeHistogramsSeriesPerUser:  0,
+			maxGlobalNativeHistogramsSeriesPerUser: 1000,
+			ringReplicationFactor:                  3,
+			ringIngesterCount:                      10,
+			shardByAllLabels:                       true,
+			series:                                 300,
+			expected:                               errMaxNativeHistogramsSeriesPerUserLimitExceeded,
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			// Mock the ring
+			ring := &ringCountMock{}
+			ring.On("HealthyInstancesCount").Return(testData.ringIngesterCount)
+			ring.On("ZonesCount").Return(1)
+
+			// Mock limits
+			limits, err := validation.NewOverrides(validation.Limits{
+				MaxLocalNativeHistogramsSeriesPerUser:  testData.maxLocalNativeHistogramsSeriesPerUser,
+				MaxGlobalNativeHistogramsSeriesPerUser: testData.maxGlobalNativeHistogramsSeriesPerUser,
+			}, nil)
+			require.NoError(t, err)
+
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
+			actual := limiter.AssertMaxNativeHistogramsSeriesPerUser("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
 		})

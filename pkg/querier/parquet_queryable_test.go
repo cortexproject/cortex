@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
@@ -19,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -27,7 +29,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 	block1 := ulid.MustNew(1, nil)
 	block2 := ulid.MustNew(2, nil)
 	minT := int64(10)
-	maxT := int64(20)
+	maxT := util.TimeToMillis(time.Now())
 
 	createStore := func() *blocksStoreSetMock {
 		return &blocksStoreSetMock{mockedResponses: []interface{}{
@@ -124,13 +126,14 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			finder:                finder,
 			blocksStoreQuerier:    q,
 			parquetQuerier:        mParquetQuerier,
+			queryStoreAfter:       time.Hour,
 			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
 			limits:                defaultOverrides(t, 0),
 			logger:                log.NewNopLogger(),
 			defaultBlockStoreType: parquetBlockStore,
 		}
 
-		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything).Return(bucketindex.Blocks{
 			&bucketindex.Block{ID: block1},
 			&bucketindex.Block{ID: block2},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
@@ -246,19 +249,21 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		}
 
 		mParquetQuerier := &mockParquetQuerier{}
+		queryStoreAfter := time.Hour
 		pq := &parquetQuerierWithFallback{
 			minT:                  minT,
 			maxT:                  maxT,
 			finder:                finder,
 			blocksStoreQuerier:    q,
 			parquetQuerier:        mParquetQuerier,
+			queryStoreAfter:       queryStoreAfter,
 			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
 			limits:                defaultOverrides(t, 0),
 			logger:                log.NewNopLogger(),
 			defaultBlockStoreType: parquetBlockStore,
 		}
 
-		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything).Return(bucketindex.Blocks{
 			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
 			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
@@ -266,10 +271,17 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		t.Run("select", func(t *testing.T) {
 			stores.Reset()
 			mParquetQuerier.Reset()
-			ss := pq.Select(ctx, true, nil, matchers...)
+			hints := storage.SelectHints{
+				Start: minT,
+				End:   maxT,
+			}
+			ss := pq.Select(ctx, true, &hints, matchers...)
 			require.NoError(t, ss.Err())
 			require.Len(t, stores.queriedBlocks, 0)
 			require.Len(t, mParquetQuerier.queriedBlocks, 2)
+			require.Equal(t, mParquetQuerier.queriedHints.Start, minT)
+			queriedDelta := time.Duration(maxT-mParquetQuerier.queriedHints.End) * time.Millisecond
+			require.InDeltaf(t, queriedDelta.Minutes(), queryStoreAfter.Minutes(), 0.1, "query after not set")
 		})
 
 		t.Run("labelNames", func(t *testing.T) {
@@ -409,13 +421,14 @@ func defaultOverrides(t *testing.T, queryVerticalShardSize int) *validation.Over
 
 type mockParquetQuerier struct {
 	queriedBlocks []*bucketindex.Block
+	queriedHints  *storage.SelectHints
 }
 
 func (m *mockParquetQuerier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	if blocks, ok := ExtractBlocksFromContext(ctx); ok {
 		m.queriedBlocks = append(m.queriedBlocks, blocks...)
 	}
-
+	m.queriedHints = sp
 	return series.NewConcreteSeriesSet(sortSeries, nil)
 }
 

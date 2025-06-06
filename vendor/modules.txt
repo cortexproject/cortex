@@ -703,9 +703,6 @@ github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.20
 ## explicit; go 1.15
 github.com/mattn/go-isatty
-# github.com/mattn/go-runewidth v0.0.16
-## explicit; go 1.9
-github.com/mattn/go-runewidth
 # github.com/matttproud/golang_protobuf_extensions v1.0.4
 ## explicit; go 1.9
 github.com/matttproud/golang_protobuf_extensions/pbutil
@@ -777,9 +774,6 @@ github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
 ## explicit
 github.com/oklog/ulid
-# github.com/olekukonko/tablewriter v0.0.5
-## explicit; go 1.12
-github.com/olekukonko/tablewriter
 # github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.121.0
 ## explicit; go 1.23.0
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity
@@ -809,7 +803,7 @@ github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
 github.com/opentracing/opentracing-go/mocktracer
-# github.com/parquet-go/parquet-go v0.25.0
+# github.com/parquet-go/parquet-go v0.25.1
 ## explicit; go 1.22
 github.com/parquet-go/parquet-go
 github.com/parquet-go/parquet-go/bloom
@@ -854,7 +848,7 @@ github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 ## explicit
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus-community/parquet-common v0.0.0-20250528231323-eec9c3c020f0
+# github.com/prometheus-community/parquet-common v0.0.0-20250606162055-b81ebb7e1b96
 ## explicit; go 1.23.4
 github.com/prometheus-community/parquet-common/convert
 github.com/prometheus-community/parquet-common/schema
@@ -1027,9 +1021,6 @@ github.com/prometheus/sigv4
 github.com/redis/rueidis
 github.com/redis/rueidis/internal/cmds
 github.com/redis/rueidis/internal/util
-# github.com/rivo/uniseg v0.4.7
-## explicit; go 1.18
-github.com/rivo/uniseg
 # github.com/rs/cors v1.11.1
 ## explicit; go 1.13
 github.com/rs/cors

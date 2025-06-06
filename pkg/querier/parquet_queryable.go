@@ -356,7 +356,7 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 	return result, rAnnotations, nil
 }
 
-func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool, h *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		storage.ErrSeriesSet(err)
@@ -366,13 +366,26 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		uLogger := util_log.WithUserID(userID, q.logger)
 		level.Warn(uLogger).Log("msg", "parquet queryable enabled but vertical sharding > 1. Falling back to the block storage")
 
-		return q.blocksStoreQuerier.Select(ctx, sortSeries, hints, matchers...)
+		return q.blocksStoreQuerier.Select(ctx, sortSeries, h, matchers...)
+	}
+
+	hints := storage.SelectHints{
+		Start: q.minT,
+		End:   q.maxT,
 	}
 
 	mint, maxt, limit := q.minT, q.maxT, 0
-
-	if hints != nil {
+	if h != nil {
+		// let copy the hints here as we wanna potentially modify it
+		hints = *h
 		mint, maxt, limit = hints.Start, hints.End, hints.Limit
+	}
+
+	maxt = q.adjustMaxT(maxt)
+	hints.End = maxt
+
+	if maxt < mint {
+		return nil
 	}
 
 	remaining, parquet, err := q.getBlocks(ctx, mint, maxt)
@@ -380,26 +393,51 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		return storage.ErrSeriesSet(err)
 	}
 
-	serieSets := []storage.SeriesSet{}
-
 	// Lets sort the series to merge
 	if len(parquet) > 0 && len(remaining) > 0 {
 		sortSeries = true
 	}
 
+	promises := make([]chan storage.SeriesSet, 0, 2)
+
 	if len(parquet) > 0 {
-		serieSets = append(serieSets, q.parquetQuerier.Select(InjectBlocksIntoContext(ctx, parquet...), sortSeries, hints, matchers...))
+		p := make(chan storage.SeriesSet, 1)
+		promises = append(promises, p)
+		go func() {
+			p <- q.parquetQuerier.Select(InjectBlocksIntoContext(ctx, parquet...), sortSeries, &hints, matchers...)
+		}()
 	}
 
 	if len(remaining) > 0 {
-		serieSets = append(serieSets, q.blocksStoreQuerier.Select(InjectBlocksIntoContext(ctx, remaining...), sortSeries, hints, matchers...))
+		p := make(chan storage.SeriesSet, 1)
+		promises = append(promises, p)
+		go func() {
+			p <- q.blocksStoreQuerier.Select(InjectBlocksIntoContext(ctx, remaining...), sortSeries, &hints, matchers...)
+		}()
 	}
 
-	if len(serieSets) == 1 {
-		return serieSets[0]
+	if len(promises) == 1 {
+		return <-promises[0]
 	}
 
-	return storage.NewMergeSeriesSet(serieSets, limit, storage.ChainedSeriesMerge)
+	seriesSets := make([]storage.SeriesSet, len(promises))
+	for i, promise := range promises {
+		seriesSets[i] = <-promise
+	}
+
+	return storage.NewMergeSeriesSet(seriesSets, limit, storage.ChainedSeriesMerge)
+}
+
+func (q *parquetQuerierWithFallback) adjustMaxT(maxt int64) int64 {
+	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
+	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
+	// optimization is particularly important for the blocks storage because can be used to skip
+	// querying most recent not-compacted-yet blocks from the storage.
+	if q.queryStoreAfter > 0 {
+		now := time.Now()
+		maxt = min(maxt, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
+	}
+	return maxt
 }
 
 func (q *parquetQuerierWithFallback) Close() error {
@@ -410,22 +448,15 @@ func (q *parquetQuerierWithFallback) Close() error {
 }
 
 func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT int64) ([]*bucketindex.Block, []*bucketindex.Block, error) {
-	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
-	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
-	// optimization is particularly important for the blocks storage because can be used to skip
-	// querying most recent not-compacted-yet blocks from the storage.
-	if q.queryStoreAfter > 0 {
-		now := time.Now()
-		maxT = min(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
-
-		if maxT < minT {
-			return nil, nil, nil
-		}
-	}
-
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	maxT = q.adjustMaxT(maxT)
+
+	if maxT < minT {
+		return nil, nil, nil
 	}
 
 	blocks, _, err := q.finder.GetBlocks(ctx, userID, minT, maxT)

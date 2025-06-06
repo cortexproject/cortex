@@ -209,11 +209,6 @@ func (m Meta) WriteToDir(logger log.Logger, dir string) error {
 		runutil.CloseWithLogOnErr(logger, f, "close meta")
 		return err
 	}
-
-	// Force the kernel to persist the file on disk to avoid data loss if the host crashes.
-	if err := f.Sync(); err != nil {
-		return err
-	}
 	if err := f.Close(); err != nil {
 		return err
 	}

@@ -1577,6 +1577,9 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 		}
 		ctx = user.InjectOrgID(ctx, req.TenantID)
 		resp, err := i.Push(ctx, req.Request)
+		if resp == nil {
+			resp = &cortexpb.WriteResponse{}
+		}
 		resp.Code = http.StatusOK
 		if err != nil {
 			httpResponse, isGRPCError := httpgrpc.HTTPResponseFromError(err)

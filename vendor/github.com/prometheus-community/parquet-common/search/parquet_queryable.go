@@ -233,15 +233,6 @@ func newQueryableShard(opts *queryableOpts, block *storage.ParquetShard, d *sche
 }
 
 func (b queryableShard) Query(ctx context.Context, sorted bool, mint, maxt int64, skipChunks bool, matchers []*labels.Matcher) (prom_storage.ChunkSeriesSet, error) {
-	cs, err := MatchersToConstraint(matchers...)
-	if err != nil {
-		return nil, err
-	}
-	err = Initialize(b.shard.LabelsFile(), cs...)
-	if err != nil {
-		return nil, err
-	}
-
 	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(b.concurrency)
 
@@ -250,7 +241,15 @@ func (b queryableShard) Query(ctx context.Context, sorted bool, mint, maxt int64
 
 	for i, group := range b.shard.LabelsFile().RowGroups() {
 		errGroup.Go(func() error {
-			rr, err := Filter(ctx, group, append([]Constraint{}, cs...)...)
+			cs, err := MatchersToConstraint(matchers...)
+			if err != nil {
+				return err
+			}
+			err = Initialize(b.shard.LabelsFile(), cs...)
+			if err != nil {
+				return err
+			}
+			rr, err := Filter(ctx, group, cs...)
 			if err != nil {
 				return err
 			}
@@ -284,14 +283,6 @@ func (b queryableShard) LabelNames(ctx context.Context, limit int64, matchers []
 	if len(matchers) == 0 {
 		return b.m.MaterializeAllLabelNames(), nil
 	}
-	cs, err := MatchersToConstraint(matchers...)
-	if err != nil {
-		return nil, err
-	}
-	err = Initialize(b.shard.LabelsFile(), cs...)
-	if err != nil {
-		return nil, err
-	}
 
 	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(b.concurrency)
@@ -300,7 +291,15 @@ func (b queryableShard) LabelNames(ctx context.Context, limit int64, matchers []
 
 	for i, group := range b.shard.LabelsFile().RowGroups() {
 		errGroup.Go(func() error {
-			rr, err := Filter(ctx, group, append([]Constraint{}, cs...)...)
+			cs, err := MatchersToConstraint(matchers...)
+			if err != nil {
+				return err
+			}
+			err = Initialize(b.shard.LabelsFile(), cs...)
+			if err != nil {
+				return err
+			}
+			rr, err := Filter(ctx, group, cs...)
 			if err != nil {
 				return err
 			}
@@ -324,14 +323,6 @@ func (b queryableShard) LabelValues(ctx context.Context, name string, limit int6
 	if len(matchers) == 0 {
 		return b.allLabelValues(ctx, name, limit)
 	}
-	cs, err := MatchersToConstraint(matchers...)
-	if err != nil {
-		return nil, err
-	}
-	err = Initialize(b.shard.LabelsFile(), cs...)
-	if err != nil {
-		return nil, err
-	}
 
 	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(b.concurrency)
@@ -340,7 +331,15 @@ func (b queryableShard) LabelValues(ctx context.Context, name string, limit int6
 
 	for i, group := range b.shard.LabelsFile().RowGroups() {
 		errGroup.Go(func() error {
-			rr, err := Filter(ctx, group, append([]Constraint{}, cs...)...)
+			cs, err := MatchersToConstraint(matchers...)
+			if err != nil {
+				return err
+			}
+			err = Initialize(b.shard.LabelsFile(), cs...)
+			if err != nil {
+				return err
+			}
+			rr, err := Filter(ctx, group, cs...)
 			if err != nil {
 				return err
 			}

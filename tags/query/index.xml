@@ -1,0 +1,168 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – query</title><link>/tags/query/</link><description>Recent content in query on Cortex</description><generator>Hugo -- gohugo.io</generator><lastBuildDate>Tue, 29 Apr 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/query/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: Optimizing PromQL queries: A deep dive</title><link>/blog/2025/04/29/optimizing-promql-queries-a-deep-dive/</link><pubDate>Tue, 29 Apr 2025 00:00:00 +0000</pubDate><guid>/blog/2025/04/29/optimizing-promql-queries-a-deep-dive/</guid><description>
+&lt;h2 id="introduction">Introduction&lt;/h2>
+&lt;p>This guide explains how Cortex evaluates PromQL queries, details how time series data is stored and retrieved, and offers strategies to write performant queries — particularly in high-cardinality environments.&lt;/p>
+&lt;p>Note: If you are new to PromQL, it is recommended to start with the &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/basics/">Querying basics documentation&lt;/a>.&lt;/p>
+&lt;h2 id="prometheus-concepts">Prometheus Concepts&lt;/h2>
+&lt;h3 id="data-model">Data Model&lt;/h3>
+&lt;p>Prometheus employs a straightforward data model:&lt;/p>
+&lt;ul>
+&lt;li>Each time series is uniquely identified by a metric name and a set of label-value pairs.&lt;/li>
+&lt;li>Each sample includes:
+&lt;ul>
+&lt;li>A millisecond precision timestamp&lt;/li>
+&lt;li>A 64 bit floating point value.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;h3 id="label-matchers">Label Matchers&lt;/h3>
+&lt;p>Label matchers define the selection criteria for time series within the TSDB. Consider the following PromQL expression:&lt;/p>
+&lt;pre tabindex="0">&lt;code>http_requests_total{cluster=&amp;#34;prod&amp;#34;, job=&amp;#34;envoy&amp;#34;}
+&lt;/code>&lt;/pre>&lt;p>the label matchers are:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>__name__=&amp;quot;http_requests_total&amp;quot;&lt;/code>&lt;/li>
+&lt;li>&lt;code>cluster=&amp;quot;prod&amp;quot;&lt;/code>&lt;/li>
+&lt;li>&lt;code>job=&amp;quot;envoy&amp;quot;&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>Prometheus supports four types of label matchers:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Type&lt;/th>
+&lt;th>Syntax&lt;/th>
+&lt;th>Example&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Equal&lt;/td>
+&lt;td>label=&amp;ldquo;value&amp;rdquo;&lt;/td>
+&lt;td>job=&amp;ldquo;envoy&amp;rdquo;&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Not Equal&lt;/td>
+&lt;td>label!=&amp;ldquo;value&amp;rdquo;&lt;/td>
+&lt;td>job!=&amp;ldquo;prometheus&amp;rdquo;&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Regex Equal&lt;/td>
+&lt;td>label=~&amp;ldquo;regex&amp;rdquo;&lt;/td>
+&lt;td>job=~&amp;ldquo;env.*&amp;rdquo;&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Regex Not Equal&lt;/td>
+&lt;td>label!~&amp;ldquo;regex&amp;rdquo;&lt;/td>
+&lt;td>status!~&amp;ldquo;4..&amp;rdquo;&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="time-series-storage-in-cortex">Time Series Storage in Cortex&lt;/h2>
+&lt;p>Cortex uses Prometheus&amp;rsquo;s Time Series Database (TSDB) for storing time series data. The Prometheus TSDB is time partitioned into blocks. Each TSDB block is made up of the following files:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>ID&lt;/code> - ID of the block (&lt;a href="https://github.com/ulid/spec">ULID&lt;/a>)&lt;/li>
+&lt;li>&lt;code>meta.json&lt;/code> - Contains the metadata of the block&lt;/li>
+&lt;li>&lt;code>index&lt;/code> - A binary file that contains the index&lt;/li>
+&lt;li>&lt;code>chunks&lt;/code> - Directory containing the chunk segment files&lt;/li>
+&lt;/ul>
+&lt;p>More details: &lt;a href="https://github.com/prometheus/prometheus/blob/5630a3906ace8f2ecd16e7af7fb184e4f4dd853d/tsdb/docs/format/README.md">TSDB format docs&lt;/a>&lt;/p>
+&lt;h3 id="index-file">Index File&lt;/h3>
+&lt;p>The &lt;code>index&lt;/code> file contains two key mappings for query processing:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Postings Offset Table and Postings&lt;/strong>: Maps label-value pairs to Series IDs&lt;/li>
+&lt;li>&lt;strong>Series Section&lt;/strong>: Maps series IDs to label sets and chunk references&lt;/li>
+&lt;/ul>
+&lt;h4 id="example">Example&lt;/h4>
+&lt;p>Given the following time series:&lt;/p>
+&lt;pre tabindex="0">&lt;code>http_requests_total{cluster=&amp;#34;prod&amp;#34;, job=&amp;#34;envoy&amp;#34;, status=&amp;#34;200&amp;#34;} -&amp;gt; SeriesID(1)
+http_requests_total{cluster=&amp;#34;prod&amp;#34;, job=&amp;#34;envoy&amp;#34;, status=&amp;#34;400&amp;#34;} -&amp;gt; SeriesID(2)
+http_requests_total{cluster=&amp;#34;prod&amp;#34;, job=&amp;#34;envoy&amp;#34;, status=&amp;#34;500&amp;#34;} -&amp;gt; SeriesID(3)
+http_requests_total{cluster=&amp;#34;prod&amp;#34;, job=&amp;#34;prometheus&amp;#34;, status=&amp;#34;200&amp;#34;} -&amp;gt; SeriesID(4)
+&lt;/code>&lt;/pre>&lt;p>The index file would store mappings such as:&lt;/p>
+&lt;pre tabindex="0">&lt;code>__name__=http_requests_total → [1, 2, 3, 4]
+cluster=prod → [1, 2, 3, 4]
+job=envoy → [1, 2, 3]
+job=prometheus → [4]
+status=200 → [1, 4]
+status=400 → [2]
+status=500 → [3]
+&lt;/code>&lt;/pre>&lt;h3 id="chunks">Chunks&lt;/h3>
+&lt;p>Each chunk segment file can store up to &lt;strong>512MB&lt;/strong> of data. Each chunk in the segment file typically holds up to &lt;strong>120 samples&lt;/strong>.&lt;/p>
+&lt;h2 id="query-execution-in-cortex">Query Execution in Cortex&lt;/h2>
+&lt;p>To optimize PromQL queries effectively, it is essential to understand how queries are executed within Cortex. Consider the following example:&lt;/p>
+&lt;pre tabindex="0">&lt;code>sum(rate(http_requests_total{cluster=&amp;#34;prod&amp;#34;, job=&amp;#34;envoy&amp;#34;}[5m]))
+&lt;/code>&lt;/pre>&lt;h3 id="block-selection">Block Selection&lt;/h3>
+&lt;p>Cortex first identifies the TSDB blocks that fall within the query’s time range. This process is very fast in Cortex and will not add a huge overhead on query execution.&lt;/p>
+&lt;h3 id="series-selection">Series Selection&lt;/h3>
+&lt;p>Next, Cortex uses the inverted index to retrieve the set of matching series IDs for each label matcher. For example:&lt;/p>
+&lt;pre tabindex="0">&lt;code>__name__=&amp;#34;http_requests_total&amp;#34; → [1, 2, 3, 4]
+cluster=&amp;#34;prod&amp;#34; → [1, 2, 3, 4]
+job=&amp;#34;envoy&amp;#34; → [1, 2, 3]
+&lt;/code>&lt;/pre>&lt;p>The intersection of these sets yields:&lt;/p>
+&lt;pre tabindex="0">&lt;code>http_requests_total{cluster=“prod”, job=“envoy”, status=“200”}
+http_requests_total{cluster=“prod”, job=“envoy”, status=“400”}
+http_requests_total{cluster=“prod”, job=“envoy”, status=“500”}
+&lt;/code>&lt;/pre>&lt;h3 id="sample-selection">Sample Selection&lt;/h3>
+&lt;p>The mapping from series to chunks is used to identify the relevant chunks from the chunk segment files. These chunks are decoded to retrieve the underlying time series samples.&lt;/p>
+&lt;h3 id="promql-evaluation">PromQL evaluation&lt;/h3>
+&lt;p>Using the retrieved series and samples, the PromQL engine evaluates the query. There are two modes of running queries:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Instant queries&lt;/strong> – Evaluated at a single timestamp&lt;/li>
+&lt;li>&lt;strong>Range queries&lt;/strong> – Evaluated at regular intervals over a defined time range&lt;/li>
+&lt;/ul>
+&lt;h2 id="common-causes-of-slow-queries-and-optimization-techniques">Common Causes of Slow Queries and Optimization Techniques&lt;/h2>
+&lt;p>Several factors influence the latency and resource usage of PromQL queries. This section highlights the key contributors and practical strategies for improving performance.&lt;/p>
+&lt;h3 id="query-cardinality">Query Cardinality&lt;/h3>
+&lt;p>High cardinality increases the number of time series that must be scanned and evaluated.&lt;/p>
+&lt;h4 id="recommendations">Recommendations&lt;/h4>
+&lt;ul>
+&lt;li>Eliminate unnecessary labels from metrics.&lt;/li>
+&lt;li>Use selective label matchers to reduce the number of series returned.&lt;/li>
+&lt;/ul>
+&lt;h3 id="number-of-samples-processed">Number of samples processed&lt;/h3>
+&lt;p>The number of samples fetched impacts both memory usage and CPU time for decoding and processing.&lt;/p>
+&lt;h4 id="recommendations-1">Recommendations&lt;/h4>
+&lt;p>Until downsampling is implemented, reducing the scrape interval can help lower the amount of samples to be processed. But this comes at the cost of reduced resolution.&lt;/p>
+&lt;h3 id="number-of-evaluation-steps">Number of evaluation steps&lt;/h3>
+&lt;p>The number of evaluation steps for a range query is computed as:&lt;/p>
+&lt;pre tabindex="0">&lt;code>num of steps = 1 + (end - start) / step
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>Example:&lt;/strong> A 24-hour query with a 1-minute step results in 1,441 evaluation steps.&lt;/p>
+&lt;h4 id="recommendations-2">Recommendations&lt;/h4>
+&lt;p>Grafana can automatically set the step size based on the time range. If a query is slow, manually increasing the step parameter can reduce computational overhead.&lt;/p>
+&lt;h3 id="time-range-of-the-query">Time range of the query&lt;/h3>
+&lt;p>Wider time ranges amplify the effects of cardinality, sample volume, and evaluation steps.&lt;/p>
+&lt;h4 id="recommendations-3">Recommendations&lt;/h4>
+&lt;ul>
+&lt;li>Use shorter time ranges (e.g., 1h) in dashboards.&lt;/li>
+&lt;li>Default to instant queries during metric exploration to reduce load.&lt;/li>
+&lt;/ul>
+&lt;h3 id="query-complexity">Query Complexity&lt;/h3>
+&lt;p>Subqueries, nested expressions, and advanced functions may lead to substantial CPU consumption.&lt;/p>
+&lt;h4 id="recommendations-4">Recommendations&lt;/h4>
+&lt;ul>
+&lt;li>Simplify complex expressions where feasible.&lt;/li>
+&lt;/ul>
+&lt;h3 id="regular-expressions">Regular Expressions&lt;/h3>
+&lt;p>While Prometheus has optimized regex matching, such queries remain CPU-intensive.&lt;/p>
+&lt;h4 id="recommendations-5">Recommendations&lt;/h4>
+&lt;ul>
+&lt;li>Avoid regex matchers in high-frequency queries.&lt;/li>
+&lt;li>Where possible, use equality matchers instead.&lt;/li>
+&lt;/ul>
+&lt;h3 id="query-result-size">Query Result Size&lt;/h3>
+&lt;p>Queries returning large datasets (&amp;gt;100MB) can incur significant serialization and network transfer costs.&lt;/p>
+&lt;h4 id="example-1">Example&lt;/h4>
+&lt;pre tabindex="0">&lt;code>pod_container_info #No aggregation
+sum by (pod) (rate(container_cpu_seconds_total[1m])) # High cardinality result
+&lt;/code>&lt;/pre>&lt;h4 id="recommendations-6">Recommendations&lt;/h4>
+&lt;ul>
+&lt;li>Scoping the query using additional label matchers reduces result size and improves performance.&lt;/li>
+&lt;/ul>
+&lt;h2 id="summary">Summary&lt;/h2>
+&lt;p>The key optimization techniques are:&lt;/p>
+&lt;ul>
+&lt;li>Use selective label matchers to limit cardinality.&lt;/li>
+&lt;li>Increase the step value in long-range queries.&lt;/li>
+&lt;li>Simplify complex or nested PromQL expressions.&lt;/li>
+&lt;li>Avoid regex matchers unless strictly necessary.&lt;/li>
+&lt;li>Favor instant queries for interactive use cases.&lt;/li>
+&lt;li>Scope queries to minimize the result size.&lt;/li>
+&lt;/ul></description></item></channel></rss>

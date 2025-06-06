@@ -40,7 +40,7 @@ import (
 
 var (
 	enabledFunctions []*parser.Function
-	enabledAggrs     []parser.ItemType = []parser.ItemType{
+	enabledAggrs     = []parser.ItemType{
 		parser.SUM, parser.MIN, parser.MAX, parser.AVG, parser.GROUP, parser.COUNT, parser.COUNT_VALUES, parser.QUANTILE,
 	}
 )

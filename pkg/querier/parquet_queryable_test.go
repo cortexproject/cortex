@@ -76,14 +76,15 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 
 		mParquetQuerier := &mockParquetQuerier{}
 		pq := &parquetQuerierWithFallback{
-			minT:               minT,
-			maxT:               maxT,
-			finder:             finder,
-			blocksStoreQuerier: q,
-			parquetQuerier:     mParquetQuerier,
-			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-			limits:             defaultOverrides(t, 4),
-			logger:             log.NewNopLogger(),
+			minT:                  minT,
+			maxT:                  maxT,
+			finder:                finder,
+			blocksStoreQuerier:    q,
+			parquetQuerier:        mParquetQuerier,
+			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:                defaultOverrides(t, 4),
+			logger:                log.NewNopLogger(),
+			defaultBlockStoreType: parquetBlockStore,
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
@@ -118,14 +119,15 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 
 		mParquetQuerier := &mockParquetQuerier{}
 		pq := &parquetQuerierWithFallback{
-			minT:               minT,
-			maxT:               maxT,
-			finder:             finder,
-			blocksStoreQuerier: q,
-			parquetQuerier:     mParquetQuerier,
-			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-			limits:             defaultOverrides(t, 0),
-			logger:             log.NewNopLogger(),
+			minT:                  minT,
+			maxT:                  maxT,
+			finder:                finder,
+			blocksStoreQuerier:    q,
+			parquetQuerier:        mParquetQuerier,
+			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:                defaultOverrides(t, 0),
+			logger:                log.NewNopLogger(),
+			defaultBlockStoreType: parquetBlockStore,
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
@@ -178,14 +180,15 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 
 		mParquetQuerier := &mockParquetQuerier{}
 		pq := &parquetQuerierWithFallback{
-			minT:               minT,
-			maxT:               maxT,
-			finder:             finder,
-			blocksStoreQuerier: q,
-			parquetQuerier:     mParquetQuerier,
-			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-			limits:             defaultOverrides(t, 0),
-			logger:             log.NewNopLogger(),
+			minT:                  minT,
+			maxT:                  maxT,
+			finder:                finder,
+			blocksStoreQuerier:    q,
+			parquetQuerier:        mParquetQuerier,
+			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:                defaultOverrides(t, 0),
+			logger:                log.NewNopLogger(),
+			defaultBlockStoreType: parquetBlockStore,
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
@@ -244,14 +247,15 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 
 		mParquetQuerier := &mockParquetQuerier{}
 		pq := &parquetQuerierWithFallback{
-			minT:               minT,
-			maxT:               maxT,
-			finder:             finder,
-			blocksStoreQuerier: q,
-			parquetQuerier:     mParquetQuerier,
-			metrics:            newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-			limits:             defaultOverrides(t, 0),
-			logger:             log.NewNopLogger(),
+			minT:                  minT,
+			maxT:                  maxT,
+			finder:                finder,
+			blocksStoreQuerier:    q,
+			parquetQuerier:        mParquetQuerier,
+			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:                defaultOverrides(t, 0),
+			logger:                log.NewNopLogger(),
+			defaultBlockStoreType: parquetBlockStore,
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
@@ -291,6 +295,106 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		})
 	})
 
+	t.Run("Default query TSDB block store even if parquet blocks available. Override with ctx", func(t *testing.T) {
+		finder := &blocksFinderMock{}
+		stores := createStore()
+
+		q := &blocksStoreQuerier{
+			minT:        minT,
+			maxT:        maxT,
+			finder:      finder,
+			stores:      stores,
+			consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+			logger:      log.NewNopLogger(),
+			metrics:     newBlocksStoreQueryableMetrics(prometheus.NewPedanticRegistry()),
+			limits:      &blocksStoreLimitsMock{},
+
+			storeGatewayConsistencyCheckMaxAttempts: 3,
+		}
+
+		mParquetQuerier := &mockParquetQuerier{}
+		pq := &parquetQuerierWithFallback{
+			minT:                  minT,
+			maxT:                  maxT,
+			finder:                finder,
+			blocksStoreQuerier:    q,
+			parquetQuerier:        mParquetQuerier,
+			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:                defaultOverrides(t, 0),
+			logger:                log.NewNopLogger(),
+			defaultBlockStoreType: tsdbBlockStore,
+		}
+
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
+
+		t.Run("select", func(t *testing.T) {
+			stores.Reset()
+			mParquetQuerier.Reset()
+			ss := pq.Select(ctx, true, nil, matchers...)
+			require.NoError(t, ss.Err())
+			require.Len(t, stores.queriedBlocks, 2)
+			require.Len(t, mParquetQuerier.queriedBlocks, 0)
+		})
+
+		t.Run("select with ctx key override to parquet", func(t *testing.T) {
+			stores.Reset()
+			mParquetQuerier.Reset()
+			newCtx := AddBlockStoreTypeToContext(ctx, string(parquetBlockStore))
+			ss := pq.Select(newCtx, true, nil, matchers...)
+			require.NoError(t, ss.Err())
+			require.Len(t, stores.queriedBlocks, 0)
+			require.Len(t, mParquetQuerier.queriedBlocks, 2)
+		})
+
+		t.Run("labelNames", func(t *testing.T) {
+			stores.Reset()
+			mParquetQuerier.Reset()
+			r, _, err := pq.LabelNames(ctx, nil, matchers...)
+			require.NoError(t, err)
+			require.Len(t, stores.queriedBlocks, 2)
+			require.Len(t, mParquetQuerier.queriedBlocks, 0)
+			require.Contains(t, r, "fromSg")
+			require.NotContains(t, r, "fromParquet")
+		})
+
+		t.Run("labelNames with ctx key override to parquet", func(t *testing.T) {
+			stores.Reset()
+			mParquetQuerier.Reset()
+			newCtx := AddBlockStoreTypeToContext(ctx, string(parquetBlockStore))
+			r, _, err := pq.LabelNames(newCtx, nil, matchers...)
+			require.NoError(t, err)
+			require.Len(t, stores.queriedBlocks, 0)
+			require.Len(t, mParquetQuerier.queriedBlocks, 2)
+			require.NotContains(t, r, "fromSg")
+			require.Contains(t, r, "fromParquet")
+		})
+
+		t.Run("labelValues", func(t *testing.T) {
+			stores.Reset()
+			mParquetQuerier.Reset()
+			r, _, err := pq.LabelValues(ctx, labels.MetricName, nil, matchers...)
+			require.NoError(t, err)
+			require.Len(t, stores.queriedBlocks, 2)
+			require.Len(t, mParquetQuerier.queriedBlocks, 0)
+			require.Contains(t, r, "fromSg")
+			require.NotContains(t, r, "fromParquet")
+		})
+
+		t.Run("labelValues with ctx key override to parquet", func(t *testing.T) {
+			stores.Reset()
+			mParquetQuerier.Reset()
+			newCtx := AddBlockStoreTypeToContext(ctx, string(parquetBlockStore))
+			r, _, err := pq.LabelValues(newCtx, labels.MetricName, nil, matchers...)
+			require.NoError(t, err)
+			require.Len(t, stores.queriedBlocks, 0)
+			require.Len(t, mParquetQuerier.queriedBlocks, 2)
+			require.NotContains(t, r, "fromSg")
+			require.Contains(t, r, "fromParquet")
+		})
+	})
 }
 
 func defaultOverrides(t *testing.T, queryVerticalShardSize int) *validation.Overrides {

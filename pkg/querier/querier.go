@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -93,8 +94,9 @@ type Config struct {
 	EnablePromQLExperimentalFunctions bool `yaml:"enable_promql_experimental_functions"`
 
 	// Query Parquet files if available
-	EnableParquetQueryable         bool `yaml:"enable_parquet_queryable" doc:"hidden"`
-	ParquetQueryableShardCacheSize int  `yaml:"parquet_queryable_shard_cache_size" doc:"hidden"`
+	EnableParquetQueryable            bool   `yaml:"enable_parquet_queryable" doc:"hidden"`
+	ParquetQueryableShardCacheSize    int    `yaml:"parquet_queryable_shard_cache_size" doc:"hidden"`
+	ParquetQueryableDefaultBlockStore string `yaml:"parquet_queryable_default_block_store" doc:"hidden"`
 }
 
 var (
@@ -104,6 +106,7 @@ var (
 	errUnsupportedResponseCompression                 = errors.New("unsupported response compression. Supported compression 'gzip' and '' (disable compression)")
 	errInvalidConsistencyCheckAttempts                = errors.New("store gateway consistency check max attempts should be greater or equal than 1")
 	errInvalidIngesterQueryMaxAttempts                = errors.New("ingester query max attempts should be greater or equal than 1")
+	errInvalidParquetQueryableDefaultBlockStore       = errors.New("unsupported parquet queryable default block store. Supported options are tsdb and parquet")
 )
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -142,6 +145,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnablePromQLExperimentalFunctions, "querier.enable-promql-experimental-functions", false, "[Experimental] If true, experimental promQL functions are enabled.")
 	f.BoolVar(&cfg.EnableParquetQueryable, "querier.enable-parquet-queryable", false, "[Experimental] If true, querier will try to query the parquet files if available.")
 	f.IntVar(&cfg.ParquetQueryableShardCacheSize, "querier.parquet-queryable-shard-cache-size", 512, "[Experimental] [Experimental] Maximum size of the Parquet queryable shard cache. 0 to disable.")
+	f.StringVar(&cfg.ParquetQueryableDefaultBlockStore, "querier.parquet-queryable-default-block-store", string(parquetBlockStore), "Parquet queryable's default block store to query. Valid options are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback to store gateway.")
 }
 
 // Validate the config
@@ -169,6 +173,12 @@ func (cfg *Config) Validate() error {
 
 	if cfg.IngesterQueryMaxAttempts < 1 {
 		return errInvalidIngesterQueryMaxAttempts
+	}
+
+	if cfg.EnableParquetQueryable {
+		if !slices.Contains(validBlockStoreTypes, blockStoreType(cfg.ParquetQueryableDefaultBlockStore)) {
+			return errInvalidParquetQueryableDefaultBlockStore
+		}
 	}
 
 	return nil

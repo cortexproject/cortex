@@ -38,7 +38,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
-var enabledFunctions []*parser.Function
+var (
+	enabledFunctions []*parser.Function
+	enabledAggrs     = []parser.ItemType{
+		parser.SUM, parser.MIN, parser.MAX, parser.AVG, parser.GROUP, parser.COUNT, parser.COUNT_VALUES, parser.QUANTILE,
+	}
+)
 
 func init() {
 	for _, f := range parser.Functions {
@@ -153,9 +158,7 @@ func TestNativeHistogramFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
-		promqlsmith.WithEnabledAggrs([]parser.ItemType{
-			parser.SUM, parser.MIN, parser.MAX, parser.AVG, parser.GROUP, parser.COUNT, parser.COUNT_VALUES, parser.QUANTILE,
-		}),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -271,6 +274,7 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 		promqlsmith.WithEnableExperimentalPromQLFunctions(true),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
@@ -376,6 +380,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -558,6 +563,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -788,6 +794,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -904,6 +911,7 @@ func TestProtobufCodecFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -1600,6 +1608,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -1712,6 +1721,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 

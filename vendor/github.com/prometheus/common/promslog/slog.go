@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type LogStyle string
@@ -32,6 +33,8 @@ type LogStyle string
 const (
 	SlogStyle  LogStyle = "slog"
 	GoKitStyle LogStyle = "go-kit"
+
+	reservedKeyPrefix = "logged_"
 )
 
 var (
@@ -43,26 +46,51 @@ var (
 	goKitStyleReplaceAttrFunc = func(groups []string, a slog.Attr) slog.Attr {
 		key := a.Key
 		switch key {
-		case slog.TimeKey:
-			a.Key = "ts"
+		case slog.TimeKey, "ts":
+			if t, ok := a.Value.Any().(time.Time); ok {
+				a.Key = "ts"
 
-			// This timestamp format differs from RFC3339Nano by using .000 instead
-			// of .999999999 which changes the timestamp from 9 variable to 3 fixed
-			// decimals (.130 instead of .130987456).
-			t := a.Value.Time()
-			a.Value = slog.StringValue(t.UTC().Format("2006-01-02T15:04:05.000Z07:00"))
-		case slog.SourceKey:
-			a.Key = "caller"
-			src, _ := a.Value.Any().(*slog.Source)
-
-			switch callerAddFunc {
-			case true:
-				a.Value = slog.StringValue(filepath.Base(src.File) + "(" + filepath.Base(src.Function) + "):" + strconv.Itoa(src.Line))
-			default:
-				a.Value = slog.StringValue(filepath.Base(src.File) + ":" + strconv.Itoa(src.Line))
+				// This timestamp format differs from RFC3339Nano by using .000 instead
+				// of .999999999 which changes the timestamp from 9 variable to 3 fixed
+				// decimals (.130 instead of .130987456).
+				a.Value = slog.StringValue(t.UTC().Format("2006-01-02T15:04:05.000Z07:00"))
+			} else {
+				// If we can't cast the any from the value to a
+				// time.Time, it means the caller logged
+				// another attribute with a key of `ts`.
+				// Prevent duplicate keys (necessary for proper
+				// JSON) by renaming the key to `logged_ts`.
+				a.Key = reservedKeyPrefix + key
+			}
+		case slog.SourceKey, "caller":
+			if src, ok := a.Value.Any().(*slog.Source); ok {
+				a.Key = "caller"
+				switch callerAddFunc {
+				case true:
+					a.Value = slog.StringValue(filepath.Base(src.File) + "(" + filepath.Base(src.Function) + "):" + strconv.Itoa(src.Line))
+				default:
+					a.Value = slog.StringValue(filepath.Base(src.File) + ":" + strconv.Itoa(src.Line))
+				}
+			} else {
+				// If we can't cast the any from the value to
+				// an *slog.Source, it means the caller logged
+				// another attribute with a key of `caller`.
+				// Prevent duplicate keys (necessary for proper
+				// JSON) by renaming the key to
+				// `logged_caller`.
+				a.Key = reservedKeyPrefix + key
 			}
 		case slog.LevelKey:
-			a.Value = slog.StringValue(strings.ToLower(a.Value.String()))
+			if lvl, ok := a.Value.Any().(slog.Level); ok {
+				a.Value = slog.StringValue(strings.ToLower(lvl.String()))
+			} else {
+				// If we can't cast the any from the value to
+				// an slog.Level, it means the caller logged
+				// another attribute with a key of `level`.
+				// Prevent duplicate keys (necessary for proper
+				// JSON) by renaming the key to `logged_level`.
+				a.Key = reservedKeyPrefix + key
+			}
 		default:
 		}
 
@@ -72,11 +100,38 @@ var (
 		key := a.Key
 		switch key {
 		case slog.TimeKey:
-			t := a.Value.Time()
-			a.Value = slog.TimeValue(t.UTC())
+			if t, ok := a.Value.Any().(time.Time); ok {
+				a.Value = slog.TimeValue(t.UTC())
+			} else {
+				// If we can't cast the any from the value to a
+				// time.Time, it means the caller logged
+				// another attribute with a key of `time`.
+				// Prevent duplicate keys (necessary for proper
+				// JSON) by renaming the key to `logged_time`.
+				a.Key = reservedKeyPrefix + key
+			}
 		case slog.SourceKey:
-			src, _ := a.Value.Any().(*slog.Source)
-			a.Value = slog.StringValue(filepath.Base(src.File) + ":" + strconv.Itoa(src.Line))
+			if src, ok := a.Value.Any().(*slog.Source); ok {
+				a.Value = slog.StringValue(filepath.Base(src.File) + ":" + strconv.Itoa(src.Line))
+			} else {
+				// If we can't cast the any from the value to
+				// an *slog.Source, it means the caller logged
+				// another attribute with a key of `source`.
+				// Prevent duplicate keys (necessary for proper
+				// JSON) by renaming the key to
+				// `logged_source`.
+				a.Key = reservedKeyPrefix + key
+			}
+		case slog.LevelKey:
+			if _, ok := a.Value.Any().(slog.Level); !ok {
+				// If we can't cast the any from the value to
+				// an slog.Level, it means the caller logged
+				// another attribute with a key of `level`.
+				// Prevent duplicate keys (necessary for proper
+				// JSON) by renaming the key to
+				// `logged_level`.
+				a.Key = reservedKeyPrefix + key
+			}
 		default:
 		}
 

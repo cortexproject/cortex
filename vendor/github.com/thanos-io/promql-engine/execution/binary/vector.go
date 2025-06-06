@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -58,8 +57,6 @@ type vectorOperator struct {
 
 	// If true then 1/0 needs to be returned instead of the value.
 	returnBool bool
-
-	telemetry.OperatorTelemetry
 }
 
 func NewVectorOperator(
@@ -81,9 +78,7 @@ func NewVectorOperator(
 		sigFunc:    signatureFunc(matching.On, matching.MatchingLabels...),
 	}
 
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper, nil
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper), nil
 }
 
 func (o *vectorOperator) String() string {
@@ -98,9 +93,6 @@ func (o *vectorOperator) Explain() (next []model.VectorOperator) {
 }
 
 func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := o.initOnce(ctx); err != nil {
 		return nil, err
 	}
@@ -108,9 +100,6 @@ func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {
 }
 
 func (o *vectorOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -308,13 +297,13 @@ func (o *vectorOperator) execBinaryUnless(lhs, rhs model.StepVector) (model.Step
 	return step, nil
 }
 
-func (o *vectorOperator) computeBinaryPairing(hval, lval float64, hlhs, hrhs *histogram.FloatHistogram, annos *annotations.Annotations) (float64, *histogram.FloatHistogram, bool, error) {
+func (o *vectorOperator) computeBinaryPairing(ctx context.Context, hval, lval float64, hlhs, hrhs *histogram.FloatHistogram, annos *annotations.Annotations) (float64, *histogram.FloatHistogram, bool, error) {
 	// operand is not commutative so we need to address potential swapping
 	if o.matching.Card == parser.CardOneToMany {
-		v, h, keep, err := vectorElemBinop(o.opType, lval, hval, hlhs, hrhs, annos)
+		v, h, keep, err := vectorElemBinop(ctx, o.opType, lval, hval, hlhs, hrhs, annos)
 		return v, h, keep, err
 	}
-	v, h, keep, err := vectorElemBinop(o.opType, hval, lval, hlhs, hrhs, annos)
+	v, h, keep, err := vectorElemBinop(ctx, o.opType, hval, lval, hlhs, hrhs, annos)
 	return v, h, keep, err
 }
 
@@ -380,9 +369,9 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 		jp.bts = ts
 
 		if jp.histogramVal != nil {
-			_, h, keep, err = o.computeBinaryPairing(0, 0, hcs.Histograms[i], jp.histogramVal, &annos)
+			_, h, keep, err = o.computeBinaryPairing(ctx, 0, 0, hcs.Histograms[i], jp.histogramVal, &annos)
 		} else {
-			_, h, keep, err = o.computeBinaryPairing(0, jp.val, hcs.Histograms[i], nil, &annos)
+			_, h, keep, err = o.computeBinaryPairing(ctx, 0, jp.val, hcs.Histograms[i], nil, &annos)
 		}
 		if countWarnings, countInfo := annos.CountWarningsAndInfo(); countWarnings > 0 || countInfo > 0 {
 			warnings.MergeToContext(annos, ctx)
@@ -423,7 +412,7 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 		var val float64
 
 		if jp.histogramVal != nil {
-			_, h, _, err = o.computeBinaryPairing(hcs.Samples[i], 0, nil, jp.histogramVal, &annos)
+			_, h, _, err = o.computeBinaryPairing(ctx, hcs.Samples[i], 0, nil, jp.histogramVal, &annos)
 			if countWarnings, countInfo := annos.CountWarningsAndInfo(); countWarnings > 0 || countInfo > 0 {
 				warnings.MergeToContext(annos, ctx)
 				continue
@@ -433,7 +422,7 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 			}
 			step.AppendHistogram(o.pool, jp.sid, h)
 		} else {
-			val, _, keep, err = o.computeBinaryPairing(hcs.Samples[i], jp.val, nil, nil, &annos)
+			val, _, keep, err = o.computeBinaryPairing(ctx, hcs.Samples[i], jp.val, nil, nil, &annos)
 			if countWarnings, countInfo := annos.CountWarningsAndInfo(); countWarnings > 0 || countInfo > 0 {
 				warnings.MergeToContext(annos, ctx)
 				continue
@@ -626,7 +615,7 @@ func signatureFunc(on bool, names ...string) func(labels.Labels) uint64 {
 // Lifted from: https://github.com/prometheus/prometheus/blob/v3.1.0/promql/engine.go#L2797.
 // nolint: unparam
 // vectorElemBinop evaluates a binary operation between two Vector elements.
-func vectorElemBinop(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHistogram, annos *annotations.Annotations) (float64, *histogram.FloatHistogram, bool, error) {
+func vectorElemBinop(ctx context.Context, op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHistogram, annos *annotations.Annotations) (float64, *histogram.FloatHistogram, bool, error) {
 	opName := parser.ItemTypeStr[op]
 
 	switch {
@@ -689,12 +678,26 @@ func vectorElemBinop(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram
 			case parser.ADD:
 				res, err := hlhs.Copy().Add(hrhs)
 				if err != nil {
+					if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+						warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
+						return 0, nil, false, nil
+					} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+						warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
+						return 0, nil, false, nil
+					}
 					return 0, nil, false, err
 				}
 				return 0, res.Compact(0), true, nil
 			case parser.SUB:
 				res, err := hlhs.Copy().Sub(hrhs)
 				if err != nil {
+					if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+						warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
+						return 0, nil, false, nil
+					} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+						warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
+						return 0, nil, false, nil
+					}
 					return 0, nil, false, err
 				}
 				return 0, res.Compact(0), true, nil

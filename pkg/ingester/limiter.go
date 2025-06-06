@@ -145,6 +145,8 @@ func (l *Limiter) FormatError(userID string, err error, lbls labels.Labels) erro
 	switch {
 	case errors.Is(err, errMaxSeriesPerUserLimitExceeded):
 		return l.formatMaxSeriesPerUserError(userID)
+	case errors.Is(err, errMaxNativeHistogramsSeriesPerUserLimitExceeded):
+		return l.formatMaxNativeHistogramsSeriesPerUserError(userID)
 	case errors.Is(err, errMaxSeriesPerMetricLimitExceeded):
 		return l.formatMaxSeriesPerMetricError(userID, lbls.Get(labels.MetricName))
 	case errors.Is(err, errMaxMetadataPerUserLimitExceeded):

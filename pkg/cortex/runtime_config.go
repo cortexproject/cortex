@@ -79,7 +79,7 @@ func (l runtimeConfigLoader) load(r io.Reader) (interface{}, error) {
 	}
 
 	for _, ul := range overrides.TenantLimits {
-		if err := ul.Validate(l.cfg.Distributor.ShardByAllLabels); err != nil {
+		if err := ul.Validate(l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled); err != nil {
 			return nil, err
 		}
 	}

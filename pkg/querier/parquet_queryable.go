@@ -68,7 +68,7 @@ func getBlockStoreType(ctx context.Context, defaultBlockStoreType blockStoreType
 
 type parquetQueryableFallbackMetrics struct {
 	blocksQueriedTotal *prometheus.CounterVec
-	selectCount        *prometheus.CounterVec
+	operationsTotal    *prometheus.CounterVec
 }
 
 func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQueryableFallbackMetrics {
@@ -77,10 +77,10 @@ func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQuery
 			Name: "cortex_parquet_queryable_blocks_queried_total",
 			Help: "Total number of blocks found to query.",
 		}, []string{"type"}),
-		selectCount: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_parquet_queryable_selects_queried_total",
-			Help: "Total number of selects.",
-		}, []string{"type"}),
+		operationsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_parquet_queryable_operations_total",
+			Help: "Total number of Operations.",
+		}, []string{"type", "method"}),
 	}
 }
 
@@ -267,6 +267,7 @@ type parquetQuerierWithFallback struct {
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
+	defer q.incrementOpsMetric("LabelValues", remaining, parquet)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -312,6 +313,7 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 
 func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
+	defer q.incrementOpsMetric("LabelNames", remaining, parquet)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -389,6 +391,8 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	}
 
 	remaining, parquet, err := q.getBlocks(ctx, mint, maxt)
+	defer q.incrementOpsMetric("Select", remaining, parquet)
+
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
@@ -477,17 +481,18 @@ func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT i
 
 	q.metrics.blocksQueriedTotal.WithLabelValues("parquet").Add(float64(len(parquetBlocks)))
 	q.metrics.blocksQueriedTotal.WithLabelValues("tsdb").Add(float64(len(remaining)))
+	return remaining, parquetBlocks, nil
+}
 
+func (q *parquetQuerierWithFallback) incrementOpsMetric(method string, remaining []*bucketindex.Block, parquetBlocks []*bucketindex.Block) {
 	switch {
 	case len(remaining) > 0 && len(parquetBlocks) > 0:
-		q.metrics.selectCount.WithLabelValues("mixed").Inc()
+		q.metrics.operationsTotal.WithLabelValues("mixed", method).Inc()
 	case len(remaining) > 0 && len(parquetBlocks) == 0:
-		q.metrics.selectCount.WithLabelValues("tsdb").Inc()
+		q.metrics.operationsTotal.WithLabelValues("tsdb", method).Inc()
 	case len(remaining) == 0 && len(parquetBlocks) > 0:
-		q.metrics.selectCount.WithLabelValues("parquet").Inc()
+		q.metrics.operationsTotal.WithLabelValues("parquet", method).Inc()
 	}
-
-	return remaining, parquetBlocks, nil
 }
 
 type cacheInterface[T any] interface {

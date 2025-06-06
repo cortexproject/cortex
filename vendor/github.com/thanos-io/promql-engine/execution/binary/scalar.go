@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -29,8 +28,6 @@ const (
 
 // scalarOperator evaluates expressions where one operand is a scalarOperator.
 type scalarOperator struct {
-	telemetry.OperatorTelemetry
-
 	seriesOnce sync.Once
 	series     []labels.Labels
 
@@ -58,7 +55,7 @@ func NewScalar(
 	scalarSide ScalarSide,
 	returnBool bool,
 	opts *query.Options,
-) (*scalarOperator, error) {
+) (model.VectorOperator, error) {
 	binaryOperation, err := newOperation(op, scalarSide != ScalarSideBoth)
 	if err != nil {
 		return nil, err
@@ -85,10 +82,7 @@ func NewScalar(
 		bothScalars:   scalarSide == ScalarSideBoth,
 	}
 
-	oper.OperatorTelemetry = telemetry.NewTelemetry(op, opts)
-
-	return oper, nil
-
+	return telemetry.NewOperator(telemetry.NewTelemetry(op, opts), oper), nil
 }
 
 func (o *scalarOperator) Explain() (next []model.VectorOperator) {
@@ -96,9 +90,6 @@ func (o *scalarOperator) Explain() (next []model.VectorOperator) {
 }
 
 func (o *scalarOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	o.seriesOnce.Do(func() { err = o.loadSeries(ctx) })
 	if err != nil {
@@ -112,9 +103,6 @@ func (o *scalarOperator) String() string {
 }
 
 func (o *scalarOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

@@ -10,7 +10,6 @@ import (
 	"math"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -27,8 +26,6 @@ import (
 )
 
 type kAggregate struct {
-	telemetry.OperatorTelemetry
-
 	next    model.VectorOperator
 	paramOp model.VectorOperator
 	// params holds the aggregate parameter for each step.
@@ -84,15 +81,10 @@ func NewKHashAggregate(
 		params:      make([]float64, opts.StepsBatch),
 	}
 
-	op.OperatorTelemetry = telemetry.NewTelemetry(op, opts)
-
-	return op, nil
+	return telemetry.NewOperator(telemetry.NewTelemetry(op, opts), op), nil
 }
 
 func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -174,15 +166,11 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 }
 
 func (a *kAggregate) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	a.once.Do(func() { err = a.init(ctx) })
 	if err != nil {
 		return nil, err
 	}
-
 	return a.series, nil
 }
 

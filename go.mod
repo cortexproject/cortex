@@ -43,15 +43,15 @@ require (
 	github.com/prometheus/alertmanager v0.28.1
 	github.com/prometheus/client_golang v1.21.1
 	github.com/prometheus/client_model v0.6.2
-	github.com/prometheus/common v0.62.0
+	github.com/prometheus/common v0.63.0
 	// Prometheus maps version 2.x.y to tags v0.x.y.
-	github.com/prometheus/prometheus v0.303.1-0.20250504095004-c3ce1f192748
+	github.com/prometheus/prometheus v0.303.1
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/afero v1.11.0
 	github.com/stretchr/testify v1.10.0
 	github.com/thanos-io/objstore v0.0.0-20250317105316-a0136a6f898d
-	github.com/thanos-io/promql-engine v0.0.0-20250522103302-dd83bd8fdb50
+	github.com/thanos-io/promql-engine v0.0.0-20250606124720-6f637b9579dc
 	github.com/thanos-io/thanos v0.37.3-0.20250603135757-4ad45948cd10
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
@@ -310,3 +310,5 @@ replace google.golang.org/grpc => google.golang.org/grpc v1.65.0
 replace github.com/thanos-io/objstore => github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97
 
 replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.302.1
+
+replace github.com/prometheus/common => github.com/prometheus/common v0.62.1-0.20250120132612-df14882cbf97

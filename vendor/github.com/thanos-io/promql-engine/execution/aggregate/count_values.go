@@ -9,18 +9,17 @@ import (
 	"slices"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/query"
 
+	"github.com/efficientgo/core/errors"
+	prommodel "github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
 type countValuesOperator struct {
-	telemetry.OperatorTelemetry
-
 	pool  *model.VectorPool
 	next  model.VectorOperator
 	param string
@@ -51,9 +50,7 @@ func NewCountValues(pool *model.VectorPool, next model.VectorOperator, param str
 		by:         by,
 		grouping:   grouping,
 	}
-	op.OperatorTelemetry = telemetry.NewTelemetry(op, opts)
-
-	return op
+	return telemetry.NewOperator(telemetry.NewTelemetry(op, opts), op)
 }
 
 func (c *countValuesOperator) Explain() []model.VectorOperator {
@@ -72,18 +69,12 @@ func (c *countValuesOperator) String() string {
 }
 
 func (c *countValuesOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	c.once.Do(func() { err = c.initSeriesOnce(ctx) })
 	return c.series, err
 }
 
 func (c *countValuesOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -116,6 +107,10 @@ func (c *countValuesOperator) Next(ctx context.Context) ([]model.StepVector, err
 }
 
 func (c *countValuesOperator) initSeriesOnce(ctx context.Context) error {
+	if !prommodel.LabelName(c.param).IsValid() {
+		return errors.Newf("invalid label name %q", c.param)
+	}
+
 	nextSeries, err := c.next.Series(ctx)
 	if err != nil {
 		return err

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
@@ -67,7 +66,6 @@ func newNoArgsFunctionOperator(funcExpr *logicalplan.FunctionCall, stepsBatch in
 		call:        call,
 		vectorPool:  model.NewVectorPool(stepsBatch),
 	}
-	op.OperatorTelemetry = telemetry.NewTelemetry(op, opts)
 
 	switch funcExpr.Func.Name {
 	case "pi", "time":
@@ -78,13 +76,11 @@ func newNoArgsFunctionOperator(funcExpr *logicalplan.FunctionCall, stepsBatch in
 		op.sampleIDs = []uint64{0}
 	}
 
-	return op, nil
+	return telemetry.NewOperator(telemetry.NewTelemetry(op, opts), op), nil
 }
 
 // functionOperator returns []model.StepVector after processing input with desired function.
 type functionOperator struct {
-	telemetry.OperatorTelemetry
-
 	funcExpr *logicalplan.FunctionCall
 	series   []labels.Labels
 	once     sync.Once
@@ -113,7 +109,6 @@ func newInstantVectorFunctionOperator(funcExpr *logicalplan.FunctionCall, nextOp
 		vectorIndex:  0,
 		scalarPoints: scalarPoints,
 	}
-	f.OperatorTelemetry = telemetry.NewTelemetry(f, opts)
 
 	for i := range funcExpr.Args {
 		if funcExpr.Args[i].ReturnType() == parser.ValueTypeVector {
@@ -125,7 +120,7 @@ func newInstantVectorFunctionOperator(funcExpr *logicalplan.FunctionCall, nextOp
 	// Check selector type.
 	switch funcExpr.Args[f.vectorIndex].ReturnType() {
 	case parser.ValueTypeVector, parser.ValueTypeScalar:
-		return f, nil
+		return telemetry.NewOperator(telemetry.NewTelemetry(f, opts), f), nil
 	default:
 		return nil, errors.Wrapf(parse.ErrNotImplemented, "got %s:", funcExpr.String())
 	}
@@ -140,13 +135,9 @@ func (o *functionOperator) String() string {
 }
 
 func (o *functionOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := o.loadSeries(ctx); err != nil {
 		return nil, err
 	}
-
 	return o.series, nil
 }
 
@@ -155,9 +146,6 @@ func (o *functionOperator) GetPool() *model.VectorPool {
 }
 
 func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

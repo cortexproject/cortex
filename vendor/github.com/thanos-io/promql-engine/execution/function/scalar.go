@@ -6,7 +6,6 @@ package function
 import (
 	"context"
 	"math"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -18,17 +17,15 @@ import (
 type scalarOperator struct {
 	pool *model.VectorPool
 	next model.VectorOperator
-	telemetry.OperatorTelemetry
 }
 
-func newScalarOperator(pool *model.VectorPool, next model.VectorOperator, opts *query.Options) *scalarOperator {
+func newScalarOperator(pool *model.VectorPool, next model.VectorOperator, opts *query.Options) model.VectorOperator {
 	oper := &scalarOperator{
 		pool: pool,
 		next: next,
 	}
 
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (o *scalarOperator) String() string {
@@ -40,9 +37,6 @@ func (o *scalarOperator) Explain() (next []model.VectorOperator) {
 }
 
 func (o *scalarOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	return nil, nil
 }
 
@@ -51,9 +45,6 @@ func (o *scalarOperator) GetPool() *model.VectorPool {
 }
 
 func (o *scalarOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

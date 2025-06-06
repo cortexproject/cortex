@@ -656,10 +656,11 @@ func TestLimiter_FormatError(t *testing.T) {
 
 	// Mock limits
 	limits, err := validation.NewOverrides(validation.Limits{
-		MaxGlobalSeriesPerUser:              100,
-		MaxGlobalSeriesPerMetric:            20,
-		MaxGlobalMetricsWithMetadataPerUser: 10,
-		MaxGlobalMetadataPerMetric:          3,
+		MaxGlobalSeriesPerUser:                 100,
+		MaxGlobalNativeHistogramsSeriesPerUser: 100,
+		MaxGlobalSeriesPerMetric:               20,
+		MaxGlobalMetricsWithMetadataPerUser:    10,
+		MaxGlobalMetadataPerMetric:             3,
 	}, nil)
 	require.NoError(t, err)
 
@@ -668,6 +669,9 @@ func TestLimiter_FormatError(t *testing.T) {
 
 	actual := limiter.FormatError("user-1", errMaxSeriesPerUserLimitExceeded, lbls)
 	assert.EqualError(t, actual, "per-user series limit of 100 exceeded, please contact administrator to raise it (local limit: 0 global limit: 100 actual local limit: 100)")
+
+	actual = limiter.FormatError("user-1", errMaxNativeHistogramsSeriesPerUserLimitExceeded, lbls)
+	assert.EqualError(t, actual, "per-user nativeHistograms series limit of 100 exceeded, please contact administrator to raise it (local limit: 0 global limit: 100 actual local limit: 100)")
 
 	actual = limiter.FormatError("user-1", errMaxSeriesPerMetricLimitExceeded, lbls)
 	assert.EqualError(t, actual, "per-metric series limit of 20 exceeded for metric testMetric, please contact administrator to raise it (local limit: 0 global limit: 20 actual local limit: 20)")

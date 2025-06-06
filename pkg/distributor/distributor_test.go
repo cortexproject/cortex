@@ -809,6 +809,7 @@ func TestPush_QuorumError(t *testing.T) {
 	flagext.DefaultValues(&limits)
 
 	limits.IngestionRate = math.MaxFloat64
+	limits.NativeHistogramsIngestionRate = math.MaxFloat64
 
 	dists, ingesters, _, r := prepare(t, prepConfig{
 		numDistributors:     1,

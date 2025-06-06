@@ -3427,6 +3427,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -distributor.ingestion-rate-limit
 [ingestion_rate: <float> | default = 25000]
 
+# Per-user nativeHistograms ingestion rate limit in samples per second.
+# CLI flag: -distributor.native-histograms-ingestion-rate-limit
+[native_histograms_ingestion_rate: <float> | default = 25000]
+
 # Whether the ingestion rate limit should be applied individually to each
 # distributor instance (local), or evenly shared across the cluster (global).
 # CLI flag: -distributor.ingestion-rate-limit-strategy
@@ -3435,6 +3439,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Per-user allowed ingestion burst size (in number of samples).
 # CLI flag: -distributor.ingestion-burst-size
 [ingestion_burst_size: <int> | default = 50000]
+
+# Per-user allowed nativeHistograms ingestion burst size (in number of samples).
+# CLI flag: -distributor.native-histograms-ingestion-burst-size
+[native_histograms_ingestion_burst_size: <int> | default = 50000]
 
 # Flag to enable, for all users, handling of samples with external labels
 # identifying replicas in an HA Prometheus setup.

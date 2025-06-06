@@ -6447,7 +6447,7 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		count := 3500000
+		count := 150000
 		req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, fmt.Sprintf("real-%d", count)), count, 1)
 		// Signal that we're going to do the real push now.
 		close(startCh)

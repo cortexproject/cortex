@@ -186,19 +186,10 @@ func NewBlocksStoreQueryable(
 func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegateway.Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits BlocksStoreLimits, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
 	var stores BlocksStoreSet
 
-	bucketClient, err := bucket.NewClient(context.Background(), storageCfg.Bucket, gatewayCfg.HedgedRequest.GetHedgedRoundTripper(), "querier", logger, reg)
+	bucketClient, err := createCachingBucketClient(context.Background(), storageCfg, gatewayCfg.HedgedRequest.GetHedgedRoundTripper(), "querier", logger, reg)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create bucket client")
+		return nil, err
 	}
-
-	// Blocks finder doesn't use chunks, but we pass config for consistency.
-	matchers := cortex_tsdb.NewMatchers()
-	cachingBucket, err := cortex_tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, matchers, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
-	if err != nil {
-		return nil, errors.Wrap(err, "create caching bucket")
-	}
-	bucketClient = cachingBucket
-
 	// Create the blocks finder.
 	var finder BlocksFinder
 	if storageCfg.BucketStore.BucketIndex.Enabled {

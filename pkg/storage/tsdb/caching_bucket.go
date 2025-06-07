@@ -215,6 +215,7 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 		cachingConfigured = true
 		chunksCache = cache.NewTracingCache(chunksCache)
 		cfg.CacheGetRange("chunks", chunksCache, matchers.GetChunksMatcher(), chunksConfig.SubrangeSize, chunksConfig.AttributesTTL, chunksConfig.SubrangeTTL, chunksConfig.MaxGetRangeRequests)
+		cfg.CacheGetRange("parquet-chunks", chunksCache, matchers.GetParquetChunksMatcher(), chunksConfig.SubrangeSize, chunksConfig.AttributesTTL, chunksConfig.SubrangeTTL, chunksConfig.MaxGetRangeRequests)
 	}
 
 	metadataCache, err := createMetadataCache("metadata-cache", &metadataConfig.MetadataCacheBackend, logger, reg)
@@ -356,6 +357,7 @@ type Matchers struct {
 func NewMatchers() Matchers {
 	matcherMap := make(map[string]func(string) bool)
 	matcherMap["chunks"] = isTSDBChunkFile
+	matcherMap["parquet-chunks"] = isParquetChunkFile
 	matcherMap["metafile"] = isMetaFile
 	matcherMap["block-index"] = isBlockIndexFile
 	matcherMap["bucket-index"] = isBucketIndexFiles
@@ -373,6 +375,10 @@ func (m *Matchers) SetMetaFileMatcher(f func(string) bool) {
 
 func (m *Matchers) SetChunksMatcher(f func(string) bool) {
 	m.matcherMap["chunks"] = f
+}
+
+func (m *Matchers) SetParquetChunksMatcher(f func(string) bool) {
+	m.matcherMap["parquet-chunks"] = f
 }
 
 func (m *Matchers) SetBlockIndexMatcher(f func(string) bool) {
@@ -397,6 +403,10 @@ func (m *Matchers) SetChunksIterMatcher(f func(string) bool) {
 
 func (m *Matchers) GetChunksMatcher() func(string) bool {
 	return m.matcherMap["chunks"]
+}
+
+func (m *Matchers) GetParquetChunksMatcher() func(string) bool {
+	return m.matcherMap["parquet-chunks"]
 }
 
 func (m *Matchers) GetMetafileMatcher() func(string) bool {
@@ -426,6 +436,8 @@ func (m *Matchers) GetChunksIterMatcher() func(string) bool {
 var chunksMatcher = regexp.MustCompile(`^.*/chunks/\d+$`)
 
 func isTSDBChunkFile(name string) bool { return chunksMatcher.MatchString(name) }
+
+func isParquetChunkFile(name string) bool { return strings.HasSuffix(name, "chunks.parquet") }
 
 func isMetaFile(name string) bool {
 	return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+metadata.DeletionMarkFilename) || strings.HasSuffix(name, "/"+TenantDeletionMarkFile)

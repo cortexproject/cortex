@@ -150,7 +150,7 @@ func doRequest(endpoint string, timeout time.Duration, tlsConfig *tls.Config, si
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Invalid response from configs server: %v", resp.StatusCode)
+		return nil, fmt.Errorf("invalid response from configs server: %v", resp.StatusCode)
 	}
 
 	var config ConfigsResponse

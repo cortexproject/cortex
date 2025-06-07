@@ -13,7 +13,6 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -266,11 +265,11 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		assert.Equal(t, tc.expectedExists, exists, tc.user)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(7), testutil.ToFloat64(cleaner.blocksCleanedTotal))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(7), prom_testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
 	for _, tc := range []struct {
@@ -402,11 +401,11 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(2), testutil.ToFloat64(cleaner.blocksCleanedTotal))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksFailedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(2), prom_testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
 	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, nil, logger)
@@ -470,11 +469,11 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksCleanedTotal))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
 	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, nil, logger)

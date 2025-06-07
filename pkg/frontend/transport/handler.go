@@ -415,6 +415,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	numPeakSamples := stats.LoadPeakSamples()
 	numChunkBytes := stats.LoadFetchedChunkBytes()
 	numDataBytes := stats.LoadFetchedDataBytes()
+	notOptimizedRegexMatchers := stats.LoadNotOptimizedRegexMatchers()
 	numStoreGatewayTouchedPostings := stats.LoadStoreGatewayTouchedPostings()
 	numStoreGatewayTouchedPostingBytes := stats.LoadStoreGatewayTouchedPostingBytes()
 	splitQueries := stats.LoadSplitQueries()
@@ -459,6 +460,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		"status_code", statusCode,
 		"response_size", contentLength,
 		"samples_scanned", numScannedSamples,
+		"not_optimized_regex_matchers_count", notOptimizedRegexMatchers,
 	}, stats.LoadExtraFields()...)
 
 	if numStoreGatewayTouchedPostings > 0 {

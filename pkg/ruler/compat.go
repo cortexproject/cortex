@@ -292,6 +292,7 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetr
 				"fetched_samples_count", queryStats.FetchedSamplesCount,
 				"fetched_chunks_bytes", queryStats.FetchedChunkBytes,
 				"fetched_data_bytes", queryStats.FetchedDataBytes,
+				"not_optimized_regex_matchers_count", queryStats.NotOptimizedRegexCount,
 			)
 			logMessage = append(logMessage, queryStats.LoadExtraFields()...)
 			level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)

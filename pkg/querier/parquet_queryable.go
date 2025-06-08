@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus-community/parquet-common/schema"
@@ -146,6 +147,9 @@ func NewParquetQueryable(
 		shards := make([]*parquet_storage.ParquetShard, len(blocks))
 		errGroup := &errgroup.Group{}
 
+		span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.OpenShards")
+		defer span.Finish()
+
 		for i, block := range blocks {
 			errGroup.Go(func() error {
 				cacheKey := fmt.Sprintf("%v-%v", userID, block.ID)
@@ -153,7 +157,7 @@ func NewParquetQueryable(
 				if shard == nil {
 					// we always only have 1 shard - shard 0
 					// Use context.Background() here as the file can be cached and live after the request ends.
-					shard, err = parquet_storage.OpenParquetShard(context.Background(),
+					shard, err = parquet_storage.OpenParquetShard(context.WithoutCancel(ctx),
 						userBkt,
 						block.ID.String(),
 						0,
@@ -165,7 +169,7 @@ func NewParquetQueryable(
 						parquet_storage.WithOptimisticReader(true),
 					)
 					if err != nil {
-						return err
+						return errors.Wrapf(err, "failed to open parquet shard. block: %v", block.ID.String())
 					}
 					cache.Set(cacheKey, shard)
 				}
@@ -266,6 +270,9 @@ type parquetQuerierWithFallback struct {
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.LabelValues")
+	defer span.Finish()
+
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
 	defer q.incrementOpsMetric("LabelValues", remaining, parquet)
 	if err != nil {
@@ -312,6 +319,9 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 }
 
 func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.LabelNames")
+	defer span.Finish()
+
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
 	defer q.incrementOpsMetric("LabelNames", remaining, parquet)
 	if err != nil {
@@ -359,6 +369,9 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 }
 
 func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool, h *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.Select")
+	defer span.Finish()
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		storage.ErrSeriesSet(err)
@@ -408,6 +421,8 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		p := make(chan storage.SeriesSet, 1)
 		promises = append(promises, p)
 		go func() {
+			span, _ := opentracing.StartSpanFromContext(ctx, "parquetQuerier.Select")
+			defer span.Finish()
 			p <- q.parquetQuerier.Select(InjectBlocksIntoContext(ctx, parquet...), sortSeries, &hints, matchers...)
 		}()
 	}

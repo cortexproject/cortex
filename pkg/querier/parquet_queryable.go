@@ -147,7 +147,7 @@ func NewParquetQueryable(
 		shards := make([]*parquet_storage.ParquetShard, len(blocks))
 		errGroup := &errgroup.Group{}
 
-		span, _ := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.OpenShards")
+		span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.OpenShards")
 		defer span.Finish()
 
 		for i, block := range blocks {
@@ -157,7 +157,7 @@ func NewParquetQueryable(
 				if shard == nil {
 					// we always only have 1 shard - shard 0
 					// Use context.Background() here as the file can be cached and live after the request ends.
-					shard, err = parquet_storage.OpenParquetShard(context.Background(),
+					shard, err = parquet_storage.OpenParquetShard(context.WithoutCancel(ctx),
 						userBkt,
 						block.ID.String(),
 						0,

@@ -31,7 +31,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -148,8 +147,8 @@ func NewParquetQueryable(
 		shards := make([]*parquet_storage.ParquetShard, len(blocks))
 		errGroup := &errgroup.Group{}
 
-		log, ctx := spanlogger.New(ctx, "parquetQuerierWithFallback.OpenShards")
-		defer log.Span.Finish()
+		span, _ := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.OpenShards")
+		defer span.Finish()
 
 		for i, block := range blocks {
 			errGroup.Go(func() error {
@@ -271,8 +270,8 @@ type parquetQuerierWithFallback struct {
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	log, ctx := spanlogger.New(ctx, "parquetQuerierWithFallback.LabelValues")
-	defer log.Span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.LabelValues")
+	defer span.Finish()
 
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
 	defer q.incrementOpsMetric("LabelValues", remaining, parquet)
@@ -320,8 +319,8 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 }
 
 func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	log, ctx := spanlogger.New(ctx, "parquetQuerierWithFallback.LabelNames")
-	defer log.Span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.LabelNames")
+	defer span.Finish()
 
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
 	defer q.incrementOpsMetric("LabelNames", remaining, parquet)
@@ -370,8 +369,8 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 }
 
 func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool, h *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	log, ctx := spanlogger.New(ctx, "parquetQuerierWithFallback.Select")
-	defer log.Span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.Select")
+	defer span.Finish()
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {

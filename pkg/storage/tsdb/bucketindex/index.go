@@ -70,6 +70,16 @@ func (idx *Index) IsEmpty() bool {
 	return len(idx.Blocks) == 0 && len(idx.BlockDeletionMarks) == 0
 }
 
+func (idx *Index) ParquetBlocks() []*Block {
+	blocks := make([]*Block, 0, len(idx.Blocks))
+	for _, b := range idx.Blocks {
+		if b.Parquet != nil {
+			blocks = append(blocks, b)
+		}
+	}
+	return blocks
+}
+
 // Block holds the information about a block in the index.
 type Block struct {
 	// Block ID.

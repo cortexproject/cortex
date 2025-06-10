@@ -39,6 +39,7 @@
 * [ENHANCEMENT] Compactor: Support metadata caching bucket for Cleaner. Can be enabled via `-compactor.cleaner-caching-bucket-enabled` flag. #6778
 * [ENHANCEMENT] Compactor, Store Gateway: Introduce user scanner strategy and user index. #6780
 * [ENHANCEMENT] Querier: Support chunks cache for parquet queryable. #6805
+* [ENHANCEMENT] Parquet Storage: Add some metrics for parquet blocks and converter. #6809
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576

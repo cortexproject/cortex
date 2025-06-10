@@ -88,6 +88,12 @@ type Converter struct {
 	fetcherMetrics *block.FetcherMetrics
 
 	baseConverterOptions []convert.ConvertOption
+
+	metrics *metrics
+
+	// Keep track of the last owned users.
+	// This is not thread safe now.
+	lastOwnedUsers map[string]struct{}
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -125,6 +131,7 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 		pool:           chunkenc.NewPool(),
 		blockRanges:    blockRanges,
 		fetcherMetrics: block.NewFetcherMetrics(registerer, nil, nil),
+		metrics:        newMetrics(registerer),
 		bkt:            bkt,
 		baseConverterOptions: []convert.ConvertOption{
 			convert.WithSortBy(labels.MetricName),
@@ -194,6 +201,9 @@ func (c *Converter) running(ctx context.Context) error {
 
 			for _, userID := range users {
 				if !c.limits.ParquetConverterEnabled(userID) {
+					// It is possible that parquet is disabled for the userID so we
+					// need to check if the user was owned last time.
+					c.cleanupMetricsForNotOwnedUser(userID)
 					continue
 				}
 
@@ -211,6 +221,7 @@ func (c *Converter) running(ctx context.Context) error {
 					continue
 				}
 				if !owned {
+					c.cleanupMetricsForNotOwnedUser(userID)
 					continue
 				}
 
@@ -218,6 +229,7 @@ func (c *Converter) running(ctx context.Context) error {
 					level.Warn(userLogger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
 					continue
 				} else if markedForDeletion {
+					c.metrics.deleteMetricsForTenant(userID)
 					level.Info(userLogger).Log("msg", "skipping user because it is marked for deletion", "user", userID)
 					continue
 				}
@@ -229,6 +241,8 @@ func (c *Converter) running(ctx context.Context) error {
 					level.Error(userLogger).Log("msg", "failed to convert user", "err", err)
 				}
 			}
+			c.lastOwnedUsers = ownedUsers
+			c.metrics.ownedUsers.Set(float64(len(ownedUsers)))
 
 			// Delete local files for unowned tenants, if there are any. This cleans up
 			// leftover local files for tenants that belong to different converter now,
@@ -269,8 +283,15 @@ func (c *Converter) stopping(_ error) error {
 }
 
 func (c *Converter) discoverUsers(ctx context.Context) ([]string, error) {
-	// Only active users are considered.
-	active, _, _, err := c.usersScanner.ScanUsers(ctx)
+	// Only active users are considered for conversion.
+	// We still check deleting and deleted users just to clean up metrics.
+	active, deleting, deleted, err := c.usersScanner.ScanUsers(ctx)
+	for _, userID := range deleting {
+		c.cleanupMetricsForNotOwnedUser(userID)
+	}
+	for _, userID := range deleted {
+		c.cleanupMetricsForNotOwnedUser(userID)
+	}
 	return active, err
 }
 
@@ -378,6 +399,7 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		}
 
 		level.Info(logger).Log("msg", "converting block", "block", b.ULID.String(), "dir", bdir)
+		start := time.Now()
 
 		converterOpts := append(c.baseConverterOptions, convert.WithName(b.ULID.String()))
 
@@ -397,14 +419,18 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		_ = tsdbBlock.Close()
 
 		if err != nil {
-			level.Error(logger).Log("msg", "Error converting block", "err", err)
+			level.Error(logger).Log("msg", "Error converting block", "block", b.ULID.String(), "err", err)
 			continue
 		}
+		duration := time.Since(start)
+		c.metrics.convertBlockDuration.WithLabelValues(userID).Set(duration.Seconds())
+		level.Info(logger).Log("msg", "successfully converted block", "block", b.ULID.String(), "duration", duration)
 
-		err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket)
-		if err != nil {
-			level.Error(logger).Log("msg", "Error writing block", "err", err)
+		if err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket); err != nil {
+			level.Error(logger).Log("msg", "Error writing block", "block", b.ULID.String(), "err", err)
+			continue
 		}
+		c.metrics.convertedBlocks.WithLabelValues(userID).Inc()
 	}
 
 	return nil
@@ -440,6 +466,12 @@ func (c *Converter) ownBlock(ring ring.ReadRing, blockId string) (bool, error) {
 	}
 
 	return rs.Instances[0].Addr == c.ringLifecycler.Addr, nil
+}
+
+func (c *Converter) cleanupMetricsForNotOwnedUser(userID string) {
+	if _, ok := c.lastOwnedUsers[userID]; ok {
+		c.metrics.deleteMetricsForTenant(userID)
+	}
 }
 
 func (c *Converter) compactRootDir() string {

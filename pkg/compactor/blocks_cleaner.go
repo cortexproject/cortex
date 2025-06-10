@@ -72,6 +72,7 @@ type BlocksCleaner struct {
 	blocksFailedTotal                 prometheus.Counter
 	blocksMarkedForDeletion           *prometheus.CounterVec
 	tenantBlocks                      *prometheus.GaugeVec
+	tenantParquetBlocks               *prometheus.GaugeVec
 	tenantBlocksMarkedForDelete       *prometheus.GaugeVec
 	tenantBlocksMarkedForNoCompaction *prometheus.GaugeVec
 	tenantPartialBlocks               *prometheus.GaugeVec
@@ -153,6 +154,10 @@ func NewBlocksCleaner(
 		tenantBlocks: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_count",
 			Help: "Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.",
+		}, commonLabels),
+		tenantParquetBlocks: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_bucket_parquet_blocks_count",
+			Help: "Total number of parquet blocks in the bucket. Blocks marked for deletion are included.",
 		}, commonLabels),
 		tenantBlocksMarkedForDelete: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_marked_for_deletion_count",
@@ -354,6 +359,7 @@ func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, erro
 	for _, userID := range c.lastOwnedUsers {
 		if !isActive[userID] && !isMarkedForDeletion[userID] {
 			c.tenantBlocks.DeleteLabelValues(userID)
+			c.tenantParquetBlocks.DeleteLabelValues(userID)
 			c.tenantBlocksMarkedForDelete.DeleteLabelValues(userID)
 			c.tenantBlocksMarkedForNoCompaction.DeleteLabelValues(userID)
 			c.tenantPartialBlocks.DeleteLabelValues(userID)
@@ -451,6 +457,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 
 	// Given all blocks have been deleted, we can also remove the metrics.
 	c.tenantBlocks.DeleteLabelValues(userID)
+	c.tenantParquetBlocks.DeleteLabelValues(userID)
 	c.tenantBlocksMarkedForDelete.DeleteLabelValues(userID)
 	c.tenantBlocksMarkedForNoCompaction.DeleteLabelValues(userID)
 	c.tenantPartialBlocks.DeleteLabelValues(userID)
@@ -602,7 +609,8 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 	begin = time.Now()
 	w := bucketindex.NewUpdater(c.bucketClient, userID, c.cfgProvider, c.logger)
 
-	if c.cfgProvider.ParquetConverterEnabled(userID) {
+	parquetEnabled := c.cfgProvider.ParquetConverterEnabled(userID)
+	if parquetEnabled {
 		w.EnableParquet()
 	}
 
@@ -676,6 +684,9 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(float64(totalBlocksBlocksMarkedForNoCompaction))
 	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(len(partials)))
 	c.tenantBucketIndexLastUpdate.WithLabelValues(userID).SetToCurrentTime()
+	if parquetEnabled {
+		c.tenantParquetBlocks.WithLabelValues(userID).Set(float64(len(idx.ParquetBlocks())))
+	}
 
 	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 		begin = time.Now()

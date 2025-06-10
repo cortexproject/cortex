@@ -400,7 +400,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	hints.End = maxt
 
 	if maxt < mint {
-		return nil
+		return storage.EmptySeriesSet()
 	}
 
 	remaining, parquet, err := q.getBlocks(ctx, mint, maxt)

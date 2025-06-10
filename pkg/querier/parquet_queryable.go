@@ -115,11 +115,11 @@ func NewParquetQueryable(
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (storage.Queryable, error) {
-	bucketClient, err := bucket.NewClient(context.Background(), storageCfg.Bucket, nil, "parquet-querier", logger, reg)
-
+	bucketClient, err := createCachingBucketClient(context.Background(), storageCfg, nil, "parquet-querier", logger, reg)
 	if err != nil {
 		return nil, err
 	}
+
 	manager, err := services.NewManager(blockStorageQueryable)
 	if err != nil {
 		return nil, err
@@ -400,7 +400,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	hints.End = maxt
 
 	if maxt < mint {
-		return nil
+		return storage.EmptySeriesSet()
 	}
 
 	remaining, parquet, err := q.getBlocks(ctx, mint, maxt)

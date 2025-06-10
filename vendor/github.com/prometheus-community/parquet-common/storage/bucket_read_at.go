@@ -53,7 +53,7 @@ func (b *bReadAt) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, err
 	}
 	defer func() { _ = rc.Close() }()
-	n, err = rc.Read(p)
+	n, err = io.ReadFull(rc, p)
 	if err == io.EOF {
 		err = nil
 	}

@@ -1543,8 +1543,8 @@ github.com/posener/complete v1.1.1/go.mod h1:em0nMJCgc9GFtwrmVmEMR/ZL6WyhyjMBndr
 github.com/posener/complete v1.2.3/go.mod h1:WZIdtGGp+qx0sLrYKtIRAruyNpv6hFCicSgv7Sy7s/s=
 github.com/prashantv/gostub v1.1.0 h1:BTyx3RfQjRHnUWaGF9oQos79AlQ5k8WNktv7VGvVH4g=
 github.com/prashantv/gostub v1.1.0/go.mod h1:A5zLQHz7ieHGG7is6LLXLz7I8+3LZzsrV0P1IAHhP5U=
-github.com/prometheus-community/parquet-common v0.0.0-20250606162055-b81ebb7e1b96 h1:5EbDNJOxTWGpe6yzXdgcBCU63BRSrRAh0Q1oB5AVyoA=
-github.com/prometheus-community/parquet-common v0.0.0-20250606162055-b81ebb7e1b96/go.mod h1:MwYpD+FKot7LWBMFaPS6FeM8oqo77u5erRlNkSSFPA0=
+github.com/prometheus-community/parquet-common v0.0.0-20250610002942-dfd72bae1309 h1:xGnXldBSTFPopLYi7ce+kJb+A1h1mPTeF4SLlRTEek0=
+github.com/prometheus-community/parquet-common v0.0.0-20250610002942-dfd72bae1309/go.mod h1:MwYpD+FKot7LWBMFaPS6FeM8oqo77u5erRlNkSSFPA0=
 github.com/prometheus-community/prom-label-proxy v0.11.0 h1:IO02WiiFMfcIqvjhwMbCYnDJiTNcSHBrkCGRQ/7KDd0=
 github.com/prometheus-community/prom-label-proxy v0.11.0/go.mod h1:lfvrG70XqsxWDrSh1843QXBG0fSg8EbIXmAo8xGsvw8=
 github.com/prometheus/alertmanager v0.28.1 h1:BK5pCoAtaKg01BYRUJhEDV1tqJMEtYBGzPw8QdvnnvA=

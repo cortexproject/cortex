@@ -31,17 +31,20 @@ type mockGprcServer struct {
 	ingester_client.IngesterServer
 }
 
-func (m mockGprcServer) QueryStream(_ *ingester_client.QueryRequest, streamServer ingester_client.Ingester_QueryStreamServer) error {
+func (m mockGprcServer) QueryStream(req *ingester_client.QueryRequest, streamServer ingester_client.Ingester_QueryStreamServer) error {
 	md, _ := metadata.FromIncomingContext(streamServer.Context())
 	i, _ := strconv.Atoi(md["i"][0])
 	return streamServer.Send(createStreamResponse(i))
 }
 
 func (m mockGprcServer) Push(ctx context.Context, request *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+	defer request.Free()
 	time.Sleep(time.Duration(rand.Int31n(100)) * time.Millisecond)
 	md, _ := metadata.FromIncomingContext(ctx)
 	i, _ := strconv.Atoi(md["i"][0])
 	expected := createRequest(i)
+	// Need to do this so the .String method return the same value for MessageWithBufRef
+	expected.MessageWithBufRef = request.MessageWithBufRef
 
 	if expected.String() != request.String() {
 		return nil, fmt.Errorf("expected %v, got %v", expected, request)

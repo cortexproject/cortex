@@ -784,22 +784,25 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	nhRateLimited := !d.nativeHistogramsIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples)
 	rateLimited := !d.ingestionRateLimiter.AllowN(now, userID, totalN)
 
-	if nhRateLimited || rateLimited {
-		// Ensure the request slice is reused if the request is rate limited.
-		cortexpb.ReuseSlice(req.Timeseries)
-
-		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(totalSamples))
-		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(validatedExemplars))
-		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(len(validatedMetadata)))
-	}
-
 	// Return a 429 here to tell the client it is going too fast.
 	// Client may discard the data or slow down and re-send.
 	// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
 	if nhRateLimited {
+		// Ensure the request slice is reused if the request is rate limited.
+		cortexpb.ReuseSlice(req.Timeseries)
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(totalSamples))
+		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(validatedExemplars))
+		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(len(validatedMetadata)))
+
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.nativeHistogramsIngestionRateLimiter.Limit(now, userID), totalSamples, len(validatedMetadata))
 	}
 	if rateLimited {
+		// Ensure the request slice is reused if the request is rate limited.
+		cortexpb.ReuseSlice(req.Timeseries)
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(totalSamples))
+		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
+		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
+
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), totalSamples, len(validatedMetadata))
 	}
 

@@ -1,7 +1,6 @@
 # Changelog
 
 ## master / unreleased
-* [ENHANCEMENT] Distributor: Add ingestion rate limit for Native Histograms. #6794
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
 * [CHANGE] Validate a tenantID when to use a single tenant resolver. #6727
@@ -38,6 +37,7 @@
 * [ENHANCEMENT] Distributor: Add min/max schema validation for NativeHistograms. #6766
 * [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
 * [ENHANCEMENT] Compactor: Support metadata caching bucket for Cleaner. Can be enabled via `-compactor.cleaner-caching-bucket-enabled` flag. #6778
+* [ENHANCEMENT] Distributor: Add ingestion rate limit for Native Histograms. #6794
 * [ENHANCEMENT] Compactor, Store Gateway: Introduce user scanner strategy and user index. #6780
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573

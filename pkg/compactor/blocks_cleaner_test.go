@@ -163,7 +163,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	createBlockVisitMarker(t, bucketClient, "user-1", block11)                                                // Partial block only has visit marker.
 	createDeletionMark(t, bucketClient, "user-2", block7, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 
-	// Blocks for user-3, marked for deletion.
+	// Blocks for user-3, tenant marked for deletion.
 	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", tsdb.NewTenantDeletionMark(time.Now())))
 	block9 := createTSDBBlock(t, bucketClient, "user-3", 10, 30, nil)
 	block10 := createTSDBBlock(t, bucketClient, "user-3", 30, 50, nil)
@@ -206,6 +206,11 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
+	cfgProvider.parquetConverterEnabled = map[string]bool{
+		"user-3": true,
+		"user-5": true,
+		"user-6": true,
+	}
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
 		Help: blocksMarkedForDeletionHelp,
@@ -333,8 +338,13 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		cortex_bucket_blocks_partials_count{user="user-2"} 0
 		cortex_bucket_blocks_partials_count{user="user-5"} 0
 		cortex_bucket_blocks_partials_count{user="user-6"} 0
+		# HELP cortex_bucket_parquet_blocks_count Total number of parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_blocks_count gauge
+		cortex_bucket_parquet_blocks_count{user="user-5"} 0
+		cortex_bucket_parquet_blocks_count{user="user-6"} 1
 	`),
 		"cortex_bucket_blocks_count",
+		"cortex_bucket_parquet_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
 		"cortex_bucket_blocks_marked_for_no_compaction_count",
 		"cortex_bucket_blocks_partials_count",
@@ -1013,16 +1023,21 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 }
 
 type mockConfigProvider struct {
-	userRetentionPeriods map[string]time.Duration
+	userRetentionPeriods    map[string]time.Duration
+	parquetConverterEnabled map[string]bool
 }
 
 func (m *mockConfigProvider) ParquetConverterEnabled(userID string) bool {
+	if result, ok := m.parquetConverterEnabled[userID]; ok {
+		return result
+	}
 	return false
 }
 
 func newMockConfigProvider() *mockConfigProvider {
 	return &mockConfigProvider{
-		userRetentionPeriods: make(map[string]time.Duration),
+		userRetentionPeriods:    make(map[string]time.Duration),
+		parquetConverterEnabled: make(map[string]bool),
 	}
 }
 

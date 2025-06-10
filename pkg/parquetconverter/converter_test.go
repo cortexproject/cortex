@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
@@ -96,6 +97,11 @@ func TestConverter(t *testing.T) {
 		return len(blocksConverted)
 	})
 
+	// Verify metrics after conversion
+	require.Equal(t, float64(len(blocksConverted)), testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)))
+	require.Greater(t, testutil.ToFloat64(c.metrics.convertBlockDuration.WithLabelValues(user)), 0.0)
+	require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.ownedUsers))
+
 	// Verify all files are there
 	for _, block := range blocksConverted {
 		for _, file := range []string{
@@ -120,6 +126,20 @@ func TestConverter(t *testing.T) {
 	// Should clean sync folders
 	test.Poll(t, time.Minute, 0, func() interface{} {
 		return len(c.listTenantsWithMetaSyncDirectories())
+	})
+
+	// Verify metrics after user deletion
+	test.Poll(t, time.Minute*10, true, func() interface{} {
+		if testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)) != 0.0 {
+			return false
+		}
+		if testutil.ToFloat64(c.metrics.convertBlockDuration.WithLabelValues(user)) != 0.0 {
+			return false
+		}
+		if testutil.ToFloat64(c.metrics.ownedUsers) != 0.0 {
+			return false
+		}
+		return true
 	})
 }
 
@@ -158,4 +178,43 @@ func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket,
 	require.NoError(t, err)
 	c := newConverter(cfg, bucketClient, storageCfg, blockRanges.ToMilliseconds(), logger, registry, overrides, scanner)
 	return c, logger, registry
+}
+
+func TestConverter_CleanupMetricsForNotOwnedUser(t *testing.T) {
+	// Create a new registry for testing
+	reg := prometheus.NewRegistry()
+
+	// Create a new converter with test configuration
+	cfg := Config{}
+	storageCfg := cortex_tsdb.BlocksStorageConfig{}
+	limits := &validation.Overrides{}
+	converter := newConverter(cfg, nil, storageCfg, []int64{7200000}, nil, reg, limits, nil)
+
+	// Add some test metrics for a user
+	userID := "test-user"
+	converter.metrics.convertedBlocks.WithLabelValues(userID).Inc()
+	converter.metrics.convertBlockDuration.WithLabelValues(userID).Set(1.0)
+
+	// Verify metrics exist before cleanup
+	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertedBlocks.WithLabelValues(userID)))
+	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertBlockDuration.WithLabelValues(userID)))
+
+	// Set lastOwnedUsers to empty (user was never owned)
+	converter.lastOwnedUsers = map[string]struct{}{}
+	// Clean up metrics for the user will do nothing as the user was never owned
+	converter.cleanupMetricsForNotOwnedUser(userID)
+	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertedBlocks.WithLabelValues(userID)))
+	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertBlockDuration.WithLabelValues(userID)))
+
+	// Mark the user as previously owned
+	converter.lastOwnedUsers = map[string]struct{}{
+		userID: {},
+	}
+
+	// Clean up metrics for the user
+	converter.cleanupMetricsForNotOwnedUser(userID)
+
+	// Verify metrics are deleted
+	assert.Equal(t, 0.0, testutil.ToFloat64(converter.metrics.convertedBlocks.WithLabelValues(userID)))
+	assert.Equal(t, 0.0, testutil.ToFloat64(converter.metrics.convertBlockDuration.WithLabelValues(userID)))
 }

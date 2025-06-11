@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
-	"github.com/zhangyunhao116/umap"
 	"golang.org/x/exp/slices"
 )
 
@@ -50,7 +49,7 @@ type vectorOperator struct {
 	lcJoinBuckets []*joinBucket
 	hcJoinBuckets []*joinBucket
 
-	outputMap *umap.Uint64Map
+	outputMap map[uint64]uint64
 
 	matching *parser.VectorMatching
 	opType   parser.ItemType
@@ -216,25 +215,23 @@ func (o *vectorOperator) execBinaryAnd(lhs, rhs model.StepVector) (model.StepVec
 
 	for _, sampleID := range rhs.SampleIDs {
 		jp := o.lcJoinBuckets[sampleID]
-		jp.sid = sampleID
 		jp.ats = ts
 	}
 
 	for _, histogramID := range rhs.HistogramIDs {
 		jp := o.lcJoinBuckets[histogramID]
-		jp.sid = histogramID
 		jp.ats = ts
 	}
 
 	for i, sampleID := range lhs.SampleIDs {
 		if jp := o.hcJoinBuckets[sampleID]; jp.ats == ts {
-			step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, jp.sid+1), lhs.Samples[i])
+			step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, 0), lhs.Samples[i])
 		}
 	}
 
 	for i, histogramID := range lhs.HistogramIDs {
 		if jp := o.hcJoinBuckets[histogramID]; jp.ats == ts {
-			step.AppendHistogram(o.pool, o.outputSeriesID(histogramID+1, jp.sid+1), lhs.Histograms[i])
+			step.AppendHistogram(o.pool, o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i])
 		}
 	}
 	return step, nil
@@ -460,8 +457,7 @@ func (o *vectorOperator) newImplicitManyToOneError() error {
 }
 
 func (o *vectorOperator) outputSeriesID(hc, lc uint64) uint64 {
-	res, _ := o.outputMap.Load(cantorPairing(hc, lc))
-	return res
+	return o.outputMap[cantorPairing(hc, lc)]
 }
 
 func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Labels) {
@@ -474,7 +470,7 @@ func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Label
 		lcSampleIdToSignature = make(map[int]uint64, len(lowCardSide))
 		hcSampleIdToSignature = make(map[int]uint64, len(highCardSide))
 
-		outputMap = umap.New64(len(highCardSide))
+		outputMap = make(map[uint64]uint64, len(highCardSide))
 	)
 
 	// initialize join bucket mappings
@@ -508,25 +504,18 @@ func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Label
 	switch o.opType {
 	case parser.LAND:
 		for i := range highCardSide {
-			sig := hcSampleIdToSignature[i]
-			lcs, ok := lcHashToSeriesIDs[sig]
-			if !ok {
-				continue
-			}
-			for _, lc := range lcs {
-				outputMap.Store(cantorPairing(uint64(i+1), uint64(lc+1)), uint64(h.append(highCardSide[i])))
-			}
+			outputMap[cantorPairing(uint64(i+1), 0)] = uint64(h.append(highCardSide[i]))
 		}
 	case parser.LOR:
 		for i := range highCardSide {
-			outputMap.Store(cantorPairing(uint64(i+1), 0), uint64(h.append(highCardSide[i])))
+			outputMap[cantorPairing(uint64(i+1), 0)] = uint64(h.append(highCardSide[i]))
 		}
 		for i := range lowCardSide {
-			outputMap.Store(cantorPairing(0, uint64(i+1)), uint64(h.append(lowCardSide[i])))
+			outputMap[cantorPairing(0, uint64(i+1))] = uint64(h.append(lowCardSide[i]))
 		}
 	case parser.LUNLESS:
 		for i := range highCardSide {
-			outputMap.Store(cantorPairing(uint64(i+1), 0), uint64(h.append(highCardSide[i])))
+			outputMap[cantorPairing(uint64(i+1), 0)] = uint64(h.append(highCardSide[i]))
 		}
 	default:
 		b := labels.NewBuilder(labels.EmptyLabels())
@@ -538,7 +527,7 @@ func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Label
 			}
 			for _, lc := range lcs {
 				n := h.append(o.resultMetric(b, highCardSide[i], lowCardSide[lc]))
-				outputMap.Store(cantorPairing(uint64(i+1), uint64(lc+1)), uint64(n))
+				outputMap[cantorPairing(uint64(i+1), uint64(lc+1))] = uint64(n)
 			}
 		}
 	}
@@ -713,5 +702,5 @@ func vectorElemBinop(ctx context.Context, op parser.ItemType, lhs, rhs float64, 
 			}
 		}
 	}
-	panic(errors.Newf("operator %q not allowed for operations between Vectors", op))
+	return 0, nil, false, errors.Newf("operator %q not allowed for operations between vectors", op)
 }

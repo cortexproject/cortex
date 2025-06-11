@@ -99,7 +99,7 @@ func newInstantVectorFunctionOperator(funcExpr *logicalplan.FunctionCall, nextOp
 	}
 
 	scalarPoints := make([][]float64, stepsBatch)
-	for i := 0; i < stepsBatch; i++ {
+	for i := range stepsBatch {
 		scalarPoints[i] = make([]float64, len(nextOps)-1)
 	}
 	f := &functionOperator{

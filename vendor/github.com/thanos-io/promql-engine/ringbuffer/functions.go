@@ -45,7 +45,7 @@ func instantValue(ctx context.Context, samples []Sample, isRate bool) (float64, 
 		return 0, nil, false
 	}
 
-	for i := 0; i < len(samples); i++ {
+	for i := range samples {
 		if samples[i].V.H != nil {
 			continue
 		}
@@ -689,10 +689,7 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 		return nil, nil
 	}
 
-	minSchema := prev.Schema
-	if last.Schema < minSchema {
-		minSchema = last.Schema
-	}
+	minSchema := min(last.Schema, prev.Schema)
 
 	if last.UsesCustomBuckets() != usingCustomBuckets {
 		warnings.AddToContext(annotations.MixedExponentialCustomHistogramsWarning, ctx)

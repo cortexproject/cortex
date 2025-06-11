@@ -1658,8 +1658,8 @@ github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e h1:f1
 github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e/go.mod h1:jXcofnrSln/cLI6/dhlBxPQZEEQHVPCcFaH75M+nSzM=
 github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97 h1:VjG0mwhN1DkncwDHFvrpd12/2TLfgYNRmEQA48ikp+0=
 github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97/go.mod h1:vyzFrBXgP+fGNG2FopEGWOO/zrIuoy7zt3LpLeezRsw=
-github.com/thanos-io/promql-engine v0.0.0-20250606124720-6f637b9579dc h1:Hccd/2qzk75XPvK1Oi7F8E9NvBt1kLa0AGd7ivds9nc=
-github.com/thanos-io/promql-engine v0.0.0-20250606124720-6f637b9579dc/go.mod h1:JkfCTUfgCD48IDOVm0Zpm4013dHXahoYjN2mdP2lccg=
+github.com/thanos-io/promql-engine v0.0.0-20250611082221-d4a546e76e34 h1:4lDXhOvuObK3Iu/a94iqbqQimZCdrgGEu+XSauMPgcU=
+github.com/thanos-io/promql-engine v0.0.0-20250611082221-d4a546e76e34/go.mod h1:IQjuIvDzOOVE2MGDs88Q65GYmmKrpmIsDkMVOqs5reo=
 github.com/thanos-io/thanos v0.37.3-0.20250603135757-4ad45948cd10 h1:mtmcivEm0EoXeHTJAgjXTthyQSTLNFWrPTzpiovau3Y=
 github.com/thanos-io/thanos v0.37.3-0.20250603135757-4ad45948cd10/go.mod h1:2NvA8ZJtoGcOTriumDnJQzDmbxJz1ISGPovVAGGYDbg=
 github.com/tjhop/slog-gokit v0.1.4 h1:uj/vbDt3HaF0Py8bHPV4ti/s0utnO0miRbO277FLBKM=
@@ -1694,8 +1694,6 @@ github.com/yuin/gopher-lua v1.1.1 h1:kYKnWBjvbNP4XLT3+bPEwAXJx262OhaHDWDVOPjL46M
 github.com/yuin/gopher-lua v1.1.1/go.mod h1:GBR0iDaNXjAgGg9zfCvksxSRnQx76gclCIb7kdAd1Pw=
 github.com/zeebo/assert v1.3.0/go.mod h1:Pq9JiuJQpG8JLJdtkwrJESF0Foym2/D9XMU5ciN/wJ0=
 github.com/zeebo/xxh3 v1.0.2/go.mod h1:5NWz9Sef7zIDm2JHfFlcQvNekmcEl9ekUZQQKCYaDcA=
-github.com/zhangyunhao116/umap v0.0.0-20250307031311-0b61e69e958b h1:dNqfFK3KE2PSs366Y7TaIDrwkv24MHQjSp+x05+IlXc=
-github.com/zhangyunhao116/umap v0.0.0-20250307031311-0b61e69e958b/go.mod h1:r86X1CnsDRrOeLtJlqRWdELPWpkcf933GTlojQlifQw=
 go.etcd.io/etcd/api/v3 v3.5.4/go.mod h1:5GB2vv4A4AOn3yk7MftYGHkUfGtDHnEraIjym4dYz5A=
 go.etcd.io/etcd/api/v3 v3.5.17 h1:cQB8eb8bxwuxOilBpMJAEo8fAONyrdXTHUNcMd8yT1w=
 go.etcd.io/etcd/api/v3 v3.5.17/go.mod h1:d1hvkRuXkts6PmaYk2Vrgqbv7H4ADfAKhyJqHNLJCB4=

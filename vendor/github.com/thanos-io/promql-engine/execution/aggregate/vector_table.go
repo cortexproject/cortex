@@ -26,7 +26,7 @@ type vectorTable struct {
 
 func newVectorizedTables(stepsBatch int, a parser.ItemType) ([]aggregateTable, error) {
 	tables := make([]aggregateTable, stepsBatch)
-	for i := 0; i < len(tables); i++ {
+	for i := range tables {
 		acc, err := newVectorAccumulator(a)
 		if err != nil {
 			return nil, err
@@ -112,7 +112,7 @@ func histogramSum(ctx context.Context, current *histogram.FloatHistogram, histog
 	}
 
 	var err error
-	for i := 0; i < len(histograms); i++ {
+	for i := range histograms {
 		if histograms[i].Schema >= histSum.Schema {
 			histSum, err = histSum.Add(histograms[i])
 			if err != nil {

@@ -206,7 +206,7 @@ func (a *kAggregate) init(ctx context.Context) error {
 	for _, lblName := range a.labels {
 		labelsMap[lblName] = struct{}{}
 	}
-	for i := 0; i < len(series); i++ {
+	for i := range series {
 		hash, _ := hashMetric(builder, series[i], !a.by, a.labels, labelsMap, hashingBuf)
 		h, ok := heapsHash[hash]
 		if !ok {
@@ -380,11 +380,11 @@ func (s samplesHeap) Swap(i, j int) {
 	s.entries[i], s.entries[j] = s.entries[j], s.entries[i]
 }
 
-func (s *samplesHeap) Push(x interface{}) {
+func (s *samplesHeap) Push(x any) {
 	s.entries = append(s.entries, *(x.(*entry)))
 }
 
-func (s *samplesHeap) Pop() interface{} {
+func (s *samplesHeap) Pop() any {
 	old := (*s).entries
 	n := len(old)
 	el := old[n-1]

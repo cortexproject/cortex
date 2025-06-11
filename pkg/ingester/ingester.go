@@ -1592,6 +1592,7 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 			resp.Message = string(httpResponse.Body)
 		}
 		err = srv.Send(resp)
+		req.Free()
 		if err != nil {
 			level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "error sending from PushStream", "err", err)
 		}

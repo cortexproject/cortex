@@ -7,6 +7,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"strconv"
@@ -35,6 +36,25 @@ func (m mockGprcServer) QueryStream(req *ingester_client.QueryRequest, streamSer
 	md, _ := metadata.FromIncomingContext(streamServer.Context())
 	i, _ := strconv.Atoi(md["i"][0])
 	return streamServer.Send(createStreamResponse(i))
+}
+
+func (m mockGprcServer) PushStream(srv ingester_client.Ingester_PushStreamServer) error {
+	for {
+		req, err := srv.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		ctx := metadata.NewIncomingContext(srv.Context(), metadata.MD{"i": []string{req.TenantID}})
+		res, err := m.Push(ctx, req.Request)
+		req.Free()
+		if err != nil {
+			return err
+		}
+		err = srv.Send(res)
+		if err != nil {
+			return err
+		}
+	}
 }
 
 func (m mockGprcServer) Push(ctx context.Context, request *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
@@ -124,6 +144,38 @@ func TestConcurrentGrpcCalls(t *testing.T) {
 						ctx = metadata.NewOutgoingContext(ctx, metadata.MD{"i": []string{strconv.Itoa(i)}})
 						_, err := client.Push(ctx, createRequest(i))
 						require.NoError(t, err)
+					}(i)
+				}
+
+				wg.Wait()
+			},
+		},
+		"distributor push stream": {
+			cfg: cfg,
+			register: func(s *grpc.Server) {
+				d := &mockGprcServer{}
+				ingester_client.RegisterIngesterServer(s, d)
+			},
+			validate: func(t *testing.T, conn *grpc.ClientConn) {
+				ctx := context.Background()
+				client := ingester_client.NewIngesterClient(conn)
+				wg := sync.WaitGroup{}
+				n := 10000
+				wg.Add(n)
+				for i := 0; i < n; i++ {
+					go func(i int) {
+						defer wg.Done()
+						stream, err := client.PushStream(ctx)
+						require.NoError(t, err)
+
+						ctx = metadata.NewOutgoingContext(ctx, metadata.MD{"i": []string{strconv.Itoa(i)}})
+						err = stream.Send(&cortexpb.StreamWriteRequest{TenantID: strconv.Itoa(i), Request: createRequest(i)})
+						require.NoError(t, err)
+						_, err = stream.Recv()
+						require.NoError(t, err)
+						//err = stream.Send(&cortexpb.StreamWriteRequest{"i", createRequest(i + 1)})
+						//require.NoError(t, err)
+						require.NoError(t, stream.CloseSend())
 					}(i)
 				}
 

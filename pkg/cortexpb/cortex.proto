@@ -29,6 +29,8 @@ message WriteRequest  {
 message StreamWriteRequest {
   string TenantID = 1;
   WriteRequest Request = 2;
+
+  MessageWithBufRef Ref = 1000 [(gogoproto.embed) = true, (gogoproto.customtype) = "MessageWithBufRef", (gogoproto.nullable) = false]; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
 }
 
 message WriteResponse {

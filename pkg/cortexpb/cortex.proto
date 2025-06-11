@@ -23,7 +23,7 @@ message WriteRequest  {
   repeated MetricMetadata metadata = 3 [(gogoproto.nullable) = true];
 
   bool skip_label_name_validation = 1000; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
-  MessageWithBufRef Ref = 10001 [(gogoproto.embed) = true, (gogoproto.customtype) = "MessageWithBufRef", (gogoproto.nullable) = false];
+  MessageWithBufRef Ref = 1001 [(gogoproto.embed) = true, (gogoproto.customtype) = "MessageWithBufRef", (gogoproto.nullable) = false];
 }
 
 message StreamWriteRequest {

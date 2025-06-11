@@ -45,7 +45,7 @@ func (c *cortexCodec) Unmarshal(data mem.BufferSlice, v any) error {
 	err := proto.Unmarshal(buf.ReadOnlyData(), vv)
 
 	if err != nil {
-		buf.Free()
+		defer buf.Free()
 		return err
 	}
 

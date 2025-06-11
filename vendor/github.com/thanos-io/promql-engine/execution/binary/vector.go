@@ -503,7 +503,13 @@ func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Label
 	h := &joinHelper{seen: make(map[uint64]int)}
 	switch o.opType {
 	case parser.LAND:
+		// "and" can only have matches if lhs and rhs have collision, so we only need to populate
+		// the output map for lhs series that have corresponding hash collision
 		for i := range highCardSide {
+			sig := hcSampleIdToSignature[i]
+			if lcs := lcHashToSeriesIDs[sig]; len(lcs) == 0 {
+				continue
+			}
 			outputMap[cantorPairing(uint64(i+1), 0)] = uint64(h.append(highCardSide[i]))
 		}
 	case parser.LOR:

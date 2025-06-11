@@ -147,7 +147,7 @@ func EnforceQueryTenancy(tenantLabel string, tenant string, query string) (strin
 		Value: tenant,
 	}
 
-	e := injectproxy.NewPromQLEnforcer(false, labelMatcher)
+	e := injectproxy.NewEnforcer(false, labelMatcher)
 
 	expr, err := extpromql.ParseExpr(query)
 	if err != nil {
@@ -185,7 +185,7 @@ func getLabelMatchers(formMatchers []string, tenant string, enforceTenancy bool,
 		}
 
 		if enforceTenancy {
-			e := injectproxy.NewPromQLEnforcer(false, tenantLabelMatcher)
+			e := injectproxy.NewEnforcer(false, tenantLabelMatcher)
 			matchers, err = e.EnforceMatchers(matchers)
 			if err != nil {
 				return nil, err

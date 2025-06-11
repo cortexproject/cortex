@@ -8,7 +8,7 @@ package shipper
 import (
 	"context"
 	"encoding/json"
-	"io/fs"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -37,7 +37,6 @@ type metrics struct {
 	dirSyncFailures   prometheus.Counter
 	uploads           prometheus.Counter
 	uploadFailures    prometheus.Counter
-	corruptedBlocks   prometheus.Counter
 	uploadedCompacted prometheus.Gauge
 }
 
@@ -60,10 +59,6 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		Name: "thanos_shipper_upload_failures_total",
 		Help: "Total number of block upload failures",
 	})
-	m.corruptedBlocks = promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "thanos_shipper_corrupted_blocks_total",
-		Help: "Total number of corrupted blocks",
-	})
 	m.uploadedCompacted = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "thanos_shipper_upload_compacted_done",
 		Help: "If 1 it means shipper uploaded all compacted blocks from the filesystem.",
@@ -81,135 +76,56 @@ type Shipper struct {
 	source           metadata.SourceType
 	metadataFilePath string
 
-	uploadCompacted        bool
+	uploadCompactedFunc    func() bool
 	allowOutOfOrderUploads bool
-	skipCorruptedBlocks    bool
 	hashFunc               metadata.HashFunc
 
 	labels func() labels.Labels
 	mtx    sync.RWMutex
 }
 
-var (
-	ErrorSyncBlockCorrupted = errors.New("corrupted blocks found")
-)
-
-type shipperOptions struct {
-	logger                 log.Logger
-	r                      prometheus.Registerer
-	source                 metadata.SourceType
-	hashFunc               metadata.HashFunc
-	metaFileName           string
-	lbls                   func() labels.Labels
-	uploadCompacted        bool
-	allowOutOfOrderUploads bool
-	skipCorruptedBlocks    bool
-}
-
-type Option func(*shipperOptions)
-
-// WithLogger sets the logger.
-func WithLogger(logger log.Logger) Option {
-	return func(o *shipperOptions) {
-		o.logger = logger
-	}
-}
-
-// WithRegisterer sets the Prometheus registerer.
-func WithRegisterer(r prometheus.Registerer) Option {
-	return func(o *shipperOptions) {
-		o.r = r
-	}
-}
-
-// WithSource sets the metadata source type.
-func WithSource(source metadata.SourceType) Option {
-	return func(o *shipperOptions) {
-		o.source = source
-	}
-}
-
-// WithHashFunc sets the hash function.
-func WithHashFunc(hashFunc metadata.HashFunc) Option {
-	return func(o *shipperOptions) {
-		o.hashFunc = hashFunc
-	}
-}
-
-// WithMetaFileName sets the meta file name.
-func WithMetaFileName(name string) Option {
-	return func(o *shipperOptions) {
-		o.metaFileName = name
-	}
-}
-
-// WithLabels sets the labels function.
-func WithLabels(lbls func() labels.Labels) Option {
-	return func(o *shipperOptions) {
-		o.lbls = lbls
-	}
-}
-
-// WithUploadCompacted sets whether to upload compacted blocks.
-func WithUploadCompacted(upload bool) Option {
-	return func(o *shipperOptions) {
-		o.uploadCompacted = upload
-	}
-}
-
-// WithAllowOutOfOrderUploads sets whether to allow out of order uploads.
-func WithAllowOutOfOrderUploads(allow bool) Option {
-	return func(o *shipperOptions) {
-		o.allowOutOfOrderUploads = allow
-	}
-}
-
-// WithSkipCorruptedBlocks sets whether to skip corrupted blocks.
-func WithSkipCorruptedBlocks(skip bool) Option {
-	return func(o *shipperOptions) {
-		o.skipCorruptedBlocks = skip
-	}
-}
-
-func applyOptions(opts []Option) *shipperOptions {
-	so := new(shipperOptions)
-	for _, o := range opts {
-		o(so)
-	}
-
-	if so.logger == nil {
-		so.logger = log.NewNopLogger()
-	}
-
-	if so.lbls == nil {
-		so.lbls = func() labels.Labels { return labels.EmptyLabels() }
-	}
-
-	if so.metaFileName == "" {
-		so.metaFileName = DefaultMetaFilename
-	}
-
-	return so
-}
-
 // New creates a new shipper that detects new TSDB blocks in dir and uploads them to
 // remote if necessary. It attaches the Thanos metadata section in each meta JSON file.
 // If uploadCompacted is enabled, it also uploads compacted blocks which are already in filesystem.
-func New(bucket objstore.Bucket, dir string, opts ...Option) *Shipper {
-	options := applyOptions(opts)
+func New(
+	logger log.Logger,
+	r prometheus.Registerer,
+	dir string,
+	bucket objstore.Bucket,
+	lbls func() labels.Labels,
+	source metadata.SourceType,
+	uploadCompactedFunc func() bool,
+	allowOutOfOrderUploads bool,
+	hashFunc metadata.HashFunc,
+	metaFileName string,
+) *Shipper {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+	if lbls == nil {
+		lbls = func() labels.Labels { return labels.EmptyLabels() }
+	}
 
+	if metaFileName == "" {
+		metaFileName = DefaultMetaFilename
+	}
+
+	if uploadCompactedFunc == nil {
+		uploadCompactedFunc = func() bool {
+			return false
+		}
+	}
 	return &Shipper{
-		logger:                 options.logger,
+		logger:                 logger,
 		dir:                    dir,
 		bucket:                 bucket,
-		labels:                 options.lbls,
-		metrics:                newMetrics(options.r),
-		source:                 options.source,
-		allowOutOfOrderUploads: options.allowOutOfOrderUploads,
-		skipCorruptedBlocks:    options.skipCorruptedBlocks,
-		uploadCompacted:        options.uploadCompacted,
-		hashFunc:               options.hashFunc,
-		metadataFilePath:       filepath.Join(dir, filepath.Clean(options.metaFileName)),
+		labels:                 lbls,
+		metrics:                newMetrics(r),
+		source:                 source,
+		allowOutOfOrderUploads: allowOutOfOrderUploads,
+		uploadCompactedFunc:    uploadCompactedFunc,
+		hashFunc:               hashFunc,
+		metadataFilePath:       filepath.Join(dir, filepath.Clean(metaFileName)),
 	}
 }
 
@@ -218,6 +134,42 @@ func (s *Shipper) SetLabels(lbls labels.Labels) {
 	defer s.mtx.Unlock()
 
 	s.labels = func() labels.Labels { return lbls }
+}
+
+// Timestamps returns the minimum timestamp for which data is available and the highest timestamp
+// of blocks that were successfully uploaded.
+func (s *Shipper) Timestamps() (minTime, maxSyncTime int64, err error) {
+	meta, err := ReadMetaFile(s.metadataFilePath)
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "read shipper meta file")
+	}
+	// Build a map of blocks we already uploaded.
+	hasUploaded := make(map[ulid.ULID]struct{}, len(meta.Uploaded))
+	for _, id := range meta.Uploaded {
+		hasUploaded[id] = struct{}{}
+	}
+
+	minTime = math.MaxInt64
+	maxSyncTime = math.MinInt64
+
+	metas, err := s.blockMetasFromOldest()
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, m := range metas {
+		if m.MinTime < minTime {
+			minTime = m.MinTime
+		}
+		if _, ok := hasUploaded[m.ULID]; ok && m.MaxTime > maxSyncTime {
+			maxSyncTime = m.MaxTime
+		}
+	}
+
+	if minTime == math.MaxInt64 {
+		// No block yet found. We cannot assume any min block size so propagate 0 minTime.
+		minTime = 0
+	}
+	return minTime, maxSyncTime, nil
 }
 
 type lazyOverlapChecker struct {
@@ -303,10 +255,8 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 		// If we encounter any error, proceed with an empty meta file and overwrite it later.
 		// The meta file is only used to avoid unnecessary bucket.Exists call,
 		// which are properly handled by the system if their occur anyway.
-		if errors.Is(err, fs.ErrNotExist) {
-			level.Info(s.logger).Log("msg", "no meta file found, creating empty meta data to write later")
-		} else {
-			level.Error(s.logger).Log("msg", "failed to read meta file, creating empty meta data to write later", "err", err)
+		if !os.IsNotExist(err) {
+			level.Warn(s.logger).Log("msg", "reading meta file failed, will override it", "err", err)
 		}
 		meta = &Meta{Version: MetaVersion1}
 	}
@@ -321,22 +271,13 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 	meta.Uploaded = nil
 
 	var (
-		checker         = newLazyOverlapChecker(s.logger, s.bucket, func() labels.Labels { return s.labels() })
-		uploadErrs      int
-		failedExecution = true
+		checker    = newLazyOverlapChecker(s.logger, s.bucket, func() labels.Labels { return s.labels() })
+		uploadErrs int
 	)
 
-	defer func() {
-		if failedExecution {
-			s.metrics.dirSyncFailures.Inc()
-		} else {
-			s.metrics.dirSyncs.Inc()
-		}
-	}()
-
-	metas, failedBlocks, err := s.blockMetasFromOldest()
-	// Ignore error when we should ignore failed blocks
-	if err != nil && (!errors.Is(errors.Cause(err), ErrorSyncBlockCorrupted) || !s.skipCorruptedBlocks) {
+	uploadCompacted := s.uploadCompactedFunc()
+	metas, err := s.blockMetasFromOldest()
+	if err != nil {
 		return 0, err
 	}
 	for _, m := range metas {
@@ -355,7 +296,7 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 
 		// We only ship of the first compacted block level as normal flow.
 		if m.Compaction.Level > 1 {
-			if !s.uploadCompacted {
+			if !uploadCompacted {
 				continue
 			}
 		}
@@ -363,7 +304,7 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 		// Check against bucket if the meta file for this block exists.
 		ok, err := s.bucket.Exists(ctx, path.Join(m.ULID.String(), block.MetaFilename))
 		if err != nil {
-			return uploaded, errors.Wrap(err, "check exists")
+			return 0, errors.Wrap(err, "check exists")
 		}
 		if ok {
 			meta.Uploaded = append(meta.Uploaded, m.ULID)
@@ -373,13 +314,13 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 		// Skip overlap check if out of order uploads is enabled.
 		if m.Compaction.Level > 1 && !s.allowOutOfOrderUploads {
 			if err := checker.IsOverlapping(ctx, m.BlockMeta); err != nil {
-				return uploaded, errors.Errorf("Found overlap or error during sync, cannot upload compacted block, details: %v", err)
+				return 0, errors.Errorf("Found overlap or error during sync, cannot upload compacted block, details: %v", err)
 			}
 		}
 
 		if err := s.upload(ctx, m); err != nil {
 			if !s.allowOutOfOrderUploads {
-				return uploaded, errors.Wrapf(err, "upload %v", m.ULID)
+				return 0, errors.Wrapf(err, "upload %v", m.ULID)
 			}
 
 			// No error returned, just log line. This is because we want other blocks to be uploaded even
@@ -396,14 +337,13 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 		level.Warn(s.logger).Log("msg", "updating meta file failed", "err", err)
 	}
 
-	failedExecution = false
-	if uploadErrs > 0 || len(failedBlocks) > 0 {
+	s.metrics.dirSyncs.Inc()
+	if uploadErrs > 0 {
 		s.metrics.uploadFailures.Add(float64(uploadErrs))
-		s.metrics.corruptedBlocks.Add(float64(len(failedBlocks)))
-		return uploaded, errors.Errorf("failed to sync %v/%v blocks", uploadErrs, len(failedBlocks))
+		return uploaded, errors.Errorf("failed to sync %v blocks", uploadErrs)
 	}
 
-	if s.uploadCompacted {
+	if uploadCompacted {
 		s.metrics.uploadedCompacted.Set(1)
 	} else {
 		s.metrics.uploadedCompacted.Set(0)
@@ -468,10 +408,10 @@ func (s *Shipper) upload(ctx context.Context, meta *metadata.Meta) error {
 
 // blockMetasFromOldest returns the block meta of each block found in dir
 // sorted by minTime asc.
-func (s *Shipper) blockMetasFromOldest() (metas []*metadata.Meta, failedBlocks []string, _ error) {
+func (s *Shipper) blockMetasFromOldest() (metas []*metadata.Meta, _ error) {
 	fis, err := os.ReadDir(s.dir)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "read dir")
+		return nil, errors.Wrap(err, "read dir")
 	}
 	names := make([]string, 0, len(fis))
 	for _, fi := range fis {
@@ -485,35 +425,21 @@ func (s *Shipper) blockMetasFromOldest() (metas []*metadata.Meta, failedBlocks [
 
 		fi, err := os.Stat(dir)
 		if err != nil {
-			if s.skipCorruptedBlocks {
-				level.Error(s.logger).Log("msg", "stat block", "err", err, "block", dir)
-				failedBlocks = append(failedBlocks, n)
-				continue
-			}
-			return nil, nil, errors.Wrapf(err, "stat block %v", dir)
+			return nil, errors.Wrapf(err, "stat block %v", dir)
 		}
 		if !fi.IsDir() {
 			continue
 		}
 		m, err := metadata.ReadFromDir(dir)
 		if err != nil {
-			if s.skipCorruptedBlocks {
-				level.Error(s.logger).Log("msg", "read metadata for block", "err", err, "block", dir)
-				failedBlocks = append(failedBlocks, n)
-				continue
-			}
-			return nil, nil, errors.Wrapf(err, "read metadata for block %v", dir)
+			return nil, errors.Wrapf(err, "read metadata for block %v", dir)
 		}
 		metas = append(metas, m)
 	}
 	sort.Slice(metas, func(i, j int) bool {
 		return metas[i].BlockMeta.MinTime < metas[j].BlockMeta.MinTime
 	})
-
-	if len(failedBlocks) > 0 {
-		err = ErrorSyncBlockCorrupted
-	}
-	return metas, failedBlocks, err
+	return metas, nil
 }
 
 func hardlinkBlock(src, dst string) error {
@@ -573,11 +499,6 @@ func WriteMetaFile(logger log.Logger, path string, meta *Meta) error {
 
 	if err := enc.Encode(meta); err != nil {
 		runutil.CloseWithLogOnErr(logger, f, "write meta file close")
-		return err
-	}
-
-	// Force the kernel to persist the file on disk to avoid data loss if the host crashes.
-	if err := f.Sync(); err != nil {
 		return err
 	}
 	if err := f.Close(); err != nil {

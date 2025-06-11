@@ -152,6 +152,7 @@ type Config struct {
 	ExtendWrites             bool   `yaml:"extend_writes"`
 	SignWriteRequestsEnabled bool   `yaml:"sign_write_requests"`
 	UseStreamPush            bool   `yaml:"use_stream_push"`
+	RemoteWrite2Enabled      bool   `yaml:"remote_write2_enabled"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -211,6 +212,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
 	f.BoolVar(&cfg.ZoneResultsQuorumMetadata, "distributor.zone-results-quorum-metadata", false, "Experimental, this flag may change in the future. If zone awareness and this both enabled, when querying metadata APIs (labels names and values for now), only results from quorum number of zones will be included.")
 	f.IntVar(&cfg.NumPushWorkers, "distributor.num-push-workers", 0, "EXPERIMENTAL: Number of go routines to handle push calls from distributors to ingesters. When no workers are available, a new goroutine will be spawned automatically. If set to 0 (default), workers are disabled, and a new goroutine will be created for each push request.")
+	f.BoolVar(&cfg.RemoteWrite2Enabled, "distributor.remote-write2-enabled", false, "EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push request.")
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
@@ -800,12 +802,21 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	keys := append(seriesKeys, metadataKeys...)
 	initialMetadataIndex := len(seriesKeys)
 
-	err = d.doBatch(ctx, req, subRing, keys, initialMetadataIndex, validatedMetadata, validatedTimeseries, userID)
+	ws := WriteStats{}
+
+	err = d.doBatch(ctx, req, subRing, keys, initialMetadataIndex, validatedMetadata, validatedTimeseries, userID, &ws)
 	if err != nil {
 		return nil, err
 	}
 
-	return &cortexpb.WriteResponse{}, firstPartialErr
+	resp := &cortexpb.WriteResponse{}
+	if d.cfg.RemoteWrite2Enabled {
+		resp.Samples = ws.LoadSamples()
+		resp.Histograms = ws.LoadHistogram()
+		resp.Exemplars = ws.LoadExemplars()
+	}
+
+	return resp, firstPartialErr
 }
 
 func (d *Distributor) updateLabelSetMetrics() {
@@ -867,7 +878,7 @@ func (d *Distributor) cleanStaleIngesterMetrics() {
 	}
 }
 
-func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, subRing ring.ReadRing, keys []uint32, initialMetadataIndex int, validatedMetadata []*cortexpb.MetricMetadata, validatedTimeseries []cortexpb.PreallocTimeseries, userID string) error {
+func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, subRing ring.ReadRing, keys []uint32, initialMetadataIndex int, validatedMetadata []*cortexpb.MetricMetadata, validatedTimeseries []cortexpb.PreallocTimeseries, userID string, ws *WriteStats) error {
 	span, _ := opentracing.StartSpanFromContext(ctx, "doBatch")
 	defer span.Finish()
 
@@ -902,7 +913,7 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 			}
 		}
 
-		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
+		return d.send(localCtx, ingester, timeseries, metadata, req.Source, ws)
 	}, func() {
 		cortexpb.ReuseSlice(req.Timeseries)
 		cancel()
@@ -1128,7 +1139,7 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum, ws *WriteStats) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -1144,20 +1155,21 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	d.inflightClientRequests.Inc()
 	defer d.inflightClientRequests.Dec()
 
+	var resp *cortexpb.WriteResponse
 	if d.cfg.UseStreamPush {
 		req := &cortexpb.WriteRequest{
 			Timeseries: timeseries,
 			Metadata:   metadata,
 			Source:     source,
 		}
-		_, err = c.PushStreamConnection(ctx, req)
+		resp, err = c.PushStreamConnection(ctx, req)
 	} else {
 		req := cortexpb.PreallocWriteRequestFromPool()
 		req.Timeseries = timeseries
 		req.Metadata = metadata
 		req.Source = source
 
-		_, err = c.PushPreAlloc(ctx, req)
+		resp, err = c.PushPreAlloc(ctx, req)
 
 		// We should not reuse the req in case of errors:
 		// See: https://github.com/grpc/grpc-go/issues/6355
@@ -1177,6 +1189,13 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 		if err != nil {
 			d.ingesterAppendFailures.WithLabelValues(id, typeSamples, getErrorStatus(err)).Inc()
 		}
+	}
+
+	if resp != nil {
+		// track write stats
+		ws.SetSamples(resp.Samples)
+		ws.SetHistograms(resp.Histograms)
+		ws.SetExemplars(resp.Exemplars)
 	}
 
 	return err

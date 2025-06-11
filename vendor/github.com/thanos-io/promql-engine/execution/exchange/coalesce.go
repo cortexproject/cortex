@@ -152,7 +152,7 @@ func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 
 		if len(vectors) > 0 && out == nil {
 			out = c.pool.GetVectorBatch()
-			for i := 0; i < len(vectors); i++ {
+			for i := range vectors {
 				out = append(out, c.pool.GetStepVector(vectors[i].T))
 			}
 		}
@@ -178,7 +178,7 @@ func (c *coalesce) loadSeries(ctx context.Context) error {
 	var numSeries uint64
 	allSeries := make([][]labels.Labels, len(c.operators))
 	errChan := make(errorChan, len(c.operators))
-	for i := 0; i < len(c.operators); i++ {
+	for i := range c.operators {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()

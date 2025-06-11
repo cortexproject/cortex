@@ -71,7 +71,7 @@ func NewRateBuffer(ctx context.Context, opts query.Options, isCounter, isRate bo
 		firstSamples = make([]Sample, 0, numSteps)
 		stepRanges   = make([]stepRange, 0, numSteps)
 	)
-	for i := 0; i < int(numSteps); i++ {
+	for range int(numSteps) {
 		var (
 			maxt = current - offset
 			mint = maxt - selectRange

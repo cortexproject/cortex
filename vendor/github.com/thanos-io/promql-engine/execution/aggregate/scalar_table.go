@@ -46,7 +46,7 @@ type scalarTable struct {
 
 func newScalarTables(stepsBatch int, inputCache []uint64, outputCache []*model.Series, aggregation parser.ItemType) ([]aggregateTable, error) {
 	tables := make([]aggregateTable, stepsBatch)
-	for i := 0; i < len(tables); i++ {
+	for i := range tables {
 		table, err := newScalarTable(inputCache, outputCache, aggregation)
 		if err != nil {
 			return nil, err
@@ -62,7 +62,7 @@ func (t *scalarTable) timestamp() int64 {
 
 func newScalarTable(inputSampleIDs []uint64, outputs []*model.Series, aggregation parser.ItemType) (*scalarTable, error) {
 	accumulators := make([]accumulator, len(outputs))
-	for i := 0; i < len(accumulators); i++ {
+	for i := range accumulators {
 		acc, err := newScalarAccumulator(aggregation)
 		if err != nil {
 			return nil, err

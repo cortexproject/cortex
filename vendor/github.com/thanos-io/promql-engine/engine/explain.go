@@ -69,7 +69,7 @@ func (a *AnalyzeOutputNode) aggregateSamples() {
 				// Skip aggregating samples for subquery
 			case *logicalplan.StepInvariantExpr:
 				childSamples := child.TotalSamples()
-				for i := 0; i < len(a.totalSamplesPerStep); i++ {
+				for i := range a.totalSamplesPerStep {
 					a.totalSamples += childSamples
 					a.totalSamplesPerStep[i] += childSamples
 				}

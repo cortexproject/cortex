@@ -6,6 +6,7 @@ package engine
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"math"
 	"runtime"
 	"slices"
@@ -143,9 +144,7 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 	}
 
 	functions := make(map[string]*parser.Function, len(parser.Functions))
-	for k, v := range parser.Functions {
-		functions[k] = v
-	}
+	maps.Copy(functions, parser.Functions)
 	if opts.EnableXFunctions {
 		functions["xdelta"] = function.XFunctions["xdelta"]
 		functions["xincrease"] = function.XFunctions["xincrease"]
@@ -173,10 +172,7 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 
 	decodingConcurrency := opts.DecodingConcurrency
 	if opts.DecodingConcurrency < 1 {
-		decodingConcurrency = runtime.GOMAXPROCS(0) / 2
-		if decodingConcurrency < 1 {
-			decodingConcurrency = 1
-		}
+		decodingConcurrency = max(runtime.GOMAXPROCS(0)/2, 1)
 	}
 	selectorBatchSize := opts.SelectorBatchSize
 

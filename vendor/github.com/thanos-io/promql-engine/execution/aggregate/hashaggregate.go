@@ -245,7 +245,7 @@ func (a *aggregate) initializeScalarTables(ctx context.Context) ([]aggregateTabl
 	for _, lblName := range a.labels {
 		labelsMap[lblName] = struct{}{}
 	}
-	for i := 0; i < len(series); i++ {
+	for i := range series {
 		hash, lbls := hashMetric(builder, series[i], !a.by, a.labels, labelsMap, hashingBuf)
 		output, ok := outputMap[hash]
 		if !ok {
@@ -265,7 +265,7 @@ func (a *aggregate) initializeScalarTables(ctx context.Context) ([]aggregateTabl
 	}
 
 	series = make([]labels.Labels, len(outputCache))
-	for i := 0; i < len(outputCache); i++ {
+	for i := range outputCache {
 		series[i] = outputCache[i].Metric
 	}
 

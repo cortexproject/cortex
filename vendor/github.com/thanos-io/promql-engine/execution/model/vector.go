@@ -4,6 +4,8 @@
 package model
 
 import (
+	"slices"
+
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -44,8 +46,8 @@ func (s *StepVector) AppendSamples(pool *VectorPool, ids []uint64, vals []float6
 }
 
 func (s *StepVector) RemoveSample(index int) {
-	s.Samples = append(s.Samples[:index], s.Samples[index+1:]...)
-	s.SampleIDs = append(s.SampleIDs[:index], s.SampleIDs[index+1:]...)
+	s.Samples = slices.Delete(s.Samples, index, index+1)
+	s.SampleIDs = slices.Delete(s.SampleIDs, index, index+1)
 }
 
 func (s *StepVector) AppendHistogram(pool *VectorPool, histogramID uint64, h *histogram.FloatHistogram) {
@@ -68,6 +70,6 @@ func (s *StepVector) AppendHistograms(pool *VectorPool, histogramIDs []uint64, h
 }
 
 func (s *StepVector) RemoveHistogram(index int) {
-	s.Histograms = append(s.Histograms[:index], s.Histograms[index+1:]...)
-	s.HistogramIDs = append(s.HistogramIDs[:index], s.HistogramIDs[index+1:]...)
+	s.Histograms = slices.Delete(s.Histograms, index, index+1)
+	s.HistogramIDs = slices.Delete(s.HistogramIDs, index, index+1)
 }

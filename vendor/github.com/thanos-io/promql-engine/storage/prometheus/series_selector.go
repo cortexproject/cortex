@@ -74,10 +74,7 @@ func (o *seriesSelector) loadSeries(ctx context.Context) error {
 
 func seriesShard(series []SignedSeries, index int, numShards int) []SignedSeries {
 	start := index * len(series) / numShards
-	end := (index + 1) * len(series) / numShards
-	if end > len(series) {
-		end = len(series)
-	}
+	end := min((index+1)*len(series)/numShards, len(series))
 
 	slice := series[start:end]
 	shard := make([]SignedSeries, len(slice))

@@ -51,7 +51,7 @@ require (
 	github.com/spf13/afero v1.11.0
 	github.com/stretchr/testify v1.10.0
 	github.com/thanos-io/objstore v0.0.0-20250317105316-a0136a6f898d
-	github.com/thanos-io/promql-engine v0.0.0-20250606124720-6f637b9579dc
+	github.com/thanos-io/promql-engine v0.0.0-20250611170940-015ebeb7b5ff
 	github.com/thanos-io/thanos v0.37.3-0.20250603135757-4ad45948cd10
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
@@ -230,7 +230,6 @@ require (
 	github.com/weaveworks/promrus v1.2.0 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
-	github.com/zhangyunhao116/umap v0.0.0-20250307031311-0b61e69e958b // indirect
 	go.mongodb.org/mongo-driver v1.17.3 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect

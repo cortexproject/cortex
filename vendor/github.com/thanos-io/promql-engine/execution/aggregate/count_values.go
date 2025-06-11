@@ -92,7 +92,7 @@ func (c *countValuesOperator) Next(ctx context.Context) ([]model.StepVector, err
 	}
 
 	batch := c.pool.GetVectorBatch()
-	for i := 0; i < c.stepsBatch; i++ {
+	for range c.stepsBatch {
 		if c.curStep >= len(c.ts) {
 			break
 		}
@@ -127,7 +127,7 @@ func (c *countValuesOperator) initSeriesOnce(ctx context.Context) error {
 	for _, lblName := range c.grouping {
 		labelsMap[lblName] = struct{}{}
 	}
-	for i := 0; i < len(nextSeries); i++ {
+	for i := range nextSeries {
 		hash, lbls := hashMetric(builder, nextSeries[i], !c.by, c.grouping, labelsMap, hashingBuf)
 		inputIdToHashBucket[i] = hash
 		if _, ok := hashToBucketLabels[hash]; !ok {

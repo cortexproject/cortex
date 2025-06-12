@@ -188,7 +188,7 @@ func (c *Converter) running(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-t.C:
-			level.Info(c.logger).Log("msg", "start scaning users")
+			level.Info(c.logger).Log("msg", "start scanning users")
 			users, err := c.discoverUsers(ctx)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "failed to scan users", "err", err)

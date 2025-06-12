@@ -1090,7 +1090,6 @@ heap_utilization: 0.8
 &lt;li>Current directory (&lt;code>.&lt;/code>)&lt;/li>
 &lt;li>Parent directory (&lt;code>..&lt;/code>)&lt;/li>
 &lt;li>Markers directory (&lt;code>__markers__&lt;/code>)&lt;/li>
-&lt;li>User Index File (&lt;code>user-index.json.gz&lt;/code>)&lt;/li>
 &lt;/ul>
 &lt;h3 id="length">Length&lt;/h3>
 &lt;p>The tenant ID length should not exceed 150 bytes/characters.&lt;/p></description></item><item><title>Docs: Glossary</title><link>/docs/guides/glossary/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/glossary/</guid><description>

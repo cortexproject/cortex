@@ -781,7 +781,10 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	totalSamples := validatedFloatSamples + validatedHistogramSamples
 	totalN := totalSamples + validatedExemplars + len(validatedMetadata)
 
-	nhRateLimited := !d.nativeHistogramsIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples)
+	nhRateLimited := false
+	if limits.NativeHistogramsIngestionRate > 0 && limits.NativeHistogramsIngestionBurstSize > 0 {
+		nhRateLimited = !d.nativeHistogramsIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples)
+	}
 	rateLimited := !d.ingestionRateLimiter.AllowN(now, userID, totalN)
 
 	// Return a 429 here to tell the client it is going too fast.

@@ -597,21 +597,17 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "user")
 	tests := map[string]struct {
-		distributors                       int
-		ingestionRateStrategy              string
-		ingestionRate                      float64
-		ingestionBurstSize                 int
-		nativeHistogramsIngestionRate      float64
-		nativeHistogramsIngestionBurstSize int
-		pushes                             []testPush
+		distributors          int
+		ingestionRateStrategy string
+		ingestionRate         float64
+		ingestionBurstSize    int
+		pushes                []testPush
 	}{
 		"local strategy: limit should be set to each distributor": {
-			distributors:                       2,
-			ingestionRateStrategy:              validation.LocalIngestionRateStrategy,
-			ingestionRate:                      10,
-			ingestionBurstSize:                 10,
-			nativeHistogramsIngestionRate:      10,
-			nativeHistogramsIngestionBurstSize: 10,
+			distributors:          2,
+			ingestionRateStrategy: validation.LocalIngestionRateStrategy,
+			ingestionRate:         10,
+			ingestionBurstSize:    10,
 			pushes: []testPush{
 				{samples: 4, expectedError: nil},
 				{metadata: 1, expectedError: nil},
@@ -622,12 +618,10 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			},
 		},
 		"global strategy: limit should be evenly shared across distributors": {
-			distributors:                       2,
-			ingestionRateStrategy:              validation.GlobalIngestionRateStrategy,
-			ingestionRate:                      10,
-			ingestionBurstSize:                 5,
-			nativeHistogramsIngestionRate:      10,
-			nativeHistogramsIngestionBurstSize: 5,
+			distributors:          2,
+			ingestionRateStrategy: validation.GlobalIngestionRateStrategy,
+			ingestionRate:         10,
+			ingestionBurstSize:    5,
 			pushes: []testPush{
 				{samples: 2, expectedError: nil},
 				{samples: 1, expectedError: nil},
@@ -638,12 +632,10 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			},
 		},
 		"global strategy: burst should set to each distributor": {
-			distributors:                       2,
-			ingestionRateStrategy:              validation.GlobalIngestionRateStrategy,
-			ingestionRate:                      10,
-			ingestionBurstSize:                 20,
-			nativeHistogramsIngestionRate:      10,
-			nativeHistogramsIngestionBurstSize: 20,
+			distributors:          2,
+			ingestionRateStrategy: validation.GlobalIngestionRateStrategy,
+			ingestionRate:         10,
+			ingestionBurstSize:    20,
 			pushes: []testPush{
 				{samples: 10, expectedError: nil},
 				{samples: 5, expectedError: nil},
@@ -658,40 +650,45 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	for testName, testData := range tests {
 		testData := testData
 
-		t.Run(testName, func(t *testing.T) {
-			t.Parallel()
-			limits := &validation.Limits{}
-			flagext.DefaultValues(limits)
-			limits.IngestionRateStrategy = testData.ingestionRateStrategy
-			limits.IngestionRate = testData.ingestionRate
-			limits.IngestionBurstSize = testData.ingestionBurstSize
-			limits.NativeHistogramsIngestionRate = testData.nativeHistogramsIngestionRate
-			limits.NativeHistogramsIngestionBurstSize = testData.nativeHistogramsIngestionBurstSize
+		for _, enableHistogram := range []bool{false, true} {
+			enableHistogram := enableHistogram
+			t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(enableHistogram)), func(t *testing.T) {
+				t.Parallel()
+				limits := &validation.Limits{}
+				flagext.DefaultValues(limits)
+				limits.IngestionRateStrategy = testData.ingestionRateStrategy
+				limits.IngestionRate = testData.ingestionRate
+				limits.IngestionBurstSize = testData.ingestionBurstSize
 
-			// Start all expected distributors
-			distributors, _, _, _ := prepare(t, prepConfig{
-				numIngesters:     3,
-				happyIngesters:   3,
-				numDistributors:  testData.distributors,
-				shardByAllLabels: true,
-				limits:           limits,
-			})
+				// Start all expected distributors
+				distributors, _, _, _ := prepare(t, prepConfig{
+					numIngesters:     3,
+					happyIngesters:   3,
+					numDistributors:  testData.distributors,
+					shardByAllLabels: true,
+					limits:           limits,
+				})
 
-			// Push samples in multiple requests to the first distributor
-			for _, push := range testData.pushes {
-				var request = makeWriteRequest(0, push.samples, push.metadata, 0)
+				// Push samples in multiple requests to the first distributor
+				for _, push := range testData.pushes {
+					var request *cortexpb.WriteRequest
+					if !enableHistogram {
+						request = makeWriteRequest(0, push.samples, push.metadata, 0)
+					} else {
+						request = makeWriteRequest(0, 0, push.metadata, push.samples)
+					}
+					response, err := distributors[0].Push(ctx, request)
 
-				response, err := distributors[0].Push(ctx, request)
-
-				if push.expectedError == nil {
-					assert.Equal(t, emptyResponse, response)
-					assert.Nil(t, err)
-				} else {
-					assert.Nil(t, response)
-					assert.Equal(t, push.expectedError, err)
+					if push.expectedError == nil {
+						assert.Equal(t, emptyResponse, response)
+						assert.Nil(t, err)
+					} else {
+						assert.Nil(t, response)
+						assert.Equal(t, push.expectedError, err)
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 }
 
@@ -809,7 +806,6 @@ func TestPush_QuorumError(t *testing.T) {
 	flagext.DefaultValues(&limits)
 
 	limits.IngestionRate = math.MaxFloat64
-	limits.NativeHistogramsIngestionRate = math.MaxFloat64
 
 	dists, ingesters, _, r := prepare(t, prepConfig{
 		numDistributors:     1,

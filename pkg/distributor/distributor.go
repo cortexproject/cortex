@@ -905,6 +905,7 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() {
 		cortexpb.ReuseSlice(req.Timeseries)
+		req.Free()
 		cancel()
 	})
 }

@@ -448,6 +448,11 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 		}
 	}
 
+	// Total nativeHistograms series limit.
+	if err := u.limiter.AssertMaxNativeHistogramsSeriesPerUser(u.userID, u.activeSeries.ActiveNativeHistogram()); err != nil {
+		return err
+	}
+
 	// Total series limit.
 	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.Head().NumSeries())); err != nil {
 		return err
@@ -1219,21 +1224,22 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
-		succeededSamplesCount         = 0
-		failedSamplesCount            = 0
-		succeededHistogramsCount      = 0
-		failedHistogramsCount         = 0
-		succeededExemplarsCount       = 0
-		failedExemplarsCount          = 0
-		startAppend                   = time.Now()
-		sampleOutOfBoundsCount        = 0
-		sampleOutOfOrderCount         = 0
-		sampleTooOldCount             = 0
-		newValueForTimestampCount     = 0
-		perUserSeriesLimitCount       = 0
-		perLabelSetSeriesLimitCount   = 0
-		perMetricSeriesLimitCount     = 0
-		discardedNativeHistogramCount = 0
+		succeededSamplesCount                   = 0
+		failedSamplesCount                      = 0
+		succeededHistogramsCount                = 0
+		failedHistogramsCount                   = 0
+		succeededExemplarsCount                 = 0
+		failedExemplarsCount                    = 0
+		startAppend                             = time.Now()
+		sampleOutOfBoundsCount                  = 0
+		sampleOutOfOrderCount                   = 0
+		sampleTooOldCount                       = 0
+		newValueForTimestampCount               = 0
+		perUserSeriesLimitCount                 = 0
+		perUserNativeHistogramsSeriesLimitCount = 0
+		perLabelSetSeriesLimitCount             = 0
+		perMetricSeriesLimitCount               = 0
+		discardedNativeHistogramCount           = 0
 
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
@@ -1265,6 +1271,12 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
+				updateFirstPartial(func() error {
+					return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels))
+				})
+
+			case errors.Is(cause, errMaxNativeHistogramsSeriesPerUserLimitExceeded):
+				perUserNativeHistogramsSeriesLimitCount++
 				updateFirstPartial(func() error {
 					return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
@@ -1511,6 +1523,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 	if perUserSeriesLimitCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserSeriesLimit, userID).Add(float64(perUserSeriesLimitCount))
+	}
+	if perUserNativeHistogramsSeriesLimitCount > 0 {
+		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserNativeHistogramsSeriesLimit, userID).Add(float64(perUserNativeHistogramsSeriesLimitCount))
 	}
 	if perMetricSeriesLimitCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))

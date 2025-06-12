@@ -89,7 +89,7 @@ func (s *SpanLogger) Log(kvps ...interface{}) error {
 	if err != nil {
 		return err
 	}
-	s.Span.LogFields(fields...)
+	s.LogFields(fields...)
 	return nil
 }
 
@@ -99,6 +99,6 @@ func (s *SpanLogger) Error(err error) error {
 		return nil
 	}
 	ext.Error.Set(s.Span, true)
-	s.Span.LogFields(otlog.Error(err))
+	s.LogFields(otlog.Error(err))
 	return err
 }

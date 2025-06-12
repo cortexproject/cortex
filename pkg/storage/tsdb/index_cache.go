@@ -92,15 +92,16 @@ func (cfg *IndexCacheConfig) Validate() error {
 			return errors.WithMessagef(errDuplicatedIndexCacheBackend, "duplicated backend: %v", backend)
 		}
 
-		if backend == IndexCacheBackendMemcached {
+		switch backend {
+		case IndexCacheBackendMemcached:
 			if err := cfg.Memcached.Validate(); err != nil {
 				return err
 			}
-		} else if backend == IndexCacheBackendRedis {
+		case IndexCacheBackendRedis:
 			if err := cfg.Redis.Validate(); err != nil {
 				return err
 			}
-		} else {
+		default:
 			if err := cfg.InMemory.Validate(); err != nil {
 				return err
 			}

@@ -820,7 +820,7 @@ func NewCompletenessChecker(blocks map[ulid.ULID]*metadata.Meta, groups []blocks
 					}
 				}
 			}
-			status.canTakeCompaction = !(previousTrBlocks == 0 || (previousTrBlocks == 1 && status.numActiveBlocks == 0))
+			status.canTakeCompaction = !(previousTrBlocks == 0 || (previousTrBlocks == 1 && status.numActiveBlocks == 0)) //nolint:staticcheck
 		}
 		previousTimeRanges = append(previousTimeRanges, tr)
 	}

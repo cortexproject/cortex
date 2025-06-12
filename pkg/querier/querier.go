@@ -378,7 +378,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	}()
 
 	log, ctx := spanlogger.New(ctx, "querier.Select")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	if sp != nil {
 		level.Debug(log).Log("start", util.TimeFromMillis(sp.Start).UTC().String(), "end", util.TimeFromMillis(sp.End).UTC().String(), "step", sp.Step, "matchers", matchers)

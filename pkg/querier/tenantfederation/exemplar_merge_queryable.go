@@ -140,7 +140,7 @@ type exemplarSelectJob struct {
 // Select returns aggregated exemplars within given time range for multiple tenants.
 func (m mergeExemplarQuerier) Select(start, end int64, matchers ...[]*labels.Matcher) ([]exemplar.QueryResult, error) {
 	log, ctx := spanlogger.New(m.ctx, "mergeExemplarQuerier.Select")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	// filter out tenants to query and unrelated matchers
 	allMatchedTenantIds, allUnrelatedMatchers := filterAllTenantsAndMatchers(m.idLabelName, m.tenantIds, matchers)

@@ -7081,7 +7081,7 @@ func CreateBlock(t *testing.T, ctx context.Context, dir string, mint, maxt int64
 
 type panickingMatchersCache struct{}
 
-func (_ *panickingMatchersCache) GetOrSet(_ storecache.ConversionLabelMatcher, _ storecache.NewItemFunc) (*labels.Matcher, error) {
+func (*panickingMatchersCache) GetOrSet(_ storecache.ConversionLabelMatcher, _ storecache.NewItemFunc) (*labels.Matcher, error) {
 	var a []int
 	a[1] = 2 // index out of range
 	return nil, nil

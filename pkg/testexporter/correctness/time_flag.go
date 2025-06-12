@@ -20,7 +20,7 @@ func NewTimeValue(t time.Time) TimeValue {
 
 // String implements flag.Value
 func (v TimeValue) String() string {
-	return v.Time.Format(time.RFC3339)
+	return v.Format(time.RFC3339)
 }
 
 // Set implements flag.Value

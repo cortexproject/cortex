@@ -3,31 +3,87 @@ package cortexpb
 import (
 	"fmt"
 
+	gogoproto "github.com/gogo/protobuf/proto"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/mem"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/protoadapt"
 )
 
+// Name is the name registered for the proto codec.
+const Name = "proto"
+
 func init() {
-	c := encoding.GetCodecV2("proto")
-	encoding.RegisterCodecV2(&cortexCodec{c: c})
+	encoding.RegisterCodecV2(&cortexCodec{})
 }
 
 type ReleasableMessage interface {
 	RegisterBuffer(mem.Buffer)
 }
 
-type cortexCodec struct {
-	c encoding.CodecV2
+type GogoProtoMessage interface {
+	MarshalToSizedBuffer(dAtA []byte) (int, error)
 }
+
+type cortexCodec struct{}
 
 func (c cortexCodec) Name() string {
-	return c.c.Name()
+	return Name
 }
 
-func (c cortexCodec) Marshal(v any) (mem.BufferSlice, error) {
-	return c.c.Marshal(v)
+// Marshal is basically the same as https://github.com/grpc/grpc-go/blob/d2e836604b36400a54fbf04af495d12b38fa1e3a/encoding/proto/proto.go#L43-L67
+// but it uses gogo proto methods where applicable.
+func (c *cortexCodec) Marshal(v any) (data mem.BufferSlice, err error) {
+	vv := messageV2Of(v)
+	if vv == nil {
+		return nil, fmt.Errorf("proto: failed to marshal, message is %T, want proto.Message", v)
+	}
+
+	var size int
+	if sizer, ok := v.(gogoproto.Sizer); ok {
+		size = sizer.Size()
+	} else {
+		size = proto.Size(vv)
+	}
+
+	if mem.IsBelowBufferPoolingThreshold(size) {
+		var buf mem.SliceBuffer
+
+		// If v implements MarshalToSizedBuffer we should use it as it is more optimized
+		if m, ok := v.(GogoProtoMessage); ok {
+			buf = make([]byte, size)
+			if _, err := m.MarshalToSizedBuffer(buf[:size]); err != nil {
+				return nil, err
+			}
+		} else {
+			buf, err = proto.Marshal(vv)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		data = append(data, buf)
+	} else {
+		pool := mem.DefaultBufferPool()
+		buf := pool.Get(size)
+
+		// If v implements MarshalToSizedBuffer we should use it as it is more optimized
+		if m, ok := v.(GogoProtoMessage); ok {
+			if _, err := m.MarshalToSizedBuffer((*buf)[:size]); err != nil {
+				pool.Put(buf)
+				return nil, err
+			}
+		} else {
+			if _, err := (proto.MarshalOptions{}).MarshalAppend((*buf)[:0], vv); err != nil {
+				pool.Put(buf)
+				return nil, err
+			}
+		}
+
+		data = append(data, mem.NewBuffer(buf, pool))
+	}
+
+	return data, nil
 }
 
 // Unmarshal Copied from https://github.com/grpc/grpc-go/blob/d2e836604b36400a54fbf04af495d12b38fa1e3a/encoding/proto/proto.go#L69-L81

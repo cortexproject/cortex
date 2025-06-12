@@ -6555,7 +6555,7 @@ listed in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/RE
 &lt;/tr>
 &lt;tr>
 &lt;td>Charlie Le&lt;/td>
-&lt;td>&lt;a href="mailto:chtle4@gmail.com">chtle4@gmail.com&lt;/a>&lt;/td>
+&lt;td>&lt;a href="mailto:chtle4@gmail.com">chtle4@gmail.com&lt;/a>&amp;gt;&lt;/td>
 &lt;td>@CharlieTLe&lt;/td>
 &lt;td>Apple&lt;/td>
 &lt;/tr>
@@ -6569,7 +6569,7 @@ listed in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/RE
 &lt;td>Friedrich Gonzalez&lt;/td>
 &lt;td>&lt;a href="mailto:friedrichg@gmail.com">friedrichg@gmail.com&lt;/a>&lt;/td>
 &lt;td>@friedrichg&lt;/td>
-&lt;td>Apple&lt;/td>
+&lt;td>Adobe&lt;/td>
 &lt;/tr>
 &lt;/tbody>
 &lt;/table>

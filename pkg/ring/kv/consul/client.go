@@ -30,9 +30,6 @@ const (
 var (
 	writeOptions = &consul.WriteOptions{}
 
-	// ErrNotFound is returned by ConsulClient.Get.
-	ErrNotFound = fmt.Errorf("Not found")
-
 	backoffConfig = backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,

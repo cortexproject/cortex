@@ -344,7 +344,7 @@ func (q *blocksStoreQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 	}
 
 	spanLog, spanCtx := spanlogger.New(ctx, "blocksStoreQuerier.LabelNames")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	minT, maxT, limit := q.minT, q.maxT, int64(0)
 
@@ -387,7 +387,7 @@ func (q *blocksStoreQuerier) LabelValues(ctx context.Context, name string, hints
 	}
 
 	spanLog, spanCtx := spanlogger.New(ctx, "blocksStoreQuerier.LabelValues")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	minT, maxT, limit := q.minT, q.maxT, int64(0)
 
@@ -434,7 +434,7 @@ func (q *blocksStoreQuerier) selectSorted(ctx context.Context, sp *storage.Selec
 	}
 
 	spanLog, spanCtx := spanlogger.New(ctx, "blocksStoreQuerier.selectSorted")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	minT, maxT, limit := q.minT, q.maxT, int64(0)
 	if sp != nil {

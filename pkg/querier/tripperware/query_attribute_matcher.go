@@ -17,7 +17,7 @@ import (
 const QueryRejectErrorMessage = "This query does not perform well and has been rejected by the service operator."
 
 func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time.Duration, limits Limits, userStr string, rejectedQueriesPerTenant *prometheus.CounterVec) error {
-	if limits == nil || !(limits.QueryPriority(userStr).Enabled || limits.QueryRejection(userStr).Enabled) {
+	if limits == nil || (!limits.QueryPriority(userStr).Enabled && !limits.QueryRejection(userStr).Enabled) {
 		return nil
 	}
 	op := getOperation(r)

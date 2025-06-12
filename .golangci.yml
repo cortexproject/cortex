@@ -1,45 +1,6 @@
-output:
-  format: line-number
-
-linters:
-  enable:
-    - goimports
-    - revive
-    - gofmt
-    - misspell
-    - depguard
-    - sloglint
-    - unused
-
-linters-settings:
-  staticcheck:
-    checks:
-      - all
-  errcheck:
-    # path to a file containing a list of functions to exclude from checking
-    # see https://github.com/kisielk/errcheck#excluding-functions for details
-    exclude: ./.errcheck-exclude
-  goimports:
-    local-prefixes: "github.com/cortexproject/cortex"
-  revive:
-    severity: error # We only want critical issues.
-  govet:
-    disable:
-      - printf
-
-  depguard:
-    rules:
-      main:
-        list-mode: lax
-        files:
-          - $all
-        deny:
-          - pkg: "github.com/go-kit/kit/log"
-            desc: Use github.com/go-kit/log instead of github.com/go-kit/kit/log"
-
+version: "2"
 run:
   timeout: 5m
-
   # List of build tags, all linters use it.
   build-tags:
     - netgo
@@ -51,3 +12,51 @@ run:
     - integration_querier
     - integration_ruler
     - integration_query_fuzz
+output:
+  formats:
+    text:
+      path: stdout
+      colors: false
+linters:
+  enable:
+    - depguard
+    - misspell
+    - revive
+    - sloglint
+  settings:
+    depguard:
+      rules:
+        main:
+          list-mode: lax
+          files:
+            - $all
+          deny:
+            - pkg: github.com/go-kit/kit/log
+              desc: Use github.com/go-kit/log instead of github.com/go-kit/kit/log"
+    errcheck:
+      exclude-functions:
+        - io/ioutil.WriteFile
+        - io/ioutil.ReadFile
+        - io.Copy
+        - (github.com/go-kit/log.Logger).Log
+        - (*github.com/cortexproject/cortex/pkg/util/spanlogger.SpanLogger).Error
+        - (github.com/opentracing/opentracing-go.Tracer).Inject
+    govet:
+      disable:
+        - printf
+    revive:
+      severity: error
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/cortexproject/cortex

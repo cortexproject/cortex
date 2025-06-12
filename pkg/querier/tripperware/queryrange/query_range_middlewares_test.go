@@ -30,13 +30,14 @@ func TestRoundTrip(t *testing.T) {
 		middleware.AuthenticateUser.Wrap(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var err error
-				if r.RequestURI == query {
+				switch r.RequestURI {
+				case query:
 					_, err = w.Write([]byte(responseBody))
-				} else if r.RequestURI == queryWithWarnings {
+				case queryWithWarnings:
 					_, err = w.Write([]byte(responseBodyWithWarnings))
-				} else if r.RequestURI == queryWithInfos {
+				case queryWithInfos:
 					_, err = w.Write([]byte(responseBodyWithInfos))
-				} else {
+				default:
 					_, err = w.Write([]byte("bar"))
 				}
 				if err != nil {

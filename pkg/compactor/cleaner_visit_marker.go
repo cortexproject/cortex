@@ -36,7 +36,7 @@ func (b *CleanerVisitMarker) IsExpired(cleanerVisitMarkerTimeout time.Duration) 
 }
 
 func (b *CleanerVisitMarker) IsVisited(cleanerVisitMarkerTimeout time.Duration) bool {
-	return !(b.GetStatus() == Completed) && !(b.GetStatus() == Failed) && !b.IsExpired(cleanerVisitMarkerTimeout)
+	return !(b.GetStatus() == Completed) && !(b.GetStatus() == Failed) && !b.IsExpired(cleanerVisitMarkerTimeout) //nolint:staticcheck
 }
 
 func (b *CleanerVisitMarker) GetStatus() VisitStatus {

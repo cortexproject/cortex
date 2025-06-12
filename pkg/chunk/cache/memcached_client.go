@@ -141,7 +141,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		}),
 	}
 	if cfg.CBFailures > 0 {
-		newClient.Client.DialContext = newClient.dialViaCircuitBreaker
+		newClient.DialContext = newClient.dialViaCircuitBreaker
 	}
 
 	if len(cfg.Addresses) > 0 {

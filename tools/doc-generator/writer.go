@@ -61,9 +61,10 @@ func (w *specWriter) writeConfigEntry(e *configEntry, indent int) {
 
 		// Specification
 		fieldDefault := e.fieldDefault
-		if e.fieldType == "string" {
+		switch e.fieldType {
+		case "string":
 			fieldDefault = strconv.Quote(fieldDefault)
-		} else if e.fieldType == "duration" {
+		case "duration":
 			fieldDefault = cleanupDuration(fieldDefault)
 		}
 

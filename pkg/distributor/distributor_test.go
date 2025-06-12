@@ -3349,12 +3349,12 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 		if !ok {
 			// Make a copy because the request Timeseries are reused
 			item := cortexpb.TimeSeries{
-				Labels:  make([]cortexpb.LabelAdapter, len(series.TimeSeries.Labels)),
-				Samples: make([]cortexpb.Sample, len(series.TimeSeries.Samples)),
+				Labels:  make([]cortexpb.LabelAdapter, len(series.Labels)),
+				Samples: make([]cortexpb.Sample, len(series.Samples)),
 			}
 
-			copy(item.Labels, series.TimeSeries.Labels)
-			copy(item.Samples, series.TimeSeries.Samples)
+			copy(item.Labels, series.Labels)
+			copy(item.Samples, series.Samples)
 
 			i.timeseries[hash] = &cortexpb.PreallocTimeseries{TimeSeries: &item}
 		} else {

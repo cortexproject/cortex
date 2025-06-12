@@ -171,7 +171,7 @@ func mergeResults(tenantIDs []string, resultsPerTenant []model.Vector) model.Vec
 	var v model.Vector
 	for pos, tenantID := range tenantIDs {
 		for _, r := range resultsPerTenant[pos] {
-			var s model.Sample = *r
+			var s = *r
 			s.Metric = r.Metric.Clone()
 			s.Metric[model.LabelName("__tenant_id__")] = model.LabelValue(tenantID)
 			v = append(v, &s)

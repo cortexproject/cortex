@@ -1324,10 +1324,8 @@ func poll(t testing.TB, d time.Duration, want interface{}, have func() interface
 	t.Helper()
 
 	deadline := time.Now().Add(d)
-	for {
-		if time.Now().After(deadline) {
-			break
-		}
+	for !time.Now().After(deadline) {
+
 		if reflect.DeepEqual(want, have()) {
 			return
 		}

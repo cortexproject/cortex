@@ -433,9 +433,10 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
 
 				// Add the cache address to the flags.
-				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
+				switch testCfg.indexCacheBackend {
+				case tsdb.IndexCacheBackendMemcached:
 					flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
-				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendRedis {
+				case tsdb.IndexCacheBackendRedis:
 					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 

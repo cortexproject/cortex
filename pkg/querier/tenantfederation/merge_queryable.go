@@ -153,7 +153,7 @@ func (m *mergeQuerier) LabelValues(ctx context.Context, name string, hints *stor
 		return queriers[0].LabelValues(ctx, name, hints, matchers...)
 	}
 	log, _ := spanlogger.New(ctx, "mergeQuerier.LabelValues")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	matchedTenants, filteredMatchers := filterValuesByMatchers(m.idLabelName, ids, matchers...)
 
@@ -194,7 +194,7 @@ func (m *mergeQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints
 		return queriers[0].LabelNames(ctx, hints, matchers...)
 	}
 	log, _ := spanlogger.New(ctx, "mergeQuerier.LabelNames")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	matchedTenants, filteredMatchers := filterValuesByMatchers(m.idLabelName, ids, matchers...)
 
@@ -337,7 +337,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 	}
 
 	log, ctx := spanlogger.New(ctx, "mergeQuerier.Select")
-	defer log.Span.Finish()
+	defer log.Finish()
 	matchedValues, filteredMatchers := filterValuesByMatchers(m.idLabelName, ids, matchers...)
 	var jobs = make([]interface{}, len(matchedValues))
 	var seriesSets = make([]storage.SeriesSet, len(matchedValues))

@@ -134,7 +134,7 @@ func (cfg *ChunksCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix st
 	f.DurationVar(&cfg.SubrangeTTL, prefix+"subrange-ttl", 24*time.Hour, "TTL for caching individual chunks subranges.")
 
 	// In the multi level chunk cache, backfill TTL follows subrange TTL
-	cfg.ChunkCacheBackend.MultiLevel.BackFillTTL = cfg.SubrangeTTL
+	cfg.MultiLevel.BackFillTTL = cfg.SubrangeTTL
 }
 
 func (cfg *ChunksCacheConfig) Validate() error {

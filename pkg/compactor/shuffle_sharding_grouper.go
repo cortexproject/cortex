@@ -508,6 +508,6 @@ func getRangeStart(m *metadata.Meta, tr int64) int64 {
 
 func sortMetasByMinTime(metas []*metadata.Meta) {
 	sort.Slice(metas, func(i, j int) bool {
-		return metas[i].BlockMeta.MinTime < metas[j].BlockMeta.MinTime
+		return metas[i].MinTime < metas[j].MinTime
 	})
 }

@@ -221,6 +221,7 @@ func TestStats_Merge(t *testing.T) {
 		stats1.AddFetchedSamples(109)
 		stats1.AddScannedSamples(100)
 		stats1.AddPeakSamples(100)
+		stats1.StoreMaxNotOptimizedRegexMatchers(2)
 		stats1.AddExtraFields("a", "b")
 		stats1.AddExtraFields("a", "b")
 
@@ -234,6 +235,7 @@ func TestStats_Merge(t *testing.T) {
 		stats1.AddStoreGatewayTouchedPostingBytes(301)
 		stats2.AddFetchedChunks(102)
 		stats2.AddFetchedSamples(103)
+		stats2.StoreMaxNotOptimizedRegexMatchers(3)
 		stats2.AddPeakSamples(105)
 		stats2.AddScannedSamples(105)
 		stats2.AddExtraFields("c", "d")
@@ -251,6 +253,7 @@ func TestStats_Merge(t *testing.T) {
 		assert.Equal(t, uint64(105), stats1.LoadPeakSamples())
 		assert.Equal(t, uint64(401), stats1.LoadStoreGatewayTouchedPostings())
 		assert.Equal(t, uint64(601), stats1.LoadStoreGatewayTouchedPostingBytes())
+		assert.Equal(t, uint64(3), stats1.LoadNotOptimizedRegexMatchers())
 		checkExtraFields(t, []interface{}{"a", "b", "c", "d"}, stats1.LoadExtraFields())
 	})
 

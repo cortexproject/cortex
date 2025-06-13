@@ -34,7 +34,7 @@ func (e *errTenantIDUnsupportedCharacter) Error() string {
 
 const tenantIDsLabelSeparator = "|"
 
-// NormalizeTenantIDs is creating a normalized form by sortiing and de-duplicating the list of tenantIDs
+// NormalizeTenantIDs is creating a normalized form by sorting and de-duplicating the list of tenantIDs
 func NormalizeTenantIDs(tenantIDs []string) []string {
 	sort.Strings(tenantIDs)
 

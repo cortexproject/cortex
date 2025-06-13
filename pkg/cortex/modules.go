@@ -51,6 +51,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/modules"
@@ -282,10 +283,30 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 		// single tenant. This allows for a less impactful enabling of tenant
 		// federation.
 		byPassForSingleQuerier := true
+
 		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer))
 		t.MetadataQuerier = tenantfederation.NewMetadataQuerier(t.MetadataQuerier, t.Cfg.TenantFederation.MaxConcurrent, prometheus.DefaultRegisterer)
 		t.ExemplarQueryable = tenantfederation.NewExemplarQueryable(t.ExemplarQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer)
+
+		if t.Cfg.TenantFederation.RegexMatcherEnabled {
+			util_log.WarnExperimentalUse("tenant-federation.regex-matcher-enabled")
+
+			bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+				return bucket.NewClient(ctx, t.Cfg.BlocksStorage.Bucket, nil, "regex-resolver", util_log.Logger, prometheus.DefaultRegisterer)
+			}
+
+			regexResolver, err := tenantfederation.NewRegexResolver(t.Cfg.BlocksStorage.UsersScanner, prometheus.DefaultRegisterer, bucketClientFactory, t.Cfg.TenantFederation.UserSyncInterval, util_log.Logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize regex resolver: %v", err)
+			}
+			tenant.WithDefaultResolver(regexResolver)
+
+			return regexResolver, nil
+		}
+
+		return nil, nil
 	}
+
 	return nil, nil
 }
 
@@ -496,6 +517,11 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
 	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 	instantQueryCodec := instantquery.NewInstantQueryCodec(t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
+
+	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
+		// If regex matcher enabled, we use regex validator to pass regex to the querier
+		tenant.WithDefaultResolver(tenantfederation.NewRegexValidator())
+	}
 
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
@@ -776,6 +802,11 @@ func (t *Cortex) initTenantDeletionAPI() (services.Service, error) {
 }
 
 func (t *Cortex) initQueryScheduler() (services.Service, error) {
+	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
+		// If regex matcher enabled, we use regex validator to pass regex to the querier
+		tenant.WithDefaultResolver(tenantfederation.NewRegexValidator())
+	}
+
 	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, errors.Wrap(err, "query-scheduler init")

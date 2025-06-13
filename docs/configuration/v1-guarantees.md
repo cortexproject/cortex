@@ -66,6 +66,9 @@ Currently experimental features are:
   - The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions
 - Blocks storage user index
 - Querier: tenant federation
+  - `-tenant-federation.enabled`
+  - `-tenant-federation.regex-matcher-enabled`
+  - `-tenant-federation.user-sync-interval`
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.
 - Instance limits in ingester and distributor

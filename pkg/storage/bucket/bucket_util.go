@@ -15,11 +15,7 @@ import (
 // DeletePrefix removes all objects with given prefix, recursively.
 // It returns number of deleted objects.
 // If deletion of any object fails, it returns error and stops.
-func DeletePrefix(ctx context.Context, bkt objstore.Bucket, prefix string, logger log.Logger) (int, error) {
-	return DeletePrefixConcurrent(ctx, bkt, prefix, logger, 1)
-}
-
-func DeletePrefixConcurrent(ctx context.Context, bkt objstore.Bucket, prefix string, logger log.Logger, maxConcurrency int) (int, error) {
+func DeletePrefix(ctx context.Context, bkt objstore.Bucket, prefix string, logger log.Logger, maxConcurrency int) (int, error) {
 	keys, err := ListPrefixes(ctx, bkt, prefix, logger)
 	if err != nil {
 		return 0, err

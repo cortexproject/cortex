@@ -501,7 +501,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 		return err
 	}
 
-	if deleted, err := bucket.DeletePrefixConcurrent(ctx, userBucket, bucketindex.MarkersPathname, userLogger, defaultDeleteBlocksConcurrency); err != nil {
+	if deleted, err := bucket.DeletePrefix(ctx, userBucket, bucketindex.MarkersPathname, userLogger, defaultDeleteBlocksConcurrency); err != nil {
 		return errors.Wrap(err, "failed to delete marker files")
 	} else if deleted > 0 {
 		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted)
@@ -513,7 +513,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 }
 
 func (c *BlocksCleaner) deleteNonDataFiles(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) error {
-	if deleted, err := bucket.DeletePrefixConcurrent(ctx, userBucket, block.DebugMetas, userLogger, defaultDeleteBlocksConcurrency); err != nil {
+	if deleted, err := bucket.DeletePrefix(ctx, userBucket, block.DebugMetas, userLogger, defaultDeleteBlocksConcurrency); err != nil {
 		return errors.Wrap(err, "failed to delete "+block.DebugMetas)
 	} else if deleted > 0 {
 		level.Info(userLogger).Log("msg", "deleted files under "+block.DebugMetas+" for tenant marked for deletion", "count", deleted)
@@ -521,7 +521,7 @@ func (c *BlocksCleaner) deleteNonDataFiles(ctx context.Context, userLogger log.L
 
 	if c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 		// Clean up partitioned group info files
-		if deleted, err := bucket.DeletePrefixConcurrent(ctx, userBucket, PartitionedGroupDirectory, userLogger, defaultDeleteBlocksConcurrency); err != nil {
+		if deleted, err := bucket.DeletePrefix(ctx, userBucket, PartitionedGroupDirectory, userLogger, defaultDeleteBlocksConcurrency); err != nil {
 			return errors.Wrap(err, "failed to delete "+PartitionedGroupDirectory)
 		} else if deleted > 0 {
 			level.Info(userLogger).Log("msg", "deleted files under "+PartitionedGroupDirectory+" for tenant marked for deletion", "count", deleted)
@@ -781,7 +781,7 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 
 		if extraInfo.status.CanDelete || extraInfo.status.DeleteVisitMarker {
 			// Remove partition visit markers
-			if _, err := bucket.DeletePrefixConcurrent(ctx, userBucket, GetPartitionVisitMarkerDirectoryPath(partitionedGroupInfo.PartitionedGroupID), userLogger, defaultDeleteBlocksConcurrency); err != nil {
+			if _, err := bucket.DeletePrefix(ctx, userBucket, GetPartitionVisitMarkerDirectoryPath(partitionedGroupInfo.PartitionedGroupID), userLogger, defaultDeleteBlocksConcurrency); err != nil {
 				level.Warn(userLogger).Log("msg", "failed to delete partition visit markers for partitioned group", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
 			} else {
 				level.Info(userLogger).Log("msg", "deleted partition visit markers for partitioned group", "partitioned_group_info", partitionedGroupInfoFile)

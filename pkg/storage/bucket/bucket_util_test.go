@@ -22,7 +22,7 @@ func TestDeletePrefix(t *testing.T) {
 	require.NoError(t, mem.Upload(context.Background(), "prefix/sub2/4", strings.NewReader("hello")))
 	require.NoError(t, mem.Upload(context.Background(), "outside/obj", strings.NewReader("hello")))
 
-	del, err := DeletePrefix(context.Background(), mem, "prefix", log.NewNopLogger())
+	del, err := DeletePrefix(context.Background(), mem, "prefix", log.NewNopLogger(), 1)
 	require.NoError(t, err)
 	assert.Equal(t, 4, del)
 	assert.Equal(t, 2, len(mem.Objects()))
@@ -42,7 +42,7 @@ func TestDeletePrefixConcurrent(t *testing.T) {
 		require.NoError(t, mem.Upload(context.Background(), fmt.Sprintf("prefix/sub/%d", i), strings.NewReader(fmt.Sprintf("hello%d", i))))
 	}
 
-	del, err := DeletePrefixConcurrent(context.Background(), mem, "prefix", log.NewNopLogger(), 100)
+	del, err := DeletePrefix(context.Background(), mem, "prefix", log.NewNopLogger(), 100)
 	require.NoError(t, err)
 	assert.Equal(t, 4+n, del)
 	assert.Equal(t, 2, len(mem.Objects()))

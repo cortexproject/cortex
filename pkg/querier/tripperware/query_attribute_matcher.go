@@ -10,7 +10,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -28,7 +28,7 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 		if err != nil {
 			return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
-		minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
+		minTime, maxTime := api.FindMinMaxTime(r, expr, lookbackDelta, now)
 
 		if queryReject := limits.QueryRejection(userStr); queryReject.Enabled && query != "" {
 			for _, attribute := range queryReject.QueryAttributes {
@@ -172,8 +172,8 @@ func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, op stri
 		}
 	}
 
-	startTime, _ := util.ParseTime(r.FormValue("start"))
-	endTime, _ := util.ParseTime(r.FormValue("end"))
+	startTime, _ := ParseTimeMillis(r.FormValue("start"))
+	endTime, _ := ParseTimeMillis(r.FormValue("end"))
 
 	if attribute.TimeWindow.Start != 0 || attribute.TimeWindow.End != 0 {
 		matched = true
@@ -236,8 +236,7 @@ func isWithinTimeRangeAttribute(limit validation.TimeRangeLimit, startTime, endT
 }
 
 func isWithinQueryStepLimit(queryStepLimit validation.QueryStepLimit, r *http.Request) bool {
-
-	step, err := util.ParseDurationMs(r.FormValue("step"))
+	step, err := ParseDurationMillis(r.FormValue("step"))
 	if err != nil {
 		return false
 	}

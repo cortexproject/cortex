@@ -16,11 +16,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/util"
-
+	"github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -98,33 +96,33 @@ func (c prometheusCodec) MergeResponse(ctx context.Context, req tripperware.Requ
 func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	result := tripperware.PrometheusRequest{Headers: map[string][]string{}}
 	var err error
-	result.Start, err = util.ParseTime(r.FormValue("start"))
+	result.Start, err = tripperware.ParseTimeMillis(r.FormValue("start"))
 	if err != nil {
-		return nil, queryapi.DecorateWithParamName(err, "start")
+		return nil, api.DecorateWithParamName(err, "start")
 	}
 
-	result.End, err = util.ParseTime(r.FormValue("end"))
+	result.End, err = tripperware.ParseTimeMillis(r.FormValue("end"))
 	if err != nil {
-		return nil, queryapi.DecorateWithParamName(err, "end")
+		return nil, api.DecorateWithParamName(err, "end")
 	}
 
 	if result.End < result.Start {
-		return nil, queryapi.ErrEndBeforeStart
+		return nil, api.ErrEndBeforeStart
 	}
 
-	result.Step, err = util.ParseDurationMs(r.FormValue("step"))
+	result.Step, err = tripperware.ParseDurationMillis(r.FormValue("step"))
 	if err != nil {
-		return nil, queryapi.DecorateWithParamName(err, "step")
+		return nil, api.DecorateWithParamName(err, "step")
 	}
 
 	if result.Step <= 0 {
-		return nil, queryapi.ErrNegativeStep
+		return nil, api.ErrNegativeStep
 	}
 
 	// For safety, limit the number of returned points per timeseries.
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
 	if (result.End-result.Start)/result.Step > 11000 {
-		return nil, queryapi.ErrStepTooSmall
+		return nil, api.ErrStepTooSmall
 	}
 
 	result.Query = r.FormValue("query")

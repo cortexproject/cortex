@@ -3,11 +3,14 @@ package tripperware
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -86,4 +89,31 @@ func SetQueryResponseStats(a *PrometheusResponse, queryStats *stats.QueryStats) 
 			return
 		}
 	}
+}
+
+func ParseTimeParamMillis(r *http.Request, paramName string, defaultValue time.Time) (int64, error) {
+	t, err := api.ParseTimeParam(r, paramName, defaultValue)
+	if err != nil {
+		return 0, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	return util.TimeToMillis(t), nil
+}
+
+func ParseTimeMillis(s string) (int64, error) {
+	t, err := api.ParseTime(s)
+	if err != nil {
+		return 0, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	return util.TimeToMillis(t), nil
+}
+
+func ParseDurationMillis(s string) (int64, error) {
+	d, err := api.ParseDuration(s)
+	if err != nil {
+		return 0, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	return int64(d / (time.Millisecond / time.Nanosecond)), nil
 }

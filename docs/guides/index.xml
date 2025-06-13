@@ -1046,10 +1046,14 @@ to set up the environment.&lt;/p>
 &lt;p>For example, the following configuration will start throttling query requests if either CPU or heap utilization is above 80%, leaving 20% of room for inflight requests.&lt;/p>
 &lt;pre tabindex="0">&lt;code>target: ingester
 monitored_resources: cpu,heap
-instance_limits:
+ingester:
+query_protection:
+rejection:
+enabled: true
+threshold:
 cpu_utilization: 0.8
 heap_utilization: 0.8
-&lt;/code>&lt;/pre>&lt;p>See &lt;a href="https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=instance_limits">https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=instance_limits&lt;/a> for details.&lt;/p></description></item><item><title>Docs: Limitations</title><link>/docs/guides/limitations/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/limitations/</guid><description>
+&lt;/code>&lt;/pre>&lt;p>See &lt;a href="https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=query_protection">https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=query_protection&lt;/a> for details.&lt;/p></description></item><item><title>Docs: Limitations</title><link>/docs/guides/limitations/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/limitations/</guid><description>
 &lt;h2 id="tenant-id-naming">Tenant ID naming&lt;/h2>
 &lt;p>The tenant ID (also called &amp;ldquo;user ID&amp;rdquo; or &amp;ldquo;org ID&amp;rdquo;) is the unique identifier of a tenant within a Cortex cluster. The tenant ID is opaque information to Cortex, which doesn&amp;rsquo;t make any assumptions on its format/content, but its naming has two limitations:&lt;/p>
 &lt;ol>

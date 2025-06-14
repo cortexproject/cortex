@@ -1,5 +1,5 @@
-# Grafana datasource configuration for Kubernetes/microservices mode
-# For Docker Compose mode, use grafana-datasource-docker.yaml instead
+# Grafana datasource configuration for Docker Compose/single binary mode
+# For Kubernetes mode, use grafana-datasource.yaml instead
 apiVersion: 1
 
 datasources:
@@ -7,7 +7,7 @@ datasources:
     type: prometheus
     access: proxy
     orgId: 1
-    url: http://cortex-nginx/api/prom
+    url: http://cortex:9009/api/prom
     jsonData: &jsonData
       cacheLevel: None
       httpHeaderName1: X-Scope-OrgID
@@ -24,7 +24,7 @@ datasources:
     type: prometheus
     access: proxy
     orgId: 1
-    url: http://cortex-nginx/api/prom
+    url: http://cortex:9009/api/prom
     jsonData: *jsonData
     secureJsonData:
       httpHeaderValue1: tenant-a
@@ -34,7 +34,7 @@ datasources:
     type: prometheus
     access: proxy
     orgId: 1
-    url: http://cortex-nginx/api/prom
+    url: http://cortex:9009/api/prom
     jsonData: *jsonData
     secureJsonData:
       httpHeaderValue1: tenant-b
@@ -44,7 +44,7 @@ datasources:
     type: prometheus
     access: proxy
     orgId: 1
-    url: http://cortex-nginx/api/prom
+    url: http://cortex:9009/api/prom
     jsonData: *jsonData
     secureJsonData:
       httpHeaderValue1: tenant-c
@@ -54,7 +54,7 @@ datasources:
     type: prometheus
     access: proxy
     orgId: 1
-    url: http://cortex-nginx/api/prom
+    url: http://cortex:9009/api/prom
     jsonData: *jsonData
     secureJsonData:
       httpHeaderValue1: tenant-d
@@ -64,7 +64,7 @@ datasources:
     name: Cortex Alertmanager
     type: alertmanager
     access: proxy
-    url: http://cortex-nginx/
+    url: http://cortex:9009/
     jsonData:
       httpHeaderName1: X-Scope-OrgID
       implementation: cortex

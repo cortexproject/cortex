@@ -51,6 +51,8 @@ $ git clone https://github.com/cortexproject/cortex.git
 $ cd cortex/docs/getting-started
 ```
 
+**Note**: This guide uses `grafana-datasource-docker.yaml` which is specifically configured for the single binary Docker Compose deployment. For Kubernetes/microservices mode, use `grafana-datasource.yaml` instead.
+
 ##### Start the services
 
 ```sh
@@ -214,6 +216,8 @@ how this is configured.
 # Deploy Grafana to visualize the metrics that were sent to Cortex.
 $ helm upgrade --install --version=7.3.9 --namespace cortex grafana grafana/grafana -f grafana-values.yaml --wait
 ```
+
+**Note**: This guide uses `grafana-values.yaml` with Helm to configure Grafana datasources. Alternatively, you can manually deploy Grafana with `grafana-datasource.yaml` which is specifically configured for Kubernetes/microservices mode with the correct `cortex-nginx` endpoints.
 
 ```sh
 # Create dashboards for Cortex

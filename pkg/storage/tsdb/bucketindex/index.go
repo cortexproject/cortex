@@ -70,12 +70,25 @@ func (idx *Index) IsEmpty() bool {
 	return len(idx.Blocks) == 0 && len(idx.BlockDeletionMarks) == 0
 }
 
+// ParquetBlocks returns all blocks that are available in Parquet format.
 func (idx *Index) ParquetBlocks() []*Block {
 	blocks := make([]*Block, 0, len(idx.Blocks))
 	for _, b := range idx.Blocks {
 		if b.Parquet != nil {
 			blocks = append(blocks, b)
 		}
+	}
+	return blocks
+}
+
+// NonParquetBlocks returns all blocks that are not available in Parquet format.
+func (idx *Index) NonParquetBlocks() []*Block {
+	blocks := make([]*Block, 0, len(idx.Blocks))
+	for _, b := range idx.Blocks {
+		if b.Parquet != nil {
+			continue
+		}
+		blocks = append(blocks, b)
 	}
 	return blocks
 }

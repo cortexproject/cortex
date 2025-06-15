@@ -3,7 +3,9 @@ package parquetconverter
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/rand"
+	"path"
 	"testing"
 	"time"
 
@@ -136,6 +138,9 @@ func TestConverter(t *testing.T) {
 		if testutil.ToFloat64(c.metrics.convertBlockDuration.WithLabelValues(user)) != 0.0 {
 			return false
 		}
+		if testutil.ToFloat64(c.metrics.convertBlockFailures.WithLabelValues(user)) != 0.0 {
+			return false
+		}
 		if testutil.ToFloat64(c.metrics.ownedUsers) != 0.0 {
 			return false
 		}
@@ -194,10 +199,12 @@ func TestConverter_CleanupMetricsForNotOwnedUser(t *testing.T) {
 	userID := "test-user"
 	converter.metrics.convertedBlocks.WithLabelValues(userID).Inc()
 	converter.metrics.convertBlockDuration.WithLabelValues(userID).Set(1.0)
+	converter.metrics.convertBlockFailures.WithLabelValues(userID).Inc()
 
 	// Verify metrics exist before cleanup
 	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertedBlocks.WithLabelValues(userID)))
 	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertBlockDuration.WithLabelValues(userID)))
+	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertBlockFailures.WithLabelValues(userID)))
 
 	// Set lastOwnedUsers to empty (user was never owned)
 	converter.lastOwnedUsers = map[string]struct{}{}
@@ -205,6 +212,7 @@ func TestConverter_CleanupMetricsForNotOwnedUser(t *testing.T) {
 	converter.cleanupMetricsForNotOwnedUser(userID)
 	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertedBlocks.WithLabelValues(userID)))
 	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertBlockDuration.WithLabelValues(userID)))
+	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertBlockFailures.WithLabelValues(userID)))
 
 	// Mark the user as previously owned
 	converter.lastOwnedUsers = map[string]struct{}{
@@ -217,4 +225,86 @@ func TestConverter_CleanupMetricsForNotOwnedUser(t *testing.T) {
 	// Verify metrics are deleted
 	assert.Equal(t, 0.0, testutil.ToFloat64(converter.metrics.convertedBlocks.WithLabelValues(userID)))
 	assert.Equal(t, 0.0, testutil.ToFloat64(converter.metrics.convertBlockDuration.WithLabelValues(userID)))
+	assert.Equal(t, 0.0, testutil.ToFloat64(converter.metrics.convertBlockFailures.WithLabelValues(userID)))
+}
+
+func TestConverter_BlockConversionFailure(t *testing.T) {
+	// Create a new registry for testing
+	reg := prometheus.NewRegistry()
+
+	// Create a new converter with test configuration
+	cfg := Config{
+		MetaSyncConcurrency: 1,
+		DataDir:             t.TempDir(),
+	}
+	logger := log.NewNopLogger()
+	storageCfg := cortex_tsdb.BlocksStorageConfig{}
+	flagext.DefaultValues(&storageCfg)
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	overrides, err := validation.NewOverrides(*limits, nil)
+	require.NoError(t, err)
+	limits.ParquetConverterEnabled = true
+
+	// Create a filesystem bucket for initial block upload
+	fsBucket, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
+
+	// Create test labels
+	lbls := labels.Labels{labels.Label{
+		Name:  "__name__",
+		Value: "test",
+	}}
+
+	// Create a real TSDB block
+	dir := t.TempDir()
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	blockID, err := e2e.CreateBlock(context.Background(), rnd, dir, []labels.Labels{lbls}, 2, 0, 2*time.Hour.Milliseconds(), time.Minute.Milliseconds(), 10)
+	require.NoError(t, err)
+	bdir := path.Join(dir, blockID.String())
+
+	userID := "test-user"
+
+	// Upload the block to filesystem bucket
+	err = block.Upload(context.Background(), logger, bucket.NewPrefixedBucketClient(fsBucket, userID), bdir, metadata.NoneFunc)
+	require.NoError(t, err)
+
+	// Create a mock bucket that wraps the filesystem bucket but fails uploads
+	mockBucket := &mockBucket{
+		Bucket: fsBucket,
+	}
+
+	converter := newConverter(cfg, objstore.WithNoopInstr(mockBucket), storageCfg, []int64{3600000, 7200000}, nil, reg, overrides, nil)
+	converter.ringLifecycler = &ring.Lifecycler{
+		Addr: "1.2.3.4",
+	}
+
+	err = converter.convertUser(context.Background(), logger, &RingMock{ReadRing: &ring.Ring{}}, userID)
+	require.NoError(t, err)
+
+	// Verify the failure metric was incremented
+	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertBlockFailures.WithLabelValues(userID)))
+}
+
+// mockBucket implements objstore.Bucket for testing
+type mockBucket struct {
+	objstore.Bucket
+}
+
+func (m *mockBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+	return fmt.Errorf("mock upload failure")
+}
+
+type RingMock struct {
+	ring.ReadRing
+}
+
+func (r *RingMock) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDesc, bufHosts []string, bufZones map[string]int) (ring.ReplicationSet, error) {
+	return ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{
+				Addr: "1.2.3.4",
+			},
+		},
+	}, nil
 }

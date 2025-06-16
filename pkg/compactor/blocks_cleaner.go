@@ -82,6 +82,7 @@ type BlocksCleaner struct {
 	remainingPlannedCompactions       *prometheus.GaugeVec
 	inProgressCompactions             *prometheus.GaugeVec
 	oldestPartitionGroupOffset        *prometheus.GaugeVec
+	enqueueJobFailed                  *prometheus.CounterVec
 }
 
 func NewBlocksCleaner(
@@ -186,6 +187,10 @@ func NewBlocksCleaner(
 		remainingPlannedCompactions: remainingPlannedCompactions,
 		inProgressCompactions:       inProgressCompactions,
 		oldestPartitionGroupOffset:  oldestPartitionGroupOffset,
+		enqueueJobFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_compactor_enqueue_cleaner_job_failed_total",
+			Help: "Total number of cleaner jobs failed to be enqueued.",
+		}, []string{"user_status"}),
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.loop, nil)
@@ -251,6 +256,7 @@ func (c *BlocksCleaner) loop(ctx context.Context) error {
 			}:
 			default:
 				level.Warn(c.logger).Log("msg", "unable to push cleaning job to usersChan")
+				c.enqueueJobFailed.WithLabelValues(activeStatus).Inc()
 			}
 
 			select {
@@ -260,6 +266,7 @@ func (c *BlocksCleaner) loop(ctx context.Context) error {
 			}:
 			default:
 				level.Warn(c.logger).Log("msg", "unable to push deletion job to deleteChan")
+				c.enqueueJobFailed.WithLabelValues(deletedStatus).Inc()
 			}
 
 		case <-ctx.Done():
@@ -402,10 +409,18 @@ func (c *BlocksCleaner) obtainVisitMarkerManager(ctx context.Context, userLogger
 }
 
 // Remove blocks and remaining data for tenant marked for deletion.
-func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) error {
-
+func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) (returnErr error) {
+	startTime := time.Now()
 	level.Info(userLogger).Log("msg", "deleting blocks for tenant marked for deletion")
+	defer func() {
+		if returnErr != nil {
+			level.Warn(userLogger).Log("msg", "failed deleting tenant marked for deletion", "err", returnErr)
+		} else {
+			level.Info(userLogger).Log("msg", "completed deleting tenant marked for deletion", "duration", time.Since(startTime), "duration_ms", time.Since(startTime).Milliseconds())
+		}
+	}()
 
+	begin := time.Now()
 	// We immediately delete the bucket index, to signal to its consumers that
 	// the tenant has "no blocks" in the storage.
 	if err := bucketindex.DeleteIndex(ctx, c.bucketClient, userID, c.cfgProvider); err != nil {
@@ -475,6 +490,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	if deletedBlocks.Load() > 0 {
 		level.Info(userLogger).Log("msg", "deleted blocks for tenant marked for deletion", "deletedBlocks", deletedBlocks.Load())
 	}
+	level.Info(userLogger).Log("msg", "completed deleting blocks for tenant marked for deletion", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	mark, err := cortex_tsdb.ReadTenantDeletionMark(ctx, c.bucketClient, userID)
 	if err != nil {
@@ -501,10 +517,11 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 		return err
 	}
 
+	begin = time.Now()
 	if deleted, err := bucket.DeletePrefix(ctx, userBucket, bucketindex.MarkersPathname, userLogger, defaultDeleteBlocksConcurrency); err != nil {
 		return errors.Wrap(err, "failed to delete marker files")
 	} else if deleted > 0 {
-		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted)
+		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted, "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
 	if err := cortex_tsdb.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
 		return errors.Wrap(err, "failed to delete tenant deletion mark")
@@ -513,18 +530,20 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 }
 
 func (c *BlocksCleaner) deleteNonDataFiles(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) error {
+	begin := time.Now()
 	if deleted, err := bucket.DeletePrefix(ctx, userBucket, block.DebugMetas, userLogger, defaultDeleteBlocksConcurrency); err != nil {
 		return errors.Wrap(err, "failed to delete "+block.DebugMetas)
 	} else if deleted > 0 {
-		level.Info(userLogger).Log("msg", "deleted files under "+block.DebugMetas+" for tenant marked for deletion", "count", deleted)
+		level.Info(userLogger).Log("msg", "deleted files under "+block.DebugMetas+" for tenant marked for deletion", "count", deleted, "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
 
 	if c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
+		begin = time.Now()
 		// Clean up partitioned group info files
 		if deleted, err := bucket.DeletePrefix(ctx, userBucket, PartitionedGroupDirectory, userLogger, defaultDeleteBlocksConcurrency); err != nil {
 			return errors.Wrap(err, "failed to delete "+PartitionedGroupDirectory)
 		} else if deleted > 0 {
-			level.Info(userLogger).Log("msg", "deleted files under "+PartitionedGroupDirectory+" for tenant marked for deletion", "count", deleted)
+			level.Info(userLogger).Log("msg", "deleted files under "+PartitionedGroupDirectory+" for tenant marked for deletion", "count", deleted, "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 		}
 	}
 	return nil
@@ -541,7 +560,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		if returnErr != nil {
 			level.Warn(userLogger).Log("msg", "failed blocks cleanup and maintenance", "err", returnErr)
 		} else {
-			level.Info(userLogger).Log("msg", "completed blocks cleanup and maintenance", "duration", time.Since(startTime))
+			level.Info(userLogger).Log("msg", "completed blocks cleanup and maintenance", "duration", time.Since(startTime), "duration_ms", time.Since(startTime).Milliseconds())
 		}
 		c.tenantCleanDuration.WithLabelValues(userID).Set(time.Since(startTime).Seconds())
 	}()

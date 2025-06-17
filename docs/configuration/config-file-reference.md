@@ -1969,6 +1969,10 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes
     [bucket_index_max_size_bytes: <int> | default = 1048576]
 
+    # How long to cache list of partitioned groups for an user.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.partitioned-groups-list-ttl
+    [partitioned_groups_list_ttl: <duration> | default = 5m]
+
   # Maximum number of entries in the regex matchers cache. 0 to disable.
   # CLI flag: -blocks-storage.bucket-store.matchers-cache-max-items
   [matchers_cache_max_items: <int> | default = 0]

@@ -1,0 +1,39 @@
+schemaVersion: 2.0
+timeout: 30
+checkout:
+  submodules:
+    skip: true
+radar:
+  annotate: true
+pipelines:
+  - group: primary
+    branchRules:
+      includePatterns:
+        - master
+        - release-.*
+    build:
+      template: freestyle:v4:publish
+      steps:
+        - touch build-image/.uptodate
+        - ./scripts/build.sh
+    machine:
+      baseImage: docker.apple.com/base-images/ubi9/go1.22-builder
+      env:
+        TARGETARCH: arm64
+    package:
+      release: true
+      version: "$(./scripts/version.sh)"
+      dockerfile:
+        - dockerfilePath: cmd/cortex/Dockerfile
+          context: cmd/cortex
+          perApplication: false
+          extraTags:
+            - "$(./scripts/version.sh)"
+          publish:
+            - repo: docker.apple.com/o11y-cortexproject/apple-cortex
+    finally:
+      tag:
+        expression: "$(./scripts/version.sh)"
+      notify:
+        commitStatus:
+          enabled: true

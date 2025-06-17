@@ -351,7 +351,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		# TYPE cortex_bucket_parquet_blocks_count gauge
 		cortex_bucket_parquet_blocks_count{user="user-5"} 0
 		cortex_bucket_parquet_blocks_count{user="user-6"} 1
-		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of parquet blocks in the bucket. Blocks marked for deletion are included.
+		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.
 		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
 		cortex_bucket_parquet_unconverted_blocks_count{user="user-5"} 0
 		cortex_bucket_parquet_unconverted_blocks_count{user="user-6"} 0
@@ -1121,7 +1121,7 @@ func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
 	`)))
 
 	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetUnConvertedBlocks, strings.NewReader(`
-		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of parquet blocks in the bucket. Blocks marked for deletion are included.
+		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.
 		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
 		cortex_bucket_parquet_unconverted_blocks_count{user="user1"} 2
 	`)))

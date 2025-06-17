@@ -165,7 +165,7 @@ func NewBlocksCleaner(
 		}, commonLabels),
 		tenantParquetUnConvertedBlocks: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_parquet_unconverted_blocks_count",
-			Help: "Total number of parquet blocks in the bucket. Blocks marked for deletion are included.",
+			Help: "Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.",
 		}, commonLabels),
 		tenantBlocksMarkedForDelete: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_marked_for_deletion_count",

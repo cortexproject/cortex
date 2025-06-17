@@ -240,9 +240,6 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 	}
 
 	key := s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-	}
 
 	var (
 		extents  []tripperware.Extent

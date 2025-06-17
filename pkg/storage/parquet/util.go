@@ -18,6 +18,12 @@ func getBlockTimeRange(mint, maxt int64, timeRanges []int64) int64 {
 			break
 		}
 	}
+	// If the block range is too big and cannot fit any configured time range, just fallback to the final time range.
+	// This might not be accurate but should be good enough to decide if we want to convert the block to Parquet.
+	// For this to work, at least 2 block ranges are required.
+	if len(timeRanges) > 0 && timeRange == int64(0) {
+		return timeRanges[len(timeRanges)-1]
+	}
 	return timeRange
 }
 

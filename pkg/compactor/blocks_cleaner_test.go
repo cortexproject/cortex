@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 type testBlocksCleanerOptions struct {
@@ -969,7 +970,6 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	block2DeletionMarkerExists, err := userBucket.Exists(ctx, path.Join(block2.String(), metadata.DeletionMarkFilename))
 	require.NoError(t, err)
 	require.False(t, block2DeletionMarkerExists)
-
 }
 
 func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
@@ -1125,6 +1125,130 @@ func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
 		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
 		cortex_bucket_parquet_unconverted_blocks_count{user="user1"} 2
 	`)))
+}
+
+func TestBlocksCleaner_EmitUserMetrics(t *testing.T) {
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      time.Hour,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+		ShardingStrategy:   util.ShardingStrategyShuffle,
+		CompactionStrategy: util.CompactionStrategyPartitioning,
+	}
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	registry := prometheus.NewPedanticRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, registry)
+	require.NoError(t, err)
+	cfgProvider := newMockConfigProvider()
+	dummyCounterVec := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"test"})
+	remainingPlannedCompactions := promauto.With(registry).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_compactor_remaining_planned_compactions",
+		Help: "Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy",
+	}, commonLabels)
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 15*time.Minute, cfgProvider, logger, "test-cleaner", registry, time.Minute, 30*time.Second, dummyCounterVec, remainingPlannedCompactions)
+
+	ts := func(hours int) int64 {
+		return time.Now().Add(time.Duration(hours)*time.Hour).Unix() * 1000
+	}
+
+	userID := "user-1"
+	partitionedGroupID := uint32(123)
+	partitionCount := 5
+	startTime := ts(-10)
+	endTime := ts(-8)
+	userBucket := bucket.NewUserBucketClient(userID, bucketClient, cfgProvider)
+	partitionedGroupInfo := PartitionedGroupInfo{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionCount:     partitionCount,
+		Partitions: []Partition{
+			{
+				PartitionID: 0,
+			},
+			{
+				PartitionID: 1,
+			},
+			{
+				PartitionID: 2,
+			},
+			{
+				PartitionID: 3,
+			},
+			{
+				PartitionID: 4,
+			},
+		},
+		RangeStart:   startTime,
+		RangeEnd:     endTime,
+		CreationTime: time.Now().Add(-1 * time.Hour).Unix(),
+		Version:      PartitionedGroupInfoVersion1,
+	}
+	_, err = UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo)
+	require.NoError(t, err)
+
+	//InProgress with valid VisitTime
+	v0 := &partitionVisitMarker{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionID:        0,
+		Status:             InProgress,
+		VisitTime:          time.Now().Add(-2 * time.Minute).Unix(),
+	}
+	v0Manager := NewVisitMarkerManager(userBucket, logger, "dummy-cleaner", v0)
+	err = v0Manager.updateVisitMarker(ctx)
+	require.NoError(t, err)
+
+	//InProgress with expired VisitTime
+	v1 := &partitionVisitMarker{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionID:        1,
+		Status:             InProgress,
+		VisitTime:          time.Now().Add(-30 * time.Minute).Unix(),
+	}
+	v1Manager := NewVisitMarkerManager(userBucket, logger, "dummy-cleaner", v1)
+	err = v1Manager.updateVisitMarker(ctx)
+	require.NoError(t, err)
+
+	//V2 and V3 are pending
+	//V4 is completed
+	v4 := &partitionVisitMarker{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionID:        4,
+		Status:             Completed,
+		VisitTime:          time.Now().Add(-20 * time.Minute).Unix(),
+	}
+	v4Manager := NewVisitMarkerManager(userBucket, logger, "dummy-cleaner", v4)
+	err = v4Manager.updateVisitMarker(ctx)
+	require.NoError(t, err)
+
+	cleaner.emitUserMetrics(ctx, logger, userBucket, userID)
+
+	metricNames := []string{
+		"cortex_compactor_remaining_planned_compactions",
+		"cortex_compactor_in_progress_compactions",
+		"cortex_compactor_oldest_partition_offset",
+	}
+
+	// Check tracked Prometheus metrics
+	expectedMetrics := `
+        # HELP cortex_compactor_in_progress_compactions Total number of in progress compactions. Only available with shuffle-sharding strategy and partitioning compaction strategy
+		# TYPE cortex_compactor_in_progress_compactions gauge
+		cortex_compactor_in_progress_compactions{user="user-1"} 1
+		# HELP cortex_compactor_oldest_partition_offset Time in seconds between now and the oldest created partition group not completed. Only available with shuffle-sharding strategy and partitioning compaction strategy
+		# TYPE cortex_compactor_oldest_partition_offset gauge
+		cortex_compactor_oldest_partition_offset{user="user-1"} 3600
+        # HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
+		# TYPE cortex_compactor_remaining_planned_compactions gauge
+		cortex_compactor_remaining_planned_compactions{user="user-1"} 3
+	`
+
+	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
 }
 
 type mockConfigProvider struct {

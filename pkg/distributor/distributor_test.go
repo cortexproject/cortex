@@ -351,13 +351,13 @@ func TestDistributor_Push(t *testing.T) {
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 25
 			`,
 		},
-		"A push not exceeding burst size but  exceeding nativeHistograms burst size should fail, histograms": {
+		"A push not exceeding burst size but  exceeding native histograms burst size should fail, histograms": {
 			numIngesters:     3,
 			happyIngesters:   3,
 			samples:          samplesIn{num: 15, startTimestampMs: 123456789000},
 			histogramSamples: true,
 			metadata:         5,
-			expectedError:    httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (10) exceeded while adding 15 samples and 5 metadata"),
+			expectedError:    httpgrpc.Errorf(http.StatusTooManyRequests, "native histograms ingestion rate limit (10) exceeded while adding 15 samples and 5 metadata"),
 			metricNames:      []string{lastSeenTimestamp, distributorReceivedSamples},
 		},
 	} {
@@ -720,9 +720,9 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 			pushes: []testPush{
 				{samples: 2, expectedError: nil},
 				{metadata: 1, expectedError: nil},
-				{samples: 4, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (5) exceeded while adding 4 samples and 0 metadata")},
+				{samples: 4, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "native histograms ingestion rate limit (5) exceeded while adding 4 samples and 0 metadata")},
 				{samples: 2, metadata: 1, expectedError: nil},
-				{samples: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (5) exceeded while adding 3 samples and 0 metadata")},
+				{samples: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "native histograms ingestion rate limit (5) exceeded while adding 3 samples and 0 metadata")},
 				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 0 samples and 1 metadata")},
 			},
 		},
@@ -735,9 +735,9 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 			nativeHistogramsIngestionBurstSize: 3,
 			pushes: []testPush{
 				{samples: 2, expectedError: nil},
-				{samples: 2, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (3) exceeded while adding 2 samples and 1 metadata")},
+				{samples: 2, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "native histograms ingestion rate limit (3) exceeded while adding 2 samples and 1 metadata")},
 				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples and 0 metadata")},
-				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (3) exceeded while adding 1 samples and 0 metadata")},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "native histograms ingestion rate limit (3) exceeded while adding 1 samples and 0 metadata")},
 			},
 		},
 		"global strategy: burst should set to each distributor: histograms": {
@@ -750,9 +750,9 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 			pushes: []testPush{
 				{samples: 3, expectedError: nil},
 				{samples: 1, expectedError: nil},
-				{samples: 7, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (3) exceeded while adding 7 samples and 1 metadata")},
+				{samples: 7, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "native histograms ingestion rate limit (3) exceeded while adding 7 samples and 1 metadata")},
 				{samples: 5, expectedError: nil},
-				{samples: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (3) exceeded while adding 3 samples and 0 metadata")},
+				{samples: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "native histograms ingestion rate limit (3) exceeded while adding 3 samples and 0 metadata")},
 				{metadata: 12, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 0 samples and 12 metadata")},
 			},
 		},

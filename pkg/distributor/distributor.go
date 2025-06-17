@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -782,7 +783,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	totalN := totalSamples + validatedExemplars + len(validatedMetadata)
 
 	nhRateLimited := false
-	if limits.NativeHistogramsIngestionRate > 0 && limits.NativeHistogramsIngestionBurstSize > 0 {
+	if limits.NativeHistogramsIngestionRate != math.MaxFloat64 {
 		nhRateLimited = !d.nativeHistogramsIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples)
 	}
 	rateLimited := !d.ingestionRateLimiter.AllowN(now, userID, totalN)
@@ -797,7 +798,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(validatedExemplars))
 		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(len(validatedMetadata)))
 
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "nativeHistograms ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.nativeHistogramsIngestionRateLimiter.Limit(now, userID), totalSamples, len(validatedMetadata))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "native histograms ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.nativeHistogramsIngestionRateLimiter.Limit(now, userID), totalSamples, len(validatedMetadata))
 	}
 	if rateLimited {
 		// Ensure the request slice is reused if the request is rate limited.

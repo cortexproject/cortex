@@ -1,7 +1,6 @@
-FROM       alpine:3.19
+FROM       docker.apple.com/base-images/ubi9-micro/ubi-micro
 ARG TARGETARCH
 
-RUN        apk add --no-cache ca-certificates
 COPY       migrations /migrations/
 COPY       cortex-$TARGETARCH /bin/cortex
 EXPOSE     80

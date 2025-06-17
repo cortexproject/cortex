@@ -827,7 +827,6 @@ func (c *BlocksCleaner) emitUserMetrics(ctx context.Context, userLogger log.Logg
 
 	remainingCompactions := 0
 	inProgressCompactions := 0
-	completedCompaction := 0
 	var oldestPartitionGroup *PartitionedGroupInfo
 	defer func() {
 		c.remainingPlannedCompactions.WithLabelValues(userID).Set(float64(remainingCompactions))
@@ -846,9 +845,6 @@ func (c *BlocksCleaner) emitUserMetrics(ctx context.Context, userLogger log.Logg
 		inProgressCompactions += extraInfo.status.InProgressPartitions
 		if oldestPartitionGroup == nil || partitionedGroupInfo.CreationTime < oldestPartitionGroup.CreationTime {
 			oldestPartitionGroup = partitionedGroupInfo
-		}
-		if extraInfo.status.IsCompleted {
-			completedCompaction += len(partitionedGroupInfo.Partitions)
 		}
 	}
 }

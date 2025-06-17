@@ -243,6 +243,15 @@ func (c *BlocksCleaner) loop(ctx context.Context) error {
 	go func() {
 		c.runDeleteUserCleanup(ctx, deleteChan)
 	}()
+	var metricsChan chan *cleanerJob
+	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle &&
+		c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
+		metricsChan = make(chan *cleanerJob)
+		defer close(metricsChan)
+		go func() {
+			c.runEmitMetricsWorker(ctx, metricsChan)
+		}()
+	}
 
 	for {
 		select {
@@ -276,6 +285,17 @@ func (c *BlocksCleaner) loop(ctx context.Context) error {
 				c.enqueueJobFailed.WithLabelValues(deletedStatus).Inc()
 			}
 
+			if metricsChan != nil {
+				select {
+				case metricsChan <- &cleanerJob{
+					users:     activeUsers,
+					timestamp: cleanJobTimestamp,
+				}:
+				default:
+					level.Warn(c.logger).Log("msg", "unable to push metrics job to metricsChan")
+				}
+			}
+
 		case <-ctx.Done():
 			return nil
 		}
@@ -295,10 +315,25 @@ func (c *BlocksCleaner) checkRunError(runType string, err error) {
 	}
 }
 
-func (c *BlocksCleaner) runActiveUserCleanup(ctx context.Context, jobChan chan *cleanerJob) {
+func (c *BlocksCleaner) runEmitMetricsWorker(ctx context.Context, jobChan <-chan *cleanerJob) {
+	for job := range jobChan {
+		err := concurrency.ForEachUser(ctx, job.users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
+			userLogger := util_log.WithUserID(userID, c.logger)
+			userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
+			c.emitUserMetrics(ctx, userLogger, userBucket, userID)
+			return nil
+		})
+
+		if err != nil {
+			level.Error(c.logger).Log("msg", "emit metrics failed", "err", err.Error())
+		}
+	}
+}
+
+func (c *BlocksCleaner) runActiveUserCleanup(ctx context.Context, jobChan <-chan *cleanerJob) {
 	for job := range jobChan {
 		if job.timestamp < time.Now().Add(-c.cfg.CleanupInterval).Unix() {
-			level.Warn(c.logger).Log("Active user cleaner job too old. Ignoring to get recent data")
+			level.Warn(c.logger).Log("msg", "Active user cleaner job too old. Ignoring to get recent data")
 			continue
 		}
 		err := c.cleanUpActiveUsers(ctx, job.users, false)
@@ -746,59 +781,14 @@ func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, 
 }
 
 func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, userID string) {
-	existentPartitionedGroupInfo := make(map[*PartitionedGroupInfo]struct {
-		path   string
-		status PartitionedGroupStatus
-	})
-	err := userBucket.Iter(ctx, PartitionedGroupDirectory, func(file string) error {
-		if strings.Contains(file, PartitionVisitMarkerDirectory) {
-			return nil
-		}
-		partitionedGroupInfo, err := ReadPartitionedGroupInfoFile(ctx, userBucket, userLogger, file)
-		if err != nil {
-			level.Warn(userLogger).Log("msg", "failed to read partitioned group info", "partitioned_group_info", file)
-			return nil
-		}
-
-		status := partitionedGroupInfo.getPartitionedGroupStatus(ctx, userBucket, c.compactionVisitMarkerTimeout, userLogger)
-		level.Debug(userLogger).Log("msg", "got partitioned group status", "partitioned_group_status", status.String())
-		existentPartitionedGroupInfo[partitionedGroupInfo] = struct {
-			path   string
-			status PartitionedGroupStatus
-		}{
-			path:   file,
-			status: status,
-		}
-		return nil
-	})
-
+	err, existentPartitionedGroupInfo := c.iterPartitionGroups(ctx, userBucket, userLogger)
 	if err != nil {
 		level.Warn(userLogger).Log("msg", "error return when going through partitioned group directory", "err", err)
 	}
 
-	remainingCompactions := 0
-	inProgressCompactions := 0
-	var oldestPartitionGroup *PartitionedGroupInfo
-	defer func() {
-		c.remainingPlannedCompactions.WithLabelValues(userID).Set(float64(remainingCompactions))
-		c.inProgressCompactions.WithLabelValues(userID).Set(float64(inProgressCompactions))
-		if c.oldestPartitionGroupOffset != nil {
-			if oldestPartitionGroup != nil {
-				c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(float64(time.Now().Unix() - oldestPartitionGroup.CreationTime))
-				level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTime)
-			} else {
-				c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(0)
-			}
-		}
-	}()
 	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {
 		partitionedGroupInfoFile := extraInfo.path
 
-		remainingCompactions += extraInfo.status.PendingPartitions
-		inProgressCompactions += extraInfo.status.InProgressPartitions
-		if oldestPartitionGroup == nil || partitionedGroupInfo.CreationTime < oldestPartitionGroup.CreationTime {
-			oldestPartitionGroup = partitionedGroupInfo
-		}
 		if extraInfo.status.CanDelete {
 			if extraInfo.status.IsCompleted {
 				// Try to remove all blocks included in partitioned group info
@@ -827,6 +817,72 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 			}
 		}
 	}
+}
+
+func (c *BlocksCleaner) emitUserMetrics(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) {
+	err, existentPartitionedGroupInfo := c.iterPartitionGroups(ctx, userBucket, userLogger)
+	if err != nil {
+		level.Warn(userLogger).Log("msg", "error return when going through partitioned group directory", "err", err)
+	}
+
+	remainingCompactions := 0
+	inProgressCompactions := 0
+	completedCompaction := 0
+	var oldestPartitionGroup *PartitionedGroupInfo
+	defer func() {
+		c.remainingPlannedCompactions.WithLabelValues(userID).Set(float64(remainingCompactions))
+		c.inProgressCompactions.WithLabelValues(userID).Set(float64(inProgressCompactions))
+		if c.oldestPartitionGroupOffset != nil {
+			if oldestPartitionGroup != nil {
+				c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(float64(time.Now().Unix() - oldestPartitionGroup.CreationTime))
+				level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTime)
+			} else {
+				c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(0)
+			}
+		}
+	}()
+	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {
+		remainingCompactions += extraInfo.status.PendingPartitions
+		inProgressCompactions += extraInfo.status.InProgressPartitions
+		if oldestPartitionGroup == nil || partitionedGroupInfo.CreationTime < oldestPartitionGroup.CreationTime {
+			oldestPartitionGroup = partitionedGroupInfo
+		}
+		if extraInfo.status.IsCompleted {
+			completedCompaction += len(partitionedGroupInfo.Partitions)
+		}
+	}
+}
+
+func (c *BlocksCleaner) iterPartitionGroups(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger) (error, map[*PartitionedGroupInfo]struct {
+	path   string
+	status PartitionedGroupStatus
+}) {
+	existentPartitionedGroupInfo := make(map[*PartitionedGroupInfo]struct {
+		path   string
+		status PartitionedGroupStatus
+	})
+	err := userBucket.Iter(ctx, PartitionedGroupDirectory, func(file string) error {
+		if strings.Contains(file, PartitionVisitMarkerDirectory) {
+			return nil
+		}
+		partitionedGroupInfo, err := ReadPartitionedGroupInfoFile(ctx, userBucket, userLogger, file)
+		if err != nil {
+			level.Warn(userLogger).Log("msg", "failed to read partitioned group info", "partitioned_group_info", file)
+			return nil
+		}
+
+		status := partitionedGroupInfo.getPartitionedGroupStatus(ctx, userBucket, c.compactionVisitMarkerTimeout, userLogger)
+		level.Debug(userLogger).Log("msg", "got partitioned group status", "partitioned_group_status", status.String())
+		existentPartitionedGroupInfo[partitionedGroupInfo] = struct {
+			path   string
+			status PartitionedGroupStatus
+		}{
+			path:   file,
+			status: status,
+		}
+		return nil
+	})
+	return err, existentPartitionedGroupInfo
 }
 
 // cleanUserPartialBlocks delete partial blocks which are safe to be deleted. The provided partials map

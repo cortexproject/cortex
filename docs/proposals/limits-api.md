@@ -26,7 +26,7 @@ This manual process is time-consuming, error-prone, and doesn't scale well with 
 
 ### Endpoints
 
-#### 1. GET /api/v1/limits/{tenant_id}
+#### 1. GET /api/v1/user-limits
 Returns the current limits configuration for a specific tenant.
 
 Response format:
@@ -40,7 +40,7 @@ Response format:
 }
 ```
 
-#### 2. PUT /api/v1/limits/{tenant_id}
+#### 2. PUT /api/v1/user-limits
 Updates limits for a specific tenant. The request body should contain only the limits that need to be updated.
 
 Request body:
@@ -51,7 +51,7 @@ Request body:
 }
 ```
 
-#### 3. DELETE /api/v1/limits/{tenant_id}
+#### 3. DELETE /api/v1/user-limits
 Removes tenant-specific limits, reverting to default limits.
 
 ### Implementation Details

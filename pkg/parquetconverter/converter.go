@@ -34,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -209,8 +210,10 @@ func (c *Converter) running(ctx context.Context) error {
 
 				var ring ring.ReadRing
 				ring = c.ring
-				if c.limits.ParquetConverterTenantShardSize(userID) > 0 {
-					ring = c.ring.ShuffleShard(userID, c.limits.ParquetConverterTenantShardSize(userID))
+				shardSize := c.limits.ParquetConverterTenantShardSize(userID)
+				if shardSize > 0 {
+					dynamicShardSize := util.DynamicShardSize(c.limits.ParquetConverterTenantShardSize(userID), ring.InstancesCount())
+					ring = c.ring.ShuffleShard(userID, dynamicShardSize)
 				}
 
 				userLogger := util_log.WithUserID(userID, c.logger)

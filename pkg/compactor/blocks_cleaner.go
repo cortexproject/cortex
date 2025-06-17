@@ -781,7 +781,7 @@ func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, 
 }
 
 func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, userID string) {
-	err, existentPartitionedGroupInfo := c.iterPartitionGroups(ctx, userBucket, userLogger)
+	existentPartitionedGroupInfo, err := c.iterPartitionGroups(ctx, userBucket, userLogger)
 	if err != nil {
 		level.Warn(userLogger).Log("msg", "error return when going through partitioned group directory", "err", err)
 	}
@@ -820,7 +820,7 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 }
 
 func (c *BlocksCleaner) emitUserMetrics(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) {
-	err, existentPartitionedGroupInfo := c.iterPartitionGroups(ctx, userBucket, userLogger)
+	existentPartitionedGroupInfo, err := c.iterPartitionGroups(ctx, userBucket, userLogger)
 	if err != nil {
 		level.Warn(userLogger).Log("msg", "error return when going through partitioned group directory", "err", err)
 	}
@@ -849,10 +849,10 @@ func (c *BlocksCleaner) emitUserMetrics(ctx context.Context, userLogger log.Logg
 	}
 }
 
-func (c *BlocksCleaner) iterPartitionGroups(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger) (error, map[*PartitionedGroupInfo]struct {
+func (c *BlocksCleaner) iterPartitionGroups(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger) (map[*PartitionedGroupInfo]struct {
 	path   string
 	status PartitionedGroupStatus
-}) {
+}, error) {
 	existentPartitionedGroupInfo := make(map[*PartitionedGroupInfo]struct {
 		path   string
 		status PartitionedGroupStatus
@@ -878,7 +878,7 @@ func (c *BlocksCleaner) iterPartitionGroups(ctx context.Context, userBucket objs
 		}
 		return nil
 	})
-	return err, existentPartitionedGroupInfo
+	return existentPartitionedGroupInfo, err
 }
 
 // cleanUserPartialBlocks delete partial blocks which are safe to be deleted. The provided partials map

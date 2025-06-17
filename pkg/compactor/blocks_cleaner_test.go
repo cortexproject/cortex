@@ -28,7 +28,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 type testBlocksCleanerOptions struct {
@@ -1248,7 +1247,7 @@ func TestBlocksCleaner_EmitUserMetrics(t *testing.T) {
 		cortex_compactor_remaining_planned_compactions{user="user-1"} 3
 	`
 
-	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
 }
 
 type mockConfigProvider struct {

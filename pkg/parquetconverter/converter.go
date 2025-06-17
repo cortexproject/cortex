@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"math/rand"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -201,6 +202,9 @@ func (c *Converter) running(ctx context.Context) error {
 			})
 
 			for _, userID := range users {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
 				if !c.limits.ParquetConverterEnabled(userID) {
 					// It is possible that parquet is disabled for the userID so we
 					// need to check if the user was owned last time.
@@ -239,8 +243,10 @@ func (c *Converter) running(ctx context.Context) error {
 
 				ownedUsers[userID] = struct{}{}
 
-				err = c.convertUser(ctx, userLogger, ring, userID)
-				if err != nil {
+				if err = c.convertUser(ctx, userLogger, ring, userID); err != nil {
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
 					level.Error(userLogger).Log("msg", "failed to convert user", "err", err)
 				}
 			}
@@ -356,6 +362,9 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 	})
 
 	for _, b := range blocks {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		ok, err := c.ownBlock(ring, b.ULID.String())
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to get own block", "block", b.ULID.String(), "err", err)
@@ -376,13 +385,15 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		// Do not convert 2 hours blocks
-		if getBlockTimeRange(b, c.blockRanges) == c.blockRanges[0] {
+		if !cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, c.blockRanges) {
 			continue
 		}
 
 		if err := os.RemoveAll(c.compactRootDir()); err != nil {
 			level.Error(logger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
+			}
 			continue
 		}
 
@@ -391,13 +402,19 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		level.Info(logger).Log("msg", "downloading block", "block", b.ULID.String(), "dir", bdir)
 
 		if err := block.Download(ctx, logger, uBucket, b.ULID, bdir, objstore.WithFetchConcurrency(10)); err != nil {
-			level.Error(logger).Log("msg", "Error downloading block", "err", err)
+			level.Error(logger).Log("msg", "failed to download block", "block", b.ULID.String(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
+			}
 			continue
 		}
 
 		tsdbBlock, err := tsdb.OpenBlock(logutil.GoKitLogToSlog(logger), bdir, c.pool, tsdb.DefaultPostingsDecoderFactory)
 		if err != nil {
-			level.Error(logger).Log("msg", "Error opening block", "err", err)
+			level.Error(logger).Log("msg", "failed to open block", "block", b.ULID.String(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
+			}
 			continue
 		}
 
@@ -422,7 +439,10 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		_ = tsdbBlock.Close()
 
 		if err != nil {
-			level.Error(logger).Log("msg", "Error converting block", "block", b.ULID.String(), "err", err)
+			level.Error(logger).Log("msg", "failed to convert block", "block", b.ULID.String(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
+			}
 			continue
 		}
 		duration := time.Since(start)
@@ -430,13 +450,36 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		level.Info(logger).Log("msg", "successfully converted block", "block", b.ULID.String(), "duration", duration)
 
 		if err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket); err != nil {
-			level.Error(logger).Log("msg", "Error writing block", "block", b.ULID.String(), "err", err)
+			level.Error(logger).Log("msg", "failed to write parquet converter marker", "block", b.ULID.String(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
+			}
 			continue
 		}
+		duration = time.Since(start)
+		level.Info(logger).Log("msg", "successfully uploaded parquet converter marker", "block", b.ULID.String(), "duration", duration)
+
 		c.metrics.convertedBlocks.WithLabelValues(userID).Inc()
+		metaAttrs, err := uBucket.Attributes(ctx, path.Join(b.ULID.String(), metadata.MetaFilename))
+		if err != nil {
+			// Don't check convert error as attributes call is not really part of the convert process.
+			level.Error(logger).Log("msg", "failed to get block meta attributes", "block", b.ULID.String(), "err", err)
+			continue
+		}
+		delayMinutes := time.Since(metaAttrs.LastModified).Minutes()
+		c.metrics.convertParquetBlockDelay.Observe(delayMinutes)
 	}
 
 	return nil
+}
+
+func (c *Converter) checkConvertError(userID string, err error) (terminate bool) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		terminate = true
+	} else {
+		c.metrics.convertBlockFailures.WithLabelValues(userID).Inc()
+	}
+	return
 }
 
 func (c *Converter) ownUser(r ring.ReadRing, userId string) (bool, error) {
@@ -511,30 +554,4 @@ func (c *Converter) listTenantsWithMetaSyncDirectories() map[string]struct{} {
 	}
 
 	return result
-}
-
-func getBlockTimeRange(b *metadata.Meta, timeRanges []int64) int64 {
-	timeRange := int64(0)
-	// fallback logic to guess block time range based
-	// on MaxTime and MinTime
-	blockRange := b.MaxTime - b.MinTime
-	for _, tr := range timeRanges {
-		rangeStart := getRangeStart(b.MinTime, tr)
-		rangeEnd := rangeStart + tr
-		if tr >= blockRange && rangeEnd >= b.MaxTime {
-			timeRange = tr
-			break
-		}
-	}
-	return timeRange
-}
-
-func getRangeStart(mint, tr int64) int64 {
-	// Compute start of aligned time range of size tr closest to the current block's start.
-	// This code has been copied from TSDB.
-	if mint >= 0 {
-		return tr * (mint / tr)
-	}
-
-	return tr * ((mint - tr + 1) / tr)
 }

@@ -80,6 +80,7 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	logger := log.NewNopLogger()
@@ -182,6 +183,8 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 
 	// Create Parquet marker
 	block13 := createTSDBBlock(t, bucketClient, "user-6", 30, 50, nil)
+	// This block should be converted to Parquet format so counted as remaining.
+	block14 := createTSDBBlock(t, bucketClient, "user-6", 30, 50, nil)
 	createParquetMarker(t, bucketClient, "user-6", block13)
 
 	// The fixtures have been created. If the bucket client wasn't wrapped to write
@@ -196,6 +199,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		CleanupConcurrency:                 options.concurrency,
 		BlockDeletionMarksMigrationEnabled: options.markersMigrationEnabled,
 		TenantCleanupDelay:                 options.tenantDeletionDelay,
+		BlockRanges:                        (&tsdb.DurationList{2 * time.Hour}).ToMilliseconds(),
 	}
 
 	reg := prometheus.NewPedanticRegistry()
@@ -251,6 +255,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		{path: path.Join("user-3", block10.String(), parquet.ConverterMarkerFileName), expectedExists: false},
 		{path: path.Join("user-4", block.DebugMetas, "meta.json"), expectedExists: options.user4FilesExist},
 		{path: path.Join("user-6", block13.String(), parquet.ConverterMarkerFileName), expectedExists: true},
+		{path: path.Join("user-6", block14.String(), parquet.ConverterMarkerFileName), expectedExists: false},
 	} {
 		exists, err := bucketClient.Exists(ctx, tc.path)
 		require.NoError(t, err)
@@ -296,6 +301,11 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		}, {
 			userID:        "user-3",
 			expectedIndex: false,
+		}, {
+			userID:         "user-6",
+			expectedIndex:  true,
+			expectedBlocks: []ulid.ULID{block13, block14},
+			expectedMarks:  []ulid.ULID{},
 		},
 	} {
 		idx, err := bucketindex.ReadIndex(ctx, bucketClient, tc.userID, nil, logger)
@@ -318,7 +328,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		cortex_bucket_blocks_count{user="user-1"} 2
 		cortex_bucket_blocks_count{user="user-2"} 1
 		cortex_bucket_blocks_count{user="user-5"} 2
-		cortex_bucket_blocks_count{user="user-6"} 1
+		cortex_bucket_blocks_count{user="user-6"} 2
 		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
@@ -341,9 +351,14 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		# TYPE cortex_bucket_parquet_blocks_count gauge
 		cortex_bucket_parquet_blocks_count{user="user-5"} 0
 		cortex_bucket_parquet_blocks_count{user="user-6"} 1
+		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
+		cortex_bucket_parquet_unconverted_blocks_count{user="user-5"} 0
+		cortex_bucket_parquet_unconverted_blocks_count{user="user-6"} 0
 	`),
 		"cortex_bucket_blocks_count",
 		"cortex_bucket_parquet_blocks_count",
+		"cortex_bucket_parquet_unconverted_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
 		"cortex_bucket_blocks_marked_for_no_compaction_count",
 		"cortex_bucket_blocks_partials_count",
@@ -378,6 +393,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	logger := log.NewNopLogger()
@@ -447,6 +463,7 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	logger := log.NewNopLogger()
@@ -508,6 +525,7 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 		DeletionDelay:      time.Hour,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
@@ -657,6 +675,7 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 		DeletionDelay:      time.Hour,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
@@ -889,6 +908,7 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 		CleanupConcurrency: 1,
 		ShardingStrategy:   util.ShardingStrategyShuffle,
 		CompactionStrategy: util.CompactionStrategyPartitioning,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
@@ -964,6 +984,7 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 		CleanupConcurrency: 1,
 		ShardingStrategy:   util.ShardingStrategyShuffle,
 		CompactionStrategy: util.CompactionStrategyPartitioning,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
@@ -1019,6 +1040,91 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 
 	_, err = userBucket.WithExpectedErrs(userBucket.IsObjNotFoundErr).Get(ctx, partitionedGroupFile)
 	require.True(t, userBucket.IsObjNotFoundErr(err))
+}
+
+func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
+	// Create metrics
+	reg := prometheus.NewPedanticRegistry()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cortex_compactor_blocks_marked_for_deletion_total",
+			Help: "Total number of blocks marked for deletion in compactor.",
+		},
+		[]string{"user", "reason"},
+	)
+	remainingPlannedCompactions := promauto.With(reg).NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cortex_compactor_remaining_planned_compactions",
+			Help: "Total number of remaining planned compactions.",
+		},
+		[]string{"user"},
+	)
+
+	// Create the blocks cleaner
+	cleaner := NewBlocksCleaner(
+		BlocksCleanerConfig{
+			BlockRanges: (&tsdb.DurationList{
+				2 * time.Hour,
+				12 * time.Hour,
+			}).ToMilliseconds(),
+		},
+		nil, // bucket not needed
+		nil, // usersScanner not needed
+		0,
+		&mockConfigProvider{
+			parquetConverterEnabled: map[string]bool{
+				"user1": true,
+			},
+		},
+		log.NewNopLogger(),
+		"test",
+		reg,
+		0,
+		0,
+		blocksMarkedForDeletion,
+		remainingPlannedCompactions,
+	)
+
+	// Create test blocks in the index
+	now := time.Now()
+	idx := &bucketindex.Index{
+		Blocks: bucketindex.Blocks{
+			{
+				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
+				MinTime: now.Add(-3 * time.Hour).UnixMilli(),
+				MaxTime: now.UnixMilli(),
+				Parquet: &parquet.ConverterMarkMeta{},
+			},
+			{
+				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
+				MinTime: now.Add(-3 * time.Hour).UnixMilli(),
+				MaxTime: now.UnixMilli(),
+				Parquet: nil,
+			},
+			{
+				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
+				MinTime: now.Add(-5 * time.Hour).UnixMilli(),
+				MaxTime: now.UnixMilli(),
+				Parquet: nil,
+			},
+		},
+	}
+
+	// Update metrics
+	cleaner.updateBucketMetrics("user1", true, idx, 0, 0)
+
+	// Verify metrics
+	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetBlocks, strings.NewReader(`
+		# HELP cortex_bucket_parquet_blocks_count Total number of parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_blocks_count gauge
+		cortex_bucket_parquet_blocks_count{user="user1"} 1
+	`)))
+
+	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetUnConvertedBlocks, strings.NewReader(`
+		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
+		cortex_bucket_parquet_unconverted_blocks_count{user="user1"} 2
+	`)))
 }
 
 type mockConfigProvider struct {

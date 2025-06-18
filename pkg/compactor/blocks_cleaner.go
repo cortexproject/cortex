@@ -249,7 +249,7 @@ func (c *BlocksCleaner) loop(ctx context.Context) error {
 		metricsChan = make(chan *cleanerJob)
 		defer close(metricsChan)
 		go func() {
-			c.runEmitMetricsWorker(ctx, metricsChan)
+			c.runEmitPartitionMetricsWorker(ctx, metricsChan)
 		}()
 	}
 
@@ -315,12 +315,12 @@ func (c *BlocksCleaner) checkRunError(runType string, err error) {
 	}
 }
 
-func (c *BlocksCleaner) runEmitMetricsWorker(ctx context.Context, jobChan <-chan *cleanerJob) {
+func (c *BlocksCleaner) runEmitPartitionMetricsWorker(ctx context.Context, jobChan <-chan *cleanerJob) {
 	for job := range jobChan {
 		err := concurrency.ForEachUser(ctx, job.users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 			userLogger := util_log.WithUserID(userID, c.logger)
 			userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
-			c.emitUserMetrics(ctx, userLogger, userBucket, userID)
+			c.emitUserParititionMetrics(ctx, userLogger, userBucket, userID)
 			return nil
 		})
 
@@ -819,10 +819,11 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 	}
 }
 
-func (c *BlocksCleaner) emitUserMetrics(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) {
+func (c *BlocksCleaner) emitUserParititionMetrics(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) {
 	existentPartitionedGroupInfo, err := c.iterPartitionGroups(ctx, userBucket, userLogger)
 	if err != nil {
-		level.Warn(userLogger).Log("msg", "error return when going through partitioned group directory", "err", err)
+		level.Warn(userLogger).Log("msg", "error listing partitioned group directory to emit metrics", "err", err)
+		return
 	}
 
 	remainingCompactions := 0
@@ -831,13 +832,11 @@ func (c *BlocksCleaner) emitUserMetrics(ctx context.Context, userLogger log.Logg
 	defer func() {
 		c.remainingPlannedCompactions.WithLabelValues(userID).Set(float64(remainingCompactions))
 		c.inProgressCompactions.WithLabelValues(userID).Set(float64(inProgressCompactions))
-		if c.oldestPartitionGroupOffset != nil {
-			if oldestPartitionGroup != nil {
-				c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(float64(time.Now().Unix() - oldestPartitionGroup.CreationTime))
-				level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTime)
-			} else {
-				c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(0)
-			}
+		if oldestPartitionGroup != nil {
+			c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(float64(time.Now().Unix() - oldestPartitionGroup.CreationTime))
+			level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTime)
+		} else {
+			c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(0)
 		}
 	}()
 	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {

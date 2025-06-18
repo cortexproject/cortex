@@ -181,7 +181,7 @@ func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix 
 	f.DurationVar(&cfg.BlockIndexAttributesTTL, prefix+"block-index-attributes-ttl", 168*time.Hour, "How long to cache attributes of the block index.")
 	f.DurationVar(&cfg.BucketIndexContentTTL, prefix+"bucket-index-content-ttl", 5*time.Minute, "How long to cache content of the bucket index.")
 	f.IntVar(&cfg.BucketIndexMaxSize, prefix+"bucket-index-max-size-bytes", 1*1024*1024, "Maximum size of bucket index content to cache in bytes. Caching will be skipped if the content exceeds this size. This is useful to avoid network round trip for large content if the configured caching backend has an hard limit on cached items size (in this case, you should set this limit to the same limit in the caching backend).")
-	f.DurationVar(&cfg.PartitionedGroupsListTTL, prefix+"partitioned-groups-list-ttl", 5*time.Minute, "How long to cache list of partitioned groups for an user.")
+	f.DurationVar(&cfg.PartitionedGroupsListTTL, prefix+"partitioned-groups-list-ttl", 0, "How long to cache list of partitioned groups for an user. 0 disables caching")
 }
 
 func (cfg *MetadataCacheConfig) Validate() error {
@@ -262,8 +262,10 @@ func CreateCachingBucketForCompactor(metadataConfig MetadataCacheConfig, cleaner
 			// Cache only GET for metadata and don't cache exists and not exists.
 			cfg.CacheGet("metafile", metadataCache, matchers.GetMetafileMatcher(), metadataConfig.MetafileMaxSize, metadataConfig.MetafileContentTTL, 0, 0)
 
-			//Avoid double iter when running cleanActiveUser and emitUserMetrics
-			cfg.CacheIter("partitioned-groups-iter", metadataCache, matchers.GetPartitionedGroupsIterMatcher(), metadataConfig.PartitionedGroupsListTTL, codec, "")
+			if metadataConfig.PartitionedGroupsListTTL > 0 {
+				//Avoid double iter when running cleanActiveUser and emitUserMetrics
+				cfg.CacheIter("partitioned-groups-iter", metadataCache, matchers.GetPartitionedGroupsIterMatcher(), metadataConfig.PartitionedGroupsListTTL, codec, "")
+			}
 		}
 	}
 

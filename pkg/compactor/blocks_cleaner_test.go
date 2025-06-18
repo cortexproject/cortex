@@ -1226,7 +1226,7 @@ func TestBlocksCleaner_EmitUserMetrics(t *testing.T) {
 	err = v4Manager.updateVisitMarker(ctx)
 	require.NoError(t, err)
 
-	cleaner.emitUserMetrics(ctx, logger, userBucket, userID)
+	cleaner.emitUserParititionMetrics(ctx, logger, userBucket, userID)
 
 	metricNames := []string{
 		"cortex_compactor_remaining_planned_compactions",

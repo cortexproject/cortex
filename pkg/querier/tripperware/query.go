@@ -25,7 +25,7 @@ import (
 	"github.com/prometheus/prometheus/util/jsonutil"
 	"github.com/weaveworks/common/httpgrpc"
 
-	_ "github.com/cortexproject/cortex/pkg/chunk" // Register jsoniter type: labels.Labels.
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
@@ -115,7 +115,7 @@ func decodeSampleStream(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		switch field {
 		case "metric":
 			lbls := labels.Labels{}
-			iter.ReadVal(&lbls)
+			chunk.DecodeLabels(unsafe.Pointer(&lbls), iter)
 			ss.Labels = cortexpb.FromLabelsToLabelAdapters(lbls)
 		case "values":
 			for iter.ReadArray() {
@@ -299,7 +299,8 @@ func encodeSampleStream(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	stream.WriteObjectStart()
 
 	stream.WriteObjectField(`metric`)
-	stream.WriteVal(cortexpb.FromLabelAdaptersToLabels(ss.Labels))
+	metric := cortexpb.FromLabelAdaptersToLabels(ss.Labels)
+	chunk.EncodeLabels(unsafe.Pointer(&metric), stream)
 
 	if len(ss.Samples) > 0 {
 		stream.WriteMore()
@@ -336,7 +337,7 @@ func decodeSample(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		switch field {
 		case "metric":
 			lbls := labels.Labels{}
-			iter.ReadVal(&lbls)
+			chunk.DecodeLabels(unsafe.Pointer(&lbls), iter)
 			ss.Labels = cortexpb.FromLabelsToLabelAdapters(lbls)
 		case "value":
 			ss.Sample = &cortexpb.Sample{}
@@ -356,7 +357,8 @@ func encodeSample(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	stream.WriteObjectStart()
 
 	stream.WriteObjectField(`metric`)
-	stream.WriteVal(cortexpb.FromLabelAdaptersToLabels(ss.Labels))
+	metric := cortexpb.FromLabelAdaptersToLabels(ss.Labels)
+	chunk.EncodeLabels(unsafe.Pointer(&metric), stream)
 
 	if ss.Sample != nil {
 		stream.WriteMore()

@@ -46,6 +46,7 @@
 * [ENHANCEMENT] Compactor: Optimize cleaner run time. #6815
 * [ENHANCEMENT] Parquet Storage: Allow percentage based dynamic shard size for Parquet Converter. #6817
 * [ENHANCEMENT] Query Frontend: Enhance the performance of the JSON codec. #6816
+* [ENHANCEMENT] Metadata Cache: Support inmemory and multi level cache backend. #6829
 * [ENHANCEMENT] Store Gateway: Allow to ignore syncing blocks older than certain time using `ignore_blocks_before`. #6830
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573

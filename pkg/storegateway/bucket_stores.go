@@ -549,10 +549,18 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 	fetcherReg := prometheus.NewRegistry()
 
+	filterMinTime := thanos_model.TimeOrDurationValue{}
 	ignoreBlocksBefore := -model.Duration(u.cfg.BucketStore.IgnoreBlocksBefore)
+	if u.cfg.BucketStore.IgnoreBlocksBefore == 0 {
+		t := time.Unix(0, 0)
+		filterMinTime.Time = &t
+	} else {
+		filterMinTime.Dur = &ignoreBlocksBefore
+	}
+
 	// The sharding strategy filter MUST be before the ones we create here (order matters).
 	filters := append([]block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}, []block.MetadataFilter{
-		block.NewTimePartitionMetaFilter(thanos_model.TimeOrDurationValue{Dur: &ignoreBlocksBefore}, thanos_model.TimeOrDurationValue{}),
+		block.NewTimePartitionMetaFilter(filterMinTime, thanos_model.TimeOrDurationValue{}),
 		block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
 		// Use our own custom implementation.
 		NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay, u.cfg.BucketStore.MetaSyncConcurrency),

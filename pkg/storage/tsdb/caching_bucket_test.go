@@ -8,25 +8,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_ChunkCacheBackendValidation(t *testing.T) {
+func Test_BucketCacheBackendValidation(t *testing.T) {
 	tests := map[string]struct {
-		cfg         ChunkCacheBackend
+		cfg         BucketCacheBackend
 		expectedErr error
 	}{
-		"valid chunk cache type ('')": {
-			cfg: ChunkCacheBackend{
+		"valid bucket cache type ('')": {
+			cfg: BucketCacheBackend{
 				Backend: "",
 			},
 			expectedErr: nil,
 		},
-		"valid chunk cache type (in-memory)": {
-			cfg: ChunkCacheBackend{
+		"valid bucket cache type (in-memory)": {
+			cfg: BucketCacheBackend{
 				Backend: CacheBackendInMemory,
 			},
 			expectedErr: nil,
 		},
-		"valid chunk cache type (memcached)": {
-			cfg: ChunkCacheBackend{
+		"valid bucket cache type (memcached)": {
+			cfg: BucketCacheBackend{
 				Backend: CacheBackendMemcached,
 				Memcached: MemcachedClientConfig{
 					Addresses: "dns+localhost:11211",
@@ -34,8 +34,8 @@ func Test_ChunkCacheBackendValidation(t *testing.T) {
 			},
 			expectedErr: nil,
 		},
-		"valid chunk cache type (redis)": {
-			cfg: ChunkCacheBackend{
+		"valid bucket cache type (redis)": {
+			cfg: BucketCacheBackend{
 				Backend: CacheBackendRedis,
 				Redis: RedisClientConfig{
 					Addresses: "localhost:6379",
@@ -43,14 +43,14 @@ func Test_ChunkCacheBackendValidation(t *testing.T) {
 			},
 			expectedErr: nil,
 		},
-		"invalid chunk cache type": {
-			cfg: ChunkCacheBackend{
+		"invalid bucket cache type": {
+			cfg: BucketCacheBackend{
 				Backend: "dummy",
 			},
-			expectedErr: errUnsupportedChunkCacheBackend,
+			expectedErr: errUnsupportedBucketCacheBackend,
 		},
-		"valid multi chunk cache type": {
-			cfg: ChunkCacheBackend{
+		"valid multi bucket cache type": {
+			cfg: BucketCacheBackend{
 				Backend: fmt.Sprintf("%s,%s,%s", CacheBackendInMemory, CacheBackendMemcached, CacheBackendRedis),
 				Memcached: MemcachedClientConfig{
 					Addresses: "dns+localhost:11211",
@@ -58,7 +58,7 @@ func Test_ChunkCacheBackendValidation(t *testing.T) {
 				Redis: RedisClientConfig{
 					Addresses: "localhost:6379",
 				},
-				MultiLevel: MultiLevelChunkCacheConfig{
+				MultiLevel: MultiLevelBucketCacheConfig{
 					MaxAsyncConcurrency: 1,
 					MaxAsyncBufferSize:  1,
 					MaxBackfillItems:    1,
@@ -66,24 +66,24 @@ func Test_ChunkCacheBackendValidation(t *testing.T) {
 			},
 			expectedErr: nil,
 		},
-		"duplicate multi chunk cache type": {
-			cfg: ChunkCacheBackend{
+		"duplicate multi bucket cache type": {
+			cfg: BucketCacheBackend{
 				Backend: fmt.Sprintf("%s,%s", CacheBackendInMemory, CacheBackendInMemory),
-				MultiLevel: MultiLevelChunkCacheConfig{
+				MultiLevel: MultiLevelBucketCacheConfig{
 					MaxAsyncConcurrency: 1,
 					MaxAsyncBufferSize:  1,
 					MaxBackfillItems:    1,
 				},
 			},
-			expectedErr: errDuplicatedChunkCacheBackend,
+			expectedErr: errDuplicatedBucketCacheBackend,
 		},
 		"invalid max async concurrency": {
-			cfg: ChunkCacheBackend{
+			cfg: BucketCacheBackend{
 				Backend: fmt.Sprintf("%s,%s", CacheBackendInMemory, CacheBackendMemcached),
 				Memcached: MemcachedClientConfig{
 					Addresses: "dns+localhost:11211",
 				},
-				MultiLevel: MultiLevelChunkCacheConfig{
+				MultiLevel: MultiLevelBucketCacheConfig{
 					MaxAsyncConcurrency: 0,
 					MaxAsyncBufferSize:  1,
 					MaxBackfillItems:    1,
@@ -92,12 +92,12 @@ func Test_ChunkCacheBackendValidation(t *testing.T) {
 			expectedErr: errInvalidMaxAsyncConcurrency,
 		},
 		"invalid max async buffer size": {
-			cfg: ChunkCacheBackend{
+			cfg: BucketCacheBackend{
 				Backend: fmt.Sprintf("%s,%s", CacheBackendInMemory, CacheBackendMemcached),
 				Memcached: MemcachedClientConfig{
 					Addresses: "dns+localhost:11211",
 				},
-				MultiLevel: MultiLevelChunkCacheConfig{
+				MultiLevel: MultiLevelBucketCacheConfig{
 					MaxAsyncConcurrency: 1,
 					MaxAsyncBufferSize:  0,
 					MaxBackfillItems:    1,
@@ -106,12 +106,12 @@ func Test_ChunkCacheBackendValidation(t *testing.T) {
 			expectedErr: errInvalidMaxAsyncBufferSize,
 		},
 		"invalid max back fill items": {
-			cfg: ChunkCacheBackend{
+			cfg: BucketCacheBackend{
 				Backend: fmt.Sprintf("%s,%s", CacheBackendInMemory, CacheBackendMemcached),
 				Memcached: MemcachedClientConfig{
 					Addresses: "dns+localhost:11211",
 				},
-				MultiLevel: MultiLevelChunkCacheConfig{
+				MultiLevel: MultiLevelBucketCacheConfig{
 					MaxAsyncConcurrency: 1,
 					MaxAsyncBufferSize:  1,
 					MaxBackfillItems:    0,

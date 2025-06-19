@@ -15,12 +15,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
+	thanos_model "github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
@@ -547,8 +549,10 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 	fetcherReg := prometheus.NewRegistry()
 
+	ignoreBlocksBefore := -model.Duration(u.cfg.BucketStore.IgnoreBlocksBefore)
 	// The sharding strategy filter MUST be before the ones we create here (order matters).
 	filters := append([]block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}, []block.MetadataFilter{
+		block.NewTimePartitionMetaFilter(thanos_model.TimeOrDurationValue{Dur: &ignoreBlocksBefore}, thanos_model.TimeOrDurationValue{}),
 		block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
 		// Use our own custom implementation.
 		NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay, u.cfg.BucketStore.MetaSyncConcurrency),

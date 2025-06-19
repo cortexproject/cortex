@@ -549,15 +549,21 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 	fetcherReg := prometheus.NewRegistry()
 
-	filterMinTime := thanos_model.TimeOrDurationValue{}
+	// The sharding strategy filter MUST be before the ones we create here (order matters).
+	filters := []block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}
+
 	if u.cfg.BucketStore.IgnoreBlocksBefore > 0 {
+		// We don't want to filter out any blocks for max time.
+		// Set a positive duration so we can always load blocks till now.
+		// IgnoreBlocksWithin
+		filterMaxTimeDuration := model.Duration(time.Second)
+		filterMinTime := thanos_model.TimeOrDurationValue{}
 		ignoreBlocksBefore := -model.Duration(u.cfg.BucketStore.IgnoreBlocksBefore)
 		filterMinTime.Dur = &ignoreBlocksBefore
+		filters = append(filters, block.NewTimePartitionMetaFilter(filterMinTime, thanos_model.TimeOrDurationValue{Dur: &filterMaxTimeDuration}))
 	}
 
-	// The sharding strategy filter MUST be before the ones we create here (order matters).
-	filters := append([]block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}, []block.MetadataFilter{
-		block.NewTimePartitionMetaFilter(filterMinTime, thanos_model.TimeOrDurationValue{}),
+	filters = append(filters, []block.MetadataFilter{
 		block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
 		// Use our own custom implementation.
 		NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay, u.cfg.BucketStore.MetaSyncConcurrency),

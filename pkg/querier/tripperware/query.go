@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/prometheus/util/jsonutil"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
@@ -113,12 +114,8 @@ func decodeSampleStream(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
 		switch field {
 		case "metric":
-			metricString := iter.ReadAny().ToString()
 			lbls := labels.Labels{}
-			if err := json.UnmarshalFromString(metricString, &lbls); err != nil {
-				iter.ReportError("unmarshal SampleStream", err.Error())
-				return
-			}
+			chunk.DecodeLabels(unsafe.Pointer(&lbls), iter)
 			ss.Labels = cortexpb.FromLabelsToLabelAdapters(lbls)
 		case "values":
 			for iter.ReadArray() {
@@ -302,12 +299,8 @@ func encodeSampleStream(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	stream.WriteObjectStart()
 
 	stream.WriteObjectField(`metric`)
-	lbls, err := cortexpb.FromLabelAdaptersToLabels(ss.Labels).MarshalJSON()
-	if err != nil {
-		stream.Error = err
-		return
-	}
-	stream.SetBuffer(append(stream.Buffer(), lbls...))
+	metric := cortexpb.FromLabelAdaptersToLabels(ss.Labels)
+	chunk.EncodeLabels(unsafe.Pointer(&metric), stream)
 
 	if len(ss.Samples) > 0 {
 		stream.WriteMore()
@@ -343,12 +336,8 @@ func decodeSample(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
 		switch field {
 		case "metric":
-			metricString := iter.ReadAny().ToString()
 			lbls := labels.Labels{}
-			if err := json.UnmarshalFromString(metricString, &lbls); err != nil {
-				iter.ReportError("unmarshal Sample", err.Error())
-				return
-			}
+			chunk.DecodeLabels(unsafe.Pointer(&lbls), iter)
 			ss.Labels = cortexpb.FromLabelsToLabelAdapters(lbls)
 		case "value":
 			ss.Sample = &cortexpb.Sample{}
@@ -368,12 +357,8 @@ func encodeSample(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	stream.WriteObjectStart()
 
 	stream.WriteObjectField(`metric`)
-	lbls, err := cortexpb.FromLabelAdaptersToLabels(ss.Labels).MarshalJSON()
-	if err != nil {
-		stream.Error = err
-		return
-	}
-	stream.SetBuffer(append(stream.Buffer(), lbls...))
+	metric := cortexpb.FromLabelAdaptersToLabels(ss.Labels)
+	chunk.EncodeLabels(unsafe.Pointer(&metric), stream)
 
 	if ss.Sample != nil {
 		stream.WriteMore()

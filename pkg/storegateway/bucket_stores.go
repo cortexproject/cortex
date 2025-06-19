@@ -550,11 +550,8 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	fetcherReg := prometheus.NewRegistry()
 
 	filterMinTime := thanos_model.TimeOrDurationValue{}
-	ignoreBlocksBefore := -model.Duration(u.cfg.BucketStore.IgnoreBlocksBefore)
-	if u.cfg.BucketStore.IgnoreBlocksBefore == 0 {
-		t := time.Unix(0, 0)
-		filterMinTime.Time = &t
-	} else {
+	if u.cfg.BucketStore.IgnoreBlocksBefore > 0 {
+		ignoreBlocksBefore := -model.Duration(u.cfg.BucketStore.IgnoreBlocksBefore)
 		filterMinTime.Dur = &ignoreBlocksBefore
 	}
 

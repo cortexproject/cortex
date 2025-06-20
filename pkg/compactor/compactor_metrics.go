@@ -75,34 +75,29 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 
 	// Copied from Thanos, pkg/block/fetcher.go
 	m.baseFetcherSyncs = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Subsystem: block.FetcherSubSys,
-		Name:      "cortex_compactor_meta_base_syncs_total",
-		Help:      "Total blocks metadata synchronization attempts by base Fetcher.",
+		Name: "cortex_compactor_meta_base_syncs_total",
+		Help: "Total blocks metadata synchronization attempts by base Fetcher.",
 	}, nil)
 
 	// Copied from Thanos, pkg/block/fetcher.go
 	m.metaFetcherSyncs = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Subsystem: block.FetcherSubSys,
-		Name:      "cortex_compactor_meta_syncs_total",
-		Help:      "Total blocks metadata synchronization attempts.",
+		Name: "cortex_compactor_meta_syncs_total",
+		Help: "Total blocks metadata synchronization attempts.",
 	}, nil)
 	m.metaFetcherSyncFailures = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Subsystem: block.FetcherSubSys,
-		Name:      "cortex_compactor_meta_sync_failures_total",
-		Help:      "Total blocks metadata synchronization failures.",
+		Name: "cortex_compactor_meta_sync_failures_total",
+		Help: "Total blocks metadata synchronization failures.",
 	}, nil)
 	m.metaFetcherSyncDuration = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Subsystem: block.FetcherSubSys,
-		Name:      "cortex_compactor_meta_sync_duration_seconds",
-		Help:      "Duration of the blocks metadata synchronization in seconds.",
-		Buckets:   []float64{0.01, 1, 10, 100, 300, 600, 1000},
+		Name:    "cortex_compactor_meta_sync_duration_seconds",
+		Help:    "Duration of the blocks metadata synchronization in seconds.",
+		Buckets: []float64{0.01, 1, 10, 100, 300, 600, 1000},
 	}, nil)
 	m.metaFetcherSynced = extprom.NewTxGaugeVec(
 		reg,
 		prometheus.GaugeOpts{
-			Subsystem: block.FetcherSubSys,
-			Name:      "cortex_compactor_meta_synced",
-			Help:      "Number of block metadata synced",
+			Name: "cortex_compactor_meta_synced",
+			Help: "Number of block metadata synced",
 		},
 		[]string{"state"},
 		block.DefaultSyncedStateLabelValues()...,
@@ -110,9 +105,8 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 	m.metaFetcherModified = extprom.NewTxGaugeVec(
 		reg,
 		prometheus.GaugeOpts{
-			Subsystem: block.FetcherSubSys,
-			Name:      "cortex_compactor_meta_modified",
-			Help:      "Number of blocks whose metadata changed",
+			Name: "cortex_compactor_meta_modified",
+			Help: "Number of blocks whose metadata changed",
 		},
 		[]string{"modified"},
 		block.DefaultModifiedLabelValues()...,

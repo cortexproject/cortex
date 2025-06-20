@@ -335,7 +335,6 @@ func TestValidateLabelDuplication(t *testing.T) {
 func TestValidateNativeHistogram(t *testing.T) {
 	userID := "fake"
 	lbls := cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar"))
-	maxNativeHistogramsSampleSizeBytesLimit := 100
 
 	// Test histogram has 4 positive buckets and 4 negative buckets so 8 in total. Schema set to 1.
 	h := tsdbutil.GenerateTestHistogram(0)
@@ -353,13 +352,14 @@ func TestValidateNativeHistogram(t *testing.T) {
 	exceedMaxSampleSizeBytesLimitFloatHistogram := tsdbutil.GenerateTestFloatHistogram(100)
 
 	for _, tc := range []struct {
-		name                      string
-		bucketLimit               int
-		resolutionReduced         bool
-		histogram                 cortexpb.Histogram
-		expectedHistogram         cortexpb.Histogram
-		expectedErr               error
-		discardedSampleLabelValue string
+		name                                    string
+		bucketLimit                             int
+		resolutionReduced                       bool
+		histogram                               cortexpb.Histogram
+		expectedHistogram                       cortexpb.Histogram
+		expectedErr                             error
+		discardedSampleLabelValue               string
+		maxNativeHistogramsSampleSizeBytesLimit int
 	}{
 		{
 			name:                      "no limit, histogram",
@@ -458,10 +458,11 @@ func TestValidateNativeHistogram(t *testing.T) {
 			discardedSampleLabelValue: nativeHistogramInvalidSchema,
 		},
 		{
-			name:                      "exceed max sample size bytes limit",
-			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, exceedMaxSampleSizeBytesLimitFloatHistogram.Copy()),
-			expectedErr:               newNativeHistogramSampleSizeBytesExceededError(lbls, 126, maxNativeHistogramsSampleSizeBytesLimit),
-			discardedSampleLabelValue: nativeHistogramSampleSizeBytesExceeded,
+			name:                                    "exceed max sample size bytes limit",
+			histogram:                               cortexpb.FloatHistogramToHistogramProto(0, exceedMaxSampleSizeBytesLimitFloatHistogram.Copy()),
+			expectedErr:                             newNativeHistogramSampleSizeBytesExceededError(lbls, 126, 100),
+			discardedSampleLabelValue:               nativeHistogramSampleSizeBytesExceeded,
+			maxNativeHistogramsSampleSizeBytesLimit: 100,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -469,7 +470,7 @@ func TestValidateNativeHistogram(t *testing.T) {
 			validateMetrics := NewValidateMetrics(reg)
 			limits := new(Limits)
 			limits.MaxNativeHistogramBuckets = tc.bucketLimit
-			limits.MaxNativeHistogramsSampleSizeBytes = maxNativeHistogramsSampleSizeBytesLimit
+			limits.MaxNativeHistogramsSampleSizeBytes = tc.maxNativeHistogramsSampleSizeBytesLimit
 			actualHistogram, actualErr := ValidateNativeHistogram(validateMetrics, limits, userID, lbls, tc.histogram)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, actualErr)

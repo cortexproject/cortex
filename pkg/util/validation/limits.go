@@ -123,29 +123,30 @@ type LimitsPerLabelSet struct {
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRate             float64             `yaml:"ingestion_rate" json:"ingestion_rate"`
-	IngestionRateStrategy     string              `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
-	IngestionBurstSize        int                 `yaml:"ingestion_burst_size" json:"ingestion_burst_size"`
-	AcceptHASamples           bool                `yaml:"accept_ha_samples" json:"accept_ha_samples"`
-	AcceptMixedHASamples      bool                `yaml:"accept_mixed_ha_samples" json:"accept_mixed_ha_samples"`
-	HAClusterLabel            string              `yaml:"ha_cluster_label" json:"ha_cluster_label"`
-	HAReplicaLabel            string              `yaml:"ha_replica_label" json:"ha_replica_label"`
-	HAMaxClusters             int                 `yaml:"ha_max_clusters" json:"ha_max_clusters"`
-	DropLabels                flagext.StringSlice `yaml:"drop_labels" json:"drop_labels"`
-	MaxLabelNameLength        int                 `yaml:"max_label_name_length" json:"max_label_name_length"`
-	MaxLabelValueLength       int                 `yaml:"max_label_value_length" json:"max_label_value_length"`
-	MaxLabelNamesPerSeries    int                 `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
-	MaxLabelsSizeBytes        int                 `yaml:"max_labels_size_bytes" json:"max_labels_size_bytes"`
-	MaxMetadataLength         int                 `yaml:"max_metadata_length" json:"max_metadata_length"`
-	RejectOldSamples          bool                `yaml:"reject_old_samples" json:"reject_old_samples"`
-	RejectOldSamplesMaxAge    model.Duration      `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
-	CreationGracePeriod       model.Duration      `yaml:"creation_grace_period" json:"creation_grace_period"`
-	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name" json:"enforce_metadata_metric_name"`
-	EnforceMetricName         bool                `yaml:"enforce_metric_name" json:"enforce_metric_name"`
-	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
-	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
-	MaxNativeHistogramBuckets int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
-	PromoteResourceAttributes []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
+	IngestionRate                      float64             `yaml:"ingestion_rate" json:"ingestion_rate"`
+	IngestionRateStrategy              string              `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
+	IngestionBurstSize                 int                 `yaml:"ingestion_burst_size" json:"ingestion_burst_size"`
+	AcceptHASamples                    bool                `yaml:"accept_ha_samples" json:"accept_ha_samples"`
+	AcceptMixedHASamples               bool                `yaml:"accept_mixed_ha_samples" json:"accept_mixed_ha_samples"`
+	HAClusterLabel                     string              `yaml:"ha_cluster_label" json:"ha_cluster_label"`
+	HAReplicaLabel                     string              `yaml:"ha_replica_label" json:"ha_replica_label"`
+	HAMaxClusters                      int                 `yaml:"ha_max_clusters" json:"ha_max_clusters"`
+	DropLabels                         flagext.StringSlice `yaml:"drop_labels" json:"drop_labels"`
+	MaxLabelNameLength                 int                 `yaml:"max_label_name_length" json:"max_label_name_length"`
+	MaxLabelValueLength                int                 `yaml:"max_label_value_length" json:"max_label_value_length"`
+	MaxLabelNamesPerSeries             int                 `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
+	MaxLabelsSizeBytes                 int                 `yaml:"max_labels_size_bytes" json:"max_labels_size_bytes"`
+	MaxNativeHistogramsSampleSizeBytes int                 `yaml:"max_native_histograms_sample_size_bytes" json:"max_native_histograms_sample_size_bytes"`
+	MaxMetadataLength                  int                 `yaml:"max_metadata_length" json:"max_metadata_length"`
+	RejectOldSamples                   bool                `yaml:"reject_old_samples" json:"reject_old_samples"`
+	RejectOldSamplesMaxAge             model.Duration      `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
+	CreationGracePeriod                model.Duration      `yaml:"creation_grace_period" json:"creation_grace_period"`
+	EnforceMetadataMetricName          bool                `yaml:"enforce_metadata_metric_name" json:"enforce_metadata_metric_name"`
+	EnforceMetricName                  bool                `yaml:"enforce_metric_name" json:"enforce_metric_name"`
+	IngestionTenantShardSize           int                 `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
+	MetricRelabelConfigs               []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
+	MaxNativeHistogramBuckets          int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
+	PromoteResourceAttributes          []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
 
 	// Ingester enforced limits.
 	// Series
@@ -253,6 +254,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
 	f.IntVar(&l.MaxLabelsSizeBytes, "validation.max-labels-size-bytes", 0, "Maximum combined size in bytes of all labels and label values accepted for a series. 0 to disable the limit.")
+	f.IntVar(&l.MaxNativeHistogramsSampleSizeBytes, "validation.max-native-histograms-sample-size-bytes", 0, "Maximum size in bytes of a native histograms sample. 0 to disable the limit.")
 	f.IntVar(&l.MaxMetadataLength, "validation.max-metadata-length", 1024, "Maximum length accepted for metric metadata. Metadata refers to Metric Name, HELP and UNIT.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", false, "Reject old samples.")
 	_ = l.RejectOldSamplesMaxAge.Set("14d")

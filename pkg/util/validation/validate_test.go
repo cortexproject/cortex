@@ -335,6 +335,7 @@ func TestValidateLabelDuplication(t *testing.T) {
 func TestValidateNativeHistogram(t *testing.T) {
 	userID := "fake"
 	lbls := cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar"))
+	maxNativeHistogramsSampleSizeBytesLimit := 100
 
 	// Test histogram has 4 positive buckets and 4 negative buckets so 8 in total. Schema set to 1.
 	h := tsdbutil.GenerateTestHistogram(0)
@@ -349,6 +350,7 @@ func TestValidateNativeHistogram(t *testing.T) {
 	belowMinRangeSchemaHistogram.Schema = -5
 	exceedMaxRangeSchemaFloatHistogram := tsdbutil.GenerateTestFloatHistogram(0)
 	exceedMaxRangeSchemaFloatHistogram.Schema = 20
+	exceedMaxSampleSizeBytesLimitFloatHistogram := tsdbutil.GenerateTestFloatHistogram(100)
 
 	for _, tc := range []struct {
 		name                      string
@@ -455,12 +457,19 @@ func TestValidateNativeHistogram(t *testing.T) {
 			expectedErr:               newNativeHistogramSchemaInvalidError(lbls, int(exceedMaxRangeSchemaFloatHistogram.Schema)),
 			discardedSampleLabelValue: nativeHistogramInvalidSchema,
 		},
+		{
+			name:                      "exceed max sample size bytes limit",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, exceedMaxSampleSizeBytesLimitFloatHistogram.Copy()),
+			expectedErr:               newNativeHistogramSampleSizeBytesExceededError(lbls, 126, maxNativeHistogramsSampleSizeBytesLimit),
+			discardedSampleLabelValue: nativeHistogramSampleSizeBytesExceeded,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := prometheus.NewRegistry()
 			validateMetrics := NewValidateMetrics(reg)
 			limits := new(Limits)
 			limits.MaxNativeHistogramBuckets = tc.bucketLimit
+			limits.MaxNativeHistogramsSampleSizeBytes = maxNativeHistogramsSampleSizeBytesLimit
 			actualHistogram, actualErr := ValidateNativeHistogram(validateMetrics, limits, userID, lbls, tc.histogram)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, actualErr)

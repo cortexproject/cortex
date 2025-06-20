@@ -752,6 +752,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
 		ShardingStrategy:                   c.compactorCfg.ShardingStrategy,
 		CompactionStrategy:                 c.compactorCfg.CompactionStrategy,
+		BlockRanges:                        c.compactorCfg.BlockRanges.ToMilliseconds(),
 	}, cleanerBucketClient, cleanerUsersScanner, c.compactorCfg.CompactionVisitMarkerTimeout, c.limits, c.parentLogger, cleanerRingLifecyclerID, c.registerer, c.compactorCfg.CleanerVisitMarkerTimeout, c.compactorCfg.CleanerVisitMarkerFileUpdateInterval,
 		c.compactorMetrics.syncerBlocksMarkedForDeletion, c.compactorMetrics.remainingPlannedCompactions)
 

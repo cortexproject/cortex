@@ -4,6 +4,8 @@
 package logicalplan
 
 import (
+	"slices"
+
 	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -92,21 +94,22 @@ func replaceMatchers(selectors matcherHeap, expr *Node) {
 }
 
 func dropMatcher(matcherName string, originalMatchers []*labels.Matcher) []*labels.Matcher {
+	res := slices.Clone(originalMatchers)
 	i := 0
-	for i < len(originalMatchers) {
-		l := originalMatchers[i]
+	for i < len(res) {
+		l := res[i]
 		if l.Name == matcherName {
-			originalMatchers = append(originalMatchers[:i], originalMatchers[i+1:]...)
+			res = slices.Delete(res, i, i+1)
 		} else {
 			i++
 		}
 	}
-	return originalMatchers
+	return res
 }
 
 func matcherToMap(matchers []*labels.Matcher) map[string]*labels.Matcher {
 	r := make(map[string]*labels.Matcher, len(matchers))
-	for i := 0; i < len(matchers); i++ {
+	for i := range matchers {
 		r[matchers[i].Name] = matchers[i]
 	}
 	return r

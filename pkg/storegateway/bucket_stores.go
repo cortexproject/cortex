@@ -15,12 +15,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
+	thanos_model "github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
@@ -330,7 +332,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 // Series makes a series request to the underlying user bucket store.
 func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
 	spanLog, spanCtx := spanlogger.New(srv.Context(), "BucketStores.Series")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
@@ -391,7 +393,7 @@ func (u *BucketStores) decrementInflightRequestCnt() {
 // LabelNames implements the Storegateway proto service.
 func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
 	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelNames")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
@@ -421,7 +423,7 @@ func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 // LabelValues implements the Storegateway proto service.
 func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
 	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelValues")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
@@ -548,7 +550,20 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	fetcherReg := prometheus.NewRegistry()
 
 	// The sharding strategy filter MUST be before the ones we create here (order matters).
-	filters := append([]block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}, []block.MetadataFilter{
+	filters := []block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}
+
+	if u.cfg.BucketStore.IgnoreBlocksBefore > 0 {
+		// We don't want to filter out any blocks for max time.
+		// Set a positive duration so we can always load blocks till now.
+		// IgnoreBlocksWithin
+		filterMaxTimeDuration := model.Duration(time.Second)
+		filterMinTime := thanos_model.TimeOrDurationValue{}
+		ignoreBlocksBefore := -model.Duration(u.cfg.BucketStore.IgnoreBlocksBefore)
+		filterMinTime.Dur = &ignoreBlocksBefore
+		filters = append(filters, block.NewTimePartitionMetaFilter(filterMinTime, thanos_model.TimeOrDurationValue{Dur: &filterMaxTimeDuration}))
+	}
+
+	filters = append(filters, []block.MetadataFilter{
 		block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
 		// Use our own custom implementation.
 		NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay, u.cfg.BucketStore.MetaSyncConcurrency),

@@ -1577,6 +1577,9 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 		}
 		ctx = user.InjectOrgID(ctx, req.TenantID)
 		resp, err := i.Push(ctx, req.Request)
+		if resp == nil {
+			resp = &cortexpb.WriteResponse{}
+		}
 		resp.Code = http.StatusOK
 		if err != nil {
 			httpResponse, isGRPCError := httpgrpc.HTTPResponseFromError(err)
@@ -3215,7 +3218,7 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 
 	allowedUsers := util.NewAllowedTenants(tenants, nil)
 	run := func() {
-		ingCtx := i.BasicService.ServiceContext()
+		ingCtx := i.ServiceContext()
 		if ingCtx == nil || ingCtx.Err() != nil {
 			level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", "flushing TSDB blocks: ingester not running, ignoring flush request")
 			return

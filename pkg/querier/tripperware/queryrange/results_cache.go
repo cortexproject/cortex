@@ -240,9 +240,6 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 	}
 
 	key := s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-	}
 
 	var (
 		extents  []tripperware.Extent
@@ -544,10 +541,10 @@ func merge(extents []tripperware.Extent, acc *accumulator) ([]tripperware.Extent
 		return nil, err
 	}
 	return append(extents, tripperware.Extent{
-		Start:    acc.Extent.Start,
-		End:      acc.Extent.End,
+		Start:    acc.Start,
+		End:      acc.End,
 		Response: any,
-		TraceId:  acc.Extent.TraceId,
+		TraceId:  acc.TraceId,
 	}), nil
 }
 

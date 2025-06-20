@@ -105,7 +105,7 @@ func TestStatePersister_Position0ShouldWrite(t *testing.T) {
 	{
 		time.Sleep(5 * time.Second)
 
-		assert.Equal(t, services.Starting, s.Service.State())
+		assert.Equal(t, services.Starting, s.State())
 		assert.Equal(t, 0, len(store.getWrites()))
 	}
 
@@ -139,13 +139,13 @@ func TestStatePersister_Position1ShouldNotWrite(t *testing.T) {
 
 	// Start the persister.
 	{
-		require.Equal(t, services.Starting, s.Service.State())
+		require.Equal(t, services.Starting, s.State())
 
 		state.getResult = makeTestFullState()
 		close(state.readyc)
 
 		require.NoError(t, s.AwaitRunning(context.Background()))
-		require.Equal(t, services.Running, s.Service.State())
+		require.Equal(t, services.Running, s.State())
 	}
 
 	// Should not have stored anything, having passed the interval multiple times.

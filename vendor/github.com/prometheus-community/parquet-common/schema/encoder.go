@@ -28,12 +28,14 @@ import (
 )
 
 type PrometheusParquetChunksEncoder struct {
-	schema *TSDBSchema
+	schema          *TSDBSchema
+	samplesPerChunk int
 }
 
-func NewPrometheusParquetChunksEncoder(schema *TSDBSchema) *PrometheusParquetChunksEncoder {
+func NewPrometheusParquetChunksEncoder(schema *TSDBSchema, samplesPerChunk int) *PrometheusParquetChunksEncoder {
 	return &PrometheusParquetChunksEncoder{
-		schema: schema,
+		schema:          schema,
+		samplesPerChunk: samplesPerChunk,
 	}
 }
 
@@ -58,26 +60,11 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 		reEncodedChunksAppenders[i] = make(map[chunkenc.Encoding]chunkenc.Appender)
 
 		for _, enc := range []chunkenc.Encoding{chunkenc.EncXOR, chunkenc.EncHistogram, chunkenc.EncFloatHistogram} {
-			var chunk chunkenc.Chunk
-			switch enc {
-			case chunkenc.EncXOR:
-				chunk = chunkenc.NewXORChunk()
-			case chunkenc.EncHistogram:
-				chunk = chunkenc.NewHistogramChunk()
-			case chunkenc.EncFloatHistogram:
-				chunk = chunkenc.NewFloatHistogramChunk()
-			default:
-				return nil, fmt.Errorf("unknown encoding %v", enc)
-			}
-
-			reEncodedChunks[i][enc] = append(reEncodedChunks[i][enc], &chunks.Meta{
-				Chunk:   chunk,
-				MinTime: math.MaxInt64,
-			})
-			app, err := reEncodedChunks[i][enc][0].Chunk.Appender()
+			nChunk, app, err := e.cutNewChunk(enc)
 			if err != nil {
 				return nil, err
 			}
+			reEncodedChunks[i][enc] = append(reEncodedChunks[i][enc], nChunk)
 			reEncodedChunksAppenders[i][enc] = app
 		}
 	}
@@ -101,6 +88,15 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 				}
 				if t > chunk.MaxTime {
 					chunk.MaxTime = t
+				}
+				if chunk.Chunk.NumSamples() >= e.samplesPerChunk {
+					nChunk, app, err := e.cutNewChunk(chunkenc.EncXOR)
+					if err != nil {
+						return nil, err
+					}
+
+					reEncodedChunks[chkIdx][chunkenc.EncXOR] = append(reEncodedChunks[chkIdx][chunkenc.EncXOR], nChunk)
+					reEncodedChunksAppenders[chkIdx][chunkenc.EncXOR] = app
 				}
 			}
 		case chunkenc.EncFloatHistogram:
@@ -132,6 +128,16 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 				if t > chunk.MaxTime {
 					chunk.MaxTime = t
 				}
+
+				if chunk.Chunk.NumSamples() >= e.samplesPerChunk {
+					nChunk, app, err := e.cutNewChunk(chunkenc.EncFloatHistogram)
+					if err != nil {
+						return nil, err
+					}
+
+					reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram] = append(reEncodedChunks[chkIdx][chunkenc.EncFloatHistogram], nChunk)
+					reEncodedChunksAppenders[chkIdx][chunkenc.EncFloatHistogram] = app
+				}
 			}
 		case chunkenc.EncHistogram:
 			for vt := sampleIt.Next(); vt != chunkenc.ValNone; vt = sampleIt.Next() {
@@ -162,6 +168,16 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 				if t > chunk.MaxTime {
 					chunk.MaxTime = t
 				}
+
+				if chunk.Chunk.NumSamples() >= e.samplesPerChunk {
+					nChunk, app, err := e.cutNewChunk(chunkenc.EncHistogram)
+					if err != nil {
+						return nil, err
+					}
+
+					reEncodedChunks[chkIdx][chunkenc.EncHistogram] = append(reEncodedChunks[chkIdx][chunkenc.EncHistogram], nChunk)
+					reEncodedChunksAppenders[chkIdx][chunkenc.EncHistogram] = app
+				}
 			}
 		default:
 			return nil, fmt.Errorf("unknown encoding %v", chk.Chunk.Encoding())
@@ -190,6 +206,29 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 		}
 	}
 	return result, nil
+}
+
+func (e *PrometheusParquetChunksEncoder) cutNewChunk(enc chunkenc.Encoding) (*chunks.Meta, chunkenc.Appender, error) {
+	var chunk chunkenc.Chunk
+
+	switch enc {
+	case chunkenc.EncXOR:
+		chunk = chunkenc.NewXORChunk()
+	case chunkenc.EncHistogram:
+		chunk = chunkenc.NewHistogramChunk()
+	case chunkenc.EncFloatHistogram:
+		chunk = chunkenc.NewFloatHistogramChunk()
+	default:
+		return nil, nil, fmt.Errorf("unknown encoding %v", enc)
+	}
+
+	nChunk := &chunks.Meta{
+		Chunk:   chunk,
+		MinTime: math.MaxInt64,
+	}
+
+	app, err := nChunk.Chunk.Appender()
+	return nChunk, app, err
 }
 
 type PrometheusParquetChunksDecoder struct {

@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus-community/parquet-common/schema"
@@ -33,9 +34,42 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+type blockStorageType struct{}
+
+var blockStorageKey = blockStorageType{}
+
+const BlockStoreTypeHeader = "X-Cortex-BlockStore-Type"
+
+type blockStoreType string
+
+const (
+	tsdbBlockStore    blockStoreType = "tsdb"
+	parquetBlockStore blockStoreType = "parquet"
+)
+
+var validBlockStoreTypes = []blockStoreType{tsdbBlockStore, parquetBlockStore}
+
+// AddBlockStoreTypeToContext checks HTTP header and set block store key to context if
+// relevant header is set.
+func AddBlockStoreTypeToContext(ctx context.Context, storeType string) context.Context {
+	ng := blockStoreType(storeType)
+	switch ng {
+	case tsdbBlockStore, parquetBlockStore:
+		return context.WithValue(ctx, blockStorageKey, ng)
+	}
+	return ctx
+}
+
+func getBlockStoreType(ctx context.Context, defaultBlockStoreType blockStoreType) blockStoreType {
+	if ng, ok := ctx.Value(blockStorageKey).(blockStoreType); ok {
+		return ng
+	}
+	return defaultBlockStoreType
+}
+
 type parquetQueryableFallbackMetrics struct {
 	blocksQueriedTotal *prometheus.CounterVec
-	selectCount        *prometheus.CounterVec
+	operationsTotal    *prometheus.CounterVec
 }
 
 func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQueryableFallbackMetrics {
@@ -44,10 +78,10 @@ func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQuery
 			Name: "cortex_parquet_queryable_blocks_queried_total",
 			Help: "Total number of blocks found to query.",
 		}, []string{"type"}),
-		selectCount: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_parquet_queryable_selects_queried_total",
-			Help: "Total number of selects.",
-		}, []string{"type"}),
+		operationsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_parquet_queryable_operations_total",
+			Help: "Total number of Operations.",
+		}, []string{"type", "method"}),
 	}
 }
 
@@ -69,6 +103,8 @@ type parquetQueryableWithFallback struct {
 
 	limits *validation.Overrides
 	logger log.Logger
+
+	defaultBlockStoreType blockStoreType
 }
 
 func NewParquetQueryable(
@@ -79,11 +115,11 @@ func NewParquetQueryable(
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (storage.Queryable, error) {
-	bucketClient, err := bucket.NewClient(context.Background(), storageCfg.Bucket, nil, "parquet-querier", logger, reg)
-
+	bucketClient, err := createCachingBucketClient(context.Background(), storageCfg, nil, "parquet-querier", logger, reg)
 	if err != nil {
 		return nil, err
 	}
+
 	manager, err := services.NewManager(blockStorageQueryable)
 	if err != nil {
 		return nil, err
@@ -111,6 +147,9 @@ func NewParquetQueryable(
 		shards := make([]*parquet_storage.ParquetShard, len(blocks))
 		errGroup := &errgroup.Group{}
 
+		span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.OpenShards")
+		defer span.Finish()
+
 		for i, block := range blocks {
 			errGroup.Go(func() error {
 				cacheKey := fmt.Sprintf("%v-%v", userID, block.ID)
@@ -118,7 +157,7 @@ func NewParquetQueryable(
 				if shard == nil {
 					// we always only have 1 shard - shard 0
 					// Use context.Background() here as the file can be cached and live after the request ends.
-					shard, err = parquet_storage.OpenParquetShard(context.Background(),
+					shard, err = parquet_storage.OpenParquetShard(context.WithoutCancel(ctx),
 						userBkt,
 						block.ID.String(),
 						0,
@@ -130,7 +169,7 @@ func NewParquetQueryable(
 						parquet_storage.WithOptimisticReader(true),
 					)
 					if err != nil {
-						return err
+						return errors.Wrapf(err, "failed to open parquet shard. block: %v", block.ID.String())
 					}
 					cache.Set(cacheKey, shard)
 				}
@@ -153,6 +192,7 @@ func NewParquetQueryable(
 		metrics:               newParquetQueryableFallbackMetrics(reg),
 		limits:                limits,
 		logger:                logger,
+		defaultBlockStoreType: blockStoreType(config.ParquetQueryableDefaultBlockStore),
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -195,15 +235,16 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 	}
 
 	return &parquetQuerierWithFallback{
-		minT:               mint,
-		maxT:               maxt,
-		parquetQuerier:     pq,
-		queryStoreAfter:    p.queryStoreAfter,
-		blocksStoreQuerier: bsq,
-		finder:             p.finder,
-		metrics:            p.metrics,
-		limits:             p.limits,
-		logger:             p.logger,
+		minT:                  mint,
+		maxT:                  maxt,
+		parquetQuerier:        pq,
+		queryStoreAfter:       p.queryStoreAfter,
+		blocksStoreQuerier:    bsq,
+		finder:                p.finder,
+		metrics:               p.metrics,
+		limits:                p.limits,
+		logger:                p.logger,
+		defaultBlockStoreType: p.defaultBlockStoreType,
 	}, nil
 }
 
@@ -224,10 +265,16 @@ type parquetQuerierWithFallback struct {
 
 	limits *validation.Overrides
 	logger log.Logger
+
+	defaultBlockStoreType blockStoreType
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.LabelValues")
+	defer span.Finish()
+
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
+	defer q.incrementOpsMetric("LabelValues", remaining, parquet)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -272,7 +319,11 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 }
 
 func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.LabelNames")
+	defer span.Finish()
+
 	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
+	defer q.incrementOpsMetric("LabelNames", remaining, parquet)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -317,7 +368,10 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 	return result, rAnnotations, nil
 }
 
-func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool, h *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.Select")
+	defer span.Finish()
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		storage.ErrSeriesSet(err)
@@ -327,40 +381,82 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		uLogger := util_log.WithUserID(userID, q.logger)
 		level.Warn(uLogger).Log("msg", "parquet queryable enabled but vertical sharding > 1. Falling back to the block storage")
 
-		return q.blocksStoreQuerier.Select(ctx, sortSeries, hints, matchers...)
+		return q.blocksStoreQuerier.Select(ctx, sortSeries, h, matchers...)
+	}
+
+	hints := storage.SelectHints{
+		Start: q.minT,
+		End:   q.maxT,
 	}
 
 	mint, maxt, limit := q.minT, q.maxT, 0
-
-	if hints != nil {
+	if h != nil {
+		// let copy the hints here as we wanna potentially modify it
+		hints = *h
 		mint, maxt, limit = hints.Start, hints.End, hints.Limit
 	}
 
+	maxt = q.adjustMaxT(maxt)
+	hints.End = maxt
+
+	if maxt < mint {
+		return storage.EmptySeriesSet()
+	}
+
 	remaining, parquet, err := q.getBlocks(ctx, mint, maxt)
+	defer q.incrementOpsMetric("Select", remaining, parquet)
+
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
-
-	serieSets := []storage.SeriesSet{}
 
 	// Lets sort the series to merge
 	if len(parquet) > 0 && len(remaining) > 0 {
 		sortSeries = true
 	}
 
+	promises := make([]chan storage.SeriesSet, 0, 2)
+
 	if len(parquet) > 0 {
-		serieSets = append(serieSets, q.parquetQuerier.Select(InjectBlocksIntoContext(ctx, parquet...), sortSeries, hints, matchers...))
+		p := make(chan storage.SeriesSet, 1)
+		promises = append(promises, p)
+		go func() {
+			span, _ := opentracing.StartSpanFromContext(ctx, "parquetQuerier.Select")
+			defer span.Finish()
+			p <- q.parquetQuerier.Select(InjectBlocksIntoContext(ctx, parquet...), sortSeries, &hints, matchers...)
+		}()
 	}
 
 	if len(remaining) > 0 {
-		serieSets = append(serieSets, q.blocksStoreQuerier.Select(InjectBlocksIntoContext(ctx, remaining...), sortSeries, hints, matchers...))
+		p := make(chan storage.SeriesSet, 1)
+		promises = append(promises, p)
+		go func() {
+			p <- q.blocksStoreQuerier.Select(InjectBlocksIntoContext(ctx, remaining...), sortSeries, &hints, matchers...)
+		}()
 	}
 
-	if len(serieSets) == 1 {
-		return serieSets[0]
+	if len(promises) == 1 {
+		return <-promises[0]
 	}
 
-	return storage.NewMergeSeriesSet(serieSets, limit, storage.ChainedSeriesMerge)
+	seriesSets := make([]storage.SeriesSet, len(promises))
+	for i, promise := range promises {
+		seriesSets[i] = <-promise
+	}
+
+	return storage.NewMergeSeriesSet(seriesSets, limit, storage.ChainedSeriesMerge)
+}
+
+func (q *parquetQuerierWithFallback) adjustMaxT(maxt int64) int64 {
+	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
+	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
+	// optimization is particularly important for the blocks storage because can be used to skip
+	// querying most recent not-compacted-yet blocks from the storage.
+	if q.queryStoreAfter > 0 {
+		now := time.Now()
+		maxt = min(maxt, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
+	}
+	return maxt
 }
 
 func (q *parquetQuerierWithFallback) Close() error {
@@ -371,22 +467,15 @@ func (q *parquetQuerierWithFallback) Close() error {
 }
 
 func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT int64) ([]*bucketindex.Block, []*bucketindex.Block, error) {
-	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
-	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
-	// optimization is particularly important for the blocks storage because can be used to skip
-	// querying most recent not-compacted-yet blocks from the storage.
-	if q.queryStoreAfter > 0 {
-		now := time.Now()
-		maxT = min(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
-
-		if maxT < minT {
-			return nil, nil, nil
-		}
-	}
-
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	maxT = q.adjustMaxT(maxT)
+
+	if maxT < minT {
+		return nil, nil, nil
 	}
 
 	blocks, _, err := q.finder.GetBlocks(ctx, userID, minT, maxT)
@@ -394,10 +483,11 @@ func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT i
 		return nil, nil, err
 	}
 
+	useParquet := getBlockStoreType(ctx, q.defaultBlockStoreType) == parquetBlockStore
 	parquetBlocks := make([]*bucketindex.Block, 0, len(blocks))
 	remaining := make([]*bucketindex.Block, 0, len(blocks))
 	for _, b := range blocks {
-		if b.Parquet != nil {
+		if useParquet && b.Parquet != nil {
 			parquetBlocks = append(parquetBlocks, b)
 			continue
 		}
@@ -406,17 +496,18 @@ func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT i
 
 	q.metrics.blocksQueriedTotal.WithLabelValues("parquet").Add(float64(len(parquetBlocks)))
 	q.metrics.blocksQueriedTotal.WithLabelValues("tsdb").Add(float64(len(remaining)))
+	return remaining, parquetBlocks, nil
+}
 
+func (q *parquetQuerierWithFallback) incrementOpsMetric(method string, remaining []*bucketindex.Block, parquetBlocks []*bucketindex.Block) {
 	switch {
 	case len(remaining) > 0 && len(parquetBlocks) > 0:
-		q.metrics.selectCount.WithLabelValues("mixed").Inc()
+		q.metrics.operationsTotal.WithLabelValues("mixed", method).Inc()
 	case len(remaining) > 0 && len(parquetBlocks) == 0:
-		q.metrics.selectCount.WithLabelValues("tsdb").Inc()
+		q.metrics.operationsTotal.WithLabelValues("tsdb", method).Inc()
 	case len(remaining) == 0 && len(parquetBlocks) > 0:
-		q.metrics.selectCount.WithLabelValues("parquet").Inc()
+		q.metrics.operationsTotal.WithLabelValues("parquet", method).Inc()
 	}
-
-	return remaining, parquetBlocks, nil
 }
 
 type cacheInterface[T any] interface {

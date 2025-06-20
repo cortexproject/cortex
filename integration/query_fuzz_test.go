@@ -38,7 +38,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
-var enabledFunctions []*parser.Function
+var (
+	enabledFunctions []*parser.Function
+	enabledAggrs     = []parser.ItemType{
+		parser.SUM, parser.MIN, parser.MAX, parser.AVG, parser.GROUP, parser.COUNT, parser.COUNT_VALUES, parser.QUANTILE,
+	}
+)
 
 func init() {
 	for _, f := range parser.Functions {
@@ -153,9 +158,7 @@ func TestNativeHistogramFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
-		promqlsmith.WithEnabledAggrs([]parser.ItemType{
-			parser.SUM, parser.MIN, parser.MAX, parser.AVG, parser.GROUP, parser.COUNT, parser.COUNT_VALUES, parser.QUANTILE,
-		}),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -271,6 +274,7 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 		promqlsmith.WithEnableExperimentalPromQLFunctions(true),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
@@ -376,6 +380,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -558,6 +563,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -759,11 +765,12 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	// Generate another set of series for testing binary expression and vector matching.
 	for i := numSeries; i < 2*numSeries; i++ {
 		prompbLabels := []prompb.Label{{Name: "job", Value: "test"}, {Name: "series", Value: strconv.Itoa(i)}}
-		if i%3 == 0 {
+		switch i % 3 {
+		case 0:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "200"})
-		} else if i%3 == 1 {
+		case 1:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "400"})
-		} else {
+		default:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "500"})
 		}
 		series := e2e.GenerateSeriesWithSamples("test_series_b", start, scrapeInterval, i*numSamples, numSamples, prompbLabels...)
@@ -788,6 +795,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -875,11 +883,12 @@ func TestProtobufCodecFuzz(t *testing.T) {
 	// Generate another set of series for testing binary expression and vector matching.
 	for i := numSeries; i < 2*numSeries; i++ {
 		prompbLabels := []prompb.Label{{Name: "job", Value: "test"}, {Name: "series", Value: strconv.Itoa(i)}}
-		if i%3 == 0 {
+		switch i % 3 {
+		case 0:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "200"})
-		} else if i%3 == 1 {
+		case 1:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "400"})
-		} else {
+		default:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "500"})
 		}
 		series := e2e.GenerateSeriesWithSamples("test_series_b", start, scrapeInterval, i*numSamples, numSamples, prompbLabels...)
@@ -904,6 +913,7 @@ func TestProtobufCodecFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -1570,11 +1580,12 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	// Generate another set of series for testing binary expression and vector matching.
 	for i := numSeries; i < 2*numSeries; i++ {
 		prompbLabels := []prompb.Label{{Name: "job", Value: "test"}, {Name: "series", Value: strconv.Itoa(i)}}
-		if i%3 == 0 {
+		switch i % 3 {
+		case 0:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "200"})
-		} else if i%3 == 1 {
+		case 1:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "400"})
-		} else {
+		default:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "500"})
 		}
 		series := e2e.GenerateSeriesWithSamples("test_series_b", start, scrapeInterval, i*numSamples, numSamples, prompbLabels...)
@@ -1600,6 +1611,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -1712,6 +1724,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 

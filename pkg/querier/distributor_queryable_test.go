@@ -314,7 +314,8 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			d := &MockDistributor{}
 
-			if tc.api == "Select" {
+			switch tc.api {
+			case "Select":
 				promChunk := util.GenerateChunk(t, time.Second, model.TimeFromUnix(time.Now().Unix()), 10, promchunk.PrometheusXorChunk)
 				clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{promChunk})
 				require.NoError(t, err)
@@ -331,13 +332,13 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 						},
 					}, err).Once()
 				}
-			} else if tc.api == "LabelNames" {
+			case "LabelNames":
 				res := []string{"foo"}
 				for _, err := range tc.errors {
 					d.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
 					d.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
 				}
-			} else if tc.api == "LabelValues" {
+			case "LabelValues":
 				res := []string{"foo"}
 				for _, err := range tc.errors {
 					d.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
@@ -366,9 +367,10 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 			} else {
 				var annots annotations.Annotations
 				var err error
-				if tc.api == "LabelNames" {
+				switch tc.api {
+				case "LabelNames":
 					_, annots, err = querier.LabelNames(ctx, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
-				} else if tc.api == "LabelValues" {
+				case "LabelValues":
 					_, annots, err = querier.LabelValues(ctx, "foo", nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 				}
 

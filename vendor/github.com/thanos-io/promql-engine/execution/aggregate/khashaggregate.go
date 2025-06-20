@@ -10,7 +10,6 @@ import (
 	"math"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -27,8 +26,6 @@ import (
 )
 
 type kAggregate struct {
-	telemetry.OperatorTelemetry
-
 	next    model.VectorOperator
 	paramOp model.VectorOperator
 	// params holds the aggregate parameter for each step.
@@ -84,15 +81,10 @@ func NewKHashAggregate(
 		params:      make([]float64, opts.StepsBatch),
 	}
 
-	op.OperatorTelemetry = telemetry.NewTelemetry(op, opts)
-
-	return op, nil
+	return telemetry.NewOperator(telemetry.NewTelemetry(op, opts), op), nil
 }
 
 func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -174,15 +166,11 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 }
 
 func (a *kAggregate) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	a.once.Do(func() { err = a.init(ctx) })
 	if err != nil {
 		return nil, err
 	}
-
 	return a.series, nil
 }
 
@@ -218,7 +206,7 @@ func (a *kAggregate) init(ctx context.Context) error {
 	for _, lblName := range a.labels {
 		labelsMap[lblName] = struct{}{}
 	}
-	for i := 0; i < len(series); i++ {
+	for i := range series {
 		hash, _ := hashMetric(builder, series[i], !a.by, a.labels, labelsMap, hashingBuf)
 		h, ok := heapsHash[hash]
 		if !ok {
@@ -392,11 +380,11 @@ func (s samplesHeap) Swap(i, j int) {
 	s.entries[i], s.entries[j] = s.entries[j], s.entries[i]
 }
 
-func (s *samplesHeap) Push(x interface{}) {
+func (s *samplesHeap) Push(x any) {
 	s.entries = append(s.entries, *(x.(*entry)))
 }
 
-func (s *samplesHeap) Pop() interface{} {
+func (s *samplesHeap) Pop() any {
 	old := (*s).entries
 	n := len(old)
 	el := old[n-1]

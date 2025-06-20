@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"math/rand"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -34,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -88,6 +90,12 @@ type Converter struct {
 	fetcherMetrics *block.FetcherMetrics
 
 	baseConverterOptions []convert.ConvertOption
+
+	metrics *metrics
+
+	// Keep track of the last owned users.
+	// This is not thread safe now.
+	lastOwnedUsers map[string]struct{}
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -125,6 +133,7 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 		pool:           chunkenc.NewPool(),
 		blockRanges:    blockRanges,
 		fetcherMetrics: block.NewFetcherMetrics(registerer, nil, nil),
+		metrics:        newMetrics(registerer),
 		bkt:            bkt,
 		baseConverterOptions: []convert.ConvertOption{
 			convert.WithSortBy(labels.MetricName),
@@ -181,7 +190,7 @@ func (c *Converter) running(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-t.C:
-			level.Info(c.logger).Log("msg", "start scaning users")
+			level.Info(c.logger).Log("msg", "start scanning users")
 			users, err := c.discoverUsers(ctx)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "failed to scan users", "err", err)
@@ -193,14 +202,22 @@ func (c *Converter) running(ctx context.Context) error {
 			})
 
 			for _, userID := range users {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
 				if !c.limits.ParquetConverterEnabled(userID) {
+					// It is possible that parquet is disabled for the userID so we
+					// need to check if the user was owned last time.
+					c.cleanupMetricsForNotOwnedUser(userID)
 					continue
 				}
 
 				var ring ring.ReadRing
 				ring = c.ring
-				if c.limits.ParquetConverterTenantShardSize(userID) > 0 {
-					ring = c.ring.ShuffleShard(userID, c.limits.ParquetConverterTenantShardSize(userID))
+				shardSize := c.limits.ParquetConverterTenantShardSize(userID)
+				if shardSize > 0 {
+					dynamicShardSize := util.DynamicShardSize(c.limits.ParquetConverterTenantShardSize(userID), ring.InstancesCount())
+					ring = c.ring.ShuffleShard(userID, dynamicShardSize)
 				}
 
 				userLogger := util_log.WithUserID(userID, c.logger)
@@ -211,6 +228,7 @@ func (c *Converter) running(ctx context.Context) error {
 					continue
 				}
 				if !owned {
+					c.cleanupMetricsForNotOwnedUser(userID)
 					continue
 				}
 
@@ -218,17 +236,22 @@ func (c *Converter) running(ctx context.Context) error {
 					level.Warn(userLogger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
 					continue
 				} else if markedForDeletion {
+					c.metrics.deleteMetricsForTenant(userID)
 					level.Info(userLogger).Log("msg", "skipping user because it is marked for deletion", "user", userID)
 					continue
 				}
 
 				ownedUsers[userID] = struct{}{}
 
-				err = c.convertUser(ctx, userLogger, ring, userID)
-				if err != nil {
+				if err = c.convertUser(ctx, userLogger, ring, userID); err != nil {
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
 					level.Error(userLogger).Log("msg", "failed to convert user", "err", err)
 				}
 			}
+			c.lastOwnedUsers = ownedUsers
+			c.metrics.ownedUsers.Set(float64(len(ownedUsers)))
 
 			// Delete local files for unowned tenants, if there are any. This cleans up
 			// leftover local files for tenants that belong to different converter now,
@@ -269,8 +292,15 @@ func (c *Converter) stopping(_ error) error {
 }
 
 func (c *Converter) discoverUsers(ctx context.Context) ([]string, error) {
-	// Only active users are considered.
-	active, _, _, err := c.usersScanner.ScanUsers(ctx)
+	// Only active users are considered for conversion.
+	// We still check deleting and deleted users just to clean up metrics.
+	active, deleting, deleted, err := c.usersScanner.ScanUsers(ctx)
+	for _, userID := range deleting {
+		c.cleanupMetricsForNotOwnedUser(userID)
+	}
+	for _, userID := range deleted {
+		c.cleanupMetricsForNotOwnedUser(userID)
+	}
 	return active, err
 }
 
@@ -332,6 +362,9 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 	})
 
 	for _, b := range blocks {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		ok, err := c.ownBlock(ring, b.ULID.String())
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to get own block", "block", b.ULID.String(), "err", err)
@@ -352,13 +385,15 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		// Do not convert 2 hours blocks
-		if getBlockTimeRange(b, c.blockRanges) == c.blockRanges[0] {
+		if !cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, c.blockRanges) {
 			continue
 		}
 
 		if err := os.RemoveAll(c.compactRootDir()); err != nil {
 			level.Error(logger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
+			}
 			continue
 		}
 
@@ -367,17 +402,24 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		level.Info(logger).Log("msg", "downloading block", "block", b.ULID.String(), "dir", bdir)
 
 		if err := block.Download(ctx, logger, uBucket, b.ULID, bdir, objstore.WithFetchConcurrency(10)); err != nil {
-			level.Error(logger).Log("msg", "Error downloading block", "err", err)
+			level.Error(logger).Log("msg", "failed to download block", "block", b.ULID.String(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
+			}
 			continue
 		}
 
 		tsdbBlock, err := tsdb.OpenBlock(logutil.GoKitLogToSlog(logger), bdir, c.pool, tsdb.DefaultPostingsDecoderFactory)
 		if err != nil {
-			level.Error(logger).Log("msg", "Error opening block", "err", err)
+			level.Error(logger).Log("msg", "failed to open block", "block", b.ULID.String(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
+			}
 			continue
 		}
 
 		level.Info(logger).Log("msg", "converting block", "block", b.ULID.String(), "dir", bdir)
+		start := time.Now()
 
 		converterOpts := append(c.baseConverterOptions, convert.WithName(b.ULID.String()))
 
@@ -397,17 +439,47 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		_ = tsdbBlock.Close()
 
 		if err != nil {
-			level.Error(logger).Log("msg", "Error converting block", "err", err)
+			level.Error(logger).Log("msg", "failed to convert block", "block", b.ULID.String(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
+			}
 			continue
 		}
+		duration := time.Since(start)
+		c.metrics.convertBlockDuration.WithLabelValues(userID).Set(duration.Seconds())
+		level.Info(logger).Log("msg", "successfully converted block", "block", b.ULID.String(), "duration", duration)
 
-		err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket)
-		if err != nil {
-			level.Error(logger).Log("msg", "Error writing block", "err", err)
+		if err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket); err != nil {
+			level.Error(logger).Log("msg", "failed to write parquet converter marker", "block", b.ULID.String(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
+			}
+			continue
 		}
+		duration = time.Since(start)
+		level.Info(logger).Log("msg", "successfully uploaded parquet converter marker", "block", b.ULID.String(), "duration", duration)
+
+		c.metrics.convertedBlocks.WithLabelValues(userID).Inc()
+		metaAttrs, err := uBucket.Attributes(ctx, path.Join(b.ULID.String(), metadata.MetaFilename))
+		if err != nil {
+			// Don't check convert error as attributes call is not really part of the convert process.
+			level.Error(logger).Log("msg", "failed to get block meta attributes", "block", b.ULID.String(), "err", err)
+			continue
+		}
+		delayMinutes := time.Since(metaAttrs.LastModified).Minutes()
+		c.metrics.convertParquetBlockDelay.Observe(delayMinutes)
 	}
 
 	return nil
+}
+
+func (c *Converter) checkConvertError(userID string, err error) (terminate bool) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		terminate = true
+	} else {
+		c.metrics.convertBlockFailures.WithLabelValues(userID).Inc()
+	}
+	return
 }
 
 func (c *Converter) ownUser(r ring.ReadRing, userId string) (bool, error) {
@@ -440,6 +512,12 @@ func (c *Converter) ownBlock(ring ring.ReadRing, blockId string) (bool, error) {
 	}
 
 	return rs.Instances[0].Addr == c.ringLifecycler.Addr, nil
+}
+
+func (c *Converter) cleanupMetricsForNotOwnedUser(userID string) {
+	if _, ok := c.lastOwnedUsers[userID]; ok {
+		c.metrics.deleteMetricsForTenant(userID)
+	}
 }
 
 func (c *Converter) compactRootDir() string {
@@ -476,30 +554,4 @@ func (c *Converter) listTenantsWithMetaSyncDirectories() map[string]struct{} {
 	}
 
 	return result
-}
-
-func getBlockTimeRange(b *metadata.Meta, timeRanges []int64) int64 {
-	timeRange := int64(0)
-	// fallback logic to guess block time range based
-	// on MaxTime and MinTime
-	blockRange := b.MaxTime - b.MinTime
-	for _, tr := range timeRanges {
-		rangeStart := getRangeStart(b.MinTime, tr)
-		rangeEnd := rangeStart + tr
-		if tr >= blockRange && rangeEnd >= b.MaxTime {
-			timeRange = tr
-			break
-		}
-	}
-	return timeRange
-}
-
-func getRangeStart(mint, tr int64) int64 {
-	// Compute start of aligned time range of size tr closest to the current block's start.
-	// This code has been copied from TSDB.
-	if mint >= 0 {
-		return tr * (mint / tr)
-	}
-
-	return tr * ((mint - tr + 1) / tr)
 }

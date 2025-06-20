@@ -186,19 +186,10 @@ func NewBlocksStoreQueryable(
 func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegateway.Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits BlocksStoreLimits, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
 	var stores BlocksStoreSet
 
-	bucketClient, err := bucket.NewClient(context.Background(), storageCfg.Bucket, gatewayCfg.HedgedRequest.GetHedgedRoundTripper(), "querier", logger, reg)
+	bucketClient, err := createCachingBucketClient(context.Background(), storageCfg, gatewayCfg.HedgedRequest.GetHedgedRoundTripper(), "querier", logger, reg)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create bucket client")
+		return nil, err
 	}
-
-	// Blocks finder doesn't use chunks, but we pass config for consistency.
-	matchers := cortex_tsdb.NewMatchers()
-	cachingBucket, err := cortex_tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, matchers, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
-	if err != nil {
-		return nil, errors.Wrap(err, "create caching bucket")
-	}
-	bucketClient = cachingBucket
-
 	// Create the blocks finder.
 	var finder BlocksFinder
 	if storageCfg.BucketStore.BucketIndex.Enabled {
@@ -353,7 +344,7 @@ func (q *blocksStoreQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 	}
 
 	spanLog, spanCtx := spanlogger.New(ctx, "blocksStoreQuerier.LabelNames")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	minT, maxT, limit := q.minT, q.maxT, int64(0)
 
@@ -396,7 +387,7 @@ func (q *blocksStoreQuerier) LabelValues(ctx context.Context, name string, hints
 	}
 
 	spanLog, spanCtx := spanlogger.New(ctx, "blocksStoreQuerier.LabelValues")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	minT, maxT, limit := q.minT, q.maxT, int64(0)
 
@@ -443,7 +434,7 @@ func (q *blocksStoreQuerier) selectSorted(ctx context.Context, sp *storage.Selec
 	}
 
 	spanLog, spanCtx := spanlogger.New(ctx, "blocksStoreQuerier.selectSorted")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	minT, maxT, limit := q.minT, q.maxT, int64(0)
 	if sp != nil {

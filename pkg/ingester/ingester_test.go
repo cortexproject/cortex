@@ -6447,7 +6447,7 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		count := 3500000
+		count := 150000
 		req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, fmt.Sprintf("real-%d", count)), count, 1)
 		// Signal that we're going to do the real push now.
 		close(startCh)
@@ -7081,7 +7081,7 @@ func CreateBlock(t *testing.T, ctx context.Context, dir string, mint, maxt int64
 
 type panickingMatchersCache struct{}
 
-func (_ *panickingMatchersCache) GetOrSet(_ storecache.ConversionLabelMatcher, _ storecache.NewItemFunc) (*labels.Matcher, error) {
+func (*panickingMatchersCache) GetOrSet(_ storecache.ConversionLabelMatcher, _ storecache.NewItemFunc) (*labels.Matcher, error) {
 	var a []int
 	a[1] = 2 // index out of range
 	return nil, nil

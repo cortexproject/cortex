@@ -13,7 +13,6 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -81,6 +80,7 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	logger := log.NewNopLogger()
@@ -163,7 +163,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	createBlockVisitMarker(t, bucketClient, "user-1", block11)                                                // Partial block only has visit marker.
 	createDeletionMark(t, bucketClient, "user-2", block7, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 
-	// Blocks for user-3, marked for deletion.
+	// Blocks for user-3, tenant marked for deletion.
 	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", tsdb.NewTenantDeletionMark(time.Now())))
 	block9 := createTSDBBlock(t, bucketClient, "user-3", 10, 30, nil)
 	block10 := createTSDBBlock(t, bucketClient, "user-3", 30, 50, nil)
@@ -183,6 +183,8 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 
 	// Create Parquet marker
 	block13 := createTSDBBlock(t, bucketClient, "user-6", 30, 50, nil)
+	// This block should be converted to Parquet format so counted as remaining.
+	block14 := createTSDBBlock(t, bucketClient, "user-6", 30, 50, nil)
 	createParquetMarker(t, bucketClient, "user-6", block13)
 
 	// The fixtures have been created. If the bucket client wasn't wrapped to write
@@ -197,6 +199,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		CleanupConcurrency:                 options.concurrency,
 		BlockDeletionMarksMigrationEnabled: options.markersMigrationEnabled,
 		TenantCleanupDelay:                 options.tenantDeletionDelay,
+		BlockRanges:                        (&tsdb.DurationList{2 * time.Hour}).ToMilliseconds(),
 	}
 
 	reg := prometheus.NewPedanticRegistry()
@@ -206,6 +209,11 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
+	cfgProvider.parquetConverterEnabled = map[string]bool{
+		"user-3": true,
+		"user-5": true,
+		"user-6": true,
+	}
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
 		Help: blocksMarkedForDeletionHelp,
@@ -247,6 +255,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		{path: path.Join("user-3", block10.String(), parquet.ConverterMarkerFileName), expectedExists: false},
 		{path: path.Join("user-4", block.DebugMetas, "meta.json"), expectedExists: options.user4FilesExist},
 		{path: path.Join("user-6", block13.String(), parquet.ConverterMarkerFileName), expectedExists: true},
+		{path: path.Join("user-6", block14.String(), parquet.ConverterMarkerFileName), expectedExists: false},
 	} {
 		exists, err := bucketClient.Exists(ctx, tc.path)
 		require.NoError(t, err)
@@ -266,11 +275,11 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		assert.Equal(t, tc.expectedExists, exists, tc.user)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(7), testutil.ToFloat64(cleaner.blocksCleanedTotal))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(7), prom_testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
 	for _, tc := range []struct {
@@ -292,6 +301,11 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		}, {
 			userID:        "user-3",
 			expectedIndex: false,
+		}, {
+			userID:         "user-6",
+			expectedIndex:  true,
+			expectedBlocks: []ulid.ULID{block13, block14},
+			expectedMarks:  []ulid.ULID{},
 		},
 	} {
 		idx, err := bucketindex.ReadIndex(ctx, bucketClient, tc.userID, nil, logger)
@@ -314,7 +328,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		cortex_bucket_blocks_count{user="user-1"} 2
 		cortex_bucket_blocks_count{user="user-2"} 1
 		cortex_bucket_blocks_count{user="user-5"} 2
-		cortex_bucket_blocks_count{user="user-6"} 1
+		cortex_bucket_blocks_count{user="user-6"} 2
 		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
@@ -333,8 +347,18 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		cortex_bucket_blocks_partials_count{user="user-2"} 0
 		cortex_bucket_blocks_partials_count{user="user-5"} 0
 		cortex_bucket_blocks_partials_count{user="user-6"} 0
+		# HELP cortex_bucket_parquet_blocks_count Total number of parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_blocks_count gauge
+		cortex_bucket_parquet_blocks_count{user="user-5"} 0
+		cortex_bucket_parquet_blocks_count{user="user-6"} 1
+		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
+		cortex_bucket_parquet_unconverted_blocks_count{user="user-5"} 0
+		cortex_bucket_parquet_unconverted_blocks_count{user="user-6"} 0
 	`),
 		"cortex_bucket_blocks_count",
+		"cortex_bucket_parquet_blocks_count",
+		"cortex_bucket_parquet_unconverted_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
 		"cortex_bucket_blocks_marked_for_no_compaction_count",
 		"cortex_bucket_blocks_partials_count",
@@ -369,6 +393,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	logger := log.NewNopLogger()
@@ -402,11 +427,11 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(2), testutil.ToFloat64(cleaner.blocksCleanedTotal))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksFailedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(2), prom_testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
 	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, nil, logger)
@@ -438,6 +463,7 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	logger := log.NewNopLogger()
@@ -470,11 +496,11 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksCleanedTotal))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
 	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, nil, logger)
@@ -499,6 +525,7 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 		DeletionDelay:      time.Hour,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
@@ -648,6 +675,7 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 		DeletionDelay:      time.Hour,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
@@ -880,6 +908,7 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 		CleanupConcurrency: 1,
 		ShardingStrategy:   util.ShardingStrategyShuffle,
 		CompactionStrategy: util.CompactionStrategyPartitioning,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
@@ -955,6 +984,7 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 		CleanupConcurrency: 1,
 		ShardingStrategy:   util.ShardingStrategyShuffle,
 		CompactionStrategy: util.CompactionStrategyPartitioning,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
@@ -1012,17 +1042,107 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 	require.True(t, userBucket.IsObjNotFoundErr(err))
 }
 
+func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
+	// Create metrics
+	reg := prometheus.NewPedanticRegistry()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cortex_compactor_blocks_marked_for_deletion_total",
+			Help: "Total number of blocks marked for deletion in compactor.",
+		},
+		[]string{"user", "reason"},
+	)
+	remainingPlannedCompactions := promauto.With(reg).NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cortex_compactor_remaining_planned_compactions",
+			Help: "Total number of remaining planned compactions.",
+		},
+		[]string{"user"},
+	)
+
+	// Create the blocks cleaner
+	cleaner := NewBlocksCleaner(
+		BlocksCleanerConfig{
+			BlockRanges: (&tsdb.DurationList{
+				2 * time.Hour,
+				12 * time.Hour,
+			}).ToMilliseconds(),
+		},
+		nil, // bucket not needed
+		nil, // usersScanner not needed
+		0,
+		&mockConfigProvider{
+			parquetConverterEnabled: map[string]bool{
+				"user1": true,
+			},
+		},
+		log.NewNopLogger(),
+		"test",
+		reg,
+		0,
+		0,
+		blocksMarkedForDeletion,
+		remainingPlannedCompactions,
+	)
+
+	// Create test blocks in the index
+	now := time.Now()
+	idx := &bucketindex.Index{
+		Blocks: bucketindex.Blocks{
+			{
+				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
+				MinTime: now.Add(-3 * time.Hour).UnixMilli(),
+				MaxTime: now.UnixMilli(),
+				Parquet: &parquet.ConverterMarkMeta{},
+			},
+			{
+				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
+				MinTime: now.Add(-3 * time.Hour).UnixMilli(),
+				MaxTime: now.UnixMilli(),
+				Parquet: nil,
+			},
+			{
+				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
+				MinTime: now.Add(-5 * time.Hour).UnixMilli(),
+				MaxTime: now.UnixMilli(),
+				Parquet: nil,
+			},
+		},
+	}
+
+	// Update metrics
+	cleaner.updateBucketMetrics("user1", true, idx, 0, 0)
+
+	// Verify metrics
+	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetBlocks, strings.NewReader(`
+		# HELP cortex_bucket_parquet_blocks_count Total number of parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_blocks_count gauge
+		cortex_bucket_parquet_blocks_count{user="user1"} 1
+	`)))
+
+	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetUnConvertedBlocks, strings.NewReader(`
+		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
+		cortex_bucket_parquet_unconverted_blocks_count{user="user1"} 2
+	`)))
+}
+
 type mockConfigProvider struct {
-	userRetentionPeriods map[string]time.Duration
+	userRetentionPeriods    map[string]time.Duration
+	parquetConverterEnabled map[string]bool
 }
 
 func (m *mockConfigProvider) ParquetConverterEnabled(userID string) bool {
+	if result, ok := m.parquetConverterEnabled[userID]; ok {
+		return result
+	}
 	return false
 }
 
 func newMockConfigProvider() *mockConfigProvider {
 	return &mockConfigProvider{
-		userRetentionPeriods: make(map[string]time.Duration),
+		userRetentionPeriods:    make(map[string]time.Duration),
+		parquetConverterEnabled: make(map[string]bool),
 	}
 }
 

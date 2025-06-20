@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -21,8 +20,6 @@ import (
 )
 
 type relabelOperator struct {
-	telemetry.OperatorTelemetry
-
 	next     model.VectorOperator
 	funcExpr *logicalplan.FunctionCall
 	once     sync.Once
@@ -33,14 +30,12 @@ func newRelabelOperator(
 	next model.VectorOperator,
 	funcExpr *logicalplan.FunctionCall,
 	opts *query.Options,
-) *relabelOperator {
+) model.VectorOperator {
 	oper := &relabelOperator{
 		next:     next,
 		funcExpr: funcExpr,
 	}
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (o *relabelOperator) String() string {
@@ -52,9 +47,6 @@ func (o *relabelOperator) Explain() (next []model.VectorOperator) {
 }
 
 func (o *relabelOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	o.once.Do(func() { err = o.loadSeries(ctx) })
 	return o.series, err
@@ -65,9 +57,6 @@ func (o *relabelOperator) GetPool() *model.VectorPool {
 }
 
 func (o *relabelOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	return o.next.Next(ctx)
 }
 

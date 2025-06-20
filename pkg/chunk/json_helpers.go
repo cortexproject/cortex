@@ -10,14 +10,14 @@ import (
 )
 
 func init() {
-	jsoniter.RegisterTypeDecoderFunc("labels.Labels", decodeLabels)
-	jsoniter.RegisterTypeEncoderFunc("labels.Labels", encodeLabels, labelsIsEmpty)
+	jsoniter.RegisterTypeDecoderFunc("labels.Labels", DecodeLabels)
+	jsoniter.RegisterTypeEncoderFunc("labels.Labels", EncodeLabels, labelsIsEmpty)
 	jsoniter.RegisterTypeDecoderFunc("model.Time", decodeModelTime)
 	jsoniter.RegisterTypeEncoderFunc("model.Time", encodeModelTime, modelTimeIsEmpty)
 }
 
 // Override Prometheus' labels.Labels decoder which goes via a map
-func decodeLabels(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+func DecodeLabels(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	labelsPtr := (*labels.Labels)(ptr)
 	*labelsPtr = make(labels.Labels, 0, 10)
 	iter.ReadMapCB(func(iter *jsoniter.Iterator, key string) bool {
@@ -31,7 +31,7 @@ func decodeLabels(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 }
 
 // Override Prometheus' labels.Labels encoder which goes via a map
-func encodeLabels(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+func EncodeLabels(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	labelsPtr := (*labels.Labels)(ptr)
 	stream.WriteObjectStart()
 	for i, v := range *labelsPtr {

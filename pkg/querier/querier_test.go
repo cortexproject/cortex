@@ -1677,6 +1677,13 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expected: errShuffleShardingLookbackLessThanQueryStoreAfter,
 		},
+		"should fail if invalid parquet queryable default block store": {
+			setup: func(cfg *Config) {
+				cfg.EnableParquetQueryable = true
+				cfg.ParquetQueryableDefaultBlockStore = "none"
+			},
+			expected: errInvalidParquetQueryableDefaultBlockStore,
+		},
 	}
 
 	for testName, testData := range tests {

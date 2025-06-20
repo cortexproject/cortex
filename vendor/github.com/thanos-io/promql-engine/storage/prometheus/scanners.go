@@ -59,7 +59,7 @@ func (p Scanners) NewVectorSelector(
 	}
 
 	operators := make([]model.VectorOperator, 0, opts.DecodingConcurrency)
-	for i := 0; i < opts.DecodingConcurrency; i++ {
+	for i := range opts.DecodingConcurrency {
 		operator := exchange.NewConcurrent(
 			NewVectorSelector(
 				model.NewVectorPool(opts.StepsBatch),
@@ -127,7 +127,7 @@ func (p Scanners) NewMatrixSelector(
 	}
 
 	operators := make([]model.VectorOperator, 0, opts.DecodingConcurrency)
-	for i := 0; i < opts.DecodingConcurrency; i++ {
+	for i := range opts.DecodingConcurrency {
 		operator, err := NewMatrixSelector(
 			model.NewVectorPool(opts.StepsBatch),
 			selector,

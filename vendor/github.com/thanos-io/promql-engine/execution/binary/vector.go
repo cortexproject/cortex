@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -22,7 +21,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
-	"github.com/zhangyunhao116/umap"
 	"golang.org/x/exp/slices"
 )
 
@@ -51,15 +49,13 @@ type vectorOperator struct {
 	lcJoinBuckets []*joinBucket
 	hcJoinBuckets []*joinBucket
 
-	outputMap *umap.Uint64Map
+	outputMap map[uint64]uint64
 
 	matching *parser.VectorMatching
 	opType   parser.ItemType
 
 	// If true then 1/0 needs to be returned instead of the value.
 	returnBool bool
-
-	telemetry.OperatorTelemetry
 }
 
 func NewVectorOperator(
@@ -81,9 +77,7 @@ func NewVectorOperator(
 		sigFunc:    signatureFunc(matching.On, matching.MatchingLabels...),
 	}
 
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper, nil
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper), nil
 }
 
 func (o *vectorOperator) String() string {
@@ -98,9 +92,6 @@ func (o *vectorOperator) Explain() (next []model.VectorOperator) {
 }
 
 func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := o.initOnce(ctx); err != nil {
 		return nil, err
 	}
@@ -108,9 +99,6 @@ func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {
 }
 
 func (o *vectorOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -227,25 +215,23 @@ func (o *vectorOperator) execBinaryAnd(lhs, rhs model.StepVector) (model.StepVec
 
 	for _, sampleID := range rhs.SampleIDs {
 		jp := o.lcJoinBuckets[sampleID]
-		jp.sid = sampleID
 		jp.ats = ts
 	}
 
 	for _, histogramID := range rhs.HistogramIDs {
 		jp := o.lcJoinBuckets[histogramID]
-		jp.sid = histogramID
 		jp.ats = ts
 	}
 
 	for i, sampleID := range lhs.SampleIDs {
 		if jp := o.hcJoinBuckets[sampleID]; jp.ats == ts {
-			step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, jp.sid+1), lhs.Samples[i])
+			step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, 0), lhs.Samples[i])
 		}
 	}
 
 	for i, histogramID := range lhs.HistogramIDs {
 		if jp := o.hcJoinBuckets[histogramID]; jp.ats == ts {
-			step.AppendHistogram(o.pool, o.outputSeriesID(histogramID+1, jp.sid+1), lhs.Histograms[i])
+			step.AppendHistogram(o.pool, o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i])
 		}
 	}
 	return step, nil
@@ -308,13 +294,13 @@ func (o *vectorOperator) execBinaryUnless(lhs, rhs model.StepVector) (model.Step
 	return step, nil
 }
 
-func (o *vectorOperator) computeBinaryPairing(hval, lval float64, hlhs, hrhs *histogram.FloatHistogram, annos *annotations.Annotations) (float64, *histogram.FloatHistogram, bool, error) {
+func (o *vectorOperator) computeBinaryPairing(ctx context.Context, hval, lval float64, hlhs, hrhs *histogram.FloatHistogram, annos *annotations.Annotations) (float64, *histogram.FloatHistogram, bool, error) {
 	// operand is not commutative so we need to address potential swapping
 	if o.matching.Card == parser.CardOneToMany {
-		v, h, keep, err := vectorElemBinop(o.opType, lval, hval, hlhs, hrhs, annos)
+		v, h, keep, err := vectorElemBinop(ctx, o.opType, lval, hval, hlhs, hrhs, annos)
 		return v, h, keep, err
 	}
-	v, h, keep, err := vectorElemBinop(o.opType, hval, lval, hlhs, hrhs, annos)
+	v, h, keep, err := vectorElemBinop(ctx, o.opType, hval, lval, hlhs, hrhs, annos)
 	return v, h, keep, err
 }
 
@@ -380,9 +366,9 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 		jp.bts = ts
 
 		if jp.histogramVal != nil {
-			_, h, keep, err = o.computeBinaryPairing(0, 0, hcs.Histograms[i], jp.histogramVal, &annos)
+			_, h, keep, err = o.computeBinaryPairing(ctx, 0, 0, hcs.Histograms[i], jp.histogramVal, &annos)
 		} else {
-			_, h, keep, err = o.computeBinaryPairing(0, jp.val, hcs.Histograms[i], nil, &annos)
+			_, h, keep, err = o.computeBinaryPairing(ctx, 0, jp.val, hcs.Histograms[i], nil, &annos)
 		}
 		if countWarnings, countInfo := annos.CountWarningsAndInfo(); countWarnings > 0 || countInfo > 0 {
 			warnings.MergeToContext(annos, ctx)
@@ -423,7 +409,7 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 		var val float64
 
 		if jp.histogramVal != nil {
-			_, h, _, err = o.computeBinaryPairing(hcs.Samples[i], 0, nil, jp.histogramVal, &annos)
+			_, h, _, err = o.computeBinaryPairing(ctx, hcs.Samples[i], 0, nil, jp.histogramVal, &annos)
 			if countWarnings, countInfo := annos.CountWarningsAndInfo(); countWarnings > 0 || countInfo > 0 {
 				warnings.MergeToContext(annos, ctx)
 				continue
@@ -433,7 +419,7 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 			}
 			step.AppendHistogram(o.pool, jp.sid, h)
 		} else {
-			val, _, keep, err = o.computeBinaryPairing(hcs.Samples[i], jp.val, nil, nil, &annos)
+			val, _, keep, err = o.computeBinaryPairing(ctx, hcs.Samples[i], jp.val, nil, nil, &annos)
 			if countWarnings, countInfo := annos.CountWarningsAndInfo(); countWarnings > 0 || countInfo > 0 {
 				warnings.MergeToContext(annos, ctx)
 				continue
@@ -471,8 +457,7 @@ func (o *vectorOperator) newImplicitManyToOneError() error {
 }
 
 func (o *vectorOperator) outputSeriesID(hc, lc uint64) uint64 {
-	res, _ := o.outputMap.Load(cantorPairing(hc, lc))
-	return res
+	return o.outputMap[cantorPairing(hc, lc)]
 }
 
 func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Labels) {
@@ -485,7 +470,7 @@ func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Label
 		lcSampleIdToSignature = make(map[int]uint64, len(lowCardSide))
 		hcSampleIdToSignature = make(map[int]uint64, len(highCardSide))
 
-		outputMap = umap.New64(len(highCardSide))
+		outputMap = make(map[uint64]uint64, len(highCardSide))
 	)
 
 	// initialize join bucket mappings
@@ -518,26 +503,25 @@ func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Label
 	h := &joinHelper{seen: make(map[uint64]int)}
 	switch o.opType {
 	case parser.LAND:
+		// "and" can only have matches if lhs and rhs have collision, so we only need to populate
+		// the output map for lhs series that have corresponding hash collision
 		for i := range highCardSide {
 			sig := hcSampleIdToSignature[i]
-			lcs, ok := lcHashToSeriesIDs[sig]
-			if !ok {
+			if lcs := lcHashToSeriesIDs[sig]; len(lcs) == 0 {
 				continue
 			}
-			for _, lc := range lcs {
-				outputMap.Store(cantorPairing(uint64(i+1), uint64(lc+1)), uint64(h.append(highCardSide[i])))
-			}
+			outputMap[cantorPairing(uint64(i+1), 0)] = uint64(h.append(highCardSide[i]))
 		}
 	case parser.LOR:
 		for i := range highCardSide {
-			outputMap.Store(cantorPairing(uint64(i+1), 0), uint64(h.append(highCardSide[i])))
+			outputMap[cantorPairing(uint64(i+1), 0)] = uint64(h.append(highCardSide[i]))
 		}
 		for i := range lowCardSide {
-			outputMap.Store(cantorPairing(0, uint64(i+1)), uint64(h.append(lowCardSide[i])))
+			outputMap[cantorPairing(0, uint64(i+1))] = uint64(h.append(lowCardSide[i]))
 		}
 	case parser.LUNLESS:
 		for i := range highCardSide {
-			outputMap.Store(cantorPairing(uint64(i+1), 0), uint64(h.append(highCardSide[i])))
+			outputMap[cantorPairing(uint64(i+1), 0)] = uint64(h.append(highCardSide[i]))
 		}
 	default:
 		b := labels.NewBuilder(labels.EmptyLabels())
@@ -549,7 +533,7 @@ func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Label
 			}
 			for _, lc := range lcs {
 				n := h.append(o.resultMetric(b, highCardSide[i], lowCardSide[lc]))
-				outputMap.Store(cantorPairing(uint64(i+1), uint64(lc+1)), uint64(n))
+				outputMap[cantorPairing(uint64(i+1), uint64(lc+1))] = uint64(n)
 			}
 		}
 	}
@@ -626,7 +610,7 @@ func signatureFunc(on bool, names ...string) func(labels.Labels) uint64 {
 // Lifted from: https://github.com/prometheus/prometheus/blob/v3.1.0/promql/engine.go#L2797.
 // nolint: unparam
 // vectorElemBinop evaluates a binary operation between two Vector elements.
-func vectorElemBinop(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHistogram, annos *annotations.Annotations) (float64, *histogram.FloatHistogram, bool, error) {
+func vectorElemBinop(ctx context.Context, op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHistogram, annos *annotations.Annotations) (float64, *histogram.FloatHistogram, bool, error) {
 	opName := parser.ItemTypeStr[op]
 
 	switch {
@@ -689,12 +673,26 @@ func vectorElemBinop(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram
 			case parser.ADD:
 				res, err := hlhs.Copy().Add(hrhs)
 				if err != nil {
+					if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+						warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
+						return 0, nil, false, nil
+					} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+						warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
+						return 0, nil, false, nil
+					}
 					return 0, nil, false, err
 				}
 				return 0, res.Compact(0), true, nil
 			case parser.SUB:
 				res, err := hlhs.Copy().Sub(hrhs)
 				if err != nil {
+					if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+						warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
+						return 0, nil, false, nil
+					} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+						warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
+						return 0, nil, false, nil
+					}
 					return 0, nil, false, err
 				}
 				return 0, res.Compact(0), true, nil
@@ -710,5 +708,5 @@ func vectorElemBinop(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram
 			}
 		}
 	}
-	panic(errors.Newf("operator %q not allowed for operations between Vectors", op))
+	return 0, nil, false, errors.Newf("operator %q not allowed for operations between vectors", op)
 }

@@ -62,7 +62,7 @@ const (
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited                 = "rate_limited"
-	NativeHistogramsRateLimited = "natve_histograms_rate_limited"
+	NativeHistogramsRateLimited = "native_histograms_rate_limited"
 
 	// Too many HA clusters is one of the reasons for discarding samples.
 	TooManyHAClusters = "too_many_ha_clusters"

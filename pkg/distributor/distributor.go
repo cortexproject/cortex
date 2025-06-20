@@ -761,7 +761,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
-	seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
+	seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
 	if err != nil {
 		return nil, err
 	}
@@ -772,6 +772,18 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	d.receivedExemplars.WithLabelValues(userID).Add(float64(validatedExemplars))
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
+	nhRateLimited := false
+	if limits.NativeHistogramsIngestionRate != math.MaxFloat64 {
+		nhRateLimited = !d.nativeHistogramsIngestionRateLimiter.AllowN(time.Now(), userID, validatedHistogramSamples)
+	}
+
+	if nhRateLimited {
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(validatedHistogramSamples))
+	} else {
+		seriesKeys = append(seriesKeys, nhSeriesKeys...)
+		validatedTimeseries = append(validatedTimeseries, nhValidatedTimeseries...)
+	}
+
 	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
 		// Ensure the request slice is reused if there's no series or metadata passing the validation.
 		cortexpb.ReuseSlice(req.Timeseries)
@@ -781,32 +793,16 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	totalSamples := validatedFloatSamples + validatedHistogramSamples
 	totalN := totalSamples + validatedExemplars + len(validatedMetadata)
-
-	nhRateLimited := false
-	if limits.NativeHistogramsIngestionRate != math.MaxFloat64 {
-		nhRateLimited = !d.nativeHistogramsIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples)
-	}
-	rateLimited := !d.ingestionRateLimiter.AllowN(now, userID, totalN)
-
-	// Return a 429 here to tell the client it is going too fast.
-	// Client may discard the data or slow down and re-send.
-	// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
-	if nhRateLimited {
+	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
 		cortexpb.ReuseSlice(req.Timeseries)
-		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(totalSamples))
-		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(validatedExemplars))
-		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(len(validatedMetadata)))
 
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "native histograms ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.nativeHistogramsIngestionRateLimiter.Limit(now, userID), totalSamples, len(validatedMetadata))
-	}
-	if rateLimited {
-		// Ensure the request slice is reused if the request is rate limited.
-		cortexpb.ReuseSlice(req.Timeseries)
 		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(totalSamples))
 		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
 		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
-
+		// Return a 429 here to tell the client it is going too fast.
+		// Client may discard the data or slow down and re-send.
+		// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), totalSamples, len(validatedMetadata))
 	}
 
@@ -959,14 +955,16 @@ type samplesLabelSetEntry struct {
 	labels           labels.Labels
 }
 
-func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []cortexpb.PreallocTimeseries, int, int, int, error, error) {
+func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []uint32, []cortexpb.PreallocTimeseries, []cortexpb.PreallocTimeseries, int, int, int, error, error) {
 	pSpan, _ := opentracing.StartSpanFromContext(ctx, "prepareSeriesKeys")
 	defer pSpan.Finish()
 
 	// For each timeseries or samples, we compute a hash to distribute across ingesters;
 	// check each sample/metadata and discard if outside limits.
 	validatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
+	nhValidatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))
+	nhSeriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedFloatSamples := 0
 	validatedHistogramSamples := 0
 	validatedExemplars := 0
@@ -1074,7 +1072,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		// label and dropped labels (if any)
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
-			return nil, nil, 0, 0, 0, nil, err
+			return nil, nil, nil, nil, 0, 0, 0, nil, err
 		}
 		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation, limits)
 
@@ -1109,8 +1107,13 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			}
 		}
 
-		seriesKeys = append(seriesKeys, key)
-		validatedTimeseries = append(validatedTimeseries, validatedSeries)
+		if len(ts.Histograms) > 0 {
+			nhSeriesKeys = append(nhSeriesKeys, key)
+			nhValidatedTimeseries = append(nhValidatedTimeseries, validatedSeries)
+		} else {
+			seriesKeys = append(seriesKeys, key)
+			validatedTimeseries = append(validatedTimeseries, validatedSeries)
+		}
 		validatedFloatSamples += len(ts.Samples)
 		validatedHistogramSamples += len(ts.Histograms)
 		validatedExemplars += len(ts.Exemplars)
@@ -1126,7 +1129,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		}
 	}
 
-	return seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
+	return seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
 }
 
 func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {

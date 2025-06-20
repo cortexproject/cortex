@@ -72,3 +72,49 @@ func (s *infiniteStrategy) Burst(tenantID string) int {
 	// Burst is ignored when limit = rate.Inf
 	return 0
 }
+
+type localStrategyNativeHistograms struct {
+	limits *validation.Overrides
+}
+
+func newLocalNativeHistogramsIngestionRateStrategy(limits *validation.Overrides) limiter.RateLimiterStrategy {
+	return &localStrategyNativeHistograms{
+		limits: limits,
+	}
+}
+
+func (s *localStrategyNativeHistograms) Limit(tenantID string) float64 {
+	return s.limits.NativeHistogramsIngestionRate(tenantID)
+}
+
+func (s *localStrategyNativeHistograms) Burst(tenantID string) int {
+	return s.limits.NativeHistogramsIngestionBurstSize(tenantID)
+}
+
+type globalStrategyNativeHistograms struct {
+	limits *validation.Overrides
+	ring   ReadLifecycler
+}
+
+func newGlobalNativeHistogramsIngestionRateStrategy(limits *validation.Overrides, ring ReadLifecycler) limiter.RateLimiterStrategy {
+	return &globalStrategyNativeHistograms{
+		limits: limits,
+		ring:   ring,
+	}
+}
+
+func (s *globalStrategyNativeHistograms) Limit(tenantID string) float64 {
+	numDistributors := s.ring.HealthyInstancesCount()
+
+	if numDistributors == 0 {
+		return s.limits.NativeHistogramsIngestionRate(tenantID)
+	}
+
+	return s.limits.NativeHistogramsIngestionRate(tenantID) / float64(numDistributors)
+}
+
+func (s *globalStrategyNativeHistograms) Burst(tenantID string) int {
+	// The meaning of burst doesn't change for the global strategy, in order
+	// to keep it easier to understand for users / operators.
+	return s.limits.NativeHistogramsIngestionBurstSize(tenantID)
+}

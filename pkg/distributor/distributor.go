@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -95,7 +96,8 @@ type Distributor struct {
 	HATracker *ha.HATracker
 
 	// Per-user rate limiter.
-	ingestionRateLimiter *limiter.RateLimiter
+	ingestionRateLimiter                 *limiter.RateLimiter
+	nativeHistogramsIngestionRateLimiter *limiter.RateLimiter
 
 	// Manager for subservices (HA Tracker, distributor ring and client pool)
 	subservices        *services.Manager
@@ -267,11 +269,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	// it's an internal dependency and can't join the distributors ring, we skip rate
 	// limiting.
 	var ingestionRateStrategy limiter.RateLimiterStrategy
+	var nativeHistogramsIngestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsLifeCycler *ring.Lifecycler
 	var distributorsRing *ring.Ring
 
 	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
+		nativeHistogramsIngestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		distributorsLifeCycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, true, true, log, prometheus.WrapRegistererWithPrefix("cortex_", reg))
 		if err != nil {
@@ -285,21 +289,24 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		subservices = append(subservices, distributorsLifeCycler, distributorsRing)
 
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsLifeCycler)
+		nativeHistogramsIngestionRateStrategy = newGlobalNativeHistogramsIngestionRateStrategy(limits, distributorsLifeCycler)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(limits)
+		nativeHistogramsIngestionRateStrategy = newLocalNativeHistogramsIngestionRateStrategy(limits)
 	}
 
 	d := &Distributor{
-		cfg:                    cfg,
-		log:                    log,
-		ingestersRing:          ingestersRing,
-		ingesterPool:           NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
-		distributorsLifeCycler: distributorsLifeCycler,
-		distributorsRing:       distributorsRing,
-		limits:                 limits,
-		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		HATracker:              haTracker,
-		ingestionRate:          util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		cfg:                                  cfg,
+		log:                                  log,
+		ingestersRing:                        ingestersRing,
+		ingesterPool:                         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
+		distributorsLifeCycler:               distributorsLifeCycler,
+		distributorsRing:                     distributorsRing,
+		limits:                               limits,
+		ingestionRateLimiter:                 limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+		nativeHistogramsIngestionRateLimiter: limiter.NewRateLimiter(nativeHistogramsIngestionRateStrategy, 10*time.Second),
+		HATracker:                            haTracker,
+		ingestionRate:                        util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -754,7 +761,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
-	seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
+	seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
 	if err != nil {
 		return nil, err
 	}
@@ -764,6 +771,18 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	d.receivedSamples.WithLabelValues(userID, sampleMetricTypeHistogram).Add(float64(validatedHistogramSamples))
 	d.receivedExemplars.WithLabelValues(userID).Add(float64(validatedExemplars))
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
+
+	nhRateLimited := false
+	if limits.NativeHistogramsIngestionRate != math.MaxFloat64 {
+		nhRateLimited = !d.nativeHistogramsIngestionRateLimiter.AllowN(time.Now(), userID, validatedHistogramSamples)
+	}
+
+	if nhRateLimited {
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(validatedHistogramSamples))
+	} else {
+		seriesKeys = append(seriesKeys, nhSeriesKeys...)
+		validatedTimeseries = append(validatedTimeseries, nhValidatedTimeseries...)
+	}
 
 	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
 		// Ensure the request slice is reused if there's no series or metadata passing the validation.
@@ -936,14 +955,16 @@ type samplesLabelSetEntry struct {
 	labels           labels.Labels
 }
 
-func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []cortexpb.PreallocTimeseries, int, int, int, error, error) {
+func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []uint32, []cortexpb.PreallocTimeseries, []cortexpb.PreallocTimeseries, int, int, int, error, error) {
 	pSpan, _ := opentracing.StartSpanFromContext(ctx, "prepareSeriesKeys")
 	defer pSpan.Finish()
 
 	// For each timeseries or samples, we compute a hash to distribute across ingesters;
 	// check each sample/metadata and discard if outside limits.
 	validatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
+	nhValidatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))
+	nhSeriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedFloatSamples := 0
 	validatedHistogramSamples := 0
 	validatedExemplars := 0
@@ -1051,7 +1072,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		// label and dropped labels (if any)
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
-			return nil, nil, 0, 0, 0, nil, err
+			return nil, nil, nil, nil, 0, 0, 0, nil, err
 		}
 		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation, limits)
 
@@ -1086,8 +1107,13 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			}
 		}
 
-		seriesKeys = append(seriesKeys, key)
-		validatedTimeseries = append(validatedTimeseries, validatedSeries)
+		if len(ts.Histograms) > 0 {
+			nhSeriesKeys = append(nhSeriesKeys, key)
+			nhValidatedTimeseries = append(nhValidatedTimeseries, validatedSeries)
+		} else {
+			seriesKeys = append(seriesKeys, key)
+			validatedTimeseries = append(validatedTimeseries, validatedSeries)
+		}
 		validatedFloatSamples += len(ts.Samples)
 		validatedHistogramSamples += len(ts.Histograms)
 		validatedExemplars += len(ts.Exemplars)
@@ -1103,7 +1129,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		}
 	}
 
-	return seriesKeys, validatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
+	return seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
 }
 
 func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {

@@ -681,6 +681,97 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
+func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
+	t.Parallel()
+	type testPush struct {
+		samples                              int
+		metadata                             int
+		expectedError                        error
+		expectedNHDiscardedSampleMetricValue int
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "user")
+	tests := map[string]struct {
+		distributors                       int
+		ingestionRateStrategy              string
+		ingestionRate                      float64
+		ingestionBurstSize                 int
+		nativeHistogramsIngestionRate      float64
+		nativeHistogramsIngestionBurstSize int
+		pushes                             []testPush
+	}{
+		"local strategy: limit should be set to each distributor: histograms": {
+			distributors:                       2,
+			ingestionRateStrategy:              validation.LocalIngestionRateStrategy,
+			ingestionRate:                      13,
+			ingestionBurstSize:                 13,
+			nativeHistogramsIngestionRate:      5,
+			nativeHistogramsIngestionBurstSize: 5,
+			pushes: []testPush{
+				{samples: 2, expectedError: nil, expectedNHDiscardedSampleMetricValue: 0},
+				{samples: 4, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
+				{samples: 2, metadata: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
+				{samples: 2, metadata: 8, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (13) exceeded while adding 2 samples and 8 metadata"), expectedNHDiscardedSampleMetricValue: 6},
+			},
+		},
+		"global strategy: burst should set to each distributor: histograms": {
+			distributors:                       2,
+			ingestionRateStrategy:              validation.GlobalIngestionRateStrategy,
+			ingestionRate:                      20,
+			ingestionBurstSize:                 20,
+			nativeHistogramsIngestionRate:      6,
+			nativeHistogramsIngestionBurstSize: 3,
+			pushes: []testPush{
+				{samples: 2, expectedError: nil, expectedNHDiscardedSampleMetricValue: 0},
+				{samples: 4, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
+				{samples: 1, metadata: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
+				{samples: 2, metadata: 15, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 2 samples and 15 metadata"), expectedNHDiscardedSampleMetricValue: 6},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.IngestionRateStrategy = testData.ingestionRateStrategy
+			limits.IngestionRate = testData.ingestionRate
+			limits.IngestionBurstSize = testData.ingestionBurstSize
+			limits.NativeHistogramsIngestionRate = testData.nativeHistogramsIngestionRate
+			limits.NativeHistogramsIngestionBurstSize = testData.nativeHistogramsIngestionBurstSize
+
+			// Start all expected distributors
+			distributors, _, _, _ := prepare(t, prepConfig{
+				numIngesters:     3,
+				happyIngesters:   3,
+				numDistributors:  testData.distributors,
+				shardByAllLabels: true,
+				limits:           limits,
+			})
+
+			// Push samples in multiple requests to the first distributor
+			for _, push := range testData.pushes {
+				var request = makeWriteRequest(0, 0, push.metadata, push.samples)
+
+				response, err := distributors[0].Push(ctx, request)
+
+				if push.expectedError == nil {
+					assert.Equal(t, emptyResponse, response)
+					assert.Nil(t, err)
+				} else {
+					assert.Nil(t, response)
+					assert.Equal(t, push.expectedError, err)
+				}
+				assert.Equal(t, float64(push.expectedNHDiscardedSampleMetricValue), testutil.ToFloat64(distributors[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramsRateLimited, "user")))
+			}
+		})
+	}
+
+}
+
 func TestPush_QuorumError(t *testing.T) {
 	t.Parallel()
 

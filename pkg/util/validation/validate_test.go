@@ -349,15 +349,17 @@ func TestValidateNativeHistogram(t *testing.T) {
 	belowMinRangeSchemaHistogram.Schema = -5
 	exceedMaxRangeSchemaFloatHistogram := tsdbutil.GenerateTestFloatHistogram(0)
 	exceedMaxRangeSchemaFloatHistogram.Schema = 20
+	exceedMaxSampleSizeBytesLimitFloatHistogram := tsdbutil.GenerateTestFloatHistogram(100)
 
 	for _, tc := range []struct {
-		name                      string
-		bucketLimit               int
-		resolutionReduced         bool
-		histogram                 cortexpb.Histogram
-		expectedHistogram         cortexpb.Histogram
-		expectedErr               error
-		discardedSampleLabelValue string
+		name                                   string
+		bucketLimit                            int
+		resolutionReduced                      bool
+		histogram                              cortexpb.Histogram
+		expectedHistogram                      cortexpb.Histogram
+		expectedErr                            error
+		discardedSampleLabelValue              string
+		maxNativeHistogramSampleSizeBytesLimit int
 	}{
 		{
 			name:                      "no limit, histogram",
@@ -455,12 +457,20 @@ func TestValidateNativeHistogram(t *testing.T) {
 			expectedErr:               newNativeHistogramSchemaInvalidError(lbls, int(exceedMaxRangeSchemaFloatHistogram.Schema)),
 			discardedSampleLabelValue: nativeHistogramInvalidSchema,
 		},
+		{
+			name:                                   "exceed max sample size bytes limit",
+			histogram:                              cortexpb.FloatHistogramToHistogramProto(0, exceedMaxSampleSizeBytesLimitFloatHistogram.Copy()),
+			expectedErr:                            newNativeHistogramSampleSizeBytesExceededError(lbls, 126, 100),
+			discardedSampleLabelValue:              nativeHistogramSampleSizeBytesExceeded,
+			maxNativeHistogramSampleSizeBytesLimit: 100,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := prometheus.NewRegistry()
 			validateMetrics := NewValidateMetrics(reg)
 			limits := new(Limits)
 			limits.MaxNativeHistogramBuckets = tc.bucketLimit
+			limits.MaxNativeHistogramSampleSizeBytes = tc.maxNativeHistogramSampleSizeBytesLimit
 			actualHistogram, actualErr := ValidateNativeHistogram(validateMetrics, limits, userID, lbls, tc.histogram)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, actualErr)

@@ -262,6 +262,26 @@ func (e *nativeHistogramSchemaInvalidError) Error() string {
 	return fmt.Sprintf("invalid native histogram schema %d for metric: %.200q. supported schema from %d to %d", e.receivedSchema, formatLabelSet(e.series), histogram.ExponentialSchemaMin, histogram.ExponentialSchemaMax)
 }
 
+// nativeHistogramSampleSizeBytesExceededError is a ValidationError implementation for samples with native histogram
+// exceeding the sample size bytes limit
+type nativeHistogramSampleSizeBytesExceededError struct {
+	nhSampleSizeBytes int
+	series            []cortexpb.LabelAdapter
+	limit             int
+}
+
+func newNativeHistogramSampleSizeBytesExceededError(series []cortexpb.LabelAdapter, nhSampleSizeBytes int, limit int) ValidationError {
+	return &nativeHistogramSampleSizeBytesExceededError{
+		nhSampleSizeBytes: nhSampleSizeBytes,
+		series:            series,
+		limit:             limit,
+	}
+}
+
+func (e *nativeHistogramSampleSizeBytesExceededError) Error() string {
+	return fmt.Sprintf("native histogram sample size bytes exceeded for metric (actual: %d, limit: %d) metric: %.200q", e.nhSampleSizeBytes, e.limit, formatLabelSet(e.series))
+}
+
 // formatLabelSet formats label adapters as a metric name with labels, while preserving
 // label order, and keeping duplicates. If there are multiple "__name__" labels, only
 // first one is used as metric name, other ones will be included as regular labels.

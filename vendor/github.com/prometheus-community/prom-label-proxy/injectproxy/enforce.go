@@ -274,7 +274,7 @@ func (ms PromQLEnforcer) EnforceMatchers(targets []*labels.Matcher) ([]*labels.M
 							}
 						}
 					}
-					ok = ok && !(target.Value == "" && matcher.Matches(""))
+					ok = ok && (target.Value != "" || !matcher.Matches(""))
 					ok = ok && target.Value != matcher.Value
 				case labels.MatchNotRegexp:
 					ok = true

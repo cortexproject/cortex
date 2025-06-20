@@ -234,8 +234,8 @@ func (r *routes) filterRules(lvalues []string, req *http.Request, resp *apiRespo
 			}
 
 			var ar *alertingRule
-			for i := range rgr.alertingRule.Alerts {
-				if lval := rgr.alertingRule.Alerts[i].Labels.Get(r.label); lval == "" || !m.Matches(lval) {
+			for i := range rgr.Alerts {
+				if lval := rgr.Alerts[i].Labels.Get(r.label); lval == "" || !m.Matches(lval) {
 					continue
 				}
 
@@ -243,10 +243,10 @@ func (r *routes) filterRules(lvalues []string, req *http.Request, resp *apiRespo
 					ar = &alertingRule{
 						Name:           rgr.alertingRule.Name,
 						Query:          rgr.alertingRule.Query,
-						Duration:       rgr.alertingRule.Duration,
-						KeepFiringFor:  rgr.alertingRule.KeepFiringFor,
+						Duration:       rgr.Duration,
+						KeepFiringFor:  rgr.KeepFiringFor,
 						Labels:         rgr.alertingRule.Labels.Copy(),
-						Annotations:    rgr.alertingRule.Annotations.Copy(),
+						Annotations:    rgr.Annotations.Copy(),
 						Health:         rgr.alertingRule.Health,
 						LastError:      rgr.alertingRule.LastError,
 						EvaluationTime: rgr.alertingRule.EvaluationTime,
@@ -255,7 +255,7 @@ func (r *routes) filterRules(lvalues []string, req *http.Request, resp *apiRespo
 					}
 				}
 
-				ar.Alerts = append(ar.Alerts, rgr.alertingRule.Alerts[i])
+				ar.Alerts = append(ar.Alerts, rgr.Alerts[i])
 				switch ar.State {
 				case "pending":
 					if rgr.alertingRule.Alerts[i].State == "firing" {

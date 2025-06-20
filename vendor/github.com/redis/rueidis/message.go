@@ -372,6 +372,36 @@ func (r RedisResult) AsXRead() (v map[string][]XRangeEntry, err error) {
 	return
 }
 
+// AsXRangeSlice delegates to RedisMessage.AsXRangeSlice
+func (r RedisResult) AsXRangeSlice() (v XRangeSlice, err error) {
+	if r.err != nil {
+		err = r.err
+	} else {
+		v, err = r.val.AsXRangeSlice()
+	}
+	return
+}
+
+// AsXRangeSlices delegates to RedisMessage.AsXRangeSlices
+func (r RedisResult) AsXRangeSlices() (v []XRangeSlice, err error) {
+	if r.err != nil {
+		err = r.err
+	} else {
+		v, err = r.val.AsXRangeSlices()
+	}
+	return
+}
+
+// AsXReadSlices delegates to RedisMessage.AsXReadSlices
+func (r RedisResult) AsXReadSlices() (v map[string][]XRangeSlice, err error) {
+	if r.err != nil {
+		err = r.err
+	} else {
+		v, err = r.val.AsXReadSlices()
+	}
+	return
+}
+
 func (r RedisResult) AsLMPop() (v KeyValues, err error) {
 	if r.err != nil {
 		err = r.err
@@ -1002,6 +1032,103 @@ func (m *RedisMessage) AsXRead() (ret map[string][]XRangeEntry, err error) {
 	}
 	typ := m.typ
 	return nil, fmt.Errorf("%w: redis message type %s is not a map/array/set", errParse, typeNames[typ])
+}
+
+// New slice-based structures that preserve order and duplicates
+type XRangeSlice struct {
+	ID          string
+	FieldValues []XRangeFieldValue
+}
+
+type XRangeFieldValue struct {
+	Field string
+	Value string
+}
+
+// AsXRangeSlice converts a RedisMessage to XRangeSlice (preserves order and duplicates)
+func (m *RedisMessage) AsXRangeSlice() (XRangeSlice, error) {
+	values, err := m.ToArray()
+	if err != nil {
+		return XRangeSlice{}, err
+	}
+	if len(values) != 2 {
+		return XRangeSlice{}, fmt.Errorf("got %d, wanted 2", len(values))
+	}
+	id, err := values[0].ToString()
+	if err != nil {
+		return XRangeSlice{}, err
+	}
+	// Handle the field-values array
+	fieldArray, err := values[1].ToArray()
+	if err != nil {
+		if IsRedisNil(err) {
+			return XRangeSlice{ID: id, FieldValues: nil}, nil
+		}
+		return XRangeSlice{}, err
+	}
+	// Convert pairs to slice (preserving order)
+	fieldValues := make([]XRangeFieldValue, 0, len(fieldArray)/2)
+	for i := 0; i < cap(fieldValues); i++ {
+		field := fieldArray[i*2].string()
+		value := fieldArray[i*2+1].string()
+		fieldValues = append(fieldValues, XRangeFieldValue{
+			Field: field,
+			Value: value,
+		})
+	}
+	return XRangeSlice{
+		ID:          id,
+		FieldValues: fieldValues,
+	}, nil
+}
+
+// AsXRangeSlices converts multiple XRange entries to slice format
+func (m *RedisMessage) AsXRangeSlices() ([]XRangeSlice, error) {
+	values, err := m.ToArray()
+	if err != nil {
+		return nil, err
+	}
+	msgs := make([]XRangeSlice, 0, len(values))
+	for _, v := range values {
+		msg, err := v.AsXRangeSlice()
+		if err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, msg)
+	}
+	return msgs, nil
+}
+
+// AsXReadSlices converts XREAD/XREADGROUP response to use slice format
+func (m *RedisMessage) AsXReadSlices() (map[string][]XRangeSlice, error) {
+	if err := m.Error(); err != nil {
+		return nil, err
+	}
+	var ret map[string][]XRangeSlice
+	var err error
+	if m.IsMap() {
+		ret = make(map[string][]XRangeSlice, len(m.values())/2)
+		for i := 0; i < len(m.values()); i += 2 {
+			if ret[m.values()[i].string()], err = m.values()[i+1].AsXRangeSlices(); err != nil {
+				return nil, err
+			}
+		}
+		return ret, nil
+	}
+	if m.IsArray() {
+		ret = make(map[string][]XRangeSlice, len(m.values()))
+		for _, v := range m.values() {
+			if !v.IsArray() || len(v.values()) != 2 {
+				return nil, fmt.Errorf("got %d, wanted 2", len(v.values()))
+			}
+			if ret[v.values()[0].string()], err = v.values()[1].AsXRangeSlices(); err != nil {
+				return nil, err
+			}
+		}
+		return ret, nil
+	}
+	typ := m.typ
+	return nil, fmt.Errorf("%w: valkey message type %s is not a map/array/set", errParse, typeNames[typ])
 }
 
 // ZScore is the element type of ZRANGE WITHSCORES, ZDIFF WITHSCORES and ZPOPMAX command response

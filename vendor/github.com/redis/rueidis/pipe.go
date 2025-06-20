@@ -21,7 +21,7 @@ import (
 )
 
 const LibName = "rueidis"
-const LibVer = "1.0.60"
+const LibVer = "1.0.61"
 
 var noHello = regexp.MustCompile("unknown command .?(HELLO|hello).?")
 
@@ -720,26 +720,45 @@ func (p *pipe) handlePush(values []RedisMessage) (reply bool, unsubscribe bool) 
 			p.pshks.Load().(*pshks).hooks.OnMessage(m)
 		}
 	case "unsubscribe":
-		p.nsubs.Unsubscribe(values[1].string())
 		if len(values) >= 3 {
-			p.pshks.Load().(*pshks).hooks.OnSubscription(PubSubSubscription{Kind: values[0].string(), Channel: values[1].string(), Count: values[2].intlen})
+			s := PubSubSubscription{Kind: values[0].string(), Channel: values[1].string(), Count: values[2].intlen}
+			p.nsubs.Unsubscribe(s)
+			p.pshks.Load().(*pshks).hooks.OnSubscription(s)
 		}
 		return true, true
 	case "punsubscribe":
-		p.psubs.Unsubscribe(values[1].string())
 		if len(values) >= 3 {
-			p.pshks.Load().(*pshks).hooks.OnSubscription(PubSubSubscription{Kind: values[0].string(), Channel: values[1].string(), Count: values[2].intlen})
+			s := PubSubSubscription{Kind: values[0].string(), Channel: values[1].string(), Count: values[2].intlen}
+			p.psubs.Unsubscribe(s)
+			p.pshks.Load().(*pshks).hooks.OnSubscription(s)
 		}
 		return true, true
 	case "sunsubscribe":
-		p.ssubs.Unsubscribe(values[1].string())
 		if len(values) >= 3 {
-			p.pshks.Load().(*pshks).hooks.OnSubscription(PubSubSubscription{Kind: values[0].string(), Channel: values[1].string(), Count: values[2].intlen})
+			s := PubSubSubscription{Kind: values[0].string(), Channel: values[1].string(), Count: values[2].intlen}
+			p.ssubs.Unsubscribe(s)
+			p.pshks.Load().(*pshks).hooks.OnSubscription(s)
 		}
 		return true, true
-	case "subscribe", "psubscribe", "ssubscribe":
+	case "subscribe":
 		if len(values) >= 3 {
-			p.pshks.Load().(*pshks).hooks.OnSubscription(PubSubSubscription{Kind: values[0].string(), Channel: values[1].string(), Count: values[2].intlen})
+			s := PubSubSubscription{Kind: values[0].string(), Channel: values[1].string(), Count: values[2].intlen}
+			p.nsubs.Confirm(s)
+			p.pshks.Load().(*pshks).hooks.OnSubscription(s)
+		}
+		return true, false
+	case "psubscribe":
+		if len(values) >= 3 {
+			s := PubSubSubscription{Kind: values[0].string(), Channel: values[1].string(), Count: values[2].intlen}
+			p.psubs.Confirm(s)
+			p.pshks.Load().(*pshks).hooks.OnSubscription(s)
+		}
+		return true, false
+	case "ssubscribe":
+		if len(values) >= 3 {
+			s := PubSubSubscription{Kind: values[0].string(), Channel: values[1].string(), Count: values[2].intlen}
+			p.ssubs.Confirm(s)
+			p.pshks.Load().(*pshks).hooks.OnSubscription(s)
 		}
 		return true, false
 	}
@@ -760,6 +779,25 @@ func (p *pipe) _r2pipe(ctx context.Context) (r2p *pipe) {
 	}
 	p.r2mu.Unlock()
 	return r2p
+}
+
+type recvCtxKey int
+
+const hookKey recvCtxKey = 0
+
+// WithOnSubscriptionHook attaches a subscription confirmation hook to the provided
+// context and returns a new context for the Receive method.
+//
+// The hook is invoked each time the server sends a subscribe or
+// unsubscribe confirmation, allowing callers to observe the state of a Pub/Sub
+// subscription during the lifetime of a Receive invocation.
+//
+// The hook may be called multiple times because the client can resubscribe after a
+// reconnection. Therefore, the hook implementation must be safe to run more than once.
+// Also, there should not be any blocking operations or another `client.Do()` in the hook
+// since it runs in the same goroutine as the pipeline. Otherwise, the pipeline will be blocked.
+func WithOnSubscriptionHook(ctx context.Context, hook func(PubSubSubscription)) context.Context {
+	return context.WithValue(ctx, hookKey, hook)
 }
 
 func (p *pipe) Receive(ctx context.Context, subscribe Completed, fn func(message PubSubMessage)) error {
@@ -787,7 +825,11 @@ func (p *pipe) Receive(ctx context.Context, subscribe Completed, fn func(message
 		panic(wrongreceive)
 	}
 
-	if ch, cancel := sb.Subscribe(args); ch != nil {
+	var hook func(PubSubSubscription)
+	if v := ctx.Value(hookKey); v != nil {
+		hook = v.(func(PubSubSubscription))
+	}
+	if ch, cancel := sb.Subscribe(args, hook); ch != nil {
 		defer cancel()
 		if err := p.Do(ctx, subscribe).Error(); err != nil {
 			return err

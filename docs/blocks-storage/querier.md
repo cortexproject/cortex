@@ -1377,6 +1377,11 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.ignore-blocks-within
     [ignore_blocks_within: <duration> | default = 0s]
 
+    # The blocks created before `now() - ignore_blocks_before` will not be
+    # synced. 0 to disable.
+    # CLI flag: -blocks-storage.bucket-store.ignore-blocks-before
+    [ignore_blocks_before: <duration> | default = 0s]
+
     bucket_index:
       # True to enable querier and store-gateway to discover blocks in the
       # storage via bucket index instead of bucket scanning.

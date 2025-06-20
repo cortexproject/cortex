@@ -571,6 +571,79 @@ func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabl
 	assert.Equal(t, 1, len(series))
 }
 
+func TestBucketStores_SyncBlocksWithIgnoreBlocksBefore(t *testing.T) {
+	t.Parallel()
+
+	const userID = "user-1"
+	const metricName = "test_metric"
+
+	ctx := context.Background()
+	cfg := prepareStorageConfig(t)
+
+	// Configure IgnoreBlocksBefore to filter out blocks older than 2 hours
+	cfg.BucketStore.IgnoreBlocksBefore = 2 * time.Hour
+
+	storageDir := t.TempDir()
+
+	// Create blocks with different timestamps
+	now := time.Now()
+
+	// Block 1: Very old block (should be ignored - time-excluded)
+	oldBlockTime := now.Add(-5 * time.Hour)
+	generateStorageBlock(t, storageDir, userID, metricName+"_old",
+		oldBlockTime.UnixMilli(), oldBlockTime.Add(time.Hour).UnixMilli(), 15)
+
+	// Block 2: Recent block (should be synced)
+	recentBlockTime := now.Add(-1 * time.Hour)
+	generateStorageBlock(t, storageDir, userID, metricName+"_recent",
+		recentBlockTime.UnixMilli(), recentBlockTime.Add(time.Hour).UnixMilli(), 15)
+
+	// Block 3: Current block (should be synced)
+	currentBlockTime := now.Add(-30 * time.Minute)
+	generateStorageBlock(t, storageDir, userID, metricName+"_current",
+		currentBlockTime.UnixMilli(), currentBlockTime.Add(time.Hour).UnixMilli(), 15)
+
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil),
+		objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	// Perform initial sync
+	require.NoError(t, stores.InitialSync(ctx))
+
+	// Verify that only recent and current blocks are loaded
+	// The old block should be filtered out by IgnoreBlocksBefore (time-excluded)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_blocks_meta_synced Reflects current state of synced blocks (over all tenants).
+		# TYPE cortex_blocks_meta_synced gauge
+		cortex_blocks_meta_synced{state="corrupted-meta-json"} 0
+		cortex_blocks_meta_synced{state="duplicate"} 0
+		cortex_blocks_meta_synced{state="failed"} 0
+		cortex_blocks_meta_synced{state="label-excluded"} 0
+		cortex_blocks_meta_synced{state="loaded"} 2
+		cortex_blocks_meta_synced{state="marked-for-deletion"} 0
+		cortex_blocks_meta_synced{state="marked-for-no-compact"} 0
+		cortex_blocks_meta_synced{state="no-meta-json"} 0
+		cortex_blocks_meta_synced{state="time-excluded"} 1
+		cortex_blocks_meta_synced{state="too-fresh"} 0
+		# HELP cortex_blocks_meta_syncs_total Total blocks metadata synchronization attempts
+		# TYPE cortex_blocks_meta_syncs_total counter
+		cortex_blocks_meta_syncs_total 3
+		# HELP cortex_bucket_store_blocks_meta_sync_failures_total Total blocks metadata synchronization failures
+		# TYPE cortex_bucket_store_blocks_meta_sync_failures_total counter
+		cortex_bucket_store_blocks_meta_sync_failures_total 0
+		# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+		# TYPE cortex_bucket_store_block_loads_total counter
+		cortex_bucket_store_block_loads_total 2
+		# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+		# TYPE cortex_bucket_store_blocks_loaded gauge
+		cortex_bucket_store_blocks_loaded{user="user-1"} 2
+	`), "cortex_bucket_store_block_loads_total", "cortex_bucket_store_blocks_loaded", "cortex_blocks_meta_synced"))
+}
+
 func prepareStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {
 	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -12,7 +13,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/cacheutil"
 )
 
-type multiLevelChunkCache struct {
+type multiLevelBucketCache struct {
 	name   string
 	caches []cache.Cache
 
@@ -25,7 +26,7 @@ type multiLevelChunkCache struct {
 	backfillTTL          time.Duration
 }
 
-type MultiLevelChunkCacheConfig struct {
+type MultiLevelBucketCacheConfig struct {
 	MaxAsyncConcurrency int `yaml:"max_async_concurrency"`
 	MaxAsyncBufferSize  int `yaml:"max_async_buffer_size"`
 	MaxBackfillItems    int `yaml:"max_backfill_items"`
@@ -33,7 +34,7 @@ type MultiLevelChunkCacheConfig struct {
 	BackFillTTL time.Duration `yaml:"-"`
 }
 
-func (cfg *MultiLevelChunkCacheConfig) Validate() error {
+func (cfg *MultiLevelBucketCacheConfig) Validate() error {
 	if cfg.MaxAsyncBufferSize <= 0 {
 		return errInvalidMaxAsyncBufferSize
 	}
@@ -46,45 +47,58 @@ func (cfg *MultiLevelChunkCacheConfig) Validate() error {
 	return nil
 }
 
-func (cfg *MultiLevelChunkCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+func (cfg *MultiLevelBucketCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.IntVar(&cfg.MaxAsyncConcurrency, prefix+"max-async-concurrency", 3, "The maximum number of concurrent asynchronous operations can occur when backfilling cache items.")
 	f.IntVar(&cfg.MaxAsyncBufferSize, prefix+"max-async-buffer-size", 10000, "The maximum number of enqueued asynchronous operations allowed when backfilling cache items.")
 	f.IntVar(&cfg.MaxBackfillItems, prefix+"max-backfill-items", 10000, "The maximum number of items to backfill per asynchronous operation.")
 }
 
-func newMultiLevelChunkCache(name string, cfg MultiLevelChunkCacheConfig, reg prometheus.Registerer, c ...cache.Cache) cache.Cache {
+func newMultiLevelBucketCache(name string, cfg MultiLevelBucketCacheConfig, reg prometheus.Registerer, c ...cache.Cache) cache.Cache {
 	if len(c) == 1 {
 		return c[0]
 	}
 
-	return &multiLevelChunkCache{
+	itemName := ""
+	metricHelpText := ""
+	switch name {
+	case "chunks-cache":
+		itemName = "chunks_cache"
+		metricHelpText = "chunks cache"
+	case "metadata-cache":
+		itemName = "metadata_cache"
+		metricHelpText = "metadata cache"
+	default:
+		itemName = name
+	}
+
+	return &multiLevelBucketCache{
 		name:              name,
 		caches:            c,
 		backfillProcessor: cacheutil.NewAsyncOperationProcessor(cfg.MaxAsyncBufferSize, cfg.MaxAsyncConcurrency),
 		fetchLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_store_multilevel_chunks_cache_fetch_duration_seconds",
-			Help:    "Histogram to track latency to fetch items from multi level chunk cache",
+			Name:    fmt.Sprintf("cortex_store_multilevel_%s_fetch_duration_seconds", itemName),
+			Help:    fmt.Sprintf("Histogram to track latency to fetch items from multi level %s", metricHelpText),
 			Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
 		}, nil),
 		backFillLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_store_multilevel_chunks_cache_backfill_duration_seconds",
-			Help:    "Histogram to track latency to backfill items from multi level chunk cache",
+			Name:    fmt.Sprintf("cortex_store_multilevel_%s_backfill_duration_seconds", itemName),
+			Help:    fmt.Sprintf("Histogram to track latency to backfill items from multi level %s", metricHelpText),
 			Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
 		}, nil),
 		storeDroppedItems: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_store_multilevel_chunks_cache_backfill_dropped_items_total",
-			Help: "Total number of items dropped due to async buffer full when backfilling multilevel cache ",
+			Name: fmt.Sprintf("cortex_store_multilevel_%s_backfill_dropped_items_total", itemName),
+			Help: fmt.Sprintf("Total number of items dropped due to async buffer full when backfilling multilevel %s", metricHelpText),
 		}),
 		backfillDroppedItems: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_store_multilevel_chunks_cache_store_dropped_items_total",
-			Help: "Total number of items dropped due to async buffer full when storing multilevel cache ",
+			Name: fmt.Sprintf("cortex_store_multilevel_%s_store_dropped_items_total", itemName),
+			Help: fmt.Sprintf("Total number of items dropped due to async buffer full when storing multilevel %s", metricHelpText),
 		}),
 		maxBackfillItems: cfg.MaxBackfillItems,
 		backfillTTL:      cfg.BackFillTTL,
 	}
 }
 
-func (m *multiLevelChunkCache) Store(data map[string][]byte, ttl time.Duration) {
+func (m *multiLevelBucketCache) Store(data map[string][]byte, ttl time.Duration) {
 	for _, c := range m.caches {
 		if err := m.backfillProcessor.EnqueueAsync(func() {
 			c.Store(data, ttl)
@@ -94,7 +108,7 @@ func (m *multiLevelChunkCache) Store(data map[string][]byte, ttl time.Duration) 
 	}
 }
 
-func (m *multiLevelChunkCache) Fetch(ctx context.Context, keys []string) map[string][]byte {
+func (m *multiLevelBucketCache) Fetch(ctx context.Context, keys []string) map[string][]byte {
 	timer := prometheus.NewTimer(m.fetchLatency.WithLabelValues())
 	defer timer.ObserveDuration()
 
@@ -157,6 +171,6 @@ func (m *multiLevelChunkCache) Fetch(ctx context.Context, keys []string) map[str
 	return hits
 }
 
-func (m *multiLevelChunkCache) Name() string {
+func (m *multiLevelBucketCache) Name() string {
 	return m.name
 }

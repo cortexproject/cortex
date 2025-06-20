@@ -59,6 +59,7 @@
 * [BUGFIX] Fix race condition in active user. #6773
 * [BUGFIX] Ruler: Prevent counting 2xx and 4XX responses as failed writes. #6785
 * [BUGFIX] Ingester: Allow shipper to skip corrupted blocks. #6786
+* [BUGFIX] Compactor: Delete the prefix `blocks_meta` from the metadata fetcher metrics. #6832
 
 ## 1.19.0 2025-02-27
 

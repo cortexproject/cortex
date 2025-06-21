@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,11 +21,16 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 const (
@@ -472,9 +478,6 @@ cortex_querier_federated_tenants_per_query_count 1
 )
 
 func TestMergeQueryable_Select(t *testing.T) {
-	// Set a multi tenant resolver.
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, scenario := range []selectScenario{
 		{
 			mergeQueryableScenario: threeTenantsScenario,
@@ -653,51 +656,84 @@ func TestMergeQueryable_Select(t *testing.T) {
 	} {
 		scenario := scenario
 		t.Run(scenario.name, func(t *testing.T) {
-			for _, tc := range scenario.selectTestCases {
-				tc := tc
-				t.Run(tc.name, func(t *testing.T) {
-					t.Parallel()
-					querier, reg, err := scenario.init()
-					require.NoError(t, err)
+			for _, useRegexResolver := range []bool{true, false} {
+				for _, tc := range scenario.selectTestCases {
+					tc := tc
+					t.Run(fmt.Sprintf("%s, useRegexResolver: %v", tc.name, useRegexResolver), func(t *testing.T) {
+						ctx := context.Background()
+						if useRegexResolver {
+							reg := prometheus.NewRegistry()
+							bucketClient := &bucket.ClientMock{}
+							bucketClient.MockIter("", scenario.tenants, nil)
+							bucketClient.MockIter("__markers__", []string{}, nil)
 
-					// inject tenants into context
-					ctx := context.Background()
-					if len(scenario.tenants) > 0 {
-						ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
-					}
+							for _, tenant := range scenario.tenants {
+								bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenant), false, nil)
+								bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenant), false, nil)
+							}
 
-					seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt}, tc.matchers...)
+							bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+								return bucketClient, nil
+							}
 
-					if tc.expectedQueryErr != nil {
-						require.EqualError(t, seriesSet.Err(), tc.expectedQueryErr.Error())
-					} else {
-						require.NoError(t, seriesSet.Err())
-						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
-						assertEqualWarnings(t, tc.expectedWarnings, seriesSet.Warnings())
-					}
+							usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
 
-					if tc.expectedLabels != nil {
-						require.Equal(t, len(tc.expectedLabels), tc.expectedSeriesCount)
-					}
+							regexResolver, err := NewRegexResolver(usersScannerConfig, reg, bucketClientFactory, time.Second, log.NewNopLogger())
+							require.NoError(t, err)
 
-					count := 0
-					for i := 0; seriesSet.Next(); i++ {
-						count++
-						if tc.expectedLabels != nil {
-							require.Equal(t, tc.expectedLabels[i], seriesSet.At().Labels(), fmt.Sprintf("labels index: %d", i))
+							// set a regex tenant resolver
+							tenant.WithDefaultResolver(regexResolver)
+							require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
+
+							// wait update knownUsers
+							test.Poll(t, time.Second*10, true, func() interface{} {
+								return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(scenario.tenants))
+							})
+
+							ctx = user.InjectOrgID(ctx, "team-.+")
+						} else {
+							// Set a multi tenant resolver.
+							tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+							// inject tenants into context
+							if len(scenario.tenants) > 0 {
+								ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
+							}
 						}
-					}
-					require.Equal(t, tc.expectedSeriesCount, count)
-				})
+
+						querier, reg, err := scenario.init()
+						require.NoError(t, err)
+
+						seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt}, tc.matchers...)
+
+						if tc.expectedQueryErr != nil {
+							require.EqualError(t, seriesSet.Err(), tc.expectedQueryErr.Error())
+						} else {
+							require.NoError(t, seriesSet.Err())
+							assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
+							assertEqualWarnings(t, tc.expectedWarnings, seriesSet.Warnings())
+						}
+
+						if tc.expectedLabels != nil {
+							require.Equal(t, len(tc.expectedLabels), tc.expectedSeriesCount)
+						}
+
+						count := 0
+						for i := 0; seriesSet.Next(); i++ {
+							count++
+							if tc.expectedLabels != nil {
+								require.Equal(t, tc.expectedLabels[i], seriesSet.At().Labels(), fmt.Sprintf("labels index: %d", i))
+							}
+						}
+						require.Equal(t, tc.expectedSeriesCount, count)
+					})
+				}
 			}
 		})
 	}
 }
 
 func TestMergeQueryable_LabelNames(t *testing.T) {
-	// set a multi tenant resolver
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, scenario := range []labelNamesScenario{
 		{
 			mergeQueryableScenario: singleTenantScenario,
@@ -822,38 +858,69 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 		},
 	} {
 		scenario := scenario
-		t.Run(scenario.mergeQueryableScenario.name, func(t *testing.T) {
-			t.Parallel()
-			querier, reg, err := scenario.init()
-			require.NoError(t, err)
+		for _, useRegexResolver := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s, useRegexResolver: %v", scenario.mergeQueryableScenario.name, useRegexResolver), func(t *testing.T) {
+				ctx := context.Background()
+				if useRegexResolver {
+					reg := prometheus.NewRegistry()
+					bucketClient := &bucket.ClientMock{}
+					bucketClient.MockIter("", scenario.tenants, nil)
+					bucketClient.MockIter("__markers__", []string{}, nil)
 
-			// inject tenants into context
-			ctx := context.Background()
-			if len(scenario.tenants) > 0 {
-				ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
-			}
+					for _, tenant := range scenario.tenants {
+						bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenant), false, nil)
+						bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenant), false, nil)
+					}
 
-			t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
-				t.Parallel()
-				labelNames, warnings, err := querier.LabelNames(ctx, nil, scenario.matchers...)
-				if scenario.expectedQueryErr != nil {
-					require.EqualError(t, err, scenario.expectedQueryErr.Error())
-				} else {
+					bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+						return bucketClient, nil
+					}
+					usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
+
+					regexResolver, err := NewRegexResolver(usersScannerConfig, reg, bucketClientFactory, time.Second, log.NewNopLogger())
 					require.NoError(t, err)
-					assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(scenario.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
-					assert.Equal(t, scenario.expectedLabelNames, labelNames)
-					assertEqualWarnings(t, scenario.expectedWarnings, warnings)
+
+					// set a regex tenant resolver
+					tenant.WithDefaultResolver(regexResolver)
+					require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
+
+					// wait update knownUsers
+					test.Poll(t, time.Second*10, true, func() interface{} {
+						return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(scenario.tenants))
+					})
+
+					ctx = user.InjectOrgID(ctx, "team-.+")
+				} else {
+					// Set a multi tenant resolver.
+					tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+					// inject tenants into context
+					if len(scenario.tenants) > 0 {
+						ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
+					}
 				}
+
+				querier, reg, err := scenario.init()
+				require.NoError(t, err)
+
+				t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
+					t.Parallel()
+					labelNames, warnings, err := querier.LabelNames(ctx, nil, scenario.matchers...)
+					if scenario.expectedQueryErr != nil {
+						require.EqualError(t, err, scenario.expectedQueryErr.Error())
+					} else {
+						require.NoError(t, err)
+						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(scenario.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
+						assert.Equal(t, scenario.expectedLabelNames, labelNames)
+						assertEqualWarnings(t, scenario.expectedWarnings, warnings)
+					}
+				})
 			})
-		})
+		}
 	}
 }
 
 func TestMergeQueryable_LabelValues(t *testing.T) {
-	t.Parallel()
-	// set a multi tenant resolver
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, scenario := range []labelValuesScenario{
 		{
 			mergeQueryableScenario: singleTenantScenario,
@@ -1028,29 +1095,63 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 	} {
 		scenario := scenario
 		t.Run(scenario.name, func(t *testing.T) {
-			for _, tc := range scenario.labelValuesTestCases {
-				tc := tc
-				t.Run(tc.name, func(t *testing.T) {
-					t.Parallel()
-					querier, reg, err := scenario.init()
-					require.NoError(t, err)
+			for _, useRegexResolver := range []bool{true, false} {
+				for _, tc := range scenario.labelValuesTestCases {
+					t.Run(fmt.Sprintf("%s, useRegexResolver: %v", tc.name, useRegexResolver), func(t *testing.T) {
+						ctx := context.Background()
+						if useRegexResolver {
+							reg := prometheus.NewRegistry()
+							bucketClient := &bucket.ClientMock{}
+							bucketClient.MockIter("", scenario.tenants, nil)
+							bucketClient.MockIter("__markers__", []string{}, nil)
 
-					// inject tenants into context
-					ctx := context.Background()
-					if len(scenario.tenants) > 0 {
-						ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
-					}
+							for _, tenant := range scenario.tenants {
+								bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenant), false, nil)
+								bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenant), false, nil)
+							}
 
-					actLabelValues, warnings, err := querier.LabelValues(ctx, tc.labelName, nil, tc.matchers...)
-					if tc.expectedQueryErr != nil {
-						require.EqualError(t, err, tc.expectedQueryErr.Error())
-					} else {
+							bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+								return bucketClient, nil
+							}
+							usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
+
+							regexResolver, err := NewRegexResolver(usersScannerConfig, reg, bucketClientFactory, time.Second, log.NewNopLogger())
+							require.NoError(t, err)
+
+							// set a regex tenant resolver
+							tenant.WithDefaultResolver(regexResolver)
+							require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
+
+							// wait update knownUsers
+							test.Poll(t, time.Second*10, true, func() interface{} {
+								return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(scenario.tenants))
+							})
+
+							ctx = user.InjectOrgID(ctx, "team-.+")
+						} else {
+							// Set a multi tenant resolver.
+							tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+							// inject tenants into context
+							if len(scenario.tenants) > 0 {
+								ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
+							}
+						}
+
+						querier, reg, err := scenario.init()
 						require.NoError(t, err)
-						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
-						assert.Equal(t, tc.expectedLabelValues, actLabelValues, fmt.Sprintf("unexpected values for label '%s'", tc.labelName))
-						assertEqualWarnings(t, tc.expectedWarnings, warnings)
-					}
-				})
+
+						actLabelValues, warnings, err := querier.LabelValues(ctx, tc.labelName, nil, tc.matchers...)
+						if tc.expectedQueryErr != nil {
+							require.EqualError(t, err, tc.expectedQueryErr.Error())
+						} else {
+							require.NoError(t, err)
+							assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
+							assert.Equal(t, tc.expectedLabelValues, actLabelValues, fmt.Sprintf("unexpected values for label '%s'", tc.labelName))
+							assertEqualWarnings(t, tc.expectedWarnings, warnings)
+						}
+					})
+				}
 			}
 		})
 	}

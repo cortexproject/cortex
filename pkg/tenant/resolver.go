@@ -123,6 +123,11 @@ func (t *MultiResolver) TenantIDs(ctx context.Context) ([]string, error) {
 	}
 
 	orgIDs := strings.Split(orgID, tenantIDsLabelSeparator)
+
+	return ValidateOrgIDs(orgIDs)
+}
+
+func ValidateOrgIDs(orgIDs []string) ([]string, error) {
 	for _, orgID := range orgIDs {
 		if err := ValidTenantID(orgID); err != nil {
 			return nil, err

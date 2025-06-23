@@ -12,9 +12,9 @@ import (
 	"github.com/thanos-io/thanos/pkg/cache"
 )
 
-func Test_MultiLevelChunkCacheStore(t *testing.T) {
+func Test_MultiLevelBucketCacheStore(t *testing.T) {
 	ttl := time.Hour * 24
-	cfg := MultiLevelChunkCacheConfig{
+	cfg := MultiLevelBucketCacheConfig{
 		MaxAsyncConcurrency: 10,
 		MaxAsyncBufferSize:  100000,
 		MaxBackfillItems:    10000,
@@ -58,13 +58,13 @@ func Test_MultiLevelChunkCacheStore(t *testing.T) {
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			m1 := newMockChunkCache("m1", tc.m1InitData)
-			m2 := newMockChunkCache("m2", tc.m2InitData)
+			m1 := newMockBucketCache("m1", tc.m1InitData)
+			m2 := newMockBucketCache("m2", tc.m2InitData)
 			reg := prometheus.NewRegistry()
-			c := newMultiLevelChunkCache("chunk-cache", cfg, reg, m1, m2)
+			c := newMultiLevelBucketCache("chunks-cache", cfg, reg, m1, m2)
 			c.Store(tc.storeData, ttl)
 
-			mlc := c.(*multiLevelChunkCache)
+			mlc := c.(*multiLevelBucketCache)
 			// Wait until async operation finishes.
 			mlc.backfillProcessor.Stop()
 
@@ -74,8 +74,8 @@ func Test_MultiLevelChunkCacheStore(t *testing.T) {
 	}
 }
 
-func Test_MultiLevelChunkCacheFetchRace(t *testing.T) {
-	cfg := MultiLevelChunkCacheConfig{
+func Test_MultiLevelBucketCacheFetchRace(t *testing.T) {
+	cfg := MultiLevelBucketCacheConfig{
 		MaxAsyncConcurrency: 10,
 		MaxAsyncBufferSize:  100000,
 		MaxBackfillItems:    10000,
@@ -83,7 +83,7 @@ func Test_MultiLevelChunkCacheFetchRace(t *testing.T) {
 	}
 	reg := prometheus.NewRegistry()
 
-	m1 := newMockChunkCache("m1", map[string][]byte{
+	m1 := newMockBucketCache("m1", map[string][]byte{
 		"key1": []byte("value1"),
 		"key2": []byte("value2"),
 	})
@@ -96,7 +96,7 @@ func Test_MultiLevelChunkCacheFetchRace(t *testing.T) {
 		"key3": []byte("value3"),
 	}, time.Minute)
 
-	c := newMultiLevelChunkCache("chunk-cache", cfg, reg, inMemory, m1)
+	c := newMultiLevelBucketCache("chunks-cache", cfg, reg, inMemory, m1)
 
 	hits := c.Fetch(context.Background(), []string{"key1", "key2", "key3", "key4"})
 
@@ -105,14 +105,14 @@ func Test_MultiLevelChunkCacheFetchRace(t *testing.T) {
 	// We should be able to change the returned values without any race problem
 	delete(hits, "key1")
 
-	mlc := c.(*multiLevelChunkCache)
+	mlc := c.(*multiLevelBucketCache)
 	//Wait until async operation finishes.
 	mlc.backfillProcessor.Stop()
 
 }
 
-func Test_MultiLevelChunkCacheFetch(t *testing.T) {
-	cfg := MultiLevelChunkCacheConfig{
+func Test_MultiLevelBucketCacheFetch(t *testing.T) {
+	cfg := MultiLevelBucketCacheConfig{
 		MaxAsyncConcurrency: 10,
 		MaxAsyncBufferSize:  100000,
 		MaxBackfillItems:    10000,
@@ -181,13 +181,13 @@ func Test_MultiLevelChunkCacheFetch(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			m1 := newMockChunkCache("m1", tc.m1ExistingData)
-			m2 := newMockChunkCache("m2", tc.m2ExistingData)
+			m1 := newMockBucketCache("m1", tc.m1ExistingData)
+			m2 := newMockBucketCache("m2", tc.m2ExistingData)
 			reg := prometheus.NewRegistry()
-			c := newMultiLevelChunkCache("chunk-cache", cfg, reg, m1, m2)
+			c := newMultiLevelBucketCache("chunks-cache", cfg, reg, m1, m2)
 			fetchData := c.Fetch(context.Background(), tc.fetchKeys)
 
-			mlc := c.(*multiLevelChunkCache)
+			mlc := c.(*multiLevelBucketCache)
 			// Wait until async operation finishes.
 			mlc.backfillProcessor.Stop()
 
@@ -198,7 +198,7 @@ func Test_MultiLevelChunkCacheFetch(t *testing.T) {
 	}
 }
 
-type mockChunkCache struct {
+type mockBucketCache struct {
 	mu   sync.Mutex
 	name string
 	data map[string][]byte
@@ -206,22 +206,22 @@ type mockChunkCache struct {
 	fetchedKeys []string
 }
 
-func newMockChunkCache(name string, data map[string][]byte) *mockChunkCache {
+func newMockBucketCache(name string, data map[string][]byte) *mockBucketCache {
 	if data == nil {
 		data = make(map[string][]byte)
 	}
 
-	return &mockChunkCache{
+	return &mockBucketCache{
 		name: name,
 		data: data,
 	}
 }
 
-func (m *mockChunkCache) Store(data map[string][]byte, _ time.Duration) {
+func (m *mockBucketCache) Store(data map[string][]byte, _ time.Duration) {
 	m.data = data
 }
 
-func (m *mockChunkCache) Fetch(_ context.Context, keys []string) map[string][]byte {
+func (m *mockBucketCache) Fetch(_ context.Context, keys []string) map[string][]byte {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	h := map[string][]byte{}
@@ -236,6 +236,6 @@ func (m *mockChunkCache) Fetch(_ context.Context, keys []string) map[string][]by
 	return h
 }
 
-func (m *mockChunkCache) Name() string {
+func (m *mockBucketCache) Name() string {
 	return m.name
 }

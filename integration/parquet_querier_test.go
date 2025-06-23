@@ -20,6 +20,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/integration/e2e"
+	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -35,7 +36,8 @@ func TestParquetFuzz(t *testing.T) {
 	defer s.Close()
 
 	consul := e2edb.NewConsulWithName("consul")
-	require.NoError(t, s.StartAndWaitReady(consul))
+	memcached := e2ecache.NewMemcached()
+	require.NoError(t, s.StartAndWaitReady(consul, memcached))
 
 	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
 	flags := mergeFlags(
@@ -72,6 +74,11 @@ func TestParquetFuzz(t *testing.T) {
 			"-parquet-converter.enabled":              "true",
 			// Querier
 			"-querier.enable-parquet-queryable": "true",
+			// Enable cache for parquet labels and chunks
+			"-blocks-storage.bucket-store.parquet-labels-cache.backend":             "inmemory,memcached",
+			"-blocks-storage.bucket-store.parquet-labels-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+			"-blocks-storage.bucket-store.chunks-cache.backend":                     "inmemory,memcached",
+			"-blocks-storage.bucket-store.chunks-cache.memcached.addresses":         "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		},
 	)
 

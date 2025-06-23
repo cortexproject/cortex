@@ -2,6 +2,8 @@ package tenantfederation
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,6 +121,31 @@ func Test_RegexValidator(t *testing.T) {
 			description: "invalid regex",
 			orgID:       "[a-z",
 			expectedErr: errInvalidRegex,
+		},
+		{
+			description: "tenant ID is too long",
+			orgID:       strings.Repeat("a", 151),
+			expectedErr: errors.New("tenant ID is too long: max 150 characters"),
+		},
+		{
+			description: ".",
+			orgID:       ".",
+			expectedErr: errors.New("tenant ID is '.' or '..'"),
+		},
+		{
+			description: "..",
+			orgID:       "..",
+			expectedErr: errors.New("tenant ID is '.' or '..'"),
+		},
+		{
+			description: "__markers__",
+			orgID:       "__markers__",
+			expectedErr: errors.New("tenant ID '__markers__' is not allowed"),
+		},
+		{
+			description: "user-index.json.gz",
+			orgID:       "user-index.json.gz",
+			expectedErr: errors.New("tenant ID 'user-index.json.gz' is not allowed"),
 		},
 	}
 

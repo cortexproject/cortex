@@ -54,7 +54,7 @@ func NormalizeTenantIDs(tenantIDs []string) []string {
 	return tenantIDs[0:posOut]
 }
 
-// ValidTenantID
+// ValidTenantID validate tenantID
 func ValidTenantID(s string) error {
 	// check if it contains invalid runes
 	for pos, r := range s {
@@ -66,10 +66,26 @@ func ValidTenantID(s string) error {
 		}
 	}
 
+	if err := CheckTenantIDLength(s); err != nil {
+		return err
+	}
+
+	if err := CheckTenantIDIsSupported(s); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func CheckTenantIDLength(s string) error {
 	if len(s) > 150 {
 		return errTenantIDTooLong
 	}
 
+	return nil
+}
+
+func CheckTenantIDIsSupported(s string) error {
 	// check tenantID is "__markers__"
 	if s == GlobalMarkersDir {
 		return errTenantIDMarkers

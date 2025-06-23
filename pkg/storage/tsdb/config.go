@@ -274,23 +274,24 @@ func (cfg *TSDBConfig) IsBlocksShippingEnabled() bool {
 
 // BucketStoreConfig holds the config information for Bucket Stores used by the querier and store-gateway.
 type BucketStoreConfig struct {
-	SyncDir                  string              `yaml:"sync_dir"`
-	SyncInterval             time.Duration       `yaml:"sync_interval"`
-	MaxConcurrent            int                 `yaml:"max_concurrent"`
-	MaxInflightRequests      int                 `yaml:"max_inflight_requests"`
-	TenantSyncConcurrency    int                 `yaml:"tenant_sync_concurrency"`
-	BlockSyncConcurrency     int                 `yaml:"block_sync_concurrency"`
-	MetaSyncConcurrency      int                 `yaml:"meta_sync_concurrency"`
-	ConsistencyDelay         time.Duration       `yaml:"consistency_delay"`
-	IndexCache               IndexCacheConfig    `yaml:"index_cache"`
-	ChunksCache              ChunksCacheConfig   `yaml:"chunks_cache"`
-	MetadataCache            MetadataCacheConfig `yaml:"metadata_cache"`
-	MatchersCacheMaxItems    int                 `yaml:"matchers_cache_max_items"`
-	IgnoreDeletionMarksDelay time.Duration       `yaml:"ignore_deletion_mark_delay"`
-	IgnoreBlocksWithin       time.Duration       `yaml:"ignore_blocks_within"`
-	IgnoreBlocksBefore       time.Duration       `yaml:"ignore_blocks_before"`
-	BucketIndex              BucketIndexConfig   `yaml:"bucket_index"`
-	BlockDiscoveryStrategy   string              `yaml:"block_discovery_strategy"`
+	SyncDir                  string                   `yaml:"sync_dir"`
+	SyncInterval             time.Duration            `yaml:"sync_interval"`
+	MaxConcurrent            int                      `yaml:"max_concurrent"`
+	MaxInflightRequests      int                      `yaml:"max_inflight_requests"`
+	TenantSyncConcurrency    int                      `yaml:"tenant_sync_concurrency"`
+	BlockSyncConcurrency     int                      `yaml:"block_sync_concurrency"`
+	MetaSyncConcurrency      int                      `yaml:"meta_sync_concurrency"`
+	ConsistencyDelay         time.Duration            `yaml:"consistency_delay"`
+	IndexCache               IndexCacheConfig         `yaml:"index_cache"`
+	ChunksCache              ChunksCacheConfig        `yaml:"chunks_cache"`
+	MetadataCache            MetadataCacheConfig      `yaml:"metadata_cache"`
+	ParquetLabelsCache       ParquetLabelsCacheConfig `yaml:"parquet_labels_cache" doc:"hidden"`
+	MatchersCacheMaxItems    int                      `yaml:"matchers_cache_max_items"`
+	IgnoreDeletionMarksDelay time.Duration            `yaml:"ignore_deletion_mark_delay"`
+	IgnoreBlocksWithin       time.Duration            `yaml:"ignore_blocks_within"`
+	IgnoreBlocksBefore       time.Duration            `yaml:"ignore_blocks_before"`
+	BucketIndex              BucketIndexConfig        `yaml:"bucket_index"`
+	BlockDiscoveryStrategy   string                   `yaml:"block_discovery_strategy"`
 
 	// Chunk pool.
 	MaxChunkPoolBytes           uint64 `yaml:"max_chunk_pool_bytes"`
@@ -348,6 +349,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.IndexCache.RegisterFlagsWithPrefix(f, "blocks-storage.bucket-store.index-cache.")
 	cfg.ChunksCache.RegisterFlagsWithPrefix(f, "blocks-storage.bucket-store.chunks-cache.")
 	cfg.MetadataCache.RegisterFlagsWithPrefix(f, "blocks-storage.bucket-store.metadata-cache.")
+	cfg.ParquetLabelsCache.RegisterFlagsWithPrefix(f, "blocks-storage.bucket-store.parquet-labels-cache.")
 	cfg.BucketIndex.RegisterFlagsWithPrefix(f, "blocks-storage.bucket-store.bucket-index.")
 
 	f.StringVar(&cfg.SyncDir, "blocks-storage.bucket-store.sync-dir", "tsdb-sync", "Directory to store synchronized TSDB index headers.")
@@ -402,6 +404,10 @@ func (cfg *BucketStoreConfig) Validate() error {
 	err = cfg.MetadataCache.Validate()
 	if err != nil {
 		return errors.Wrap(err, "metadata-cache configuration")
+	}
+	err = cfg.ParquetLabelsCache.Validate()
+	if err != nil {
+		return errors.Wrap(err, "parquet-labels-cache configuration")
 	}
 	if !util.StringsContain(supportedBlockDiscoveryStrategies, cfg.BlockDiscoveryStrategy) {
 		return ErrInvalidBucketIndexBlockDiscoveryStrategy

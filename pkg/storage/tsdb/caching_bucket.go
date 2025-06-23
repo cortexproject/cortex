@@ -146,17 +146,18 @@ func (cfg *InMemoryBucketCacheConfig) toInMemoryCacheConfig() cache.InMemoryCach
 type MetadataCacheConfig struct {
 	BucketCacheBackend `yaml:",inline"`
 
-	TenantsListTTL          time.Duration `yaml:"tenants_list_ttl"`
-	TenantBlocksListTTL     time.Duration `yaml:"tenant_blocks_list_ttl"`
-	ChunksListTTL           time.Duration `yaml:"chunks_list_ttl"`
-	MetafileExistsTTL       time.Duration `yaml:"metafile_exists_ttl"`
-	MetafileDoesntExistTTL  time.Duration `yaml:"metafile_doesnt_exist_ttl"`
-	MetafileContentTTL      time.Duration `yaml:"metafile_content_ttl"`
-	MetafileMaxSize         int           `yaml:"metafile_max_size_bytes"`
-	MetafileAttributesTTL   time.Duration `yaml:"metafile_attributes_ttl"`
-	BlockIndexAttributesTTL time.Duration `yaml:"block_index_attributes_ttl"`
-	BucketIndexContentTTL   time.Duration `yaml:"bucket_index_content_ttl"`
-	BucketIndexMaxSize      int           `yaml:"bucket_index_max_size_bytes"`
+	TenantsListTTL           time.Duration `yaml:"tenants_list_ttl"`
+	TenantBlocksListTTL      time.Duration `yaml:"tenant_blocks_list_ttl"`
+	ChunksListTTL            time.Duration `yaml:"chunks_list_ttl"`
+	MetafileExistsTTL        time.Duration `yaml:"metafile_exists_ttl"`
+	MetafileDoesntExistTTL   time.Duration `yaml:"metafile_doesnt_exist_ttl"`
+	MetafileContentTTL       time.Duration `yaml:"metafile_content_ttl"`
+	MetafileMaxSize          int           `yaml:"metafile_max_size_bytes"`
+	MetafileAttributesTTL    time.Duration `yaml:"metafile_attributes_ttl"`
+	BlockIndexAttributesTTL  time.Duration `yaml:"block_index_attributes_ttl"`
+	BucketIndexContentTTL    time.Duration `yaml:"bucket_index_content_ttl"`
+	BucketIndexMaxSize       int           `yaml:"bucket_index_max_size_bytes"`
+	PartitionedGroupsListTTL time.Duration `yaml:"partitioned_groups_list_ttl"`
 }
 
 func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
@@ -180,6 +181,7 @@ func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix 
 	f.DurationVar(&cfg.BlockIndexAttributesTTL, prefix+"block-index-attributes-ttl", 168*time.Hour, "How long to cache attributes of the block index.")
 	f.DurationVar(&cfg.BucketIndexContentTTL, prefix+"bucket-index-content-ttl", 5*time.Minute, "How long to cache content of the bucket index.")
 	f.IntVar(&cfg.BucketIndexMaxSize, prefix+"bucket-index-max-size-bytes", 1*1024*1024, "Maximum size of bucket index content to cache in bytes. Caching will be skipped if the content exceeds this size. This is useful to avoid network round trip for large content if the configured caching backend has an hard limit on cached items size (in this case, you should set this limit to the same limit in the caching backend).")
+	f.DurationVar(&cfg.PartitionedGroupsListTTL, prefix+"partitioned-groups-list-ttl", 0, "How long to cache list of partitioned groups for an user. 0 disables caching")
 }
 
 func (cfg *MetadataCacheConfig) Validate() error {
@@ -259,6 +261,11 @@ func CreateCachingBucketForCompactor(metadataConfig MetadataCacheConfig, cleaner
 		} else {
 			// Cache only GET for metadata and don't cache exists and not exists.
 			cfg.CacheGet("metafile", metadataCache, matchers.GetMetafileMatcher(), metadataConfig.MetafileMaxSize, metadataConfig.MetafileContentTTL, 0, 0)
+
+			if metadataConfig.PartitionedGroupsListTTL > 0 {
+				//Avoid double iter when running cleanActiveUser and emitUserMetrics
+				cfg.CacheIter("partitioned-groups-iter", metadataCache, matchers.GetPartitionedGroupsIterMatcher(), metadataConfig.PartitionedGroupsListTTL, codec, "")
+			}
 		}
 	}
 
@@ -322,6 +329,7 @@ func NewMatchers() Matchers {
 	matcherMap["tenants-iter"] = isTenantsDir
 	matcherMap["tenant-blocks-iter"] = isTenantBlocksDir
 	matcherMap["chunks-iter"] = isChunksDir
+	matcherMap["partitioned-groups-iter"] = isPartitionedGroupsDir
 	return Matchers{
 		matcherMap: matcherMap,
 	}
@@ -359,6 +367,10 @@ func (m *Matchers) SetChunksIterMatcher(f func(string) bool) {
 	m.matcherMap["chunks-iter"] = f
 }
 
+func (m *Matchers) SetPartitionedGroupsIterMatcher(f func(string) bool) {
+	m.matcherMap["partitioned-groups-iter"] = f
+}
+
 func (m *Matchers) GetChunksMatcher() func(string) bool {
 	return m.matcherMap["chunks"]
 }
@@ -389,6 +401,10 @@ func (m *Matchers) GetTenantBlocksIterMatcher() func(string) bool {
 
 func (m *Matchers) GetChunksIterMatcher() func(string) bool {
 	return m.matcherMap["chunks-iter"]
+}
+
+func (m *Matchers) GetPartitionedGroupsIterMatcher() func(string) bool {
+	return m.matcherMap["partitioned-groups-iter"]
 }
 
 var chunksMatcher = regexp.MustCompile(`^.*/chunks/\d+$`)
@@ -428,6 +444,10 @@ func isTenantBlocksDir(name string) bool {
 
 func isChunksDir(name string) bool {
 	return strings.HasSuffix(name, "/chunks")
+}
+
+func isPartitionedGroupsDir(name string) bool {
+	return strings.HasSuffix(name, "/partitioned-groups")
 }
 
 type snappyIterCodec struct {

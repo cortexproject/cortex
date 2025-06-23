@@ -812,8 +812,8 @@
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[backend&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">inmemory&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum size in bytes of in-memory chunk cache used to speed up chunk&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># lookups (shared between all tenants).&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum size in bytes of in-memory chunks cache used (shared between&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># all tenants).&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.chunks-cache.inmemory.max-size-bytes&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_size_bytes&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 1073741824]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
@@ -1053,10 +1053,18 @@
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[subrange_ttl&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;duration&amp;gt; | default = 24h]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">metadata_cache&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Backend for metadata cache, if not empty. Supported values: memcached,&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># redis, and &amp;#39;&amp;#39; (disable).&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># The metadata cache backend type. Single or Multiple cache backend can be&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># provided. Supported values in single cache: memcached, redis, inmemory,&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># and &amp;#39;&amp;#39; (disable). Supported values in multi level cache: a&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># comma-separated list of (inmemory, memcached, redis)&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.backend&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[backend&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">inmemory&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum size in bytes of in-memory metadata cache used (shared between&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># all tenants).&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.inmemory.max-size-bytes&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_size_bytes&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 1073741824]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">memcached&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Comma separated list of memcached addresses. Supported prefixes are:&lt;/span>
@@ -1258,6 +1266,21 @@
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Failure percentage to determine if the circuit breaker should open.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.failure-percent&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[failure_percent&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;float&amp;gt; | default = 0.05]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">multilevel&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># The maximum number of concurrent asynchronous operations can occur&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># when backfilling cache items.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.multilevel.max-async-concurrency&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_async_concurrency&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 3]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># The maximum number of enqueued asynchronous operations allowed when&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># backfilling cache items.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.multilevel.max-async-buffer-size&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_async_buffer_size&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 10000]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># The maximum number of items to backfill per asynchronous operation.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.multilevel.max-backfill-items&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_backfill_items&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 10000]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># How long to cache list of tenants in the bucket.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl&lt;/span>
@@ -2476,8 +2499,8 @@ Displays the status of the store-gateways ring, including the tokens owned by ea
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[backend&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">inmemory&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum size in bytes of in-memory chunk cache used to speed up chunk&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># lookups (shared between all tenants).&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum size in bytes of in-memory chunks cache used (shared between&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># all tenants).&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.chunks-cache.inmemory.max-size-bytes&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_size_bytes&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 1073741824]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
@@ -2717,10 +2740,18 @@ Displays the status of the store-gateways ring, including the tokens owned by ea
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[subrange_ttl&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;duration&amp;gt; | default = 24h]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">metadata_cache&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Backend for metadata cache, if not empty. Supported values: memcached,&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># redis, and &amp;#39;&amp;#39; (disable).&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># The metadata cache backend type. Single or Multiple cache backend can be&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># provided. Supported values in single cache: memcached, redis, inmemory,&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># and &amp;#39;&amp;#39; (disable). Supported values in multi level cache: a&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># comma-separated list of (inmemory, memcached, redis)&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.backend&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[backend&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">inmemory&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum size in bytes of in-memory metadata cache used (shared between&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># all tenants).&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.inmemory.max-size-bytes&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_size_bytes&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 1073741824]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">memcached&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Comma separated list of memcached addresses. Supported prefixes are:&lt;/span>
@@ -2922,6 +2953,21 @@ Displays the status of the store-gateways ring, including the tokens owned by ea
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Failure percentage to determine if the circuit breaker should open.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.failure-percent&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[failure_percent&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;float&amp;gt; | default = 0.05]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">multilevel&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># The maximum number of concurrent asynchronous operations can occur&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># when backfilling cache items.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.multilevel.max-async-concurrency&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_async_concurrency&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 3]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># The maximum number of enqueued asynchronous operations allowed when&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># backfilling cache items.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.multilevel.max-async-buffer-size&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_async_buffer_size&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 10000]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># The maximum number of items to backfill per asynchronous operation.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.multilevel.max-backfill-items&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_backfill_items&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 10000]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># How long to cache list of tenants in the bucket.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl&lt;/span>

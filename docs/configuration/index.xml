@@ -1929,6 +1929,11 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[bucket_index_max_size_bytes&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 1048576]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># How long to cache list of partitioned groups for an user. 0 disables&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># caching&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.metadata-cache.partitioned-groups-list-ttl&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[partitioned_groups_list_ttl&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;duration&amp;gt; | default = 0s]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum number of entries in the regex matchers cache. 0 to disable.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.matchers-cache-max-items&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[matchers_cache_max_items&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 0]&lt;/span>

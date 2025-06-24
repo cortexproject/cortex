@@ -868,10 +868,10 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 
 }
 
-func TestIngesterUserLimitExceededForNativeHistograms(t *testing.T) {
+func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.EnableNativeHistograms = true
-	limits.MaxLocalNativeHistogramsSeriesPerUser = 1
+	limits.MaxLocalNativeHistogramSeriesPerUser = 1
 	limits.MaxLocalSeriesPerUser = 1
 	limits.MaxLocalMetricsWithMetadataPerUser = 1
 
@@ -923,7 +923,7 @@ func TestIngesterUserLimitExceededForNativeHistograms(t *testing.T) {
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
-				assert.Equal(t, wrapWithUser(makeLimitError(perUserNativeHistogramsSeriesLimit, ing.limiter.FormatError(userID, errMaxNativeHistogramsSeriesPerUserLimitExceeded, labels1)), userID).Error(), string(httpResp.Body))
+				assert.Equal(t, wrapWithUser(makeLimitError(perUserNativeHistogramSeriesLimit, ing.limiter.FormatError(userID, errMaxNativeHistogramSeriesPerUserLimitExceeded, labels1)), userID).Error(), string(httpResp.Body))
 
 				// Append two metadata, expect no error since metadata is a best effort approach.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, nil, cortexpb.API))

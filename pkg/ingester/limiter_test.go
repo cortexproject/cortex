@@ -56,12 +56,12 @@ func TestLimiter_maxSeriesPerUser(t *testing.T) {
 
 func TestLimiter_maxNativeHistogramsSeriesPerUser(t *testing.T) {
 	applyLimits := func(limits *validation.Limits, localLimit, globalLimit int) {
-		limits.MaxLocalNativeHistogramsSeriesPerUser = localLimit
-		limits.MaxGlobalNativeHistogramsSeriesPerUser = globalLimit
+		limits.MaxLocalNativeHistogramSeriesPerUser = localLimit
+		limits.MaxGlobalNativeHistogramSeriesPerUser = globalLimit
 	}
 
 	runMaxFn := func(limiter *Limiter) int {
-		return limiter.maxNativeHistogramsSeriesPerUser("test")
+		return limiter.maxNativeHistogramSeriesPerUser("test")
 	}
 
 	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false)
@@ -473,7 +473,7 @@ func TestLimiter_AssertMaxNativeHistogramsSeriesPerUser(t *testing.T) {
 			ringIngesterCount:                      10,
 			shardByAllLabels:                       true,
 			series:                                 300,
-			expected:                               errMaxNativeHistogramsSeriesPerUserLimitExceeded,
+			expected:                               errMaxNativeHistogramSeriesPerUserLimitExceeded,
 		},
 	}
 
@@ -488,13 +488,13 @@ func TestLimiter_AssertMaxNativeHistogramsSeriesPerUser(t *testing.T) {
 
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
-				MaxLocalNativeHistogramsSeriesPerUser:  testData.maxLocalNativeHistogramsSeriesPerUser,
-				MaxGlobalNativeHistogramsSeriesPerUser: testData.maxGlobalNativeHistogramsSeriesPerUser,
+				MaxLocalNativeHistogramSeriesPerUser:  testData.maxLocalNativeHistogramsSeriesPerUser,
+				MaxGlobalNativeHistogramSeriesPerUser: testData.maxGlobalNativeHistogramsSeriesPerUser,
 			}, nil)
 			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
-			actual := limiter.AssertMaxNativeHistogramsSeriesPerUser("test", testData.series)
+			actual := limiter.AssertMaxNativeHistogramSeriesPerUser("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
 		})
@@ -656,11 +656,11 @@ func TestLimiter_FormatError(t *testing.T) {
 
 	// Mock limits
 	limits, err := validation.NewOverrides(validation.Limits{
-		MaxGlobalSeriesPerUser:                 100,
-		MaxGlobalNativeHistogramsSeriesPerUser: 100,
-		MaxGlobalSeriesPerMetric:               20,
-		MaxGlobalMetricsWithMetadataPerUser:    10,
-		MaxGlobalMetadataPerMetric:             3,
+		MaxGlobalSeriesPerUser:                100,
+		MaxGlobalNativeHistogramSeriesPerUser: 100,
+		MaxGlobalSeriesPerMetric:              20,
+		MaxGlobalMetricsWithMetadataPerUser:   10,
+		MaxGlobalMetadataPerMetric:            3,
 	}, nil)
 	require.NoError(t, err)
 
@@ -670,7 +670,7 @@ func TestLimiter_FormatError(t *testing.T) {
 	actual := limiter.FormatError("user-1", errMaxSeriesPerUserLimitExceeded, lbls)
 	assert.EqualError(t, actual, "per-user series limit of 100 exceeded, please contact administrator to raise it (local limit: 0 global limit: 100 actual local limit: 100)")
 
-	actual = limiter.FormatError("user-1", errMaxNativeHistogramsSeriesPerUserLimitExceeded, lbls)
+	actual = limiter.FormatError("user-1", errMaxNativeHistogramSeriesPerUserLimitExceeded, lbls)
 	assert.EqualError(t, actual, "per-user nativeHistograms series limit of 100 exceeded, please contact administrator to raise it (local limit: 0 global limit: 100 actual local limit: 100)")
 
 	actual = limiter.FormatError("user-1", errMaxSeriesPerMetricLimitExceeded, lbls)

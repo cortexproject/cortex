@@ -3606,10 +3606,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-series-per-metric
 [max_series_per_metric: <int> | default = 50000]
 
-# The maximum number of active nativeHistograms series per user, per ingester. 0
+# The maximum number of active native histogram series per user, per ingester. 0
 # to disable.
-# CLI flag: -ingester.max-native-histograms-series-per-user
-[max_native_histograms_series_per_user: <int> | default = 5000000]
+# CLI flag: -ingester.max-native-histogram-series-per-user
+[max_native_histogram_series_per_user: <int> | default = 5000000]
 
 # The maximum number of active series per user, across the cluster before
 # replication. 0 to disable. Supported only if -distributor.shard-by-all-labels
@@ -3622,11 +3622,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-series-per-metric
 [max_global_series_per_metric: <int> | default = 0]
 
-# The maximum number of active nativeHistograms series per user, across the
+# The maximum number of active native histogram series per user, across the
 # cluster before replication. 0 to disable. Supported only if
 # -distributor.shard-by-all-labels is true.
-# CLI flag: -ingester.max-global-native-histograms-series-per-user
-[max_global_native_histograms_series_per_user: <int> | default = 0]
+# CLI flag: -ingester.max-global-native-histogram-series-per-user
+[max_global_native_histogram_series_per_user: <int> | default = 0]
 
 # [Experimental] Enable limits per LabelSet. Supported limits per labelSet:
 # [max_series]

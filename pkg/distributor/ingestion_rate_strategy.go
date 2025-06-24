@@ -45,7 +45,7 @@ func newGlobalIngestionRateStrategy(limits *validation.Overrides, ring ReadLifec
 func (s *globalStrategy) Limit(tenantID string) float64 {
 	numDistributors := s.ring.HealthyInstancesCount()
 
-	if numDistributors == 0 {
+	if numDistributors == 0 || s.limits.IngestionRate(tenantID) == float64(rate.Inf) {
 		return s.limits.IngestionRate(tenantID)
 	}
 
@@ -73,48 +73,48 @@ func (s *infiniteStrategy) Burst(tenantID string) int {
 	return 0
 }
 
-type localStrategyNativeHistograms struct {
+type localStrategyNativeHistogram struct {
 	limits *validation.Overrides
 }
 
-func newLocalNativeHistogramsIngestionRateStrategy(limits *validation.Overrides) limiter.RateLimiterStrategy {
-	return &localStrategyNativeHistograms{
+func newLocalNativeHistogramIngestionRateStrategy(limits *validation.Overrides) limiter.RateLimiterStrategy {
+	return &localStrategyNativeHistogram{
 		limits: limits,
 	}
 }
 
-func (s *localStrategyNativeHistograms) Limit(tenantID string) float64 {
-	return s.limits.NativeHistogramsIngestionRate(tenantID)
+func (s *localStrategyNativeHistogram) Limit(tenantID string) float64 {
+	return s.limits.NativeHistogramIngestionRate(tenantID)
 }
 
-func (s *localStrategyNativeHistograms) Burst(tenantID string) int {
-	return s.limits.NativeHistogramsIngestionBurstSize(tenantID)
+func (s *localStrategyNativeHistogram) Burst(tenantID string) int {
+	return s.limits.NativeHistogramIngestionBurstSize(tenantID)
 }
 
-type globalStrategyNativeHistograms struct {
+type globalStrategyNativeHistogram struct {
 	limits *validation.Overrides
 	ring   ReadLifecycler
 }
 
-func newGlobalNativeHistogramsIngestionRateStrategy(limits *validation.Overrides, ring ReadLifecycler) limiter.RateLimiterStrategy {
-	return &globalStrategyNativeHistograms{
+func newGlobalNativeHistogramIngestionRateStrategy(limits *validation.Overrides, ring ReadLifecycler) limiter.RateLimiterStrategy {
+	return &globalStrategyNativeHistogram{
 		limits: limits,
 		ring:   ring,
 	}
 }
 
-func (s *globalStrategyNativeHistograms) Limit(tenantID string) float64 {
+func (s *globalStrategyNativeHistogram) Limit(tenantID string) float64 {
 	numDistributors := s.ring.HealthyInstancesCount()
 
-	if numDistributors == 0 {
-		return s.limits.NativeHistogramsIngestionRate(tenantID)
+	if numDistributors == 0 || s.limits.NativeHistogramIngestionRate(tenantID) == float64(rate.Inf) {
+		return s.limits.NativeHistogramIngestionRate(tenantID)
 	}
 
-	return s.limits.NativeHistogramsIngestionRate(tenantID) / float64(numDistributors)
+	return s.limits.NativeHistogramIngestionRate(tenantID) / float64(numDistributors)
 }
 
-func (s *globalStrategyNativeHistograms) Burst(tenantID string) int {
+func (s *globalStrategyNativeHistogram) Burst(tenantID string) int {
 	// The meaning of burst doesn't change for the global strategy, in order
 	// to keep it easier to understand for users / operators.
-	return s.limits.NativeHistogramsIngestionBurstSize(tenantID)
+	return s.limits.NativeHistogramIngestionBurstSize(tenantID)
 }

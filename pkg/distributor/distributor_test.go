@@ -685,6 +685,7 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 	t.Parallel()
 	type testPush struct {
 		samples                              int
+		nhSamples                            int
 		metadata                             int
 		expectedError                        error
 		expectedNHDiscardedSampleMetricValue int
@@ -692,40 +693,89 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "user")
 	tests := map[string]struct {
-		distributors                       int
-		ingestionRateStrategy              string
-		ingestionRate                      float64
-		ingestionBurstSize                 int
-		nativeHistogramsIngestionRate      float64
-		nativeHistogramsIngestionBurstSize int
-		pushes                             []testPush
+		distributors                         int
+		ingestionRateStrategy                string
+		ingestionRate                        float64
+		ingestionBurstSize                   int
+		nativeHistogramIngestionRateStrategy string
+		nativeHistogramIngestionRate         float64
+		nativeHistogramIngestionBurstSize    int
+		pushes                               []testPush
 	}{
-		"local strategy: limit should be set to each distributor: histograms": {
-			distributors:                       2,
-			ingestionRateStrategy:              validation.LocalIngestionRateStrategy,
-			ingestionRate:                      13,
-			ingestionBurstSize:                 13,
-			nativeHistogramsIngestionRate:      5,
-			nativeHistogramsIngestionBurstSize: 5,
+		"local strategy: native histograms limit should be set to each distributor": {
+			distributors:                      2,
+			ingestionRateStrategy:             validation.LocalIngestionRateStrategy,
+			ingestionRate:                     20,
+			ingestionBurstSize:                20,
+			nativeHistogramIngestionRate:      10,
+			nativeHistogramIngestionBurstSize: 10,
 			pushes: []testPush{
-				{samples: 2, expectedError: nil, expectedNHDiscardedSampleMetricValue: 0},
-				{samples: 4, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
-				{samples: 2, metadata: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
-				{samples: 2, metadata: 8, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (13) exceeded while adding 2 samples and 8 metadata"), expectedNHDiscardedSampleMetricValue: 6},
+				{nhSamples: 4, expectedError: nil},
+				{nhSamples: 6, expectedError: nil},
+				{nhSamples: 6, expectedError: nil, expectedNHDiscardedSampleMetricValue: 6},
+				{nhSamples: 4, metadata: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 10},
+				{nhSamples: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 11},
+				{nhSamples: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 12},
 			},
 		},
-		"global strategy: burst should set to each distributor: histograms": {
-			distributors:                       2,
-			ingestionRateStrategy:              validation.GlobalIngestionRateStrategy,
-			ingestionRate:                      20,
-			ingestionBurstSize:                 20,
-			nativeHistogramsIngestionRate:      6,
-			nativeHistogramsIngestionBurstSize: 3,
+		"global strategy: native histograms limit should be evenly shared across distributors": {
+			distributors:                      2,
+			ingestionRateStrategy:             validation.GlobalIngestionRateStrategy,
+			ingestionRate:                     20,
+			ingestionBurstSize:                10,
+			nativeHistogramIngestionRate:      10,
+			nativeHistogramIngestionBurstSize: 5,
 			pushes: []testPush{
-				{samples: 2, expectedError: nil, expectedNHDiscardedSampleMetricValue: 0},
-				{samples: 4, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
-				{samples: 1, metadata: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
-				{samples: 2, metadata: 15, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 2 samples and 15 metadata"), expectedNHDiscardedSampleMetricValue: 6},
+				{nhSamples: 2, expectedError: nil},
+				{nhSamples: 1, expectedError: nil},
+				{nhSamples: 3, metadata: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 3},
+				{nhSamples: 2, expectedError: nil, expectedNHDiscardedSampleMetricValue: 3},
+				{nhSamples: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
+				{nhSamples: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 5},
+			},
+		},
+		"global strategy: native histograms burst should set to each distributor": {
+			distributors:                      2,
+			ingestionRateStrategy:             validation.GlobalIngestionRateStrategy,
+			ingestionRate:                     20,
+			ingestionBurstSize:                40,
+			nativeHistogramIngestionRate:      10,
+			nativeHistogramIngestionBurstSize: 20,
+			pushes: []testPush{
+				{nhSamples: 10, expectedError: nil},
+				{nhSamples: 5, expectedError: nil},
+				{nhSamples: 6, metadata: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 6},
+				{nhSamples: 5, expectedError: nil, expectedNHDiscardedSampleMetricValue: 6},
+				{nhSamples: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 7},
+				{nhSamples: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 8},
+			},
+		},
+		"local strategy: If NH samples hit NH rate limit, other samples should succeed when under rate limit": {
+			distributors:                      2,
+			ingestionRateStrategy:             validation.LocalIngestionRateStrategy,
+			ingestionRate:                     20,
+			ingestionBurstSize:                20,
+			nativeHistogramIngestionRate:      5,
+			nativeHistogramIngestionBurstSize: 5,
+			pushes: []testPush{
+				{samples: 5, nhSamples: 4, expectedError: nil},
+				{samples: 6, nhSamples: 2, expectedError: nil, expectedNHDiscardedSampleMetricValue: 2},
+				{samples: 4, metadata: 1, nhSamples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (20) exceeded while adding 5 samples and 1 metadata"), expectedNHDiscardedSampleMetricValue: 2},
+				{metadata: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 2},
+			},
+		},
+		"global strategy: If NH samples hit NH rate limit, other samples should succeed when under rate limit": {
+			distributors:                      2,
+			ingestionRateStrategy:             validation.GlobalIngestionRateStrategy,
+			ingestionRate:                     20,
+			ingestionBurstSize:                10,
+			nativeHistogramIngestionRate:      10,
+			nativeHistogramIngestionBurstSize: 5,
+			pushes: []testPush{
+				{samples: 3, nhSamples: 2, expectedError: nil},
+				{samples: 3, nhSamples: 4, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
+				{samples: 1, metadata: 1, nhSamples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 2 samples and 1 metadata"), expectedNHDiscardedSampleMetricValue: 4},
+				{metadata: 1, expectedError: nil, expectedNHDiscardedSampleMetricValue: 4},
 			},
 		},
 	}
@@ -740,8 +790,8 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 			limits.IngestionRateStrategy = testData.ingestionRateStrategy
 			limits.IngestionRate = testData.ingestionRate
 			limits.IngestionBurstSize = testData.ingestionBurstSize
-			limits.NativeHistogramsIngestionRate = testData.nativeHistogramsIngestionRate
-			limits.NativeHistogramsIngestionBurstSize = testData.nativeHistogramsIngestionBurstSize
+			limits.NativeHistogramIngestionRate = testData.nativeHistogramIngestionRate
+			limits.NativeHistogramIngestionBurstSize = testData.nativeHistogramIngestionBurstSize
 
 			// Start all expected distributors
 			distributors, _, _, _ := prepare(t, prepConfig{
@@ -754,7 +804,7 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 
 			// Push samples in multiple requests to the first distributor
 			for _, push := range testData.pushes {
-				var request = makeWriteRequest(0, 0, push.metadata, push.samples)
+				var request = makeWriteRequest(0, push.samples, push.metadata, push.nhSamples)
 
 				response, err := distributors[0].Push(ctx, request)
 
@@ -765,7 +815,7 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 					assert.Nil(t, response)
 					assert.Equal(t, push.expectedError, err)
 				}
-				assert.Equal(t, float64(push.expectedNHDiscardedSampleMetricValue), testutil.ToFloat64(distributors[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramsRateLimited, "user")))
+				assert.Equal(t, float64(push.expectedNHDiscardedSampleMetricValue), testutil.ToFloat64(distributors[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, "user")))
 			}
 		})
 	}

@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -96,8 +95,8 @@ type Distributor struct {
 	HATracker *ha.HATracker
 
 	// Per-user rate limiter.
-	ingestionRateLimiter                 *limiter.RateLimiter
-	nativeHistogramsIngestionRateLimiter *limiter.RateLimiter
+	ingestionRateLimiter                *limiter.RateLimiter
+	nativeHistogramIngestionRateLimiter *limiter.RateLimiter
 
 	// Manager for subservices (HA Tracker, distributor ring and client pool)
 	subservices        *services.Manager
@@ -269,13 +268,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	// it's an internal dependency and can't join the distributors ring, we skip rate
 	// limiting.
 	var ingestionRateStrategy limiter.RateLimiterStrategy
-	var nativeHistogramsIngestionRateStrategy limiter.RateLimiterStrategy
+	var nativeHistogramIngestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsLifeCycler *ring.Lifecycler
 	var distributorsRing *ring.Ring
 
 	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
-		nativeHistogramsIngestionRateStrategy = newInfiniteIngestionRateStrategy()
+		nativeHistogramIngestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		distributorsLifeCycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, true, true, log, prometheus.WrapRegistererWithPrefix("cortex_", reg))
 		if err != nil {
@@ -289,24 +288,24 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		subservices = append(subservices, distributorsLifeCycler, distributorsRing)
 
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsLifeCycler)
-		nativeHistogramsIngestionRateStrategy = newGlobalNativeHistogramsIngestionRateStrategy(limits, distributorsLifeCycler)
+		nativeHistogramIngestionRateStrategy = newGlobalNativeHistogramIngestionRateStrategy(limits, distributorsLifeCycler)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(limits)
-		nativeHistogramsIngestionRateStrategy = newLocalNativeHistogramsIngestionRateStrategy(limits)
+		nativeHistogramIngestionRateStrategy = newLocalNativeHistogramIngestionRateStrategy(limits)
 	}
 
 	d := &Distributor{
-		cfg:                                  cfg,
-		log:                                  log,
-		ingestersRing:                        ingestersRing,
-		ingesterPool:                         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
-		distributorsLifeCycler:               distributorsLifeCycler,
-		distributorsRing:                     distributorsRing,
-		limits:                               limits,
-		ingestionRateLimiter:                 limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		nativeHistogramsIngestionRateLimiter: limiter.NewRateLimiter(nativeHistogramsIngestionRateStrategy, 10*time.Second),
-		HATracker:                            haTracker,
-		ingestionRate:                        util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		cfg:                                 cfg,
+		log:                                 log,
+		ingestersRing:                       ingestersRing,
+		ingesterPool:                        NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
+		distributorsLifeCycler:              distributorsLifeCycler,
+		distributorsRing:                    distributorsRing,
+		limits:                              limits,
+		ingestionRateLimiter:                limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+		nativeHistogramIngestionRateLimiter: limiter.NewRateLimiter(nativeHistogramIngestionRateStrategy, 10*time.Second),
+		HATracker:                           haTracker,
+		ingestionRate:                       util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -772,13 +771,10 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	d.receivedExemplars.WithLabelValues(userID).Add(float64(validatedExemplars))
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
-	nhRateLimited := false
-	if limits.NativeHistogramsIngestionRate != math.MaxFloat64 {
-		nhRateLimited = !d.nativeHistogramsIngestionRateLimiter.AllowN(time.Now(), userID, validatedHistogramSamples)
-	}
-
-	if nhRateLimited {
-		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramsRateLimited, userID).Add(float64(validatedHistogramSamples))
+	if !d.nativeHistogramIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples) {
+		level.Warn(d.log).Log("msg", "native histogram ingestion rate limit (%v) exceeded while adding %d native histogram samples", d.nativeHistogramIngestionRateLimiter.Limit(now, userID), validatedHistogramSamples)
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, userID).Add(float64(validatedHistogramSamples))
+		validatedHistogramSamples = 0
 	} else {
 		seriesKeys = append(seriesKeys, nhSeriesKeys...)
 		validatedTimeseries = append(validatedTimeseries, nhValidatedTimeseries...)
@@ -960,7 +956,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	defer pSpan.Finish()
 
 	// For each timeseries or samples, we compute a hash to distribute across ingesters;
-	// check each sample/metadata and discard if outside limits.
+	// check each sample/metadata and discard  if outside limits.
 	validatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	nhValidatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))

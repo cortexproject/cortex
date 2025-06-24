@@ -24,11 +24,11 @@ func TestIngestionRateStrategy(t *testing.T) {
 	}{
 		"local rate limiter should just return configured limits": {
 			limits: validation.Limits{
-				IngestionRateStrategy:              validation.LocalIngestionRateStrategy,
-				IngestionRate:                      float64(1000),
-				IngestionBurstSize:                 10000,
-				NativeHistogramsIngestionRate:      float64(100),
-				NativeHistogramsIngestionBurstSize: 100,
+				IngestionRateStrategy:             validation.LocalIngestionRateStrategy,
+				IngestionRate:                     float64(1000),
+				IngestionBurstSize:                10000,
+				NativeHistogramIngestionRate:      float64(100),
+				NativeHistogramIngestionBurstSize: 100,
 			},
 			ring:                          nil,
 			expectedLimit:                 float64(1000),
@@ -38,11 +38,11 @@ func TestIngestionRateStrategy(t *testing.T) {
 		},
 		"global rate limiter should share the limit across the number of distributors": {
 			limits: validation.Limits{
-				IngestionRateStrategy:              validation.GlobalIngestionRateStrategy,
-				IngestionRate:                      float64(1000),
-				IngestionBurstSize:                 10000,
-				NativeHistogramsIngestionRate:      float64(100),
-				NativeHistogramsIngestionBurstSize: 100,
+				IngestionRateStrategy:             validation.GlobalIngestionRateStrategy,
+				IngestionRate:                     float64(1000),
+				IngestionBurstSize:                10000,
+				NativeHistogramIngestionRate:      float64(100),
+				NativeHistogramIngestionBurstSize: 100,
 			},
 			ring: func() ReadLifecycler {
 				ring := newReadLifecyclerMock()
@@ -54,13 +54,31 @@ func TestIngestionRateStrategy(t *testing.T) {
 			expectedNativeHistogramsLimit: float64(50),
 			expectedNativeHistogramsBurst: 100,
 		},
+		"global rate limiter should handle the special case of inf ingestion rate": {
+			limits: validation.Limits{
+				IngestionRateStrategy:             validation.GlobalIngestionRateStrategy,
+				IngestionRate:                     float64(rate.Inf),
+				IngestionBurstSize:                0,
+				NativeHistogramIngestionRate:      float64(rate.Inf),
+				NativeHistogramIngestionBurstSize: 0,
+			},
+			ring: func() ReadLifecycler {
+				ring := newReadLifecyclerMock()
+				ring.On("HealthyInstancesCount").Return(2)
+				return ring
+			}(),
+			expectedLimit:                 float64(rate.Inf),
+			expectedBurst:                 0,
+			expectedNativeHistogramsLimit: float64(rate.Inf),
+			expectedNativeHistogramsBurst: 0,
+		},
 		"infinite rate limiter should return unlimited settings": {
 			limits: validation.Limits{
-				IngestionRateStrategy:              "infinite",
-				IngestionRate:                      float64(1000),
-				IngestionBurstSize:                 10000,
-				NativeHistogramsIngestionRate:      float64(100),
-				NativeHistogramsIngestionBurstSize: 100,
+				IngestionRateStrategy:             "infinite",
+				IngestionRate:                     float64(1000),
+				IngestionBurstSize:                10000,
+				NativeHistogramIngestionRate:      float64(100),
+				NativeHistogramIngestionBurstSize: 100,
 			},
 			ring:                          nil,
 			expectedLimit:                 float64(rate.Inf),
@@ -86,10 +104,10 @@ func TestIngestionRateStrategy(t *testing.T) {
 			switch testData.limits.IngestionRateStrategy {
 			case validation.LocalIngestionRateStrategy:
 				strategy = newLocalIngestionRateStrategy(overrides)
-				nativeHistogramsStrategy = newLocalNativeHistogramsIngestionRateStrategy(overrides)
+				nativeHistogramsStrategy = newLocalNativeHistogramIngestionRateStrategy(overrides)
 			case validation.GlobalIngestionRateStrategy:
 				strategy = newGlobalIngestionRateStrategy(overrides, testData.ring)
-				nativeHistogramsStrategy = newGlobalNativeHistogramsIngestionRateStrategy(overrides, testData.ring)
+				nativeHistogramsStrategy = newGlobalNativeHistogramIngestionRateStrategy(overrides, testData.ring)
 			case "infinite":
 				strategy = newInfiniteIngestionRateStrategy()
 				nativeHistogramsStrategy = newInfiniteIngestionRateStrategy()

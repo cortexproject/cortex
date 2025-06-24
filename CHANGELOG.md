@@ -40,6 +40,7 @@
 * [ENHANCEMENT] Distributor: Add min/max schema validation for NativeHistograms. #6766
 * [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
 * [ENHANCEMENT] Compactor: Support metadata caching bucket for Cleaner. Can be enabled via `-compactor.cleaner-caching-bucket-enabled` flag. #6778
+* [ENHANCEMENT] Distributor: Add ingestion rate limit for Native Histograms. #6794
 * [ENHANCEMENT] Compactor, Store Gateway: Introduce user scanner strategy and user index. #6780
 * [ENHANCEMENT] Querier: Support chunks cache for parquet queryable. #6805
 * [ENHANCEMENT] Parquet Storage: Add some metrics for parquet blocks and converter. #6809 #6821

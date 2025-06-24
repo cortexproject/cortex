@@ -59,6 +59,7 @@ Removes tenant-specific limits, reverting to default limits.
 1. The API will be integrated into the cortex-overrides component to:
    - Read the current runtime config from the configured storage backend
    - Persist changes back to the storage backend
+   - The API will only work with configurations stored in block storage backends.
 
 2. Security:
    - Rate limiting will be implemented to prevent abuse

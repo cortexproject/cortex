@@ -3542,6 +3542,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -validation.max-labels-size-bytes
 [max_labels_size_bytes: <int> | default = 0]
 
+# Maximum size in bytes of a native histogram sample. 0 to disable the limit.
+# CLI flag: -validation.max-native-histogram-sample-size-bytes
+[max_native_histogram_sample_size_bytes: <int> | default = 0]
+
 # Maximum length accepted for metric metadata. Metadata refers to Metric Name,
 # HELP and UNIT.
 # CLI flag: -validation.max-metadata-length

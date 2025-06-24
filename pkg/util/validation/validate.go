@@ -58,6 +58,7 @@ const (
 	// Native Histogram specific validation reasons
 	nativeHistogramBucketCountLimitExceeded = "native_histogram_buckets_exceeded"
 	nativeHistogramInvalidSchema            = "native_histogram_invalid_schema"
+	nativeHistogramSampleSizeBytesExceeded  = "native_histogram_sample_size_bytes_exceeded"
 
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
@@ -339,6 +340,12 @@ func ValidateMetadata(validateMetrics *ValidateMetrics, cfg *Limits, userID stri
 }
 
 func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, histogramSample cortexpb.Histogram) (cortexpb.Histogram, error) {
+
+	// sample size validation for native histogram
+	if limits.MaxNativeHistogramSampleSizeBytes > 0 && histogramSample.Size() > limits.MaxNativeHistogramSampleSizeBytes {
+		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSampleSizeBytesExceeded, userID).Inc()
+		return cortexpb.Histogram{}, newNativeHistogramSampleSizeBytesExceededError(ls, histogramSample.Size(), limits.MaxNativeHistogramSampleSizeBytes)
+	}
 
 	// schema validation for native histogram
 	if histogramSample.Schema < histogram.ExponentialSchemaMin || histogramSample.Schema > histogram.ExponentialSchemaMax {

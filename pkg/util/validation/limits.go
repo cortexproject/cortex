@@ -138,6 +138,7 @@ type Limits struct {
 	MaxLabelValueLength               int                 `yaml:"max_label_value_length" json:"max_label_value_length"`
 	MaxLabelNamesPerSeries            int                 `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
 	MaxLabelsSizeBytes                int                 `yaml:"max_labels_size_bytes" json:"max_labels_size_bytes"`
+	MaxNativeHistogramSampleSizeBytes int                 `yaml:"max_native_histogram_sample_size_bytes" json:"max_native_histogram_sample_size_bytes"`
 	MaxMetadataLength                 int                 `yaml:"max_metadata_length" json:"max_metadata_length"`
 	RejectOldSamples                  bool                `yaml:"reject_old_samples" json:"reject_old_samples"`
 	RejectOldSamplesMaxAge            model.Duration      `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
@@ -257,6 +258,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
 	f.IntVar(&l.MaxLabelsSizeBytes, "validation.max-labels-size-bytes", 0, "Maximum combined size in bytes of all labels and label values accepted for a series. 0 to disable the limit.")
+	f.IntVar(&l.MaxNativeHistogramSampleSizeBytes, "validation.max-native-histogram-sample-size-bytes", 0, "Maximum size in bytes of a native histogram sample. 0 to disable the limit.")
 	f.IntVar(&l.MaxMetadataLength, "validation.max-metadata-length", 1024, "Maximum length accepted for metric metadata. Metadata refers to Metric Name, HELP and UNIT.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", false, "Reject old samples.")
 	_ = l.RejectOldSamplesMaxAge.Set("14d")

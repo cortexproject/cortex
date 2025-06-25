@@ -25,6 +25,7 @@ import (
 
 var errMaxGlobalSeriesPerUserValidation = errors.New("the ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
 var errMaxGlobalNativeHistogramSeriesPerUserValidation = errors.New("the ingester.max-global-native-histogram-series-per-user limit is unsupported if distributor.shard-by-all-labels or ingester.active-series-metrics-enabled is disabled")
+var errMaxLocalNativeHistogramSeriesPerUserValidation = errors.New("the ingester.max-local-native-histogram-series-per-user limit is unsupported if ingester.active-series-metrics-enabled is disabled")
 var errDuplicateQueryPriorities = errors.New("duplicate entry of priorities found. Make sure they are all unique, including the default priority")
 var errCompilingQueryPriorityRegex = errors.New("error compiling query priority regex")
 var errDuplicatePerLabelSetLimit = errors.New("duplicate per labelSet limits found. Make sure they are all unique")
@@ -276,7 +277,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster before replication. 0 to disable.")
-	f.IntVar(&l.MaxLocalNativeHistogramSeriesPerUser, "ingester.max-native-histogram-series-per-user", 5000000, "The maximum number of active native histogram series per user, per ingester. 0 to disable.")
+	f.IntVar(&l.MaxLocalNativeHistogramSeriesPerUser, "ingester.max-native-histogram-series-per-user", 0, "The maximum number of active native histogram series per user, per ingester. 0 to disable. Supported only if ingester.active-series-metrics-enabled is true.")
 	f.IntVar(&l.MaxGlobalNativeHistogramSeriesPerUser, "ingester.max-global-native-histogram-series-per-user", 0, "The maximum number of active native histogram series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels and ingester.active-series-metrics-enabled is true.")
 	f.BoolVar(&l.EnableNativeHistograms, "blocks-storage.tsdb.enable-native-histograms", false, "[EXPERIMENTAL] True to enable native histogram.")
 	f.IntVar(&l.MaxExemplars, "ingester.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.")
@@ -357,6 +358,10 @@ func (l *Limits) Validate(shardByAllLabels bool, activeSeriesMetricsEnabled bool
 	// or if active-series-metrics-enabled is disabled
 	if l.MaxGlobalNativeHistogramSeriesPerUser > 0 && (!shardByAllLabels || !activeSeriesMetricsEnabled) {
 		return errMaxGlobalNativeHistogramSeriesPerUserValidation
+	}
+
+	if l.MaxLocalNativeHistogramSeriesPerUser > 0 && !activeSeriesMetricsEnabled {
+		return errMaxLocalNativeHistogramSeriesPerUserValidation
 	}
 
 	if err := l.RulerExternalLabels.Validate(func(l labels.Label) error {

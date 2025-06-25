@@ -3607,9 +3607,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_series_per_metric: <int> | default = 50000]
 
 # The maximum number of active native histogram series per user, per ingester. 0
-# to disable.
+# to disable. Supported only if ingester.active-series-metrics-enabled is true.
 # CLI flag: -ingester.max-native-histogram-series-per-user
-[max_native_histogram_series_per_user: <int> | default = 5000000]
+[max_native_histogram_series_per_user: <int> | default = 0]
 
 # The maximum number of active series per user, across the cluster before
 # replication. 0 to disable. Supported only if -distributor.shard-by-all-labels

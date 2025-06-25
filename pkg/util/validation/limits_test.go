@@ -95,6 +95,26 @@ func TestLimits_Validate(t *testing.T) {
 			activeSeriesMetricsEnabled: false,
 			expected:                   errMaxGlobalNativeHistogramSeriesPerUserValidation,
 		},
+		"max-local-native-histogram-series-per-user disabled and shard-by-all-labels=true and active-series-metrics-enabled=false": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 0},
+			activeSeriesMetricsEnabled: false,
+			expected:                   nil,
+		},
+		"max-local-native-histogram-series-per-user disabled and shard-by-all-labels=true and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 0},
+			activeSeriesMetricsEnabled: true,
+			expected:                   nil,
+		},
+		"max-local-native-histogram-series-per-user enabled and shard-by-all-labels=true and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 1000},
+			activeSeriesMetricsEnabled: true,
+			expected:                   nil,
+		},
+		"max-local-native-histogram-series-per-user enabled and shard-by-all-labels=true and active-series-metrics-enabled=false": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 1000},
+			activeSeriesMetricsEnabled: false,
+			expected:                   errMaxLocalNativeHistogramSeriesPerUserValidation,
+		},
 		"external-labels invalid label name": {
 			limits:   Limits{RulerExternalLabels: labels.Labels{{Name: "123invalid", Value: "good"}}},
 			expected: errInvalidLabelName,

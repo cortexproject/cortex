@@ -2048,8 +2048,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 			limits := &validation.Limits{
 				CompactorPartitionSeriesCount: 4,
 			}
-			overrides, err := validation.NewOverrides(*limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(*limits, nil)
 
 			// Setup mocking of the ring so that the grouper will own all the shards
 			rs := ring.ReplicationSet{

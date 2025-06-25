@@ -69,8 +69,7 @@ func TestRoundTrip(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	defaultLimits, err := validation.NewOverrides(validation.Limits{}, nil)
-	require.NoError(t, err)
+	defaultLimits := validation.NewOverrides(validation.Limits{}, nil)
 
 	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
 		nil,

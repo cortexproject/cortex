@@ -97,8 +97,7 @@ func TestIngestionRateStrategy(t *testing.T) {
 			var nativeHistogramsStrategy limiter.RateLimiterStrategy
 
 			// Init limits overrides
-			overrides, err := validation.NewOverrides(testData.limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(testData.limits, nil)
 
 			// Instance the strategy
 			switch testData.limits.IngestionRateStrategy {

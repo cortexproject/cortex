@@ -1435,8 +1435,7 @@ func prepareForPartitioning(t *testing.T, compactorCfg Config, bucketClient objs
 		flagext.DefaultValues(limits)
 	}
 
-	overrides, err := validation.NewOverrides(*limits, nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(*limits, nil)
 
 	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 		return bucketClient, nil

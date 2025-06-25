@@ -1585,8 +1585,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Instrument
 		flagext.DefaultValues(limits)
 	}
 
-	overrides, err := validation.NewOverrides(*limits, nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(*limits, nil)
 
 	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 		return bucketClient, nil
@@ -2295,7 +2294,7 @@ func TestCompactor_GetShardSizeForUser(t *testing.T) {
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		// Compactor will get its own temp dir for storing local files.
-		overrides, _ := validation.NewOverrides(validation.Limits{}, tenantLimits)
+		overrides := validation.NewOverrides(validation.Limits{}, tenantLimits)
 		compactor, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil)
 		compactor.limits = overrides
 		//compactor.limits.tenantLimits = tenantLimits
@@ -2344,7 +2343,7 @@ func TestCompactor_GetShardSizeForUser(t *testing.T) {
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		// Compactor will get its own temp dir for storing local files.
-		overrides, _ := validation.NewOverrides(validation.Limits{}, tenantLimits)
+		overrides := validation.NewOverrides(validation.Limits{}, tenantLimits)
 		compactor, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil)
 		compactor.limits = overrides
 		//compactor.limits.tenantLimits = tenantLimits

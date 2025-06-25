@@ -414,8 +414,7 @@ func defaultOverrides(t *testing.T, queryVerticalShardSize int) *validation.Over
 	flagext.DefaultValues(&limits)
 	limits.QueryVerticalShardSize = queryVerticalShardSize
 
-	overrides, err := validation.NewOverrides(limits, nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(limits, nil)
 	return overrides
 }
 

@@ -79,8 +79,7 @@ func TestMetricCounter(t *testing.T) {
 
 			limits := validation.Limits{MaxLocalSeriesPerMetric: tc.localLimit}
 
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 
 			// We're testing code that's not dependent on sharding strategy, replication factor, etc. To simplify the test,
 			// we use local limit only.

@@ -448,13 +448,13 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 		}
 	}
 
-	// Total nativeHistograms series limit.
-	if err := u.limiter.AssertMaxNativeHistogramSeriesPerUser(u.userID, u.activeSeries.ActiveNativeHistogram()); err != nil {
+	// Total series limit.
+	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.Head().NumSeries())); err != nil {
 		return err
 	}
 
-	// Total series limit.
-	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.Head().NumSeries())); err != nil {
+	// Total nativeHistograms series limit.
+	if err := u.limiter.AssertMaxNativeHistogramSeriesPerUser(u.userID, u.activeSeries.ActiveNativeHistogram()); err != nil {
 		return err
 	}
 

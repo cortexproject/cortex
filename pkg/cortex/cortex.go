@@ -204,7 +204,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.BlocksStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")
 	}
-	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels); err != nil {
+	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
 	if err := c.ResourceMonitor.Validate(); err != nil {

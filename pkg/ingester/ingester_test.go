@@ -895,7 +895,9 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	blocksIngesterGenerator := func(reg prometheus.Registerer) *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg)
+		cfg := defaultIngesterTestConfig(t)
+		cfg.ActiveSeriesMetricsEnabled = false
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, reg)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE

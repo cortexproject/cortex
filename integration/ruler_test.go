@@ -338,6 +338,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				Rules: []rulefmt.Rule{{
 					Record: fmt.Sprintf("rule_%d", i),
 					Labels: ruleLabels,
+					Expr:   strconv.Itoa(i),
 				}},
 				Labels: groupLabels,
 			}

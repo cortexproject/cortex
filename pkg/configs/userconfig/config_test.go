@@ -148,7 +148,7 @@ groups:
 func TestParseFormatted(t *testing.T) {
 	dur, err := model.ParseDuration("5m")
 	require.NoError(t, err)
-	
+
 	rulesV2 := []rulefmt.Rule{
 		{
 			Alert: "TestAlert",

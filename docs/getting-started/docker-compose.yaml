@@ -20,10 +20,10 @@ services:
     ports:
       - "9009:9009"
     healthcheck:
-      test: wget -qO- http://127.0.0.1:9009/ready
-      interval: 10s
-      timeout: 10s
-      retries: 3
+        test: wget -qO- http://127.0.0.1:9009/ready
+        interval: 10s
+        timeout: 10s
+        retries: 3
     restart: on-failure
   grafana:
     image: grafana/grafana:${GRAFANA_VERSION}
@@ -34,7 +34,7 @@ services:
       - GF_LOG_MODE=console
       - GF_LOG_LEVEL=critical
     volumes:
-      - ./grafana-datasource-docker.yaml:/etc/grafana/provisioning/datasources/datasource.yaml:ro
+      - ./grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml:ro
       - ./grafana-dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
       - ./dashboards/:/var/lib/grafana/dashboards/:ro
     ports:
@@ -66,7 +66,7 @@ services:
     ports:
       - "8333:8333"
     post_start:
-      - command: /seaweedfs-init.sh
+    - command: /seaweedfs-init.sh
     volumes:
       - ./seaweedfs-config.json:/workspace/seaweedfs-config.json:ro
       - ./seaweedfs-init.sh:/seaweedfs-init.sh:ro

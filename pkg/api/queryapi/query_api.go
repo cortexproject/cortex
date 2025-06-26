@@ -209,8 +209,8 @@ func (q *QueryAPI) Wrap(f apiFunc) http.HandlerFunc {
 	}
 
 	return httputil.CompressionHandler{
-			Handler: http.HandlerFunc(hf),
-		}.ServeHTTP
+		Handler: http.HandlerFunc(hf),
+	}.ServeHTTP
 }
 
 func (q *QueryAPI) respond(w http.ResponseWriter, req *http.Request, data interface{}, warnings annotations.Annotations, query string) {

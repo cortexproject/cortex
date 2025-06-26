@@ -754,6 +754,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.EnableNativeHistograms = true
 	limits.MaxLocalSeriesPerUser = 1
+	limits.MaxLocalNativeHistogramSeriesPerUser = 1
 	limits.MaxLocalMetricsWithMetadataPerUser = 1
 
 	userID := "1"
@@ -872,7 +873,7 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.EnableNativeHistograms = true
 	limits.MaxLocalNativeHistogramSeriesPerUser = 1
-	limits.MaxLocalSeriesPerUser = 1
+	limits.MaxLocalSeriesPerUser = 2
 	limits.MaxLocalMetricsWithMetadataPerUser = 1
 
 	userID := "1"
@@ -895,9 +896,7 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	blocksIngesterGenerator := func(reg prometheus.Registerer) *Ingester {
-		cfg := defaultIngesterTestConfig(t)
-		cfg.ActiveSeriesMetricsEnabled = false
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, reg)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -975,6 +974,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.EnableNativeHistograms = true
 	limits.MaxLocalSeriesPerMetric = 1
+	limits.MaxLocalNativeHistogramSeriesPerUser = 1
 	limits.MaxLocalMetadataPerMetric = 1
 
 	userID := "1"

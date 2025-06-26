@@ -147,7 +147,7 @@ func TestNativeHistogramFuzz(t *testing.T) {
 
 	err = writeFileToSharedDir(s, "prometheus.yml", []byte(""))
 	require.NoError(t, err)
-	prom := e2edb.NewPrometheus("", nil)
+	prom := e2edb.NewPrometheus("quay.io/prometheus/prometheus:v3.3.1", nil)
 	require.NoError(t, s.StartAndWaitReady(prom))
 
 	c2, err := e2ecortex.NewPromQueryClient(prom.HTTPEndpoint())

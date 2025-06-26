@@ -1178,6 +1178,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not
 	// retain anything from `req` past the call to ReuseSlice
+	defer req.Free()
 	defer cortexpb.ReuseSlice(req.Timeseries)
 
 	userID, err := tenant.TenantID(ctx)
@@ -1591,6 +1592,7 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 			resp.Message = string(httpResponse.Body)
 		}
 		err = srv.Send(resp)
+		req.Free()
 		if err != nil {
 			level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "error sending from PushStream", "err", err)
 		}

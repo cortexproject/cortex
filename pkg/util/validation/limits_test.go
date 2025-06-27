@@ -45,9 +45,10 @@ func TestLimits_Validate(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		limits           Limits
-		shardByAllLabels bool
-		expected         error
+		limits                     Limits
+		shardByAllLabels           bool
+		activeSeriesMetricsEnabled bool
+		expected                   error
 	}{
 		"max-global-series-per-user disabled and shard-by-all-labels=false": {
 			limits:           Limits{MaxGlobalSeriesPerUser: 0},
@@ -64,6 +65,56 @@ func TestLimits_Validate(t *testing.T) {
 			shardByAllLabels: true,
 			expected:         nil,
 		},
+		"max-global-native-histogram-series-per-user disabled and shard-by-all-labels=false and active-series-metrics-enabled=false": {
+			limits:                     Limits{MaxGlobalSeriesPerUser: 0},
+			shardByAllLabels:           false,
+			activeSeriesMetricsEnabled: false,
+			expected:                   nil,
+		},
+		"max-global-native-histogram-series-per-user disabled and shard-by-all-labels=true and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxGlobalNativeHistogramSeriesPerUser: 0},
+			shardByAllLabels:           true,
+			activeSeriesMetricsEnabled: true,
+			expected:                   nil,
+		},
+		"max-global-native-histogram-series-per-user enabled and shard-by-all-labels=true and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxGlobalNativeHistogramSeriesPerUser: 1000},
+			shardByAllLabels:           true,
+			activeSeriesMetricsEnabled: true,
+			expected:                   nil,
+		},
+		"max-global-native-histogram-series-per-user enabled and shard-by-all-labels=false and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxGlobalNativeHistogramSeriesPerUser: 1000},
+			shardByAllLabels:           false,
+			activeSeriesMetricsEnabled: true,
+			expected:                   errMaxGlobalNativeHistogramSeriesPerUserValidation,
+		},
+		"max-global-native-histogram-series-per-user enabled and shard-by-all-labels=true and active-series-metrics-enabled=false": {
+			limits:                     Limits{MaxGlobalNativeHistogramSeriesPerUser: 1000},
+			shardByAllLabels:           true,
+			activeSeriesMetricsEnabled: false,
+			expected:                   errMaxGlobalNativeHistogramSeriesPerUserValidation,
+		},
+		"max-local-native-histogram-series-per-user disabled and shard-by-all-labels=true and active-series-metrics-enabled=false": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 0},
+			activeSeriesMetricsEnabled: false,
+			expected:                   nil,
+		},
+		"max-local-native-histogram-series-per-user disabled and shard-by-all-labels=true and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 0},
+			activeSeriesMetricsEnabled: true,
+			expected:                   nil,
+		},
+		"max-local-native-histogram-series-per-user enabled and shard-by-all-labels=true and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 1000},
+			activeSeriesMetricsEnabled: true,
+			expected:                   nil,
+		},
+		"max-local-native-histogram-series-per-user enabled and shard-by-all-labels=true and active-series-metrics-enabled=false": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 1000},
+			activeSeriesMetricsEnabled: false,
+			expected:                   errMaxLocalNativeHistogramSeriesPerUserValidation,
+		},
 		"external-labels invalid label name": {
 			limits:   Limits{RulerExternalLabels: labels.Labels{{Name: "123invalid", Value: "good"}}},
 			expected: errInvalidLabelName,
@@ -78,7 +129,7 @@ func TestLimits_Validate(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			assert.ErrorIs(t, testData.limits.Validate(testData.shardByAllLabels), testData.expected)
+			assert.ErrorIs(t, testData.limits.Validate(testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
 		})
 	}
 }

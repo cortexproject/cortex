@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [ENHANCEMENT] Ingester: Add activeSeries limit specifically for NativeHistograms. #6796
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
 * [CHANGE] Validate a tenantID when to use a single tenant resolver. #6727
@@ -40,8 +41,9 @@
 * [ENHANCEMENT] Distributor: Add min/max schema validation for NativeHistograms. #6766
 * [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
 * [ENHANCEMENT] Compactor: Support metadata caching bucket for Cleaner. Can be enabled via `-compactor.cleaner-caching-bucket-enabled` flag. #6778
-* [ENHANCEMENT] Distributor: Add ingestion rate limit for Native Histograms. #6794
 * [ENHANCEMENT] Compactor, Store Gateway: Introduce user scanner strategy and user index. #6780
+* [ENHANCEMENT] Distributor: Add ingestion rate limit for Native Histograms. #6794
+* [ENHANCEMENT] Ingester: Add activeSeries limit specifically for Native Histogram. #6796
 * [ENHANCEMENT] Querier: Support chunks cache for parquet queryable. #6805
 * [ENHANCEMENT] Parquet Storage: Add some metrics for parquet blocks and converter. #6809 #6821
 * [ENHANCEMENT] Compactor: Optimize cleaner run time. #6815

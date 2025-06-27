@@ -188,7 +188,7 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 }
 
 func (q *QueryAPI) Wrap(f apiFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	hf := func(w http.ResponseWriter, r *http.Request) {
 		httputil.SetCORS(w, q.CORSOrigin, r)
 
 		result := f(r)
@@ -207,6 +207,10 @@ func (q *QueryAPI) Wrap(f apiFunc) http.HandlerFunc {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+
+	return httputil.CompressionHandler{
+		Handler: http.HandlerFunc(hf),
+	}.ServeHTTP
 }
 
 func (q *QueryAPI) respond(w http.ResponseWriter, req *http.Request, data interface{}, warnings annotations.Annotations, query string) {

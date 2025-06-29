@@ -184,6 +184,14 @@ func (r *RegexValidator) TenantID(ctx context.Context) (string, error) {
 		return "", errInvalidRegex
 	}
 
+	if err := tenant.CheckTenantIDLength(id); err != nil {
+		return "", err
+	}
+
+	if err := tenant.CheckTenantIDIsSupported(id); err != nil {
+		return "", err
+	}
+
 	return id, nil
 }
 

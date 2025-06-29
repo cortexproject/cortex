@@ -34,8 +34,7 @@ func Test_UserMetricsMetadata(t *testing.T) {
 		false)
 
 	limits := validation.Limits{}
-	overrides, err := validation.NewOverrides(limits, nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(limits, nil)
 	limiter := NewLimiter(overrides, nil, util.ShardingStrategyDefault, true, 1, false, "")
 
 	tests := []struct {

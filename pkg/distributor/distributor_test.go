@@ -2488,8 +2488,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			}
 			distributorCfg.UseStreamPush = false
 
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(b, err)
+			overrides := validation.NewOverrides(limits, nil)
 
 			// Start the distributor.
 			distributor, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, prometheus.NewRegistry(), log.NewNopLogger())
@@ -3121,8 +3120,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 			cfg.limits.HAMaxClusters = 100
 		}
 
-		overrides, err := validation.NewOverrides(*cfg.limits, nil)
-		require.NoError(tb, err)
+		overrides := validation.NewOverrides(*cfg.limits, nil)
 
 		reg := prometheus.NewPedanticRegistry()
 		d, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, reg, log.NewNopLogger())
@@ -4336,8 +4334,7 @@ func TestDistributor_PushLabelSetMetrics(t *testing.T) {
 		{Hash: 4, LabelSet: labels.FromStrings("cluster", "four")},
 		{Hash: 2, LabelSet: labels.EmptyLabels()},
 	}
-	ds[0].limits, err = validation.NewOverrides(limits, nil)
-	require.NoError(t, err)
+	ds[0].limits = validation.NewOverrides(limits, nil)
 	ds[0].updateLabelSetMetrics()
 	// Old label set metrics are removed. New label set metrics will be added when
 	// new requests come in.

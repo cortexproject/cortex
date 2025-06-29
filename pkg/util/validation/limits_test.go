@@ -87,8 +87,7 @@ func TestOverrides_MaxChunksPerQueryFromStore(t *testing.T) {
 	limits := Limits{}
 	flagext.DefaultValues(&limits)
 
-	overrides, err := NewOverrides(limits, nil)
-	require.NoError(t, err)
+	overrides := NewOverrides(limits, nil)
 	assert.Equal(t, 2000000, overrides.MaxChunksPerQueryFromStore("test"))
 }
 
@@ -98,8 +97,7 @@ func TestOverridesManager_GetOverrides(t *testing.T) {
 	defaults := Limits{
 		MaxLabelNamesPerSeries: 100,
 	}
-	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-	require.NoError(t, err)
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 
 	require.Equal(t, 100, ov.MaxLabelNamesPerSeries("user1"))
 	require.Equal(t, 0, ov.MaxLabelValueLength("user1"))
@@ -285,8 +283,7 @@ func TestSmallestPositiveIntPerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueryParallelism: 0,
 	}
-	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-	require.NoError(t, err)
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 
 	for _, tc := range []struct {
 		tenantIDs []string
@@ -317,8 +314,7 @@ func TestSmallestPositiveNonZeroFloat64PerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueriersPerTenant: 0,
 	}
-	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-	require.NoError(t, err)
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 
 	for _, tc := range []struct {
 		tenantIDs []string
@@ -349,8 +345,7 @@ func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueryLength: 0,
 	}
-	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-	require.NoError(t, err)
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 
 	for _, tc := range []struct {
 		tenantIDs []string
@@ -424,8 +419,7 @@ alertmanager_notification_rate_limit_per_integration:
 			err := yaml.Unmarshal([]byte(tc.inputYAML), &limitsYAML)
 			require.NoError(t, err, "expected to be able to unmarshal from YAML")
 
-			ov, err := NewOverrides(limitsYAML, nil)
-			require.NoError(t, err)
+			ov := NewOverrides(limitsYAML, nil)
 
 			require.Equal(t, tc.expectedRateLimit, ov.NotificationRateLimit("user", "email"))
 			require.Equal(t, tc.expectedBurstSize, ov.NotificationBurstSize("user", "email"))
@@ -566,8 +560,7 @@ testuser:
 
 			tl := newMockTenantLimits(overrides)
 
-			ov, err := NewOverrides(limitsYAML, tl)
-			require.NoError(t, err)
+			ov := NewOverrides(limitsYAML, tl)
 
 			require.Equal(t, tc.expectedRateLimit, ov.NotificationRateLimit("testuser", tc.testedIntegration))
 			require.Equal(t, tc.expectedBurstSize, ov.NotificationBurstSize("testuser", tc.testedIntegration))
@@ -599,8 +592,7 @@ tenant2:
 
 	tl := newMockTenantLimits(overrides)
 
-	ov, err := NewOverrides(l, tl)
-	require.NoError(t, err)
+	ov := NewOverrides(l, tl)
 
 	require.Equal(t, 1, ov.MaxExemplars("tenant1"))
 	require.Equal(t, 3, ov.MaxExemplars("tenant2"))
@@ -631,8 +623,7 @@ tenant2:
 
 	tl := newMockTenantLimits(overrides)
 
-	ov, err := NewOverrides(l, tl)
-	require.NoError(t, err)
+	ov := NewOverrides(l, tl)
 
 	require.Equal(t, 1, ov.MaxDownloadedBytesPerRequest("tenant1"))
 	require.Equal(t, 3, ov.MaxDownloadedBytesPerRequest("tenant2"))
@@ -662,8 +653,7 @@ tenant2:
 
 	tl := newMockTenantLimits(overrides)
 
-	ov, err := NewOverrides(l, tl)
-	require.NoError(t, err)
+	ov := NewOverrides(l, tl)
 
 	require.True(t, ov.QueryPartialData("tenant1"))
 	require.False(t, ov.RulesPartialData("tenant1"))
@@ -820,8 +810,7 @@ func TestEvaluationDelayHigherThanRulerQueryOffset(t *testing.T) {
 	}
 
 	defaults := Limits{}
-	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-	require.NoError(t, err)
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 
 	rulerQueryOffset := ov.RulerQueryOffset(tenant)
 	assert.Equal(t, evaluationDelay, rulerQueryOffset)

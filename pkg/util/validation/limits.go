@@ -571,11 +571,11 @@ type Overrides struct {
 }
 
 // NewOverrides makes a new Overrides.
-func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error) {
+func NewOverrides(defaults Limits, tenantLimits TenantLimits) *Overrides {
 	return &Overrides{
 		tenantLimits:  tenantLimits,
 		defaultLimits: &defaults,
-	}, nil
+	}
 }
 
 // IngestionRate returns the limit on ingester rate (samples per second).

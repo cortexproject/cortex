@@ -174,8 +174,7 @@ func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket,
 		flagext.DefaultValues(limits)
 	}
 
-	overrides, err := validation.NewOverrides(*limits, nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(*limits, nil)
 
 	scanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
 		Strategy: cortex_tsdb.UserScanStrategyList,
@@ -242,8 +241,7 @@ func TestConverter_BlockConversionFailure(t *testing.T) {
 	flagext.DefaultValues(&storageCfg)
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	overrides, err := validation.NewOverrides(*limits, nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(*limits, nil)
 	limits.ParquetConverterEnabled = true
 
 	// Create a filesystem bucket for initial block upload

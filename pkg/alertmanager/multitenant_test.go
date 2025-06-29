@@ -558,8 +558,7 @@ receivers:
 				flagext.DefaultValues(&limits)
 				limits.AlertmanagerReceiversBlockPrivateAddresses = firewallEnabled
 
-				overrides, err := validation.NewOverrides(limits, nil)
-				require.NoError(t, err)
+				overrides := validation.NewOverrides(limits, nil)
 
 				// Start the alertmanager.
 				reg := prometheus.NewPedanticRegistry()
@@ -1778,8 +1777,7 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 				var limits validation.Limits
 				flagext.DefaultValues(&limits)
 
-				overrides, err := validation.NewOverrides(limits, nil)
-				require.NoError(t, err)
+				overrides := validation.NewOverrides(limits, nil)
 
 				reg := prometheus.NewPedanticRegistry()
 				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, overrides, log.NewNopLogger(), reg)
@@ -1976,8 +1974,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 				var limits validation.Limits
 				flagext.DefaultValues(&limits)
 
-				overrides, err := validation.NewOverrides(limits, nil)
-				require.NoError(t, err)
+				overrides := validation.NewOverrides(limits, nil)
 
 				reg := prometheus.NewPedanticRegistry()
 				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, overrides, log.NewNopLogger(), reg)

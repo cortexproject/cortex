@@ -123,12 +123,10 @@ func TestRoundTrip(t *testing.T) {
 		MaxQueryLength: model.Duration(time.Hour * 24 * 60),
 	}
 	flagext.DefaultValues(&limits)
-	defaultOverrides, err := validation.NewOverrides(limits, nil)
-	require.NoError(t, err)
+	defaultOverrides := validation.NewOverrides(limits, nil)
 
 	limitsWithVerticalSharding := validation.Limits{QueryVerticalShardSize: 3}
-	shardingOverrides, err := validation.NewOverrides(limitsWithVerticalSharding, nil)
-	require.NoError(t, err)
+	shardingOverrides := validation.NewOverrides(limitsWithVerticalSharding, nil)
 	for _, tc := range []struct {
 		path, expectedBody string
 		expectedErr        error

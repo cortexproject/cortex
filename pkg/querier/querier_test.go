@@ -265,9 +265,8 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "0")
 	var cfg Config
 	flagext.DefaultValues(&cfg)
-	overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+	overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
 	const chunks = 1
-	require.NoError(t, err)
 	distributor := &MockDistributor{}
 
 	for _, enc := range encodings {
@@ -522,8 +521,7 @@ func TestLimits(t *testing.T) {
 				for _, queryable := range tc.storeQueriables {
 					wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
 				}
-				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
-				require.NoError(t, err)
+				overrides := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
 
 				queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides)
 				opts := promql.EngineOpts{
@@ -578,8 +576,7 @@ func TestQuerier(t *testing.T) {
 					chunkStore, through := makeMockChunkStore(t, chunks, enc)
 					distributor := mockDistibutorFor(t, chunkStore.chunks)
 
-					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-					require.NoError(t, err)
+					overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
 
 					queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
@@ -595,8 +592,7 @@ func TestQuerierMetric(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 	cfg.MaxConcurrent = 120
 
-	overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
 
 	chunkStore, _ := makeMockChunkStore(t, 24, promchunk.PrometheusXorChunk)
 	distributor := mockDistibutorFor(t, chunkStore.chunks)
@@ -682,8 +678,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 					chunkStore, _ := makeMockChunkStore(t, 24, encoding)
 					distributor := &errDistributor{}
 
-					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-					require.NoError(t, err)
+					overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
 
 					ctx := user.InjectOrgID(context.Background(), "0")
 					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger(), nil)
@@ -775,8 +770,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 			distributor := &MockDistributor{}
 			distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
-			overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
 
 			ctx := user.InjectOrgID(context.Background(), "0")
 			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
@@ -866,8 +860,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 
 			limits := DefaultLimitsConfig()
 			limits.MaxQueryLength = model.Duration(maxQueryLength)
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 
 			chunkStore := &emptyChunkStore{}
 			distributor := &emptyDistributor{}
@@ -905,8 +898,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Series(t *testing.T) {
 
 	limits := DefaultLimitsConfig()
 	limits.MaxQueryLength = model.Duration(maxQueryLength)
-	overrides, err := validation.NewOverrides(limits, nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(limits, nil)
 
 	chunkStore := &emptyChunkStore{}
 	distributor := &emptyDistributor{}
@@ -964,8 +956,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Labels(t *testing.T) {
 
 			limits := DefaultLimitsConfig()
 			limits.MaxQueryLength = model.Duration(maxQueryLength)
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 
 			chunkStore := &emptyChunkStore{}
 			distributor := &emptyDistributor{}
@@ -1109,8 +1100,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 
 				limits := DefaultLimitsConfig()
 				limits.MaxQueryLookback = testData.maxQueryLookback
-				overrides, err := validation.NewOverrides(limits, nil)
-				require.NoError(t, err)
+				overrides := validation.NewOverrides(limits, nil)
 
 				chunkStore := &emptyChunkStore{}
 				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
@@ -1123,7 +1113,6 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
-					require.NoError(t, err)
 
 					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
 					require.NoError(t, err)
@@ -1316,8 +1305,7 @@ func TestValidateMaxQueryLength(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			//parallel testing causes data race
 			limits := DefaultLimitsConfig()
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 			startMs, endMs, err := validateQueryTimeRange(ctx, "test", util.TimeToMillis(tc.start), util.TimeToMillis(tc.end), overrides, 0)
 			require.NoError(t, err)
 			startTime := model.Time(startMs)
@@ -1581,8 +1569,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 			chunkStore := &emptyChunkStore{}
 			distributor := &errDistributor{}
 
-			overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
 
 			queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger(), nil)
 			ctx := user.InjectOrgID(context.Background(), "0")

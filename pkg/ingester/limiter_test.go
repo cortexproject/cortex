@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -221,8 +220,7 @@ func runLimiterMaxFunctionTest(
 			limits := validation.Limits{IngestionTenantShardSize: testData.shardSize}
 			applyLimits(&limits, testData.localLimit, testData.globalLimit)
 
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 
 			// Assert on default sharding strategy.
 			limiter := NewLimiter(overrides, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled, "")
@@ -286,11 +284,10 @@ func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 			ring.On("ZonesCount").Return(1)
 
 			// Mock limits
-			limits, err := validation.NewOverrides(validation.Limits{
+			limits := validation.NewOverrides(validation.Limits{
 				MaxLocalSeriesPerMetric:  testData.maxLocalSeriesPerMetric,
 				MaxGlobalSeriesPerMetric: testData.maxGlobalSeriesPerMetric,
 			}, nil)
-			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxSeriesPerMetric("test", testData.series)
@@ -348,11 +345,10 @@ func TestLimiter_AssertMaxMetadataPerMetric(t *testing.T) {
 			ring.On("ZonesCount").Return(1)
 
 			// Mock limits
-			limits, err := validation.NewOverrides(validation.Limits{
+			limits := validation.NewOverrides(validation.Limits{
 				MaxLocalMetadataPerMetric:  testData.maxLocalMetadataPerMetric,
 				MaxGlobalMetadataPerMetric: testData.maxGlobalMetadataPerMetric,
 			}, nil)
-			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxMetadataPerMetric("test", testData.metadata)
@@ -411,11 +407,10 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 			ring.On("ZonesCount").Return(1)
 
 			// Mock limits
-			limits, err := validation.NewOverrides(validation.Limits{
+			limits := validation.NewOverrides(validation.Limits{
 				MaxLocalSeriesPerUser:  testData.maxLocalSeriesPerUser,
 				MaxGlobalSeriesPerUser: testData.maxGlobalSeriesPerUser,
 			}, nil)
-			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxSeriesPerUser("test", testData.series)
@@ -496,8 +491,7 @@ func TestLimiter_AssertMaxSeriesPerLabelSet(t *testing.T) {
 			ring.On("ZonesCount").Return(1)
 
 			// Mock limits
-			limits, err := validation.NewOverrides(testData.limits, nil)
-			require.NoError(t, err)
+			limits := validation.NewOverrides(testData.limits, nil)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxSeriesPerLabelSet("test", labels.FromStrings("foo", "bar"), func(limits []validation.LimitsPerLabelSet, limit validation.LimitsPerLabelSet) (int, error) {
@@ -558,11 +552,10 @@ func TestLimiter_AssertMaxMetricsWithMetadataPerUser(t *testing.T) {
 			ring.On("ZonesCount").Return(1)
 
 			// Mock limits
-			limits, err := validation.NewOverrides(validation.Limits{
+			limits := validation.NewOverrides(validation.Limits{
 				MaxLocalMetricsWithMetadataPerUser:  testData.maxLocalMetadataPerUser,
 				MaxGlobalMetricsWithMetadataPerUser: testData.maxGlobalMetadataPerUser,
 			}, nil)
-			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxMetricsWithMetadataPerUser("test", testData.metadata)
@@ -579,13 +572,12 @@ func TestLimiter_FormatError(t *testing.T) {
 	ring.On("ZonesCount").Return(1)
 
 	// Mock limits
-	limits, err := validation.NewOverrides(validation.Limits{
+	limits := validation.NewOverrides(validation.Limits{
 		MaxGlobalSeriesPerUser:              100,
 		MaxGlobalSeriesPerMetric:            20,
 		MaxGlobalMetricsWithMetadataPerUser: 10,
 		MaxGlobalMetadataPerMetric:          3,
 	}, nil)
-	require.NoError(t, err)
 
 	limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, true, 3, false, "please contact administrator to raise it")
 	lbls := labels.FromStrings(labels.MetricName, "testMetric")

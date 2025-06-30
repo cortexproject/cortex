@@ -17,7 +17,7 @@ This proposal outlines the design for a new API endpoint that will allow users t
 
 Currently, when users need limit adjustments, they must:
 1. Manually editing the runtime configuration file
-2. Coordinating with users to verify the changes
+2. Coordinate with users to verify the changes
 3. Potentially repeating this process multiple times to find the right balance
 
 This manual process is time-consuming, error-prone, and doesn't scale well with a large number of users. By offering a self-service API, users can adjust their own limits within predefined boundaries, reducing the administrative overhead and improving the user experience.

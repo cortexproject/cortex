@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	errMaxSeriesPerMetricLimitExceeded   = errors.New("per-metric series limit exceeded")
-	errMaxMetadataPerMetricLimitExceeded = errors.New("per-metric metadata limit exceeded")
-	errMaxSeriesPerUserLimitExceeded     = errors.New("per-user series limit exceeded")
-	errMaxMetadataPerUserLimitExceeded   = errors.New("per-user metric metadata limit exceeded")
+	errMaxSeriesPerMetricLimitExceeded              = errors.New("per-metric series limit exceeded")
+	errMaxMetadataPerMetricLimitExceeded            = errors.New("per-metric metadata limit exceeded")
+	errMaxSeriesPerUserLimitExceeded                = errors.New("per-user series limit exceeded")
+	errMaxNativeHistogramSeriesPerUserLimitExceeded = errors.New("per-user native histogram series limit exceeded")
+	errMaxMetadataPerUserLimitExceeded              = errors.New("per-user metric metadata limit exceeded")
 )
 
 type errMaxSeriesPerLabelSetLimitExceeded struct {
@@ -95,6 +96,16 @@ func (l *Limiter) AssertMaxSeriesPerUser(userID string, series int) error {
 	return errMaxSeriesPerUserLimitExceeded
 }
 
+// AssertMaxNativeHistogramSeriesPerUser limit has not been reached compared to the current
+// number of native histogram series in input and returns an error if so.
+func (l *Limiter) AssertMaxNativeHistogramSeriesPerUser(userID string, series int) error {
+	if actualLimit := l.maxNativeHistogramSeriesPerUser(userID); series < actualLimit {
+		return nil
+	}
+
+	return errMaxNativeHistogramSeriesPerUserLimitExceeded
+}
+
 // AssertMaxMetricsWithMetadataPerUser limit has not been reached compared to the current
 // number of metrics with metadata in input and returns an error if so.
 func (l *Limiter) AssertMaxMetricsWithMetadataPerUser(userID string, metrics int) error {
@@ -134,6 +145,8 @@ func (l *Limiter) FormatError(userID string, err error, lbls labels.Labels) erro
 	switch {
 	case errors.Is(err, errMaxSeriesPerUserLimitExceeded):
 		return l.formatMaxSeriesPerUserError(userID)
+	case errors.Is(err, errMaxNativeHistogramSeriesPerUserLimitExceeded):
+		return l.formatMaxNativeHistogramsSeriesPerUserError(userID)
 	case errors.Is(err, errMaxSeriesPerMetricLimitExceeded):
 		return l.formatMaxSeriesPerMetricError(userID, lbls.Get(labels.MetricName))
 	case errors.Is(err, errMaxMetadataPerUserLimitExceeded):
@@ -155,6 +168,15 @@ func (l *Limiter) formatMaxSeriesPerUserError(userID string) error {
 	globalLimit := l.limits.MaxGlobalSeriesPerUser(userID)
 
 	return fmt.Errorf("per-user series limit of %d exceeded, %s (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
+}
+
+func (l *Limiter) formatMaxNativeHistogramsSeriesPerUserError(userID string) error {
+	actualLimit := l.maxNativeHistogramSeriesPerUser(userID)
+	localLimit := l.limits.MaxLocalNativeHistogramSeriesPerUser(userID)
+	globalLimit := l.limits.MaxGlobalNativeHistogramSeriesPerUser(userID)
+
+	return fmt.Errorf("per-user native histogram series limit of %d exceeded, %s (local limit: %d global limit: %d actual local limit: %d)",
 		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
 }
 
@@ -245,6 +267,14 @@ func (l *Limiter) maxSeriesPerUser(userID string) int {
 		userID,
 		l.limits.MaxLocalSeriesPerUser,
 		l.limits.MaxGlobalSeriesPerUser,
+	)
+}
+
+func (l *Limiter) maxNativeHistogramSeriesPerUser(userID string) int {
+	return l.maxByLocalAndGlobal(
+		userID,
+		l.limits.MaxLocalNativeHistogramSeriesPerUser,
+		l.limits.MaxGlobalNativeHistogramSeriesPerUser,
 	)
 }
 

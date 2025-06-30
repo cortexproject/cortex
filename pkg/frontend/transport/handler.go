@@ -35,8 +35,6 @@ const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of a http request
 	StatusClientClosedRequest = 499
 	ServiceTimingHeaderName   = "Server-Timing"
-
-	errTooManyTenants = "too many tenants, max: %d, actual: %d"
 )
 
 var (
@@ -234,7 +232,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if f.cfg.QueryStatsEnabled {
 				f.rejectedQueries.WithLabelValues(reasonTooManyTenants, source, userID).Inc()
 			}
-			http.Error(w, fmt.Errorf(errTooManyTenants, maxTenant, len(tenantIDs)).Error(), http.StatusBadRequest)
+			http.Error(w, fmt.Errorf(tenantfederation.ErrTooManyTenants, maxTenant, len(tenantIDs)).Error(), http.StatusBadRequest)
 			return
 		}
 	}

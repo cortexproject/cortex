@@ -27,6 +27,7 @@ func Test_RegexResolver(t *testing.T) {
 		orgID           string
 		expectedErr     error
 		expectedOrgIDs  []string
+		maxTenants      int
 	}{
 		{
 			description:     "invalid regex",
@@ -64,6 +65,13 @@ func Test_RegexResolver(t *testing.T) {
 			orgID:           "user-1|user-2",
 			expectedOrgIDs:  []string{"user-1"},
 		},
+		{
+			description:     "adjust maxTenant",
+			existingTenants: []string{"user-1", "user-2", "user-3"},
+			orgID:           "user-.+",
+			maxTenants:      2,
+			expectedErr:     errors.New("too many tenants, max: 2, actual: 3"),
+		},
 	}
 
 	for _, tc := range tests {
@@ -82,7 +90,8 @@ func Test_RegexResolver(t *testing.T) {
 			}
 
 			usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
-			regexResolver, err := NewRegexResolver(usersScannerConfig, reg, bucketClientFactory, time.Second, log.NewNopLogger())
+			tenantFederationConfig := Config{UserSyncInterval: time.Second, MaxTenant: tc.maxTenants}
+			regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
@@ -97,7 +106,7 @@ func Test_RegexResolver(t *testing.T) {
 			orgIDs, err := regexResolver.TenantIDs(ctx)
 
 			if tc.expectedErr != nil {
-				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedErr.Error())
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedOrgIDs, orgIDs)

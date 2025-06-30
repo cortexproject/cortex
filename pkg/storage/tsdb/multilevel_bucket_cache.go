@@ -67,6 +67,9 @@ func newMultiLevelBucketCache(name string, cfg MultiLevelBucketCacheConfig, reg 
 	case "metadata-cache":
 		itemName = "metadata_cache"
 		metricHelpText = "metadata cache"
+	case "parquet-labels-cache":
+		itemName = "parquet_labels_cache"
+		metricHelpText = "parquet labels cache"
 	default:
 		itemName = name
 	}

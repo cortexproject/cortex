@@ -295,7 +295,7 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 				return bucket.NewClient(ctx, t.Cfg.BlocksStorage.Bucket, nil, "regex-resolver", util_log.Logger, prometheus.DefaultRegisterer)
 			}
 
-			regexResolver, err := tenantfederation.NewRegexResolver(t.Cfg.BlocksStorage.UsersScanner, prometheus.DefaultRegisterer, bucketClientFactory, t.Cfg.TenantFederation.UserSyncInterval, util_log.Logger)
+			regexResolver, err := tenantfederation.NewRegexResolver(t.Cfg.BlocksStorage.UsersScanner, t.Cfg.TenantFederation, prometheus.DefaultRegisterer, bucketClientFactory, util_log.Logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize regex resolver: %v", err)
 			}

@@ -677,8 +677,8 @@ func TestMergeQueryable_Select(t *testing.T) {
 							}
 
 							usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
-
-							regexResolver, err := NewRegexResolver(usersScannerConfig, reg, bucketClientFactory, time.Second, log.NewNopLogger())
+							tenantFederationConfig := Config{UserSyncInterval: time.Second}
+							regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 							require.NoError(t, err)
 
 							// set a regex tenant resolver
@@ -876,8 +876,8 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 						return bucketClient, nil
 					}
 					usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
-
-					regexResolver, err := NewRegexResolver(usersScannerConfig, reg, bucketClientFactory, time.Second, log.NewNopLogger())
+					tenantFederationConfig := Config{UserSyncInterval: time.Second}
+					regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 					require.NoError(t, err)
 
 					// set a regex tenant resolver
@@ -1114,8 +1114,8 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 								return bucketClient, nil
 							}
 							usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
-
-							regexResolver, err := NewRegexResolver(usersScannerConfig, reg, bucketClientFactory, time.Second, log.NewNopLogger())
+							tenantFederationConfig := Config{UserSyncInterval: time.Second}
+							regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 							require.NoError(t, err)
 
 							// set a regex tenant resolver

@@ -169,7 +169,8 @@ func Test_mergeMetadataQuerier_MetricsMetadata_WhenUseRegexResolver(t *testing.T
 	}
 
 	usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
-	regexResolver, err := NewRegexResolver(usersScannerConfig, reg, bucketClientFactory, time.Second, log.NewNopLogger())
+	tenantFederationConfig := Config{UserSyncInterval: time.Second}
+	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 	require.NoError(t, err)
 	tenant.WithDefaultResolver(regexResolver)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))

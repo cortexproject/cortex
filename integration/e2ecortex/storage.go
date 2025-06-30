@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/go-kit/log"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/integration/e2e"

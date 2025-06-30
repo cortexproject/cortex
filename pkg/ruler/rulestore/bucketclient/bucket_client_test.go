@@ -134,7 +134,7 @@ func TestLoadPartialRules(t *testing.T) {
 func TestLoadRules(t *testing.T) {
 	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ interface{}) {
 		groups := []testGroup{
-			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup", Interval: model.Duration(time.Minute), Rules: []rulefmt.RuleNode{{
+			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup", Interval: model.Duration(time.Minute), Rules: []rulefmt.Rule{{
 				For:    model.Duration(5 * time.Minute),
 				Labels: map[string]string{"label1": "value1"},
 			}}}},

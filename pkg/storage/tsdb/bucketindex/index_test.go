@@ -3,7 +3,7 @@ package bucketindex
 import (
 	"testing"
 
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/thanos/pkg/block/metadata"

@@ -7,20 +7,14 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/yaml.v3"
 )
 
 func TestProto(t *testing.T) {
-	rules := make([]rulefmt.RuleNode, 0)
+	rules := make([]rulefmt.Rule, 0)
 
-	alertNode := yaml.Node{}
-	alertNode.SetString("test_rule")
-	exprNode := yaml.Node{}
-	exprNode.SetString("test_expr")
-
-	testRule := rulefmt.RuleNode{
-		Alert:         alertNode,
-		Expr:          exprNode,
+	testRule := rulefmt.Rule{
+		Alert:         "test_rule",
+		Expr:          "test_expr",
 		Labels:        map[string]string{"label1": "value1"},
 		Annotations:   map[string]string{"key1": "value1"},
 		For:           model.Duration(time.Minute * 2),

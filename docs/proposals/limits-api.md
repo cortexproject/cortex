@@ -1,8 +1,8 @@
 ---
-title: "Limits API"
-linkTitle: "Limits API"
+title: "User Overrides API"
+linkTitle: "User Overrides API"
 weight: 1
-slug: limits-api
+slug: overrides-api
 ---
 
 - Author: Bogdan Stancu
@@ -11,7 +11,7 @@ slug: limits-api
 
 ## Overview
 
-This proposal outlines the design for a new API endpoint that will allow users to modify their current limits in Cortex. Currently, limits can only be changed by administrators modifying the runtime configuration file and waiting for it to be reloaded.
+This proposal outlines the design for a new API endpoint that will allow users to modify their current limits in Cortex. Currently, overrides can only be changed by administrators modifying the runtime configuration file and waiting for it to be reloaded.
 
 ## Problem
 
@@ -26,8 +26,8 @@ This manual process is time-consuming, error-prone, and doesn't scale well with 
 
 ### Endpoints
 
-#### 1. GET /api/v1/user-limits
-Returns the current limits configuration for a specific tenant.
+#### 1. GET /api/v1/user-overrides
+Returns the current overrides configuration for a specific tenant.
 
 Response format:
 ```json
@@ -40,8 +40,8 @@ Response format:
 }
 ```
 
-#### 2. PUT /api/v1/user-limits
-Updates limits for a specific tenant. The request body should contain only the limits that need to be updated.
+#### 2. PUT /api/v1/user-overrides
+Updates overrides for a specific tenant. The request body should contain only the overrides that need to be updated.
 
 Request body:
 ```json
@@ -51,8 +51,8 @@ Request body:
 }
 ```
 
-#### 3. DELETE /api/v1/user-limits
-Removes tenant-specific limits, reverting to default limits.
+#### 3. DELETE /api/v1/user-overrides
+Removes tenant-specific overrides, reverting to default overrides.
 
 ### Implementation Details
 
@@ -64,6 +64,27 @@ Removes tenant-specific limits, reverting to default limits.
 2. Security:
    - Rate limiting will be implemented to prevent abuse
    - Changes will be validated before being applied
+   - A hard limit configuration will be implemented  
+   Hard limits will not be changable through the API  
+   Example:
+```yaml
+   # file: runtime.yaml
+   # In this example, we're overriding ingestion limits for a single tenant.
+   overrides:
+   "user1":
+      ingestion_burst_size: 350000
+      ingestion_rate: 350000
+      max_global_series_per_metric: 300000
+      max_global_series_per_user: 300000
+      max_series_per_metric: 0
+      max_series_per_user: 0
+      max_samples_per_query: 100000
+      max_series_per_query: 100000
+   configurable-overrides: # still not sure about the naming for this section
+   "user1":
+      ingestion_rate: 700000
+      max_global_series_per_user: 700000
+```
 
 3. Error Handling:
    - Invalid limit values will return 400 Bad Request

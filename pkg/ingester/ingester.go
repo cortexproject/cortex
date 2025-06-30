@@ -1576,8 +1576,8 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 		if err != nil {
 			return err
 		}
-		ctx = user.InjectOrgID(ctx, req.TenantID)
-		resp, err := i.Push(ctx, req.Request)
+		pushCtx := user.InjectOrgID(ctx, req.TenantID)
+		resp, err := i.Push(pushCtx, req.Request)
 		if resp == nil {
 			resp = &cortexpb.WriteResponse{}
 		}

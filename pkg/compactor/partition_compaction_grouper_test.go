@@ -2056,11 +2056,11 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 					{Addr: "test-addr"},
 				},
 			}
-			subring := &RingMock{}
+			subring := &ring.RingMock{}
 			subring.On("GetAllHealthy", mock.Anything).Return(rs, nil)
 			subring.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(rs, nil)
 
-			ring := &RingMock{}
+			ring := &ring.RingMock{}
 			ring.On("ShuffleShard", mock.Anything, mock.Anything).Return(subring, nil)
 
 			registerer := prometheus.NewPedanticRegistry()

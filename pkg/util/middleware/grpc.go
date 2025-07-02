@@ -84,6 +84,57 @@ func (s *instrumentedClientStream) Header() (metadata.MD, error) {
 	return md, err
 }
 
+// PrometheusGRPCReusableStreamInstrumentation records duration of reusable streaming gRPC requests client side.
+func PrometheusGRPCReusableStreamInstrumentation(metric *prometheus.HistogramVec) grpc.StreamClientInterceptor {
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string,
+		streamer grpc.Streamer, opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+		stream, err := streamer(ctx, desc, cc, method, opts...)
+		return &instrumentedReusableClientStream{
+			metric:       metric,
+			method:       method,
+			ClientStream: stream,
+		}, err
+	}
+}
+
+type instrumentedReusableClientStream struct {
+	metric *prometheus.HistogramVec
+	method string
+	grpc.ClientStream
+}
+
+func (s *instrumentedReusableClientStream) SendMsg(m interface{}) error {
+	start := time.Now()
+	err := s.ClientStream.SendMsg(m)
+	if err != nil && err != io.EOF {
+		s.metric.WithLabelValues(s.method, errorCode(err)).Observe(time.Since(start).Seconds())
+		return err
+	}
+	s.metric.WithLabelValues(s.method, errorCode(nil)).Observe(time.Since(start).Seconds())
+	return err
+}
+
+func (s *instrumentedReusableClientStream) RecvMsg(m interface{}) error {
+	start := time.Now()
+	err := s.ClientStream.RecvMsg(m)
+	if err != nil && err != io.EOF {
+		s.metric.WithLabelValues(s.method, errorCode(err)).Observe(time.Since(start).Seconds())
+		return err
+	}
+	s.metric.WithLabelValues(s.method, errorCode(nil)).Observe(time.Since(start).Seconds())
+	return err
+}
+
+func (s *instrumentedReusableClientStream) Header() (metadata.MD, error) {
+	start := time.Now()
+	md, err := s.ClientStream.Header()
+	if err != nil {
+		s.metric.WithLabelValues(s.method, errorCode(err)).Observe(time.Since(start).Seconds())
+	}
+	return md, err
+}
+
 func errorCode(err error) string {
 	respStatus := "2xx"
 	if err != nil {

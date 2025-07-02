@@ -108,6 +108,7 @@ type Handler struct {
 	queryChunkBytes     *prometheus.CounterVec
 	queryDataBytes      *prometheus.CounterVec
 	rejectedQueries     *prometheus.CounterVec
+	slowQueries         *prometheus.CounterVec
 	activeUsers         *util.ActiveUsersCleanupService
 }
 
@@ -167,6 +168,13 @@ func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, 
 			},
 			[]string{"reason", "source", "user"},
 		)
+		h.slowQueries = promauto.With(reg).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "cortex_slow_queries_total",
+				Help: "The total number of slow queries.",
+			},
+			[]string{"source", "user"},
+		)
 
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(h.cleanupMetricsForInactiveUser)
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
@@ -208,6 +216,9 @@ func (h *Handler) cleanupMetricsForInactiveUser(user string) {
 	}
 	if err := util.DeleteMatchingLabels(h.rejectedQueries, userLabel); err != nil {
 		level.Warn(h.log).Log("msg", "failed to remove cortex_rejected_queries_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.slowQueries, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_slow_queries_total metric for user", "user", user, "err", err)
 	}
 }
 
@@ -294,6 +305,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if shouldReportSlowQuery {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
+		if f.cfg.QueryStatsEnabled {
+			f.slowQueries.WithLabelValues(source, userID).Inc()
+		}
 	}
 
 	if f.cfg.QueryStatsEnabled {

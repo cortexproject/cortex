@@ -18,9 +18,8 @@ To ingest native histogram ingestion, set the flag `-blocks-storage.tsdb.enable-
 
 And via yaml:
 ```yaml
-blocks_storage:
-  tsdb:
-    enable_native_histograms: <bool>
+limits:
+  enable_native_histograms: <bool>
 ```
 By default, it is disabled, so make sure to enable it if you need native histograms for your system monitoring.
 
@@ -60,9 +59,7 @@ It is automatically enabled when `-blocks-storage.tsdb.enable-native-histograms=
 And via yaml:
 
 ```yaml
-blocks_storage:
-  tsdb:
-    enable_native_histograms: true
 limits:
+  enable_native_histograms: true
   out_of_order_time_window: 5m
 ```

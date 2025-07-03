@@ -19,6 +19,7 @@
 * [FEATURE] Compactor: Add support for percentage based sharding for compactors. #6738
 * [FEATURE] Querier: Allow choosing PromQL engine via header. #6777
 * [ENHANCEMENT] Tenant Federation: Add a # of query result limit logic when the `-tenant-federation.regex-matcher-enabled` is enabled. #6845
+* [ENHANCEMENT] Query Frontend: Add a `cortex_slow_queries_total` metric to track # of slow queries per user. #6859
 * [ENHANCEMENT] Query Frontend: Change to return 400 when the tenant resolving fail. #6715
 * [ENHANCEMENT] Querier: Support query parameters to metadata api (/api/v1/metadata) to allow user to limit metadata to return. Add a `-ingester.return-all-metadata` flag to make the metadata API run when the deployment. Please set this flag to `false` to use the metadata API with the limits later. #6681 #6744
 * [ENHANCEMENT] Ingester: Add a `cortex_ingester_active_native_histogram_series` metric to track # of active NH series. #6695

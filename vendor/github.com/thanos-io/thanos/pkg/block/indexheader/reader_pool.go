@@ -7,13 +7,10 @@ import (
 	"context"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid/v2"
-
-	xsync "golang.org/x/sync/singleflight"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -52,7 +49,6 @@ type ReaderPool struct {
 	// Keep track of all readers managed by the pool.
 	lazyReadersMx sync.Mutex
 	lazyReaders   map[*LazyBinaryReader]struct{}
-	lazyReadersSF xsync.Group
 
 	lazyDownloadFunc LazyDownloadIndexHeaderFunc
 }
@@ -127,16 +123,18 @@ func NewReaderPool(logger log.Logger, lazyReaderEnabled bool, lazyReaderIdleTime
 // with lazy reader enabled, this function will return a lazy reader. The returned lazy reader
 // is tracked by the pool and automatically closed once the idle timeout expires.
 func (p *ReaderPool) NewBinaryReader(ctx context.Context, logger log.Logger, bkt objstore.BucketReader, dir string, id ulid.ULID, postingOffsetsInMemSampling int, meta *metadata.Meta) (Reader, error) {
-	if !p.lazyReaderEnabled {
-		return NewBinaryReader(ctx, logger, bkt, dir, id, postingOffsetsInMemSampling, p.metrics.binaryReader)
+	var reader Reader
+	var err error
+
+	if p.lazyReaderEnabled {
+		reader, err = NewLazyBinaryReader(ctx, logger, bkt, dir, id, postingOffsetsInMemSampling, p.metrics.lazyReader, p.metrics.binaryReader, p.onLazyReaderClosed, p.lazyDownloadFunc(meta))
+	} else {
+		reader, err = NewBinaryReader(ctx, logger, bkt, dir, id, postingOffsetsInMemSampling, p.metrics.binaryReader)
 	}
 
-	idBytes := id.Bytes()
-	lazyReader, err, _ := p.lazyReadersSF.Do(*(*string)(unsafe.Pointer(&idBytes)), func() (interface{}, error) {
-		return NewLazyBinaryReader(ctx, logger, bkt, dir, id, postingOffsetsInMemSampling, p.metrics.lazyReader, p.metrics.binaryReader, p.onLazyReaderClosed, p.lazyDownloadFunc(meta))
-	})
-
-	reader := lazyReader.(Reader)
+	if err != nil {
+		return nil, err
+	}
 
 	// Keep track of lazy readers only if required.
 	if p.lazyReaderEnabled && p.lazyReaderIdleTimeout > 0 {

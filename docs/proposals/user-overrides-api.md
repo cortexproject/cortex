@@ -64,29 +64,14 @@ Removes tenant-specific overrides, reverting to default overrides.
 2. Security:
    - Rate limiting will be implemented to prevent abuse
    - Changes will be validated before being applied
-   - A hard limit configuration will be implemented  
-   Hard limits will not be changable through the API  
-   Example:
-```yaml
-   # file: runtime.yaml
-   # In this example, we're overriding ingestion limits for a single tenant.
-   overrides:
-   "user1":
-      ingestion_burst_size: 350000
-      ingestion_rate: 350000
-      max_global_series_per_metric: 300000
-      max_global_series_per_user: 300000
-      max_series_per_metric: 0
-      max_series_per_user: 0
-      max_samples_per_query: 100000
-      max_series_per_query: 100000
-   configurable-overrides: # still not sure about the naming for this section
-   "user1":
-      ingestion_rate: 700000
-      max_global_series_per_user: 700000
-```
+
 
 3. Error Handling:
    - Invalid limit values will return 400 Bad Request
    - Storage backend errors will return 500 Internal Server Error
 
+### Open Questions:
+   - How do we implement a hard-limit configuration to avoid users
+   setting unreasonable limits?
+   - What set of overrides can be configurable through this API?
+   Limits like `shard_size` should only be modified by the admin.

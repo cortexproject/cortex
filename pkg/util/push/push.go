@@ -225,7 +225,7 @@ func convertV2RequestToV1(req *writev2.Request) (cortexpb.PreallocWriteRequest, 
 }
 
 func shouldConvertV2Metadata(metadata writev2.Metadata) bool {
-	return !(metadata.HelpRef == 0 && metadata.UnitRef == 0 && metadata.Type == writev2.Metadata_METRIC_TYPE_UNSPECIFIED)
+	return !(metadata.HelpRef == 0 && metadata.UnitRef == 0 && metadata.Type == writev2.Metadata_METRIC_TYPE_UNSPECIFIED) //nolint:staticcheck
 }
 
 func convertV2ToV1Histograms(histograms []writev2.Histogram) []cortexpb.Histogram {

@@ -454,6 +454,50 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 	}
 }
 
+func TestBucketStores_scanUsers(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		scanner     *mockScanner
+		expectedRes []string
+		expectedErr error
+	}{
+		"should succeed": {
+			scanner: &mockScanner{
+				res: []string{"user-1", "user-2", "user-3"},
+			},
+			expectedRes: []string{"user-1", "user-2", "user-3"},
+		},
+		"should return error if duplicate users are returned": {
+			scanner: &mockScanner{
+				res: []string{"user-1", "user-2", "user-1"},
+			},
+			expectedErr: fmt.Errorf("duplicate user scanned: user-1"),
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			stores := &BucketStores{
+				userScanner: testData.scanner,
+			}
+
+			users, err := stores.scanUsers(context.Background())
+
+			if testData.expectedErr != nil {
+				assert.ErrorContains(t, err, testData.expectedErr.Error())
+				assert.Empty(t, users)
+			} else {
+				assert.NoError(t, err)
+				assert.ElementsMatch(t, testData.expectedRes, users)
+			}
+		})
+	}
+}
+
 func TestBucketStores_Series_ShouldCorrectlyQuerySeriesSpanningMultipleChunks(t *testing.T) {
 	for _, lazyLoadingEnabled := range []bool{true, false} {
 		t.Run(fmt.Sprintf("lazy loading enabled = %v", lazyLoadingEnabled), func(t *testing.T) {
@@ -995,4 +1039,12 @@ func (f *failFirstGetBucket) Get(ctx context.Context, name string) (io.ReadClose
 	}
 
 	return f.Bucket.Get(ctx, name)
+}
+
+type mockScanner struct {
+	res []string
+}
+
+func (m *mockScanner) ScanUsers(_ context.Context) (active, deleting, deleted []string, err error) {
+	return m.res, nil, nil, nil
 }

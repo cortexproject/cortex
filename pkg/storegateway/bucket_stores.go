@@ -459,7 +459,25 @@ func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {
 	users = append(users, activeUsers...)
 	users = append(users, deletingUsers...)
 
+	if err = checkDuplicateUsers(users); err != nil {
+		return nil, err
+	}
+
 	return users, err
+}
+
+func checkDuplicateUsers(users []string) error {
+	seen := make(map[string]struct{}, len(users))
+
+	for _, user := range users {
+		if _, ok := seen[user]; ok {
+			return fmt.Errorf("duplicate user scanned: %s", user)
+		} else {
+			seen[user] = struct{}{}
+		}
+	}
+
+	return nil
 }
 
 func (u *BucketStores) getStore(userID string) *store.BucketStore {

@@ -731,7 +731,7 @@ func TestHandlerMetricsCleanup(t *testing.T) {
 	handler.queryChunkBytes.WithLabelValues(source, user1).Add(1024)
 	handler.queryDataBytes.WithLabelValues(source, user1).Add(2048)
 	handler.rejectedQueries.WithLabelValues(reasonTooManySamples, source, user1).Add(5)
-	handler.slowQueries.WithLabelValues(source, user1).Add(5)
+	handler.getOrCreateSlowQueryMetric().WithLabelValues(source, user1).Add(5)
 
 	// Simulate activity for user2
 	handler.querySeconds.WithLabelValues(source, user2).Add(2.0)
@@ -742,7 +742,7 @@ func TestHandlerMetricsCleanup(t *testing.T) {
 	handler.queryChunkBytes.WithLabelValues(source, user2).Add(2048)
 	handler.queryDataBytes.WithLabelValues(source, user2).Add(4096)
 	handler.rejectedQueries.WithLabelValues(reasonTooManySamples, source, user2).Add(10)
-	handler.slowQueries.WithLabelValues(source, user2).Add(10)
+	handler.getOrCreateSlowQueryMetric().WithLabelValues(source, user2).Add(10)
 
 	// Verify initial state - both users should have metrics
 	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`

@@ -517,8 +517,7 @@ Please read to &lt;a href="https://prometheus.io/docs/specs/native_histograms/">
 &lt;h3 id="enable-ingestion">Enable Ingestion&lt;/h3>
 &lt;p>To ingest native histogram ingestion, set the flag &lt;code>-blocks-storage.tsdb.enable-native-histograms&lt;/code>.&lt;/p>
 &lt;p>And via yaml:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">blocks_storage&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tsdb&lt;/span>:
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">limits&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">enable_native_histograms&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;bool&amp;gt;&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>By default, it is disabled, so make sure to enable it if you need native histograms for your system monitoring.&lt;/p>
 &lt;p>When a &lt;code>write request&lt;/code> contains both &lt;code>samples&lt;/code> and &lt;code>native histogram&lt;/code>, the ingestion behavior is as follows:&lt;/p>
@@ -544,10 +543,8 @@ max_native_histogram_buckets: 0
 &lt;p>Like samples out-of-order ingestion, the Cortex allows out-of-order ingestion for the native histogram.
 It is automatically enabled when &lt;code>-blocks-storage.tsdb.enable-native-histograms=true&lt;/code> and &lt;code>-ingester.out-of-order-time-window &amp;gt; 0&lt;/code>.&lt;/p>
 &lt;p>And via yaml:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">blocks_storage&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tsdb&lt;/span>:
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">limits&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">enable_native_histograms&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">limits&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">out_of_order_time_window&lt;/span>: &lt;span style="color:#ae81ff">5m&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: OpenTelemetry Collector</title><link>/docs/guides/opentelemetry-collector/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/opentelemetry-collector/</guid><description>
 &lt;p>This guide explains how to configure open-telemetry collector and OTLP(OpenTelemetry Protocol) configurations in the

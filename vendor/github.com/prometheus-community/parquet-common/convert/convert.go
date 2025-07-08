@@ -169,9 +169,22 @@ func ConvertTSDBBlock(
 	if err != nil {
 		return 0, err
 	}
-
 	defer func() { _ = rr.Close() }()
-	w := NewShardedWrite(rr, rr.Schema(), bkt, &cfg)
+
+	labelsProjection, err := rr.Schema().LabelsProjection()
+	if err != nil {
+		return 0, errors.Wrap(err, "error getting labels projection from tsdb schema")
+	}
+	chunksProjection, err := rr.Schema().ChunksProjection()
+	if err != nil {
+		return 0, errors.Wrap(err, "error getting chunks projection from tsdb schema")
+	}
+	outSchemaProjections := []*schema.TSDBProjection{
+		labelsProjection, chunksProjection,
+	}
+
+	pipeReaderWriter := NewPipeReaderBucketWriter(bkt)
+	w := NewShardedWrite(rr, rr.Schema(), outSchemaProjections, pipeReaderWriter, &cfg)
 	return w.currentShard, errors.Wrap(w.Write(ctx), "error writing block")
 }
 

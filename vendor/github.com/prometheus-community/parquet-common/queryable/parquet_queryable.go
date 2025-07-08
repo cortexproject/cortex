@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package search
+package queryable
 
 import (
 	"context"
@@ -26,20 +26,19 @@ import (
 
 	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus-community/parquet-common/schema"
+	"github.com/prometheus-community/parquet-common/search"
 	"github.com/prometheus-community/parquet-common/storage"
 	"github.com/prometheus-community/parquet-common/util"
 )
 
-type ShardsFinderFunction func(ctx context.Context, mint, maxt int64) ([]*storage.ParquetShard, error)
+type ShardsFinderFunction func(ctx context.Context, mint, maxt int64) ([]storage.ParquetShard, error)
 
 type queryableOpts struct {
-	concurrency                int
-	pagePartitioningMaxGapSize int
+	concurrency int
 }
 
 var DefaultQueryableOpts = queryableOpts{
-	concurrency:                runtime.GOMAXPROCS(0),
-	pagePartitioningMaxGapSize: 10 * 1024,
+	concurrency: runtime.GOMAXPROCS(0),
 }
 
 type QueryableOpts func(*queryableOpts)
@@ -48,13 +47,6 @@ type QueryableOpts func(*queryableOpts)
 func WithConcurrency(concurrency int) QueryableOpts {
 	return func(opts *queryableOpts) {
 		opts.concurrency = concurrency
-	}
-}
-
-// WithPageMaxGapSize set the max gap size between pages that should be downloaded together in a single read call
-func WithPageMaxGapSize(pagePartitioningMaxGapSize int) QueryableOpts {
-	return func(opts *queryableOpts) {
-		opts.pagePartitioningMaxGapSize = pagePartitioningMaxGapSize
 	}
 }
 
@@ -210,17 +202,17 @@ func (p parquetQuerier) queryableShards(ctx context.Context, mint, maxt int64) (
 }
 
 type queryableShard struct {
-	shard       *storage.ParquetShard
-	m           *Materializer
+	shard       storage.ParquetShard
+	m           *search.Materializer
 	concurrency int
 }
 
-func newQueryableShard(opts *queryableOpts, block *storage.ParquetShard, d *schema.PrometheusParquetChunksDecoder) (*queryableShard, error) {
+func newQueryableShard(opts *queryableOpts, block storage.ParquetShard, d *schema.PrometheusParquetChunksDecoder) (*queryableShard, error) {
 	s, err := block.TSDBSchema()
 	if err != nil {
 		return nil, err
 	}
-	m, err := NewMaterializer(s, d, block, opts.concurrency, opts.pagePartitioningMaxGapSize)
+	m, err := search.NewMaterializer(s, d, block, opts.concurrency)
 	if err != nil {
 		return nil, err
 	}
@@ -239,17 +231,17 @@ func (b queryableShard) Query(ctx context.Context, sorted bool, mint, maxt int64
 	results := make([]prom_storage.ChunkSeries, 0, 1024)
 	rMtx := sync.Mutex{}
 
-	for i, group := range b.shard.LabelsFile().RowGroups() {
+	for rgi := range b.shard.LabelsFile().RowGroups() {
 		errGroup.Go(func() error {
-			cs, err := MatchersToConstraint(matchers...)
+			cs, err := search.MatchersToConstraint(matchers...)
 			if err != nil {
 				return err
 			}
-			err = Initialize(b.shard.LabelsFile(), cs...)
+			err = search.Initialize(b.shard.LabelsFile(), cs...)
 			if err != nil {
 				return err
 			}
-			rr, err := Filter(ctx, group, cs...)
+			rr, err := search.Filter(ctx, b.shard, rgi, cs...)
 			if err != nil {
 				return err
 			}
@@ -258,7 +250,7 @@ func (b queryableShard) Query(ctx context.Context, sorted bool, mint, maxt int64
 				return nil
 			}
 
-			series, err := b.m.Materialize(ctx, i, mint, maxt, skipChunks, rr)
+			series, err := b.m.Materialize(ctx, rgi, mint, maxt, skipChunks, rr)
 			if err != nil {
 				return err
 			}
@@ -289,25 +281,25 @@ func (b queryableShard) LabelNames(ctx context.Context, limit int64, matchers []
 
 	results := make([][]string, len(b.shard.LabelsFile().RowGroups()))
 
-	for i, group := range b.shard.LabelsFile().RowGroups() {
+	for rgi := range b.shard.LabelsFile().RowGroups() {
 		errGroup.Go(func() error {
-			cs, err := MatchersToConstraint(matchers...)
+			cs, err := search.MatchersToConstraint(matchers...)
 			if err != nil {
 				return err
 			}
-			err = Initialize(b.shard.LabelsFile(), cs...)
+			err = search.Initialize(b.shard.LabelsFile(), cs...)
 			if err != nil {
 				return err
 			}
-			rr, err := Filter(ctx, group, cs...)
+			rr, err := search.Filter(ctx, b.shard, rgi, cs...)
 			if err != nil {
 				return err
 			}
-			series, err := b.m.MaterializeLabelNames(ctx, i, rr)
+			series, err := b.m.MaterializeLabelNames(ctx, rgi, rr)
 			if err != nil {
 				return err
 			}
-			results[i] = series
+			results[rgi] = series
 			return nil
 		})
 	}
@@ -329,25 +321,25 @@ func (b queryableShard) LabelValues(ctx context.Context, name string, limit int6
 
 	results := make([][]string, len(b.shard.LabelsFile().RowGroups()))
 
-	for i, group := range b.shard.LabelsFile().RowGroups() {
+	for rgi := range b.shard.LabelsFile().RowGroups() {
 		errGroup.Go(func() error {
-			cs, err := MatchersToConstraint(matchers...)
+			cs, err := search.MatchersToConstraint(matchers...)
 			if err != nil {
 				return err
 			}
-			err = Initialize(b.shard.LabelsFile(), cs...)
+			err = search.Initialize(b.shard.LabelsFile(), cs...)
 			if err != nil {
 				return err
 			}
-			rr, err := Filter(ctx, group, cs...)
+			rr, err := search.Filter(ctx, b.shard, rgi, cs...)
 			if err != nil {
 				return err
 			}
-			series, err := b.m.MaterializeLabelValues(ctx, name, i, rr)
+			series, err := b.m.MaterializeLabelValues(ctx, name, rgi, rr)
 			if err != nil {
 				return err
 			}
-			results[i] = series
+			results[rgi] = series
 			return nil
 		})
 	}

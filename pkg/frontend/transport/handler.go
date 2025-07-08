@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -108,7 +109,11 @@ type Handler struct {
 	queryChunkBytes     *prometheus.CounterVec
 	queryDataBytes      *prometheus.CounterVec
 	rejectedQueries     *prometheus.CounterVec
+	slowQueries         *prometheus.CounterVec
 	activeUsers         *util.ActiveUsersCleanupService
+
+	initSlowQueryMetric sync.Once
+	reg                 prometheus.Registerer
 }
 
 // NewHandler creates a new frontend handler.
@@ -118,6 +123,7 @@ func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, 
 		tenantFederationCfg: tenantFederationCfg,
 		log:                 log,
 		roundTripper:        roundTripper,
+		reg:                 reg,
 	}
 
 	if cfg.QueryStatsEnabled {
@@ -167,13 +173,25 @@ func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, 
 			},
 			[]string{"reason", "source", "user"},
 		)
-
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(h.cleanupMetricsForInactiveUser)
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
 	}
 
 	return h
+}
+
+func (h *Handler) getOrCreateSlowQueryMetric() *prometheus.CounterVec {
+	h.initSlowQueryMetric.Do(func() {
+		h.slowQueries = promauto.With(h.reg).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "cortex_slow_queries_total",
+				Help: "The total number of slow queries.",
+			},
+			[]string{"source", "user"},
+		)
+	})
+	return h.slowQueries
 }
 
 func (h *Handler) cleanupMetricsForInactiveUser(user string) {
@@ -208,6 +226,11 @@ func (h *Handler) cleanupMetricsForInactiveUser(user string) {
 	}
 	if err := util.DeleteMatchingLabels(h.rejectedQueries, userLabel); err != nil {
 		level.Warn(h.log).Log("msg", "failed to remove cortex_rejected_queries_total metric for user", "user", user, "err", err)
+	}
+	if h.slowQueries != nil {
+		if err := util.DeleteMatchingLabels(h.slowQueries, userLabel); err != nil {
+			level.Warn(h.log).Log("msg", "failed to remove cortex_slow_queries_total metric for user", "user", user, "err", err)
+		}
 	}
 }
 
@@ -294,6 +317,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if shouldReportSlowQuery {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
+		if f.cfg.QueryStatsEnabled {
+			f.getOrCreateSlowQueryMetric().WithLabelValues(source, userID).Inc()
+		}
 	}
 
 	if f.cfg.QueryStatsEnabled {

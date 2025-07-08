@@ -330,13 +330,24 @@ func TestConverter_ShouldNotFailOnAccessDenyError(t *testing.T) {
 	err = block.Upload(context.Background(), logger, bucket.NewPrefixedBucketClient(fsBucket, userID), bdir, metadata.NoneFunc)
 	require.NoError(t, err)
 
-	// Create a mock bucket that wraps the filesystem bucket but fails with permission denied error.
-	mockBucket := &mockBucket{
-		Bucket:     fsBucket,
-		getFailure: cortex_errors.WithCause(errors.New("dummy error"), status.Error(codes.PermissionDenied, "dummy")),
-	}
+	var mb *mockBucket
+	t.Run("get failure", func(t *testing.T) {
+		// Create a mock bucket that wraps the filesystem bucket but fails with permission denied error.
+		mb = &mockBucket{
+			Bucket:     fsBucket,
+			getFailure: cortex_errors.WithCause(errors.New("dummy error"), status.Error(codes.PermissionDenied, "dummy")),
+		}
+	})
 
-	converter := newConverter(cfg, objstore.WithNoopInstr(mockBucket), storageCfg, []int64{3600000, 7200000}, nil, reg, overrides, nil)
+	t.Run("upload failure", func(t *testing.T) {
+		// Create a mock bucket that wraps the filesystem bucket but fails with permission denied error.
+		mb = &mockBucket{
+			Bucket:        fsBucket,
+			uploadFailure: cortex_errors.WithCause(errors.New("dummy error"), status.Error(codes.PermissionDenied, "dummy")),
+		}
+	})
+
+	converter := newConverter(cfg, objstore.WithNoopInstr(mb), storageCfg, []int64{3600000, 7200000}, nil, reg, overrides, nil)
 	converter.ringLifecycler = &ring.Lifecycler{
 		Addr: "1.2.3.4",
 	}

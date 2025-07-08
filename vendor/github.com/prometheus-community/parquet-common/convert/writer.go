@@ -77,7 +77,7 @@ func (c *ShardedWriter) Write(ctx context.Context) error {
 func (c *ShardedWriter) convertShards(ctx context.Context) error {
 	for {
 		if ok, err := c.convertShard(ctx); err != nil {
-			return fmt.Errorf("unable to convert shard: %s", err)
+			return fmt.Errorf("unable to convert shard: %w", err)
 		} else if !ok {
 			break
 		}
@@ -125,17 +125,17 @@ func (c *ShardedWriter) writeFile(ctx context.Context, schema *schema.TSDBSchema
 		ctx, schema.Schema, c.outSchemasForCurrentShard(), c.pipeReaderWriter, fileOpts...,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("unable to create row writer: %s", err)
+		return 0, fmt.Errorf("unable to create row writer: %w", err)
 	}
 
 	n, err := parquet.CopyRows(writer, newBufferedReader(ctx, newLimitReader(c.rr, rowsToWrite)))
 	if err != nil {
-		return 0, fmt.Errorf("unable to copy rows: %s", err)
+		return 0, fmt.Errorf("unable to copy rows: %w", err)
 	}
 
 	err = writer.Close()
 	if err != nil {
-		return 0, fmt.Errorf("unable to close writer: %s", err)
+		return 0, fmt.Errorf("unable to close writer: %w", err)
 	}
 
 	return n, nil
@@ -261,11 +261,11 @@ func (s *splitPipeFileWriter) WriteRows(rows []parquet.Row) (int, error) {
 			convertedRows := util.CloneRows(rows)
 			_, err := writer.conv.Convert(convertedRows)
 			if err != nil {
-				return fmt.Errorf("unable to convert rows: %d", err)
+				return fmt.Errorf("unable to convert rows: %w", err)
 			}
 			n, err := writer.pw.WriteRows(convertedRows)
 			if err != nil {
-				return fmt.Errorf("unable to write rows: %d", err)
+				return fmt.Errorf("unable to write rows: %w", err)
 			}
 			if n != len(rows) {
 				return fmt.Errorf("unable to write rows: %d != %d", n, len(rows))

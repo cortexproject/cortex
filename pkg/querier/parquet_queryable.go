@@ -11,8 +11,8 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
+	"github.com/prometheus-community/parquet-common/queryable"
 	"github.com/prometheus-community/parquet-common/schema"
-	"github.com/prometheus-community/parquet-common/search"
 	parquet_storage "github.com/prometheus-community/parquet-common/storage"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -125,14 +125,14 @@ func NewParquetQueryable(
 		return nil, err
 	}
 
-	cache, err := newCache[*parquet_storage.ParquetShard]("parquet-shards", config.ParquetQueryableShardCacheSize, newCacheMetrics(reg))
+	cache, err := newCache[parquet_storage.ParquetShard]("parquet-shards", config.ParquetQueryableShardCacheSize, newCacheMetrics(reg))
 	if err != nil {
 		return nil, err
 	}
 
 	cDecoder := schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool())
 
-	parquetQueryable, err := search.NewParquetQueryable(cDecoder, func(ctx context.Context, mint, maxt int64) ([]*parquet_storage.ParquetShard, error) {
+	parquetQueryable, err := queryable.NewParquetQueryable(cDecoder, func(ctx context.Context, mint, maxt int64) ([]parquet_storage.ParquetShard, error) {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
@@ -143,8 +143,8 @@ func NewParquetQueryable(
 			return nil, errors.Errorf("failed to extract blocks from context")
 		}
 		userBkt := bucket.NewUserBucketClient(userID, bucketClient, limits)
-
-		shards := make([]*parquet_storage.ParquetShard, len(blocks))
+		bucketOpener := parquet_storage.NewParquetBucketOpener(userBkt)
+		shards := make([]parquet_storage.ParquetShard, len(blocks))
 		errGroup := &errgroup.Group{}
 
 		span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.OpenShards")
@@ -157,16 +157,18 @@ func NewParquetQueryable(
 				if shard == nil {
 					// we always only have 1 shard - shard 0
 					// Use context.Background() here as the file can be cached and live after the request ends.
-					shard, err = parquet_storage.OpenParquetShard(context.WithoutCancel(ctx),
-						userBkt,
+					shard, err = parquet_storage.NewParquetShardOpener(
+						context.WithoutCancel(ctx),
 						block.ID.String(),
+						bucketOpener,
+						bucketOpener,
 						0,
 						parquet_storage.WithFileOptions(
 							parquet.SkipMagicBytes(true),
 							parquet.ReadBufferSize(100*1024),
 							parquet.SkipBloomFilters(true),
+							parquet.OptimisticRead(true),
 						),
-						parquet_storage.WithOptimisticReader(true),
 					)
 					if err != nil {
 						return errors.Wrapf(err, "failed to open parquet shard. block: %v", block.ID.String())

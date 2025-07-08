@@ -19,7 +19,6 @@ import (
 	"io"
 	"maps"
 	"slices"
-	"sort"
 	"sync"
 
 	"github.com/parquet-go/parquet-go"
@@ -35,7 +34,7 @@ import (
 )
 
 type Materializer struct {
-	b           *storage.ParquetShard
+	b           storage.ParquetShard
 	s           *schema.TSDBSchema
 	d           *schema.PrometheusParquetChunksDecoder
 	partitioner util.Partitioner
@@ -48,9 +47,8 @@ type Materializer struct {
 
 func NewMaterializer(s *schema.TSDBSchema,
 	d *schema.PrometheusParquetChunksDecoder,
-	block *storage.ParquetShard,
+	block storage.ParquetShard,
 	concurrency int,
-	maxGapPartitioning int,
 ) (*Materializer, error) {
 	colIdx, ok := block.LabelsFile().Schema().Lookup(schema.ColIndexes)
 	if !ok {
@@ -73,7 +71,7 @@ func NewMaterializer(s *schema.TSDBSchema,
 		b:              block,
 		colIdx:         colIdx.ColumnIndex,
 		concurrency:    concurrency,
-		partitioner:    util.NewGapBasedPartitioner(maxGapPartitioning),
+		partitioner:    util.NewGapBasedPartitioner(block.ChunksFile().Cfg.PagePartitioningMaxGapSize),
 		dataColToIndex: dataColToIndex,
 	}, nil
 }
@@ -88,9 +86,8 @@ func (m *Materializer) Materialize(ctx context.Context, rgi int, mint, maxt int6
 
 	results := make([]prom_storage.ChunkSeries, len(sLbls))
 	for i, s := range sLbls {
-		sort.Sort(s)
 		results[i] = &concreteChunksSeries{
-			lbls: s,
+			lbls: labels.New(s...),
 		}
 	}
 
@@ -128,7 +125,7 @@ func (m *Materializer) MaterializeAllLabelNames() []string {
 func (m *Materializer) MaterializeLabelNames(ctx context.Context, rgi int, rr []RowRange) ([]string, error) {
 	labelsRg := m.b.LabelsFile().RowGroups()[rgi]
 	cc := labelsRg.ColumnChunks()[m.colIdx]
-	colsIdxs, err := m.materializeColumn(ctx, m.b.LabelsFile(), labelsRg, cc, rr)
+	colsIdxs, err := m.materializeColumn(ctx, m.b.LabelsFile(), rgi, cc, rr)
 	if err != nil {
 		return nil, errors.Wrap(err, "materializer failed to materialize columns")
 	}
@@ -167,7 +164,7 @@ func (m *Materializer) MaterializeLabelValues(ctx context.Context, name string, 
 		return []string{}, nil
 	}
 	cc := labelsRg.ColumnChunks()[cIdx.ColumnIndex]
-	values, err := m.materializeColumn(ctx, m.b.LabelsFile(), labelsRg, cc, rr)
+	values, err := m.materializeColumn(ctx, m.b.LabelsFile(), rgi, cc, rr)
 	if err != nil {
 		return nil, errors.Wrap(err, "materializer failed to materialize columns")
 	}
@@ -191,7 +188,7 @@ func (m *Materializer) MaterializeAllLabelValues(ctx context.Context, name strin
 		return []string{}, nil
 	}
 	cc := labelsRg.ColumnChunks()[cIdx.ColumnIndex]
-	pages, err := m.b.LabelsFile().GetPages(ctx, cc)
+	pages, err := m.b.LabelsFile().GetPages(ctx, cc, 0, 0)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get pages")
 	}
@@ -208,16 +205,16 @@ func (m *Materializer) MaterializeAllLabelValues(ctx context.Context, name strin
 	return r, nil
 }
 
-func (m *Materializer) materializeAllLabels(ctx context.Context, rgi int, rr []RowRange) ([]labels.Labels, error) {
+func (m *Materializer) materializeAllLabels(ctx context.Context, rgi int, rr []RowRange) ([][]labels.Label, error) {
 	labelsRg := m.b.LabelsFile().RowGroups()[rgi]
 	cc := labelsRg.ColumnChunks()[m.colIdx]
-	colsIdxs, err := m.materializeColumn(ctx, m.b.LabelsFile(), labelsRg, cc, rr)
+	colsIdxs, err := m.materializeColumn(ctx, m.b.LabelsFile(), rgi, cc, rr)
 	if err != nil {
 		return nil, errors.Wrap(err, "materializer failed to materialize columns")
 	}
 
 	colsMap := make(map[int]*[]parquet.Value, 10)
-	results := make([]labels.Labels, len(colsIdxs))
+	results := make([][]labels.Label, len(colsIdxs))
 
 	for _, colsIdx := range colsIdxs {
 		idxs, err := schema.DecodeUintSlice(colsIdx.ByteArray())
@@ -235,7 +232,7 @@ func (m *Materializer) materializeAllLabels(ctx context.Context, rgi int, rr []R
 	for cIdx, v := range colsMap {
 		errGroup.Go(func() error {
 			cc := labelsRg.ColumnChunks()[cIdx]
-			values, err := m.materializeColumn(ctx, m.b.LabelsFile(), labelsRg, cc, rr)
+			values, err := m.materializeColumn(ctx, m.b.LabelsFile(), rgi, cc, rr)
 			if err != nil {
 				return errors.Wrap(err, "failed to materialize labels values")
 			}
@@ -282,7 +279,7 @@ func (m *Materializer) materializeChunks(ctx context.Context, rgi int, mint, max
 	r := make([][]chunks.Meta, totalRows(rr))
 
 	for i := minDataCol; i <= min(maxDataCol, len(m.dataColToIndex)-1); i++ {
-		values, err := m.materializeColumn(ctx, m.b.ChunksFile(), rg, rg.ColumnChunks()[m.dataColToIndex[i]], rr)
+		values, err := m.materializeColumn(ctx, m.b.ChunksFile(), rgi, rg.ColumnChunks()[m.dataColToIndex[i]], rr)
 		if err != nil {
 			return r, err
 		}
@@ -299,7 +296,7 @@ func (m *Materializer) materializeChunks(ctx context.Context, rgi int, mint, max
 	return r, nil
 }
 
-func (m *Materializer) materializeColumn(ctx context.Context, file *storage.ParquetFile, group parquet.RowGroup, cc parquet.ColumnChunk, rr []RowRange) ([]parquet.Value, error) {
+func (m *Materializer) materializeColumn(ctx context.Context, file *storage.ParquetFile, rgi int, cc parquet.ColumnChunk, rr []RowRange) ([]parquet.Value, error) {
 	if len(rr) == 0 {
 		return nil, nil
 	}
@@ -313,6 +310,8 @@ func (m *Materializer) materializeColumn(ctx context.Context, file *storage.Parq
 	if err != nil {
 		return nil, errors.Wrap(err, "could not get column index")
 	}
+
+	group := file.RowGroups()[rgi]
 
 	pagesToRowsMap := make(map[int][]RowRange, len(rr))
 
@@ -346,9 +345,20 @@ func (m *Materializer) materializeColumn(ctx context.Context, file *storage.Parq
 	errGroup := &errgroup.Group{}
 	errGroup.SetLimit(m.concurrency)
 
+	dictOff, dictSz := file.DictionaryPageBounds(rgi, cc.Column())
+	cc.Type()
+
 	for _, p := range pageRanges {
 		errGroup.Go(func() error {
-			pgs, err := file.GetPages(ctx, cc, p.pages...)
+			minOffset := uint64(p.off)
+			maxOffset := uint64(p.off + p.csz)
+
+			// if dictOff == 0, it means that the collum is not dictionary encoded
+			if dictOff > 0 && int(minOffset-(dictOff+dictSz)) < file.Cfg.PagePartitioningMaxGapSize {
+				minOffset = dictOff
+			}
+
+			pgs, err := file.GetPages(ctx, cc, int64(minOffset), int64(maxOffset))
 			if err != nil {
 				return errors.Wrap(err, "failed to get pages")
 			}
@@ -415,16 +425,16 @@ func (m *Materializer) materializeColumn(ctx context.Context, file *storage.Parq
 	return res, nil
 }
 
-type pageEntryRead struct {
-	pages []int
-	rows  []RowRange
+type pageToReadWithRow struct {
+	pageToRead
+	rows []RowRange
 }
 
 // Merge nearby pages to enable efficient sequential reads.
 // Pages that are not close to each other will be scheduled for concurrent reads.
-func (m *Materializer) coalescePageRanges(pagedIdx map[int][]RowRange, offset parquet.OffsetIndex) []pageEntryRead {
+func (m *Materializer) coalescePageRanges(pagedIdx map[int][]RowRange, offset parquet.OffsetIndex) []pageToReadWithRow {
 	if len(pagedIdx) == 0 {
-		return []pageEntryRead{}
+		return []pageToReadWithRow{}
 	}
 	idxs := make([]int, 0, len(pagedIdx))
 	for idx := range pagedIdx {
@@ -437,13 +447,16 @@ func (m *Materializer) coalescePageRanges(pagedIdx map[int][]RowRange, offset pa
 		return int(offset.Offset(idxs[i])), int(offset.Offset(idxs[i]) + offset.CompressedPageSize(idxs[i]))
 	})
 
-	r := make([]pageEntryRead, 0, len(parts))
+	r := make([]pageToReadWithRow, 0, len(parts))
 	for _, part := range parts {
-		pagesToRead := pageEntryRead{}
+		pagesToRead := pageToReadWithRow{}
 		for i := part.ElemRng[0]; i < part.ElemRng[1]; i++ {
-			pagesToRead.pages = append(pagesToRead.pages, idxs[i])
 			pagesToRead.rows = append(pagesToRead.rows, pagedIdx[idxs[i]]...)
 		}
+		pagesToRead.pfrom = int64(part.ElemRng[0])
+		pagesToRead.pto = int64(part.ElemRng[1])
+		pagesToRead.off = part.Start
+		pagesToRead.csz = part.End - part.Start
 		pagesToRead.rows = simplify(pagesToRead.rows)
 		r = append(r, pagesToRead)
 	}
@@ -535,4 +548,8 @@ func (c concreteChunksSeries) Labels() labels.Labels {
 
 func (c concreteChunksSeries) Iterator(_ chunks.Iterator) chunks.Iterator {
 	return prom_storage.NewListChunkSeriesIterator(c.chks...)
+}
+
+func (c concreteChunksSeries) ChunkCount() (int, error) {
+	return len(c.chks), nil
 }

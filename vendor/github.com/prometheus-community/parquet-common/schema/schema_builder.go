@@ -129,18 +129,17 @@ type TSDBSchema struct {
 }
 
 type TSDBProjection struct {
+	FilenameFunc func(name string, shard int) string
 	Schema       *parquet.Schema
 	ExtraOptions []parquet.WriterOption
 }
 
 func (s *TSDBSchema) DataColumIdx(t int64) int {
-	colIdx := 0
-
-	for i := s.MinTs + s.DataColDurationMs; i <= t; i += s.DataColDurationMs {
-		colIdx++
+	if t < s.MinTs {
+		return 0
 	}
 
-	return colIdx
+	return int((t - s.MinTs) / s.DataColDurationMs)
 }
 
 func (s *TSDBSchema) LabelsProjection() (*TSDBProjection, error) {
@@ -163,6 +162,9 @@ func (s *TSDBSchema) LabelsProjection() (*TSDBProjection, error) {
 		g[c[0]] = lc.Node
 	}
 	return &TSDBProjection{
+		FilenameFunc: func(name string, shard int) string {
+			return LabelsPfileNameForShard(name, shard)
+		},
 		Schema:       WithCompression(parquet.NewSchema("labels-projection", g)),
 		ExtraOptions: []parquet.WriterOption{parquet.SkipPageBounds(ColIndexes)},
 	}, nil
@@ -185,6 +187,9 @@ func (s *TSDBSchema) ChunksProjection() (*TSDBProjection, error) {
 	}
 
 	return &TSDBProjection{
+		FilenameFunc: func(name string, shard int) string {
+			return ChunksPfileNameForShard(name, shard)
+		},
 		Schema:       WithCompression(parquet.NewSchema("chunk-projection", g)),
 		ExtraOptions: writeOptions,
 	}, nil

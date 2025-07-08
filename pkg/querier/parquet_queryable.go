@@ -143,7 +143,7 @@ func NewParquetQueryable(
 			return nil, errors.Errorf("failed to extract blocks from context")
 		}
 		userBkt := bucket.NewUserBucketClient(userID, bucketClient, limits)
-
+		bucketOpener := parquet_storage.NewParquetBucketOpener(userBkt)
 		shards := make([]parquet_storage.ParquetShard, len(blocks))
 		errGroup := &errgroup.Group{}
 
@@ -155,10 +155,9 @@ func NewParquetQueryable(
 				cacheKey := fmt.Sprintf("%v-%v", userID, block.ID)
 				shard := cache.Get(cacheKey)
 				if shard == nil {
-					bucketOpener := parquet_storage.NewParquetBucketOpener(userBkt)
 					// we always only have 1 shard - shard 0
 					// Use context.Background() here as the file can be cached and live after the request ends.
-					shard, err := parquet_storage.NewParquetShardOpener(
+					shard, err = parquet_storage.NewParquetShardOpener(
 						context.WithoutCancel(ctx),
 						block.ID.String(),
 						bucketOpener,

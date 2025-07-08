@@ -2,10 +2,12 @@ package parquetconverter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +23,8 @@ import (
 	"github.com/thanos-io/objstore/providers/filesystem"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -31,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -269,7 +274,8 @@ func TestConverter_BlockConversionFailure(t *testing.T) {
 
 	// Create a mock bucket that wraps the filesystem bucket but fails uploads
 	mockBucket := &mockBucket{
-		Bucket: fsBucket,
+		Bucket:        fsBucket,
+		uploadFailure: fmt.Errorf("mock upload failure"),
 	}
 
 	converter := newConverter(cfg, objstore.WithNoopInstr(mockBucket), storageCfg, []int64{3600000, 7200000}, nil, reg, overrides, nil)
@@ -284,13 +290,83 @@ func TestConverter_BlockConversionFailure(t *testing.T) {
 	assert.Equal(t, 1.0, testutil.ToFloat64(converter.metrics.convertBlockFailures.WithLabelValues(userID)))
 }
 
+func TestConverter_ShouldNotFailOnAccessDenyError(t *testing.T) {
+	// Create a new registry for testing
+	reg := prometheus.NewRegistry()
+
+	// Create a new converter with test configuration
+	cfg := Config{
+		MetaSyncConcurrency: 1,
+		DataDir:             t.TempDir(),
+	}
+	logger := log.NewNopLogger()
+	storageCfg := cortex_tsdb.BlocksStorageConfig{}
+	flagext.DefaultValues(&storageCfg)
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	overrides := validation.NewOverrides(*limits, nil)
+	limits.ParquetConverterEnabled = true
+
+	// Create a filesystem bucket for initial block upload
+	fsBucket, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
+
+	// Create test labels
+	lbls := labels.Labels{labels.Label{
+		Name:  "__name__",
+		Value: "test",
+	}}
+
+	// Create a real TSDB block
+	dir := t.TempDir()
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	blockID, err := e2e.CreateBlock(context.Background(), rnd, dir, []labels.Labels{lbls}, 2, 0, 2*time.Hour.Milliseconds(), time.Minute.Milliseconds(), 10)
+	require.NoError(t, err)
+	bdir := path.Join(dir, blockID.String())
+
+	userID := "test-user"
+
+	// Upload the block to filesystem bucket
+	err = block.Upload(context.Background(), logger, bucket.NewPrefixedBucketClient(fsBucket, userID), bdir, metadata.NoneFunc)
+	require.NoError(t, err)
+
+	// Create a mock bucket that wraps the filesystem bucket but fails with permission denied error.
+	mockBucket := &mockBucket{
+		Bucket:     fsBucket,
+		getFailure: cortex_errors.WithCause(errors.New("dummy error"), status.Error(codes.PermissionDenied, "dummy")),
+	}
+
+	converter := newConverter(cfg, objstore.WithNoopInstr(mockBucket), storageCfg, []int64{3600000, 7200000}, nil, reg, overrides, nil)
+	converter.ringLifecycler = &ring.Lifecycler{
+		Addr: "1.2.3.4",
+	}
+
+	err = converter.convertUser(context.Background(), logger, &RingMock{ReadRing: &ring.Ring{}}, userID)
+	require.Error(t, err)
+
+	// Verify the failure metric was not incremented
+	assert.Equal(t, 0.0, testutil.ToFloat64(converter.metrics.convertBlockFailures.WithLabelValues(userID)))
+}
+
 // mockBucket implements objstore.Bucket for testing
 type mockBucket struct {
 	objstore.Bucket
+	uploadFailure error
+	getFailure    error
 }
 
 func (m *mockBucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	return fmt.Errorf("mock upload failure")
+	if m.uploadFailure != nil {
+		return m.uploadFailure
+	}
+	return m.Bucket.Upload(ctx, name, r)
+}
+
+func (m *mockBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	if m.getFailure != nil && strings.Contains(name, "index") {
+		return nil, m.getFailure
+	}
+	return m.Bucket.Get(ctx, name)
 }
 
 type RingMock struct {

@@ -27,6 +27,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/logutil"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -36,6 +38,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -246,6 +249,10 @@ func (c *Converter) running(ctx context.Context) error {
 				if err = c.convertUser(ctx, userLogger, ring, userID); err != nil {
 					if ctx.Err() != nil {
 						return ctx.Err()
+					}
+					if c.isCausedByPermissionDenied(err) {
+						level.Warn(userLogger).Log("msg", "skipping convert user due to PermissionDenied", "err", err)
+						continue
 					}
 					level.Error(userLogger).Log("msg", "failed to convert user", "err", err)
 				}
@@ -474,12 +481,31 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 }
 
 func (c *Converter) checkConvertError(userID string, err error) (terminate bool) {
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || c.isCausedByPermissionDenied(err) {
 		terminate = true
 	} else {
 		c.metrics.convertBlockFailures.WithLabelValues(userID).Inc()
 	}
 	return
+}
+
+func (c *Converter) isCausedByPermissionDenied(err error) bool {
+	cause := errors.Cause(err)
+	res := cortex_errors.ErrorIs(cause, func(err error) bool {
+		return c.isPermissionDeniedErr(err)
+	})
+	return res
+}
+
+func (c *Converter) isPermissionDeniedErr(err error) bool {
+	if c.bkt.IsAccessDeniedErr(err) {
+		return true
+	}
+	s, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	return s.Code() == codes.PermissionDenied
 }
 
 func (c *Converter) ownUser(r ring.ReadRing, userId string) (bool, error) {

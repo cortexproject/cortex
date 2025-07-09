@@ -108,10 +108,15 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 		return nil, err
 	}
 
-	responseSize, err := strconv.Atoi(r.Header.Get("X-Uncompressed-Length"))
-	if err != nil {
-		log.Error(err)
-		return nil, err
+	responseSize := 0 
+	responseSizeHeader := r.Header.Get("X-Uncompressed-Length")
+	if responseSizeHeader != "" {
+		var err error
+		responseSize, err = strconv.Atoi(responseSizeHeader)
+		if err != nil {
+			log.Error(err)
+			return nil, err
+		}
 	}
 
 	responseSizeLimiter := limiter.ResponseSizeLimiterFromContextWithFallback(ctx)

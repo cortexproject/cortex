@@ -203,7 +203,7 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		return nil, err
 	}
 
-	responseSize := 0 
+	responseSize := 0
 	responseSizeHeader := r.Header.Get("X-Uncompressed-Length")
 	if responseSizeHeader != "" {
 		var err error

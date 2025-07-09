@@ -947,7 +947,7 @@ github.com/planetscale/vtprotobuf/types/known/wrapperspb
 # github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 ## explicit
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus-community/parquet-common v0.0.0-20250708210438-f89902fcd994
+# github.com/prometheus-community/parquet-common v0.0.0-20250708210438-f89902fcd994 => github.com/yeya24/parquet-common v0.0.0-20250709074935-71782c65c3d4
 ## explicit; go 1.23.4
 github.com/prometheus-community/parquet-common/convert
 github.com/prometheus-community/parquet-common/queryable
@@ -1988,3 +1988,4 @@ sigs.k8s.io/yaml/goyaml.v3
 # gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 # github.com/thanos-io/objstore => github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97
 # github.com/prometheus/prometheus => github.com/thanos-io/thanos-prometheus v0.0.0-20250610133519-082594458a88
+# github.com/prometheus-community/parquet-common => github.com/yeya24/parquet-common v0.0.0-20250709074935-71782c65c3d4

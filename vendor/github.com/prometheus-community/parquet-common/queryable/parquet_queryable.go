@@ -34,11 +34,21 @@ import (
 type ShardsFinderFunction func(ctx context.Context, mint, maxt int64) ([]storage.ParquetShard, error)
 
 type queryableOpts struct {
-	concurrency int
+	concurrency                int
+	rowCountLimitFunc          search.QuotaLimitFunc
+	chunkBytesLimitFunc        search.QuotaLimitFunc
+	dataBytesLimitFunc         search.QuotaLimitFunc
+	materializedSeriesCallback search.MaterializedSeriesFunc
 }
 
 var DefaultQueryableOpts = queryableOpts{
-	concurrency: runtime.GOMAXPROCS(0),
+	concurrency:         runtime.GOMAXPROCS(0),
+	rowCountLimitFunc:   search.NoopQuotaLimitFunc,
+	chunkBytesLimitFunc: search.NoopQuotaLimitFunc,
+	dataBytesLimitFunc:  search.NoopQuotaLimitFunc,
+	materializedSeriesCallback: func(_ context.Context, _ []prom_storage.ChunkSeries) error {
+		return nil
+	},
 }
 
 type QueryableOpts func(*queryableOpts)
@@ -47,6 +57,30 @@ type QueryableOpts func(*queryableOpts)
 func WithConcurrency(concurrency int) QueryableOpts {
 	return func(opts *queryableOpts) {
 		opts.concurrency = concurrency
+	}
+}
+
+func WithRowCountLimitFunc(fn search.QuotaLimitFunc) QueryableOpts {
+	return func(opts *queryableOpts) {
+		opts.rowCountLimitFunc = fn
+	}
+}
+
+func WithChunkBytesLimitFunc(fn search.QuotaLimitFunc) QueryableOpts {
+	return func(opts *queryableOpts) {
+		opts.chunkBytesLimitFunc = fn
+	}
+}
+
+func WithDataBytesLimitFunc(fn search.QuotaLimitFunc) QueryableOpts {
+	return func(opts *queryableOpts) {
+		opts.dataBytesLimitFunc = fn
+	}
+}
+
+func WithMaterializedSeriesCallback(fn search.MaterializedSeriesFunc) QueryableOpts {
+	return func(opts *queryableOpts) {
+		opts.materializedSeriesCallback = fn
 	}
 }
 
@@ -191,8 +225,11 @@ func (p parquetQuerier) queryableShards(ctx context.Context, mint, maxt int64) (
 		return nil, err
 	}
 	qBlocks := make([]*queryableShard, len(shards))
+	rowCountQuota := search.NewQuota(p.opts.rowCountLimitFunc(ctx))
+	chunkBytesQuota := search.NewQuota(p.opts.chunkBytesLimitFunc(ctx))
+	dataBytesQuota := search.NewQuota(p.opts.dataBytesLimitFunc(ctx))
 	for i, shard := range shards {
-		qb, err := newQueryableShard(p.opts, shard, p.d)
+		qb, err := newQueryableShard(p.opts, shard, p.d, rowCountQuota, chunkBytesQuota, dataBytesQuota)
 		if err != nil {
 			return nil, err
 		}
@@ -207,12 +244,12 @@ type queryableShard struct {
 	concurrency int
 }
 
-func newQueryableShard(opts *queryableOpts, block storage.ParquetShard, d *schema.PrometheusParquetChunksDecoder) (*queryableShard, error) {
+func newQueryableShard(opts *queryableOpts, block storage.ParquetShard, d *schema.PrometheusParquetChunksDecoder, rowCountQuota *search.Quota, chunkBytesQuota *search.Quota, dataBytesQuota *search.Quota) (*queryableShard, error) {
 	s, err := block.TSDBSchema()
 	if err != nil {
 		return nil, err
 	}
-	m, err := search.NewMaterializer(s, d, block, opts.concurrency)
+	m, err := search.NewMaterializer(s, d, block, opts.concurrency, rowCountQuota, chunkBytesQuota, dataBytesQuota, opts.materializedSeriesCallback)
 	if err != nil {
 		return nil, err
 	}

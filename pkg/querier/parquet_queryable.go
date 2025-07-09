@@ -23,11 +23,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -132,6 +134,60 @@ func NewParquetQueryable(
 
 	cDecoder := schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool())
 
+	parquetQueryableOpts := []queryable.QueryableOpts{
+		queryable.WithRowCountLimitFunc(func(ctx context.Context) int64 {
+			userID, err := tenant.TenantID(ctx)
+			if err != nil {
+				// This shouldn't happen
+				return 0
+			}
+			return int64(limits.MaxFetchedSeriesPerQuery(userID))
+		}),
+		queryable.WithChunkBytesLimitFunc(func(ctx context.Context) int64 {
+			userID, err := tenant.TenantID(ctx)
+			if err != nil {
+				// This shouldn't happen
+				return 0
+			}
+			return int64(limits.MaxFetchedChunkBytesPerQuery(userID))
+		}),
+		queryable.WithDataBytesLimitFunc(func(ctx context.Context) int64 {
+			userID, err := tenant.TenantID(ctx)
+			if err != nil {
+				// This shouldn't happen
+				return 0
+			}
+			return int64(limits.MaxFetchedDataBytesPerQuery(userID))
+		}),
+		queryable.WithMaterializedSeriesCallback(func(ctx context.Context, cs []storage.ChunkSeries) error {
+			queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
+			lbls := make([][]cortexpb.LabelAdapter, 0, len(cs))
+			for _, series := range cs {
+				chunkSize := 0
+				lblSize := 0
+				lblAdapter := cortexpb.FromLabelsToLabelAdapters(series.Labels())
+				lbls = append(lbls, lblAdapter)
+				for _, lbl := range lblAdapter {
+					lblSize += lbl.Size()
+				}
+				iter := series.Iterator(nil)
+				for iter.Next() {
+					chk := iter.At()
+					chunkSize += len(chk.Chunk.Bytes())
+				}
+				if err := queryLimiter.AddChunkBytes(chunkSize); err != nil {
+					return validation.LimitError(err.Error())
+				}
+				if err := queryLimiter.AddDataBytes(chunkSize + lblSize); err != nil {
+					return validation.LimitError(err.Error())
+				}
+			}
+			if err := queryLimiter.AddSeries(lbls...); err != nil {
+				return validation.LimitError(err.Error())
+			}
+			return nil
+		}),
+	}
 	parquetQueryable, err := queryable.NewParquetQueryable(cDecoder, func(ctx context.Context, mint, maxt int64) ([]parquet_storage.ParquetShard, error) {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
@@ -182,7 +238,7 @@ func NewParquetQueryable(
 		}
 
 		return shards, errGroup.Wait()
-	})
+	}, parquetQueryableOpts...)
 
 	p := &parquetQueryableWithFallback{
 		subservices:           manager,

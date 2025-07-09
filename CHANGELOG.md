@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+## 1.18.2 2025-07-09
+
+* [BUGFIX] Backporting Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled #6271
+
 ## 1.18.1 2024-10-14
 
 * [BUGFIX] Backporting upgrade to go 1.22.7 to patch CVE-2024-34155, CVE-2024-34156, CVE-2024-34158 #6217 #6264

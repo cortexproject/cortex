@@ -304,6 +304,9 @@ type Config struct {
 	AcceptMalformedIndex        bool `yaml:"accept_malformed_index"`
 	CachingBucketEnabled        bool `yaml:"caching_bucket_enabled"`
 	CleanerCachingBucketEnabled bool `yaml:"cleaner_caching_bucket_enabled"`
+
+	// Injected internally
+	NoCompactMarkCheckAfter time.Duration `yaml:"-"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -753,6 +756,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		ShardingStrategy:                   c.compactorCfg.ShardingStrategy,
 		CompactionStrategy:                 c.compactorCfg.CompactionStrategy,
 		BlockRanges:                        c.compactorCfg.BlockRanges.ToMilliseconds(),
+		NoCompactMarkCheckAfter:            c.compactorCfg.NoCompactMarkCheckAfter,
 	}, cleanerBucketClient, cleanerUsersScanner, c.compactorCfg.CompactionVisitMarkerTimeout, c.limits, c.parentLogger, cleanerRingLifecyclerID, c.registerer, c.compactorCfg.CleanerVisitMarkerTimeout, c.compactorCfg.CleanerVisitMarkerFileUpdateInterval,
 		c.compactorMetrics.syncerBlocksMarkedForDeletion, c.compactorMetrics.remainingPlannedCompactions)
 

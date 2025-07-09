@@ -737,6 +737,7 @@ func (t *Cortex) initParquetConverter() (serv services.Service, err error) {
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	ingestionReplicationFactor := t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor
+	t.Cfg.Compactor.NoCompactMarkCheckAfter = t.Cfg.ParquetConverter.NoCompactMarkCheckAfter
 
 	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides, ingestionReplicationFactor)
 	if err != nil {

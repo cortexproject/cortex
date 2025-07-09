@@ -14,10 +14,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
@@ -232,6 +234,76 @@ func TestConverter_CleanupMetricsForNotOwnedUser(t *testing.T) {
 	assert.Equal(t, 0.0, testutil.ToFloat64(converter.metrics.convertBlockFailures.WithLabelValues(userID)))
 }
 
+func TestConverter_ShouldConvertNoCompactMarkBlocks(t *testing.T) {
+	cfg := prepareConfig()
+	userID := "user"
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+	dir := t.TempDir()
+
+	cfg.Ring.InstanceID = "parquet-converter-1"
+	cfg.Ring.InstanceAddr = "1.2.3.4"
+	cfg.Ring.KVStore.Mock = ringStore
+	bucketClient, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
+	userBucket := bucket.NewPrefixedBucketClient(bucketClient, userID)
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ParquetConverterEnabled = true
+
+	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits)
+	c.ringLifecycler = &ring.Lifecycler{
+		Addr: "1.2.3.4",
+	}
+
+	ctx := context.Background()
+
+	lbls := labels.Labels{labels.Label{
+		Name:  "__name__",
+		Value: "test",
+	}}
+
+	blocks := []ulid.ULID{}
+	numBlocks := 2
+	mint := time.Hour * 13
+	maxt := time.Hour * 15
+	// Create 2h blocks
+	for i := 0; i < numBlocks; i++ {
+		rnd := rand.New(rand.NewSource(time.Now().Unix()))
+		id, err := e2e.CreateBlock(ctx, rnd, dir, []labels.Labels{lbls}, 2, mint.Milliseconds(), maxt.Milliseconds(), time.Minute.Milliseconds(), 10)
+		require.NoError(t, err)
+		blocks = append(blocks, id)
+	}
+
+	for _, bId := range blocks {
+		blockDir := fmt.Sprintf("%s/%s", dir, bId.String())
+		b, err := tsdb.OpenBlock(nil, blockDir, nil, nil)
+		require.NoError(t, err)
+		// upload block
+		err = block.Upload(ctx, logger, userBucket, b.Dir(), metadata.NoneFunc)
+		require.NoError(t, err)
+
+		// upload no-compact-mark.json
+		err = block.MarkForNoCompact(ctx, logger, userBucket, bId, metadata.ManualNoCompactReason, "", promauto.With(nil).NewCounter(prometheus.CounterOpts{}))
+		require.NoError(t, err)
+	}
+
+	ringMock := &ring.RingMock{}
+	ringMock.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{
+				Addr: "1.2.3.4",
+			},
+		},
+	}, nil)
+
+	err = c.convertUser(ctx, log.NewNopLogger(), ringMock, userID)
+	require.NoError(t, err)
+
+	// Verify the converted metric was incremented
+	assert.Equal(t, float64(numBlocks), testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(userID)))
+}
+
 func TestConverter_BlockConversionFailure(t *testing.T) {
 	// Create a new registry for testing
 	reg := prometheus.NewRegistry()
@@ -283,7 +355,16 @@ func TestConverter_BlockConversionFailure(t *testing.T) {
 		Addr: "1.2.3.4",
 	}
 
-	err = converter.convertUser(context.Background(), logger, &RingMock{ReadRing: &ring.Ring{}}, userID)
+	ringMock := &ring.RingMock{}
+	ringMock.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{
+				Addr: "1.2.3.4",
+			},
+		},
+	}, nil)
+
+	err = converter.convertUser(context.Background(), logger, ringMock, userID)
 	require.NoError(t, err)
 
 	// Verify the failure metric was incremented
@@ -352,7 +433,16 @@ func TestConverter_ShouldNotFailOnAccessDenyError(t *testing.T) {
 		Addr: "1.2.3.4",
 	}
 
-	err = converter.convertUser(context.Background(), logger, &RingMock{ReadRing: &ring.Ring{}}, userID)
+	ringMock := &ring.RingMock{}
+	ringMock.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{
+				Addr: "1.2.3.4",
+			},
+		},
+	}, nil)
+
+	err = converter.convertUser(context.Background(), logger, ringMock, userID)
 	require.Error(t, err)
 
 	// Verify the failure metric was not incremented
@@ -378,18 +468,4 @@ func (m *mockBucket) Get(ctx context.Context, name string) (io.ReadCloser, error
 		return nil, m.getFailure
 	}
 	return m.Bucket.Get(ctx, name)
-}
-
-type RingMock struct {
-	ring.ReadRing
-}
-
-func (r *RingMock) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDesc, bufHosts []string, bufZones map[string]int) (ring.ReplicationSet, error) {
-	return ring.ReplicationSet{
-		Instances: []ring.InstanceDesc{
-			{
-				Addr: "1.2.3.4",
-			},
-		},
-	}, nil
 }

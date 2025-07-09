@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/oklog/ulid/v2"
 	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus-community/parquet-common/convert"
@@ -53,11 +54,14 @@ const (
 
 var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
+type NoCompactMarkCheckFunc = func(bId ulid.ULID) bool
+
 type Config struct {
-	MetaSyncConcurrency int           `yaml:"meta_sync_concurrency"`
-	ConversionInterval  time.Duration `yaml:"conversion_interval"`
-	MaxRowsPerRowGroup  int           `yaml:"max_rows_per_row_group"`
-	FileBufferEnabled   bool          `yaml:"file_buffer_enabled"`
+	MetaSyncConcurrency     int           `yaml:"meta_sync_concurrency"`
+	ConversionInterval      time.Duration `yaml:"conversion_interval"`
+	MaxRowsPerRowGroup      int           `yaml:"max_rows_per_row_group"`
+	FileBufferEnabled       bool          `yaml:"file_buffer_enabled"`
+	NoCompactMarkCheckAfter time.Duration `yaml:"no_compact_mark_check_after"`
 
 	DataDir string `yaml:"data_dir"`
 
@@ -109,6 +113,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRowsPerRowGroup, "parquet-converter.max-rows-per-row-group", 1e6, "Max number of rows per parquet row group.")
 	f.DurationVar(&cfg.ConversionInterval, "parquet-converter.conversion-interval", time.Minute, "The frequency at which the conversion job runs.")
 	f.BoolVar(&cfg.FileBufferEnabled, "parquet-converter.file-buffer-enabled", true, "Whether to enable buffering the writes in disk to reduce memory utilization.")
+	f.DurationVar(&cfg.NoCompactMarkCheckAfter, "parquet-converter.no-compact-mark-check-after", time.Hour*13, "The time after which a `no-compact-mark.json` file should be checked.")
 }
 
 func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Converter, error) {
@@ -392,7 +397,11 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		if !cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, c.blockRanges) {
+		noCompactMarkCheckFunc := func(bId ulid.ULID) bool {
+			return cortex_parquet.ExistBlockNoCompact(ctx, uBucket, logger, b.ULID)
+		}
+
+		if !cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, c.cfg.NoCompactMarkCheckAfter.Milliseconds(), c.blockRanges, b.ULID, noCompactMarkCheckFunc) {
 			continue
 		}
 

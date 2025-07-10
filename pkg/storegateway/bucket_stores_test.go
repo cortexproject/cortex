@@ -460,19 +460,12 @@ func TestBucketStores_scanUsers(t *testing.T) {
 	tests := map[string]struct {
 		scanner     *mockScanner
 		expectedRes []string
-		expectedErr error
 	}{
-		"should succeed": {
-			scanner: &mockScanner{
-				res: []string{"user-1", "user-2", "user-3"},
-			},
-			expectedRes: []string{"user-1", "user-2", "user-3"},
-		},
-		"should return error if duplicate users are returned": {
+		"should return unique users only": {
 			scanner: &mockScanner{
 				res: []string{"user-1", "user-2", "user-1"},
 			},
-			expectedErr: fmt.Errorf("duplicate user scanned: user-1"),
+			expectedRes: []string{"user-1", "user-2"},
 		},
 	}
 
@@ -487,13 +480,8 @@ func TestBucketStores_scanUsers(t *testing.T) {
 
 			users, err := stores.scanUsers(context.Background())
 
-			if testData.expectedErr != nil {
-				assert.ErrorContains(t, err, testData.expectedErr.Error())
-				assert.Empty(t, users)
-			} else {
-				assert.NoError(t, err)
-				assert.ElementsMatch(t, testData.expectedRes, users)
-			}
+			assert.NoError(t, err)
+			assert.ElementsMatch(t, testData.expectedRes, users)
 		})
 	}
 }

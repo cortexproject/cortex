@@ -56,6 +56,11 @@ type Materializer struct {
 // materialized series.
 type MaterializedSeriesFunc func(ctx context.Context, series []prom_storage.ChunkSeries) error
 
+// NoopMaterializedSeriesFunc is a noop callback function that does nothing.
+func NoopMaterializedSeriesFunc(_ context.Context, _ []prom_storage.ChunkSeries) error {
+	return nil
+}
+
 func NewMaterializer(s *schema.TSDBSchema,
 	d *schema.PrometheusParquetChunksDecoder,
 	block storage.ParquetShard,

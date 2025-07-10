@@ -35,21 +35,25 @@ func (re *resourceExhausted) Error() string {
 	return fmt.Sprintf("resource exhausted (used %d)", re.used)
 }
 
+// IsResourceExhausted checks if the error is a resource exhausted error.
 func IsResourceExhausted(err error) bool {
 	var re *resourceExhausted
 	return errors.As(err, &re)
 }
 
+// Quota is a limiter for a resource.
 type Quota struct {
 	mu sync.Mutex
 	q  int64
 	u  int64
 }
 
+// NewQuota creates a new quota with the given limit.
 func NewQuota(n int64) *Quota {
 	return &Quota{q: n, u: n}
 }
 
+// UnlimitedQuota creates a new quota with no limit.
 func UnlimitedQuota() *Quota {
 	return NewQuota(0)
 }
@@ -69,8 +73,10 @@ func (q *Quota) Reserve(n int64) error {
 	return nil
 }
 
+// QuotaLimitFunc is a function that returns the limit value.
 type QuotaLimitFunc func(ctx context.Context) int64
 
+// NoopQuotaLimitFunc returns 0 which means no limit.
 func NoopQuotaLimitFunc(ctx context.Context) int64 {
 	return 0
 }

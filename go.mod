@@ -83,7 +83,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/parquet-go/parquet-go v0.25.1
-	github.com/prometheus-community/parquet-common v0.0.0-20250708210438-f89902fcd994
+	github.com/prometheus-community/parquet-common v0.0.0-20250710090957-8fdc99f06643
 	github.com/prometheus/procfs v0.16.1
 	github.com/sercand/kuberesolver/v5 v5.1.1
 	github.com/tjhop/slog-gokit v0.1.4
@@ -325,5 +325,3 @@ replace github.com/thanos-io/objstore => github.com/thanos-io/objstore v0.0.0-20
 
 // v3.3.1 with https://github.com/prometheus/prometheus/pull/16252. (same as thanos)
 replace github.com/prometheus/prometheus => github.com/thanos-io/thanos-prometheus v0.0.0-20250610133519-082594458a88
-
-replace github.com/prometheus-community/parquet-common => github.com/yeya24/parquet-common v0.0.0-20250709074935-71782c65c3d4

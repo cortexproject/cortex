@@ -42,13 +42,11 @@ type queryableOpts struct {
 }
 
 var DefaultQueryableOpts = queryableOpts{
-	concurrency:         runtime.GOMAXPROCS(0),
-	rowCountLimitFunc:   search.NoopQuotaLimitFunc,
-	chunkBytesLimitFunc: search.NoopQuotaLimitFunc,
-	dataBytesLimitFunc:  search.NoopQuotaLimitFunc,
-	materializedSeriesCallback: func(_ context.Context, _ []prom_storage.ChunkSeries) error {
-		return nil
-	},
+	concurrency:                runtime.GOMAXPROCS(0),
+	rowCountLimitFunc:          search.NoopQuotaLimitFunc,
+	chunkBytesLimitFunc:        search.NoopQuotaLimitFunc,
+	dataBytesLimitFunc:         search.NoopQuotaLimitFunc,
+	materializedSeriesCallback: search.NoopMaterializedSeriesFunc,
 }
 
 type QueryableOpts func(*queryableOpts)
@@ -60,24 +58,29 @@ func WithConcurrency(concurrency int) QueryableOpts {
 	}
 }
 
+// WithRowCountLimitFunc sets a callback function to get limit for matched row count.
 func WithRowCountLimitFunc(fn search.QuotaLimitFunc) QueryableOpts {
 	return func(opts *queryableOpts) {
 		opts.rowCountLimitFunc = fn
 	}
 }
 
+// WithChunkBytesLimitFunc sets a callback function to get limit for chunk column page bytes fetched.
 func WithChunkBytesLimitFunc(fn search.QuotaLimitFunc) QueryableOpts {
 	return func(opts *queryableOpts) {
 		opts.chunkBytesLimitFunc = fn
 	}
 }
 
+// WithDataBytesLimitFunc sets a callback function to get limit for data (including label and chunk)
+// column page bytes fetched.
 func WithDataBytesLimitFunc(fn search.QuotaLimitFunc) QueryableOpts {
 	return func(opts *queryableOpts) {
 		opts.dataBytesLimitFunc = fn
 	}
 }
 
+// WithMaterializedSeriesCallback sets a callback function to process the materialized series.
 func WithMaterializedSeriesCallback(fn search.MaterializedSeriesFunc) QueryableOpts {
 	return func(opts *queryableOpts) {
 		opts.materializedSeriesCallback = fn

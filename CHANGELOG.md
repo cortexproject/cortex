@@ -70,7 +70,7 @@
 * [BUGFIX] Ruler: Prevent counting 2xx and 4XX responses as failed writes. #6785
 * [BUGFIX] Ingester: Allow shipper to skip corrupted blocks. #6786
 * [BUGFIX] Compactor: Delete the prefix `blocks_meta` from the metadata fetcher metrics. #6832
-* [BUGFIX] Store Gateway: Avoid race condition by checking for duplicate entries in bucket stores user scan. #6863
+* [BUGFIX] Store Gateway: Avoid race condition by deduplicating entries in bucket stores user scan. #6863
 
 ## 1.19.0 2025-02-27
 

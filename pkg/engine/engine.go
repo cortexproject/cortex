@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	thanosengine "github.com/thanos-io/promql-engine/engine"
-	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 type engineKeyType struct{}
@@ -52,15 +51,16 @@ type Engine struct {
 	engineSwitchQueriesTotal *prometheus.CounterVec
 }
 
-func New(opts promql.EngineOpts, enableThanosEngine bool, reg prometheus.Registerer) *Engine {
+func New(opts promql.EngineOpts, engineCfg Config, reg prometheus.Registerer) *Engine {
 	prometheusEngine := promql.NewEngine(opts)
 
 	var thanosEngine *thanosengine.Engine
-	if enableThanosEngine {
+	if engineCfg.EnableThanosEngine {
 		thanosEngine = thanosengine.New(thanosengine.Opts{
 			EngineOpts:        opts,
-			LogicalOptimizers: logicalplan.DefaultOptimizers,
+			LogicalOptimizers: engineCfg.LogicalOptimizers,
 			EnableAnalysis:    true,
+			EnableXFunctions:  engineCfg.EnableXFunctions,
 		})
 	}
 

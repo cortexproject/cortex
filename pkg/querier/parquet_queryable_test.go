@@ -490,7 +490,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 			limits: func() *validation.Overrides {
 				limits := validation.Limits{}
 				flagext.DefaultValues(&limits)
-				limits.MaxFetchedSeriesPerQuery = 1
+				limits.ParquetMaxFetchedRowCount = 1
 				return validation.NewOverrides(limits, nil)
 			}(),
 			queryLimiter: limiter.NewQueryLimiter(0, 0, 0, 0),
@@ -509,7 +509,6 @@ func TestParquetQueryable_Limits(t *testing.T) {
 			limits: func() *validation.Overrides {
 				limits := validation.Limits{}
 				flagext.DefaultValues(&limits)
-				limits.MaxChunksPerQuery = 1
 				return validation.NewOverrides(limits, nil)
 			}(),
 			queryLimiter: limiter.NewQueryLimiter(0, 0, 1, 0),
@@ -519,7 +518,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 			limits: func() *validation.Overrides {
 				limits := validation.Limits{}
 				flagext.DefaultValues(&limits)
-				limits.MaxFetchedChunkBytesPerQuery = 1
+				limits.ParquetMaxFetchedChunkBytes = 1
 				return validation.NewOverrides(limits, nil)
 			}(),
 			queryLimiter: limiter.NewQueryLimiter(0, 1, 0, 0),
@@ -538,7 +537,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 			limits: func() *validation.Overrides {
 				limits := validation.Limits{}
 				flagext.DefaultValues(&limits)
-				limits.MaxFetchedDataBytesPerQuery = 1
+				limits.ParquetMaxFetchedDataBytes = 1
 				return validation.NewOverrides(limits, nil)
 			}(),
 			queryLimiter: limiter.NewQueryLimiter(0, 0, 0, 1),

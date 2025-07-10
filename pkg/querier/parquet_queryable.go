@@ -141,7 +141,7 @@ func NewParquetQueryable(
 				// This shouldn't happen
 				return 0
 			}
-			return int64(limits.MaxFetchedSeriesPerQuery(userID))
+			return int64(limits.ParquetMaxFetchedRowCount(userID))
 		}),
 		queryable.WithChunkBytesLimitFunc(func(ctx context.Context) int64 {
 			userID, err := tenant.TenantID(ctx)
@@ -149,7 +149,7 @@ func NewParquetQueryable(
 				// This shouldn't happen
 				return 0
 			}
-			return int64(limits.MaxFetchedChunkBytesPerQuery(userID))
+			return int64(limits.ParquetMaxFetchedChunkBytes(userID))
 		}),
 		queryable.WithDataBytesLimitFunc(func(ctx context.Context) int64 {
 			userID, err := tenant.TenantID(ctx)
@@ -157,7 +157,7 @@ func NewParquetQueryable(
 				// This shouldn't happen
 				return 0
 			}
-			return int64(limits.MaxFetchedDataBytesPerQuery(userID))
+			return int64(limits.ParquetMaxFetchedDataBytes(userID))
 		}),
 		queryable.WithMaterializedSeriesCallback(func(ctx context.Context, cs []storage.ChunkSeries) error {
 			queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
@@ -440,7 +440,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		storage.ErrSeriesSet(err)
+		return storage.ErrSeriesSet(err)
 	}
 
 	if q.limits.QueryVerticalShardSize(userID) > 1 {

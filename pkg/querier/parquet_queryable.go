@@ -163,6 +163,7 @@ func NewParquetQueryable(
 			queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
 			lbls := make([][]cortexpb.LabelAdapter, 0, len(cs))
 			for _, series := range cs {
+				chkCount := 0
 				chunkSize := 0
 				lblSize := 0
 				lblAdapter := cortexpb.FromLabelsToLabelAdapters(series.Labels())
@@ -174,10 +175,17 @@ func NewParquetQueryable(
 				for iter.Next() {
 					chk := iter.At()
 					chunkSize += len(chk.Chunk.Bytes())
+					chkCount++
 				}
-				if err := queryLimiter.AddChunkBytes(chunkSize); err != nil {
-					return validation.LimitError(err.Error())
+				if chkCount > 0 {
+					if err := queryLimiter.AddChunks(chkCount); err != nil {
+						return validation.LimitError(err.Error())
+					}
+					if err := queryLimiter.AddChunkBytes(chunkSize); err != nil {
+						return validation.LimitError(err.Error())
+					}
 				}
+
 				if err := queryLimiter.AddDataBytes(chunkSize + lblSize); err != nil {
 					return validation.LimitError(err.Error())
 				}

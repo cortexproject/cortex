@@ -33,7 +33,7 @@ The current model struggles with high-cardinality queries scanning millions of s
 
 #### Inefficient Merging
 
-Merging results in the query-frontend—which isn’t shuffle-sharded — makes it a single point of failure. Poison queries can OOM all query-frontends, impacting availability.
+Merging results in the query-frontend—which isn’t shuffle-sharded — makes it a single point of failure. Poison queries with large responses can OOM all query-frontends, impacting availability.
 
 #### Limited Query Rewriting
 

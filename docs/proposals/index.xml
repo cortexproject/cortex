@@ -2390,4 +2390,72 @@ Blocks: B1, B2, B4, B6&lt;/li>
 &lt;li>Partition ID: 1 &lt;br>
 Number of Partitions: 2 &lt;br>
 Blocks: B1, B3, B5, B7&lt;/li>
+&lt;/ul></description></item><item><title>Docs: User Overrides API</title><link>/docs/proposals/overrides-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/overrides-api/</guid><description>
+&lt;ul>
+&lt;li>Author: Bogdan Stancu&lt;/li>
+&lt;li>Date: June 2025&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;h2 id="overview">Overview&lt;/h2>
+&lt;p>This proposal outlines the design for a new API endpoint that will allow users to modify their current limits in Cortex. Currently, overrides can only be changed by administrators modifying the runtime configuration file and waiting for it to be reloaded.&lt;/p>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;p>Currently, when users need limit adjustments, they must:&lt;/p>
+&lt;ol>
+&lt;li>Manually editing the runtime configuration file&lt;/li>
+&lt;li>Coordinate with users to verify the changes&lt;/li>
+&lt;li>Potentially repeating this process multiple times to find the right balance&lt;/li>
+&lt;/ol>
+&lt;p>This manual process is time-consuming, error-prone, and doesn&amp;rsquo;t scale well with a large number of users. By offering a self-service API, users can adjust their own limits within predefined boundaries, reducing the administrative overhead and improving the user experience.&lt;/p>
+&lt;h2 id="proposed-api-design">Proposed API Design&lt;/h2>
+&lt;h3 id="endpoints">Endpoints&lt;/h3>
+&lt;h4 id="1-get-apiv1user-overrides">1. GET /api/v1/user-overrides&lt;/h4>
+&lt;p>Returns the current overrides configuration for a specific tenant.&lt;/p>
+&lt;p>Response format:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-json" data-lang="json">&lt;span style="display:flex;">&lt;span>{
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;ingestion_rate&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">10000&lt;/span>,
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;ingestion_burst_size&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">20000&lt;/span>,
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;max_global_series_per_user&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">1000000&lt;/span>,
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;max_global_series_per_metric&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">200000&lt;/span>,
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#960050;background-color:#1e0010">...&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>}
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="2-put-apiv1user-overrides">2. PUT /api/v1/user-overrides&lt;/h4>
+&lt;p>Updates overrides for a specific tenant. The request body should contain only the overrides that need to be updated.&lt;/p>
+&lt;p>Request body:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-json" data-lang="json">&lt;span style="display:flex;">&lt;span>{
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;ingestion_rate&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">10000&lt;/span>,
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;max_series_per_metric&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>}
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="3-delete-apiv1user-overrides">3. DELETE /api/v1/user-overrides&lt;/h4>
+&lt;p>Removes tenant-specific overrides, reverting to default overrides.&lt;/p>
+&lt;h3 id="implementation-details">Implementation Details&lt;/h3>
+&lt;ol>
+&lt;li>
+&lt;p>The API will be integrated into the cortex-overrides component to:&lt;/p>
+&lt;ul>
+&lt;li>Read the current runtime config from the configured storage backend&lt;/li>
+&lt;li>Persist changes back to the storage backend&lt;/li>
+&lt;li>The API will only work with configurations stored in block storage backends.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>Security:&lt;/p>
+&lt;ul>
+&lt;li>Rate limiting will be implemented to prevent abuse&lt;/li>
+&lt;li>Changes will be validated before being applied&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>Error Handling:&lt;/p>
+&lt;ul>
+&lt;li>Invalid limit values will return 400 Bad Request&lt;/li>
+&lt;li>Storage backend errors will return 500 Internal Server Error&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ol>
+&lt;h3 id="open-questions">Open Questions:&lt;/h3>
+&lt;ul>
+&lt;li>How do we implement a hard-limit configuration to avoid users
+setting unreasonable limits?&lt;/li>
+&lt;li>What set of overrides can be configurable through this API?
+Limits like &lt;code>shard_size&lt;/code> should only be modified by the admin.&lt;/li>
 &lt;/ul></description></item></channel></rss>

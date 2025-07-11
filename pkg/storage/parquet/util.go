@@ -1,8 +1,28 @@
 package parquet
 
-func ShouldConvertBlockToParquet(mint, maxt int64, timeRanges []int64) bool {
+import (
+	"github.com/oklog/ulid/v2"
+)
+
+type NoCompactMarkCheckFunc = func(bId ulid.ULID) bool
+
+func ShouldConvertBlockToParquet(mint, maxt, noCompactMarkCheckAfter int64, timeRanges []int64, bId ulid.ULID, checkFunc NoCompactMarkCheckFunc) bool {
 	// We assume timeRanges[0] is the TSDB block duration (2h), and we don't convert them.
-	return getBlockTimeRange(mint, maxt, timeRanges) > timeRanges[0]
+	blockTimeRange := getBlockTimeRange(mint, maxt, timeRanges)
+	if blockTimeRange > timeRanges[0] {
+		return true
+	}
+
+	// We should check if 2h blocks have a `no-compact-mark.json` file
+	// since these will never be compacted to 12h block.
+	// We check if the `no-compact-mark.json` file exists only for blocks
+	// after the noCompactMarkCheckAfter to reduce object storage calls.
+	if mint >= noCompactMarkCheckAfter {
+		if blockTimeRange == timeRanges[0] && checkFunc(bId) {
+			return true
+		}
+	}
+	return false
 }
 
 func getBlockTimeRange(mint, maxt int64, timeRanges []int64) int64 {

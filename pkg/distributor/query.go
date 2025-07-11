@@ -297,8 +297,11 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	defer span.Finish()
 	hashToChunkseries := map[string]ingester_client.TimeSeriesChunk{}
 
+	resp := &ingester_client.QueryStreamResponse{}
+
 	for _, result := range results {
 		response := result.(*ingester_client.QueryStreamResponse)
+		resp.MergeBuffers(response)
 
 		// Parse any chunk series
 		for _, series := range response.Chunkseries {
@@ -310,9 +313,8 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		}
 	}
 
-	resp := &ingester_client.QueryStreamResponse{
-		Chunkseries: make([]ingester_client.TimeSeriesChunk, 0, len(hashToChunkseries)),
-	}
+	resp.Chunkseries = make([]ingester_client.TimeSeriesChunk, 0, len(hashToChunkseries))
+	
 	for _, series := range hashToChunkseries {
 		resp.Chunkseries = append(resp.Chunkseries, series)
 	}

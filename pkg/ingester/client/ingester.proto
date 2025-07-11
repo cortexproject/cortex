@@ -57,6 +57,7 @@ message QueryStreamResponse {
   repeated TimeSeriesChunk chunkseries = 1 [(gogoproto.nullable) = false];
   // Not used anymore
   reserved  2;
+  cortexpb.MessageWithBufRef Ref = 1001 [(gogoproto.embed) = true, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.MessageWithBufRef", (gogoproto.nullable) = false];
 }
 
 message ExemplarQueryResponse {

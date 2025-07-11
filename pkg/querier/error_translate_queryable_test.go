@@ -51,7 +51,8 @@ func TestApiStatusCodes(t *testing.T) {
 			expectedCode:   422,
 		},
 
-		{err: promql.ErrTooManySamples("query execution"),
+		{
+			err:            promql.ErrTooManySamples("query execution"),
 			expectedString: "too many samples",
 			expectedCode:   422,
 		},
@@ -79,6 +80,7 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            httpgrpc.Errorf(http.StatusNotFound, "not found"),
 			expectedString: "not found",
+			expectedCode:   422,
 		},
 
 		{

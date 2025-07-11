@@ -458,8 +458,23 @@ func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {
 	users := make([]string, 0, len(activeUsers)+len(deletingUsers))
 	users = append(users, activeUsers...)
 	users = append(users, deletingUsers...)
+	users = deduplicateUsers(users)
 
 	return users, err
+}
+
+func deduplicateUsers(users []string) []string {
+	seen := make(map[string]struct{}, len(users))
+	var uniqueUsers []string
+
+	for _, user := range users {
+		if _, ok := seen[user]; !ok {
+			seen[user] = struct{}{}
+			uniqueUsers = append(uniqueUsers, user)
+		}
+	}
+
+	return uniqueUsers
 }
 
 func (u *BucketStores) getStore(userID string) *store.BucketStore {

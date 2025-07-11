@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus-community/parquet-common/convert"
+	"github.com/prometheus-community/parquet-common/search"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -593,6 +595,201 @@ func TestParquetQueryable_Limits(t *testing.T) {
 			}
 
 			require.NoError(t, set.Err())
+		})
+	}
+}
+
+func TestMaterializedLabelsCallback(t *testing.T) {
+	t.Parallel()
+
+	// Helper function to create test labels
+	createLabels := func(name, value string) []labels.Label {
+		return []labels.Label{{Name: name, Value: value}}
+	}
+
+	buf := sync.Pool{New: func() interface{} {
+		b := make([]byte, 0, 1024)
+		return &b
+	}}
+	// Helper function to create a proper shard matcher with buffer pool
+	createShardMatcher := func(labels []string, by bool, totalShards, shardIndex int64) *storepb.ShardMatcher {
+		si := &storepb.ShardInfo{
+			ShardIndex:  shardIndex,
+			TotalShards: totalShards,
+			By:          by,
+			Labels:      labels,
+		}
+		return si.Matcher(&buf)
+	}
+
+	tests := map[string]struct {
+		ctx            context.Context
+		seriesLabels   [][]labels.Label
+		rowRanges      []search.RowRange
+		expectedLabels [][]labels.Label
+		expectedRanges []search.RowRange
+	}{
+		"no shard matcher in context - returns original data": {
+			ctx: context.Background(),
+			seriesLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+			},
+			rowRanges: []search.RowRange{
+				{From: 0, Count: 2},
+			},
+			expectedLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+			},
+			expectedRanges: []search.RowRange{
+				{From: 0, Count: 2},
+			},
+		},
+		"shard matcher exists but not sharded - returns original data": {
+			ctx: injectShardMatcherIntoContext(context.Background(), createShardMatcher(nil, false, 0, 0)),
+			seriesLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+			},
+			rowRanges: []search.RowRange{
+				{From: 0, Count: 2},
+			},
+			expectedLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+			},
+			expectedRanges: []search.RowRange{
+				{From: 0, Count: 2},
+			},
+		},
+		"shard matcher with shard by labels - filters correctly": {
+			ctx: injectShardMatcherIntoContext(context.Background(), createShardMatcher([]string{"__name__"}, true, 2, 0)),
+			seriesLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+				createLabels("__name__", "metric3"),
+				createLabels("__name__", "metric4"),
+			},
+			rowRanges: []search.RowRange{
+				{From: 0, Count: 4},
+			},
+			expectedLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+				createLabels("__name__", "metric4"),
+			},
+			expectedRanges: []search.RowRange{
+				{From: 0, Count: 2},
+				{From: 3, Count: 1},
+			},
+		},
+		"shard matcher with shard without labels - filters correctly": {
+			ctx: injectShardMatcherIntoContext(context.Background(), createShardMatcher([]string{"__name__"}, false, 2, 1)),
+			seriesLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+				createLabels("__name__", "metric3"),
+				createLabels("__name__", "metric4"),
+			},
+			rowRanges: []search.RowRange{
+				{From: 0, Count: 4},
+			},
+			expectedLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+				createLabels("__name__", "metric3"),
+				createLabels("__name__", "metric4"),
+			},
+			expectedRanges: []search.RowRange{
+				{From: 0, Count: 4},
+			},
+		},
+		"shard matcher with multiple labels - filters correctly": {
+			ctx: injectShardMatcherIntoContext(context.Background(), createShardMatcher([]string{"__name__", "instance"}, true, 3, 1)),
+			seriesLabels: [][]labels.Label{
+				{{Name: "__name__", Value: "metric1"}, {Name: "instance", Value: "host1"}},
+				{{Name: "__name__", Value: "metric2"}, {Name: "instance", Value: "host2"}},
+				{{Name: "__name__", Value: "metric3"}, {Name: "instance", Value: "host3"}},
+				{{Name: "__name__", Value: "metric4"}, {Name: "instance", Value: "host4"}},
+				{{Name: "__name__", Value: "metric5"}, {Name: "instance", Value: "host5"}},
+				{{Name: "__name__", Value: "metric6"}, {Name: "instance", Value: "host6"}},
+			},
+			rowRanges: []search.RowRange{
+				{From: 0, Count: 6},
+			},
+			expectedLabels: [][]labels.Label{
+				{{Name: "__name__", Value: "metric2"}, {Name: "instance", Value: "host2"}},
+				{{Name: "__name__", Value: "metric3"}, {Name: "instance", Value: "host3"}},
+			},
+			expectedRanges: []search.RowRange{
+				{From: 1, Count: 2},
+			},
+		},
+		"no matching rows - returns empty results": {
+			ctx: injectShardMatcherIntoContext(context.Background(), createShardMatcher([]string{"__name__"}, true, 2, 1)),
+			seriesLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+			},
+			rowRanges: []search.RowRange{
+				{From: 0, Count: 2},
+			},
+			expectedLabels: [][]labels.Label(nil),
+			expectedRanges: []search.RowRange(nil),
+		},
+		"all rows match - creates single range": {
+			ctx: injectShardMatcherIntoContext(context.Background(), createShardMatcher([]string{"__name__"}, true, 1, 0)),
+			seriesLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+				createLabels("__name__", "metric3"),
+			},
+			rowRanges: []search.RowRange{
+				{From: 0, Count: 3},
+			},
+			expectedLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+				createLabels("__name__", "metric3"),
+			},
+			expectedRanges: []search.RowRange{
+				{From: 0, Count: 3},
+			},
+		},
+		"matching row at the end - creates range ending at last row": {
+			ctx: injectShardMatcherIntoContext(context.Background(), createShardMatcher([]string{"__name__"}, true, 2, 1)),
+			seriesLabels: [][]labels.Label{
+				createLabels("__name__", "metric1"),
+				createLabels("__name__", "metric2"),
+				createLabels("__name__", "metric3"),
+			},
+			rowRanges: []search.RowRange{
+				{From: 0, Count: 3},
+			},
+			expectedLabels: [][]labels.Label{
+				createLabels("__name__", "metric3"),
+			},
+			expectedRanges: []search.RowRange{
+				{From: 2, Count: 1},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Clean up shard matcher after test
+			if shardMatcher, exists := extractShardMatcherFromContext(testData.ctx); exists {
+				defer shardMatcher.Close()
+			}
+
+			resultLabels, resultRanges := materializedLabelsCallback(testData.ctx, nil, testData.seriesLabels, testData.rowRanges)
+
+			require.Equal(t, testData.expectedLabels, resultLabels, "labels mismatch")
+			require.Equal(t, testData.expectedRanges, resultRanges, "row ranges mismatch")
 		})
 	}
 }

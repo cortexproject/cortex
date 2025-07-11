@@ -39,6 +39,7 @@ type queryableOpts struct {
 	chunkBytesLimitFunc        search.QuotaLimitFunc
 	dataBytesLimitFunc         search.QuotaLimitFunc
 	materializedSeriesCallback search.MaterializedSeriesFunc
+	materializedLabelsCallback search.MaterializedLabelsFunc
 }
 
 var DefaultQueryableOpts = queryableOpts{
@@ -47,6 +48,7 @@ var DefaultQueryableOpts = queryableOpts{
 	chunkBytesLimitFunc:        search.NoopQuotaLimitFunc,
 	dataBytesLimitFunc:         search.NoopQuotaLimitFunc,
 	materializedSeriesCallback: search.NoopMaterializedSeriesFunc,
+	materializedLabelsCallback: search.NoopMaterializedLabelsFunc,
 }
 
 type QueryableOpts func(*queryableOpts)
@@ -84,6 +86,13 @@ func WithDataBytesLimitFunc(fn search.QuotaLimitFunc) QueryableOpts {
 func WithMaterializedSeriesCallback(fn search.MaterializedSeriesFunc) QueryableOpts {
 	return func(opts *queryableOpts) {
 		opts.materializedSeriesCallback = fn
+	}
+}
+
+// WithMaterializedLabelsCallback sets a callback function to process the series labels for filtering before materializing chunks.
+func WithMaterializedLabelsCallback(fn search.MaterializedLabelsFunc) QueryableOpts {
+	return func(opts *queryableOpts) {
+		opts.materializedLabelsCallback = fn
 	}
 }
 
@@ -207,7 +216,7 @@ func (p parquetQuerier) Select(ctx context.Context, sorted bool, sp *prom_storag
 
 	for i, shard := range shards {
 		errGroup.Go(func() error {
-			ss, err := shard.Query(ctx, sorted, minT, maxT, skipChunks, matchers)
+			ss, err := shard.Query(ctx, sorted, sp, minT, maxT, skipChunks, matchers)
 			seriesSet[i] = ss
 			return err
 		})
@@ -252,7 +261,7 @@ func newQueryableShard(opts *queryableOpts, block storage.ParquetShard, d *schem
 	if err != nil {
 		return nil, err
 	}
-	m, err := search.NewMaterializer(s, d, block, opts.concurrency, rowCountQuota, chunkBytesQuota, dataBytesQuota, opts.materializedSeriesCallback)
+	m, err := search.NewMaterializer(s, d, block, opts.concurrency, rowCountQuota, chunkBytesQuota, dataBytesQuota, opts.materializedSeriesCallback, opts.materializedLabelsCallback)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +273,7 @@ func newQueryableShard(opts *queryableOpts, block storage.ParquetShard, d *schem
 	}, nil
 }
 
-func (b queryableShard) Query(ctx context.Context, sorted bool, mint, maxt int64, skipChunks bool, matchers []*labels.Matcher) (prom_storage.ChunkSeriesSet, error) {
+func (b queryableShard) Query(ctx context.Context, sorted bool, sp *prom_storage.SelectHints, mint, maxt int64, skipChunks bool, matchers []*labels.Matcher) (prom_storage.ChunkSeriesSet, error) {
 	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(b.concurrency)
 
@@ -290,10 +299,14 @@ func (b queryableShard) Query(ctx context.Context, sorted bool, mint, maxt int64
 				return nil
 			}
 
-			series, err := b.m.Materialize(ctx, rgi, mint, maxt, skipChunks, rr)
+			series, err := b.m.Materialize(ctx, sp, rgi, mint, maxt, skipChunks, rr)
 			if err != nil {
 				return err
 			}
+			if len(series) == 0 {
+				return nil
+			}
+
 			rMtx.Lock()
 			results = append(results, series...)
 			rMtx.Unlock()

@@ -94,7 +94,7 @@ func Filter(ctx context.Context, s storage.ParquetShard, rgIdx int, cs ...Constr
 		}
 	}
 	var err error
-	rr := []RowRange{{from: int64(0), count: rg.NumRows()}}
+	rr := []RowRange{{From: int64(0), Count: rg.NumRows()}}
 	for i := range cs {
 		isPrimary := len(sc) > 0 && cs[i].path() == sc[0].Path()[0]
 		rr, err = cs[i].filter(ctx, rgIdx, isPrimary, rr)
@@ -185,7 +185,7 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 	if len(rr) == 0 {
 		return nil, nil
 	}
-	from, to := rr[0].from, rr[len(rr)-1].from+rr[len(rr)-1].count
+	from, to := rr[0].From, rr[len(rr)-1].From+rr[len(rr)-1].Count
 
 	rg := ec.f.RowGroups()[rgIdx]
 
@@ -398,7 +398,7 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 	if len(rr) == 0 {
 		return nil, nil
 	}
-	from, to := rr[0].from, rr[len(rr)-1].from+rr[len(rr)-1].count
+	from, to := rr[0].From, rr[len(rr)-1].From+rr[len(rr)-1].Count
 
 	rg := rc.f.RowGroups()[rgIdx]
 

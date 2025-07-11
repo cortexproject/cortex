@@ -63,8 +63,9 @@ func TestParquetFuzz(t *testing.T) {
 			"-store-gateway.sharding-enabled":   "false",
 			"--querier.store-gateway-addresses": "nonExistent", // Make sure we do not call Store gateways
 			// alert manager
-			"-alertmanager.web.external-url":      "http://localhost/alertmanager",
-			"-frontend.query-vertical-shard-size": "1",
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+			// Enable vertical sharding.
+			"-frontend.query-vertical-shard-size": "3",
 			"-frontend.max-cache-freshness":       "1m",
 			// enable experimental promQL funcs
 			"-querier.enable-promql-experimental-functions": "true",

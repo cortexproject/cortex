@@ -314,7 +314,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	}
 
 	resp.Chunkseries = make([]ingester_client.TimeSeriesChunk, 0, len(hashToChunkseries))
-	
+
 	for _, series := range hashToChunkseries {
 		resp.Chunkseries = append(resp.Chunkseries, series)
 	}

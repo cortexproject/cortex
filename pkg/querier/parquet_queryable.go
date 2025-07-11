@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus-community/parquet-common/queryable"
 	"github.com/prometheus-community/parquet-common/schema"
+	"github.com/prometheus-community/parquet-common/search"
 	parquet_storage "github.com/prometheus-community/parquet-common/storage"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -20,17 +20,18 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -153,6 +154,7 @@ func NewParquetQueryable(
 			userID, _ := tenant.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedDataBytes(userID))
 		}),
+		queryable.WithMaterializedLabelsFilterCallback(materializedLabelsFilterCallback),
 		queryable.WithMaterializedSeriesCallback(func(ctx context.Context, cs []storage.ChunkSeries) error {
 			queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
 			lbls := make([][]cortexpb.LabelAdapter, 0, len(cs))
@@ -432,17 +434,11 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.Select")
 	defer span.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	newMatchers, shardMatcher, err := querysharding.ExtractShardingMatchers(matchers)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
-
-	if q.limits.QueryVerticalShardSize(userID) > 1 {
-		uLogger := util_log.WithUserID(userID, q.logger)
-		level.Warn(uLogger).Log("msg", "parquet queryable enabled but vertical sharding > 1. Falling back to the block storage")
-
-		return q.blocksStoreQuerier.Select(ctx, sortSeries, h, matchers...)
-	}
+	defer shardMatcher.Close()
 
 	hints := storage.SelectHints{
 		Start: q.minT,
@@ -483,7 +479,11 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		go func() {
 			span, _ := opentracing.StartSpanFromContext(ctx, "parquetQuerier.Select")
 			defer span.Finish()
-			p <- q.parquetQuerier.Select(InjectBlocksIntoContext(ctx, parquet...), sortSeries, &hints, matchers...)
+			parquetCtx := InjectBlocksIntoContext(ctx, parquet...)
+			if shardMatcher != nil {
+				parquetCtx = injectShardMatcherIntoContext(parquetCtx, shardMatcher)
+			}
+			p <- q.parquetQuerier.Select(parquetCtx, sortSeries, &hints, newMatchers...)
 		}()
 	}
 
@@ -570,6 +570,26 @@ func (q *parquetQuerierWithFallback) incrementOpsMetric(method string, remaining
 	}
 }
 
+type shardMatcherLabelsFilter struct {
+	shardMatcher *storepb.ShardMatcher
+}
+
+func (f *shardMatcherLabelsFilter) Filter(lbls labels.Labels) bool {
+	return f.shardMatcher.MatchesLabels(lbls)
+}
+
+func (f *shardMatcherLabelsFilter) Close() {
+	f.shardMatcher.Close()
+}
+
+func materializedLabelsFilterCallback(ctx context.Context, _ *storage.SelectHints) (search.MaterializedLabelsFilter, bool) {
+	shardMatcher, exists := extractShardMatcherFromContext(ctx)
+	if !exists || !shardMatcher.IsSharded() {
+		return nil, false
+	}
+	return &shardMatcherLabelsFilter{shardMatcher: shardMatcher}, true
+}
+
 type cacheInterface[T any] interface {
 	Get(path string) T
 	Set(path string, reader T)
@@ -654,4 +674,20 @@ func (n noopCache[T]) Get(_ string) (r T) {
 
 func (n noopCache[T]) Set(_ string, _ T) {
 
+}
+
+var (
+	shardMatcherCtxKey contextKey = 1
+)
+
+func injectShardMatcherIntoContext(ctx context.Context, sm *storepb.ShardMatcher) context.Context {
+	return context.WithValue(ctx, shardMatcherCtxKey, sm)
+}
+
+func extractShardMatcherFromContext(ctx context.Context) (*storepb.ShardMatcher, bool) {
+	if sm := ctx.Value(shardMatcherCtxKey); sm != nil {
+		return sm.(*storepb.ShardMatcher), true
+	}
+
+	return nil, false
 }

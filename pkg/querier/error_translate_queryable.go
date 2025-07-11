@@ -5,6 +5,7 @@ import (
 
 	"github.com/gogo/status"
 	"github.com/pkg/errors"
+	"github.com/prometheus-community/parquet-common/search"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
@@ -46,6 +47,11 @@ func TranslateToPromqlAPIError(err error) error {
 	default:
 		if errors.Is(err, context.Canceled) {
 			return err // 422
+		}
+
+		if search.IsResourceExhausted(err) {
+			cause := errors.Cause(err)
+			return cause // 422
 		}
 
 		s, ok := status.FromError(err)

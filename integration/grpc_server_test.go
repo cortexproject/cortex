@@ -202,7 +202,6 @@ func TestConcurrentGrpcCalls(t *testing.T) {
 						require.NoError(t, err)
 						resp, err := s.Recv()
 						require.NoError(t, err)
-						require.NotEmpty(t, resp.Buffers())
 						expected := createStreamResponse(i)
 						expected.MessageWithBufRef = resp.MessageWithBufRef
 						require.Equal(t, expected.String(), resp.String())

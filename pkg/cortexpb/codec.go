@@ -19,6 +19,8 @@ func init() {
 
 type ReleasableMessage interface {
 	RegisterBuffer(mem.Buffer)
+	buffers() []mem.Buffer
+	unref()
 }
 
 type GogoProtoMessage interface {
@@ -130,8 +132,23 @@ type MessageWithBufRef struct {
 	bs mem.BufferSlice
 }
 
+func (m *MessageWithBufRef) unref() {
+	m.bs = nil
+}
+
+func (m *MessageWithBufRef) buffers() []mem.Buffer {
+	return m.bs
+}
+
 func (m *MessageWithBufRef) RegisterBuffer(buffer mem.Buffer) {
 	m.bs = append(m.bs, buffer)
+}
+
+func (m *MessageWithBufRef) MergeBuffers(o any) {
+	if fm, ok := o.(ReleasableMessage); ok {
+		m.bs = append(m.bs, fm.buffers()...)
+		fm.unref()
+	}
 }
 
 func (m *MessageWithBufRef) Free() {

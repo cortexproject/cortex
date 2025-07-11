@@ -46,6 +46,42 @@ func TestApiStatusCodes(t *testing.T) {
 		},
 
 		{
+			err:            validation.AccessDeniedError("access denied"),
+			expectedString: "access denied",
+			expectedCode:   422,
+		},
+
+		{err: promql.ErrTooManySamples("query execution"),
+			expectedString: "too many samples",
+			expectedCode:   422,
+		},
+
+		{
+			err:            promql.ErrQueryCanceled("query execution"),
+			expectedString: "query was canceled",
+			expectedCode:   499,
+		},
+
+		{
+			err:            promql.ErrQueryTimeout("query execution"),
+			expectedString: "query timed out",
+			expectedCode:   503,
+		},
+
+		// Status code 400 is remapped to 422 (only choice we have)
+		{
+			err:            httpgrpc.Errorf(http.StatusBadRequest, "test string"),
+			expectedString: "test string",
+			expectedCode:   422,
+		},
+
+		// 404 is also translated to 422
+		{
+			err:            httpgrpc.Errorf(http.StatusNotFound, "not found"),
+			expectedString: "not found",
+		},
+
+		{
 			err:            search.NewQuota(1).Reserve(2),
 			expectedString: "resource exhausted (used 1)",
 			expectedCode:   422,

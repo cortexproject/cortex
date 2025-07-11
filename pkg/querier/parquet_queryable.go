@@ -136,27 +136,21 @@ func NewParquetQueryable(
 
 	parquetQueryableOpts := []queryable.QueryableOpts{
 		queryable.WithRowCountLimitFunc(func(ctx context.Context) int64 {
-			userID, err := tenant.TenantID(ctx)
-			if err != nil {
-				// This shouldn't happen
-				return 0
-			}
+			// Ignore error as this shouldn't happen.
+			// If failed to resolve tenant we will just use the default limit value.
+			userID, _ := tenant.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedRowCount(userID))
 		}),
 		queryable.WithChunkBytesLimitFunc(func(ctx context.Context) int64 {
-			userID, err := tenant.TenantID(ctx)
-			if err != nil {
-				// This shouldn't happen
-				return 0
-			}
+			// Ignore error as this shouldn't happen.
+			// If failed to resolve tenant we will just use the default limit value.
+			userID, _ := tenant.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedChunkBytes(userID))
 		}),
 		queryable.WithDataBytesLimitFunc(func(ctx context.Context) int64 {
-			userID, err := tenant.TenantID(ctx)
-			if err != nil {
-				// This shouldn't happen
-				return 0
-			}
+			// Ignore error as this shouldn't happen.
+			// If failed to resolve tenant we will just use the default limit value.
+			userID, _ := tenant.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedDataBytes(userID))
 		}),
 		queryable.WithMaterializedSeriesCallback(func(ctx context.Context, cs []storage.ChunkSeries) error {

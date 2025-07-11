@@ -326,7 +326,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.ParquetConverterEnabled, "parquet-converter.enabled", false, "If set, enables the Parquet converter to create the parquet files.")
 
 	// Parquet Queryable enforced limits.
-	f.IntVar(&l.ParquetMaxFetchedRowCount, "querier.parquet-queryable.max-fetched-row-count", 0, "The maximum number of rows that can be fetched when querying parquet storage. 0 to disable.")
+	f.IntVar(&l.ParquetMaxFetchedRowCount, "querier.parquet-queryable.max-fetched-row-count", 0, "The maximum number of rows that can be fetched when querying parquet storage. Each row maps to a series in a parquet file. This limit applies before materializing chunks. 0 to disable.")
 	f.IntVar(&l.ParquetMaxFetchedChunkBytes, "querier.parquet-queryable.max-fetched-chunk-bytes", 0, "The maximum number of bytes that can be used to fetch chunk column pages when querying parquet storage. 0 to disable.")
 	f.IntVar(&l.ParquetMaxFetchedDataBytes, "querier.parquet-queryable.max-fetched-data-bytes", 0, "The maximum number of bytes that can be used to fetch all column pages when querying parquet storage. 0 to disable.")
 

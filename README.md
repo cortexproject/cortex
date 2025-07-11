@@ -20,7 +20,7 @@ Cortex is a horizontally scalable, highly available, multi-tenant, long term sto
 - **Multi-tenant:** Cortex can isolate data and queries from multiple different independent Prometheus sources in a single cluster.
 - **Long term storage:** Cortex supports S3, GCS, Swift and Microsoft Azure for long term storage of metric data.
 
-## Documentation
+## Documentation OMG!
 
 - [Getting Started](https://cortexmetrics.io/docs/getting-started/)
 - [Architecture Overview](https://cortexmetrics.io/docs/architecture/)

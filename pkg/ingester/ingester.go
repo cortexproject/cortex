@@ -1569,7 +1569,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, "%s", wrapWithUser(firstPartialErr, userID).Error())
 	}
 
-	return &cortexpb.WriteResponse{}, nil
+	writeResponse := &cortexpb.WriteResponse{
+		Samples:    int64(succeededSamplesCount),
+		Histograms: int64(succeededHistogramsCount),
+		Exemplars:  int64(succeededExemplarsCount),
+	}
+
+	return writeResponse, nil
 }
 
 func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {

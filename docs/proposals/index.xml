@@ -404,7 +404,128 @@ This must be done in external authorization proxy.&lt;/strong>&lt;/p>
 &lt;p>To perform the last step, Alertmanagers need to find other alertmanager instances. This will be implemented by using the ring, which will (likely) be added as per &lt;a href="https://github.com/cortexproject/cortex/pull/3574">Alertmanager scaling proposal&lt;/a>.&lt;/p>
 &lt;p>Access to Alertmanager API must be disabled for tenant that is going to be deleted.&lt;/p>
 &lt;h2 id="alternatives-considered">Alternatives Considered&lt;/h2>
-&lt;p>Another possibility how to deal with tenant data deletion is to make purger component actively communicate with ingester, compactor, ruler and alertmanagers to make data deletion faster. In this case purger would need to understand how to reach out to all those components (with multiple ring configurations, one for each component type), and internal API calls would need to have strict semantics around when the data deletion is complete. This alternative has been rejected due to additional complexity and only small benefit in terms of how fast data would be deleted.&lt;/p></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
+&lt;p>Another possibility how to deal with tenant data deletion is to make purger component actively communicate with ingester, compactor, ruler and alertmanagers to make data deletion faster. In this case purger would need to understand how to reach out to all those components (with multiple ring configurations, one for each component type), and internal API calls would need to have strict semantics around when the data deletion is complete. This alternative has been rejected due to additional complexity and only small benefit in terms of how fast data would be deleted.&lt;/p></description></item><item><title>Docs: Distributed Query Execution</title><link>/docs/proposals/distributed-query-execution/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/distributed-query-execution/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/harry671003">Harry John&lt;/a>&lt;/li>
+&lt;li>Date: June 2025&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;h2 id="overview">Overview&lt;/h2>
+&lt;h3 id="background">Background&lt;/h3>
+&lt;p>Cortex currently implements distributed query execution by rewriting queries into multiple subqueries, handled through middlewares in the query-frontend. These split queries are scheduled via the query-scheduler, evaluated by queriers, and merged back in the query-frontend. This proposal introduces a new distributed query execution model based on Thanos PromQL engine.&lt;/p>
+&lt;h3 id="terminology">Terminology&lt;/h3>
+&lt;ul>
+&lt;li>Logical plan - Parsed PromQL expression represented as a tree of logical operators.&lt;/li>
+&lt;li>Query Plan - The logical query plan.&lt;/li>
+&lt;li>Optimization - Selecting the most efficient logical plan.&lt;/li>
+&lt;li>Planner/Optimizer - Component that performs optimization.&lt;/li>
+&lt;li>Fragment - A portion of the query plan.&lt;/li>
+&lt;li>Scheduling - Assigning fragments to queriers&lt;/li>
+&lt;/ul>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;h4 id="scalability">Scalability&lt;/h4>
+&lt;p>The current model struggles with high-cardinality queries scanning millions of series. Ingesters are not well-partitioned, and store-gateways don’t leverage partitioning during query execution. As a result, queriers often pull all data to a single node, creating bottlenecks.&lt;/p>
+&lt;h4 id="inefficient-merging">Inefficient Merging&lt;/h4>
+&lt;p>Merging results in the query-frontend—which isn’t shuffle-sharded — makes it a single point of failure. Poison queries with large responses can OOM all query-frontends, impacting availability.&lt;/p>
+&lt;h4 id="limited-query-rewriting">Limited Query Rewriting&lt;/h4>
+&lt;p>Today, queries are split via string manipulation. For example:&lt;/p>
+&lt;pre tabindex="0">&lt;code>sum by (pod) (rate(http_req_total[5m])) over 2d
+=&amp;gt; MERGE(sum by (pod) (rate(http_req_total{shard=&amp;#34;1&amp;#34;}[5m])), sum by (pod) (rate(http_req_total{shard=&amp;#34;2&amp;#34;}[5m])))
+&lt;/code>&lt;/pre>&lt;p>This is fragile and not scalable. Modern databases instead create a physical plan and split it into executable fragments assigned across nodes.&lt;/p>
+&lt;h4 id="lack-of-optimizations">Lack of Optimizations&lt;/h4>
+&lt;p>Cortex currently supports only basic optimizations (e.g., time and by/without clause-based splitting). Mature DBMS systems explore multiple execution strategies and pick the optimal one — something currently missing in Cortex.&lt;/p>
+&lt;h2 id="solution">Solution&lt;/h2>
+&lt;h3 id="architecture-overview">Architecture Overview&lt;/h3>
+&lt;p>This proposal introduces a new query execution model that will be implemented using the volcano-iterator model from the Thanos PromQL query engine. Here is a high level overview of the proposal of implementing query optimization and distributed query execution in Cortex:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Query Frontend&lt;/strong>: Converts the logical plan into an optimized plan and sends the plan to the query-scheduler.&lt;/li>
+&lt;li>&lt;strong>Query Scheduler&lt;/strong>: Fragments the plan and assigns plan fragments to queriers.&lt;/li>
+&lt;li>&lt;strong>Queriers&lt;/strong>: Pull fragments, execute them, and return results. The root-fragment querier acts as coordinator, merging final results before notifying the frontend.&lt;/li>
+&lt;/ul>
+&lt;p>&lt;img src="/images/proposals/distributed-execution-arch.png" alt="Architecture">&lt;/p>
+&lt;h3 id="query-frontend">Query Frontend&lt;/h3>
+&lt;p>The &lt;strong>Query Frontend&lt;/strong> continues to act as the entry point for &lt;code>query_range&lt;/code> and &lt;code>query&lt;/code> APIs. The existing API layer is reused, but a new &lt;strong>distributed query engine&lt;/strong> is introduced under the hood. This engine is responsible for generating and optimizing the query plan, and coordinating with the query scheduler.&lt;/p>
+&lt;h4 id="logical-plan">Logical Plan&lt;/h4>
+&lt;p>When a query request is received, the PromQL expression is first parsed into a &lt;strong>logical query plan&lt;/strong>, represented as a tree of logical operators. This logical plan is then passed through a series of &lt;strong>optimizers&lt;/strong> that aim to transform the query into a more efficient structure. Consider the PromQL query &lt;code>sum(rate(req_total[5m]))&lt;/code> to be run over 2 days. The query is parsed into the following basic logical plan.&lt;/p>
+&lt;p>&lt;img src="/images/proposals/distributed-execution-logical-plan.png" alt="LogicalPlan">&lt;/p>
+&lt;h4 id="distributed-optimizer">Distributed Optimizer&lt;/h4>
+&lt;p>A special optimizer, the &lt;strong>Distributed Optimizer&lt;/strong>, analyzes the logical plan to determine where and how the query can be split and executed in parallel. This is done by inserting &lt;strong>&lt;code>Remote&lt;/code> logical nodes&lt;/strong> at appropriate points in the plan tree.
+These &lt;code>Remote&lt;/code> nodes act as placeholders indicating plan fragments that can be offloaded to remote queriers. This enables sharding both over time and across data partitions.&lt;/p>
+&lt;p>&lt;img src="/images/proposals/distributed-execution-optimized-plan.png" alt="OptimizedLogicalPlan">&lt;/p>
+&lt;h3 id="query-scheduler">Query Scheduler&lt;/h3>
+&lt;p>The &lt;strong>Query Scheduler&lt;/strong> receives the optimized logical plan, including the &lt;code>Remote&lt;/code> nodes introduced by the optimizer. It is responsible for &lt;strong>fragmenting&lt;/strong> the plan and orchestrating its execution across multiple queriers.&lt;/p>
+&lt;h4 id="fragmentation">Fragmentation&lt;/h4>
+&lt;p>Fragmentation involves splitting the query plan into &lt;strong>multiple fragments&lt;/strong>, where each fragment is a sub-tree of the overall plan that can be evaluated independently. Fragments are created by cutting the plan at &lt;code>Remote&lt;/code> nodes. In the below diagram the coloured tiles mark the same fragment.&lt;/p>
+&lt;p>&lt;img src="/images/proposals/distributed-execution-plan-fragments.png" alt="PlanFragments">&lt;/p>
+&lt;h4 id="enqueuing-fragments">Enqueuing fragments&lt;/h4>
+&lt;p>Fragmentation respects dependencies: &lt;strong>child fragments are enqueued before parent fragments&lt;/strong>, ensuring data is available before dependent operations are scheduled.
+These fragments are then &lt;strong>enqueued&lt;/strong> into the scheduler’s internal queue system, ready to be picked up by queriers.&lt;/p>
+&lt;p>&lt;img src="/images/proposals/distributed-execution-scheduler-queue.png" alt="SchedulerQueue">&lt;/p>
+&lt;h4 id="assigning-query-fragments-to-queriers">Assigning query fragments to queriers&lt;/h4>
+&lt;p>The fragment include the plan and the remote fragment IDs it depends on. Queriers pull fragments from the scheduler. After child fragments are assigned to a particular querier, it’s parent fragment is updated with the location of the querier from which to read the results from.&lt;/p>
+&lt;p>At execution time, a &lt;code>Remote&lt;/code> operator acts as a placeholder within the querier&amp;rsquo;s execution engine to &lt;strong>pull results from other queriers&lt;/strong> running dependent fragments.&lt;/p>
+&lt;p>&lt;img src="/images/proposals/distributed-execution-assigned-fragments.png" alt="AssignedFragments">&lt;/p>
+&lt;h3 id="querier">Querier&lt;/h3>
+&lt;p>The &lt;strong>Querier&lt;/strong> is enhanced to support both &lt;strong>executing&lt;/strong> query fragments and &lt;strong>serving&lt;/strong> results to other queriers. In the distributed query model, a querier may either evaluate a plan fragment or provide intermediate results to other queriers that depend on its output.&lt;/p>
+&lt;p>To support this, the querier now implements two interfaces:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>QueryExecutor&lt;/strong> – Executes assigned query plan root fragment.&lt;/li>
+&lt;li>&lt;strong>QueryServer&lt;/strong> – Serves results to other queriers via streaming gRPC endpoints. (i.e., acts as a remote data source for &lt;code>Remote&lt;/code> operators).&lt;/li>
+&lt;/ul>
+&lt;h4 id="queryexecutor">QueryExecutor&lt;/h4>
+&lt;p>The QueryExecutor interface enables a querier to execute the root fragment of the distributed query plan.&lt;/p>
+&lt;pre tabindex="0">&lt;code>type QueryExecutor interface {
+ExecuteQuery(p LogicalPlan) (QueryResult, error)
+}
+&lt;/code>&lt;/pre>&lt;h4 id="queryserver">QueryServer&lt;/h4>
+&lt;p>The QueryServer interface enables a querier to expose query results to other queriers via a gRPC API. This is used when another querier is executing a fragment that depends on the results of this one (i.e., the child in the execution tree).&lt;/p>
+&lt;pre tabindex="0">&lt;code>type QueryServer interface {
+Enqueue(context.Context, p LogicalPlan) error
+Series(SeriesRequest, querierpb.QueryServer_SeriesServer) error
+Next(*executionpb.NextRequest, querierpb.QueryServer_NextServer) error
+}
+&lt;/code>&lt;/pre>&lt;ul>
+&lt;li>&lt;strong>Enqueue&lt;/strong> - Schedules the provided logical plan fragment for execution on the querier. Enqueuing a plan on a quereir will block a concurrency until the query finishes, or times out if it exceeds the configured limit. It respects the querier’s concurrency limits and queue capacity.&lt;/li>
+&lt;li>&lt;strong>Series&lt;/strong> - Streams the metadata (labels) for the series produced by the fragment, allowing parent queriers to understand the shape of incoming data.&lt;/li>
+&lt;li>&lt;strong>Next&lt;/strong> - Streams the actual step vector results of the fragment, returning time-step-wise computed samples and histograms.&lt;/li>
+&lt;/ul>
+&lt;p>These methods are implemented as streaming gRPC endpoints and used by &lt;code>Remote&lt;/code> operators to pull data on-demand during execution.&lt;/p>
+&lt;h5 id="grpc-service-definition">gRPC Service Definition&lt;/h5>
+&lt;pre tabindex="0">&lt;code>service QueryServer {
+rpc Series(SeriesRequest) returns (stream OneSeries);
+rpc Next(NextRequest) returns (stream StepVectorBatch);
+}
+message OneSeries {
+repeated Label labels = 1;
+}
+message StepVectorBatch {
+repeated StepVector step_vectors = 1;
+}
+message StepVector {
+int64 t = 1;
+repeated uint64 sample_IDs = 2;
+repeated double samples = 3;
+repeated uint64 histogram_IDs = 4;
+repeated FloatHistogram histograms = 5;
+}
+&lt;/code>&lt;/pre>&lt;p>Together, the QueryExecutor and QueryServer roles allow each querier to act as both a compute node and a data provider, enabling true parallel and distributed evaluation of PromQL queries across Cortex&amp;rsquo;s infrastructure.&lt;/p>
+&lt;h4 id="fragment-execution">Fragment Execution&lt;/h4>
+&lt;p>Each fragment is evaluated using the &lt;strong>Thanos PromQL engine’s volcano iterator model&lt;/strong>, where operators are chained and lazily pulled for evaluation. If a fragment includes a &lt;code>RemoteOperator&lt;/code>, it fetches the intermediate result from the peer querier serving the dependent fragment. Leaf operators such as &lt;code>MatrixSelector&lt;/code> and &lt;code>VectorSelector&lt;/code> read data from storage layer.&lt;/p>
+&lt;h4 id="co-ordinated-execution">Co-ordinated Execution&lt;/h4>
+&lt;p>The querier assigned the &lt;strong>root fragment&lt;/strong> also plays the role of &lt;strong>coordinator&lt;/strong>. The co-ordinator will&lt;/p>
+&lt;ul>
+&lt;li>Trigger dependent fragment execution by invoking Next() on the child queriers&lt;/li>
+&lt;li>Wait for remote fragment results&lt;/li>
+&lt;li>Assemble the final result&lt;/li>
+&lt;li>Notify the QueryFrontend&lt;/li>
+&lt;/ul>
+&lt;p>This keeps the query execution tree distributed and parallelized, but the final result is merged and returned by a single coordinator node for consistency and simplicity.&lt;/p>
+&lt;h4 id="fallback">Fallback&lt;/h4>
+&lt;p>Not all types of queries are supported by Thanos PromQL engine. If any plan fragment is not supported by Thanos engine, the plan is converted back into a query string and evaluated by the Prometheus PromQL engine.&lt;/p>
+&lt;h3 id="error-handling">Error Handling&lt;/h3>
+&lt;p>If any individual fragment fails or if a querier handling a fragment is restarted during execution, the entire query is considered failed. No retries or partial results are supported in the initial version. The root querier reports the error back to the QueryFrontend, which returns it to the client.&lt;/p>
+&lt;h2 id="conclusion">Conclusion&lt;/h2>
+&lt;p>This proposal lays the groundwork for a robust and scalable distributed query execution in Cortex. By leveraging Thanos PromQL&amp;rsquo;s iterator engine and explicit fragmentation, it avoids string-based rewriting and unlocks deep query optimization and better fault isolation. Future iterations can explore support for retries, cost-based optimization, and fine-grained resource scheduling.&lt;/p></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/jaybatra26">Jay Batra&lt;/a>&lt;/li>
 &lt;li>Date: March 2020&lt;/li>

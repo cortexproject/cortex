@@ -252,11 +252,22 @@ querier:
   # CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
   [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 
-  # Experimental. Use Thanos promql engine
-  # https://github.com/thanos-io/promql-engine rather than the Prometheus promql
-  # engine.
-  # CLI flag: -querier.thanos-engine
-  [thanos_engine: <boolean> | default = false]
+  thanos_engine:
+    # Experimental. Use Thanos promql engine
+    # https://github.com/thanos-io/promql-engine rather than the Prometheus
+    # promql engine.
+    # CLI flag: -querier.thanos-engine
+    [enable_thanos_engine: <boolean> | default = false]
+
+    # Enable xincrease, xdelta, xrate etc from Thanos engine.
+    # CLI flag: -querier.enable-x-functions
+    [enable_x_functions: <boolean> | default = false]
+
+    # Logical plan optimizers. Multiple optimizers can be provided as a
+    # comma-separated list. Supported values: default, all, propagate-matchers,
+    # sort-matchers, merge-selects, detect-histogram-stats
+    # CLI flag: -querier.optimizers
+    [optimizers: <string> | default = "default"]
 
   # If enabled, ignore max query length check at Querier select method. Users
   # can choose to ignore it since the validation can be done before Querier

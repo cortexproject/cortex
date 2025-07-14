@@ -257,7 +257,7 @@ querier:
     # https://github.com/thanos-io/promql-engine rather than the Prometheus
     # promql engine.
     # CLI flag: -querier.thanos-engine
-    [enable_thanos_engine: <boolean> | default = false]
+    [enabled: <boolean> | default = false]
 
     # Enable xincrease, xdelta, xrate etc from Thanos engine.
     # CLI flag: -querier.enable-x-functions

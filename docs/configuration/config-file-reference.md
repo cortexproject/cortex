@@ -4307,7 +4307,7 @@ thanos_engine:
   # https://github.com/thanos-io/promql-engine rather than the Prometheus promql
   # engine.
   # CLI flag: -querier.thanos-engine
-  [enable_thanos_engine: <boolean> | default = false]
+  [enabled: <boolean> | default = false]
 
   # Enable xincrease, xdelta, xrate etc from Thanos engine.
   # CLI flag: -querier.enable-x-functions
@@ -5034,6 +5034,23 @@ ring:
 # ruler.enable-ha-evaluation is true.
 # CLI flag: -ruler.liveness-check-timeout
 [liveness_check_timeout: <duration> | default = 1s]
+
+thanos_engine:
+  # Experimental. Use Thanos promql engine
+  # https://github.com/thanos-io/promql-engine rather than the Prometheus promql
+  # engine.
+  # CLI flag: -ruler.thanos-engine
+  [enabled: <boolean> | default = false]
+
+  # Enable xincrease, xdelta, xrate etc from Thanos engine.
+  # CLI flag: -ruler.enable-x-functions
+  [enable_x_functions: <boolean> | default = false]
+
+  # Logical plan optimizers. Multiple optimizers can be provided as a
+  # comma-separated list. Supported values: default, all, propagate-matchers,
+  # sort-matchers, merge-selects, detect-histogram-stats
+  # CLI flag: -ruler.optimizers
+  [optimizers: <string> | default = "default"]
 ```
 
 ### `ruler_storage_config`

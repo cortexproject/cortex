@@ -85,7 +85,7 @@ type Config struct {
 
 	ShuffleShardingIngestersLookbackPeriod time.Duration `yaml:"shuffle_sharding_ingesters_lookback_period"`
 
-	Engine engine.Config `yaml:"thanos_engine"`
+	ThanosEngine engine.ThanosEngineConfig `yaml:"thanos_engine"`
 
 	// Ignore max query length check at Querier.
 	IgnoreMaxQueryLength              bool `yaml:"ignore_max_query_length"`
@@ -109,6 +109,8 @@ var (
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.ThanosEngine.RegisterFlagsWithPrefix("querier.", f)
+
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.ingester-streaming", "Deprecated: Use streaming RPCs to query ingester. QueryStream is always enabled and the flag is not effective anymore.", util_log.Logger)
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
@@ -143,8 +145,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableParquetQueryable, "querier.enable-parquet-queryable", false, "[Experimental] If true, querier will try to query the parquet files if available.")
 	f.IntVar(&cfg.ParquetQueryableShardCacheSize, "querier.parquet-queryable-shard-cache-size", 512, "[Experimental] [Experimental] Maximum size of the Parquet queryable shard cache. 0 to disable.")
 	f.StringVar(&cfg.ParquetQueryableDefaultBlockStore, "querier.parquet-queryable-default-block-store", string(parquetBlockStore), "Parquet queryable's default block store to query. Valid options are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback to store gateway.")
-
-	cfg.Engine.RegisterFlags(f)
 }
 
 // Validate the config
@@ -180,7 +180,7 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
-	if err := cfg.Engine.Validate(); err != nil {
+	if err := cfg.ThanosEngine.Validate(); err != nil {
 		return err
 	}
 
@@ -231,10 +231,6 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	})
 	maxConcurrentMetric.Set(float64(cfg.MaxConcurrent))
 
-	// The holt_winters function is renamed to double_exponential_smoothing and has been experimental since Prometheus v3. (https://github.com/prometheus/prometheus/pull/14930)
-	// The cortex supports holt_winters for users using this function.
-	EnableExperimentalPromQLFunctions(cfg.EnablePromQLExperimentalFunctions, true)
-
 	opts := promql.EngineOpts{
 		Logger:               util_log.GoKitLogToSlog(logger),
 		Reg:                  reg,
@@ -249,7 +245,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
 	}
-	queryEngine := engine.New(opts, cfg.Engine, reg)
+	queryEngine := engine.New(opts, cfg.ThanosEngine, reg)
 	return NewSampleAndChunkQueryable(lazyQueryable), exemplarQueryable, queryEngine
 }
 

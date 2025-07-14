@@ -39,7 +39,7 @@ func TestEngine_Fallback(t *testing.T) {
 		Logger: utillog.GoKitLogToSlog(log.NewNopLogger()),
 		Reg:    reg,
 	}
-	queryEngine := New(opts, Config{EnableThanosEngine: true}, reg)
+	queryEngine := New(opts, ThanosEngineConfig{Enabled: true}, reg)
 
 	// instant query, should go to fallback
 	_, _ = queryEngine.NewInstantQuery(ctx, queryable, nil, "unimplemented(foo)", now)
@@ -70,7 +70,7 @@ func TestEngine_Switch(t *testing.T) {
 		Logger: utillog.GoKitLogToSlog(log.NewNopLogger()),
 		Reg:    reg,
 	}
-	queryEngine := New(opts, Config{EnableThanosEngine: true}, reg)
+	queryEngine := New(opts, ThanosEngineConfig{Enabled: true}, reg)
 
 	// Query Prometheus engine
 	r := &http.Request{Header: http.Header{}}
@@ -111,7 +111,7 @@ func TestEngine_XFunctions(t *testing.T) {
 		Logger: utillog.GoKitLogToSlog(log.NewNopLogger()),
 		Reg:    reg,
 	}
-	queryEngine := New(opts, Config{EnableThanosEngine: true, EnableXFunctions: true}, reg)
+	queryEngine := New(opts, ThanosEngineConfig{Enabled: true, EnableXFunctions: true}, reg)
 
 	for name := range parse.XFunctions {
 		t.Run(name, func(t *testing.T) {

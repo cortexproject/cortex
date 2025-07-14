@@ -564,7 +564,6 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		t.Cfg.Querier.DefaultEvaluationInterval,
 		t.Cfg.Querier.MaxSubQuerySteps,
 		t.Cfg.Querier.LookbackDelta,
-		t.Cfg.Querier.EnablePromQLExperimentalFunctions,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {
@@ -657,7 +656,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
 			},
 		}
-		queryEngine := engine.New(opts, t.Cfg.Querier.Engine, rulerRegisterer)
+		queryEngine := engine.New(opts, t.Cfg.Ruler.ThanosEngine, rulerRegisterer)
 
 		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, queryEngine, t.Overrides, metrics, prometheus.DefaultRegisterer)
 		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, t.Overrides, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger)

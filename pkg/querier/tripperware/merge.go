@@ -10,6 +10,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/strutil"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 )
 
 const StatusSuccess = "success"
@@ -284,7 +285,7 @@ func getSortValueFromPair(samples []*pair, i int) float64 {
 }
 
 func sortPlanForQuery(q string) (sortPlan, error) {
-	expr, err := promqlparser.ParseExpr(q)
+	expr, err := cortexparser.ParseExpr(q)
 	if err != nil {
 		return 0, err
 	}

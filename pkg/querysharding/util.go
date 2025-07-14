@@ -7,6 +7,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 )
 
 const (
@@ -21,7 +23,7 @@ var (
 )
 
 func InjectShardingInfo(query string, shardInfo *storepb.ShardInfo) (string, error) {
-	expr, err := parser.ParseExpr(query)
+	expr, err := cortexparser.ParseExpr(query)
 	if err != nil {
 		return "", err
 	}

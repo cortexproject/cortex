@@ -15,13 +15,13 @@ import (
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring/client"
@@ -171,7 +171,7 @@ func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, 
 		// Enforce the max query length.
 		maxQueryLength := overrides.MaxQueryLength(userID)
 		if maxQueryLength > 0 {
-			expr, err := parser.ParseExpr(qs)
+			expr, err := cortexparser.ParseExpr(qs)
 			// If failed to parse expression, skip checking select range.
 			// Fail the query in the engine.
 			if err == nil {

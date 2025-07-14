@@ -31,7 +31,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -117,12 +116,7 @@ func NewQueryTripperware(
 	defaultSubQueryInterval time.Duration,
 	maxSubQuerySteps int64,
 	lookbackDelta time.Duration,
-	enablePromQLExperimentalFunctions bool,
 ) Tripperware {
-
-	// The holt_winters function is renamed to double_exponential_smoothing and has been experimental since Prometheus v3. (https://github.com/prometheus/prometheus/pull/14930)
-	// The cortex supports holt_winters for users using this function.
-	querier.EnableExperimentalPromQLFunctions(enablePromQLExperimentalFunctions, true)
 
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{

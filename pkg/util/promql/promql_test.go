@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
+
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 )
 
 func TestFindNonOverlapQueryLength(t *testing.T) {
@@ -78,7 +79,7 @@ func TestFindNonOverlapQueryLength(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			expr, err := parser.ParseExpr(tc.query)
+			expr, err := cortexparser.ParseExpr(tc.query)
 			require.NoError(t, err)
 			duration := FindNonOverlapQueryLength(expr, 0, 0, time.Minute*5)
 			require.Equal(t, tc.expectedLength, duration)

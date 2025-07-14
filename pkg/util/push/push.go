@@ -119,7 +119,7 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 		}
 
 		if remoteWrite2Enabled {
-			// follow Prometheus https://github.com/prometheus/prometheus/blob/main/storage/remote/write_handler.go
+			// follow Prometheus https://github.com/prometheus/prometheus/blob/v3.3.1/storage/remote/write_handler.go#L121
 			contentType := r.Header.Get("Content-Type")
 			if contentType == "" {
 				contentType = appProtoContentType
@@ -225,7 +225,7 @@ func convertV2RequestToV1(req *writev2.Request) (cortexpb.PreallocWriteRequest, 
 }
 
 func shouldConvertV2Metadata(metadata writev2.Metadata) bool {
-	return !(metadata.HelpRef == 0 && metadata.UnitRef == 0 && metadata.Type == writev2.Metadata_METRIC_TYPE_UNSPECIFIED)
+	return !(metadata.HelpRef == 0 && metadata.UnitRef == 0 && metadata.Type == writev2.Metadata_METRIC_TYPE_UNSPECIFIED) //nolint:staticcheck
 }
 
 func convertV2ToV1Histograms(histograms []writev2.Histogram) []cortexpb.Histogram {

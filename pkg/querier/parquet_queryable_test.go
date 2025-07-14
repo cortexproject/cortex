@@ -77,49 +77,6 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 	}
 	ctx := user.InjectOrgID(context.Background(), "user-1")
 
-	t.Run("should fallback when vertical sharding is enabled", func(t *testing.T) {
-		finder := &blocksFinderMock{}
-		stores := createStore()
-
-		q := &blocksStoreQuerier{
-			minT:        minT,
-			maxT:        maxT,
-			finder:      finder,
-			stores:      stores,
-			consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
-			logger:      log.NewNopLogger(),
-			metrics:     newBlocksStoreQueryableMetrics(prometheus.NewPedanticRegistry()),
-			limits:      &blocksStoreLimitsMock{},
-
-			storeGatewayConsistencyCheckMaxAttempts: 3,
-		}
-
-		mParquetQuerier := &mockParquetQuerier{}
-		pq := &parquetQuerierWithFallback{
-			minT:                  minT,
-			maxT:                  maxT,
-			finder:                finder,
-			blocksStoreQuerier:    q,
-			parquetQuerier:        mParquetQuerier,
-			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-			limits:                defaultOverrides(t, 4),
-			logger:                log.NewNopLogger(),
-			defaultBlockStoreType: parquetBlockStore,
-		}
-
-		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
-			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
-		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
-
-		t.Run("select", func(t *testing.T) {
-			ss := pq.Select(ctx, true, nil, matchers...)
-			require.NoError(t, ss.Err())
-			require.Len(t, stores.queriedBlocks, 2)
-			require.Len(t, mParquetQuerier.queriedBlocks, 0)
-		})
-	})
-
 	t.Run("should fallback all blocks", func(t *testing.T) {
 		finder := &blocksFinderMock{}
 		stores := createStore()

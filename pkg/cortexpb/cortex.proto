@@ -36,14 +36,12 @@ message StreamWriteRequest {
 message WriteResponse {
   int32 code = 1;
   string message = 2;
-}
-message WriteResponse {
   // Samples represents X-Prometheus-Remote-Write-Written-Samples
-  int64 Samples = 1;
+  int64 Samples = 3;
   // Histograms represents X-Prometheus-Remote-Write-Written-Histograms
-  int64 Histograms = 2;
+  int64 Histograms = 4;
   // Exemplars represents X-Prometheus-Remote-Write-Written-Exemplars
-  int64 Exemplars = 3;
+  int64 Exemplars = 5;
 }
 
 message TimeSeries {

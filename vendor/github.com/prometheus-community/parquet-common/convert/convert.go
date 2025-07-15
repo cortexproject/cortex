@@ -247,7 +247,7 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 			return nil, fmt.Errorf("unable to get label names from block: %w", err)
 		}
 
-		postings := sortedPostings(ctx, indexr, compareFunc, ops.sortedLabels...)
+		postings := sortedPostings(ctx, indexr, ops.sortedLabels...)
 		seriesSet := tsdb.NewBlockChunkSeriesSet(blk.Meta().ULID, indexr, chunkr, tombsr, postings, mint, maxt, false)
 		seriesSets = append(seriesSets, seriesSet)
 
@@ -285,7 +285,7 @@ func (rr *TsdbRowReader) Schema() *schema.TSDBSchema {
 	return rr.tsdbSchema
 }
 
-func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, compare func(a, b labels.Labels) int, sortedLabels ...string) index.Postings {
+func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, sortedLabels ...string) index.Postings {
 	p := tsdb.AllSortedPostings(ctx, indexr)
 
 	if len(sortedLabels) == 0 {
@@ -294,25 +294,42 @@ func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, compare func(a
 
 	type s struct {
 		ref    storage.SeriesRef
+		idx    int
 		labels labels.Labels
 	}
 	series := make([]s, 0, 128)
 
-	lb := labels.NewScratchBuilder(10)
+	scratchBuilder := labels.NewScratchBuilder(10)
+	lb := labels.NewBuilder(labels.EmptyLabels())
+	i := 0
 	for p.Next() {
-		lb.Reset()
-		err := indexr.Series(p.At(), &lb, nil)
+		scratchBuilder.Reset()
+		err := indexr.Series(p.At(), &scratchBuilder, nil)
 		if err != nil {
 			return index.ErrPostings(fmt.Errorf("expand series: %w", err))
 		}
+		lb.Reset(scratchBuilder.Labels())
 
-		series = append(series, s{labels: lb.Labels(), ref: p.At()})
+		series = append(series, s{labels: lb.Keep(sortedLabels...).Labels(), ref: p.At(), idx: i})
+		i++
 	}
 	if err := p.Err(); err != nil {
 		return index.ErrPostings(fmt.Errorf("expand postings: %w", err))
 	}
 
-	slices.SortFunc(series, func(a, b s) int { return compare(a.labels, b.labels) })
+	slices.SortFunc(series, func(a, b s) int {
+		for _, lb := range sortedLabels {
+			if c := strings.Compare(a.labels.Get(lb), b.labels.Get(lb)); c != 0 {
+				return c
+			}
+		}
+		if a.idx < b.idx {
+			return -1
+		} else if a.idx > b.idx {
+			return 1
+		}
+		return 0
+	})
 
 	// Convert back to list.
 	ep := make([]storage.SeriesRef, 0, len(series))

@@ -326,4 +326,4 @@ replace github.com/thanos-io/objstore => github.com/thanos-io/objstore v0.0.0-20
 // v3.3.1 with https://github.com/prometheus/prometheus/pull/16252. (same as thanos)
 replace github.com/prometheus/prometheus => github.com/thanos-io/thanos-prometheus v0.0.0-20250610133519-082594458a88
 
-replace github.com/prometheus-community/parquet-common => github.com/yeya24/parquet-common v0.0.0-20250714023615-b9170df584ee
+replace github.com/prometheus-community/parquet-common => github.com/yeya24/parquet-common v0.0.0-20250715161708-8c081ce88b68

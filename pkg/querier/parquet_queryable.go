@@ -154,7 +154,7 @@ func NewParquetQueryable(
 			userID, _ := tenant.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedDataBytes(userID))
 		}),
-		queryable.WithMaterializedLabelsCallback(materializedLabelsCallback),
+		queryable.WithMaterializedLabelsFilterCallback(materializedLabelsFilterCallback),
 		queryable.WithMaterializedSeriesCallback(func(ctx context.Context, cs []storage.ChunkSeries) error {
 			queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
 			lbls := make([][]cortexpb.LabelAdapter, 0, len(cs))
@@ -570,54 +570,24 @@ func (q *parquetQuerierWithFallback) incrementOpsMetric(method string, remaining
 	}
 }
 
-func materializedLabelsCallback(ctx context.Context, _ *storage.SelectHints, seriesLabels [][]labels.Label, rr []search.RowRange) ([][]labels.Label, []search.RowRange) {
+type shardMatcherLabelsFilter struct {
+	shardMatcher *storepb.ShardMatcher
+}
+
+func (f *shardMatcherLabelsFilter) Filter(lbls labels.Labels) bool {
+	return f.shardMatcher.MatchesLabels(lbls)
+}
+
+func (f *shardMatcherLabelsFilter) Close() {
+	f.shardMatcher.Close()
+}
+
+func materializedLabelsFilterCallback(ctx context.Context, _ *storage.SelectHints) (search.MaterializedLabelsFilter, bool) {
 	shardMatcher, exists := extractShardMatcherFromContext(ctx)
 	if !exists || !shardMatcher.IsSharded() {
-		return seriesLabels, rr
+		return nil, false
 	}
-
-	var filteredLabels [][]labels.Label
-	var filteredRowRanges []search.RowRange
-
-	// Track which individual rows match the shard matcher
-	rowMatches := make([]bool, len(seriesLabels))
-	for i, lbls := range seriesLabels {
-		rowMatches[i] = shardMatcher.MatchesLabels(labels.New(lbls...))
-		if rowMatches[i] {
-			filteredLabels = append(filteredLabels, lbls)
-		}
-	}
-
-	// Convert matching rows back into row ranges
-	currentRange := search.RowRange{}
-	inRange := false
-
-	for i, matches := range rowMatches {
-		if matches {
-			if !inRange {
-				// Start a new range
-				currentRange.From = int64(i)
-				currentRange.Count = 1
-				inRange = true
-			} else {
-				// Extend the current range
-				currentRange.Count++
-			}
-		} else {
-			if inRange {
-				// End the current range
-				filteredRowRanges = append(filteredRowRanges, currentRange)
-				inRange = false
-			}
-		}
-	}
-
-	// Don't forget to add the last range if we're still in one
-	if inRange {
-		filteredRowRanges = append(filteredRowRanges, currentRange)
-	}
-
-	return filteredLabels, filteredRowRanges
+	return &shardMatcherLabelsFilter{shardMatcher: shardMatcher}, true
 }
 
 type cacheInterface[T any] interface {

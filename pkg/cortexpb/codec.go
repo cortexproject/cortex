@@ -13,10 +13,11 @@ import (
 // Name is the name registered for the proto codec.
 const Name = "proto"
 
-var noOpBufferPool = &mem.NopBufferPool{}
-
 func init() {
-	encoding.RegisterCodecV2(&cortexCodec{})
+	encoding.RegisterCodecV2(&cortexCodec{
+		noOpBufferPool:    mem.NopBufferPool{},
+		defaultBufferPool: mem.DefaultBufferPool(),
+	})
 }
 
 type ReleasableMessage interface {
@@ -27,7 +28,10 @@ type GogoProtoMessage interface {
 	MarshalToSizedBuffer(dAtA []byte) (int, error)
 }
 
-type cortexCodec struct{}
+type cortexCodec struct {
+	noOpBufferPool    mem.BufferPool
+	defaultBufferPool mem.BufferPool
+}
 
 func (c cortexCodec) Name() string {
 	return Name
@@ -66,7 +70,7 @@ func (c *cortexCodec) Marshal(v any) (data mem.BufferSlice, err error) {
 
 		data = append(data, buf)
 	} else {
-		pool := mem.DefaultBufferPool()
+		pool := c.defaultBufferPool
 		buf := pool.Get(size)
 
 		// If v implements MarshalToSizedBuffer we should use it as it is more optimized
@@ -100,10 +104,10 @@ func (c *cortexCodec) Unmarshal(data mem.BufferSlice, v any) error {
 	// Additionally, we avoid using a pooled byte slice unless the message implements ReleasableMessage.
 	// This mimics the behavior of gRPC versions 1.65.0 and earlier.
 	rm, ok := v.(ReleasableMessage)
-	bufferPool := mem.DefaultBufferPool()
+	bufferPool := c.defaultBufferPool
 
 	if !ok {
-		bufferPool = noOpBufferPool
+		bufferPool = c.noOpBufferPool
 	}
 
 	buf := data.MaterializeToBuffer(bufferPool)

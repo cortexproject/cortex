@@ -75,6 +75,7 @@ func TestNoopBufferWhenNotReleasableMessage(t *testing.T) {
 			_, err = r.Read(b1)
 			require.NoError(t, err)
 			_, err = r.Read(b2)
+			require.NoError(t, err)
 
 			codec.noOpBufferPool.(*wrappedBufferPool).Reset()
 			codec.defaultBufferPool.(*wrappedBufferPool).Reset()

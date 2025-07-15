@@ -201,43 +201,41 @@ func (m *Materializer) filterSeries(ctx context.Context, hints *prom_storage.Sel
 
 	for _, rowRange := range rr {
 		for i := int64(0); i < rowRange.Count; i++ {
-			if seriesIdx < len(sLbls) {
-				actualRowID := rowRange.From + i
-				lbls := labels.New(sLbls[seriesIdx]...)
+			actualRowID := rowRange.From + i
+			lbls := labels.New(sLbls[seriesIdx]...)
 
-				if labelsFilter.Filter(lbls) {
-					results = append(results, &concreteChunksSeries{
-						lbls: lbls,
-					})
+			if labelsFilter.Filter(lbls) {
+				results = append(results, &concreteChunksSeries{
+					lbls: lbls,
+				})
 
-					// Handle row range collection
-					if !inRange {
-						// Start new range
-						currentRange = RowRange{
-							From:  actualRowID,
-							Count: 1,
-						}
-						inRange = true
-					} else if actualRowID == currentRange.From+currentRange.Count {
-						// Extend current range
-						currentRange.Count++
-					} else {
-						// Save current range and start new range (non-contiguous)
-						filteredRR = append(filteredRR, currentRange)
-						currentRange = RowRange{
-							From:  actualRowID,
-							Count: 1,
-						}
+				// Handle row range collection
+				if !inRange {
+					// Start new range
+					currentRange = RowRange{
+						From:  actualRowID,
+						Count: 1,
 					}
+					inRange = true
+				} else if actualRowID == currentRange.From+currentRange.Count {
+					// Extend current range
+					currentRange.Count++
 				} else {
-					// Save current range and reset when we hit a non-matching series
-					if inRange {
-						filteredRR = append(filteredRR, currentRange)
-						inRange = false
+					// Save current range and start new range (non-contiguous)
+					filteredRR = append(filteredRR, currentRange)
+					currentRange = RowRange{
+						From:  actualRowID,
+						Count: 1,
 					}
 				}
-				seriesIdx++
+			} else {
+				// Save current range and reset when we hit a non-matching series
+				if inRange {
+					filteredRR = append(filteredRR, currentRange)
+					inRange = false
+				}
 			}
+			seriesIdx++
 		}
 	}
 

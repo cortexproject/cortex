@@ -3736,6 +3736,7 @@ func TestIngester_QueryStream(t *testing.T) {
 					lastResp = resp
 				}
 				require.Equal(t, 1, count)
+				expectedResponseChunks.MessageWithBufRef = lastResp.MessageWithBufRef
 				require.Equal(t, expectedResponseChunks, lastResp)
 			}
 

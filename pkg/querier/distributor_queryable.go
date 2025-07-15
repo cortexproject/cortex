@@ -92,6 +92,8 @@ type distributorQuerier struct {
 	queryIngestersWithin     time.Duration
 	isPartialDataEnabled     partialdata.IsCfgEnabledFunc
 	ingesterQueryMaxAttempts int
+
+	freeBuffers func()
 }
 
 // Select implements storage.Querier interface.
@@ -165,6 +167,8 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, pa
 	if err != nil && !partialdata.IsPartialDataError(err) {
 		return storage.ErrSeriesSet(err)
 	}
+
+	q.freeBuffers = results.Free
 
 	serieses := make([]storage.Series, 0, len(results.Chunkseries))
 	for _, result := range results.Chunkseries {
@@ -357,6 +361,10 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, hints *
 }
 
 func (q *distributorQuerier) Close() error {
+	if q.freeBuffers != nil {
+		q.freeBuffers()
+		q.freeBuffers = nil
+	}
 	return nil
 }
 

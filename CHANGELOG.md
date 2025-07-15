@@ -74,6 +74,7 @@
 * [BUGFIX] Ingester: Allow shipper to skip corrupted blocks. #6786
 * [BUGFIX] Compactor: Delete the prefix `blocks_meta` from the metadata fetcher metrics. #6832
 * [BUGFIX] Store Gateway: Avoid race condition by deduplicating entries in bucket stores user scan. #6863
+* [BUGFIX] Runtime-config: Change to check tenant limit validation when loading runtime config only for `all`, `distributor`, `querier`, and `ruler` targets. #6880
 
 ## 1.19.0 2025-02-27
 

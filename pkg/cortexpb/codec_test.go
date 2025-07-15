@@ -64,11 +64,12 @@ func TestNoopBufferWhenNotReleasableMessage(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			data, err := codec.Marshal(tc.m)
 			require.NoError(t, err)
+
+			// lets split the buffer into 2 so we force get another buffer from the pool
 			r := data.Reader()
 			size := r.Remaining()
 			b1 := make([]byte, size/2)
 			b2 := make([]byte, (size/2)+1)
-
 			buffer1 := mem.NewBuffer(&b1, mem.NopBufferPool{})
 			buffer2 := mem.NewBuffer(&b2, mem.NopBufferPool{})
 

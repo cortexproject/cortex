@@ -42,17 +42,16 @@ func newCachedScanner(scanner Scanner, cfg tsdb.UsersScannerConfig, reg promethe
 
 func (s *cachedScanner) ScanUsers(ctx context.Context) ([]string, []string, []string, error) {
 	s.requests.Inc()
-	s.mtx.RLock()
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	// Check if we have a valid cached result
 	if !s.lastUpdatedAt.Before(time.Now().Add(-s.ttl)) {
 		active := s.active
 		deleting := s.deleting
 		deleted := s.deleted
-		s.mtx.RUnlock()
 		s.hits.Inc()
 		return active, deleting, deleted, nil
 	}
-	s.mtx.RUnlock()
 
 	// TODO: move to promise based.
 	active, deleting, deleted, err := s.scanner.ScanUsers(ctx)
@@ -60,12 +59,10 @@ func (s *cachedScanner) ScanUsers(ctx context.Context) ([]string, []string, []st
 		return nil, nil, nil, err
 	}
 
-	s.mtx.Lock()
 	s.active = active
 	s.deleting = deleting
 	s.deleted = deleted
 	s.lastUpdatedAt = time.Now()
-	s.mtx.Unlock()
 
 	return active, deleting, deleted, nil
 }

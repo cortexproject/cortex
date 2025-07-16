@@ -20,7 +20,9 @@ type CombinedFrontendConfig struct {
 	FrontendV1 v1.Config               `yaml:",inline"`
 	FrontendV2 v2.Config               `yaml:",inline"`
 
-	DownstreamURL string `yaml:"downstream_url"`
+	DownstreamURL               string `yaml:"downstream_url"`
+	DistributedExecEnabled      bool   `yaml:"distributed_exec_enabled"`
+	DisableDuplicateLabelChecks bool   `yaml:"disable_duplicate_label_checks"`
 }
 
 func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
@@ -29,6 +31,8 @@ func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.FrontendV2.RegisterFlags(f)
 
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
+	f.BoolVar(&cfg.DistributedExecEnabled, "frontend.distributed_exec_enabled", false, "Experimental: Enables distributed execution of queries by passing logical query plan fragments to downstream components.")
+	f.BoolVar(&cfg.DisableDuplicateLabelChecks, "frontend.disable_duplicate_label_checks", false, "Experimental: Disables duplicate label checks during logical plan generation")
 }
 
 // InitFrontend initializes frontend (either V1 -- without scheduler, or V2 -- with scheduler) or no frontend at

@@ -294,7 +294,7 @@ func TestSplitByDay(t *testing.T) {
 		intervalFn         IntervalFn
 	}{
 		{
-			path:               query,
+			path:               queryAll,
 			expectedBody:       string(mergedHTTPResponseBody),
 			expectedQueryCount: 2,
 			intervalFn: func(ctx context.Context, _ tripperware.Request) (context.Context, time.Duration, error) {
@@ -302,7 +302,7 @@ func TestSplitByDay(t *testing.T) {
 			},
 		},
 		{
-			path:               query,
+			path:               queryAll,
 			expectedBody:       string(mergedHTTPResponseBody),
 			expectedQueryCount: 2,
 			intervalFn:         dynamicIntervalFn(Config{SplitQueriesByInterval: day}, mockLimits{}, querysharding.NewQueryAnalyzer(), lookbackDelta),
@@ -344,7 +344,7 @@ func TestSplitByDay(t *testing.T) {
 				next: http.DefaultTransport,
 			}, PrometheusCodec, nil, NewLimitsMiddleware(mockLimits{}, 5*time.Minute), SplitByIntervalMiddleware(tc.intervalFn, mockLimits{}, PrometheusCodec, nil, lookbackDelta))
 
-			req, err := http.NewRequest("GET", tc.path, http.NoBody)
+			req, err := http.NewRequest("POST", tc.path, http.NoBody)
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "1")

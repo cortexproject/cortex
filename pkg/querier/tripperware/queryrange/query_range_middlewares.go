@@ -102,6 +102,9 @@ func Middlewares(
 	prometheusCodec tripperware.Codec,
 	shardedPrometheusCodec tripperware.Codec,
 	lookbackDelta time.Duration,
+	enablePerStepStats bool,
+	distributedExecEnabled bool,
+	disableDuplicateLabelChecks bool,
 ) ([]tripperware.Middleware, cache.Cache, error) {
 	// Metric used to keep track of each middleware execution duration.
 	metrics := tripperware.NewInstrumentMiddlewareMetrics(registerer)
@@ -136,6 +139,12 @@ func Middlewares(
 	}
 
 	queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("shardBy", metrics), tripperware.ShardByMiddleware(log, limits, shardedPrometheusCodec, queryAnalyzer))
+
+	if distributedExecEnabled {
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			tripperware.InstrumentMiddleware("range_logical_plan_gen", metrics),
+			RangeLogicalPlanGenMiddleware(lookbackDelta, enablePerStepStats, disableDuplicateLabelChecks))
+	}
 
 	return queryRangeMiddleware, c, nil
 }

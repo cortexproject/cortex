@@ -321,7 +321,7 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			//parallel testing causes data race
-			req, err := http.NewRequest("GET", tc.path, http.NoBody)
+			req, err := http.NewRequest("POST", tc.path, http.NoBody)
 			require.NoError(t, err)
 
 			// query-frontend doesn't actually authenticate requests, we rely on

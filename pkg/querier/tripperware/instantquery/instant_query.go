@@ -168,6 +168,8 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 		}
 	}
 
+	h.Add("Content-Type", "application/json")
+
 	isSourceRuler := strings.Contains(h.Get("User-Agent"), tripperware.RulerUserAgent)
 	if !isSourceRuler {
 		// When the source is the Ruler, skip set header
@@ -175,10 +177,10 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 	}
 
 	req := &http.Request{
-		Method:     "GET",
+		Method:     "POST",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
-		Body:       http.NoBody,
+		Body:       io.NopCloser(bytes.NewReader(promReq.LogicalPlan)),
 		Header:     h,
 	}
 

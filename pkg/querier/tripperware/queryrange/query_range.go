@@ -175,13 +175,15 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		}
 	}
 
+	h.Add("Content-Type", "application/json")
+
 	tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
 
 	req := &http.Request{
-		Method:     "GET",
+		Method:     "POST",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
-		Body:       http.NoBody,
+		Body:       io.NopCloser(bytes.NewReader(promReq.LogicalPlan)),
 		Header:     h,
 	}
 

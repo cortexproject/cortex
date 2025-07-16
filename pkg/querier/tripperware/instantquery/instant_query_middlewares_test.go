@@ -1,4 +1,4 @@
-package queryrange
+package instantquery
 
 import (
 	"context"
@@ -20,13 +20,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-var (
-	PrometheusCodec        = NewPrometheusCodec(false, "", "protobuf")
-	ShardedPrometheusCodec = NewPrometheusCodec(false, "", "protobuf")
-)
-
 const (
 	distributedExecEnabled = false
+	queryAll               = "/api/v1/instant_query?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536716898&stats=all"
+	responseBody           = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -37,10 +34,6 @@ func TestRoundTrip(t *testing.T) {
 				switch r.RequestURI {
 				case queryAll:
 					_, err = w.Write([]byte(responseBody))
-				case queryWithWarnings:
-					_, err = w.Write([]byte(responseBodyWithWarnings))
-				case queryWithInfos:
-					_, err = w.Write([]byte(responseBodyWithInfos))
 				default:
 					_, err = w.Write([]byte("bar"))
 				}
@@ -61,14 +54,11 @@ func TestRoundTrip(t *testing.T) {
 	}
 
 	qa := querysharding.NewQueryAnalyzer()
-	queyrangemiddlewares, _, err := Middlewares(Config{},
+	instantQueryMiddleware, err := Middlewares(
 		log.NewNopLogger(),
-		mockLimits{},
-		nil,
+		mockLimitsShard{maxQueryLookback: 2},
 		nil,
 		qa,
-		PrometheusCodec,
-		ShardedPrometheusCodec,
 		5*time.Minute,
 		false,
 		distributedExecEnabled,
@@ -81,9 +71,9 @@ func TestRoundTrip(t *testing.T) {
 	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
 		nil,
 		nil,
-		queyrangemiddlewares,
 		nil,
-		PrometheusCodec,
+		instantQueryMiddleware,
+		testInstantQueryCodec,
 		nil,
 		defaultLimits,
 		qa,
@@ -100,13 +90,9 @@ func TestRoundTrip(t *testing.T) {
 		{queryAll, responseBody},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			//parallel testing causes data race
 			req, err := http.NewRequest("POST", tc.path, http.NoBody)
 			require.NoError(t, err)
 
-			// query-frontend doesn't actually authenticate requests, we rely on
-			// the queriers to do this.  Hence we ensure the request doesn't have a
-			// org ID in the ctx, but does have the header.
 			ctx := user.InjectOrgID(context.Background(), "1")
 			req = req.WithContext(ctx)
 			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)

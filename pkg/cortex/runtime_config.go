@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 
@@ -15,7 +16,8 @@ import (
 )
 
 var (
-	errMultipleDocuments = errors.New("the provided runtime configuration contains multiple documents")
+	errMultipleDocuments    = errors.New("the provided runtime configuration contains multiple documents")
+	tenantLimitCheckTargets = []string{All, Distributor, Querier, Ruler}
 )
 
 // RuntimeConfigValues are values that can be reloaded from configuration file while Cortex is running.
@@ -78,9 +80,16 @@ func (l runtimeConfigLoader) load(r io.Reader) (interface{}, error) {
 		return nil, errMultipleDocuments
 	}
 
-	for _, ul := range overrides.TenantLimits {
-		if err := ul.Validate(l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled); err != nil {
-			return nil, err
+	targetStr := l.cfg.Target.String()
+	for _, target := range tenantLimitCheckTargets {
+		if strings.Contains(targetStr, target) {
+			// only check if target is `all`, `distributor`, "querier", and "ruler"
+			// refer to https://github.com/cortexproject/cortex/issues/6741#issuecomment-3067244929
+			for _, ul := range overrides.TenantLimits {
+				if err := ul.Validate(l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled); err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 

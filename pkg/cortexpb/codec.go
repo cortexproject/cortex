@@ -14,7 +14,10 @@ import (
 const Name = "proto"
 
 func init() {
-	encoding.RegisterCodecV2(&cortexCodec{})
+	encoding.RegisterCodecV2(&cortexCodec{
+		noOpBufferPool:    mem.NopBufferPool{},
+		defaultBufferPool: mem.DefaultBufferPool(),
+	})
 }
 
 type ReleasableMessage interface {
@@ -25,7 +28,10 @@ type GogoProtoMessage interface {
 	MarshalToSizedBuffer(dAtA []byte) (int, error)
 }
 
-type cortexCodec struct{}
+type cortexCodec struct {
+	noOpBufferPool    mem.BufferPool
+	defaultBufferPool mem.BufferPool
+}
 
 func (c cortexCodec) Name() string {
 	return Name
@@ -64,7 +70,7 @@ func (c *cortexCodec) Marshal(v any) (data mem.BufferSlice, err error) {
 
 		data = append(data, buf)
 	} else {
-		pool := mem.DefaultBufferPool()
+		pool := c.defaultBufferPool
 		buf := pool.Get(size)
 
 		// If v implements MarshalToSizedBuffer we should use it as it is more optimized
@@ -94,10 +100,17 @@ func (c *cortexCodec) Unmarshal(data mem.BufferSlice, v any) error {
 		return fmt.Errorf("failed to unmarshal, message is %T, want proto.Message", v)
 	}
 
-	// To be in the safe side, we will never automatically release the buffer used to Unmarshal the message automatically.
-	// This should simulate the same behavior of grpc v1.65.0 and before.
-	buf := data.MaterializeToBuffer(mem.DefaultBufferPool())
+	// To be safe, we avoid automatically releasing the buffer used to unmarshal the message.
+	// Additionally, we avoid using a pooled byte slice unless the message implements ReleasableMessage.
+	// This mimics the behavior of gRPC versions 1.65.0 and earlier.
+	rm, ok := v.(ReleasableMessage)
+	bufferPool := c.defaultBufferPool
 
+	if !ok {
+		bufferPool = c.noOpBufferPool
+	}
+
+	buf := data.MaterializeToBuffer(bufferPool)
 	err := proto.Unmarshal(buf.ReadOnlyData(), vv)
 
 	if err != nil {
@@ -106,8 +119,8 @@ func (c *cortexCodec) Unmarshal(data mem.BufferSlice, v any) error {
 	}
 
 	// If v implements ReleasableMessage interface, we add the buff to be freed later when the request is no longer being used
-	if fm, ok := v.(ReleasableMessage); ok {
-		fm.RegisterBuffer(buf)
+	if rm != nil {
+		rm.RegisterBuffer(buf)
 	}
 
 	return err

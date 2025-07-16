@@ -26,7 +26,7 @@ func Middlewares(
 
 	if distributedExecEnabled {
 		m = append(m,
-			InstantLogicalPlanGenMiddleware(lookbackDelta, enablePerStepStats, disableDuplicateLabelChecks))
+			tripperware.LogicalPlanGenMiddleware(lookbackDelta, enablePerStepStats, disableDuplicateLabelChecks))
 	}
 
 	return m, nil

@@ -109,6 +109,243 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+// Integration test for query round-trip with distributed execution enabled (feature flag).
+// Checks logical plan is generated, included in request body, and processed correctly.
+
+func TestRoundTripWithDistributedExec(t *testing.T) {
+	s := httptest.NewServer(
+		middleware.AuthenticateUser.Wrap(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var err error
+				switch r.RequestURI {
+				case queryAll:
+					_, err = w.Write([]byte(responseBody))
+				default:
+					_, err = w.Write([]byte("bar"))
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+			}),
+		),
+	)
+	defer s.Close()
+
+	u, err := url.Parse(s.URL)
+	require.NoError(t, err)
+
+	downstream := singleHostRoundTripper{
+		host: u.Host,
+		next: http.DefaultTransport,
+	}
+
+	qa := querysharding.NewQueryAnalyzer()
+
+	instantQueryMiddlewares, err := Middlewares(
+		log.NewNopLogger(),
+		mockLimitsShard{shardSize: 2},
+		nil,
+		qa,
+		5*time.Minute,
+		false,
+		true,
+		true,
+	)
+	require.NoError(t, err)
+
+	defaultLimits := validation.NewOverrides(validation.Limits{}, nil)
+
+	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
+		nil,
+		nil,
+		nil,
+		instantQueryMiddlewares,
+		testInstantQueryCodec,
+		nil,
+		defaultLimits,
+		qa,
+		time.Minute,
+		0,
+		0,
+		false,
+	)
+
+	for i, tc := range []struct {
+		pReq *tripperware.PrometheusRequest
+	}{
+		{pReq: &tripperware.PrometheusRequest{
+			Start: 100000,
+			End:   100000,
+			Query: "node_cpu_seconds_total{mode!=\"idle\"}[5m]",
+		}},
+	} {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "1")
+
+			for _, mw := range instantQueryMiddlewares {
+				handler := mw.Wrap(tripperware.HandlerFunc(func(_ context.Context, pReq tripperware.Request) (tripperware.Response, error) {
+					return nil, nil
+				}))
+				_, err := handler.Do(ctx, tc.pReq)
+				require.NoError(t, err)
+			}
+
+			req, err := tripperware.Codec.EncodeRequest(testInstantQueryCodec, context.Background(), tc.pReq)
+			require.NoError(t, err)
+			req = req.WithContext(ctx)
+			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+			require.NoError(t, err)
+			body, err := io.ReadAll(req.Body)
+			require.NotEmpty(t, body)
+			require.Equal(t, body, tc.pReq.LogicalPlan)
+
+			resp, err := tw(downstream).RoundTrip(req)
+			require.NoError(t, err)
+			require.Equal(t, 200, resp.StatusCode)
+
+			_, err = io.ReadAll(resp.Body)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestRoundTripWithoutDistributedExec(t *testing.T) {
+	s := httptest.NewServer(
+		middleware.AuthenticateUser.Wrap(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var err error
+				switch r.RequestURI {
+				case queryAll:
+					_, err = w.Write([]byte(responseBody))
+				default:
+					_, err = w.Write([]byte("bar"))
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+			}),
+		),
+	)
+	defer s.Close()
+
+	u, err := url.Parse(s.URL)
+	require.NoError(t, err)
+
+	downstream := singleHostRoundTripper{
+		host: u.Host,
+		next: http.DefaultTransport,
+	}
+
+	qa := querysharding.NewQueryAnalyzer()
+	instantQueryMiddlewares, err := Middlewares(
+		log.NewNopLogger(),
+		mockLimitsShard{shardSize: 2},
+		nil,
+		qa,
+		5*time.Minute,
+		false,
+		false,
+		true,
+	)
+	require.NoError(t, err)
+
+	defaultLimits := validation.NewOverrides(validation.Limits{}, nil)
+
+	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
+		nil,
+		nil,
+		nil,
+		instantQueryMiddlewares,
+		testInstantQueryCodec,
+		nil,
+		defaultLimits,
+		qa,
+		time.Minute,
+		0,
+		0,
+		false,
+	)
+
+	for i, tc := range []struct {
+		pReq *tripperware.PrometheusRequest
+	}{
+		{pReq: &tripperware.PrometheusRequest{
+			Start: 100000,
+			End:   100000,
+			Query: "node_cpu_seconds_total{mode!=\"idle\"}[5m]",
+		}},
+	} {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "1")
+
+			for _, mw := range instantQueryMiddlewares {
+				handler := mw.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
+					return nil, nil
+				}))
+				_, err := handler.Do(ctx, tc.pReq)
+				require.NoError(t, err)
+			}
+
+			req, err := tripperware.Codec.EncodeRequest(testInstantQueryCodec, context.Background(), tc.pReq)
+			require.NoError(t, err)
+			req = req.WithContext(ctx)
+			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+			require.NoError(t, err)
+			body, err := io.ReadAll(req.Body)
+			require.Empty(t, body)
+
+			resp, err := tw(downstream).RoundTrip(req)
+			require.NoError(t, err)
+			require.Equal(t, 200, resp.StatusCode)
+
+			_, err = io.ReadAll(resp.Body)
+			require.NoError(t, err)
+		})
+	}
+}
+
+type mockLimitsShard struct {
+	maxQueryLookback     time.Duration
+	maxQueryLength       time.Duration
+	maxCacheFreshness    time.Duration
+	maxQueryResponseSize int64
+	shardSize            int
+	queryPriority        validation.QueryPriority
+	queryRejection       validation.QueryRejection
+}
+
+func (m mockLimitsShard) MaxQueryLookback(string) time.Duration {
+	return m.maxQueryLookback
+}
+
+func (m mockLimitsShard) MaxQueryLength(string) time.Duration {
+	return m.maxQueryLength
+}
+
+func (mockLimitsShard) MaxQueryParallelism(string) int {
+	return 14 // Flag default.
+}
+
+func (m mockLimitsShard) MaxCacheFreshness(string) time.Duration {
+	return m.maxCacheFreshness
+}
+
+func (m mockLimitsShard) MaxQueryResponseSize(string) int64 {
+	return m.maxQueryResponseSize
+}
+
+func (m mockLimitsShard) QueryVerticalShardSize(userID string) int {
+	return m.shardSize
+}
+
+func (m mockLimitsShard) QueryPriority(userID string) validation.QueryPriority {
+	return m.queryPriority
+}
+
+func (m mockLimitsShard) QueryRejection(userID string) validation.QueryRejection {
+	return m.queryRejection
+}
+
 type singleHostRoundTripper struct {
 	host string
 	next http.RoundTripper

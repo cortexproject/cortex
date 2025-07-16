@@ -1,8 +1,7 @@
-package queryrange
+package tripperware
 
 import (
 	"context"
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
@@ -15,9 +14,9 @@ const (
 	stepBatch = 10
 )
 
-func RangeLogicalPlanGenMiddleware(lookbackDelta time.Duration, enablePerStepStats bool, disableDuplicateLabelChecks bool) tripperware.Middleware {
-	return tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
-		return rangeLogicalPlanGen{
+func LogicalPlanGenMiddleware(lookbackDelta time.Duration, enablePerStepStats bool, disableDuplicateLabelChecks bool) Middleware {
+	return MiddlewareFunc(func(next Handler) Handler {
+		return logicalPlanGen{
 			lookbackDelta:               lookbackDelta,
 			enabledPerStepStats:         enablePerStepStats,
 			next:                        next,
@@ -26,15 +25,47 @@ func RangeLogicalPlanGenMiddleware(lookbackDelta time.Duration, enablePerStepSta
 	})
 }
 
-type rangeLogicalPlanGen struct {
+type logicalPlanGen struct {
 	lookbackDelta               time.Duration
 	enabledPerStepStats         bool
-	next                        tripperware.Handler
+	next                        Handler
 	disableDuplicateLabelChecks bool
 }
 
-// NewRangeLogicalPlan generates an optimized and serialized logical query plan
-func (l rangeLogicalPlanGen) NewRangeLogicalPlan(qs string, start, end time.Time, interval time.Duration) ([]byte, error) {
+func (l logicalPlanGen) NewInstantLogicalPlan(qs string, ts time.Time) ([]byte, error) {
+
+	qOpts := query.Options{
+		Start:              ts,
+		End:                ts,
+		Step:               0,
+		StepsBatch:         stepBatch,
+		LookbackDelta:      l.lookbackDelta,
+		EnablePerStepStats: l.disableDuplicateLabelChecks,
+	}
+
+	expr, err := parser.NewParser(qs, parser.WithFunctions(parser.Functions)).ParseExpr()
+	if err != nil {
+		return nil, err
+	}
+
+	planOpts := logicalplan.PlanOptions{
+		DisableDuplicateLabelCheck: l.disableDuplicateLabelChecks,
+	}
+
+	logicalPlan := logicalplan.NewFromAST(expr, &qOpts, planOpts)
+	optimizedPlan, _ := logicalPlan.Optimize(logicalplan.DefaultOptimizers)
+
+	// TODO: Add distributed optimizer for remote node insertion
+
+	byteLP, err := logicalplan.Marshal(optimizedPlan.Root())
+	if err != nil {
+		return nil, err
+	}
+
+	return byteLP, nil
+}
+
+func (l logicalPlanGen) NewRangeLogicalPlan(qs string, start, end time.Time, interval time.Duration) ([]byte, error) {
 
 	qOpts := query.Options{
 		Start:              start,
@@ -66,8 +97,8 @@ func (l rangeLogicalPlanGen) NewRangeLogicalPlan(qs string, start, end time.Time
 	return byteLP, nil
 }
 
-func (l rangeLogicalPlanGen) Do(ctx context.Context, r tripperware.Request) (tripperware.Response, error) {
-	promReq, ok := r.(*tripperware.PrometheusRequest)
+func (l logicalPlanGen) Do(ctx context.Context, r Request) (Response, error) {
+	promReq, ok := r.(*PrometheusRequest)
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
 	}
@@ -76,7 +107,14 @@ func (l rangeLogicalPlanGen) Do(ctx context.Context, r tripperware.Request) (tri
 	endTime := time.Unix(0, promReq.End*int64(time.Millisecond))
 	duration := time.Duration(promReq.Step) * time.Millisecond
 
-	byteLP, err := l.NewRangeLogicalPlan(promReq.Query, startTime, endTime, duration)
+	var byteLP []byte
+	var err error
+	if promReq.Step != 0 {
+		byteLP, err = l.NewRangeLogicalPlan(promReq.Query, startTime, endTime, duration)
+	} else {
+		byteLP, err = l.NewInstantLogicalPlan(promReq.Query, startTime)
+	}
+
 	if err != nil {
 		return nil, err
 	}

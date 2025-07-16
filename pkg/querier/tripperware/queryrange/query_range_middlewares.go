@@ -143,7 +143,7 @@ func Middlewares(
 	if distributedExecEnabled {
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			tripperware.InstrumentMiddleware("range_logical_plan_gen", metrics),
-			RangeLogicalPlanGenMiddleware(lookbackDelta, enablePerStepStats, disableDuplicateLabelChecks))
+			tripperware.LogicalPlanGenMiddleware(lookbackDelta, enablePerStepStats, disableDuplicateLabelChecks))
 	}
 
 	return queryRangeMiddleware, c, nil

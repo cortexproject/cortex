@@ -2,16 +2,15 @@ package queryrange
 
 import (
 	"context"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/promql-engine/logicalplan"
+	"github.com/thanos-io/promql-engine/query"
 	"io"
 	"net/http"
 	"strconv"
 	"testing"
 	"time"
-
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/promql-engine/logicalplan"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 // TestRangeLogicalPlan validates the range logical plan generation middleware.
@@ -72,11 +71,7 @@ func TestRangeLogicalPlan(t *testing.T) {
 		t.Run(strconv.Itoa(i)+"_"+tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			middleware := tripperware.LogicalPlanGenMiddleware(
-				5*time.Minute,
-				true,
-				true,
-			)
+			middleware := tripperware.LogicalPlanGenMiddleware()
 
 			handler := middleware.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 				return nil, nil
@@ -87,7 +82,16 @@ func TestRangeLogicalPlan(t *testing.T) {
 			require.NoError(t, err)
 			require.NotEmpty(t, tc.input.LogicalPlan, "logical plan should be populated")
 
-			// Test Group 2: Ensure the logical plan can be deserialized back
+			// Test 2: Encode the request and validate method and body
+			httpReq, err := tripperware.Codec.EncodeRequest(PrometheusCodec, context.Background(), tc.input)
+			require.NoError(t, err)
+			require.Equal(t, http.MethodPost, httpReq.Method)
+
+			body, err := io.ReadAll(httpReq.Body)
+			require.NoError(t, err)
+			require.NotEmpty(t, body, "HTTP body should not be empty")
+
+			// Test Group 3: Ensure the logical plan can be deserialized back
 			start := time.Unix(0, tc.input.Start*int64(time.Millisecond))
 			end := time.Unix(0, tc.input.End*int64(time.Millisecond))
 			step := time.Duration(tc.input.Step) * time.Millisecond
@@ -98,23 +102,13 @@ func TestRangeLogicalPlan(t *testing.T) {
 				Step:               step,
 				StepsBatch:         10,
 				LookbackDelta:      5 * time.Minute,
-				EnablePerStepStats: true,
+				EnablePerStepStats: false,
 			}
 			planOpts := logicalplan.PlanOptions{
-				DisableDuplicateLabelCheck: true,
+				DisableDuplicateLabelCheck: false,
 			}
-			_, err = logicalplan.NewFromBytes(tc.input.LogicalPlan, &qOpts, planOpts)
+			_, err = logicalplan.NewFromBytes(body, &qOpts, planOpts)
 			require.NoError(t, err, "logical plan should be valid and de-serializable")
-
-			// Test 3: Encode the request and validate method and body
-			httpReq, err := tripperware.Codec.EncodeRequest(PrometheusCodec, context.Background(), tc.input)
-			require.NoError(t, err)
-			require.Equal(t, http.MethodPost, httpReq.Method)
-
-			body, err := io.ReadAll(httpReq.Body)
-			require.NoError(t, err)
-			require.NotEmpty(t, body, "HTTP body should not be empty")
-			require.Equal(t, body, tc.input.LogicalPlan, "logical plan in request body does not match expected bytes")
 		})
 	}
 }

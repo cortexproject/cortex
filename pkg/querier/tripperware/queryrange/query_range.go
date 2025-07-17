@@ -3,6 +3,7 @@ package queryrange
 import (
 	"bytes"
 	"context"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"io"
 	"net/http"
 	"net/url"
@@ -151,6 +152,21 @@ func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwa
 	return &result, nil
 }
 
+// getSerializedBody serializes the logical plan from a Prometheus request.
+// Returns an empty byte array if the logical plan is nil.
+func (c prometheusCodec) getSerializedBody(promReq *tripperware.PrometheusRequest) ([]byte, error) {
+	var byteLP []byte
+	var err error
+
+	if promReq.LogicalPlan != nil && *promReq.LogicalPlan != nil {
+		byteLP, err = logicalplan.Marshal((*promReq.LogicalPlan).Root())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return byteLP, nil
+}
+
 func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
 	promReq, ok := r.(*tripperware.PrometheusRequest)
 	if !ok {
@@ -179,11 +195,16 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 
 	tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
 
+	bodyBytes, err := c.getSerializedBody(promReq)
+	if err != nil {
+		return nil, err
+	}
+
 	req := &http.Request{
 		Method:     "POST",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
-		Body:       io.NopCloser(bytes.NewReader(promReq.LogicalPlan)),
+		Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
 		Header:     h,
 	}
 

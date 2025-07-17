@@ -2,6 +2,7 @@ package instantquery
 
 import (
 	"context"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -60,9 +61,7 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		qa,
 		5*time.Minute,
-		false,
 		distributedExecEnabled,
-		true,
 	)
 	require.NoError(t, err)
 
@@ -147,8 +146,6 @@ func TestRoundTripWithDistributedExec(t *testing.T) {
 		nil,
 		qa,
 		5*time.Minute,
-		false,
-		true,
 		true,
 	)
 	require.NoError(t, err)
@@ -195,9 +192,14 @@ func TestRoundTripWithDistributedExec(t *testing.T) {
 			req = req.WithContext(ctx)
 			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 			require.NoError(t, err)
+
 			body, err := io.ReadAll(req.Body)
 			require.NotEmpty(t, body)
-			require.Equal(t, body, tc.pReq.LogicalPlan)
+			require.NoError(t, err)
+
+			byteLP, err := logicalplan.Marshal((*tc.pReq.LogicalPlan).Root())
+			require.NoError(t, err)
+			require.Equal(t, byteLP, body)
 
 			resp, err := tw(downstream).RoundTrip(req)
 			require.NoError(t, err)
@@ -244,8 +246,6 @@ func TestRoundTripWithoutDistributedExec(t *testing.T) {
 		qa,
 		5*time.Minute,
 		false,
-		false,
-		true,
 	)
 	require.NoError(t, err)
 

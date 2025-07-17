@@ -72,11 +72,7 @@ func TestInstantLogicalPlan(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 
-			lpm := tripperware.LogicalPlanGenMiddleware(
-				time.Duration(1000),
-				false,
-				true,
-			)
+			lpm := tripperware.LogicalPlanGenMiddleware()
 			handler := lpm.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 				return nil, nil
 			}))
@@ -85,17 +81,7 @@ func TestInstantLogicalPlan(t *testing.T) {
 			_, _ = handler.Do(context.Background(), tc.input)
 			require.NotEmpty(t, tc.input.LogicalPlan, "prom request should not be empty")
 
-			// Test Group 2: Ensure the logical plan can be deserialized back
-			qOpts := query.Options{
-				Start: time.Unix(tc.input.Start, 0),
-				End:   time.Unix(tc.input.End, 0),
-				Step:  time.Duration(1000),
-			}
-			planOpts := logicalplan.PlanOptions{DisableDuplicateLabelCheck: true}
-			_, err := logicalplan.NewFromBytes(tc.input.LogicalPlan, &qOpts, planOpts)
-			require.NoError(t, err)
-
-			// Test 3: Encode the request and validate method and body
+			// Test 2: Encode the request and validate method and body
 			httpReq, err := tripperware.Codec.EncodeRequest(testInstantQueryCodec, context.Background(), tc.input)
 			require.NoError(t, err)
 			require.Equal(t, httpReq.Method, http.MethodPost, "Method should be POST")
@@ -103,7 +89,26 @@ func TestInstantLogicalPlan(t *testing.T) {
 			bodyBytes, err := io.ReadAll(httpReq.Body)
 			require.NoError(t, err)
 			require.NotEmpty(t, bodyBytes, "HTTP body should not be empty")
-			require.Equal(t, bodyBytes, tc.input.LogicalPlan, "logical plan in request body does not match expected bytes")
+
+			// Test Group 3: Ensure the logical plan can be deserialized back
+			qOpts := query.Options{
+				Start: time.Unix(tc.input.Start, 0),
+				End:   time.Unix(tc.input.Start, 0),
+				Step:  0,
+			}
+
+			qOpts = query.Options{
+				Start:              time.Unix(tc.input.Start, 0),
+				End:                time.Unix(tc.input.Start, 0),
+				Step:               0,
+				StepsBatch:         10,
+				LookbackDelta:      0,
+				EnablePerStepStats: false,
+			}
+
+			planOpts := logicalplan.PlanOptions{DisableDuplicateLabelCheck: false}
+			_, err = logicalplan.NewFromBytes(bodyBytes, &qOpts, planOpts)
+			require.NoError(t, err)
 		})
 	}
 }

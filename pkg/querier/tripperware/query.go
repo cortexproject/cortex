@@ -97,8 +97,8 @@ type Request interface {
 	GetStep() int64
 	// GetQuery returns the query of the request.
 	GetQuery() string
-	// GetLogicalPlan returns the serialized logical plan
-	GetLogicalPlan() *logicalplan.Plan
+	// GetLogicalPlan returns the logical plan
+	GetLogicalPlan() logicalplan.Plan
 	// WithStartEnd clone the current request with different start and end timestamp.
 	WithStartEnd(startTime int64, endTime int64) Request
 	// WithQuery clone the current request with a different query.
@@ -155,7 +155,7 @@ type PrometheusRequest struct {
 	Headers        http.Header
 	Stats          string
 	CachingOptions CachingOptions
-	LogicalPlan    *logicalplan.Plan
+	LogicalPlan    logicalplan.Plan
 }
 
 func (m *PrometheusRequest) GetPath() string {
@@ -221,7 +221,7 @@ func (m *PrometheusRequest) GetStats() string {
 	return ""
 }
 
-func (m *PrometheusRequest) GetLogicalPlan() *logicalplan.Plan {
+func (m *PrometheusRequest) GetLogicalPlan() logicalplan.Plan {
 	if m != nil {
 		return m.LogicalPlan
 	}

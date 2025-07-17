@@ -158,8 +158,8 @@ func (c prometheusCodec) getSerializedBody(promReq *tripperware.PrometheusReques
 	var byteLP []byte
 	var err error
 
-	if promReq.LogicalPlan != nil && *promReq.LogicalPlan != nil {
-		byteLP, err = logicalplan.Marshal((*promReq.LogicalPlan).Root())
+	if promReq.LogicalPlan != nil {
+		byteLP, err = logicalplan.Marshal(promReq.LogicalPlan.Root())
 		if err != nil {
 			return nil, err
 		}

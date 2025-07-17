@@ -36,8 +36,6 @@ overrides:
     max_global_series_per_user: 300000
     max_series_per_metric: 0
     max_series_per_user: 0
-    max_samples_per_query: 100000
-    max_series_per_query: 100000
 ```
 
 The `overrides-exporter` is configured to run as follows:
@@ -59,7 +57,6 @@ cortex_overrides{limit_name="max_global_series_per_user",user="user1"} 300000
 cortex_overrides{limit_name="max_local_series_per_metric",user="user1"} 0
 cortex_overrides{limit_name="max_local_series_per_user",user="user1"} 0
 cortex_overrides{limit_name="max_samples_per_query",user="user1"} 100000
-cortex_overrides{limit_name="max_series_per_query",user="user1"} 100000
 ```
 
 With these metrics, you can set up alerts to know when tenants are close to hitting their limits

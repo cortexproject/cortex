@@ -15,9 +15,7 @@ func Middlewares(
 	merger tripperware.Merger,
 	queryAnalyzer querysharding.Analyzer,
 	lookbackDelta time.Duration,
-	enablePerStepStats bool,
 	distributedExecEnabled bool,
-	disableDuplicateLabelChecks bool,
 ) ([]tripperware.Middleware, error) {
 	m := []tripperware.Middleware{
 		NewLimitsMiddleware(limits, lookbackDelta),
@@ -26,7 +24,7 @@ func Middlewares(
 
 	if distributedExecEnabled {
 		m = append(m,
-			tripperware.LogicalPlanGenMiddleware(lookbackDelta, enablePerStepStats, disableDuplicateLabelChecks))
+			tripperware.LogicalPlanGenMiddleware())
 	}
 
 	return m, nil

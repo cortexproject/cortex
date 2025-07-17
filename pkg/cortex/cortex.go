@@ -14,6 +14,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	prom_config "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/server"
@@ -90,11 +92,12 @@ var (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target          flagext.StringSliceCSV  `yaml:"target"`
-	AuthEnabled     bool                    `yaml:"auth_enabled"`
-	PrintConfig     bool                    `yaml:"-"`
-	HTTPPrefix      string                  `yaml:"http_prefix"`
-	ResourceMonitor configs.ResourceMonitor `yaml:"resource_monitor"`
+	Target               flagext.StringSliceCSV  `yaml:"target"`
+	AuthEnabled          bool                    `yaml:"auth_enabled"`
+	PrintConfig          bool                    `yaml:"-"`
+	HTTPPrefix           string                  `yaml:"http_prefix"`
+	ResourceMonitor      configs.ResourceMonitor `yaml:"resource_monitor"`
+	NameValidationScheme string                  `yaml:"name_validation_scheme"`
 
 	ExternalQueryable prom_storage.Queryable `yaml:"-"`
 	ExternalPusher    ruler.Pusher           `yaml:"-"`
@@ -146,7 +149,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
-
+	f.StringVar(&c.NameValidationScheme, "name.validation_scheme", "legacy", "Validation scheme for metric and label names. Set to utf8 to allow UTF-8 characters.")
 	c.API.RegisterFlags(f)
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Distributor.RegisterFlags(f)
@@ -181,6 +184,11 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate the cortex config and returns an error if the validation
 // doesn't pass
 func (c *Config) Validate(log log.Logger) error {
+	if c.NameValidationScheme != "" &&
+		c.NameValidationScheme != prom_config.LegacyValidationConfig &&
+		c.NameValidationScheme != prom_config.UTF8ValidationConfig {
+		return fmt.Errorf("invalid name validation scheme: %s", c.NameValidationScheme)
+	}
 	if err := c.validateYAMLEmptyNodes(); err != nil {
 		return err
 	}
@@ -349,7 +357,14 @@ func New(cfg Config) (*Cortex, error) {
 		}
 		os.Exit(0)
 	}
-
+	switch cfg.NameValidationScheme {
+	case "", prom_config.LegacyValidationConfig:
+		model.NameValidationScheme = model.LegacyValidation
+	case prom_config.UTF8ValidationConfig:
+		model.NameValidationScheme = model.UTF8Validation
+	default:
+		return nil, fmt.Errorf("invalid name validation scheme")
+	}
 	// Swap out the default resolver to support multiple tenant IDs separated by a '|'
 	if cfg.TenantFederation.Enabled {
 		util_log.WarnExperimentalUse("tenant-federation")

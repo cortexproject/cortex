@@ -454,8 +454,26 @@ func BodyBytes(res *http.Response, logger log.Logger) ([]byte, error) {
 		}
 	}
 
+	// Handle decoding response if it was compressed
+	encoding := res.Header.Get("Content-Encoding")
+	return decode(buf, encoding, logger)
+}
+
+func BodyBytesFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
+	headers := http.Header{}
+	for _, h := range res.Headers {
+		headers[h.Key] = h.Values
+	}
+
+	// Handle decoding response if it was compressed
+	encoding := headers.Get("Content-Encoding")
+	buf := bytes.NewBuffer(res.Body)
+	return decode(buf, encoding, logger)
+}
+
+func decode(buf *bytes.Buffer, encoding string, logger log.Logger) ([]byte, error) {
 	// if the response is gzipped, lets unzip it here
-	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") {
+	if strings.EqualFold(encoding, "gzip") {
 		gReader, err := gzip.NewReader(buf)
 		if err != nil {
 			return nil, err
@@ -466,13 +484,13 @@ func BodyBytes(res *http.Response, logger log.Logger) ([]byte, error) {
 	}
 
 	// if the response is snappy compressed, decode it here
-	if strings.EqualFold(res.Header.Get("Content-Encoding"), "snappy") {
+	if strings.EqualFold(encoding, "snappy") {
 		sReader := snappy.NewReader(buf)
 		return io.ReadAll(sReader)
 	}
 
 	// if the response is zstd compressed, decode it here
-	if strings.EqualFold(res.Header.Get("Content-Encoding"), "zstd") {
+	if strings.EqualFold(encoding, "zstd") {
 		zReader, err := zstd.NewReader(buf)
 		if err != nil {
 			return nil, err
@@ -483,43 +501,6 @@ func BodyBytes(res *http.Response, logger log.Logger) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
-}
-
-func BodyBytesFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
-	headers := http.Header{}
-	for _, h := range res.Headers {
-		headers[h.Key] = h.Values
-	}
-
-	// if the response is gzipped, lets unzip it here
-	if strings.EqualFold(headers.Get("Content-Encoding"), "gzip") {
-		gReader, err := gzip.NewReader(bytes.NewBuffer(res.Body))
-		if err != nil {
-			return nil, err
-		}
-		defer runutil.CloseWithLogOnErr(logger, gReader, "close gzip reader")
-
-		return io.ReadAll(gReader)
-	}
-
-	// if the response is snappy compressed, decode it here
-	if strings.EqualFold(headers.Get("Content-Encoding"), "snappy") {
-		sReader := snappy.NewReader(bytes.NewBuffer(res.Body))
-		return io.ReadAll(sReader)
-	}
-
-	// if the response is zstd compressed, decode it here
-	if strings.EqualFold(headers.Get("Content-Encoding"), "zstd") {
-		zReader, err := zstd.NewReader(bytes.NewBuffer(res.Body))
-		if err != nil {
-			return nil, err
-		}
-		defer runutil.CloseWithLogOnErr(logger, io.NopCloser(zReader), "close zstd decoder")
-
-		return io.ReadAll(zReader)
-	}
-
-	return res.Body, nil
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

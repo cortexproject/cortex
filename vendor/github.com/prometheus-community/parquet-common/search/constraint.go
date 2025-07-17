@@ -262,7 +262,7 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 
 	// Did not find any pages
 	if len(readPgs) == 0 {
-		return nil, nil
+		return intersectRowRanges(simplify(res), rr), nil
 	}
 
 	dictOff, dictSz := ec.f.DictionaryPageBounds(rgIdx, col.ColumnIndex)

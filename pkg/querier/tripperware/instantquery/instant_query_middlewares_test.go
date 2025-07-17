@@ -197,7 +197,7 @@ func TestRoundTripWithDistributedExec(t *testing.T) {
 			require.NotEmpty(t, body)
 			require.NoError(t, err)
 
-			byteLP, err := logicalplan.Marshal((*tc.pReq.LogicalPlan).Root())
+			byteLP, err := logicalplan.Marshal(tc.pReq.LogicalPlan.Root())
 			require.NoError(t, err)
 			require.Equal(t, byteLP, body)
 

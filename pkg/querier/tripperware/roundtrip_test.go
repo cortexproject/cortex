@@ -232,7 +232,7 @@ cortex_query_frontend_queries_total{op="query_range", source="api", user="1"} 1
 `,
 		},
 		{
-			path:             query,
+			path:             queryAll,
 			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
@@ -256,7 +256,7 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 `,
 		},
 		{
-			path:             query,
+			path:             queryAll,
 			expectedBody:     instantResponseBody,
 			limits:           shardingOverrides,
 			maxSubQuerySteps: 11000,

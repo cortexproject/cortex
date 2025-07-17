@@ -83,7 +83,7 @@ func (l logicalPlanGen) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 
-	promReq.LogicalPlan = newLogicalPlan
+	promReq.LogicalPlan = *newLogicalPlan
 
 	return l.next.Do(ctx, r)
 }

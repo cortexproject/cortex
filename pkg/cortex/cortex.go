@@ -184,9 +184,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate the cortex config and returns an error if the validation
 // doesn't pass
 func (c *Config) Validate(log log.Logger) error {
-	if c.NameValidationScheme != "" &&
-		c.NameValidationScheme != prom_config.LegacyValidationConfig &&
-		c.NameValidationScheme != prom_config.UTF8ValidationConfig {
+	switch c.NameValidationScheme {
+	case "", prom_config.LegacyValidationConfig, prom_config.UTF8ValidationConfig:
+	default:
 		return fmt.Errorf("invalid name validation scheme: %s", c.NameValidationScheme)
 	}
 	if err := c.validateYAMLEmptyNodes(); err != nil {
@@ -357,13 +357,10 @@ func New(cfg Config) (*Cortex, error) {
 		}
 		os.Exit(0)
 	}
-	switch cfg.NameValidationScheme {
-	case "", prom_config.LegacyValidationConfig:
-		model.NameValidationScheme = model.LegacyValidation
-	case prom_config.UTF8ValidationConfig:
+	if cfg.NameValidationScheme == prom_config.UTF8ValidationConfig {
 		model.NameValidationScheme = model.UTF8Validation
-	default:
-		return nil, fmt.Errorf("invalid name validation scheme")
+	} else {
+		model.NameValidationScheme = model.LegacyValidation
 	}
 	// Swap out the default resolver to support multiple tenant IDs separated by a '|'
 	if cfg.TenantFederation.Enabled {

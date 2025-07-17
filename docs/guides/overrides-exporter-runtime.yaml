@@ -9,4 +9,3 @@ overrides:
     max_series_per_metric: 0
     max_series_per_user: 0
     max_samples_per_query: 100000
-    max_series_per_query: 100000

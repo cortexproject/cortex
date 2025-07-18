@@ -1,4 +1,4 @@
-package queryapi
+package query
 
 import (
 	"context"
@@ -63,7 +63,7 @@ func (mockQuerier) Close() error {
 	return nil
 }
 
-func Test_CustomAPI(t *testing.T) {
+func Test_QueryAPI(t *testing.T) {
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples: 100,
 		Timeout:    time.Second * 2,
@@ -94,25 +94,25 @@ func Test_CustomAPI(t *testing.T) {
 			name:         "[Range Query] empty start",
 			path:         "/api/v1/query_range?end=1536673680&query=test&step=5",
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"start\\\"; cannot parse \\\"\\\" to a valid timestamp\"}",
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"start\\\": cannot parse \\\"\\\" to a valid timestamp\"}",
 		},
 		{
 			name:         "[Range Query] empty end",
 			path:         "/api/v1/query_range?query=test&start=1536673665&step=5",
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"end\\\"; cannot parse \\\"\\\" to a valid timestamp\"}",
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"end\\\": cannot parse \\\"\\\" to a valid timestamp\"}",
 		},
 		{
 			name:         "[Range Query] start is greater than end",
 			path:         "/api/v1/query_range?end=1536673680&query=test&start=1536673681&step=5",
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"end\\\"; end timestamp must not be before start time\"}",
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"end\\\": end timestamp must not be before start time\"}",
 		},
 		{
 			name:         "[Range Query] negative step",
 			path:         "/api/v1/query_range?end=1536673680&query=test&start=1536673665&step=-1",
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"step\\\"; zero or negative query resolution step widths are not accepted. Try a positive integer\"}",
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"step\\\": zero or negative query resolution step widths are not accepted. Try a positive integer\"}",
 		},
 		{
 			name:         "[Range Query] returned points are over 11000",
@@ -124,19 +124,19 @@ func Test_CustomAPI(t *testing.T) {
 			name:         "[Range Query] empty query",
 			path:         "/api/v1/query_range?end=1536673680&start=1536673665&step=5",
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"query\\\"; unknown position: parse error: no expression found in input\"}",
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"query\\\": unknown position: parse error: no expression found in input\"}",
 		},
 		{
 			name:         "[Range Query] invalid lookback delta",
 			path:         "/api/v1/query_range?end=1536673680&query=test&start=1536673665&step=5&lookback_delta=dummy",
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"error parsing lookback delta duration: rpc error: code = Code(400) desc = cannot parse \\\"dummy\\\" to a valid duration\"}",
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"error parsing lookback delta duration: cannot parse \\\"dummy\\\" to a valid duration\"}",
 		},
 		{
 			name:         "[Range Query] invalid timeout delta",
 			path:         "/api/v1/query_range?end=1536673680&query=test&start=1536673665&step=5&timeout=dummy",
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"timeout\\\"; cannot parse \\\"dummy\\\" to a valid duration\"}",
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"timeout\\\": cannot parse \\\"dummy\\\" to a valid duration\"}",
 		},
 		{
 			name:         "[Range Query] normal case",
@@ -148,19 +148,19 @@ func Test_CustomAPI(t *testing.T) {
 			name:         "[Instant Query] empty query",
 			path:         "/api/v1/query",
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"query\\\"; unknown position: parse error: no expression found in input\"}",
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"query\\\": unknown position: parse error: no expression found in input\"}",
 		},
 		{
 			name:         "[Instant Query] invalid lookback delta",
 			path:         "/api/v1/query?lookback_delta=dummy",
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"error parsing lookback delta duration: rpc error: code = Code(400) desc = cannot parse \\\"dummy\\\" to a valid duration\"}",
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"error parsing lookback delta duration: cannot parse \\\"dummy\\\" to a valid duration\"}",
 		},
 		{
 			name:         "[Instant Query] invalid timeout",
 			path:         "/api/v1/query?timeout=dummy",
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"timeout\\\"; cannot parse \\\"dummy\\\" to a valid duration\"}",
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"timeout\\\": cannot parse \\\"dummy\\\" to a valid duration\"}",
 		},
 		{
 			name:         "[Instant Query] normal case",
@@ -243,7 +243,7 @@ func Test_InvalidCodec(t *testing.T) {
 	require.Equal(t, http.StatusNotAcceptable, rec.Code)
 }
 
-func Test_CustomAPI_StatsRenderer(t *testing.T) {
+func Test_QueryAPI_StatsRenderer(t *testing.T) {
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples: 100,
 		Timeout:    time.Second * 2,

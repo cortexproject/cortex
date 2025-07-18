@@ -495,7 +495,7 @@ func decode(buf *bytes.Buffer, encoding string, logger log.Logger) ([]byte, erro
 		if err != nil {
 			return nil, err
 		}
-		defer runutil.CloseWithLogOnErr(logger, io.NopCloser(zReader), "close zstd decoder")
+		defer runutil.CloseWithLogOnErr(logger, zReader.IOReadCloser(), "close zstd decoder")
 
 		return io.ReadAll(zReader)
 	}

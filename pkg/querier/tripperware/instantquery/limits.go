@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/promql"
@@ -45,7 +45,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r tripperware.Request) (trippe
 
 	// Enforce the max query length.
 	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.MaxQueryLength); maxQueryLength > 0 {
-		expr, err := parser.ParseExpr(r.GetQuery())
+		expr, err := cortexparser.ParseExpr(r.GetQuery())
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}

@@ -10,15 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
-
-	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
@@ -434,7 +433,7 @@ func Test_evaluateAtModifier(t *testing.T) {
 				require.Equal(t, tt.expectedErrorCode, int(httpResp.Code))
 			} else {
 				require.NoError(t, err)
-				expectedExpr, err := parser.ParseExpr(tt.expected)
+				expectedExpr, err := cortexparser.ParseExpr(tt.expected)
 				require.NoError(t, err)
 				require.Equal(t, expectedExpr.String(), out)
 			}
@@ -1044,7 +1043,7 @@ func Test_analyzeDurationFetchedByQuery(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			expr, err := parser.ParseExpr(tc.req.GetQuery())
+			expr, err := cortexparser.ParseExpr(tc.req.GetQuery())
 			require.Nil(t, err)
 			durationFetchedByRange, durationFetchedBySelectors := analyzeDurationFetchedByQueryExpr(expr, tc.req.GetStart(), tc.req.GetEnd(), tc.baseSplitInterval, tc.lookbackDelta)
 			require.Equal(t, tc.expectedDurationFetchedByRange, durationFetchedByRange)

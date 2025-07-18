@@ -149,7 +149,7 @@ func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
 			require.Equal(t, histograms[0], val)
 			require.Equal(t, int64(1*time.Second/time.Millisecond), actual)
 
-			// Histogram chunk should support querying float histograms since it is what Query Engine does.
+			// Histogram chunk should support querying float histograms since it is what Query ThanosEngine does.
 			actualT, fh := sut.AtFloatHistogram(nil)
 			require.Equal(t, histograms[0].ToFloat(nil), fh)
 			require.Equal(t, int64(1*time.Second/time.Millisecond), actualT)

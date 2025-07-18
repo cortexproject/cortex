@@ -347,7 +347,6 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 				time.Minute,
 				tc.maxSubQuerySteps,
 				0,
-				false,
 			)
 			resp, err := tw(downstream).RoundTrip(req)
 			if tc.expectedErr == nil {

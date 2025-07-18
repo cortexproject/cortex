@@ -20,6 +20,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
 
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -413,7 +414,7 @@ http_requests_total`,
 			s := httptest.NewServer(
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					q := r.FormValue("query")
-					expr, _ := parser.ParseExpr(q)
+					expr, _ := cortexparser.ParseExpr(q)
 					shardIndex := int64(0)
 
 					parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {

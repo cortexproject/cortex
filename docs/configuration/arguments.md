@@ -122,6 +122,8 @@ The KVStore client is used by both the Ring and HA Tracker (HA Tracker doesn't s
    The prefix for the keys in the store. Should end with a /. For example with a prefix of foo/, the key bar would be stored under foo/bar.
 - `{ring,distributor.ha-tracker}.store`
    Backend storage to use for the HA Tracker (consul, etcd, inmemory, multi).
+
+   **Warning:** The `inmemory` store will not work correctly with multiple distributors as each distributor can have a different state, causing injestion errors.
 - `{ring,distributor.ring}.store`
    Backend storage to use for the Ring (consul, etcd, inmemory, memberlist, multi).
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -74,49 +75,6 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "fromSg"),
 	}
 	ctx := user.InjectOrgID(context.Background(), "user-1")
-
-	t.Run("should fallback when vertical sharding is enabled", func(t *testing.T) {
-		finder := &blocksFinderMock{}
-		stores := createStore()
-
-		q := &blocksStoreQuerier{
-			minT:        minT,
-			maxT:        maxT,
-			finder:      finder,
-			stores:      stores,
-			consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
-			logger:      log.NewNopLogger(),
-			metrics:     newBlocksStoreQueryableMetrics(prometheus.NewPedanticRegistry()),
-			limits:      &blocksStoreLimitsMock{},
-
-			storeGatewayConsistencyCheckMaxAttempts: 3,
-		}
-
-		mParquetQuerier := &mockParquetQuerier{}
-		pq := &parquetQuerierWithFallback{
-			minT:                  minT,
-			maxT:                  maxT,
-			finder:                finder,
-			blocksStoreQuerier:    q,
-			parquetQuerier:        mParquetQuerier,
-			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-			limits:                defaultOverrides(t, 4),
-			logger:                log.NewNopLogger(),
-			defaultBlockStoreType: parquetBlockStore,
-		}
-
-		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
-			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
-		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
-
-		t.Run("select", func(t *testing.T) {
-			ss := pq.Select(ctx, true, nil, matchers...)
-			require.NoError(t, ss.Err())
-			require.Len(t, stores.queriedBlocks, 2)
-			require.Len(t, mParquetQuerier.queriedBlocks, 0)
-		})
-	})
 
 	t.Run("should fallback all blocks", func(t *testing.T) {
 		finder := &blocksFinderMock{}
@@ -670,4 +628,91 @@ func (m *mockParquetQuerier) Reset() {
 
 func (mockParquetQuerier) Close() error {
 	return nil
+}
+
+func TestMaterializedLabelsFilterCallback(t *testing.T) {
+	tests := []struct {
+		name                     string
+		setupContext             func() context.Context
+		expectedFilterReturned   bool
+		expectedCallbackReturned bool
+	}{
+		{
+			name: "no shard matcher in context",
+			setupContext: func() context.Context {
+				return context.Background()
+			},
+			expectedFilterReturned:   false,
+			expectedCallbackReturned: false,
+		},
+		{
+			name: "shard matcher exists but is not sharded",
+			setupContext: func() context.Context {
+				// Create a ShardInfo with TotalShards = 0 (not sharded)
+				shardInfo := &storepb.ShardInfo{
+					ShardIndex:  0,
+					TotalShards: 0, // Not sharded
+					By:          true,
+					Labels:      []string{"__name__"},
+				}
+
+				buffers := &sync.Pool{New: func() interface{} {
+					b := make([]byte, 0, 100)
+					return &b
+				}}
+				shardMatcher := shardInfo.Matcher(buffers)
+
+				return injectShardMatcherIntoContext(context.Background(), shardMatcher)
+			},
+			expectedFilterReturned:   false,
+			expectedCallbackReturned: false,
+		},
+		{
+			name: "shard matcher exists and is sharded",
+			setupContext: func() context.Context {
+				// Create a ShardInfo with TotalShards > 0 (sharded)
+				shardInfo := &storepb.ShardInfo{
+					ShardIndex:  0,
+					TotalShards: 2, // Sharded
+					By:          true,
+					Labels:      []string{"__name__"},
+				}
+
+				buffers := &sync.Pool{New: func() interface{} {
+					b := make([]byte, 0, 100)
+					return &b
+				}}
+				shardMatcher := shardInfo.Matcher(buffers)
+
+				return injectShardMatcherIntoContext(context.Background(), shardMatcher)
+			},
+			expectedFilterReturned:   true,
+			expectedCallbackReturned: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := tt.setupContext()
+
+			filter, exists := materializedLabelsFilterCallback(ctx, nil)
+
+			require.Equal(t, tt.expectedCallbackReturned, exists)
+
+			if tt.expectedFilterReturned {
+				require.NotNil(t, filter)
+
+				// Test that the filter can be used
+				testLabels := labels.FromStrings("__name__", "test_metric", "label1", "value1")
+				// We can't easily test the actual filtering logic without knowing the internal
+				// shard matching implementation, but we can at least verify the filter interface works
+				_ = filter.Filter(testLabels)
+
+				// Cleanup
+				filter.Close()
+			} else {
+				require.Nil(t, filter)
+			}
+		})
+	}
 }

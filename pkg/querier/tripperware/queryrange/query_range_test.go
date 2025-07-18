@@ -43,7 +43,7 @@ func TestRequest(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			url:      query,
+			url:      queryAll,
 			expected: &parsedRequestWithHeaders,
 		},
 		{
@@ -74,7 +74,7 @@ func TestRequest(t *testing.T) {
 		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
 			t.Parallel()
-			r, err := http.NewRequest("GET", tc.url, nil)
+			r, err := http.NewRequest("POST", tc.url, http.NoBody)
 			require.NoError(t, err)
 			r.Header.Add("Test-Header", "test")
 

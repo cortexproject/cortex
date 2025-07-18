@@ -23,6 +23,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+
+	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 var (
@@ -141,6 +143,19 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 	return &resp, nil
 }
 
+func (c instantQueryCodec) getSerializedBody(promReq *tripperware.PrometheusRequest) ([]byte, error) {
+	var byteLP []byte
+	var err error
+
+	if promReq.LogicalPlan != nil {
+		byteLP, err = logicalplan.Marshal(promReq.LogicalPlan.Root())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return byteLP, nil
+}
+
 func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
 	promReq, ok := r.(*tripperware.PrometheusRequest)
 	if !ok {
@@ -168,17 +183,24 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 		}
 	}
 
+	h.Add("Content-Type", "application/json")
+
 	isSourceRuler := strings.Contains(h.Get("User-Agent"), tripperware.RulerUserAgent)
 	if !isSourceRuler {
 		// When the source is the Ruler, skip set header
 		tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
 	}
 
+	byteBody, err := c.getSerializedBody(promReq)
+	if err != nil {
+		return nil, err
+	}
+
 	req := &http.Request{
-		Method:     "GET",
+		Method:     "POST",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
-		Body:       http.NoBody,
+		Body:       io.NopCloser(bytes.NewReader(byteBody)),
 		Header:     h,
 	}
 

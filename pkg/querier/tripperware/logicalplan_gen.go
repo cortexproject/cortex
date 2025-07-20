@@ -2,12 +2,13 @@ package tripperware
 
 import (
 	"context"
+	"net/http"
+	"time"
+
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/weaveworks/common/httpgrpc"
-	"net/http"
-	"time"
 )
 
 const (

@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/thanos-io/promql-engine/logicalplan"
 	"io"
 	"net/http"
 	"strconv"
@@ -30,6 +29,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
+
+	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 var (

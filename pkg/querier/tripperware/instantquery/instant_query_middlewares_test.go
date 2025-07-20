@@ -2,7 +2,6 @@ package instantquery
 
 import (
 	"context"
-	"github.com/thanos-io/promql-engine/logicalplan"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,12 +18,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 const (
-	distributedExecEnabled = false
-	queryAll               = "/api/v1/instant_query?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536716898&stats=all"
-	responseBody           = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+	queryAll     = "/api/v1/instant_query?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536716898&stats=all"
+	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -61,7 +60,7 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		qa,
 		5*time.Minute,
-		distributedExecEnabled,
+		false, // distributedExecEnabled
 	)
 	require.NoError(t, err)
 
@@ -108,10 +107,8 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
-// Integration test for query round-trip with distributed execution enabled (feature flag).
-// Checks logical plan is generated, included in request body, and processed correctly.
-
-func TestRoundTripWithDistributedExec(t *testing.T) {
+func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
+	// Common test server setup
 	s := httptest.NewServer(
 		middleware.AuthenticateUser.Wrap(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -138,146 +135,67 @@ func TestRoundTripWithDistributedExec(t *testing.T) {
 		next: http.DefaultTransport,
 	}
 
-	qa := querysharding.NewQueryAnalyzer()
-
-	instantQueryMiddlewares, err := Middlewares(
-		log.NewNopLogger(),
-		mockLimitsShard{shardSize: 2},
-		nil,
-		qa,
-		5*time.Minute,
-		true,
-	)
-	require.NoError(t, err)
-
-	defaultLimits := validation.NewOverrides(validation.Limits{}, nil)
-
-	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
-		nil,
-		nil,
-		nil,
-		instantQueryMiddlewares,
-		testInstantQueryCodec,
-		nil,
-		defaultLimits,
-		qa,
-		time.Minute,
-		0,
-		0,
-		false,
-	)
-
-	for i, tc := range []struct {
-		pReq *tripperware.PrometheusRequest
+	testCases := []struct {
+		name               string
+		distributedEnabled bool
+		pReq               *tripperware.PrometheusRequest
+		expectEmptyBody    bool
 	}{
-		{pReq: &tripperware.PrometheusRequest{
-			Start: 100000,
-			End:   100000,
-			Query: "node_cpu_seconds_total{mode!=\"idle\"}[5m]",
-		}},
-	} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			ctx := user.InjectOrgID(context.Background(), "1")
-
-			for _, mw := range instantQueryMiddlewares {
-				handler := mw.Wrap(tripperware.HandlerFunc(func(_ context.Context, pReq tripperware.Request) (tripperware.Response, error) {
-					return nil, nil
-				}))
-				_, err := handler.Do(ctx, tc.pReq)
-				require.NoError(t, err)
-			}
-
-			req, err := tripperware.Codec.EncodeRequest(testInstantQueryCodec, context.Background(), tc.pReq)
-			require.NoError(t, err)
-			req = req.WithContext(ctx)
-			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-			require.NoError(t, err)
-
-			body, err := io.ReadAll(req.Body)
-			require.NotEmpty(t, body)
-			require.NoError(t, err)
-
-			byteLP, err := logicalplan.Marshal(tc.pReq.LogicalPlan.Root())
-			require.NoError(t, err)
-			require.Equal(t, byteLP, body)
-
-			resp, err := tw(downstream).RoundTrip(req)
-			require.NoError(t, err)
-			require.Equal(t, 200, resp.StatusCode)
-
-			_, err = io.ReadAll(resp.Body)
-			require.NoError(t, err)
-		})
-	}
-}
-
-func TestRoundTripWithoutDistributedExec(t *testing.T) {
-	s := httptest.NewServer(
-		middleware.AuthenticateUser.Wrap(
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var err error
-				switch r.RequestURI {
-				case queryAll:
-					_, err = w.Write([]byte(responseBody))
-				default:
-					_, err = w.Write([]byte("bar"))
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-			}),
-		),
-	)
-	defer s.Close()
-
-	u, err := url.Parse(s.URL)
-	require.NoError(t, err)
-
-	downstream := singleHostRoundTripper{
-		host: u.Host,
-		next: http.DefaultTransport,
+		{
+			name:               "With distributed execution",
+			distributedEnabled: true,
+			pReq: &tripperware.PrometheusRequest{
+				Start: 100000,
+				End:   100000,
+				Query: "node_cpu_seconds_total{mode!=\"idle\"}[5m]",
+			},
+			expectEmptyBody: false,
+		},
+		{
+			name:               "Without distributed execution",
+			distributedEnabled: false,
+			pReq: &tripperware.PrometheusRequest{
+				Start: 100000,
+				End:   100000,
+				Query: "node_cpu_seconds_total{mode!=\"idle\"}[5m]",
+			},
+			expectEmptyBody: true,
+		},
 	}
 
-	qa := querysharding.NewQueryAnalyzer()
-	instantQueryMiddlewares, err := Middlewares(
-		log.NewNopLogger(),
-		mockLimitsShard{shardSize: 2},
-		nil,
-		qa,
-		5*time.Minute,
-		false,
-	)
-	require.NoError(t, err)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			qa := querysharding.NewQueryAnalyzer()
+			instantQueryMiddlewares, err := Middlewares(
+				log.NewNopLogger(),
+				mockLimitsShard{shardSize: 2},
+				nil,
+				qa,
+				5*time.Minute,
+				tc.distributedEnabled,
+			)
+			require.NoError(t, err)
 
-	defaultLimits := validation.NewOverrides(validation.Limits{}, nil)
+			defaultLimits := validation.NewOverrides(validation.Limits{}, nil)
 
-	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
-		nil,
-		nil,
-		nil,
-		instantQueryMiddlewares,
-		testInstantQueryCodec,
-		nil,
-		defaultLimits,
-		qa,
-		time.Minute,
-		0,
-		0,
-		false,
-	)
+			tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
+				nil,
+				nil,
+				nil,
+				instantQueryMiddlewares,
+				testInstantQueryCodec,
+				nil,
+				defaultLimits,
+				qa,
+				time.Minute,
+				0,
+				0,
+				false,
+			)
 
-	for i, tc := range []struct {
-		pReq *tripperware.PrometheusRequest
-	}{
-		{pReq: &tripperware.PrometheusRequest{
-			Start: 100000,
-			End:   100000,
-			Query: "node_cpu_seconds_total{mode!=\"idle\"}[5m]",
-		}},
-	} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 
+			// test middlewares
 			for _, mw := range instantQueryMiddlewares {
 				handler := mw.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 					return nil, nil
@@ -286,14 +204,26 @@ func TestRoundTripWithoutDistributedExec(t *testing.T) {
 				require.NoError(t, err)
 			}
 
+			// encode and prepare request
 			req, err := tripperware.Codec.EncodeRequest(testInstantQueryCodec, context.Background(), tc.pReq)
 			require.NoError(t, err)
 			req = req.WithContext(ctx)
 			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 			require.NoError(t, err)
-			body, err := io.ReadAll(req.Body)
-			require.Empty(t, body)
 
+			// check request body
+			body, err := io.ReadAll(req.Body)
+			require.NoError(t, err)
+			if tc.expectEmptyBody {
+				require.Empty(t, body)
+			} else {
+				require.NotEmpty(t, body)
+				byteLP, err := logicalplan.Marshal(tc.pReq.LogicalPlan.Root())
+				require.NoError(t, err)
+				require.Equal(t, byteLP, body)
+			}
+
+			// test round trip
 			resp, err := tw(downstream).RoundTrip(req)
 			require.NoError(t, err)
 			require.Equal(t, 200, resp.StatusCode)

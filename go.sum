@@ -932,8 +932,8 @@ github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97 h1:VjG0mwhN1Dkn
 github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97/go.mod h1:vyzFrBXgP+fGNG2FopEGWOO/zrIuoy7zt3LpLeezRsw=
 github.com/thanos-io/promql-engine v0.0.0-20250611170940-015ebeb7b5ff h1:obQDLbgnae6rLPngWwQ6q/ifQZeDEmVvxHIJ6arJCDs=
 github.com/thanos-io/promql-engine v0.0.0-20250611170940-015ebeb7b5ff/go.mod h1:IQjuIvDzOOVE2MGDs88Q65GYmmKrpmIsDkMVOqs5reo=
-github.com/thanos-io/thanos v0.39.1 h1:JXFKPgvmf7XohV8ylasxERkRLgxqwbhuu6JkrWIgrio=
-github.com/thanos-io/thanos v0.39.1/go.mod h1:bvUPJNIx2LBXme6yBinRiGqQinxlGikLlK7PGeFQPkQ=
+github.com/thanos-io/thanos v0.39.2 h1:edN03y7giEc6lD17HJhYcv8ELapXxElmhJnFIYJ2GqQ=
+github.com/thanos-io/thanos v0.39.2/go.mod h1:bvUPJNIx2LBXme6yBinRiGqQinxlGikLlK7PGeFQPkQ=
 github.com/thanos-io/thanos-prometheus v0.0.0-20250610133519-082594458a88 h1:5uf08MPb6xrVo4rxmBDh9/1SLthbZGY9zLeF3oMixh8=
 github.com/thanos-io/thanos-prometheus v0.0.0-20250610133519-082594458a88/go.mod h1:WEq2ogBPZoLjj9x5K67VEk7ECR0nRD9XCjaOt1lsYck=
 github.com/tjhop/slog-gokit v0.1.4 h1:uj/vbDt3HaF0Py8bHPV4ti/s0utnO0miRbO277FLBKM=

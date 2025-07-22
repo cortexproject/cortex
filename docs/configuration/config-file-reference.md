@@ -4451,11 +4451,6 @@ grpc_client_config:
 # URL of downstream Prometheus.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
-
-# Experimental: Enables distributed execution of queries by passing logical
-# query plan fragments to downstream components.
-# CLI flag: -frontend.distributed_exec_enabled
-[distributed_exec_enabled: <boolean> | default = false]
 ```
 
 ### `query_range_config`

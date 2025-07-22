@@ -12,13 +12,13 @@
 * [FEATURE] Ruler: Add support for percentage based sharding for rulers. #6680
 * [FEATURE] Ruler: Add support for group labels. #6665
 * [FEATURE] Query federation: Introduce a regex tenant resolver to allow regex in `X-Scope-OrgID` value. #6713
-[FEATURE] Config: Name validation scheme for metric and label names can be set using the config file (`name_validation_scheme`) as well as a CLI flag (`-name.validation_scheme`)
 - Add an experimental `tenant-federation.regex-matcher-enabled` flag. If it enabled, user can input regex to `X-Scope-OrgId`, the matched tenantIDs are automatically involved. The user discovery is based on scanning block storage, so new users can get queries after uploading a block (generally 2h).
 - Add an experimental `tenant-federation.user-sync-interval` flag, it specifies how frequently to scan users. The scanned users are used to calculate matched tenantIDs.
 * [FEATURE] Experimental Support Parquet format: Implement parquet converter service to convert a TSDB block into Parquet and Parquet Queryable. #6716 #6743
 * [FEATURE] Distributor/Ingester: Implemented experimental feature to use gRPC stream connection for push requests. This can be enabled by setting `-distributor.use-stream-push=true`. #6580
 * [FEATURE] Compactor: Add support for percentage based sharding for compactors. #6738
 * [FEATURE] Querier: Allow choosing PromQL engine via header. #6777
+* [FEATURE] Config: Name validation scheme for metric and label names can be set using the config file (`name_validation_scheme`) as well as a CLI flag (`-name.validation_scheme`)
 * [ENHANCEMENT] Tenant Federation: Add a # of query result limit logic when the `-tenant-federation.regex-matcher-enabled` is enabled. #6845
 * [ENHANCEMENT] Query Frontend: Add a `cortex_slow_queries_total` metric to track # of slow queries per user. #6859
 * [ENHANCEMENT] Query Frontend: Change to return 400 when the tenant resolving fail. #6715

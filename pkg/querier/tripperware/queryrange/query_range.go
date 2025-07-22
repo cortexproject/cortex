@@ -3,7 +3,6 @@ package queryrange
 import (
 	"bytes"
 	"context"
-	"github.com/thanos-io/promql-engine/logicalplan"
 	"io"
 	"net/http"
 	"net/url"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 // StatusSuccess Prometheus success result.

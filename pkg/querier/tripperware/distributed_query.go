@@ -63,8 +63,6 @@ func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, e
 	logicalPlan := logicalplan.NewFromAST(expr, &qOpts, planOpts)
 	optimizedPlan, _ := logicalPlan.Optimize(logicalplan.DefaultOptimizers)
 
-	//TODO: Add distributed query optimizer
-
 	return &optimizedPlan, nil
 }
 

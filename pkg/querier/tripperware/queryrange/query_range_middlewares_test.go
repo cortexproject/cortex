@@ -68,6 +68,7 @@ func TestRoundTrip(t *testing.T) {
 		ShardedPrometheusCodec,
 		5*time.Minute,
 		false, // distributedExecEnabled
+		false, // enablePerStepStats
 	)
 	require.NoError(t, err)
 
@@ -192,6 +193,7 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 				ShardedPrometheusCodec,
 				5*time.Minute,
 				tc.distributedEnabled,
+				false, // enablePerStepStats
 			)
 			require.NoError(t, err)
 

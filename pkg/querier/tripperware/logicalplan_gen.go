@@ -15,16 +15,20 @@ const (
 	stepBatch = 10
 )
 
-func LogicalPlanGenMiddleware() Middleware {
+func LogicalPlanGenMiddleware(enablePerStepStats bool, lookBackDelta time.Duration) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return logicalPlanGen{
-			next: next,
+			next:               next,
+			enablePerStepStats: enablePerStepStats,
+			lookBackDelta:      lookBackDelta,
 		}
 	})
 }
 
 type logicalPlanGen struct {
-	next Handler
+	next               Handler
+	enablePerStepStats bool
+	lookBackDelta      time.Duration
 }
 
 func (l logicalPlanGen) NewLogicalPlan(qs string, start time.Time, end time.Time, step time.Duration) (*logicalplan.Plan, error) {
@@ -36,8 +40,8 @@ func (l logicalPlanGen) NewLogicalPlan(qs string, start time.Time, end time.Time
 			End:                start,
 			Step:               0,
 			StepsBatch:         stepBatch,
-			LookbackDelta:      0,
-			EnablePerStepStats: false,
+			LookbackDelta:      l.lookBackDelta,
+			EnablePerStepStats: l.enablePerStepStats,
 		}
 	} else {
 		qOpts = query.Options{
@@ -45,8 +49,8 @@ func (l logicalPlanGen) NewLogicalPlan(qs string, start time.Time, end time.Time
 			End:                end,
 			Step:               step,
 			StepsBatch:         stepBatch,
-			LookbackDelta:      0,
-			EnablePerStepStats: false,
+			LookbackDelta:      l.lookBackDelta,
+			EnablePerStepStats: l.enablePerStepStats,
 		}
 	}
 

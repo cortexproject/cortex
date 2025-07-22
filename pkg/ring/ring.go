@@ -688,6 +688,9 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 		if !r.IsHealthy(&instance, Reporting, r.KVClient.LastUpdateTime(r.key)) {
 			s = unhealthy
 		}
+		if _, ok := numByStateByZone[s]; !ok {
+			numByStateByZone[s] = map[string]int{}
+		}
 		numByStateByZone[s][instance.Zone]++
 		if oldestTimestampByState[s] == 0 || instance.Timestamp < oldestTimestampByState[s] {
 			oldestTimestampByState[s] = instance.Timestamp

@@ -3,6 +3,7 @@ package queryapi
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/regexp"
 	"github.com/munnerz/goautoneg"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/httputil"
@@ -21,11 +21,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 type QueryAPI struct {
 	queryable     storage.SampleAndChunkQueryable
-	queryEngine   promql.QueryEngine
+	queryEngine   engine.Engine
 	now           func() time.Time
 	statsRenderer v1.StatsRenderer
 	logger        log.Logger
@@ -34,7 +36,7 @@ type QueryAPI struct {
 }
 
 func NewQueryAPI(
-	qe promql.QueryEngine,
+	qe engine.Engine,
 	q storage.SampleAndChunkQueryable,
 	statsRenderer v1.StatsRenderer,
 	logger log.Logger,
@@ -100,10 +102,29 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 
 	ctx = engine.AddEngineTypeToContext(ctx, r)
 	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
-	qry, err := q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step))
+
+	var qry promql.Query
+	byteLP, err := io.ReadAll(r.Body)
 	if err != nil {
-		return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
+
+	if len(byteLP) != 0 {
+		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+		if err != nil {
+			return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+		}
+		qry, err = q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlan, convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step), r.FormValue("query"))
+		if err != nil {
+			return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+		}
+	} else {
+		qry, err = q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step))
+		if err != nil {
+			return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+		}
+	}
+
 	// From now on, we must only return with a finalizer in the result (to
 	// be called by the caller) or call qry.Close ourselves (which is
 	// required in the case of a panic).
@@ -156,9 +177,27 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 
 	ctx = engine.AddEngineTypeToContext(ctx, r)
 	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
-	qry, err := q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(ts))
+
+	var qry promql.Query
+	byteLP, err := io.ReadAll(r.Body)
 	if err != nil {
-		return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+	}
+
+	if len(byteLP) != 0 {
+		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+		if err != nil {
+			return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+		}
+		qry, err = q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlan, convertMsToTime(ts), r.FormValue("query"))
+		if err != nil {
+			return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+		}
+	} else {
+		qry, err = q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(ts))
+		if err != nil {
+			return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+		}
 	}
 
 	// From now on, we must only return with a finalizer in the result (to

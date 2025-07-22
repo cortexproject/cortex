@@ -15,9 +15,9 @@ const (
 	stepBatch = 10
 )
 
-func LogicalPlanGenMiddleware(enablePerStepStats bool, lookBackDelta time.Duration) Middleware {
+func DistributedQueryMiddleware(enablePerStepStats bool, lookBackDelta time.Duration) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
-		return logicalPlanGen{
+		return distributedQueryMiddleware{
 			next:               next,
 			enablePerStepStats: enablePerStepStats,
 			lookBackDelta:      lookBackDelta,
@@ -25,33 +25,30 @@ func LogicalPlanGenMiddleware(enablePerStepStats bool, lookBackDelta time.Durati
 	})
 }
 
-type logicalPlanGen struct {
+func getStartAndEnd(start time.Time, end time.Time, step time.Duration) (time.Time, time.Time) {
+	if step == 0 {
+		return start, start
+	}
+	return start, end
+}
+
+type distributedQueryMiddleware struct {
 	next               Handler
 	enablePerStepStats bool
 	lookBackDelta      time.Duration
 }
 
-func (l logicalPlanGen) NewLogicalPlan(qs string, start time.Time, end time.Time, step time.Duration) (*logicalplan.Plan, error) {
+func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, end time.Time, step time.Duration) (*logicalplan.Plan, error) {
 
-	qOpts := query.Options{}
-	if step == 0 {
-		qOpts = query.Options{
-			Start:              start,
-			End:                start,
-			Step:               0,
-			StepsBatch:         stepBatch,
-			LookbackDelta:      l.lookBackDelta,
-			EnablePerStepStats: l.enablePerStepStats,
-		}
-	} else {
-		qOpts = query.Options{
-			Start:              start,
-			End:                end,
-			Step:               step,
-			StepsBatch:         stepBatch,
-			LookbackDelta:      l.lookBackDelta,
-			EnablePerStepStats: l.enablePerStepStats,
-		}
+	start, end = getStartAndEnd(start, end, step)
+
+	qOpts := query.Options{
+		Start:              start,
+		End:                end,
+		Step:               step,
+		StepsBatch:         stepBatch,
+		LookbackDelta:      d.lookBackDelta,
+		EnablePerStepStats: d.enablePerStepStats,
 	}
 
 	expr, err := parser.NewParser(qs, parser.WithFunctions(parser.Functions)).ParseExpr()
@@ -71,7 +68,7 @@ func (l logicalPlanGen) NewLogicalPlan(qs string, start time.Time, end time.Time
 	return &optimizedPlan, nil
 }
 
-func (l logicalPlanGen) Do(ctx context.Context, r Request) (Response, error) {
+func (d distributedQueryMiddleware) Do(ctx context.Context, r Request) (Response, error) {
 	promReq, ok := r.(*PrometheusRequest)
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
@@ -83,12 +80,12 @@ func (l logicalPlanGen) Do(ctx context.Context, r Request) (Response, error) {
 
 	var err error
 
-	newLogicalPlan, err := l.NewLogicalPlan(promReq.Query, startTime, endTime, step)
+	newLogicalPlan, err := d.newLogicalPlan(promReq.Query, startTime, endTime, step)
 	if err != nil {
 		return nil, err
 	}
 
 	promReq.LogicalPlan = *newLogicalPlan
 
-	return l.next.Do(ctx, r)
+	return d.next.Do(ctx, r)
 }

@@ -121,7 +121,7 @@ func TestLogicalPlanGeneration(t *testing.T) {
 		t.Run(strconv.Itoa(i)+"_"+tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			middleware := LogicalPlanGenMiddleware(false, 5*time.Minute)
+			middleware := DistributedQueryMiddleware(false, 5*time.Minute)
 
 			handler := middleware.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 				return nil, nil

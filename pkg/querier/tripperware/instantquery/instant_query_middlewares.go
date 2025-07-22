@@ -25,7 +25,7 @@ func Middlewares(
 
 	if distributedExecEnabled {
 		m = append(m,
-			tripperware.LogicalPlanGenMiddleware(enablePerStepStats, lookbackDelta))
+			tripperware.DistributedQueryMiddleware(enablePerStepStats, lookbackDelta))
 	}
 
 	return m, nil

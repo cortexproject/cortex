@@ -223,10 +223,10 @@ func (m *PrometheusRequest) GetStats() string {
 }
 
 func (m *PrometheusRequest) GetLogicalPlan() logicalplan.Plan {
-	if m != nil {
-		return m.LogicalPlan
+	if m == nil {
+		return nil
 	}
-	return nil
+	return m.LogicalPlan
 }
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.

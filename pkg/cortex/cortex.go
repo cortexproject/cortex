@@ -357,7 +357,7 @@ func New(cfg Config) (*Cortex, error) {
 		}
 		os.Exit(0)
 	}
-	//nolint:SA1019
+	//nolint:staticcheck // SA1019: intentional use of deprecated NameValidationScheme for backward compatibility
 	if cfg.NameValidationScheme == prom_config.UTF8ValidationConfig {
 		model.NameValidationScheme = model.UTF8Validation
 	} else {

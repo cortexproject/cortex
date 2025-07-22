@@ -3,9 +3,10 @@ package instantquery
 import (
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/go-kit/log"
 	"github.com/thanos-io/thanos/pkg/querysharding"
+
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func Middlewares(

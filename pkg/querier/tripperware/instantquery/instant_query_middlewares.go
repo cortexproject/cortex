@@ -16,7 +16,6 @@ func Middlewares(
 	queryAnalyzer querysharding.Analyzer,
 	lookbackDelta time.Duration,
 	distributedExecEnabled bool,
-	enablePerStepStats bool,
 ) ([]tripperware.Middleware, error) {
 	m := []tripperware.Middleware{
 		NewLimitsMiddleware(limits, lookbackDelta),
@@ -25,7 +24,7 @@ func Middlewares(
 
 	if distributedExecEnabled {
 		m = append(m,
-			tripperware.DistributedQueryMiddleware(enablePerStepStats, lookbackDelta))
+			tripperware.DistributedQueryMiddleware(lookbackDelta))
 	}
 
 	return m, nil

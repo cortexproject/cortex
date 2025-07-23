@@ -534,13 +534,12 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		shardedPrometheusCodec,
 		t.Cfg.Querier.LookbackDelta,
 		t.Cfg.Frontend.DistributedExecEnabled,
-		t.Cfg.Querier.EnablePerStepStats,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides, instantQueryCodec, queryAnalyzer, t.Cfg.Querier.LookbackDelta, t.Cfg.Frontend.DistributedExecEnabled, t.Cfg.Querier.EnablePerStepStats)
+	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides, instantQueryCodec, queryAnalyzer, t.Cfg.Querier.LookbackDelta, t.Cfg.Frontend.DistributedExecEnabled)
 	if err != nil {
 		return nil, err
 	}

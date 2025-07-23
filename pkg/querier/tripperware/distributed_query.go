@@ -15,12 +15,11 @@ const (
 	stepBatch = 10
 )
 
-func DistributedQueryMiddleware(enablePerStepStats bool, lookBackDelta time.Duration) Middleware {
+func DistributedQueryMiddleware(lookBackDelta time.Duration) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return distributedQueryMiddleware{
-			next:               next,
-			enablePerStepStats: enablePerStepStats,
-			lookBackDelta:      lookBackDelta,
+			next:          next,
+			lookBackDelta: lookBackDelta,
 		}
 	})
 }
@@ -33,9 +32,8 @@ func getStartAndEnd(start time.Time, end time.Time, step time.Duration) (time.Ti
 }
 
 type distributedQueryMiddleware struct {
-	next               Handler
-	enablePerStepStats bool
-	lookBackDelta      time.Duration
+	next          Handler
+	lookBackDelta time.Duration
 }
 
 func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, end time.Time, step time.Duration) (*logicalplan.Plan, error) {
@@ -48,7 +46,7 @@ func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, e
 		Step:               step,
 		StepsBatch:         stepBatch,
 		LookbackDelta:      d.lookBackDelta,
-		EnablePerStepStats: d.enablePerStepStats,
+		EnablePerStepStats: false, // Hardcoded value that will be re-populated again in the querier stage
 	}
 
 	expr, err := parser.NewParser(qs, parser.WithFunctions(parser.Functions)).ParseExpr()

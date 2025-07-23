@@ -56,6 +56,7 @@
 * [ENHANCEMENT] Distributor: Add native histograms max sample size bytes limit validation. #6834
 * [ENHANCEMENT] Querier: Support caching parquet labels file in parquet queryable. #6835
 * [ENHANCEMENT] Querier: Support query limits in parquet queryable. #6870
+* [ENHANCEMENT] Ingester: Add new metric `cortex_ingester_push_errors_total` to track reasons for ingester request failures. #6901
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576

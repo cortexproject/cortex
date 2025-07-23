@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"runtime"
 	"runtime/debug"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -534,9 +533,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		prometheusCodec,
 		shardedPrometheusCodec,
 		t.Cfg.Querier.LookbackDelta,
-		func(time.Duration) time.Duration {
-			return t.Cfg.Querier.DefaultEvaluationInterval
-		},
+		t.Cfg.Querier.DefaultEvaluationInterval,
 		t.Cfg.Frontend.DistributedExecEnabled,
 	)
 	if err != nil {
@@ -549,9 +546,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		instantQueryCodec,
 		queryAnalyzer,
 		t.Cfg.Querier.LookbackDelta,
-		func(time.Duration) time.Duration {
-			return t.Cfg.Querier.DefaultEvaluationInterval
-		},
+		t.Cfg.Querier.DefaultEvaluationInterval,
 		t.Cfg.Frontend.DistributedExecEnabled)
 	if err != nil {
 		return nil, err

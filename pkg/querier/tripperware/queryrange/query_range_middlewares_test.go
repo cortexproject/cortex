@@ -67,9 +67,7 @@ func TestRoundTrip(t *testing.T) {
 		PrometheusCodec,
 		ShardedPrometheusCodec,
 		5*time.Minute,
-		func(time.Duration) time.Duration {
-			return time.Minute
-		},
+		time.Minute,
 		false,
 	)
 	require.NoError(t, err)
@@ -194,9 +192,7 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 				PrometheusCodec,
 				ShardedPrometheusCodec,
 				5*time.Minute,
-				func(time.Duration) time.Duration {
-					return time.Minute
-				},
+				time.Minute,
 				tc.distributedEnabled,
 			)
 			require.NoError(t, err)

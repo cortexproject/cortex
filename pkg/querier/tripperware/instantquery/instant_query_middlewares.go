@@ -15,7 +15,7 @@ func Middlewares(
 	merger tripperware.Merger,
 	queryAnalyzer querysharding.Analyzer,
 	lookbackDelta time.Duration,
-	noStepSubqueryIntervalFn func(time.Duration) time.Duration,
+	defaultEvaluationInterval time.Duration,
 	distributedExecEnabled bool,
 ) ([]tripperware.Middleware, error) {
 	m := []tripperware.Middleware{
@@ -25,7 +25,7 @@ func Middlewares(
 
 	if distributedExecEnabled {
 		m = append(m,
-			tripperware.DistributedQueryMiddleware(noStepSubqueryIntervalFn))
+			tripperware.DistributedQueryMiddleware(defaultEvaluationInterval, lookbackDelta))
 	}
 
 	return m, nil

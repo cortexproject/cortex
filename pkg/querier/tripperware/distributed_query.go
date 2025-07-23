@@ -15,11 +15,12 @@ const (
 	stepBatch = 10
 )
 
-func DistributedQueryMiddleware(noStepSubqueryIntervalFn func(time.Duration) time.Duration) Middleware {
+func DistributedQueryMiddleware(defaultEvaluationInterval time.Duration, lookbackDelta time.Duration) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return distributedQueryMiddleware{
-			next:                     next,
-			noStepSubqueryIntervalFn: noStepSubqueryIntervalFn,
+			next:                      next,
+			lookbackDelta:             lookbackDelta,
+			defaultEvaluationInterval: defaultEvaluationInterval,
 		}
 	})
 }
@@ -32,8 +33,9 @@ func getStartAndEnd(start time.Time, end time.Time, step time.Duration) (time.Ti
 }
 
 type distributedQueryMiddleware struct {
-	next                     Handler
-	noStepSubqueryIntervalFn func(time.Duration) time.Duration
+	next                      Handler
+	defaultEvaluationInterval time.Duration
+	lookbackDelta             time.Duration
 }
 
 func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, end time.Time, step time.Duration) (*logicalplan.Plan, error) {
@@ -41,13 +43,15 @@ func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, e
 	start, end = getStartAndEnd(start, end, step)
 
 	qOpts := query.Options{
-		Start:                    start,
-		End:                      end,
-		Step:                     step,
-		StepsBatch:               stepBatch,
-		NoStepSubqueryIntervalFn: d.noStepSubqueryIntervalFn,
+		Start:      start,
+		End:        end,
+		Step:       step,
+		StepsBatch: stepBatch,
+		NoStepSubqueryIntervalFn: func(duration time.Duration) time.Duration {
+			return d.defaultEvaluationInterval
+		},
 		// Hardcoded value for execution-time-params that will be re-populated again in the querier stage
-		LookbackDelta:      0,
+		LookbackDelta:      d.lookbackDelta,
 		EnablePerStepStats: false,
 	}
 

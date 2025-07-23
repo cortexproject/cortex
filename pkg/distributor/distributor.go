@@ -1199,14 +1199,13 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	d.inflightClientRequests.Inc()
 	defer d.inflightClientRequests.Dec()
 
-	var resp *cortexpb.WriteResponse
 	if d.cfg.UseStreamPush {
 		req := &cortexpb.WriteRequest{
 			Timeseries: timeseries,
 			Metadata:   metadata,
 			Source:     source,
 		}
-		resp, err = c.PushStreamConnection(ctx, req)
+		_, err = c.PushStreamConnection(ctx, req)
 	} else {
 		req := cortexpb.PreallocWriteRequestFromPool()
 		req.Timeseries = timeseries

@@ -6557,7 +6557,7 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 		require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_ingester_push_errors_total The total number of push errors per user.
 		# TYPE cortex_ingester_push_errors_total counter
-		cortex_ingester_push_errors_total{reason="errTooManyInflightRequests",user="test"} 1
+		cortex_ingester_push_errors_total{reason="tooManyInflightRequests",user="test"} 1
 	`), "cortex_ingester_push_errors_total"))
 		return nil
 	})

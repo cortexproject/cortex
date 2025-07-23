@@ -14,7 +14,7 @@ var (
 	errTooManyInflightPushRequests    = errors.New("cannot push: too many inflight push requests in ingester")
 	errTooManyInflightQueryRequests   = errors.New("cannot push: too many inflight query requests in ingester")
 
-	pushErrTooManyInflightRequests = "errTooManyInflightRequests"
+	pushErrTooManyInflightRequests = "tooManyInflightRequests"
 )
 
 // InstanceLimits describes limits used by ingester. Reaching any of these will result in error response to the call.

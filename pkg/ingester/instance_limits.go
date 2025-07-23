@@ -13,6 +13,8 @@ var (
 	errMaxSeriesLimitReached          = errors.New("cannot add series: ingesters's max series limit reached")
 	errTooManyInflightPushRequests    = errors.New("cannot push: too many inflight push requests in ingester")
 	errTooManyInflightQueryRequests   = errors.New("cannot push: too many inflight query requests in ingester")
+
+	pushErrTooManyInflightRequests = "errTooManyInflightRequests"
 )
 
 // InstanceLimits describes limits used by ingester. Reaching any of these will result in error response to the call.

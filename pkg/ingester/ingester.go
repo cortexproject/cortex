@@ -1167,6 +1167,11 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.Push")
 	defer span.Finish()
 
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// We will report *this* request in the error too.
 	inflight := i.inflightPushRequests.Inc()
 	i.maxInflightPushRequests.Track(inflight)
@@ -1175,6 +1180,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	gl := i.getInstanceLimits()
 	if gl != nil && gl.MaxInflightPushRequests > 0 {
 		if inflight > gl.MaxInflightPushRequests {
+			i.metrics.pushErrorsTotal.WithLabelValues(userID, pushErrTooManyInflightRequests).Inc()
 			return nil, errTooManyInflightPushRequests
 		}
 	}
@@ -1185,11 +1191,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// retain anything from `req` past the call to ReuseSlice
 	defer req.Free()
 	defer cortexpb.ReuseSlice(req.Timeseries)
-
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, err
-	}
 
 	il := i.getInstanceLimits()
 	if il != nil && il.MaxIngestionRate > 0 {

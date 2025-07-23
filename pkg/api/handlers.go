@@ -163,7 +163,7 @@ func NewQuerierHandler(
 	cfg Config,
 	queryable storage.SampleAndChunkQueryable,
 	exemplarQueryable storage.ExemplarQueryable,
-	engine engine.Engine,
+	engine engine.BaseEngine,
 	metadataQuerier querier.MetadataQuerier,
 	reg prometheus.Registerer,
 	logger log.Logger,
@@ -200,7 +200,7 @@ func NewQuerierHandler(
 	corsOrigin := regexp.MustCompile(".*")
 	translateSampleAndChunkQueryable := querier.NewErrorTranslateSampleAndChunkQueryable(queryable)
 	api := v1.NewAPI(
-		&engine,
+		engine,
 		translateSampleAndChunkQueryable, // Translate errors to errors expected by API.
 		nil,                              // No remote write support.
 		exemplarQueryable,

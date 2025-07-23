@@ -103,7 +103,7 @@ func TestFormatQueryAPI(t *testing.T) {
 			}
 
 			req, err := http.NewRequest(tc.method, endpoint, nil)
-            req.Header.Set("X-Scope-OrgID", "user-1")
+			req.Header.Set("X-Scope-OrgID", "user-1")
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)

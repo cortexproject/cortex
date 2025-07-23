@@ -820,18 +820,19 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	keys := append(seriesKeys, metadataKeys...)
 	initialMetadataIndex := len(seriesKeys)
 
-	ws := WriteStats{}
-
-	err = d.doBatch(ctx, req, subRing, keys, initialMetadataIndex, validatedMetadata, validatedTimeseries, userID, &ws)
+	err = d.doBatch(ctx, req, subRing, keys, initialMetadataIndex, validatedMetadata, validatedTimeseries, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	resp := &cortexpb.WriteResponse{}
 	if d.cfg.RemoteWrite2Enabled {
-		resp.Samples = ws.LoadSamples()
-		resp.Histograms = ws.LoadHistogram()
-		resp.Exemplars = ws.LoadExemplars()
+		// We simply expose validated samples, histograms, and exemplars
+		// to the header. We should improve it to expose the actual
+		// written values by the Ingesters.
+		resp.Samples = int64(validatedFloatSamples)
+		resp.Histograms = int64(validatedHistogramSamples)
+		resp.Exemplars = int64(validatedExemplars)
 	}
 
 	return resp, firstPartialErr
@@ -896,7 +897,7 @@ func (d *Distributor) cleanStaleIngesterMetrics() {
 	}
 }
 
-func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, subRing ring.ReadRing, keys []uint32, initialMetadataIndex int, validatedMetadata []*cortexpb.MetricMetadata, validatedTimeseries []cortexpb.PreallocTimeseries, userID string, ws *WriteStats) error {
+func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, subRing ring.ReadRing, keys []uint32, initialMetadataIndex int, validatedMetadata []*cortexpb.MetricMetadata, validatedTimeseries []cortexpb.PreallocTimeseries, userID string) error {
 	span, _ := opentracing.StartSpanFromContext(ctx, "doBatch")
 	defer span.Finish()
 
@@ -931,7 +932,7 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 			}
 		}
 
-		return d.send(localCtx, ingester, timeseries, metadata, req.Source, ws)
+		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() {
 		cortexpb.ReuseSlice(req.Timeseries)
 		req.Free()
@@ -1165,7 +1166,7 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum, ws *WriteStats) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -1181,21 +1182,20 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	d.inflightClientRequests.Inc()
 	defer d.inflightClientRequests.Dec()
 
-	var resp *cortexpb.WriteResponse
 	if d.cfg.UseStreamPush {
 		req := &cortexpb.WriteRequest{
 			Timeseries: timeseries,
 			Metadata:   metadata,
 			Source:     source,
 		}
-		resp, err = c.PushStreamConnection(ctx, req)
+		_, err = c.PushStreamConnection(ctx, req)
 	} else {
 		req := cortexpb.PreallocWriteRequestFromPool()
 		req.Timeseries = timeseries
 		req.Metadata = metadata
 		req.Source = source
 
-		resp, err = c.PushPreAlloc(ctx, req)
+		_, err = c.PushPreAlloc(ctx, req)
 
 		// We should not reuse the req in case of errors:
 		// See: https://github.com/grpc/grpc-go/issues/6355
@@ -1215,13 +1215,6 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 		if err != nil {
 			d.ingesterAppendFailures.WithLabelValues(id, typeSamples, getErrorStatus(err)).Inc()
 		}
-	}
-
-	if resp != nil {
-		// track write stats
-		ws.SetSamples(resp.Samples)
-		ws.SetHistograms(resp.Histograms)
-		ws.SetExemplars(resp.Exemplars)
 	}
 
 	return err

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
@@ -25,7 +26,7 @@ import (
 
 func TestIngesterRollingUpdate(t *testing.T) {
 	// Test ingester rolling update situation: when -distributor.remote-write2-enabled is true, and ingester uses the v1.19.0 image.
-	// Expected: remote write 2.0 push success, but response header values are set to "0".
+	// Expected: remote write 2.0 push success
 	const blockRangePeriod = 5 * time.Second
 	ingesterImage := "quay.io/cortexproject/cortex:v1.19.0"
 
@@ -97,7 +98,7 @@ func TestIngesterRollingUpdate(t *testing.T) {
 	res, err := c.PushV2(symbols1, series)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "0", "0", "0")
+	testPushHeader(t, res.Header, "1", "0", "0")
 
 	// sample
 	result, err := c.Query("test_series", now)
@@ -115,13 +116,13 @@ func TestIngesterRollingUpdate(t *testing.T) {
 	res, err = c.PushV2(symbols2, histogramSeries)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "0", "0", "0")
+	testPushHeader(t, res.Header, "0", "1", "0")
 
-	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
 	res, err = c.PushV2(symbols3, histogramFloatSeries)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "0", "0", "0")
+	testPushHeader(t, res.Header, "0", "1", "0")
 
 	testHistogramTimestamp := now.Add(blockRangePeriod * 2)
 	expectedHistogram := tsdbutil.GenerateTestHistogram(int64(histogramIdx))
@@ -138,6 +139,8 @@ func TestIngesterRollingUpdate(t *testing.T) {
 }
 
 func TestIngest_SenderSendPRW2_DistributorNotAllowPRW2(t *testing.T) {
+	// Test `-distributor.remote-write2-enabled=false` but the Sender pushes PRW2
+	// Expected: status code is 200, but samples are not written.
 	const blockRangePeriod = 5 * time.Second
 
 	s, err := e2e.NewScenario(networkName)
@@ -198,6 +201,11 @@ func TestIngest_SenderSendPRW2_DistributorNotAllowPRW2(t *testing.T) {
 	res, err := c.PushV2(symbols1, series)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
+
+	// sample
+	result, err := c.Query("test_series", now)
+	require.NoError(t, err)
+	require.Empty(t, result)
 }
 
 func TestIngest(t *testing.T) {
@@ -281,7 +289,8 @@ func TestIngest(t *testing.T) {
 	require.Equal(t, 200, res.StatusCode)
 	testPushHeader(t, res.Header, "0", "1", "0")
 
-	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	// float histogram
+	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
 	res, err = c.PushV2(symbols3, histogramFloatSeries)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
@@ -381,6 +390,71 @@ func TestExemplar(t *testing.T) {
 	exemplars, err := c.QueryExemplars("test_metric", start, end)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(exemplars))
+}
+
+func Test_WriteStatWithReplication(t *testing.T) {
+	// Test `X-Prometheus-Remote-Write-Samples-Written` header value
+	// with the replication.
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                     blocksStorageEngine,
+			"-blocks-storage.backend":                           "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
+			"-blocks-storage.bucket-store.sync-interval":        "15m",
+			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+			"-querier.query-store-for-labels-enabled":           "true",
+			"-blocks-storage.tsdb.ship-interval":                "1s",
+			"-blocks-storage.tsdb.enable-native-histograms":     "true",
+			// Ingester.
+			"-ring.store":             "consul",
+			"-consul.hostname":        consul.NetworkHTTPEndpoint(),
+			"-ingester.max-exemplars": "100",
+			// Distributor.
+			"-distributor.replication-factor":    "3",
+			"-distributor.remote-write2-enabled": "true",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+
+	// Start Cortex components.
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester1 := e2ecortex.NewIngester("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester2 := e2ecortex.NewIngester("ingester-2", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester3 := e2ecortex.NewIngester("ingester-3", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester1, ingester2, ingester3))
+
+	// Wait until distributor have updated the ring.
+	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(3), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	// series push
+	start := now.Add(-time.Minute * 10)
+	numSamples := 20
+	scrapeInterval := 30 * time.Second
+	symbols, series := e2e.GenerateV2SeriesWithSamples("test_series", start, scrapeInterval, 0, numSamples, prompb.Label{Name: "job", Value: "test"})
+	res, err := c.PushV2(symbols, []writev2.TimeSeries{series})
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	testPushHeader(t, res.Header, "20", "0", "0")
 }
 
 func testPushHeader(t *testing.T, header http.Header, expectedSamples, expectedHistogram, expectedExemplars string) {

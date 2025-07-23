@@ -499,3 +499,46 @@ func GenerateSeriesV2(name string, ts time.Time, additionalLabels ...prompb.Labe
 
 	return
 }
+
+func GenerateV2SeriesWithSamples(
+	name string,
+	startTime time.Time,
+	scrapeInterval time.Duration,
+	startValue int,
+	numSamples int,
+	additionalLabels ...prompb.Label,
+) (symbols []string, series writev2.TimeSeries) {
+	tsMillis := TimeToMilliseconds(startTime)
+	durMillis := scrapeInterval.Milliseconds()
+
+	st := writev2.NewSymbolTable()
+	lbs := labels.Labels{{Name: labels.MetricName, Value: name}}
+
+	for _, label := range additionalLabels {
+		lbs = append(lbs, labels.Label{
+			Name:  label.Name,
+			Value: label.Value,
+		})
+	}
+
+	startTMillis := tsMillis
+	samples := make([]writev2.Sample, numSamples)
+	for i := 0; i < numSamples; i++ {
+		scrapeJitter := rand.Int63n(10) + 1 // add a jitter to simulate real-world scenarios, refer to: https://github.com/prometheus/prometheus/issues/13213
+		samples[i] = writev2.Sample{
+			Timestamp: startTMillis + scrapeJitter,
+			Value:     float64(i + startValue),
+		}
+		startTMillis += durMillis
+	}
+
+	series = writev2.TimeSeries{
+		LabelsRefs: st.SymbolizeLabels(lbs, nil),
+		Samples:    samples,
+		Metadata: writev2.Metadata{
+			Type: writev2.Metadata_METRIC_TYPE_GAUGE,
+		},
+	}
+
+	return st.Symbols(), series
+}

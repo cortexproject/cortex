@@ -37,6 +37,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Instant query](#instant-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query` |
 | [Range query](#range-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query_range` |
 | [Exemplar query](#exemplar-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query_exemplars` |
+| [Format query](#format-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/format-query` |
 | [Get series by label matchers](#get-series-by-label-matchers) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/series` |
 | [Get label names](#get-label-names) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/labels` |
 | [Get label values](#get-label-values) | Querier, Query-frontend || `GET <prometheus-http-prefix>/api/v1/label/{name}/values` |
@@ -365,6 +366,21 @@ GET,POST <legacy-http-prefix>/api/v1/query_exemplars
 Prometheus-compatible exemplar query endpoint.
 
 _For more information, please check out the Prometheus [exemplar query](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-exemplars) documentation._
+
+_Requires [authentication](#authentication)._
+
+### Format query
+
+```
+GET,POST <prometheus-http-prefix>/api/v1/format_query
+
+# Legacy
+GET,POST <legacy-http-prefix>/api/v1/format_query
+```
+
+Prometheus-compatible format query endpoint. The endpoint formats a PromQL expression in a prettified way.
+
+_For more information, please check out the Prometheus [fomatting query expressions](https://prometheus.io/docs/prometheus/latest/querying/api/#formatting-query-expressions) documentation._
 
 _Requires [authentication](#authentication)._
 

@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] Query Frontend: Add support /api/v1/format_query API for formatting queries. #6893
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718
 * [CHANGE] Validate a tenantID when to use a single tenant resolver. #6727
@@ -57,6 +58,7 @@
 * [ENHANCEMENT] Querier: Support caching parquet labels file in parquet queryable. #6835
 * [ENHANCEMENT] Querier: Support query limits in parquet queryable. #6870
 * [ENHANCEMENT] Ring: Add zone label to ring_members metric. #6900
+* [ENHANCEMENT] Ingester: Add new metric `cortex_ingester_push_errors_total` to track reasons for ingester request failures. #6901
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576
@@ -75,6 +77,7 @@
 * [BUGFIX] Ingester: Allow shipper to skip corrupted blocks. #6786
 * [BUGFIX] Compactor: Delete the prefix `blocks_meta` from the metadata fetcher metrics. #6832
 * [BUGFIX] Store Gateway: Avoid race condition by deduplicating entries in bucket stores user scan. #6863
+* [BUGFIX] Runtime-config: Change to check tenant limit validation when loading runtime config only for `all`, `distributor`, `querier`, and `ruler` targets. #6880
 
 ## 1.19.0 2025-02-27
 

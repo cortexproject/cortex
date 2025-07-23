@@ -322,7 +322,7 @@ type Cortex struct {
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
 	MetadataQuerier          querier.MetadataQuerier
-	QuerierEngine            engine.Engine
+	QuerierEngine            engine.BaseEngine
 	QueryFrontendTripperware tripperware.Tripperware
 	ResourceMonitor          *resource.Monitor
 

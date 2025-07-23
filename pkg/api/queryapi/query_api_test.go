@@ -14,23 +14,23 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
 	"github.com/grafana/regexp"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/promql-engine/logicalplan"
+	"github.com/thanos-io/promql-engine/query"
 	"github.com/weaveworks/common/user"
 
 	engine2 "github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/thanos-io/promql-engine/logicalplan"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 type mockSampleAndChunkQueryable struct {
@@ -182,7 +182,7 @@ func Test_CustomAPI(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			c := NewQueryAPI(*engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"))
+			c := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"))
 
 			router := mux.NewRouter()
 			router.Path("/api/v1/query").Methods("POST").Handler(c.Wrap(c.InstantQueryHandler))
@@ -243,7 +243,7 @@ func Test_InvalidCodec(t *testing.T) {
 		},
 	}
 
-	queryAPI := NewQueryAPI(*engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{&mockCodec{}}, regexp.MustCompile(".*"))
+	queryAPI := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{&mockCodec{}}, regexp.MustCompile(".*"))
 	router := mux.NewRouter()
 	router.Path("/api/v1/query").Methods("POST").Handler(queryAPI.Wrap(queryAPI.InstantQueryHandler))
 
@@ -284,7 +284,7 @@ func Test_CustomAPI_StatsRenderer(t *testing.T) {
 		},
 	}
 
-	queryAPI := NewQueryAPI(*engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"))
+	queryAPI := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"))
 
 	router := mux.NewRouter()
 	router.Path("/api/v1/query_range").Methods("POST").Handler(queryAPI.Wrap(queryAPI.RangeQueryHandler))
@@ -314,7 +314,6 @@ func Test_Logicalplan_Requests(t *testing.T) {
 		prometheus.NewRegistry(),
 	)
 
-	// TODO: find a way to include two different-metric queryables
 	mockMatrix := model.Matrix{
 		{
 			Metric: model.Metric{"__name__": "test", "foo": "bar"},
@@ -342,8 +341,8 @@ func Test_Logicalplan_Requests(t *testing.T) {
 		expectedBody string
 	}{
 		{
-			name:         "[Range Query] with valid logical plan",
-			path:         "/api/v1/query_range?end=1536673680&query=test&start=1536673665&step=5",
+			name:         "[Range Query] with valid logical plan and empty query string",
+			path:         "/api/v1/query_range?end=1536673680&query=&start=1536673665&step=5",
 			start:        1536673665,
 			end:          1536673680,
 			stepDuration: 5,
@@ -366,7 +365,7 @@ func Test_Logicalplan_Requests(t *testing.T) {
 			expectedBody: `{"status":"error","errorType":"server_error","error":"invalid character 'r' after top-level value"}`,
 		},
 		{
-			name:         "[Range Query] with empty body", // will fall back promql query execution
+			name:         "[Range Query] with empty body and non-empty query string", // fall back to promql query execution
 			path:         "/api/v1/query_range?end=1536673680&query=test&start=1536673665&step=5",
 			start:        1536673665,
 			end:          1536673680,
@@ -378,7 +377,19 @@ func Test_Logicalplan_Requests(t *testing.T) {
 			expectedBody: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"test","foo":"bar"},"values":[[1536673665,"0"],[1536673670,"1"],[1536673675,"1"],[1536673680,"1"]]}]}}`,
 		},
 		{
-			name:         "[Instant Query] with valid logical plan",
+			name:         "[Range Query] with empty body and empty query string", // fall back to promql query execution, but will have error because of empty query string
+			path:         "/api/v1/query_range?end=1536673680&query=&start=1536673665&step=5",
+			start:        1536673665,
+			end:          1536673680,
+			stepDuration: 5,
+			requestBody: func(t *testing.T) []byte {
+				return []byte{}
+			},
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"query\\\"; unknown position: parse error: no expression found in input\"}",
+		},
+		{
+			name:         "[Instant Query] with valid logical plan and empty query string",
 			path:         "/api/v1/query?query=test&time=1536673670",
 			start:        1536673670,
 			end:          1536673670,
@@ -402,7 +413,7 @@ func Test_Logicalplan_Requests(t *testing.T) {
 			expectedBody: `{"status":"error","errorType":"server_error","error":"invalid character 'r' after top-level value"}`,
 		},
 		{
-			name:         "[Instant Query] with empty body",
+			name:         "[Instant Query] with empty body and non-empty query string",
 			path:         "/api/v1/query?query=test&time=1536673670",
 			start:        1536673670,
 			end:          1536673670,
@@ -413,11 +424,23 @@ func Test_Logicalplan_Requests(t *testing.T) {
 			expectedCode: http.StatusOK,
 			expectedBody: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"test","foo":"bar"},"value":[1536673670,"1"]}]}}`,
 		},
+		{
+			name:         "[Instant Query] with empty body and empty query string",
+			path:         "/api/v1/query?query=&time=1536673670",
+			start:        1536673670,
+			end:          1536673670,
+			stepDuration: 0,
+			requestBody: func(t *testing.T) []byte {
+				return []byte{}
+			},
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"query\\\"; unknown position: parse error: no expression found in input\"}",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := NewQueryAPI(*engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"))
+			c := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"))
 			router := mux.NewRouter()
 			router.Path("/api/v1/query").Methods("POST").Handler(c.Wrap(c.InstantQueryHandler))
 			router.Path("/api/v1/query_range").Methods("POST").Handler(c.Wrap(c.RangeQueryHandler))

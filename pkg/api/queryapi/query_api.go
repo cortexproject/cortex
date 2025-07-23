@@ -11,23 +11,23 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/regexp"
 	"github.com/munnerz/goautoneg"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/httputil"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/api"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 type QueryAPI struct {
 	queryable     storage.SampleAndChunkQueryable
-	queryEngine   engine.Engine
+	queryEngine   engine.BaseEngine
 	now           func() time.Time
 	statsRenderer v1.StatsRenderer
 	logger        log.Logger
@@ -36,7 +36,7 @@ type QueryAPI struct {
 }
 
 func NewQueryAPI(
-	qe engine.Engine,
+	qe engine.BaseEngine,
 	q storage.SampleAndChunkQueryable,
 	statsRenderer v1.StatsRenderer,
 	logger log.Logger,

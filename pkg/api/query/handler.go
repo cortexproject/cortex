@@ -1,7 +1,8 @@
-package queryapi
+package query
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -9,17 +10,16 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/regexp"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/munnerz/goautoneg"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/httputil"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/api"
 )
 
@@ -53,56 +53,57 @@ func NewQueryAPI(
 }
 
 func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
-	// TODO(Sungjin1212): Change to emit basic error (not gRPC)
-	start, err := util.ParseTime(r.FormValue("start"))
+	start, err := api.ParseTime(r.FormValue("start"))
 	if err != nil {
 		return invalidParamError(err, "start")
 	}
-	end, err := util.ParseTime(r.FormValue("end"))
+	end, err := api.ParseTime(r.FormValue("end"))
 	if err != nil {
 		return invalidParamError(err, "end")
 	}
-	if end < start {
-		return invalidParamError(ErrEndBeforeStart, "end")
+
+	if end.Before(start) {
+		return invalidParamError(errors.New("end timestamp must not be before start time"), "end")
 	}
 
-	step, err := util.ParseDurationMs(r.FormValue("step"))
+	step, err := api.ParseDuration(r.FormValue("step"))
 	if err != nil {
 		return invalidParamError(err, "step")
 	}
 
 	if step <= 0 {
-		return invalidParamError(ErrNegativeStep, "step")
+		return invalidParamError(errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer"), "step")
 	}
 
 	// For safety, limit the number of returned points per timeseries.
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
-	if (end-start)/step > 11000 {
-		return apiFuncResult{nil, &apiError{errorBadData, ErrStepTooSmall}, nil, nil}
+	if end.Sub(start)/step > 11000 {
+		err := errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
+		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
 
 	ctx := r.Context()
 	if to := r.FormValue("timeout"); to != "" {
 		var cancel context.CancelFunc
-		timeout, err := util.ParseDurationMs(to)
+		timeout, err := api.ParseDuration(to)
 		if err != nil {
 			return invalidParamError(err, "timeout")
 		}
 
-		ctx, cancel = context.WithTimeout(ctx, convertMsToDuration(timeout))
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
 
-	opts, err := extractQueryOpts(r)
+	opts, err := ExtractQueryOpts(r)
 	if err != nil {
 		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
 
 	ctx = engine.AddEngineTypeToContext(ctx, r)
 	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
-	qry, err := q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step))
+	qry, err := q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), start, end, step)
 	if err != nil {
-		return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+		return invalidParamError(err, "query")
 	}
 	// From now on, we must only return with a finalizer in the result (to
 	// be called by the caller) or call qry.Close ourselves (which is
@@ -131,8 +132,7 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 }
 
 func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
-	// TODO(Sungjin1212): Change to emit basic error (not gRPC)
-	ts, err := util.ParseTimeParam(r, "time", q.now().Unix())
+	ts, err := api.ParseTimeParam(r, "time", q.now())
 	if err != nil {
 		return invalidParamError(err, "time")
 	}
@@ -140,25 +140,25 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 	ctx := r.Context()
 	if to := r.FormValue("timeout"); to != "" {
 		var cancel context.CancelFunc
-		timeout, err := util.ParseDurationMs(to)
+		timeout, err := api.ParseDuration(to)
 		if err != nil {
 			return invalidParamError(err, "timeout")
 		}
 
-		ctx, cancel = context.WithDeadline(ctx, q.now().Add(convertMsToDuration(timeout)))
+		ctx, cancel = context.WithDeadline(ctx, q.now().Add(timeout))
 		defer cancel()
 	}
 
-	opts, err := extractQueryOpts(r)
+	opts, err := ExtractQueryOpts(r)
 	if err != nil {
 		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
 
 	ctx = engine.AddEngineTypeToContext(ctx, r)
 	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
-	qry, err := q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(ts))
+	qry, err := q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), ts)
 	if err != nil {
-		return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+		return invalidParamError(err, "query")
 	}
 
 	// From now on, we must only return with a finalizer in the result (to
@@ -197,7 +197,7 @@ func (q *QueryAPI) Wrap(f apiFunc) http.HandlerFunc {
 		}
 
 		if result.err != nil {
-			api.RespondFromGRPCError(q.logger, w, result.err.err)
+			q.respondError(w, result.err, result.data)
 			return
 		}
 
@@ -213,6 +213,47 @@ func (q *QueryAPI) Wrap(f apiFunc) http.HandlerFunc {
 	}.ServeHTTP
 }
 
+func (q *QueryAPI) respondError(w http.ResponseWriter, apiErr *apiError, data interface{}) {
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
+	b, err := json.Marshal(&Response{
+		Status:    statusError,
+		ErrorType: apiErr.typ,
+		Error:     apiErr.err.Error(),
+		Data:      data,
+	})
+	if err != nil {
+		level.Error(q.logger).Log("error marshaling json response", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var code int
+	switch apiErr.typ {
+	case errorBadData:
+		code = http.StatusBadRequest
+	case errorExec:
+		code = http.StatusUnprocessableEntity
+	case errorCanceled:
+		code = statusClientClosedConnection
+	case errorTimeout:
+		code = http.StatusServiceUnavailable
+	case errorInternal:
+		code = http.StatusInternalServerError
+	case errorNotFound:
+		code = http.StatusNotFound
+	case errorNotAcceptable:
+		code = http.StatusNotAcceptable
+	default:
+		code = http.StatusInternalServerError
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	if n, err := w.Write(b); err != nil {
+		level.Error(q.logger).Log("error writing response", "bytesWritten", n, "err", err)
+	}
+}
+
 func (q *QueryAPI) respond(w http.ResponseWriter, req *http.Request, data interface{}, warnings annotations.Annotations, query string) {
 	warn, info := warnings.AsStrings(query, 10, 10)
 
@@ -225,7 +266,7 @@ func (q *QueryAPI) respond(w http.ResponseWriter, req *http.Request, data interf
 
 	codec, err := q.negotiateCodec(req, resp)
 	if err != nil {
-		api.RespondFromGRPCError(q.logger, w, httpgrpc.Errorf(http.StatusNotAcceptable, "%s", &apiError{errorNotAcceptable, err}))
+		q.respondError(w, &apiError{errorNotAcceptable, err}, nil)
 		return
 	}
 

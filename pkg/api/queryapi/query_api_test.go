@@ -1,13 +1,14 @@
 package queryapi
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -457,8 +458,13 @@ func Test_Logicalplan_Requests(t *testing.T) {
 	}
 }
 
-func createTestRequest(path string, body []byte) *http.Request {
-	req := httptest.NewRequest(http.MethodPost, path, io.NopCloser(bytes.NewReader(body)))
+func createTestRequest(path string, planBytes []byte) *http.Request {
+	form := url.Values{}
+	form.Set("plan", string(planBytes))
+	req := httptest.NewRequest(http.MethodPost, path, io.NopCloser(strings.NewReader(form.Encode())))
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	
 	ctx := context.Background()
 	_, ctx = stats.ContextWithEmptyStats(ctx)
 	return req.WithContext(user.InjectOrgID(ctx, "user1"))

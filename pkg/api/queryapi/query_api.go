@@ -3,7 +3,6 @@ package queryapi
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -111,11 +110,8 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	endTime := convertMsToTime(end)
 	stepDuration := convertMsToDuration(step)
 
-	byteLP, err := io.ReadAll(r.Body)
 	if q.distributedExecEnabled {
-		if err != nil {
-			return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
-		}
+		byteLP := []byte(r.PostFormValue("plan"))
 		if len(byteLP) != 0 {
 			logicalPlan, err := logicalplan.Unmarshal(byteLP)
 			if err != nil {
@@ -205,10 +201,7 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 	tsTime := convertMsToTime(ts)
 
 	if q.distributedExecEnabled {
-		byteLP, err := io.ReadAll(r.Body)
-		if err != nil {
-			return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
-		}
+		byteLP := []byte(r.PostFormValue("plan"))
 		if len(byteLP) != 0 {
 			logicalPlan, err := logicalplan.Unmarshal(byteLP)
 			if err != nil {

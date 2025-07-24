@@ -26,13 +26,14 @@ import (
 )
 
 type QueryAPI struct {
-	queryable     storage.SampleAndChunkQueryable
-	queryEngine   engine.BaseEngine
-	now           func() time.Time
-	statsRenderer v1.StatsRenderer
-	logger        log.Logger
-	codecs        []v1.Codec
-	CORSOrigin    *regexp.Regexp
+	queryable              storage.SampleAndChunkQueryable
+	queryEngine            engine.BaseEngine
+	now                    func() time.Time
+	statsRenderer          v1.StatsRenderer
+	logger                 log.Logger
+	codecs                 []v1.Codec
+	CORSOrigin             *regexp.Regexp
+	distributedExecEnabled bool
 }
 
 func NewQueryAPI(
@@ -42,15 +43,17 @@ func NewQueryAPI(
 	logger log.Logger,
 	codecs []v1.Codec,
 	CORSOrigin *regexp.Regexp,
+	distributedExecEnabled bool,
 ) *QueryAPI {
 	return &QueryAPI{
-		queryEngine:   qe,
-		queryable:     q,
-		statsRenderer: statsRenderer,
-		logger:        logger,
-		codecs:        codecs,
-		CORSOrigin:    CORSOrigin,
-		now:           time.Now,
+		queryEngine:            qe,
+		queryable:              q,
+		statsRenderer:          statsRenderer,
+		logger:                 logger,
+		codecs:                 codecs,
+		CORSOrigin:             CORSOrigin,
+		now:                    time.Now,
+		distributedExecEnabled: distributedExecEnabled,
 	}
 }
 
@@ -104,19 +107,27 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
 
 	var qry promql.Query
-	byteLP, err := io.ReadAll(r.Body)
-	if err != nil {
-		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
-	}
 
-	if len(byteLP) != 0 {
-		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+	if q.distributedExecEnabled {
+		byteLP, err := io.ReadAll(r.Body)
 		if err != nil {
 			return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 		}
-		qry, err = q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlan, convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step), r.FormValue("query"))
-		if err != nil {
-			return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+
+		if len(byteLP) != 0 {
+			logicalPlan, err := logicalplan.Unmarshal(byteLP)
+			if err != nil {
+				return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+			}
+			qry, err = q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlan, convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step), r.FormValue("query"))
+			if err != nil {
+				return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+			}
+		} else {
+			qry, err = q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step))
+			if err != nil {
+				return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+			}
 		}
 	} else {
 		qry, err = q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step))
@@ -179,19 +190,26 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
 
 	var qry promql.Query
-	byteLP, err := io.ReadAll(r.Body)
-	if err != nil {
-		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
-	}
-
-	if len(byteLP) != 0 {
-		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+	if q.distributedExecEnabled {
+		byteLP, err := io.ReadAll(r.Body)
 		if err != nil {
 			return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 		}
-		qry, err = q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlan, convertMsToTime(ts), r.FormValue("query"))
-		if err != nil {
-			return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+
+		if len(byteLP) != 0 {
+			logicalPlan, err := logicalplan.Unmarshal(byteLP)
+			if err != nil {
+				return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+			}
+			qry, err = q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlan, convertMsToTime(ts), r.FormValue("query"))
+			if err != nil {
+				return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+			}
+		} else {
+			qry, err = q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(ts))
+			if err != nil {
+				return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+			}
 		}
 	} else {
 		qry, err = q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(ts))

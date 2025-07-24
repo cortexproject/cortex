@@ -77,6 +77,8 @@ type Config struct {
 	buildInfoEnabled bool `yaml:"build_info_enabled"`
 
 	QuerierDefaultCodec string `yaml:"querier_default_codec"`
+
+	DistributedExecEnabled bool `yaml:"distributed_exec_enabled" doc:"hidden"`
 }
 
 var (
@@ -89,6 +91,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.HTTPRequestHeadersToLog, "api.http-request-headers-to-log", "Which HTTP Request headers to add to logs")
 	f.BoolVar(&cfg.buildInfoEnabled, "api.build-info-enabled", false, "If enabled, build Info API will be served by query frontend or querier.")
 	f.StringVar(&cfg.QuerierDefaultCodec, "api.querier-default-codec", "json", "Choose default codec for querier response serialization. Supports 'json' and 'protobuf'.")
+	f.BoolVar(&cfg.DistributedExecEnabled, "frontend.distributed-exec-enabled", false, "Experimental: Enables distributed execution of queries by passing logical query plan fragments to downstream components.")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
@@ -126,14 +129,15 @@ func compileCORSRegexString(s string) (*regexp.Regexp, error) {
 }
 
 type API struct {
-	AuthMiddleware       middleware.Interface
-	cfg                  Config
-	server               *server.Server
-	logger               log.Logger
-	sourceIPs            *middleware.SourceIPExtractor
-	indexPage            *IndexPageContent
-	HTTPHeaderMiddleware *HTTPHeaderMiddleware
-	corsOrigin           *regexp.Regexp
+	AuthMiddleware         middleware.Interface
+	cfg                    Config
+	server                 *server.Server
+	logger                 log.Logger
+	sourceIPs              *middleware.SourceIPExtractor
+	indexPage              *IndexPageContent
+	HTTPHeaderMiddleware   *HTTPHeaderMiddleware
+	corsOrigin             *regexp.Regexp
+	distributedExecEnabled bool
 }
 
 func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger) (*API, error) {
@@ -156,13 +160,14 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 	}
 
 	api := &API{
-		cfg:            cfg,
-		AuthMiddleware: cfg.HTTPAuthMiddleware,
-		server:         s,
-		logger:         logger,
-		sourceIPs:      sourceIPs,
-		indexPage:      newIndexPageContent(),
-		corsOrigin:     corsOrigin,
+		cfg:                    cfg,
+		AuthMiddleware:         cfg.HTTPAuthMiddleware,
+		server:                 s,
+		logger:                 logger,
+		sourceIPs:              sourceIPs,
+		indexPage:              newIndexPageContent(),
+		corsOrigin:             corsOrigin,
+		distributedExecEnabled: cfg.DistributedExecEnabled,
 	}
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.

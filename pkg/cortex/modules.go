@@ -370,6 +370,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		t.MetadataQuerier,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
+		t.Cfg.Querier.DistributedExecEnabled,
 	)
 
 	// If the querier is running standalone without the query-frontend or query-scheduler, we must register it's internal
@@ -534,7 +535,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		shardedPrometheusCodec,
 		t.Cfg.Querier.LookbackDelta,
 		t.Cfg.Querier.DefaultEvaluationInterval,
-		t.Cfg.Frontend.DistributedExecEnabled,
+		t.Cfg.Querier.DistributedExecEnabled,
 	)
 	if err != nil {
 		return nil, err
@@ -547,7 +548,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryAnalyzer,
 		t.Cfg.Querier.LookbackDelta,
 		t.Cfg.Querier.DefaultEvaluationInterval,
-		t.Cfg.Frontend.DistributedExecEnabled)
+		t.Cfg.Querier.DistributedExecEnabled)
 	if err != nil {
 		return nil, err
 	}

@@ -362,7 +362,7 @@ func Test_Logicalplan_Requests(t *testing.T) {
 				return append(createTestLogicalPlan(t, 1536673665, 1536673680, 5), []byte("random data")...)
 			},
 			expectedCode: http.StatusInternalServerError,
-			expectedBody: `{"status":"error","errorType":"server_error","error":"invalid character 'r' after top-level value"}`,
+			expectedBody: `{"status":"error","errorType":"server_error","error":"invalid logical plan: invalid character 'r' after top-level value"}`,
 		},
 		{
 			name:         "[Range Query] with empty body and non-empty query string", // fall back to promql query execution
@@ -410,7 +410,7 @@ func Test_Logicalplan_Requests(t *testing.T) {
 				return append(createTestLogicalPlan(t, 1536673670, 1536673670, 0), []byte("random data")...)
 			},
 			expectedCode: http.StatusInternalServerError,
-			expectedBody: `{"status":"error","errorType":"server_error","error":"invalid character 'r' after top-level value"}`,
+			expectedBody: `{"status":"error","errorType":"server_error","error":"invalid logical plan: invalid character 'r' after top-level value"}`,
 		},
 		{
 			name:         "[Instant Query] with empty body and non-empty query string",

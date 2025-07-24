@@ -57,6 +57,69 @@ func NewQueryAPI(
 	}
 }
 
+func (q *QueryAPI) createQueryFromPlan(query string, byteLP []byte, start time.Time, end time.Time, step time.Duration, ctx context.Context, opts promql.QueryOpts) (promql.Query, apiFuncResult, error) {
+	if step == 0 {
+		// instant query logic (step is 0)
+		if len(byteLP) != 0 {
+			logicalPlan, err := logicalplan.Unmarshal(byteLP)
+			if err != nil {
+				return nil, apiFuncResult{
+					nil,
+					&apiError{errorBadData, fmt.Errorf("invalid logical plan: %v", err)},
+					nil,
+					nil,
+				}, err
+			}
+			qry, err := q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlan, start, query)
+			if err != nil {
+				return nil, apiFuncResult{
+					nil,
+					&apiError{errorBadData, fmt.Errorf("failed to create instant query from logical plan: %v", err)},
+					nil,
+					nil,
+				}, err
+			}
+			return qry, apiFuncResult{}, nil
+		} else {
+			// fallback to query string for instant query
+			qry, err := q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, query, start)
+			if err != nil {
+				return nil, invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query"), err
+			}
+			return qry, apiFuncResult{}, nil
+		}
+	}
+
+	// range query logic (step is non-zero)
+	if len(byteLP) != 0 {
+		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+		if err != nil {
+			return nil, apiFuncResult{
+				nil,
+				&apiError{errorBadData, fmt.Errorf("invalid logical plan: %v", err)},
+				nil,
+				nil,
+			}, err
+		}
+		qry, err := q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlan, start, end, step, query)
+		if err != nil {
+			return nil, apiFuncResult{
+				nil,
+				&apiError{errorBadData, fmt.Errorf("failed to create range query from logical plan: %v", err)},
+				nil,
+				nil,
+			}, err
+		}
+		return qry, apiFuncResult{}, nil
+	} else {
+		qry, err := q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, query, start, end, step)
+		if err != nil {
+			return nil, invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query"), err
+		}
+		return qry, apiFuncResult{}, nil
+	}
+}
+
 func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	// TODO(Sungjin1212): Change to emit basic error (not gRPC)
 	start, err := util.ParseTime(r.FormValue("start"))
@@ -107,27 +170,15 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
 
 	var qry promql.Query
-
+	var funcRes apiFuncResult
 	if q.distributedExecEnabled {
 		byteLP, err := io.ReadAll(r.Body)
 		if err != nil {
 			return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 		}
-
-		if len(byteLP) != 0 {
-			logicalPlan, err := logicalplan.Unmarshal(byteLP)
-			if err != nil {
-				return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
-			}
-			qry, err = q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlan, convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step), r.FormValue("query"))
-			if err != nil {
-				return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
-			}
-		} else {
-			qry, err = q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step))
-			if err != nil {
-				return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
-			}
+		qry, funcRes, err = q.createQueryFromPlan(r.FormValue("query"), byteLP, convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step), ctx, opts)
+		if err != nil {
+			return funcRes
 		}
 	} else {
 		qry, err = q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step))
@@ -190,26 +241,15 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
 
 	var qry promql.Query
+	var funcRes apiFuncResult
 	if q.distributedExecEnabled {
 		byteLP, err := io.ReadAll(r.Body)
 		if err != nil {
 			return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 		}
-
-		if len(byteLP) != 0 {
-			logicalPlan, err := logicalplan.Unmarshal(byteLP)
-			if err != nil {
-				return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
-			}
-			qry, err = q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlan, convertMsToTime(ts), r.FormValue("query"))
-			if err != nil {
-				return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
-			}
-		} else {
-			qry, err = q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(ts))
-			if err != nil {
-				return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
-			}
+		qry, funcRes, err = q.createQueryFromPlan(r.FormValue("query"), byteLP, convertMsToTime(ts), convertMsToTime(ts), convertMsToDuration(0), ctx, opts)
+		if err != nil {
+			return funcRes
 		}
 	} else {
 		qry, err = q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(ts))

@@ -40,6 +40,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -892,9 +893,9 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		localCtx = opentracing.ContextWithSpan(localCtx, sp)
 	}
-	// Get any HTTP headers that are supposed to be added to logs and add to localCtx for later use
-	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
-		localCtx = util_log.ContextWithHeaderMap(localCtx, headerMap)
+	// Get any HTTP request metadata that are supposed to be added to logs and add to localCtx for later use
+	if requestContextMap := requestmeta.MapFromContext(ctx); requestContextMap != nil {
+		localCtx = requestmeta.ContextWithRequestMetadataMap(localCtx, requestContextMap)
 	}
 	// Get clientIP(s) from Context and add it to localCtx
 	source := util.GetSourceIPsFromOutgoingCtx(ctx)

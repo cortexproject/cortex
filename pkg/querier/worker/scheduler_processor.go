@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/textproto"
 	"time"
 
 	"github.com/go-kit/log"
@@ -28,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	cortexmiddleware "github.com/cortexproject/cortex/pkg/util/middleware"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -141,14 +141,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			for _, h := range request.HttpRequest.Headers {
 				headers[h.Key] = h.Values[0]
 			}
-			headerMap := make(map[string]string, 0)
-			// Remove non-existent header.
-			for _, header := range sp.targetHeaders {
-				if v, ok := headers[textproto.CanonicalMIMEHeaderKey(header)]; ok {
-					headerMap[header] = v
-				}
-			}
-			ctx = util_log.ContextWithHeaderMap(ctx, headerMap)
+			ctx = requestmeta.ContextWithRequestMetadataMapFromHeaders(ctx, headers, sp.targetHeaders)
 
 			tracer := opentracing.GlobalTracer()
 			// Ignore errors here. If we cannot get parent span, we just don't create new one.

@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 // WithUserID returns a Logger that has information about the current user in
@@ -64,7 +65,7 @@ func WithSourceIPs(sourceIPs string, l log.Logger) log.Logger {
 
 // HeadersFromContext enables the logging of specified HTTP Headers that have been added to a context
 func HeadersFromContext(ctx context.Context, l log.Logger) log.Logger {
-	headerContentsMap := HeaderMapFromContext(ctx)
+	headerContentsMap := requestmeta.LoggingHeadersAndRequestIdFromContext(ctx)
 	for header, contents := range headerContentsMap {
 		l = log.With(l, header, contents)
 	}

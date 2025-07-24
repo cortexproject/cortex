@@ -25,14 +25,13 @@ import (
 )
 
 type QueryAPI struct {
-	queryable              storage.SampleAndChunkQueryable
-	queryEngine            engine.QueryEngine
-	now                    func() time.Time
-	statsRenderer          v1.StatsRenderer
-	logger                 log.Logger
-	codecs                 []v1.Codec
-	CORSOrigin             *regexp.Regexp
-	distributedExecEnabled bool
+	queryable     storage.SampleAndChunkQueryable
+	queryEngine   engine.QueryEngine
+	now           func() time.Time
+	statsRenderer v1.StatsRenderer
+	logger        log.Logger
+	codecs        []v1.Codec
+	CORSOrigin    *regexp.Regexp
 }
 
 func NewQueryAPI(
@@ -42,17 +41,15 @@ func NewQueryAPI(
 	logger log.Logger,
 	codecs []v1.Codec,
 	CORSOrigin *regexp.Regexp,
-	distributedExecEnabled bool,
 ) *QueryAPI {
 	return &QueryAPI{
-		queryEngine:            qe,
-		queryable:              q,
-		statsRenderer:          statsRenderer,
-		logger:                 logger,
-		codecs:                 codecs,
-		CORSOrigin:             CORSOrigin,
-		now:                    time.Now,
-		distributedExecEnabled: distributedExecEnabled,
+		queryEngine:   qe,
+		queryable:     q,
+		statsRenderer: statsRenderer,
+		logger:        logger,
+		codecs:        codecs,
+		CORSOrigin:    CORSOrigin,
+		now:           time.Now,
 	}
 }
 
@@ -110,34 +107,17 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	endTime := convertMsToTime(end)
 	stepDuration := convertMsToDuration(step)
 
-	if q.distributedExecEnabled {
-		byteLP := []byte(r.PostFormValue("plan"))
-		if len(byteLP) != 0 {
-			logicalPlan, err := logicalplan.Unmarshal(byteLP)
-			if err != nil {
-				return apiFuncResult{
-					nil,
-					&apiError{errorBadData, fmt.Errorf("invalid logical plan: %v", err)},
-					nil,
-					nil,
-				}
-			}
-			qry, err = q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlan, startTime, endTime, stepDuration, r.FormValue("query"))
-			if err != nil {
-				return apiFuncResult{
-					nil,
-					&apiError{errorBadData, fmt.Errorf("failed to create range query from logical plan: %v", err)},
-					nil,
-					nil,
-				}
-			}
-		} else { // if there is logical plan field is empty, fall back
-			qry, err = q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), startTime, endTime, stepDuration)
-			if err != nil {
-				return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
-			}
+	byteLP := []byte(r.PostFormValue("plan"))
+	if len(byteLP) != 0 {
+		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+		if err != nil {
+			return apiFuncResult{nil, &apiError{errorBadData, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
 		}
-	} else {
+		qry, err = q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlan, startTime, endTime, stepDuration, r.FormValue("query"))
+		if err != nil {
+			return apiFuncResult{nil, &apiError{errorBadData, fmt.Errorf("failed to create range query from logical plan: %v", err)}, nil, nil}
+		}
+	} else { // if there is logical plan field is empty, fall back
 		qry, err = q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), startTime, endTime, stepDuration)
 		if err != nil {
 			return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
@@ -200,35 +180,17 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 	var qry promql.Query
 	tsTime := convertMsToTime(ts)
 
-	if q.distributedExecEnabled {
-		byteLP := []byte(r.PostFormValue("plan"))
-		if len(byteLP) != 0 {
-			logicalPlan, err := logicalplan.Unmarshal(byteLP)
-			if err != nil {
-				return apiFuncResult{
-					nil,
-					&apiError{errorBadData, fmt.Errorf("invalid logical plan: %v", err)},
-					nil,
-					nil,
-				}
-			}
-			qry, err = q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlan, tsTime, r.FormValue("query"))
-			if err != nil {
-				return apiFuncResult{
-					nil,
-					&apiError{errorBadData, fmt.Errorf("failed to create instant query from logical plan: %v", err)},
-					nil,
-					nil,
-				}
-			}
-		} else {
-			// fallback to query string for instant query
-			qry, err = q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), tsTime)
-			if err != nil {
-				return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
-			}
+	byteLP := []byte(r.PostFormValue("plan"))
+	if len(byteLP) != 0 {
+		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+		if err != nil {
+			return apiFuncResult{nil, &apiError{errorBadData, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
 		}
-	} else {
+		qry, err = q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlan, tsTime, r.FormValue("query"))
+		if err != nil {
+			return apiFuncResult{nil, &apiError{errorBadData, fmt.Errorf("failed to create range query from logical plan: %v", err)}, nil, nil}
+		}
+	} else { // if there is logical plan field is empty, fall back
 		qry, err = q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), tsTime)
 		if err != nil {
 			return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")

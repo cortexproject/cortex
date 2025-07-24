@@ -183,7 +183,7 @@ func Test_CustomAPI(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			c := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"), false)
+			c := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"))
 
 			router := mux.NewRouter()
 			router.Path("/api/v1/query").Methods("POST").Handler(c.Wrap(c.InstantQueryHandler))
@@ -244,7 +244,7 @@ func Test_InvalidCodec(t *testing.T) {
 		},
 	}
 
-	queryAPI := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{&mockCodec{}}, regexp.MustCompile(".*"), false)
+	queryAPI := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{&mockCodec{}}, regexp.MustCompile(".*"))
 	router := mux.NewRouter()
 	router.Path("/api/v1/query").Methods("POST").Handler(queryAPI.Wrap(queryAPI.InstantQueryHandler))
 
@@ -285,7 +285,7 @@ func Test_CustomAPI_StatsRenderer(t *testing.T) {
 		},
 	}
 
-	queryAPI := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"), false)
+	queryAPI := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"))
 
 	router := mux.NewRouter()
 	router.Path("/api/v1/query_range").Methods("POST").Handler(queryAPI.Wrap(queryAPI.RangeQueryHandler))
@@ -441,7 +441,7 @@ func Test_Logicalplan_Requests(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"), true)
+			c := NewQueryAPI(engine, mockQueryable, querier.StatsRenderer, log.NewNopLogger(), []v1.Codec{v1.JSONCodec{}}, regexp.MustCompile(".*"))
 			router := mux.NewRouter()
 			router.Path("/api/v1/query").Methods("POST").Handler(c.Wrap(c.InstantQueryHandler))
 			router.Path("/api/v1/query_range").Methods("POST").Handler(c.Wrap(c.RangeQueryHandler))
@@ -464,7 +464,6 @@ func createTestRequest(path string, planBytes []byte) *http.Request {
 	req := httptest.NewRequest(http.MethodPost, path, io.NopCloser(strings.NewReader(form.Encode())))
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	
 	ctx := context.Background()
 	_, ctx = stats.ContextWithEmptyStats(ctx)
 	return req.WithContext(user.InjectOrgID(ctx, "user1"))

@@ -97,7 +97,7 @@ The next three options only apply when the querier is used together with the Que
 
    Set this flag to `true` for the new behaviour.
 
-   Important to note is that when setting this flag to `true`, it has to be set on both the distributor and the querier (called `-distributor.shard-by-all-labels` on Querier as well). If the flag is only set on the distributor and not on the querier, you will get incomplete query results because not all ingesters are queried.
+   Important to note is that when setting this flag to `true`, it has to be set on the distributor, the querier, and the ruler (called `-distributor.shard-by-all-labels` on Querier as well). If the flag is only set on the distributor and not on the querier, you will get incomplete query results because not all ingesters are queried.
 
    **Upgrade notes**: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.
 
@@ -122,6 +122,8 @@ The KVStore client is used by both the Ring and HA Tracker (HA Tracker doesn't s
    The prefix for the keys in the store. Should end with a /. For example with a prefix of foo/, the key bar would be stored under foo/bar.
 - `{ring,distributor.ha-tracker}.store`
    Backend storage to use for the HA Tracker (consul, etcd, inmemory, multi).
+
+   **Warning:** The `inmemory` store will not work correctly with multiple distributors as each distributor can have a different state, causing injestion errors.
 - `{ring,distributor.ring}.store`
    Backend storage to use for the Ring (consul, etcd, inmemory, memberlist, multi).
 

@@ -22,7 +22,7 @@ func createCachingBucketClient(ctx context.Context, storageCfg cortex_tsdb.Block
 
 	// Blocks finder doesn't use chunks, but we pass config for consistency.
 	matchers := cortex_tsdb.NewMatchers()
-	cachingBucket, err := cortex_tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, matchers, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": name}, reg))
+	cachingBucket, err := cortex_tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, storageCfg.BucketStore.ParquetLabelsCache, matchers, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": name}, reg))
 	if err != nil {
 		return nil, errors.Wrap(err, "create caching bucket")
 	}

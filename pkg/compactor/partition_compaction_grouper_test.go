@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/mock"
@@ -2048,8 +2048,7 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 			limits := &validation.Limits{
 				CompactorPartitionSeriesCount: 4,
 			}
-			overrides, err := validation.NewOverrides(*limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(*limits, nil)
 
 			// Setup mocking of the ring so that the grouper will own all the shards
 			rs := ring.ReplicationSet{
@@ -2057,11 +2056,11 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 					{Addr: "test-addr"},
 				},
 			}
-			subring := &RingMock{}
+			subring := &ring.RingMock{}
 			subring.On("GetAllHealthy", mock.Anything).Return(rs, nil)
 			subring.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(rs, nil)
 
-			ring := &RingMock{}
+			ring := &ring.RingMock{}
 			ring.On("ShuffleShard", mock.Anything, mock.Anything).Return(subring, nil)
 
 			registerer := prometheus.NewPedanticRegistry()

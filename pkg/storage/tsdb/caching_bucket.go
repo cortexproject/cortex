@@ -11,7 +11,7 @@ import (
 	"github.com/alecthomas/units"
 	"github.com/go-kit/log"
 	"github.com/golang/snappy"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -188,7 +188,39 @@ func (cfg *MetadataCacheConfig) Validate() error {
 	return cfg.BucketCacheBackend.Validate()
 }
 
-func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig MetadataCacheConfig, matchers Matchers, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
+type ParquetLabelsCacheConfig struct {
+	BucketCacheBackend `yaml:",inline"`
+
+	SubrangeSize        int64         `yaml:"subrange_size"`
+	MaxGetRangeRequests int           `yaml:"max_get_range_requests"`
+	AttributesTTL       time.Duration `yaml:"attributes_ttl"`
+	SubrangeTTL         time.Duration `yaml:"subrange_ttl"`
+}
+
+func (cfg *ParquetLabelsCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("The parquet labels cache backend type. Single or Multiple cache backend can be provided. "+
+		"Supported values in single cache: %s, %s, %s, and '' (disable). "+
+		"Supported values in multi level cache: a comma-separated list of (%s)", CacheBackendMemcached, CacheBackendRedis, CacheBackendInMemory, strings.Join(supportedBucketCacheBackends, ", ")))
+
+	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
+	cfg.Redis.RegisterFlagsWithPrefix(f, prefix+"redis.")
+	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.", "parquet-labels")
+	cfg.MultiLevel.RegisterFlagsWithPrefix(f, prefix+"multilevel.")
+
+	f.Int64Var(&cfg.SubrangeSize, prefix+"subrange-size", 16000, "Size of each subrange that bucket object is split into for better caching.")
+	f.IntVar(&cfg.MaxGetRangeRequests, prefix+"max-get-range-requests", 3, "Maximum number of sub-GetRange requests that a single GetRange request can be split into when fetching parquet labels file. Zero or negative value = unlimited number of sub-requests.")
+	f.DurationVar(&cfg.AttributesTTL, prefix+"attributes-ttl", 168*time.Hour, "TTL for caching object attributes for parquet labels file.")
+	f.DurationVar(&cfg.SubrangeTTL, prefix+"subrange-ttl", 24*time.Hour, "TTL for caching individual subranges.")
+
+	// In the multi level parquet labels cache, backfill TTL follows subrange TTL
+	cfg.MultiLevel.BackFillTTL = cfg.SubrangeTTL
+}
+
+func (cfg *ParquetLabelsCacheConfig) Validate() error {
+	return cfg.BucketCacheBackend.Validate()
+}
+
+func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig MetadataCacheConfig, parquetLabelsConfig ParquetLabelsCacheConfig, matchers Matchers, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
 	cfg := cache.NewCachingBucketConfig()
 	cachingConfigured := false
 
@@ -221,6 +253,16 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 		cfg.CacheIter("tenants-iter", metadataCache, matchers.GetTenantsIterMatcher(), metadataConfig.TenantsListTTL, codec, "")
 		cfg.CacheIter("tenant-blocks-iter", metadataCache, matchers.GetTenantBlocksIterMatcher(), metadataConfig.TenantBlocksListTTL, codec, "")
 		cfg.CacheIter("chunks-iter", metadataCache, matchers.GetChunksIterMatcher(), metadataConfig.ChunksListTTL, codec, "")
+	}
+
+	parquetLabelsCache, err := createBucketCache("parquet-labels-cache", &parquetLabelsConfig.BucketCacheBackend, logger, reg)
+	if err != nil {
+		return nil, errors.Wrapf(err, "parquet-labels-cache")
+	}
+	if parquetLabelsCache != nil {
+		cachingConfigured = true
+		parquetLabelsCache = cache.NewTracingCache(parquetLabelsCache)
+		cfg.CacheGetRange("parquet-labels", parquetLabelsCache, matchers.GetParquetLabelsMatcher(), parquetLabelsConfig.SubrangeSize, parquetLabelsConfig.AttributesTTL, parquetLabelsConfig.SubrangeTTL, parquetLabelsConfig.MaxGetRangeRequests)
 	}
 
 	if !cachingConfigured {
@@ -323,6 +365,7 @@ func NewMatchers() Matchers {
 	matcherMap := make(map[string]func(string) bool)
 	matcherMap["chunks"] = isTSDBChunkFile
 	matcherMap["parquet-chunks"] = isParquetChunkFile
+	matcherMap["parquet-labels"] = isParquetLabelsFile
 	matcherMap["metafile"] = isMetaFile
 	matcherMap["block-index"] = isBlockIndexFile
 	matcherMap["bucket-index"] = isBucketIndexFiles
@@ -345,6 +388,10 @@ func (m *Matchers) SetChunksMatcher(f func(string) bool) {
 
 func (m *Matchers) SetParquetChunksMatcher(f func(string) bool) {
 	m.matcherMap["parquet-chunks"] = f
+}
+
+func (m *Matchers) SetParquetLabelsMatcher(f func(string) bool) {
+	m.matcherMap["parquet-labels"] = f
 }
 
 func (m *Matchers) SetBlockIndexMatcher(f func(string) bool) {
@@ -377,6 +424,10 @@ func (m *Matchers) GetChunksMatcher() func(string) bool {
 
 func (m *Matchers) GetParquetChunksMatcher() func(string) bool {
 	return m.matcherMap["parquet-chunks"]
+}
+
+func (m *Matchers) GetParquetLabelsMatcher() func(string) bool {
+	return m.matcherMap["parquet-labels"]
 }
 
 func (m *Matchers) GetMetafileMatcher() func(string) bool {
@@ -412,6 +463,8 @@ var chunksMatcher = regexp.MustCompile(`^.*/chunks/\d+$`)
 func isTSDBChunkFile(name string) bool { return chunksMatcher.MatchString(name) }
 
 func isParquetChunkFile(name string) bool { return strings.HasSuffix(name, "chunks.parquet") }
+
+func isParquetLabelsFile(name string) bool { return strings.HasSuffix(name, "labels.parquet") }
 
 func isMetaFile(name string) bool {
 	return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+metadata.DeletionMarkFilename) || strings.HasSuffix(name, "/"+TenantDeletionMarkFile)

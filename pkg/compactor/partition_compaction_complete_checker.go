@@ -1,7 +1,7 @@
 package compactor
 
 import (
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/thanos-io/thanos/pkg/compact"
 )
 

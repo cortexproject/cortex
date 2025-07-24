@@ -193,8 +193,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 			limits := validation.Limits{
 				PromoteResourceAttributes: test.PromoteResourceAttributes,
 			}
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 			tsList, metadata, err := convertToPromTS(ctx, d, test.cfg, overrides, "user-1", logger)
 			require.NoError(t, err)
 
@@ -304,8 +303,7 @@ func BenchmarkOTLPWriteHandler(b *testing.B) {
 		ConvertAllAttributes: false,
 		DisableTargetInfo:    false,
 	}
-	overrides, err := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
-	require.NoError(b, err)
+	overrides := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
 
 	exportRequest := generateOTLPWriteRequest()
 	mockPushFunc := func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
@@ -462,8 +460,7 @@ func TestOTLPWriteHandler(t *testing.T) {
 			require.NoError(t, err)
 
 			push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
-			overrides, err := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
 			handler := OTLPHandler(test.maxRecvMsgSize, overrides, cfg, nil, push)
 
 			recorder := httptest.NewRecorder()

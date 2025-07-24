@@ -295,14 +295,14 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 		for _, rg := range rgs.Groups {
 			rls := make([]rules.Rule, 0, len(rg.Rules))
 			for _, rl := range rg.Rules {
-				expr, err := parser.ParseExpr(rl.Expr.Value)
+				expr, err := parser.ParseExpr(rl.Expr)
 				if err != nil {
 					return nil, err
 				}
 
-				if rl.Alert.Value != "" {
+				if rl.Alert != "" {
 					rls = append(rls, rules.NewAlertingRule(
-						rl.Alert.Value,
+						rl.Alert,
 						expr,
 						time.Duration(rl.For),
 						time.Duration(rl.KeepFiringFor),
@@ -311,12 +311,12 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 						nil,
 						"",
 						true,
-						util_log.GoKitLogToSlog(log.With(util_log.Logger, "alert", rl.Alert.Value)),
+						util_log.GoKitLogToSlog(log.With(util_log.Logger, "alert", rl.Alert)),
 					))
 					continue
 				}
 				rls = append(rls, rules.NewRecordingRule(
-					rl.Record.Value,
+					rl.Record,
 					expr,
 					labels.FromMap(rl.Labels),
 				))

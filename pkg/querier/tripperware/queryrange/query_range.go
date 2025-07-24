@@ -14,13 +14,13 @@ import (
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
-
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -158,6 +158,21 @@ func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwa
 	return &result, nil
 }
 
+// getSerializedBody serializes the logical plan from a Prometheus request.
+// Returns an empty byte array if the logical plan is nil.
+func (c prometheusCodec) getSerializedBody(promReq *tripperware.PrometheusRequest) ([]byte, error) {
+	var byteLP []byte
+	var err error
+
+	if promReq.LogicalPlan != nil {
+		byteLP, err = logicalplan.Marshal(promReq.LogicalPlan.Root())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return byteLP, nil
+}
+
 func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
 	promReq, ok := r.(*tripperware.PrometheusRequest)
 	if !ok {
@@ -182,13 +197,20 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		}
 	}
 
+	h.Add("Content-Type", "application/json")
+
 	tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
 
+	bodyBytes, err := c.getSerializedBody(promReq)
+	if err != nil {
+		return nil, err
+	}
+
 	req := &http.Request{
-		Method:     "GET",
+		Method:     "POST",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
-		Body:       http.NoBody,
+		Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
 		Header:     h,
 	}
 

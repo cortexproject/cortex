@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -754,6 +754,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.EnableNativeHistograms = true
 	limits.MaxLocalSeriesPerUser = 1
+	limits.MaxLocalNativeHistogramSeriesPerUser = 1
 	limits.MaxLocalMetricsWithMetadataPerUser = 1
 
 	userID := "1"
@@ -868,6 +869,93 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 
 }
 
+func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
+	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
+	limits.MaxLocalNativeHistogramSeriesPerUser = 1
+	limits.MaxLocalSeriesPerUser = 2
+	limits.MaxLocalMetricsWithMetadataPerUser = 1
+
+	userID := "1"
+	// Series
+	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
+	labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
+	sampleNativeHistogram1 := cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(1))
+	sampleNativeHistogram2 := cortexpb.HistogramToHistogramProto(1, tsdbutil.GenerateTestHistogram(2))
+	sampleNativeHistogram3 := cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(3))
+
+	// Metadata
+	metadata1 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: cortexpb.COUNTER}
+	metadata2 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric2", Help: "a help for testmetric2", Type: cortexpb.COUNTER}
+
+	dir := t.TempDir()
+
+	chunksDir := filepath.Join(dir, "chunks")
+	blocksDir := filepath.Join(dir, "blocks")
+	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
+	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
+
+	blocksIngesterGenerator := func(reg prometheus.Registerer) *Ingester {
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, reg)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+		// Wait until it's ACTIVE
+		test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+			return ing.lifecycler.GetState()
+		})
+
+		return ing
+	}
+
+	tests := []string{"blocks"}
+	for i, ingGenerator := range []func(reg prometheus.Registerer) *Ingester{blocksIngesterGenerator} {
+		t.Run(tests[i], func(t *testing.T) {
+			reg := prometheus.NewRegistry()
+			ing := ingGenerator(reg)
+
+			// Append only one series and one metadata first, expect no error.
+			ctx := user.InjectOrgID(context.Background(), userID)
+			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, nil, []*cortexpb.MetricMetadata{metadata1}, []cortexpb.Histogram{sampleNativeHistogram1}, cortexpb.API))
+			require.NoError(t, err)
+
+			testLimits := func(reg prometheus.Gatherer) {
+				// Append to two series, expect series-exceeded error.
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, nil, nil, []cortexpb.Histogram{sampleNativeHistogram2, sampleNativeHistogram3}, cortexpb.API))
+				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+				require.True(t, ok, "returned error is not an httpgrpc response")
+				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
+				assert.Equal(t, wrapWithUser(makeLimitError(perUserNativeHistogramSeriesLimit, ing.limiter.FormatError(userID, errMaxNativeHistogramSeriesPerUserLimitExceeded, labels1)), userID).Error(), string(httpResp.Body))
+
+				// Append two metadata, expect no error since metadata is a best effort approach.
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, nil, cortexpb.API))
+				require.NoError(t, err)
+
+				// Read samples back via ingester queries.
+				res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
+				require.NoError(t, err)
+				require.NotNil(t, res)
+
+				// Verify metadata
+				m, err := ing.MetricsMetadata(ctx, &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
+				require.NoError(t, err)
+				assert.Equal(t, []*cortexpb.MetricMetadata{metadata1}, m.Metadata)
+			}
+
+			testLimits(reg)
+
+			// Limits should hold after restart.
+			services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+			// Use new registry to prevent metrics registration panic.
+			reg = prometheus.NewRegistry()
+			ing = ingGenerator(reg)
+			defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+			testLimits(reg)
+		})
+	}
+
+}
+
 func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []cortexpb.Sample) {
 	for j := 0; j < nSeries; j++ {
 		labels := chunk.BenchmarkLabels.Copy()
@@ -886,6 +974,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.EnableNativeHistograms = true
 	limits.MaxLocalSeriesPerMetric = 1
+	limits.MaxLocalNativeHistogramSeriesPerUser = 1
 	limits.MaxLocalMetadataPerMetric = 1
 
 	userID := "1"
@@ -4010,10 +4099,7 @@ func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config,
 
 	bucketDir := t.TempDir()
 
-	overrides, err := validation.NewOverrides(limits, tenantLimits)
-	if err != nil {
-		return nil, err
-	}
+	overrides := validation.NewOverrides(limits, tenantLimits)
 
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dataDir
 	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "filesystem"
@@ -4180,8 +4266,7 @@ func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			limits := defaultLimitsTestConfig()
 
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 
 			// Create a temporary directory for TSDB
 			tempDir := t.TempDir()
@@ -5395,8 +5480,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 
 	limits := defaultLimitsTestConfig()
 
-	overrides, err := validation.NewOverrides(limits, nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(limits, nil)
 
 	ingesterCfg := defaultIngesterTestConfig(t)
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
@@ -6431,7 +6515,8 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 	cfg.InstanceLimitsFn = func() *InstanceLimits { return &limits }
 	cfg.LifecyclerConfig.JoinAfter = 0
 
-	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+	reg := prometheus.NewRegistry()
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, reg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -6469,6 +6554,11 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 
 		_, err := i.Push(ctx, req)
 		require.Equal(t, errTooManyInflightPushRequests, err)
+		require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_ingester_push_errors_total The total number of push errors per user.
+		# TYPE cortex_ingester_push_errors_total counter
+		cortex_ingester_push_errors_total{reason="tooManyInflightRequests",user="test"} 1
+	`), "cortex_ingester_push_errors_total"))
 		return nil
 	})
 

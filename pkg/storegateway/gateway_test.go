@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/go-kit/log"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
@@ -371,8 +371,7 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 					gatewayCfg.ShardingStrategy = testData.shardingStrategy
 					limits.StoreGatewayTenantShardSize = testData.tenantShardSize
 
-					overrides, err := validation.NewOverrides(limits, nil)
-					require.NoError(t, err)
+					overrides := validation.NewOverrides(limits, nil)
 
 					reg := prometheus.NewPedanticRegistry()
 					g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, overrides, mockLoggingLevel(), log.NewNopLogger(), reg, nil)
@@ -473,8 +472,7 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 		gatewayCfg.ShardingEnabled = true
 		gatewayCfg.ShardingStrategy = shardingStrategy
 
-		overrides, err := validation.NewOverrides(limits, nil)
-		require.NoError(t, err)
+		overrides := validation.NewOverrides(limits, nil)
 
 		reg := prometheus.NewPedanticRegistry()
 		g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, overrides, mockLoggingLevel(), log.NewNopLogger(), reg, nil)
@@ -1071,8 +1069,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 			// Customise the limits.
 			limits := defaultLimitsConfig()
 			limits.MaxChunksPerQuery = testData.limit
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 
 			// Create a store-gateway used to query back the series from the blocks.
 			gatewayCfg := mockGatewayConfig()
@@ -1160,8 +1157,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxSeriesPerQueryLimit(t *testi
 			// Customise the limits.
 			limits := defaultLimitsConfig()
 			limits.MaxFetchedSeriesPerQuery = testData.limit
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 
 			// Create a store-gateway used to query back the series from the blocks.
 			gatewayCfg := mockGatewayConfig()
@@ -1221,8 +1217,7 @@ func TestStoreGateway_SeriesThrottledByResourceMonitor(t *testing.T) {
 		},
 	}
 
-	overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(defaultLimitsConfig(), nil)
 
 	// Create a store-gateway used to query back the series from the blocks.
 	gatewayCfg := mockGatewayConfig()
@@ -1372,8 +1367,7 @@ func defaultLimitsConfig() validation.Limits {
 }
 
 func defaultLimitsOverrides(t *testing.T) *validation.Overrides {
-	overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(defaultLimitsConfig(), nil)
 
 	return overrides
 }

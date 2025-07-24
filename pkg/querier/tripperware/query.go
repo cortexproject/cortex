@@ -29,6 +29,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
+
+	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 var (
@@ -98,6 +100,8 @@ type Request interface {
 	GetStep() int64
 	// GetQuery returns the query of the request.
 	GetQuery() string
+	// GetLogicalPlan returns the logical plan
+	GetLogicalPlan() logicalplan.Plan
 	// WithStartEnd clone the current request with different start and end timestamp.
 	WithStartEnd(startTime int64, endTime int64) Request
 	// WithQuery clone the current request with a different query.
@@ -154,6 +158,7 @@ type PrometheusRequest struct {
 	Headers        http.Header
 	Stats          string
 	CachingOptions CachingOptions
+	LogicalPlan    logicalplan.Plan
 }
 
 func (m *PrometheusRequest) GetPath() string {
@@ -217,6 +222,13 @@ func (m *PrometheusRequest) GetStats() string {
 		return m.Stats
 	}
 	return ""
+}
+
+func (m *PrometheusRequest) GetLogicalPlan() logicalplan.Plan {
+	if m == nil {
+		return nil
+	}
+	return m.LogicalPlan
 }
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.

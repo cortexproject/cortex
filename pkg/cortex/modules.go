@@ -199,11 +199,11 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 	return serv, err
 }
 
-func (t *Cortex) initOverrides() (serv services.Service, err error) {
-	t.Overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
+func (t *Cortex) initOverrides() (services.Service, error) {
+	t.Overrides = validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
 	// overrides don't have operational state, nor do they need to do anything more in starting/stopping phase,
 	// so there is no need to return any service.
-	return nil, err
+	return nil, nil
 }
 
 func (t *Cortex) initOverridesExporter() (services.Service, error) {
@@ -295,7 +295,7 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 				return bucket.NewClient(ctx, t.Cfg.BlocksStorage.Bucket, nil, "regex-resolver", util_log.Logger, prometheus.DefaultRegisterer)
 			}
 
-			regexResolver, err := tenantfederation.NewRegexResolver(t.Cfg.BlocksStorage.UsersScanner, prometheus.DefaultRegisterer, bucketClientFactory, t.Cfg.TenantFederation.UserSyncInterval, util_log.Logger)
+			regexResolver, err := tenantfederation.NewRegexResolver(t.Cfg.BlocksStorage.UsersScanner, t.Cfg.TenantFederation, prometheus.DefaultRegisterer, bucketClientFactory, util_log.Logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize regex resolver: %v", err)
 			}
@@ -533,12 +533,21 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		prometheusCodec,
 		shardedPrometheusCodec,
 		t.Cfg.Querier.LookbackDelta,
+		t.Cfg.Querier.DefaultEvaluationInterval,
+		t.Cfg.Frontend.DistributedExecEnabled,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides, instantQueryCodec, queryAnalyzer, t.Cfg.Querier.LookbackDelta)
+	instantQueryMiddlewares, err := instantquery.Middlewares(
+		util_log.Logger,
+		t.Overrides,
+		instantQueryCodec,
+		queryAnalyzer,
+		t.Cfg.Querier.LookbackDelta,
+		t.Cfg.Querier.DefaultEvaluationInterval,
+		t.Cfg.Frontend.DistributedExecEnabled)
 	if err != nil {
 		return nil, err
 	}

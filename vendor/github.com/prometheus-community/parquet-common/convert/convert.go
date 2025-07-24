@@ -169,9 +169,22 @@ func ConvertTSDBBlock(
 	if err != nil {
 		return 0, err
 	}
-
 	defer func() { _ = rr.Close() }()
-	w := NewShardedWrite(rr, rr.Schema(), bkt, &cfg)
+
+	labelsProjection, err := rr.Schema().LabelsProjection()
+	if err != nil {
+		return 0, errors.Wrap(err, "error getting labels projection from tsdb schema")
+	}
+	chunksProjection, err := rr.Schema().ChunksProjection()
+	if err != nil {
+		return 0, errors.Wrap(err, "error getting chunks projection from tsdb schema")
+	}
+	outSchemaProjections := []*schema.TSDBProjection{
+		labelsProjection, chunksProjection,
+	}
+
+	pipeReaderWriter := NewPipeReaderBucketWriter(bkt)
+	w := NewShardedWrite(rr, rr.Schema(), outSchemaProjections, pipeReaderWriter, &cfg)
 	return w.currentShard, errors.Wrap(w.Write(ctx), "error writing block")
 }
 
@@ -213,28 +226,28 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 	for _, blk := range blks {
 		indexr, err := blk.Index()
 		if err != nil {
-			return nil, fmt.Errorf("unable to get index reader from block: %s", err)
+			return nil, fmt.Errorf("unable to get index reader from block: %w", err)
 		}
 		closers = append(closers, indexr)
 
 		chunkr, err := blk.Chunks()
 		if err != nil {
-			return nil, fmt.Errorf("unable to get chunk reader from block: %s", err)
+			return nil, fmt.Errorf("unable to get chunk reader from block: %w", err)
 		}
 		closers = append(closers, chunkr)
 
 		tombsr, err := blk.Tombstones()
 		if err != nil {
-			return nil, fmt.Errorf("unable to get tombstone reader from block: %s", err)
+			return nil, fmt.Errorf("unable to get tombstone reader from block: %w", err)
 		}
 		closers = append(closers, tombsr)
 
 		lblns, err := indexr.LabelNames(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("unable to get label names from block: %s", err)
+			return nil, fmt.Errorf("unable to get label names from block: %w", err)
 		}
 
-		postings := sortedPostings(ctx, indexr, compareFunc, ops.sortedLabels...)
+		postings := sortedPostings(ctx, indexr, ops.sortedLabels...)
 		seriesSet := tsdb.NewBlockChunkSeriesSet(blk.Meta().ULID, indexr, chunkr, tombsr, postings, mint, maxt, false)
 		seriesSets = append(seriesSets, seriesSet)
 
@@ -245,7 +258,7 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 
 	s, err := b.Build()
 	if err != nil {
-		return nil, fmt.Errorf("unable to build index reader from block: %s", err)
+		return nil, fmt.Errorf("unable to build index reader from block: %w", err)
 	}
 
 	return &TsdbRowReader{
@@ -272,7 +285,7 @@ func (rr *TsdbRowReader) Schema() *schema.TSDBSchema {
 	return rr.tsdbSchema
 }
 
-func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, compare func(a, b labels.Labels) int, sortedLabels ...string) index.Postings {
+func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, sortedLabels ...string) index.Postings {
 	p := tsdb.AllSortedPostings(ctx, indexr)
 
 	if len(sortedLabels) == 0 {
@@ -281,25 +294,42 @@ func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, compare func(a
 
 	type s struct {
 		ref    storage.SeriesRef
+		idx    int
 		labels labels.Labels
 	}
 	series := make([]s, 0, 128)
 
-	lb := labels.NewScratchBuilder(10)
+	scratchBuilder := labels.NewScratchBuilder(10)
+	lb := labels.NewBuilder(labels.EmptyLabels())
+	i := 0
 	for p.Next() {
-		lb.Reset()
-		err := indexr.Series(p.At(), &lb, nil)
+		scratchBuilder.Reset()
+		err := indexr.Series(p.At(), &scratchBuilder, nil)
 		if err != nil {
 			return index.ErrPostings(fmt.Errorf("expand series: %w", err))
 		}
+		lb.Reset(scratchBuilder.Labels())
 
-		series = append(series, s{labels: lb.Labels(), ref: p.At()})
+		series = append(series, s{labels: lb.Keep(sortedLabels...).Labels(), ref: p.At(), idx: i})
+		i++
 	}
 	if err := p.Err(); err != nil {
 		return index.ErrPostings(fmt.Errorf("expand postings: %w", err))
 	}
 
-	slices.SortFunc(series, func(a, b s) int { return compare(a.labels, b.labels) })
+	slices.SortFunc(series, func(a, b s) int {
+		for _, lb := range sortedLabels {
+			if c := strings.Compare(a.labels.Get(lb), b.labels.Get(lb)); c != 0 {
+				return c
+			}
+		}
+		if a.idx < b.idx {
+			return -1
+		} else if a.idx > b.idx {
+			return 1
+		}
+		return 0
+	})
 
 	// Convert back to list.
 	ep := make([]storage.SeriesRef, 0, len(series))

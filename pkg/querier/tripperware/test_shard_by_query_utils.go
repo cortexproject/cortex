@@ -453,7 +453,7 @@ http_requests_total`,
 
 			ctx := user.InjectOrgID(context.Background(), "1")
 
-			req, err := http.NewRequest("GET", tt.path, http.NoBody)
+			req, err := http.NewRequest("POST", tt.path, http.NoBody)
 			req = req.WithContext(ctx)
 			require.NoError(t, err)
 

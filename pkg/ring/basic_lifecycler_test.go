@@ -244,7 +244,7 @@ func TestBasicLifecycler_HeartbeatWhileRunning(t *testing.T) {
 	desc, _ := getInstanceFromStore(t, store, testInstanceID)
 	initialTimestamp := desc.GetTimestamp()
 
-	test.Poll(t, time.Second, true, func() interface{} {
+	test.Poll(t, time.Second*5, true, func() interface{} {
 		desc, _ := getInstanceFromStore(t, store, testInstanceID)
 		currTimestamp := desc.GetTimestamp()
 

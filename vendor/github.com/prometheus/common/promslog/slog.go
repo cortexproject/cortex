@@ -28,6 +28,7 @@ import (
 	"time"
 )
 
+// LogStyle represents the common logging formats in the Prometheus ecosystem.
 type LogStyle string
 
 const (
@@ -38,12 +39,110 @@ const (
 )
 
 var (
-	LevelFlagOptions  = []string{"debug", "info", "warn", "error"}
+	// LevelFlagOptions represents allowed logging levels.
+	LevelFlagOptions = []string{"debug", "info", "warn", "error"}
+	// FormatFlagOptions represents allowed formats.
 	FormatFlagOptions = []string{"logfmt", "json"}
 
-	callerAddFunc             = false
-	defaultWriter             = os.Stderr
-	goKitStyleReplaceAttrFunc = func(groups []string, a slog.Attr) slog.Attr {
+	defaultWriter = os.Stderr
+)
+
+// Level controls a logging level, with an info default.
+// It wraps slog.LevelVar with string-based level control.
+// Level is safe to be used concurrently.
+type Level struct {
+	lvl *slog.LevelVar
+}
+
+// NewLevel returns a new Level.
+func NewLevel() *Level {
+	return &Level{
+		lvl: &slog.LevelVar{},
+	}
+}
+
+func (l *Level) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	type plain string
+	if err := unmarshal((*plain)(&s)); err != nil {
+		return err
+	}
+	if s == "" {
+		return nil
+	}
+	if err := l.Set(s); err != nil {
+		return err
+	}
+	return nil
+}
+
+// String returns the current level.
+func (l *Level) String() string {
+	switch l.lvl.Level() {
+	case slog.LevelDebug:
+		return "debug"
+	case slog.LevelInfo:
+		return "info"
+	case slog.LevelWarn:
+		return "warn"
+	case slog.LevelError:
+		return "error"
+	default:
+		return ""
+	}
+}
+
+// Set updates the logging level with the validation.
+func (l *Level) Set(s string) error {
+	switch strings.ToLower(s) {
+	case "debug":
+		l.lvl.Set(slog.LevelDebug)
+	case "info":
+		l.lvl.Set(slog.LevelInfo)
+	case "warn":
+		l.lvl.Set(slog.LevelWarn)
+	case "error":
+		l.lvl.Set(slog.LevelError)
+	default:
+		return fmt.Errorf("unrecognized log level %s", s)
+	}
+	return nil
+}
+
+// Format controls a logging output format.
+// Not concurrency-safe.
+type Format struct {
+	s string
+}
+
+// NewFormat creates a new Format.
+func NewFormat() *Format { return &Format{} }
+
+func (f *Format) String() string {
+	return f.s
+}
+
+// Set updates the value of the allowed format.
+func (f *Format) Set(s string) error {
+	switch s {
+	case "logfmt", "json":
+		f.s = s
+	default:
+		return fmt.Errorf("unrecognized log format %s", s)
+	}
+	return nil
+}
+
+// Config is a struct containing configurable settings for the logger
+type Config struct {
+	Level  *Level
+	Format *Format
+	Style  LogStyle
+	Writer io.Writer
+}
+
+func newGoKitStyleReplaceAttrFunc(lvl *Level) func(groups []string, a slog.Attr) slog.Attr {
+	return func(groups []string, a slog.Attr) slog.Attr {
 		key := a.Key
 		switch key {
 		case slog.TimeKey, "ts":
@@ -65,8 +164,8 @@ var (
 		case slog.SourceKey, "caller":
 			if src, ok := a.Value.Any().(*slog.Source); ok {
 				a.Key = "caller"
-				switch callerAddFunc {
-				case true:
+				switch lvl.String() {
+				case "debug":
 					a.Value = slog.StringValue(filepath.Base(src.File) + "(" + filepath.Base(src.Function) + "):" + strconv.Itoa(src.Line))
 				default:
 					a.Value = slog.StringValue(filepath.Base(src.File) + ":" + strconv.Itoa(src.Line))
@@ -93,140 +192,56 @@ var (
 			}
 		default:
 		}
-
 		return a
 	}
-	defaultReplaceAttrFunc = func(groups []string, a slog.Attr) slog.Attr {
-		key := a.Key
-		switch key {
-		case slog.TimeKey:
-			if t, ok := a.Value.Any().(time.Time); ok {
-				a.Value = slog.TimeValue(t.UTC())
-			} else {
-				// If we can't cast the any from the value to a
-				// time.Time, it means the caller logged
-				// another attribute with a key of `time`.
-				// Prevent duplicate keys (necessary for proper
-				// JSON) by renaming the key to `logged_time`.
-				a.Key = reservedKeyPrefix + key
-			}
-		case slog.SourceKey:
-			if src, ok := a.Value.Any().(*slog.Source); ok {
-				a.Value = slog.StringValue(filepath.Base(src.File) + ":" + strconv.Itoa(src.Line))
-			} else {
-				// If we can't cast the any from the value to
-				// an *slog.Source, it means the caller logged
-				// another attribute with a key of `source`.
-				// Prevent duplicate keys (necessary for proper
-				// JSON) by renaming the key to
-				// `logged_source`.
-				a.Key = reservedKeyPrefix + key
-			}
-		case slog.LevelKey:
-			if _, ok := a.Value.Any().(slog.Level); !ok {
-				// If we can't cast the any from the value to
-				// an slog.Level, it means the caller logged
-				// another attribute with a key of `level`.
-				// Prevent duplicate keys (necessary for proper
-				// JSON) by renaming the key to
-				// `logged_level`.
-				a.Key = reservedKeyPrefix + key
-			}
-		default:
+}
+
+func defaultReplaceAttr(_ []string, a slog.Attr) slog.Attr {
+	key := a.Key
+	switch key {
+	case slog.TimeKey:
+		if t, ok := a.Value.Any().(time.Time); ok {
+			a.Value = slog.TimeValue(t.UTC())
+		} else {
+			// If we can't cast the any from the value to a
+			// time.Time, it means the caller logged
+			// another attribute with a key of `time`.
+			// Prevent duplicate keys (necessary for proper
+			// JSON) by renaming the key to `logged_time`.
+			a.Key = reservedKeyPrefix + key
 		}
-
-		return a
-	}
-)
-
-// AllowedLevel is a settable identifier for the minimum level a log entry
-// must be have.
-type AllowedLevel struct {
-	s   string
-	lvl *slog.LevelVar
-}
-
-func (l *AllowedLevel) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	type plain string
-	if err := unmarshal((*plain)(&s)); err != nil {
-		return err
-	}
-	if s == "" {
-		return nil
-	}
-	lo := &AllowedLevel{}
-	if err := lo.Set(s); err != nil {
-		return err
-	}
-	*l = *lo
-	return nil
-}
-
-func (l *AllowedLevel) String() string {
-	return l.s
-}
-
-// Set updates the value of the allowed level.
-func (l *AllowedLevel) Set(s string) error {
-	if l.lvl == nil {
-		l.lvl = &slog.LevelVar{}
-	}
-
-	switch strings.ToLower(s) {
-	case "debug":
-		l.lvl.Set(slog.LevelDebug)
-		callerAddFunc = true
-	case "info":
-		l.lvl.Set(slog.LevelInfo)
-		callerAddFunc = false
-	case "warn":
-		l.lvl.Set(slog.LevelWarn)
-		callerAddFunc = false
-	case "error":
-		l.lvl.Set(slog.LevelError)
-		callerAddFunc = false
+	case slog.SourceKey:
+		if src, ok := a.Value.Any().(*slog.Source); ok {
+			a.Value = slog.StringValue(filepath.Base(src.File) + ":" + strconv.Itoa(src.Line))
+		} else {
+			// If we can't cast the any from the value to
+			// an *slog.Source, it means the caller logged
+			// another attribute with a key of `source`.
+			// Prevent duplicate keys (necessary for proper
+			// JSON) by renaming the key to
+			// `logged_source`.
+			a.Key = reservedKeyPrefix + key
+		}
+	case slog.LevelKey:
+		if _, ok := a.Value.Any().(slog.Level); !ok {
+			// If we can't cast the any from the value to
+			// an slog.Level, it means the caller logged
+			// another attribute with a key of `level`.
+			// Prevent duplicate keys (necessary for proper
+			// JSON) by renaming the key to
+			// `logged_level`.
+			a.Key = reservedKeyPrefix + key
+		}
 	default:
-		return fmt.Errorf("unrecognized log level %s", s)
 	}
-	l.s = s
-	return nil
-}
-
-// AllowedFormat is a settable identifier for the output format that the logger can have.
-type AllowedFormat struct {
-	s string
-}
-
-func (f *AllowedFormat) String() string {
-	return f.s
-}
-
-// Set updates the value of the allowed format.
-func (f *AllowedFormat) Set(s string) error {
-	switch s {
-	case "logfmt", "json":
-		f.s = s
-	default:
-		return fmt.Errorf("unrecognized log format %s", s)
-	}
-	return nil
-}
-
-// Config is a struct containing configurable settings for the logger
-type Config struct {
-	Level  *AllowedLevel
-	Format *AllowedFormat
-	Style  LogStyle
-	Writer io.Writer
+	return a
 }
 
 // New returns a new slog.Logger. Each logged line will be annotated
 // with a timestamp. The output always goes to stderr.
 func New(config *Config) *slog.Logger {
 	if config.Level == nil {
-		config.Level = &AllowedLevel{}
-		_ = config.Level.Set("info")
+		config.Level = NewLevel()
 	}
 
 	if config.Writer == nil {
@@ -236,11 +251,11 @@ func New(config *Config) *slog.Logger {
 	logHandlerOpts := &slog.HandlerOptions{
 		Level:       config.Level.lvl,
 		AddSource:   true,
-		ReplaceAttr: defaultReplaceAttrFunc,
+		ReplaceAttr: defaultReplaceAttr,
 	}
 
 	if config.Style == GoKitStyle {
-		logHandlerOpts.ReplaceAttr = goKitStyleReplaceAttrFunc
+		logHandlerOpts.ReplaceAttr = newGoKitStyleReplaceAttrFunc(config.Level)
 	}
 
 	if config.Format != nil && config.Format.s == "json" {

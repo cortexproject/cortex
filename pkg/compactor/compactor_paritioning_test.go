@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
@@ -1435,8 +1435,7 @@ func prepareForPartitioning(t *testing.T, compactorCfg Config, bucketClient objs
 		flagext.DefaultValues(limits)
 	}
 
-	overrides, err := validation.NewOverrides(*limits, nil)
-	require.NoError(t, err)
+	overrides := validation.NewOverrides(*limits, nil)
 
 	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 		return bucketClient, nil

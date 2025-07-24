@@ -139,7 +139,11 @@ func (c *closableHealthAndIngesterClient) handlePushRequest(mainFunc func() (*co
 
 // MakeIngesterClient makes a new IngesterClient
 func MakeIngesterClient(addr string, cfg Config, useStreamConnection bool) (HealthAndIngesterClient, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(ingesterClientRequestDuration))
+	unaryClientInterceptor, streamClientInterceptor := grpcclient.Instrument(ingesterClientRequestDuration)
+	if useStreamConnection {
+		unaryClientInterceptor, streamClientInterceptor = grpcclient.InstrumentReusableStream(ingesterClientRequestDuration)
+	}
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryClientInterceptor, streamClientInterceptor)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +206,7 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 	var workerErr error
 	var wg sync.WaitGroup
 	for i := 0; i < INGESTER_CLIENT_STREAM_WORKER_COUNT; i++ {
-		workerName := fmt.Sprintf("stream-push-worker-%d", i)
+		workerName := fmt.Sprintf("ingester-%s-stream-push-worker-%d", c.addr, i)
 		wg.Add(1)
 		go func() {
 			workerCtx := user.InjectOrgID(streamCtx, workerName)

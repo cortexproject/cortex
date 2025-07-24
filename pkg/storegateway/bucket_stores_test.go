@@ -17,7 +17,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gogo/status"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/promslog"
@@ -450,6 +450,38 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 			assert.NoError(t, err)
 			bucketClient.AssertNumberOfCalls(t, "Iter", 2)
 			assert.Equal(t, storesCount.Load(), testData.expectedStores)
+		})
+	}
+}
+
+func TestBucketStores_scanUsers(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		scanner     *mockScanner
+		expectedRes []string
+	}{
+		"should return unique users only": {
+			scanner: &mockScanner{
+				res: []string{"user-1", "user-2", "user-1"},
+			},
+			expectedRes: []string{"user-1", "user-2"},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			stores := &BucketStores{
+				userScanner: testData.scanner,
+			}
+
+			users, err := stores.scanUsers(context.Background())
+
+			assert.NoError(t, err)
+			assert.ElementsMatch(t, testData.expectedRes, users)
 		})
 	}
 }
@@ -995,4 +1027,12 @@ func (f *failFirstGetBucket) Get(ctx context.Context, name string) (io.ReadClose
 	}
 
 	return f.Bucket.Get(ctx, name)
+}
+
+type mockScanner struct {
+	res []string
+}
+
+func (m *mockScanner) ScanUsers(_ context.Context) (active, deleting, deleted []string, err error) {
+	return m.res, nil, nil, nil
 }

@@ -45,9 +45,10 @@ func TestLimits_Validate(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		limits           Limits
-		shardByAllLabels bool
-		expected         error
+		limits                     Limits
+		shardByAllLabels           bool
+		activeSeriesMetricsEnabled bool
+		expected                   error
 	}{
 		"max-global-series-per-user disabled and shard-by-all-labels=false": {
 			limits:           Limits{MaxGlobalSeriesPerUser: 0},
@@ -64,6 +65,56 @@ func TestLimits_Validate(t *testing.T) {
 			shardByAllLabels: true,
 			expected:         nil,
 		},
+		"max-global-native-histogram-series-per-user disabled and shard-by-all-labels=false and active-series-metrics-enabled=false": {
+			limits:                     Limits{MaxGlobalSeriesPerUser: 0},
+			shardByAllLabels:           false,
+			activeSeriesMetricsEnabled: false,
+			expected:                   nil,
+		},
+		"max-global-native-histogram-series-per-user disabled and shard-by-all-labels=true and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxGlobalNativeHistogramSeriesPerUser: 0},
+			shardByAllLabels:           true,
+			activeSeriesMetricsEnabled: true,
+			expected:                   nil,
+		},
+		"max-global-native-histogram-series-per-user enabled and shard-by-all-labels=true and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxGlobalNativeHistogramSeriesPerUser: 1000},
+			shardByAllLabels:           true,
+			activeSeriesMetricsEnabled: true,
+			expected:                   nil,
+		},
+		"max-global-native-histogram-series-per-user enabled and shard-by-all-labels=false and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxGlobalNativeHistogramSeriesPerUser: 1000},
+			shardByAllLabels:           false,
+			activeSeriesMetricsEnabled: true,
+			expected:                   errMaxGlobalNativeHistogramSeriesPerUserValidation,
+		},
+		"max-global-native-histogram-series-per-user enabled and shard-by-all-labels=true and active-series-metrics-enabled=false": {
+			limits:                     Limits{MaxGlobalNativeHistogramSeriesPerUser: 1000},
+			shardByAllLabels:           true,
+			activeSeriesMetricsEnabled: false,
+			expected:                   errMaxGlobalNativeHistogramSeriesPerUserValidation,
+		},
+		"max-local-native-histogram-series-per-user disabled and shard-by-all-labels=true and active-series-metrics-enabled=false": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 0},
+			activeSeriesMetricsEnabled: false,
+			expected:                   nil,
+		},
+		"max-local-native-histogram-series-per-user disabled and shard-by-all-labels=true and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 0},
+			activeSeriesMetricsEnabled: true,
+			expected:                   nil,
+		},
+		"max-local-native-histogram-series-per-user enabled and shard-by-all-labels=true and active-series-metrics-enabled=true": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 1000},
+			activeSeriesMetricsEnabled: true,
+			expected:                   nil,
+		},
+		"max-local-native-histogram-series-per-user enabled and shard-by-all-labels=true and active-series-metrics-enabled=false": {
+			limits:                     Limits{MaxLocalNativeHistogramSeriesPerUser: 1000},
+			activeSeriesMetricsEnabled: false,
+			expected:                   errMaxLocalNativeHistogramSeriesPerUserValidation,
+		},
 		"external-labels invalid label name": {
 			limits:   Limits{RulerExternalLabels: labels.Labels{{Name: "123invalid", Value: "good"}}},
 			expected: errInvalidLabelName,
@@ -78,7 +129,7 @@ func TestLimits_Validate(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			assert.ErrorIs(t, testData.limits.Validate(testData.shardByAllLabels), testData.expected)
+			assert.ErrorIs(t, testData.limits.Validate(testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
 		})
 	}
 }
@@ -87,8 +138,7 @@ func TestOverrides_MaxChunksPerQueryFromStore(t *testing.T) {
 	limits := Limits{}
 	flagext.DefaultValues(&limits)
 
-	overrides, err := NewOverrides(limits, nil)
-	require.NoError(t, err)
+	overrides := NewOverrides(limits, nil)
 	assert.Equal(t, 2000000, overrides.MaxChunksPerQueryFromStore("test"))
 }
 
@@ -98,8 +148,7 @@ func TestOverridesManager_GetOverrides(t *testing.T) {
 	defaults := Limits{
 		MaxLabelNamesPerSeries: 100,
 	}
-	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-	require.NoError(t, err)
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 
 	require.Equal(t, 100, ov.MaxLabelNamesPerSeries("user1"))
 	require.Equal(t, 0, ov.MaxLabelValueLength("user1"))
@@ -285,8 +334,7 @@ func TestSmallestPositiveIntPerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueryParallelism: 0,
 	}
-	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-	require.NoError(t, err)
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 
 	for _, tc := range []struct {
 		tenantIDs []string
@@ -317,8 +365,7 @@ func TestSmallestPositiveNonZeroFloat64PerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueriersPerTenant: 0,
 	}
-	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-	require.NoError(t, err)
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 
 	for _, tc := range []struct {
 		tenantIDs []string
@@ -349,8 +396,7 @@ func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueryLength: 0,
 	}
-	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-	require.NoError(t, err)
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 
 	for _, tc := range []struct {
 		tenantIDs []string
@@ -424,8 +470,7 @@ alertmanager_notification_rate_limit_per_integration:
 			err := yaml.Unmarshal([]byte(tc.inputYAML), &limitsYAML)
 			require.NoError(t, err, "expected to be able to unmarshal from YAML")
 
-			ov, err := NewOverrides(limitsYAML, nil)
-			require.NoError(t, err)
+			ov := NewOverrides(limitsYAML, nil)
 
 			require.Equal(t, tc.expectedRateLimit, ov.NotificationRateLimit("user", "email"))
 			require.Equal(t, tc.expectedBurstSize, ov.NotificationBurstSize("user", "email"))
@@ -566,8 +611,7 @@ testuser:
 
 			tl := newMockTenantLimits(overrides)
 
-			ov, err := NewOverrides(limitsYAML, tl)
-			require.NoError(t, err)
+			ov := NewOverrides(limitsYAML, tl)
 
 			require.Equal(t, tc.expectedRateLimit, ov.NotificationRateLimit("testuser", tc.testedIntegration))
 			require.Equal(t, tc.expectedBurstSize, ov.NotificationBurstSize("testuser", tc.testedIntegration))
@@ -599,8 +643,7 @@ tenant2:
 
 	tl := newMockTenantLimits(overrides)
 
-	ov, err := NewOverrides(l, tl)
-	require.NoError(t, err)
+	ov := NewOverrides(l, tl)
 
 	require.Equal(t, 1, ov.MaxExemplars("tenant1"))
 	require.Equal(t, 3, ov.MaxExemplars("tenant2"))
@@ -631,8 +674,7 @@ tenant2:
 
 	tl := newMockTenantLimits(overrides)
 
-	ov, err := NewOverrides(l, tl)
-	require.NoError(t, err)
+	ov := NewOverrides(l, tl)
 
 	require.Equal(t, 1, ov.MaxDownloadedBytesPerRequest("tenant1"))
 	require.Equal(t, 3, ov.MaxDownloadedBytesPerRequest("tenant2"))
@@ -662,8 +704,7 @@ tenant2:
 
 	tl := newMockTenantLimits(overrides)
 
-	ov, err := NewOverrides(l, tl)
-	require.NoError(t, err)
+	ov := NewOverrides(l, tl)
 
 	require.True(t, ov.QueryPartialData("tenant1"))
 	require.False(t, ov.RulesPartialData("tenant1"))
@@ -820,8 +861,7 @@ func TestEvaluationDelayHigherThanRulerQueryOffset(t *testing.T) {
 	}
 
 	defaults := Limits{}
-	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-	require.NoError(t, err)
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 
 	rulerQueryOffset := ov.RulerQueryOffset(tenant)
 	assert.Equal(t, evaluationDelay, rulerQueryOffset)

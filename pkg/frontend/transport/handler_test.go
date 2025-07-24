@@ -398,6 +398,23 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
+		{
+			name:            "test cortex_slow_queries_total",
+			cfg:             HandlerConfig{QueryStatsEnabled: true, LogQueriesLongerThan: time.Second * 2},
+			expectedMetrics: 7,
+			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				time.Sleep(time.Second * 4)
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader("mock")),
+				}, nil
+			}),
+			additionalMetricsCheckFunc: func(h *Handler) {
+				v := promtest.ToFloat64(h.slowQueries.WithLabelValues(tripperware.SourceAPI, userID))
+				assert.Equal(t, float64(1), v)
+			},
+			expectedStatusCode: http.StatusOK,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
@@ -420,6 +437,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				"cortex_query_fetched_chunks_bytes_total",
 				"cortex_query_samples_scanned_total",
 				"cortex_query_peak_samples",
+				"cortex_slow_queries_total",
 			)
 
 			assert.NoError(t, err)
@@ -713,6 +731,7 @@ func TestHandlerMetricsCleanup(t *testing.T) {
 	handler.queryChunkBytes.WithLabelValues(source, user1).Add(1024)
 	handler.queryDataBytes.WithLabelValues(source, user1).Add(2048)
 	handler.rejectedQueries.WithLabelValues(reasonTooManySamples, source, user1).Add(5)
+	handler.getOrCreateSlowQueryMetric().WithLabelValues(source, user1).Add(5)
 
 	// Simulate activity for user2
 	handler.querySeconds.WithLabelValues(source, user2).Add(2.0)
@@ -723,6 +742,7 @@ func TestHandlerMetricsCleanup(t *testing.T) {
 	handler.queryChunkBytes.WithLabelValues(source, user2).Add(2048)
 	handler.queryDataBytes.WithLabelValues(source, user2).Add(4096)
 	handler.rejectedQueries.WithLabelValues(reasonTooManySamples, source, user2).Add(10)
+	handler.getOrCreateSlowQueryMetric().WithLabelValues(source, user2).Add(10)
 
 	// Verify initial state - both users should have metrics
 	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
@@ -762,9 +782,13 @@ func TestHandlerMetricsCleanup(t *testing.T) {
 		# TYPE cortex_rejected_queries_total counter
 		cortex_rejected_queries_total{reason="too_many_samples",source="api",user="user1"} 5
 		cortex_rejected_queries_total{reason="too_many_samples",source="api",user="user2"} 10
+		# HELP cortex_slow_queries_total The total number of slow queries.
+		# TYPE cortex_slow_queries_total counter
+		cortex_slow_queries_total{source="api",user="user1"} 5
+		cortex_slow_queries_total{source="api",user="user2"} 10
 	`), "cortex_query_seconds_total", "cortex_query_fetched_series_total", "cortex_query_samples_total",
 		"cortex_query_samples_scanned_total", "cortex_query_peak_samples", "cortex_query_fetched_chunks_bytes_total",
-		"cortex_query_fetched_data_bytes_total", "cortex_rejected_queries_total"))
+		"cortex_query_fetched_data_bytes_total", "cortex_rejected_queries_total", "cortex_slow_queries_total"))
 
 	// Clean up metrics for user1
 	handler.cleanupMetricsForInactiveUser(user1)
@@ -797,7 +821,10 @@ func TestHandlerMetricsCleanup(t *testing.T) {
 		# HELP cortex_rejected_queries_total The total number of queries that were rejected.
 		# TYPE cortex_rejected_queries_total counter
 		cortex_rejected_queries_total{reason="too_many_samples",source="api",user="user2"} 10
+		# HELP cortex_slow_queries_total The total number of slow queries.
+		# TYPE cortex_slow_queries_total counter
+		cortex_slow_queries_total{source="api",user="user2"} 10
 	`), "cortex_query_seconds_total", "cortex_query_fetched_series_total", "cortex_query_samples_total",
 		"cortex_query_samples_scanned_total", "cortex_query_peak_samples", "cortex_query_fetched_chunks_bytes_total",
-		"cortex_query_fetched_data_bytes_total", "cortex_rejected_queries_total"))
+		"cortex_query_fetched_data_bytes_total", "cortex_rejected_queries_total", "cortex_slow_queries_total"))
 }

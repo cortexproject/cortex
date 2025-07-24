@@ -149,14 +149,10 @@ func TestParseFormatted(t *testing.T) {
 	dur, err := model.ParseDuration("5m")
 	require.NoError(t, err)
 
-	alertNode := yaml.Node{Line: 4, Column: 12}
-	alertNode.SetString("TestAlert")
-	exprNode := yaml.Node{Line: 5, Column: 11}
-	exprNode.SetString("up == 0")
-	rulesV2 := []rulefmt.RuleNode{
+	rulesV2 := []rulefmt.Rule{
 		{
-			Alert: alertNode,
-			Expr:  exprNode,
+			Alert: "TestAlert",
+			Expr:  "up == 0",
 			For:   dur,
 			Labels: map[string]string{
 				"severity": "critical",

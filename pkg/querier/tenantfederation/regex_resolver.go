@@ -2,6 +2,8 @@ package tenantfederation
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/extprom"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -24,6 +27,8 @@ import (
 
 var (
 	errInvalidRegex = errors.New("invalid regex present")
+
+	ErrTooManyTenants = "too many tenants, max: %d, actual: %d"
 )
 
 // RegexResolver resolves tenantIDs matched given regex.
@@ -32,6 +37,7 @@ type RegexResolver struct {
 
 	knownUsers       []string
 	userSyncInterval time.Duration
+	maxTenant        int
 	userScanner      users.Scanner
 	logger           log.Logger
 	sync.Mutex
@@ -42,7 +48,7 @@ type RegexResolver struct {
 	discoveredUsers prometheus.Gauge
 }
 
-func NewRegexResolver(cfg tsdb.UsersScannerConfig, reg prometheus.Registerer, bucketClientFactory func(ctx context.Context) (objstore.InstrumentedBucket, error), userSyncInterval time.Duration, logger log.Logger) (*RegexResolver, error) {
+func NewRegexResolver(cfg tsdb.UsersScannerConfig, tenantFederationCfg Config, reg prometheus.Registerer, bucketClientFactory func(ctx context.Context) (objstore.InstrumentedBucket, error), logger log.Logger) (*RegexResolver, error) {
 	bucketClient, err := bucketClientFactory(context.Background())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
@@ -54,7 +60,8 @@ func NewRegexResolver(cfg tsdb.UsersScannerConfig, reg prometheus.Registerer, bu
 	}
 
 	r := &RegexResolver{
-		userSyncInterval: userSyncInterval,
+		userSyncInterval: tenantFederationCfg.UserSyncInterval,
+		maxTenant:        tenantFederationCfg.MaxTenant,
 		userScanner:      userScanner,
 		logger:           logger,
 	}
@@ -160,6 +167,10 @@ func (r *RegexResolver) getRegexMatchedOrgIds(orgID string) ([]string, error) {
 		return []string{"fake"}, nil
 	}
 
+	if r.maxTenant > 0 && len(matched) > r.maxTenant {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", fmt.Errorf(ErrTooManyTenants, r.maxTenant, len(matched)).Error())
+	}
+
 	return matched, nil
 }
 
@@ -182,6 +193,14 @@ func (r *RegexValidator) TenantID(ctx context.Context) (string, error) {
 	_, err = labels.NewFastRegexMatcher(id)
 	if err != nil {
 		return "", errInvalidRegex
+	}
+
+	if err := tenant.CheckTenantIDLength(id); err != nil {
+		return "", err
+	}
+
+	if err := tenant.CheckTenantIDIsSupported(id); err != nil {
+		return "", err
 	}
 
 	return id, nil

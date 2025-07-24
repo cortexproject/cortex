@@ -15,8 +15,10 @@ package storage
 
 import (
 	"context"
+	"os"
 	"sync"
 
+	"github.com/hashicorp/go-multierror"
 	"github.com/parquet-go/parquet-go"
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
@@ -24,89 +26,167 @@ import (
 	"github.com/prometheus-community/parquet-common/schema"
 )
 
-var DefaultShardOptions = shardOptions{
-	optimisticReader: true,
+var DefaultFileOptions = ExtendedFileConfig{
+	FileConfig: &parquet.FileConfig{
+		SkipPageIndex:    parquet.DefaultSkipPageIndex,
+		ReadMode:         parquet.DefaultReadMode,
+		SkipMagicBytes:   true,
+		SkipBloomFilters: true,
+		ReadBufferSize:   4096,
+		OptimisticRead:   true,
+	},
+	PagePartitioningMaxGapSize: 10 * 1024,
 }
 
-type shardOptions struct {
-	fileOptions      []parquet.FileOption
-	optimisticReader bool
+type ExtendedFileConfig struct {
+	*parquet.FileConfig
+	PagePartitioningMaxGapSize int
 }
 
 type ParquetFile struct {
 	*parquet.File
-	ReadAtWithContext
-	BloomFiltersLoaded bool
-
-	optimisticReader bool
+	ReadAtWithContextCloser
+	Cfg ExtendedFileConfig
 }
 
-type ShardOption func(*shardOptions)
+type FileOption func(*ExtendedFileConfig)
 
-func WithFileOptions(fileOptions ...parquet.FileOption) ShardOption {
-	return func(opts *shardOptions) {
-		opts.fileOptions = append(opts.fileOptions, fileOptions...)
+func WithFileOptions(options ...parquet.FileOption) FileOption {
+	config := parquet.DefaultFileConfig()
+	config.Apply(options...)
+	return func(opts *ExtendedFileConfig) {
+		opts.FileConfig = config
 	}
 }
 
-func WithOptimisticReader(optimisticReader bool) ShardOption {
-	return func(opts *shardOptions) {
-		opts.optimisticReader = optimisticReader
+// WithPageMaxGapSize set the max gap size between pages that should be downloaded together in a single read call
+func WithPageMaxGapSize(pagePartitioningMaxGapSize int) FileOption {
+	return func(opts *ExtendedFileConfig) {
+		opts.PagePartitioningMaxGapSize = pagePartitioningMaxGapSize
 	}
 }
 
-func (f *ParquetFile) GetPages(ctx context.Context, cc parquet.ColumnChunk, pagesToRead ...int) (*parquet.FilePages, error) {
+func (f *ParquetFile) GetPages(ctx context.Context, cc parquet.ColumnChunk, minOffset, maxOffset int64) (*parquet.FilePages, error) {
 	colChunk := cc.(*parquet.FileColumnChunk)
 	reader := f.WithContext(ctx)
 
-	if len(pagesToRead) > 0 && f.optimisticReader {
-		offset, err := cc.OffsetIndex()
-		if err != nil {
-			return nil, err
-		}
-		minOffset := offset.Offset(pagesToRead[0])
-		maxOffset := offset.Offset(pagesToRead[len(pagesToRead)-1]) + offset.CompressedPageSize(pagesToRead[len(pagesToRead)-1])
-		reader = newOptimisticReaderAt(reader, minOffset, maxOffset)
+	if f.Cfg.OptimisticRead {
+		reader = NewOptimisticReaderAt(reader, minOffset, maxOffset)
 	}
 
 	pages := colChunk.PagesFrom(reader)
 	return pages, nil
 }
 
-func OpenFile(r ReadAtWithContext, size int64, opts ...ShardOption) (*ParquetFile, error) {
-	cfg := DefaultShardOptions
+func (f *ParquetFile) DictionaryPageBounds(rgIdx, colIdx int) (uint64, uint64) {
+	colMeta := f.Metadata().RowGroups[rgIdx].Columns[colIdx].MetaData
+
+	return uint64(colMeta.DictionaryPageOffset), uint64(colMeta.DataPageOffset - colMeta.DictionaryPageOffset)
+}
+
+func Open(ctx context.Context, r ReadAtWithContextCloser, size int64, opts ...FileOption) (*ParquetFile, error) {
+	cfg := DefaultFileOptions
 
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
-	c, err := parquet.NewFileConfig(cfg.fileOptions...)
-	if err != nil {
-		return nil, err
-	}
-
-	file, err := parquet.OpenFile(r, size, cfg.fileOptions...)
+	file, err := parquet.OpenFile(r.WithContext(ctx), size, cfg.FileConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ParquetFile{
-		File:               file,
-		ReadAtWithContext:  r,
-		BloomFiltersLoaded: !c.SkipBloomFilters,
-		optimisticReader:   cfg.optimisticReader,
+		File:                    file,
+		ReadAtWithContextCloser: r,
+		Cfg:                     cfg,
 	}, nil
 }
 
-type ParquetShard struct {
+func OpenFromBucket(ctx context.Context, bkt objstore.BucketReader, name string, opts ...FileOption) (*ParquetFile, error) {
+	attr, err := bkt.Attributes(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	r := NewBucketReadAt(name, bkt)
+	return Open(ctx, r, attr.Size, opts...)
+}
+
+func OpenFromFile(ctx context.Context, path string, opts ...FileOption) (*ParquetFile, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	stat, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	r := NewFileReadAt(f)
+	pf, err := Open(ctx, r, stat.Size(), opts...)
+	if err != nil {
+		_ = r.Close()
+		return nil, err
+	}
+	// At this point, the file's lifecycle is managed by the ParquetFile
+	return pf, nil
+}
+
+type ParquetShard interface {
+	LabelsFile() *ParquetFile
+	ChunksFile() *ParquetFile
+	TSDBSchema() (*schema.TSDBSchema, error)
+}
+
+type ParquetOpener interface {
+	Open(ctx context.Context, path string, opts ...FileOption) (*ParquetFile, error)
+}
+
+type ParquetBucketOpener struct {
+	bkt objstore.BucketReader
+}
+
+func NewParquetBucketOpener(bkt objstore.BucketReader) *ParquetBucketOpener {
+	return &ParquetBucketOpener{
+		bkt: bkt,
+	}
+}
+
+func (o *ParquetBucketOpener) Open(ctx context.Context, name string, opts ...FileOption) (*ParquetFile, error) {
+	return OpenFromBucket(ctx, o.bkt, name, opts...)
+}
+
+type ParquetLocalFileOpener struct{}
+
+func NewParquetLocalFileOpener() *ParquetLocalFileOpener {
+	return &ParquetLocalFileOpener{}
+}
+
+func (o *ParquetLocalFileOpener) Open(ctx context.Context, name string, opts ...FileOption) (*ParquetFile, error) {
+	return OpenFromFile(ctx, name, opts...)
+}
+
+type ParquetShardOpener struct {
 	labelsFile, chunksFile *ParquetFile
 	schema                 *schema.TSDBSchema
 	o                      sync.Once
 }
 
-// OpenParquetShard opens the sharded parquet block,
-// using the options param.
-func OpenParquetShard(ctx context.Context, bkt objstore.Bucket, name string, shard int, opts ...ShardOption) (*ParquetShard, error) {
+func NewParquetShardOpener(
+	ctx context.Context,
+	name string,
+	labelsFileOpener ParquetOpener,
+	chunksFileOpener ParquetOpener,
+	shard int,
+	opts ...FileOption,
+) (*ParquetShardOpener, error) {
+	cfg := DefaultFileOptions
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	labelsFileName := schema.LabelsPfileNameForShard(name, shard)
 	chunksFileName := schema.ChunksPfileNameForShard(name, shard)
 
@@ -114,21 +194,13 @@ func OpenParquetShard(ctx context.Context, bkt objstore.Bucket, name string, sha
 
 	var labelsFile, chunksFile *ParquetFile
 
-	errGroup.Go(func() error {
-		labelsAttr, err := bkt.Attributes(ctx, labelsFileName)
-		if err != nil {
-			return err
-		}
-		labelsFile, err = OpenFile(NewBucketReadAt(ctx, labelsFileName, bkt), labelsAttr.Size, opts...)
+	errGroup.Go(func() (err error) {
+		labelsFile, err = labelsFileOpener.Open(ctx, labelsFileName, opts...)
 		return err
 	})
 
-	errGroup.Go(func() error {
-		chunksFileAttr, err := bkt.Attributes(ctx, chunksFileName)
-		if err != nil {
-			return err
-		}
-		chunksFile, err = OpenFile(NewBucketReadAt(ctx, chunksFileName, bkt), chunksFileAttr.Size, opts...)
+	errGroup.Go(func() (err error) {
+		chunksFile, err = chunksFileOpener.Open(ctx, chunksFileName, opts...)
 		return err
 	})
 
@@ -136,24 +208,31 @@ func OpenParquetShard(ctx context.Context, bkt objstore.Bucket, name string, sha
 		return nil, err
 	}
 
-	return &ParquetShard{
+	return &ParquetShardOpener{
 		labelsFile: labelsFile,
 		chunksFile: chunksFile,
 	}, nil
 }
 
-func (b *ParquetShard) LabelsFile() *ParquetFile {
-	return b.labelsFile
+func (s *ParquetShardOpener) LabelsFile() *ParquetFile {
+	return s.labelsFile
 }
 
-func (b *ParquetShard) ChunksFile() *ParquetFile {
-	return b.chunksFile
+func (s *ParquetShardOpener) ChunksFile() *ParquetFile {
+	return s.chunksFile
 }
 
-func (b *ParquetShard) TSDBSchema() (*schema.TSDBSchema, error) {
+func (s *ParquetShardOpener) TSDBSchema() (*schema.TSDBSchema, error) {
 	var err error
-	b.o.Do(func() {
-		b.schema, err = schema.FromLabelsFile(b.labelsFile.File)
+	s.o.Do(func() {
+		s.schema, err = schema.FromLabelsFile(s.labelsFile.File)
 	})
-	return b.schema, err
+	return s.schema, err
+}
+
+func (s *ParquetShardOpener) Close() error {
+	err := &multierror.Error{}
+	err = multierror.Append(err, s.labelsFile.Close())
+	err = multierror.Append(err, s.chunksFile.Close())
+	return err.ErrorOrNil()
 }

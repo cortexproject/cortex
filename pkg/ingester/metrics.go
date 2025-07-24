@@ -44,6 +44,7 @@ type ingesterMetrics struct {
 	memMetadataCreatedTotal *prometheus.CounterVec
 	memSeriesRemovedTotal   *prometheus.CounterVec
 	memMetadataRemovedTotal *prometheus.CounterVec
+	pushErrorsTotal         *prometheus.CounterVec
 
 	activeSeriesPerUser   *prometheus.GaugeVec
 	activeNHSeriesPerUser *prometheus.GaugeVec
@@ -165,6 +166,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_memory_metadata_removed_total",
 			Help: "The total number of metadata that were removed per user.",
 		}, []string{"user"}),
+		pushErrorsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_push_errors_total",
+			Help: "The total number of push errors per user.",
+		}, []string{"user", "reason"}),
 
 		maxUsersGauge: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
 			Name:        instanceLimits,
@@ -295,6 +300,7 @@ func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
 	m.activeNHSeriesPerUser.DeleteLabelValues(userID)
 	m.usagePerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.limitsPerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
+	m.pushErrorsTotal.DeletePartialMatch(prometheus.Labels{"user": userID})
 
 	if m.memSeriesCreatedTotal != nil {
 		m.memSeriesCreatedTotal.DeleteLabelValues(userID)

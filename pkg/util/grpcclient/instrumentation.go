@@ -25,3 +25,18 @@ func Instrument(requestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInt
 			cortexmiddleware.PrometheusGRPCStreamInstrumentation(requestDuration),
 		}
 }
+
+func InstrumentReusableStream(requestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+	return []grpc.UnaryClientInterceptor{
+			grpcutil.HTTPHeaderPropagationClientInterceptor,
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+			middleware.ClientUserHeaderInterceptor,
+			cortexmiddleware.PrometheusGRPCUnaryInstrumentation(requestDuration),
+		}, []grpc.StreamClientInterceptor{
+			grpcutil.HTTPHeaderPropagationStreamClientInterceptor,
+			unwrapErrorStreamClientInterceptor(),
+			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+			middleware.StreamClientUserHeaderInterceptor,
+			cortexmiddleware.PrometheusGRPCReusableStreamInstrumentation(requestDuration),
+		}
+}

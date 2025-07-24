@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/regexp"
 	"github.com/pkg/errors"
+	"github.com/prometheus-community/parquet-common/search"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/common/route"
@@ -79,6 +80,12 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            httpgrpc.Errorf(http.StatusNotFound, "not found"),
 			expectedString: "not found",
+			expectedCode:   422,
+		},
+
+		{
+			err:            search.NewQuota(1).Reserve(2),
+			expectedString: "resource exhausted (used 1)",
 			expectedCode:   422,
 		},
 

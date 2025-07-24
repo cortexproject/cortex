@@ -11,8 +11,8 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
+	"github.com/prometheus-community/parquet-common/queryable"
 	"github.com/prometheus-community/parquet-common/schema"
-	"github.com/prometheus-community/parquet-common/search"
 	parquet_storage "github.com/prometheus-community/parquet-common/storage"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -23,11 +23,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -125,14 +127,70 @@ func NewParquetQueryable(
 		return nil, err
 	}
 
-	cache, err := newCache[*parquet_storage.ParquetShard]("parquet-shards", config.ParquetQueryableShardCacheSize, newCacheMetrics(reg))
+	cache, err := newCache[parquet_storage.ParquetShard]("parquet-shards", config.ParquetQueryableShardCacheSize, newCacheMetrics(reg))
 	if err != nil {
 		return nil, err
 	}
 
 	cDecoder := schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool())
 
-	parquetQueryable, err := search.NewParquetQueryable(cDecoder, func(ctx context.Context, mint, maxt int64) ([]*parquet_storage.ParquetShard, error) {
+	parquetQueryableOpts := []queryable.QueryableOpts{
+		queryable.WithRowCountLimitFunc(func(ctx context.Context) int64 {
+			// Ignore error as this shouldn't happen.
+			// If failed to resolve tenant we will just use the default limit value.
+			userID, _ := tenant.TenantID(ctx)
+			return int64(limits.ParquetMaxFetchedRowCount(userID))
+		}),
+		queryable.WithChunkBytesLimitFunc(func(ctx context.Context) int64 {
+			// Ignore error as this shouldn't happen.
+			// If failed to resolve tenant we will just use the default limit value.
+			userID, _ := tenant.TenantID(ctx)
+			return int64(limits.ParquetMaxFetchedChunkBytes(userID))
+		}),
+		queryable.WithDataBytesLimitFunc(func(ctx context.Context) int64 {
+			// Ignore error as this shouldn't happen.
+			// If failed to resolve tenant we will just use the default limit value.
+			userID, _ := tenant.TenantID(ctx)
+			return int64(limits.ParquetMaxFetchedDataBytes(userID))
+		}),
+		queryable.WithMaterializedSeriesCallback(func(ctx context.Context, cs []storage.ChunkSeries) error {
+			queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
+			lbls := make([][]cortexpb.LabelAdapter, 0, len(cs))
+			for _, series := range cs {
+				chkCount := 0
+				chunkSize := 0
+				lblSize := 0
+				lblAdapter := cortexpb.FromLabelsToLabelAdapters(series.Labels())
+				lbls = append(lbls, lblAdapter)
+				for _, lbl := range lblAdapter {
+					lblSize += lbl.Size()
+				}
+				iter := series.Iterator(nil)
+				for iter.Next() {
+					chk := iter.At()
+					chunkSize += len(chk.Chunk.Bytes())
+					chkCount++
+				}
+				if chkCount > 0 {
+					if err := queryLimiter.AddChunks(chkCount); err != nil {
+						return validation.LimitError(err.Error())
+					}
+					if err := queryLimiter.AddChunkBytes(chunkSize); err != nil {
+						return validation.LimitError(err.Error())
+					}
+				}
+
+				if err := queryLimiter.AddDataBytes(chunkSize + lblSize); err != nil {
+					return validation.LimitError(err.Error())
+				}
+			}
+			if err := queryLimiter.AddSeries(lbls...); err != nil {
+				return validation.LimitError(err.Error())
+			}
+			return nil
+		}),
+	}
+	parquetQueryable, err := queryable.NewParquetQueryable(cDecoder, func(ctx context.Context, mint, maxt int64) ([]parquet_storage.ParquetShard, error) {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
@@ -143,8 +201,8 @@ func NewParquetQueryable(
 			return nil, errors.Errorf("failed to extract blocks from context")
 		}
 		userBkt := bucket.NewUserBucketClient(userID, bucketClient, limits)
-
-		shards := make([]*parquet_storage.ParquetShard, len(blocks))
+		bucketOpener := parquet_storage.NewParquetBucketOpener(userBkt)
+		shards := make([]parquet_storage.ParquetShard, len(blocks))
 		errGroup := &errgroup.Group{}
 
 		span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.OpenShards")
@@ -157,16 +215,18 @@ func NewParquetQueryable(
 				if shard == nil {
 					// we always only have 1 shard - shard 0
 					// Use context.Background() here as the file can be cached and live after the request ends.
-					shard, err = parquet_storage.OpenParquetShard(context.WithoutCancel(ctx),
-						userBkt,
+					shard, err = parquet_storage.NewParquetShardOpener(
+						context.WithoutCancel(ctx),
 						block.ID.String(),
+						bucketOpener,
+						bucketOpener,
 						0,
 						parquet_storage.WithFileOptions(
 							parquet.SkipMagicBytes(true),
 							parquet.ReadBufferSize(100*1024),
 							parquet.SkipBloomFilters(true),
+							parquet.OptimisticRead(true),
 						),
-						parquet_storage.WithOptimisticReader(true),
 					)
 					if err != nil {
 						return errors.Wrapf(err, "failed to open parquet shard. block: %v", block.ID.String())
@@ -180,7 +240,7 @@ func NewParquetQueryable(
 		}
 
 		return shards, errGroup.Wait()
-	})
+	}, parquetQueryableOpts...)
 
 	p := &parquetQueryableWithFallback{
 		subservices:           manager,
@@ -374,7 +434,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		storage.ErrSeriesSet(err)
+		return storage.ErrSeriesSet(err)
 	}
 
 	if q.limits.QueryVerticalShardSize(userID) > 1 {

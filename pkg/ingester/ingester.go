@@ -19,7 +19,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -450,6 +450,11 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 
 	// Total series limit.
 	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.Head().NumSeries())); err != nil {
+		return err
+	}
+
+	// Total native histogram series limit.
+	if err := u.limiter.AssertMaxNativeHistogramSeriesPerUser(u.userID, u.activeSeries.ActiveNativeHistogram()); err != nil {
 		return err
 	}
 
@@ -1162,6 +1167,11 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.Push")
 	defer span.Finish()
 
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// We will report *this* request in the error too.
 	inflight := i.inflightPushRequests.Inc()
 	i.maxInflightPushRequests.Track(inflight)
@@ -1170,6 +1180,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	gl := i.getInstanceLimits()
 	if gl != nil && gl.MaxInflightPushRequests > 0 {
 		if inflight > gl.MaxInflightPushRequests {
+			i.metrics.pushErrorsTotal.WithLabelValues(userID, pushErrTooManyInflightRequests).Inc()
 			return nil, errTooManyInflightPushRequests
 		}
 	}
@@ -1180,11 +1191,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// retain anything from `req` past the call to ReuseSlice
 	defer req.Free()
 	defer cortexpb.ReuseSlice(req.Timeseries)
-
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, err
-	}
 
 	il := i.getInstanceLimits()
 	if il != nil && il.MaxIngestionRate > 0 {
@@ -1220,21 +1226,22 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
-		succeededSamplesCount         = 0
-		failedSamplesCount            = 0
-		succeededHistogramsCount      = 0
-		failedHistogramsCount         = 0
-		succeededExemplarsCount       = 0
-		failedExemplarsCount          = 0
-		startAppend                   = time.Now()
-		sampleOutOfBoundsCount        = 0
-		sampleOutOfOrderCount         = 0
-		sampleTooOldCount             = 0
-		newValueForTimestampCount     = 0
-		perUserSeriesLimitCount       = 0
-		perLabelSetSeriesLimitCount   = 0
-		perMetricSeriesLimitCount     = 0
-		discardedNativeHistogramCount = 0
+		succeededSamplesCount                  = 0
+		failedSamplesCount                     = 0
+		succeededHistogramsCount               = 0
+		failedHistogramsCount                  = 0
+		succeededExemplarsCount                = 0
+		failedExemplarsCount                   = 0
+		startAppend                            = time.Now()
+		sampleOutOfBoundsCount                 = 0
+		sampleOutOfOrderCount                  = 0
+		sampleTooOldCount                      = 0
+		newValueForTimestampCount              = 0
+		perUserSeriesLimitCount                = 0
+		perUserNativeHistogramSeriesLimitCount = 0
+		perLabelSetSeriesLimitCount            = 0
+		perMetricSeriesLimitCount              = 0
+		discardedNativeHistogramCount          = 0
 
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
@@ -1266,6 +1273,12 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
+				updateFirstPartial(func() error {
+					return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels))
+				})
+
+			case errors.Is(cause, errMaxNativeHistogramSeriesPerUserLimitExceeded):
+				perUserNativeHistogramSeriesLimitCount++
 				updateFirstPartial(func() error {
 					return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
@@ -1513,6 +1526,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	if perUserSeriesLimitCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserSeriesLimit, userID).Add(float64(perUserSeriesLimitCount))
 	}
+	if perUserNativeHistogramSeriesLimitCount > 0 {
+		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserNativeHistogramSeriesLimit, userID).Add(float64(perUserNativeHistogramSeriesLimitCount))
+	}
 	if perMetricSeriesLimitCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
 	}
@@ -1576,8 +1592,8 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 		if err != nil {
 			return err
 		}
-		ctx = user.InjectOrgID(ctx, req.TenantID)
-		resp, err := i.Push(ctx, req.Request)
+		pushCtx := user.InjectOrgID(ctx, req.TenantID)
+		resp, err := i.Push(pushCtx, req.Request)
 		if resp == nil {
 			resp = &cortexpb.WriteResponse{}
 		}

@@ -24,6 +24,8 @@ import (
 )
 
 var errMaxGlobalSeriesPerUserValidation = errors.New("the ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
+var errMaxGlobalNativeHistogramSeriesPerUserValidation = errors.New("the ingester.max-global-native-histogram-series-per-user limit is unsupported if distributor.shard-by-all-labels or ingester.active-series-metrics-enabled is disabled")
+var errMaxLocalNativeHistogramSeriesPerUserValidation = errors.New("the ingester.max-local-native-histogram-series-per-user limit is unsupported if ingester.active-series-metrics-enabled is disabled")
 var errDuplicateQueryPriorities = errors.New("duplicate entry of priorities found. Make sure they are all unique, including the default priority")
 var errCompilingQueryPriorityRegex = errors.New("error compiling query priority regex")
 var errDuplicatePerLabelSetLimit = errors.New("duplicate per labelSet limits found. Make sure they are all unique")
@@ -152,12 +154,14 @@ type Limits struct {
 
 	// Ingester enforced limits.
 	// Series
-	MaxLocalSeriesPerUser    int                 `yaml:"max_series_per_user" json:"max_series_per_user"`
-	MaxLocalSeriesPerMetric  int                 `yaml:"max_series_per_metric" json:"max_series_per_metric"`
-	MaxGlobalSeriesPerUser   int                 `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
-	MaxGlobalSeriesPerMetric int                 `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
-	LimitsPerLabelSet        []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
-	EnableNativeHistograms   bool                `yaml:"enable_native_histograms" json:"enable_native_histograms"`
+	MaxLocalSeriesPerUser                 int                 `yaml:"max_series_per_user" json:"max_series_per_user"`
+	MaxLocalSeriesPerMetric               int                 `yaml:"max_series_per_metric" json:"max_series_per_metric"`
+	MaxLocalNativeHistogramSeriesPerUser  int                 `yaml:"max_native_histogram_series_per_user" json:"max_native_histogram_series_per_user"`
+	MaxGlobalSeriesPerUser                int                 `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
+	MaxGlobalSeriesPerMetric              int                 `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
+	MaxGlobalNativeHistogramSeriesPerUser int                 `yaml:"max_global_native_histogram_series_per_user" json:"max_global_native_histogram_series_per_user"`
+	LimitsPerLabelSet                     []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
+	EnableNativeHistograms                bool                `yaml:"enable_native_histograms" json:"enable_native_histograms"`
 
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
@@ -182,6 +186,11 @@ type Limits struct {
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
 	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
+
+	// Parquet Queryable enforced limits.
+	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count" doc:"hidden"`
+	ParquetMaxFetchedChunkBytes int `yaml:"parquet_max_fetched_chunk_bytes" json:"parquet_max_fetched_chunk_bytes" doc:"hidden"`
+	ParquetMaxFetchedDataBytes  int `yaml:"parquet_max_fetched_data_bytes" json:"parquet_max_fetched_data_bytes" doc:"hidden"`
 
 	// Query Frontend / Scheduler enforced limits.
 	MaxOutstandingPerTenant     int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
@@ -273,6 +282,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster before replication. 0 to disable.")
+	f.IntVar(&l.MaxLocalNativeHistogramSeriesPerUser, "ingester.max-native-histogram-series-per-user", 0, "The maximum number of active native histogram series per user, per ingester. 0 to disable. Supported only if ingester.active-series-metrics-enabled is true.")
+	f.IntVar(&l.MaxGlobalNativeHistogramSeriesPerUser, "ingester.max-global-native-histogram-series-per-user", 0, "The maximum number of active native histogram series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels and ingester.active-series-metrics-enabled is true.")
 	f.BoolVar(&l.EnableNativeHistograms, "blocks-storage.tsdb.enable-native-histograms", false, "[EXPERIMENTAL] True to enable native histogram.")
 	f.IntVar(&l.MaxExemplars, "ingester.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.")
 	f.Var(&l.OutOfOrderTimeWindow, "ingester.out-of-order-time-window", "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.")
@@ -314,6 +325,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&l.ParquetConverterTenantShardSize, "parquet-converter.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the parquet converter. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 and > 0 the shard size will be a percentage of the total parquet converters.")
 	f.BoolVar(&l.ParquetConverterEnabled, "parquet-converter.enabled", false, "If set, enables the Parquet converter to create the parquet files.")
 
+	// Parquet Queryable enforced limits.
+	f.IntVar(&l.ParquetMaxFetchedRowCount, "querier.parquet-queryable.max-fetched-row-count", 0, "The maximum number of rows that can be fetched when querying parquet storage. Each row maps to a series in a parquet file. This limit applies before materializing chunks. 0 to disable.")
+	f.IntVar(&l.ParquetMaxFetchedChunkBytes, "querier.parquet-queryable.max-fetched-chunk-bytes", 0, "The maximum number of bytes that can be used to fetch chunk column pages when querying parquet storage. 0 to disable.")
+	f.IntVar(&l.ParquetMaxFetchedDataBytes, "querier.parquet-queryable.max-fetched-data-bytes", 0, "The maximum number of bytes that can be used to fetch all column pages when querying parquet storage. 0 to disable.")
+
 	// Store-gateway.
 	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
 	f.IntVar(&l.MaxDownloadedBytesPerRequest, "store-gateway.max-downloaded-bytes-per-request", 0, "The maximum number of data bytes to download per gRPC request in Store Gateway, including Series/LabelNames/LabelValues requests. 0 to disable.")
@@ -340,11 +356,22 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the limits config and returns an error if the validation
 // doesn't pass
-func (l *Limits) Validate(shardByAllLabels bool) error {
+func (l *Limits) Validate(shardByAllLabels bool, activeSeriesMetricsEnabled bool) error {
 	// The ingester.max-global-series-per-user metric is not supported
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
 		return errMaxGlobalSeriesPerUserValidation
+	}
+
+	// The ingester.max-global-native-histograms-series-per-user metric is not supported
+	// if shard-by-all-labels is disabled
+	// or if active-series-metrics-enabled is disabled
+	if l.MaxGlobalNativeHistogramSeriesPerUser > 0 && (!shardByAllLabels || !activeSeriesMetricsEnabled) {
+		return errMaxGlobalNativeHistogramSeriesPerUserValidation
+	}
+
+	if l.MaxLocalNativeHistogramSeriesPerUser > 0 && !activeSeriesMetricsEnabled {
+		return errMaxLocalNativeHistogramSeriesPerUserValidation
 	}
 
 	if err := l.RulerExternalLabels.Validate(func(l labels.Label) error {
@@ -571,11 +598,11 @@ type Overrides struct {
 }
 
 // NewOverrides makes a new Overrides.
-func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error) {
+func NewOverrides(defaults Limits, tenantLimits TenantLimits) *Overrides {
 	return &Overrides{
 		tenantLimits:  tenantLimits,
 		defaultLimits: &defaults,
-	}, nil
+	}
 }
 
 // IngestionRate returns the limit on ingester rate (samples per second).
@@ -679,6 +706,11 @@ func (o *Overrides) MaxLocalSeriesPerUser(userID string) int {
 	return o.GetOverridesForUser(userID).MaxLocalSeriesPerUser
 }
 
+// MaxLocalNativeHistogramSeriesPerUser returns the maximum number of native histogram series a user is allowed to store in a single ingester.
+func (o *Overrides) MaxLocalNativeHistogramSeriesPerUser(userID string) int {
+	return o.GetOverridesForUser(userID).MaxLocalNativeHistogramSeriesPerUser
+}
+
 // MaxLocalSeriesPerMetric returns the maximum number of series allowed per metric in a single ingester.
 func (o *Overrides) MaxLocalSeriesPerMetric(userID string) int {
 	return o.GetOverridesForUser(userID).MaxLocalSeriesPerMetric
@@ -689,7 +721,12 @@ func (o *Overrides) MaxGlobalSeriesPerUser(userID string) int {
 	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerUser
 }
 
-// EnableNativeHistograms returns whether the Ingester should accept NativeHistograms samples from this user.
+// MaxGlobalNativeHistogramSeriesPerUser returns the maximum number of native histogram series a user is allowed to store across the cluster.
+func (o *Overrides) MaxGlobalNativeHistogramSeriesPerUser(userID string) int {
+	return o.GetOverridesForUser(userID).MaxGlobalNativeHistogramSeriesPerUser
+}
+
+// EnableNativeHistograms returns whether the Ingester should accept native histogram samples from this user.
 func (o *Overrides) EnableNativeHistograms(userID string) bool {
 	return o.GetOverridesForUser(userID).EnableNativeHistograms
 }
@@ -865,6 +902,21 @@ func (o *Overrides) ParquetConverterTenantShardSize(userID string) float64 {
 // ParquetConverterEnabled returns true is parquet is enabled.
 func (o *Overrides) ParquetConverterEnabled(userID string) bool {
 	return o.GetOverridesForUser(userID).ParquetConverterEnabled
+}
+
+// ParquetMaxFetchedRowCount returns the maximum number of rows that can be fetched when querying parquet storage.
+func (o *Overrides) ParquetMaxFetchedRowCount(userID string) int {
+	return o.GetOverridesForUser(userID).ParquetMaxFetchedRowCount
+}
+
+// ParquetMaxFetchedChunkBytes returns the maximum number of bytes that can be used to fetch chunk column pages when querying parquet storage.
+func (o *Overrides) ParquetMaxFetchedChunkBytes(userID string) int {
+	return o.GetOverridesForUser(userID).ParquetMaxFetchedChunkBytes
+}
+
+// ParquetMaxFetchedDataBytes returns the maximum number of bytes that can be used to fetch all column pages when querying parquet storage.
+func (o *Overrides) ParquetMaxFetchedDataBytes(userID string) int {
+	return o.GetOverridesForUser(userID).ParquetMaxFetchedDataBytes
 }
 
 // CompactorPartitionIndexSizeBytes returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.

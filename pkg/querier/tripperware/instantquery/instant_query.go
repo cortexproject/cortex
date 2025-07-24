@@ -208,7 +208,7 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 		}
 	}
 
-	h.Add("Content-Type", "application/json")
+	h.Add("Content-Type", "application/x-www-form-urlencoded")
 
 	isSourceRuler := strings.Contains(h.Get("User-Agent"), tripperware.RulerUserAgent)
 	if !isSourceRuler {
@@ -216,16 +216,19 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 		tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
 	}
 
-	byteBody, err := c.getSerializedBody(promReq)
+	bodyBytes, err := c.getSerializedBody(promReq)
 	if err != nil {
 		return nil, err
 	}
+	form := url.Values{}
+	form.Set("plan", string(bodyBytes))
+	formEncoded := form.Encode()
 
 	req := &http.Request{
 		Method:     "POST",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
-		Body:       io.NopCloser(bytes.NewReader(byteBody)),
+		Body:       io.NopCloser(strings.NewReader(formEncoded)),
 		Header:     h,
 	}
 

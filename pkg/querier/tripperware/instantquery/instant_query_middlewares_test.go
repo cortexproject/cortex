@@ -1,4 +1,4 @@
-package queryrange
+package instantquery
 
 import (
 	"context"
@@ -21,9 +21,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-var (
-	PrometheusCodec        = NewPrometheusCodec(false, "", "protobuf")
-	ShardedPrometheusCodec = NewPrometheusCodec(false, "", "protobuf")
+const (
+	queryAll     = "/api/v1/instant_query?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536716898&stats=all"
+	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -34,10 +34,6 @@ func TestRoundTrip(t *testing.T) {
 				switch r.RequestURI {
 				case queryAll:
 					_, err = w.Write([]byte(responseBody))
-				case queryWithWarnings:
-					_, err = w.Write([]byte(responseBodyWithWarnings))
-				case queryWithInfos:
-					_, err = w.Write([]byte(responseBodyWithInfos))
 				default:
 					_, err = w.Write([]byte("bar"))
 				}
@@ -58,14 +54,11 @@ func TestRoundTrip(t *testing.T) {
 	}
 
 	qa := querysharding.NewQueryAnalyzer()
-	queyrangemiddlewares, _, err := Middlewares(Config{},
+	instantQueryMiddleware, err := Middlewares(
 		log.NewNopLogger(),
-		mockLimits{},
-		nil,
+		mockLimitsShard{maxQueryLookback: 2},
 		nil,
 		qa,
-		PrometheusCodec,
-		ShardedPrometheusCodec,
 		5*time.Minute,
 		time.Minute,
 		false,
@@ -77,9 +70,9 @@ func TestRoundTrip(t *testing.T) {
 	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
 		nil,
 		nil,
-		queyrangemiddlewares,
 		nil,
-		PrometheusCodec,
+		instantQueryMiddleware,
+		testInstantQueryCodec,
 		nil,
 		defaultLimits,
 		qa,
@@ -96,13 +89,9 @@ func TestRoundTrip(t *testing.T) {
 		{queryAll, responseBody},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			//parallel testing causes data race
 			req, err := http.NewRequest("POST", tc.path, http.NoBody)
 			require.NoError(t, err)
 
-			// query-frontend doesn't actually authenticate requests, we rely on
-			// the queriers to do this.  Hence we ensure the request doesn't have a
-			// org ID in the ctx, but does have the header.
 			ctx := user.InjectOrgID(context.Background(), "1")
 			req = req.WithContext(ctx)
 			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
@@ -120,6 +109,7 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
+	// Common test server setup
 	s := httptest.NewServer(
 		middleware.AuthenticateUser.Wrap(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -127,10 +117,6 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 				switch r.RequestURI {
 				case queryAll:
 					_, err = w.Write([]byte(responseBody))
-				case queryWithWarnings:
-					_, err = w.Write([]byte(responseBodyWithWarnings))
-				case queryWithInfos:
-					_, err = w.Write([]byte(responseBodyWithInfos))
 				default:
 					_, err = w.Write([]byte("bar"))
 				}
@@ -161,8 +147,7 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 			distributedEnabled: true,
 			pReq: &tripperware.PrometheusRequest{
 				Start: 100000,
-				End:   200000,
-				Step:  15000,
+				End:   100000,
 				Query: "node_cpu_seconds_total{mode!=\"idle\"}[5m]",
 			},
 			expectEmptyBody: false,
@@ -172,8 +157,7 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 			distributedEnabled: false,
 			pReq: &tripperware.PrometheusRequest{
 				Start: 100000,
-				End:   200000,
-				Step:  15000,
+				End:   100000,
 				Query: "node_cpu_seconds_total{mode!=\"idle\"}[5m]",
 			},
 			expectEmptyBody: true,
@@ -183,14 +167,11 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			qa := querysharding.NewQueryAnalyzer()
-			queyrangemiddlewares, _, err := Middlewares(Config{},
+			instantQueryMiddlewares, err := Middlewares(
 				log.NewNopLogger(),
-				mockLimits{},
-				nil,
+				mockLimitsShard{shardSize: 2},
 				nil,
 				qa,
-				PrometheusCodec,
-				ShardedPrometheusCodec,
 				5*time.Minute,
 				time.Minute,
 				tc.distributedEnabled,
@@ -202,9 +183,9 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 			tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
 				nil,
 				nil,
-				queyrangemiddlewares,
 				nil,
-				PrometheusCodec,
+				instantQueryMiddlewares,
+				testInstantQueryCodec,
 				nil,
 				defaultLimits,
 				qa,
@@ -217,7 +198,7 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 
 			// test middlewares
-			for _, mw := range queyrangemiddlewares {
+			for _, mw := range instantQueryMiddlewares {
 				handler := mw.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 					return nil, nil
 				}))
@@ -226,7 +207,7 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 			}
 
 			// encode and prepare request
-			req, err := tripperware.Codec.EncodeRequest(PrometheusCodec, context.Background(), tc.pReq)
+			req, err := tripperware.Codec.EncodeRequest(testInstantQueryCodec, context.Background(), tc.pReq)
 			require.NoError(t, err)
 			req = req.WithContext(ctx)
 			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
@@ -253,6 +234,48 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+type mockLimitsShard struct {
+	maxQueryLookback     time.Duration
+	maxQueryLength       time.Duration
+	maxCacheFreshness    time.Duration
+	maxQueryResponseSize int64
+	shardSize            int
+	queryPriority        validation.QueryPriority
+	queryRejection       validation.QueryRejection
+}
+
+func (m mockLimitsShard) MaxQueryLookback(string) time.Duration {
+	return m.maxQueryLookback
+}
+
+func (m mockLimitsShard) MaxQueryLength(string) time.Duration {
+	return m.maxQueryLength
+}
+
+func (mockLimitsShard) MaxQueryParallelism(string) int {
+	return 14 // Flag default.
+}
+
+func (m mockLimitsShard) MaxCacheFreshness(string) time.Duration {
+	return m.maxCacheFreshness
+}
+
+func (m mockLimitsShard) MaxQueryResponseSize(string) int64 {
+	return m.maxQueryResponseSize
+}
+
+func (m mockLimitsShard) QueryVerticalShardSize(userID string) int {
+	return m.shardSize
+}
+
+func (m mockLimitsShard) QueryPriority(userID string) validation.QueryPriority {
+	return m.queryPriority
+}
+
+func (m mockLimitsShard) QueryRejection(userID string) validation.QueryRejection {
+	return m.queryRejection
 }
 
 type singleHostRoundTripper struct {

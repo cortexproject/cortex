@@ -28,7 +28,7 @@ import (
 
 const (
 	queryRange                    = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
-	query                         = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29"
+	queryAll                      = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29"
 	queryNonShardable             = "/api/v1/query?time=1536716898&query=container_memory_rss"
 	queryExemplar                 = "/api/v1/query_exemplars?query=test_exemplar_metric_total&start=2020-09-14T15:22:25.479Z&end=2020-09-14T15:23:25.479Z'"
 	querySubqueryStepSizeTooSmall = "/api/v1/query?query=up%5B30d%3A%5D"
@@ -232,7 +232,7 @@ cortex_query_frontend_queries_total{op="query_range", source="api", user="1"} 1
 `,
 		},
 		{
-			path:             query,
+			path:             queryAll,
 			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
@@ -256,7 +256,7 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 `,
 		},
 		{
-			path:             query,
+			path:             queryAll,
 			expectedBody:     instantResponseBody,
 			limits:           shardingOverrides,
 			maxSubQuerySteps: 11000,
@@ -321,7 +321,7 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			//parallel testing causes data race
-			req, err := http.NewRequest("GET", tc.path, http.NoBody)
+			req, err := http.NewRequest("POST", tc.path, http.NoBody)
 			require.NoError(t, err)
 
 			// query-frontend doesn't actually authenticate requests, we rely on

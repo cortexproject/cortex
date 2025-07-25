@@ -3202,12 +3202,12 @@ func TestUpdateMetrics(t *testing.T) {
 		ring_member_ownership_percent{member="B",name="test"} 0.5000000002328306
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
-		ring_members{name="test",state="ACTIVE"} 2
-		ring_members{name="test",state="JOINING"} 0
-		ring_members{name="test",state="LEAVING"} 0
-		ring_members{name="test",state="PENDING"} 0
-		ring_members{name="test",state="READONLY"} 0
-		ring_members{name="test",state="Unhealthy"} 0
+		ring_members{name="test",state="ACTIVE",zone=""} 2
+		ring_members{name="test",state="JOINING",zone=""} 0
+		ring_members{name="test",state="LEAVING",zone=""} 0
+		ring_members{name="test",state="PENDING",zone=""} 0
+		ring_members{name="test",state="READONLY",zone=""} 0
+		ring_members{name="test",state="Unhealthy",zone=""} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
@@ -3230,12 +3230,12 @@ func TestUpdateMetrics(t *testing.T) {
 			Expected: `
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
-		ring_members{name="test",state="ACTIVE"} 2
-		ring_members{name="test",state="JOINING"} 0
-		ring_members{name="test",state="LEAVING"} 0
-		ring_members{name="test",state="PENDING"} 0
-		ring_members{name="test",state="READONLY"} 0
-		ring_members{name="test",state="Unhealthy"} 0
+		ring_members{name="test",state="ACTIVE",zone=""} 2
+		ring_members{name="test",state="JOINING",zone=""} 0
+		ring_members{name="test",state="LEAVING",zone=""} 0
+		ring_members{name="test",state="PENDING",zone=""} 0
+		ring_members{name="test",state="READONLY",zone=""} 0
+		ring_members{name="test",state="Unhealthy",zone=""} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
@@ -3310,12 +3310,12 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_member_ownership_percent{member="B",name="test"} 0.5000000002328306
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
-		ring_members{name="test",state="ACTIVE"} 2
-		ring_members{name="test",state="JOINING"} 0
-		ring_members{name="test",state="LEAVING"} 0
-		ring_members{name="test",state="PENDING"} 0
-		ring_members{name="test",state="READONLY"} 0
-		ring_members{name="test",state="Unhealthy"} 0
+		ring_members{name="test",state="ACTIVE",zone=""} 2
+		ring_members{name="test",state="JOINING",zone=""} 0
+		ring_members{name="test",state="LEAVING",zone=""} 0
+		ring_members{name="test",state="PENDING",zone=""} 0
+		ring_members{name="test",state="READONLY",zone=""} 0
+		ring_members{name="test",state="Unhealthy",zone=""} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
@@ -3347,12 +3347,130 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_member_ownership_percent{member="A",name="test"} 1
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
-		ring_members{name="test",state="ACTIVE"} 1
-		ring_members{name="test",state="JOINING"} 0
-		ring_members{name="test",state="LEAVING"} 0
-		ring_members{name="test",state="PENDING"} 0
-		ring_members{name="test",state="READONLY"} 0
-		ring_members{name="test",state="Unhealthy"} 0
+		ring_members{name="test",state="ACTIVE",zone=""} 1
+		ring_members{name="test",state="JOINING",zone=""} 0
+		ring_members{name="test",state="LEAVING",zone=""} 0
+		ring_members{name="test",state="PENDING",zone=""} 0
+		ring_members{name="test",state="READONLY",zone=""} 0
+		ring_members{name="test",state="Unhealthy",zone=""} 0
+		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
+		# TYPE ring_oldest_member_timestamp gauge
+		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 22
+		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
+		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
+		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="READONLY"} 0
+		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
+		# HELP ring_tokens_owned The number of tokens in the ring owned by the member
+		# TYPE ring_tokens_owned gauge
+		ring_tokens_owned{member="A",name="test"} 2
+		# HELP ring_tokens_total Number of tokens in the ring
+		# TYPE ring_tokens_total gauge
+		ring_tokens_total{name="test"} 2
+	`))
+	assert.NoError(t, err)
+}
+
+func TestUpdateMetricsWithZone(t *testing.T) {
+	cfg := Config{
+		KVStore:                kv.Config{},
+		HeartbeatTimeout:       0, // get healthy stats
+		ReplicationFactor:      3,
+		ZoneAwarenessEnabled:   true,
+		DetailedMetricsEnabled: true,
+	}
+
+	registry := prometheus.NewRegistry()
+
+	// create the ring to set up metrics, but do not start
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	require.NoError(t, err)
+
+	ringDesc := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 22, Zone: "zone1", Tokens: []uint32{math.MaxUint32 / 6, (math.MaxUint32 / 6) * 4}},
+			"B": {Addr: "127.0.0.2", Timestamp: 11, Zone: "zone2", Tokens: []uint32{(math.MaxUint32 / 6) * 2, (math.MaxUint32 / 6) * 5}},
+			"C": {Addr: "127.0.0.3", Timestamp: 33, Zone: "zone3", Tokens: []uint32{(math.MaxUint32 / 6) * 3, math.MaxUint32}},
+		},
+	}
+	ring.updateRingState(&ringDesc)
+
+	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_member_ownership_percent The percent ownership of the ring by member
+		# TYPE ring_member_ownership_percent gauge
+		ring_member_ownership_percent{member="A",name="test"} 0.3333333332557231
+		ring_member_ownership_percent{member="B",name="test"} 0.3333333330228925
+		ring_member_ownership_percent{member="C",name="test"} 0.3333333337213844
+		# HELP ring_members Number of members in the ring
+		# TYPE ring_members gauge
+		ring_members{name="test",state="ACTIVE",zone="zone1"} 1
+		ring_members{name="test",state="ACTIVE",zone="zone2"} 1
+		ring_members{name="test",state="ACTIVE",zone="zone3"} 1
+		ring_members{name="test",state="JOINING",zone="zone1"} 0
+		ring_members{name="test",state="JOINING",zone="zone2"} 0
+		ring_members{name="test",state="JOINING",zone="zone3"} 0
+		ring_members{name="test",state="LEAVING",zone="zone1"} 0
+		ring_members{name="test",state="LEAVING",zone="zone2"} 0
+		ring_members{name="test",state="LEAVING",zone="zone3"} 0
+		ring_members{name="test",state="PENDING",zone="zone1"} 0
+		ring_members{name="test",state="PENDING",zone="zone2"} 0
+		ring_members{name="test",state="PENDING",zone="zone3"} 0
+		ring_members{name="test",state="READONLY",zone="zone1"} 0
+		ring_members{name="test",state="READONLY",zone="zone2"} 0
+		ring_members{name="test",state="READONLY",zone="zone3"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone1"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone2"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone3"} 0
+		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
+		# TYPE ring_oldest_member_timestamp gauge
+		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
+		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
+		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
+		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="READONLY"} 0
+		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
+		# HELP ring_tokens_owned The number of tokens in the ring owned by the member
+		# TYPE ring_tokens_owned gauge
+		ring_tokens_owned{member="A",name="test"} 2
+		ring_tokens_owned{member="B",name="test"} 2
+		ring_tokens_owned{member="C",name="test"} 2
+		# HELP ring_tokens_total Number of tokens in the ring
+		# TYPE ring_tokens_total gauge
+		ring_tokens_total{name="test"} 6
+	`))
+	require.NoError(t, err)
+
+	ringDescNew := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 22, Zone: "zone1", Tokens: []uint32{math.MaxUint32 / 6, (math.MaxUint32 / 6) * 4}},
+		},
+	}
+	ring.updateRingState(&ringDescNew)
+
+	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_member_ownership_percent The percent ownership of the ring by member
+		# TYPE ring_member_ownership_percent gauge
+		ring_member_ownership_percent{member="A",name="test"} 1
+		# HELP ring_members Number of members in the ring
+		# TYPE ring_members gauge
+		ring_members{name="test",state="ACTIVE",zone="zone1"} 1
+		ring_members{name="test",state="ACTIVE",zone="zone2"} 0
+		ring_members{name="test",state="ACTIVE",zone="zone3"} 0
+		ring_members{name="test",state="JOINING",zone="zone1"} 0
+		ring_members{name="test",state="JOINING",zone="zone2"} 0
+		ring_members{name="test",state="JOINING",zone="zone3"} 0
+		ring_members{name="test",state="LEAVING",zone="zone1"} 0
+		ring_members{name="test",state="LEAVING",zone="zone2"} 0
+		ring_members{name="test",state="LEAVING",zone="zone3"} 0
+		ring_members{name="test",state="PENDING",zone="zone1"} 0
+		ring_members{name="test",state="PENDING",zone="zone2"} 0
+		ring_members{name="test",state="PENDING",zone="zone3"} 0
+		ring_members{name="test",state="READONLY",zone="zone1"} 0
+		ring_members{name="test",state="READONLY",zone="zone2"} 0
+		ring_members{name="test",state="READONLY",zone="zone3"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone1"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone2"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone3"} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 22

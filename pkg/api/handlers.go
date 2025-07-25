@@ -167,7 +167,6 @@ func NewQuerierHandler(
 	metadataQuerier querier.MetadataQuerier,
 	reg prometheus.Registerer,
 	logger log.Logger,
-	distributedExecEnabled bool,
 ) http.Handler {
 	// Prometheus histograms for requests to the querier.
 	querierRequestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{

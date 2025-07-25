@@ -45,6 +45,7 @@ type BlocksCleanerConfig struct {
 	ShardingStrategy                   string
 	CompactionStrategy                 string
 	BlockRanges                        []int64
+	NoCompactMarkCheckAfter            time.Duration
 }
 
 type BlocksCleaner struct {
@@ -752,7 +753,12 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		}
 		level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
-	c.updateBucketMetrics(userID, parquetEnabled, idx, float64(len(partials)), float64(totalBlocksBlocksMarkedForNoCompaction))
+
+	noCompactMarkCheckFunc := func(blockID ulid.ULID) bool {
+		return cortex_parquet.ExistBlockNoCompact(ctx, userBucket, userLogger, blockID)
+	}
+
+	c.updateBucketMetrics(userID, parquetEnabled, idx, float64(len(partials)), float64(totalBlocksBlocksMarkedForNoCompaction), noCompactMarkCheckFunc)
 
 	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 		begin = time.Now()
@@ -762,7 +768,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 	return nil
 }
 
-func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, idx *bucketindex.Index, partials, totalBlocksBlocksMarkedForNoCompaction float64) {
+func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, idx *bucketindex.Index, partials, totalBlocksBlocksMarkedForNoCompaction float64, noCompactMarkCheckFunc cortex_parquet.NoCompactMarkCheckFunc) {
 	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
 	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
 	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(totalBlocksBlocksMarkedForNoCompaction)
@@ -772,7 +778,7 @@ func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, 
 		c.tenantParquetBlocks.WithLabelValues(userID).Set(float64(len(idx.ParquetBlocks())))
 		remainingBlocksToConvert := 0
 		for _, b := range idx.NonParquetBlocks() {
-			if cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, c.cfg.BlockRanges) {
+			if cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, c.cfg.NoCompactMarkCheckAfter.Milliseconds(), c.cfg.BlockRanges, b.ID, noCompactMarkCheckFunc) {
 				remainingBlocksToConvert++
 			}
 		}

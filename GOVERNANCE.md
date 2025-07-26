@@ -1,6 +1,7 @@
 # Cortex Governance
+This document defines project governance for the cortex project. Its purpose is to describe how decisions are made on the project and how anyone can influence these decisions.
 
-This document defines project governance for the project.
+This governance charter applies to every project under the cortex GitHub organization. The term "cortex project" refers to any work done under the cortexproject GitHub organization and includes the cortexproject/cortex repository itself as well as cortexproject/cortex-tools, cortexproject/cortex-jsonnet and all the other repositories under the cortexproject GitHub organization.
 
 ## Voting
 

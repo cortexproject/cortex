@@ -73,7 +73,7 @@ The next three options only apply when the querier is used together with the Que
 
 - `-frontend.forward-headers-list`
 
-   Request headers  forwarded by query frontend to downstream queriers. Multiple headers may be specified. Defaults to empty.
+   Request headers forwarded by query frontend to downstream queriers. Multiple headers may be specified. Defaults to empty.
 
 - `-frontend.max-cache-freshness`
 
@@ -113,7 +113,7 @@ The next three options only apply when the querier is used together with the Que
    Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessary internal data structures for the HA handling are created. The option `enable-for-all-users` is still needed to enable ingestion of HA samples for all users.
 
 - `distributor.drop-label`
-   This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.
+   This flag can be used to specify label names to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.
 
 ### Ring/HA Tracker Store
 
@@ -123,7 +123,7 @@ The KVStore client is used by both the Ring and HA Tracker (HA Tracker doesn't s
 - `{ring,distributor.ha-tracker}.store`
    Backend storage to use for the HA Tracker (consul, etcd, inmemory, multi).
 
-   **Warning:** The `inmemory` store will not work correctly with multiple distributors as each distributor can have a different state, causing injestion errors.
+   **Warning:** The `inmemory` store will not work correctly with multiple distributors as each distributor can have a different state, causing ingestion errors.
 - `{ring,distributor.ring}.store`
    Backend storage to use for the Ring (consul, etcd, inmemory, memberlist, multi).
 
@@ -162,8 +162,8 @@ prefix these flags with `distributor.ha-tracker.`
    The trusted CA file path.
 - `etcd.tls-insecure-skip-verify`
    Skip validating server certificate.
-- `etcd.ping-without-stream-allowd'`
-   Enable/Disable  PermitWithoutStream  parameter
+- `etcd.ping-without-stream-allowed`
+   Enable/Disable PermitWithoutStream parameter
 
 
 #### memberlist
@@ -178,7 +178,7 @@ All nodes run the following two loops:
 1. Every "gossip interval", pick random "gossip nodes" number of nodes, and send recent ring updates to them.
 2. Every "push/pull sync interval", choose random single node, and exchange full ring information with it (push/pull sync). After this operation, rings on both nodes are the same.
 
-When a node receives a ring update, node will merge it into its own ring state, and if that resulted in a change, node will add that update to the list of gossiped updates.
+When a node receives a ring update, the node will merge it into its own ring state, and if that resulted in a change, the node will add that update to the list of gossiped updates.
 Such update will be gossiped `R * log(N+1)` times by this node (R = retransmit multiplication factor, N = number of gossiping nodes in the cluster).
 
 If you find the propagation to be too slow, there are some tuning possibilities (default values are memberlist settings for LAN networks):
@@ -187,14 +187,14 @@ If you find the propagation to be too slow, there are some tuning possibilities 
 - Decrease push/pull sync interval (default 30s)
 - Increase retransmit multiplication factor (default 4)
 
-To find propagation delay, you can use `cortex_ring_oldest_member_timestamp{state="ACTIVE"}` metric.
+To find propagation delay, you can use the `cortex_ring_oldest_member_timestamp{state="ACTIVE"}` metric.
 
 Flags for configuring KV store based on memberlist library:
 
 - `memberlist.nodename`
    Name of the node in memberlist cluster. Defaults to hostname.
 - `memberlist.randomize-node-name`
-   This flag adds extra random suffix to the node name used by memberlist. Defaults to true. Using random suffix helps to prevent issues when running multiple memberlist nodes on the same machine, or when node names are reused (eg. in stateful sets).
+   This flag adds an extra random suffix to the node name used by memberlist. Defaults to true. Using a random suffix helps to prevent issues when running multiple memberlist nodes on the same machine, or when node names are reused (e.g. in stateful sets).
 - `memberlist.retransmit-factor`
    Multiplication factor used when sending out messages (factor * log(N+1)). If not set, default value is used.
 - `memberlist.join`
@@ -228,29 +228,29 @@ Flags for configuring KV store based on memberlist library:
 - `memberlist.gossip-to-dead-nodes-time`
    How long to keep gossiping to the nodes that seem to be dead. After this time, dead node is removed from list of nodes. If "dead" node appears again, it will simply join the cluster again, if its name is not reused by other node in the meantime. If the name has been reused, such a reanimated node will be ignored by other members.
 - `memberlist.dead-node-reclaim-time`
-   How soon can dead's node name be reused by a new node (using different IP). Disabled by default, name reclaim is not allowed until `gossip-to-dead-nodes-time` expires. This can be useful to set to low numbers when reusing node names, eg. in stateful sets.
-   If memberlist library detects that new node is trying to reuse the name of previous node, it will log message like this: `Conflicting address for ingester-6. Mine: 10.44.12.251:7946 Theirs: 10.44.12.54:7946 Old state: 2`. Node states are: "alive" = 0, "suspect" = 1 (doesn't respond, will be marked as dead if it doesn't respond), "dead" = 2.
+   How soon can a dead node's name be reused by a new node (using different IP). Disabled by default, name reclaim is not allowed until `gossip-to-dead-nodes-time` expires. This can be useful to set to low numbers when reusing node names, e.g. in stateful sets.
+   If memberlist library detects that a new node is trying to reuse the name of a previous node, it will log a message like this: `Conflicting address for ingester-6. Mine: 10.44.12.251:7946 Theirs: 10.44.12.54:7946 Old state: 2`. Node states are: "alive" = 0, "suspect" = 1 (doesn't respond, will be marked as dead if it doesn't respond), "dead" = 2.
 
 #### Multi KV
 
-This is a special key-value implementation that uses two different KV stores (eg. consul, etcd or memberlist). One of them is always marked as primary, and all reads and writes go to primary store. Other one, secondary, is only used for writes. The idea is that operator can use multi KV store to migrate from primary to secondary store in runtime.
+This is a special key-value implementation that uses two different KV stores (e.g. consul, etcd or memberlist). One of them is always marked as primary, and all reads and writes go to the primary store. The other one, secondary, is only used for writes. The idea is that an operator can use multi KV store to migrate from primary to secondary store at runtime.
 
 For example, migration from Consul to Etcd would look like this:
 
 - Set `ring.store` to use `multi` store. Set `-multi.primary=consul` and `-multi.secondary=etcd`. All consul and etcd settings must still be specified.
-- Start all Cortex microservices. They will still use Consul as primary KV, but they will also write share ring via etcd.
-- Operator can now use "runtime config" mechanism to switch primary store to etcd.
-- After all Cortex microservices have picked up new primary store, and everything looks correct, operator can now shut down Consul, and modify Cortex configuration to use `-ring.store=etcd` only.
+- Start all Cortex microservices. They will still use Consul as primary KV, but they will also share the ring via etcd.
+- Operator can now use the "runtime config" mechanism to switch primary store to etcd.
+- After all Cortex microservices have picked up the new primary store, and everything looks correct, operator can now shut down Consul, and modify Cortex configuration to use `-ring.store=etcd` only.
 - At this point, Consul can be shut down.
 
-Multi KV has following parameters:
+Multi KV has the following parameters:
 
 - `multi.primary` - name of primary KV store. Same values as in `ring.store` are supported, except `multi`.
 - `multi.secondary` - name of secondary KV store.
 - `multi.mirror-enabled` - enable mirroring of values to secondary store, defaults to true
-- `multi.mirror-timeout` - wait max this time to write to secondary store to finish. Default to 2 seconds. Errors writing to secondary store are not reported to caller, but are logged and also reported via `cortex_multikv_mirror_write_errors_total` metric.
+- `multi.mirror-timeout` - wait max this time for write to secondary store to finish. Defaults to 2 seconds. Errors writing to secondary store are not reported to caller, but are logged and also reported via `cortex_multikv_mirror_write_errors_total` metric.
 
-Multi KV also reacts on changes done via runtime configuration. It uses this section:
+Multi KV also reacts to changes done via runtime configuration. It uses this section:
 
 ```yaml
 multi_kv_config:
@@ -268,7 +268,7 @@ HA tracking has two of its own flags:
 - `distributor.ha-tracker.replica`
    Prometheus label to look for in samples to identify a Prometheus HA replica. (default "`__replica__`")
 
-It's reasonable to assume people probably already have a `cluster` label, or something similar. If not, they should add one along with `__replica__` via external labels in their Prometheus config. If you stick to these default values your Prometheus config could look like this (`POD_NAME` is an environment variable which must be set by you):
+It's reasonable to assume people probably already have a `cluster` label, or something similar. If not, they should add one along with `__replica__` via external labels in their Prometheus config. If you stick to these default values, your Prometheus config could look like this (`POD_NAME` is an environment variable which must be set by you):
 
 ```yaml
 global:
@@ -277,9 +277,9 @@ global:
     __replica__: $POD_NAME
 ```
 
-HA Tracking looks for the two labels (which can be overwritten per user)
+HA Tracking looks for the two labels (which can be overridden per user).
 
-It also talks to a KVStore and has it's own copies of the same flags used by the Distributor to connect to for the ring.
+It also talks to a KVStore and has its own copies of the same flags used by the Distributor to connect to the ring.
 - `distributor.ha-tracker.failover-timeout`
    If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout (default 30s)
 - `distributor.ha-tracker.store`
@@ -307,9 +307,9 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 ## Runtime Configuration file
 
-Cortex has a concept of "runtime config" file, which is simply a file that is reloaded while Cortex is running. It is used by some Cortex components to allow operator to change some aspects of Cortex configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
+Cortex has a concept of "runtime config" file, which is simply a file that is reloaded while Cortex is running. It is used by some Cortex components to allow an operator to change some aspects of Cortex configuration without restarting it. The file is specified by using the `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by the `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
 
-At the moment runtime configuration may contain per-user limits, multi KV store, and ingester instance limits.
+At the moment, runtime configuration may contain per-user limits, multi KV store, and ingester instance limits.
 
 Example runtime configuration file:
 
@@ -333,15 +333,15 @@ ingester_limits:
   max_inflight_push_requests: 10000
 ```
 
-When running Cortex on Kubernetes, store this file in a config map and mount it in each services' containers.  When changing the values there is no need to restart the services, unless otherwise specified.
+When running Cortex on Kubernetes, store this file in a config map and mount it in each service's container. When changing the values there is no need to restart the services, unless otherwise specified.
 
 The `/runtime_config` endpoint returns the whole runtime configuration, including the overrides. In case you want to get only the non-default values of the configuration you can pass the `mode` parameter with the `diff` value.
 
-## Ingester, Distributor & Querier limits.
+## Ingester, Distributor & Querier limits
 
-Cortex implements various limits on the requests it can process, in order to prevent a single tenant overwhelming the cluster.  There are various default global limits which apply to all tenants which can be set on the command line.  These limits can also be overridden on a per-tenant basis by using `overrides` field of runtime configuration file.
+Cortex implements various limits on the requests it can process, in order to prevent a single tenant from overwhelming the cluster. There are various default global limits which apply to all tenants which can be set on the command line. These limits can also be overridden on a per-tenant basis by using the `overrides` field of the runtime configuration file.
 
-The `overrides` field is a map of tenant ID (same values as passed in the `X-Scope-OrgID` header) to the various limits.  An example could look like:
+The `overrides` field is a map of tenant ID (same values as passed in the `X-Scope-OrgID` header) to the various limits. An example could look like:
 
 ```yaml
 overrides:
@@ -363,9 +363,9 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
   The per-tenant rate limit (and burst size), in samples per second. It supports two strategies: `local` (default) and `global`.
 
-  The `local` strategy enforces the limit on a per distributor basis, actual effective rate limit will be N times higher, where N is the number of distributor replicas.
+  The `local` strategy enforces the limit on a per distributor basis; the actual effective rate limit will be N times higher, where N is the number of distributor replicas.
 
-  The `global` strategy enforces the limit globally, configuring a per-distributor local rate limiter as `ingestion_rate / N`, where N is the number of distributor replicas (it's automatically adjusted if the number of replicas change). The `ingestion_burst_size` refers to the per-distributor local rate limiter (even in the case of the `global` strategy) and should be set at least to the maximum number of samples expected in a single push request. For this reason, the `global` strategy requires that push requests are evenly distributed across the pool of distributors; if you use a load balancer in front of the distributors you should be already covered, while if you have a custom setup (ie. an authentication gateway in front) make sure traffic is evenly balanced across distributors.
+  The `global` strategy enforces the limit globally, configuring a per-distributor local rate limiter as `ingestion_rate / N`, where N is the number of distributor replicas (it's automatically adjusted if the number of replicas changes). The `ingestion_burst_size` refers to the per-distributor local rate limiter (even in the case of the `global` strategy) and should be set at least to the maximum number of samples expected in a single push request. For this reason, the `global` strategy requires that push requests are evenly distributed across the pool of distributors; if you use a load balancer in front of the distributors you should already be covered, while if you have a custom setup (i.e. an authentication gateway in front) make sure traffic is evenly balanced across distributors.
 
   The `global` strategy requires the distributors to form their own ring, which is used to keep track of the current number of healthy distributor replicas. The ring is configured by `distributor: { ring: {}}` / `-distributor.ring.*`.
 
@@ -373,37 +373,37 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 - `max_label_value_length` / `-validation.max-length-label-value`
 - `max_label_names_per_series` / `-validation.max-label-names-per-series`
 
-  Also enforced by the distributor, limits on the on length of labels and their values, and the total number of labels allowed per series.
+  Also enforced by the distributor; limits on the length of labels and their values, and the total number of labels allowed per series.
 
 - `reject_old_samples` / `-validation.reject-old-samples`
 - `reject_old_samples_max_age` / `-validation.reject-old-samples.max-age`
 - `creation_grace_period` / `-validation.create-grace-period`
 
-  Also enforce by the distributor, limits on how far in the past (and future) timestamps that we accept can be.
+  Also enforced by the distributor; limits on how far in the past (and future) timestamps that we accept can be.
 
 - `max_series_per_user` / `-ingester.max-series-per-user`
 - `max_series_per_metric` / `-ingester.max-series-per-metric`
 
-  Enforced by the ingesters; limits the number of active series a user (or a given metric) can have.  When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of series a metric can have 'globally', as all series for a single metric will be sent to the same replication set of ingesters.  This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.
+  Enforced by the ingesters; limits the number of active series a user (or a given metric) can have. When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of series a metric can have 'globally', as all series for a single metric will be sent to the same replication set of ingesters. This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is the number of ingester replicas and RF is the configured replication factor.
 
 - `max_global_series_per_user` / `-ingester.max-global-series-per-user`
 - `max_global_series_per_metric` / `-ingester.max-global-series-per-metric`
 
-   Like `max_series_per_user` and `max_series_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.
+   Like `max_series_per_user` and `max_series_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters changes.
 
    Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels`, `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` set for the ingesters too.
 
 - `max_metadata_per_user` / `-ingester.max-metadata-per-user`
 - `max_metadata_per_metric` / `-ingester.max-metadata-per-metric`
-  Enforced by the ingesters; limits the number of active metadata a user (or a given metric) can have.  When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of metadata a metric can have 'globally', as all metadata for a single metric will be sent to the same replication set of ingesters.  This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.
+  Enforced by the ingesters; limits the number of active metadata a user (or a given metric) can have. When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of metadata a metric can have 'globally', as all metadata for a single metric will be sent to the same replication set of ingesters. This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is the number of ingester replicas and RF is the configured replication factor.
 
 - `max_fetched_series_per_query` / `querier.max-fetched-series-per-query`
-  When running Cortex with blocks storage this limit is enforced in the queriers on unique series fetched from ingesters and store-gateways (long-term storage).
+  When running Cortex with blocks storage, this limit is enforced in the queriers on unique series fetched from ingesters and store-gateways (long-term storage).
 
 - `max_global_metadata_per_user` / `-ingester.max-global-metadata-per-user`
 - `max_global_metadata_per_metric` / `-ingester.max-global-metadata-per-metric`
 
-   Like `max_metadata_per_user` and `max_metadata_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.
+   Like `max_metadata_per_user` and `max_metadata_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters changes.
 
    Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels`, `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` set for the ingesters too.
 
@@ -423,25 +423,25 @@ ingester_limits:
 
 Valid ingester instance limits are (with their corresponding flags):
 
-- `max_ingestion_rate` \ `--ingester.instance-limits.max-ingestion-rate`
+- `max_ingestion_rate` / `--ingester.instance-limits.max-ingestion-rate`
 
   Limit the ingestion rate in samples per second for an ingester. When this limit is reached, new requests will fail with an HTTP 500 error.
 
-- `max_series` \ `-ingester.instance-limits.max-series`
+- `max_series` / `-ingester.instance-limits.max-series`
 
   Limit the total number of series that an ingester keeps in memory, across all users. When this limit is reached, requests that create new series will fail with an HTTP 500 error.
 
-- `max_tenants` \ `-ingester.instance-limits.max-tenants`
+- `max_tenants` / `-ingester.instance-limits.max-tenants`
 
   Limit the maximum number of users an ingester will accept metrics for. When this limit is reached, requests from new users will fail with an HTTP 500 error.
 
-- `max_inflight_push_requests` \ `-ingester.instance-limits.max-inflight-push-requests`
+- `max_inflight_push_requests` / `-ingester.instance-limits.max-inflight-push-requests`
 
   Limit the maximum number of requests being handled by an ingester at once. This setting is critical for preventing ingesters from using an excessive amount of memory during high load or temporary slow downs. When this limit is reached, new requests will fail with an HTTP 500 error.
 
 ## DNS Service Discovery
 
-Some clients in Cortex support service discovery via DNS to find addresses of backend servers to connect to (ie. caching servers). The clients supporting it are:
+Some clients in Cortex support service discovery via DNS to find addresses of backend servers to connect to (i.e. caching servers). The clients supporting it are:
 
 - [Blocks storage's memcached cache](../blocks-storage/store-gateway.md#caching)
 - [All caching memcached servers](./config-file-reference.md#memcached-client-config)
@@ -449,7 +449,7 @@ Some clients in Cortex support service discovery via DNS to find addresses of ba
 
 ### Supported discovery modes
 
-The DNS service discovery, inspired from Thanos DNS SD, supports different discovery modes. A discovery mode is selected adding a specific prefix to the address. The supported prefixes are:
+The DNS service discovery, inspired by Thanos DNS SD, supports different discovery modes. A discovery mode is selected by adding a specific prefix to the address. The supported prefixes are:
 
 - **`dns+`**<br />
   The domain name after the prefix is looked up as an A/AAAA query. For example: `dns+memcached.local:11211`
@@ -458,13 +458,13 @@ The DNS service discovery, inspired from Thanos DNS SD, supports different disco
 - **`dnssrvnoa+`**<br />
   The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: `dnssrvnoa+_memcached._tcp.memcached.namespace.svc.cluster.local`
 
-If **no prefix** is provided, the provided IP or hostname will be used straightaway without pre-resolving it.
+If **no prefix** is provided, the provided IP or hostname will be used directly without pre-resolving it.
 
 If you are using a managed memcached service from [Google Cloud](https://cloud.google.com/memorystore/docs/memcached/auto-discovery-overview), or [AWS](https://docs.aws.amazon.com/AmazonElastiCache/latest/mem-ug/AutoDiscovery.HowAutoDiscoveryWorks.html), use the [auto-discovery](./config-file-reference.md#memcached-client-config) flag instead of DNS discovery, then use the discovery/configuration endpoint as the domain name without any prefix.
 
 ## Logging of IP of reverse proxy
 
-If a reverse proxy is used in front of Cortex it might be difficult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.
+If a reverse proxy is used in front of Cortex, it might be difficult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.
 
 - `-server.log_source_ips_enabled`
 
@@ -472,8 +472,8 @@ If a reverse proxy is used in front of Cortex it might be difficult to troublesh
 
 - `-server.log-source-ips-header`
 
-  Header field storing the source IPs. It is only used if `-server.log-source-ips-enabled` is true and if `-server.log-source-ips-regex` is set. If not set the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.
+  Header field storing the source IPs. It is only used if `-server.log-source-ips-enabled` is true and if `-server.log-source-ips-regex` is set. If not set, the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.
 
 - `-server.log-source-ips-regex`
 
-  Regular expression for matching the source IPs. It should contain at least one capturing group the first of which will be returned. Only used if `-server.log-source-ips-enabled` is true and if `-server.log-source-ips-header` is set. If not set the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.
+  Regular expression for matching the source IPs. It should contain at least one capturing group, the first of which will be returned. Only used if `-server.log-source-ips-enabled` is true and if `-server.log-source-ips-header` is set. If not set, the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.

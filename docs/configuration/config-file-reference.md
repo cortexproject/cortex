@@ -102,6 +102,10 @@ api:
   # CLI flag: -api.http-request-headers-to-log
   [http_request_headers_to_log: <list of string> | default = []]
 
+  # HTTP header that can be used as request id
+  # CLI flag: -api.request-id-header
+  [request_id_header: <string> | default = ""]
+
   # Regex for CORS origin. It is fully anchored. Example:
   # 'https?://(domain1|domain2)\.com'
   # CLI flag: -server.cors-origin

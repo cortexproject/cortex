@@ -71,6 +71,10 @@ type Config struct {
 	// Allows and is used to configure the addition of HTTP Header fields to logs
 	HTTPRequestHeadersToLog flagext.StringSlice `yaml:"http_request_headers_to_log"`
 
+	// HTTP header that can be used as request id. It will always be included in logs
+	// If it's not provided, or this header is empty, then random requestId will be generated
+	RequestIdHeader string `yaml:"request_id_header"`
+
 	// This sets the Origin header value
 	corsRegexString string `yaml:"cors_origin"`
 
@@ -87,6 +91,7 @@ var (
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
 	f.Var(&cfg.HTTPRequestHeadersToLog, "api.http-request-headers-to-log", "Which HTTP Request headers to add to logs")
+	f.StringVar(&cfg.RequestIdHeader, "api.request-id-header", "", "HTTP header that can be used as request id")
 	f.BoolVar(&cfg.buildInfoEnabled, "api.build-info-enabled", false, "If enabled, build Info API will be served by query frontend or querier.")
 	f.StringVar(&cfg.QuerierDefaultCodec, "api.querier-default-codec", "json", "Choose default codec for querier response serialization. Supports 'json' and 'protobuf'.")
 	cfg.RegisterFlagsWithPrefix("", f)
@@ -169,8 +174,9 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 	if cfg.HTTPAuthMiddleware == nil {
 		api.AuthMiddleware = middleware.AuthenticateUser
 	}
-	if len(cfg.HTTPRequestHeadersToLog) > 0 {
-		api.HTTPHeaderMiddleware = &HTTPHeaderMiddleware{TargetHeaders: cfg.HTTPRequestHeadersToLog}
+	api.HTTPHeaderMiddleware = &HTTPHeaderMiddleware{
+		TargetHeaders:   cfg.HTTPRequestHeadersToLog,
+		RequestIdHeader: cfg.RequestIdHeader,
 	}
 
 	return api, nil

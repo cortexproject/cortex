@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,8 +48,15 @@ type instantQueryCodec struct {
 
 func NewInstantQueryCodec(compressionStr string, defaultCodecTypeStr string) instantQueryCodec {
 	compression := tripperware.NonCompression // default
-	if compressionStr == string(tripperware.GzipCompression) {
+	switch compressionStr {
+	case string(tripperware.GzipCompression):
 		compression = tripperware.GzipCompression
+
+	case string(tripperware.SnappyCompression):
+		compression = tripperware.SnappyCompression
+
+	case string(tripperware.ZstdCompression):
+		compression = tripperware.ZstdCompression
 	}
 
 	defaultCodecType := tripperware.JsonCodecType // default
@@ -102,8 +110,23 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 		return nil, err
 	}
 
+	responseSize := 0
+	responseSizeHeader := r.Header.Get("X-Uncompressed-Length")
+	if responseSizeHeader != "" {
+		var err error
+		responseSize, err = strconv.Atoi(responseSizeHeader)
+		if err != nil {
+			log.Error(err)
+			return nil, err
+		}
+	}
+
 	responseSizeLimiter := limiter.ResponseSizeLimiterFromContextWithFallback(ctx)
-	body, err := tripperware.BodyBytes(r, responseSizeLimiter, log)
+	if err := responseSizeLimiter.AddResponseBytes(responseSize); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
+	}
+
+	body, err := tripperware.BodyBytes(r, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err

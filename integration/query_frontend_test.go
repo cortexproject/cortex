@@ -216,12 +216,32 @@ func TestQueryFrontendProtobufCodec(t *testing.T) {
 			require.NoError(t, s.StartAndWaitReady(minio))
 
 			flags = mergeFlags(e2e.EmptyFlags(), map[string]string{
-				"-api.querier-default-codec":    "protobuf",
-				"-querier.response-compression": "gzip",
+				"-api.querier-default-codec": "protobuf",
 			})
 			return cortexConfigFile, flags
 		},
 	})
+}
+
+func TestQuerierToQueryFrontendCompression(t *testing.T) {
+	for _, compression := range []string{"gzip", "zstd", "snappy", ""} {
+		runQueryFrontendTest(t, queryFrontendTestConfig{
+			testMissingMetricName: false,
+			querySchedulerEnabled: true,
+			queryStatsEnabled:     true,
+			setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+				require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+
+				minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
+				require.NoError(t, s.StartAndWaitReady(minio))
+
+				flags = mergeFlags(e2e.EmptyFlags(), map[string]string{
+					"-querier.response-compression": compression,
+				})
+				return cortexConfigFile, flags
+			},
+		})
+	}
 }
 
 func TestQueryFrontendRemoteRead(t *testing.T) {

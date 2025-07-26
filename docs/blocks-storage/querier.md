@@ -127,7 +127,7 @@ querier:
   [per_step_stats_enabled: <boolean> | default = false]
 
   # Use compression for metrics query API or instant and range query APIs.
-  # Supports 'gzip' and '' (disable compression)
+  # Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -querier.response-compression
   [response_compression: <string> | default = "gzip"]
 

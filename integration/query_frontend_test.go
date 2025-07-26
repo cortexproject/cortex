@@ -224,7 +224,7 @@ func TestQueryFrontendProtobufCodec(t *testing.T) {
 }
 
 func TestQuerierToQueryFrontendCompression(t *testing.T) {
-	for _, compression := range []string{"gzip","zstd","snappy",""} {
+	for _, compression := range []string{"gzip", "zstd", "snappy", ""} {
 		runQueryFrontendTest(t, queryFrontendTestConfig{
 			testMissingMetricName: false,
 			querySchedulerEnabled: true,

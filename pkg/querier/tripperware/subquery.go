@@ -6,6 +6,8 @@ import (
 
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
+
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 )
 
 var (
@@ -18,7 +20,7 @@ const (
 
 // SubQueryStepSizeCheck ensures the query doesn't contain too small step size in subqueries.
 func SubQueryStepSizeCheck(query string, defaultSubQueryInterval time.Duration, maxStep int64) error {
-	expr, err := parser.ParseExpr(query)
+	expr, err := cortexparser.ParseExpr(query)
 	if err != nil {
 		// If query fails to parse, we don't throw step size error
 		// but fail query later on querier.

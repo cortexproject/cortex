@@ -11,6 +11,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
 
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -111,7 +112,7 @@ func splitQuery(r tripperware.Request, interval time.Duration) ([]tripperware.Re
 // For example given the start of the query is 10.00, `http_requests_total[1h] @ start()` query will be replaced with `http_requests_total[1h] @ 10.00`
 // If the modifier is already a constant, it will be returned as is.
 func evaluateAtModifierFunction(query string, start, end int64) (string, error) {
-	expr, err := parser.ParseExpr(query)
+	expr, err := cortexparser.ParseExpr(query)
 	if err != nil {
 		return "", httpgrpc.Errorf(http.StatusBadRequest, "%s", err)
 	}
@@ -167,7 +168,7 @@ func dynamicIntervalFn(cfg Config, limits tripperware.Limits, queryAnalyzer quer
 			return ctx, baseInterval, nil
 		}
 
-		queryExpr, err := parser.ParseExpr(r.GetQuery())
+		queryExpr, err := cortexparser.ParseExpr(r.GetQuery())
 		if err != nil {
 			return ctx, baseInterval, err
 		}

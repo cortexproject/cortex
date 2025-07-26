@@ -84,6 +84,11 @@ resource_monitor:
   # CLI flag: -resource-monitor.cpu-rate-interval
   [cpu_rate_interval: <duration> | default = 1m]
 
+# Validation scheme for metric and label names. Set to utf8 to allow UTF-8
+# characters.
+# CLI flag: -name.validation-scheme
+[name_validation_scheme: <string> | default = "legacy"]
+
 api:
   # Use GZIP compression for API responses. Some endpoints serve large YAML or
   # JSON blobs which can benefit from compression.

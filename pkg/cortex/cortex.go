@@ -33,7 +33,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -149,7 +148,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
-	f.StringVar(&c.NameValidationScheme, "name.validation_scheme", "legacy", "Validation scheme for metric and label names. Set to utf8 to allow UTF-8 characters.")
+	f.StringVar(&c.NameValidationScheme, "name.validation-scheme", "legacy", "Validation scheme for metric and label names. Set to utf8 to allow UTF-8 characters.")
 	c.API.RegisterFlags(f)
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Distributor.RegisterFlags(f)

@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -178,7 +178,7 @@ func TestFindMinMaxTime(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			expr, _ := parser.ParseExpr(testData.query)
+			expr, _ := cortexparser.ParseExpr(testData.query)
 
 			url := "/query_range?query=" + testData.query +
 				"&start=" + strconv.FormatInt(testData.queryStartTime.Truncate(time.Minute).Unix(), 10) +

@@ -201,7 +201,8 @@ type Ring struct {
 
 	// List of zones for which there's at least 1 instance in the ring. This list is guaranteed
 	// to be sorted alphabetically.
-	ringZones []string
+	ringZones         []string
+	previousRingZones []string
 
 	// Cache of shuffle-sharded subrings per identifier. Invalidated when topology changes.
 	// If set to nil, no caching is done (used by tests, and subrings).
@@ -262,7 +263,7 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 			Name:        "ring_members",
 			Help:        "Number of members in the ring",
 			ConstLabels: map[string]string{"name": name}},
-			[]string{"state"}),
+			[]string{"state", "zone"}),
 		totalTokensGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name:        "ring_tokens_total",
 			Help:        "Number of tokens in the ring",
@@ -362,6 +363,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	r.ringTokensByZone = ringTokensByZone
 	r.ringInstanceByToken = ringInstanceByToken
 	r.ringInstanceIdByAddr = ringInstanceByAddr
+	r.previousRingZones = r.ringZones
 	r.ringZones = ringZones
 	r.lastTopologyChange = now
 	if r.shuffledSubringCache != nil {
@@ -665,12 +667,19 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 		return
 	}
 
-	numByState := map[string]int{}
+	numByStateByZone := map[string]map[string]int{}
 	oldestTimestampByState := map[string]int64{}
 
 	// Initialized to zero so we emit zero-metrics (instead of not emitting anything)
 	for _, s := range []string{unhealthy, ACTIVE.String(), LEAVING.String(), PENDING.String(), JOINING.String(), READONLY.String()} {
-		numByState[s] = 0
+		numByStateByZone[s] = map[string]int{}
+		// make sure removed zones got zero value
+		for _, zone := range r.previousRingZones {
+			numByStateByZone[s][zone] = 0
+		}
+		for _, zone := range r.ringZones {
+			numByStateByZone[s][zone] = 0
+		}
 		oldestTimestampByState[s] = 0
 	}
 
@@ -679,14 +688,19 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 		if !r.IsHealthy(&instance, Reporting, r.KVClient.LastUpdateTime(r.key)) {
 			s = unhealthy
 		}
-		numByState[s]++
+		if _, ok := numByStateByZone[s]; !ok {
+			numByStateByZone[s] = map[string]int{}
+		}
+		numByStateByZone[s][instance.Zone]++
 		if oldestTimestampByState[s] == 0 || instance.Timestamp < oldestTimestampByState[s] {
 			oldestTimestampByState[s] = instance.Timestamp
 		}
 	}
 
-	for state, count := range numByState {
-		r.numMembersGaugeVec.WithLabelValues(state).Set(float64(count))
+	for state, zones := range numByStateByZone {
+		for zone, count := range zones {
+			r.numMembersGaugeVec.WithLabelValues(state, zone).Set(float64(count))
+		}
 	}
 	for state, timestamp := range oldestTimestampByState {
 		r.oldestTimestampGaugeVec.WithLabelValues(state).Set(float64(timestamp))

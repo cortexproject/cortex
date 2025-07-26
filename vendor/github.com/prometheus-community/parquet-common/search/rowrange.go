@@ -18,29 +18,29 @@ import (
 )
 
 type RowRange struct {
-	from  int64
-	count int64
+	From  int64
+	Count int64
 }
 
 func NewRowRange(from, count int64) *RowRange {
 	return &RowRange{
-		from:  from,
-		count: count,
+		From:  from,
+		Count: count,
 	}
 }
 
 // Overlaps returns true if the receiver and the given RowRange share any overlapping rows.
-// Both ranges are treated as half-open intervals: [from, from+count).
+// Both ranges are treated as half-open intervals: [From, From+Count).
 func (rr RowRange) Overlaps(o RowRange) bool {
-	endA := rr.from + rr.count
-	endB := o.from + o.count
-	return rr.from < endB && o.from < endA
+	endA := rr.From + rr.Count
+	endB := o.From + o.Count
+	return rr.From < endB && o.From < endA
 }
 
 // Intersection returns the intersection of rr and o. Both are assumed to be overlapping
 func (rr RowRange) Intersection(o RowRange) RowRange {
-	os, oe := max(rr.from, o.from), min(rr.from+rr.count, o.from+o.count)
-	return RowRange{from: os, count: oe - os}
+	os, oe := max(rr.From, o.From), min(rr.From+rr.Count, o.From+o.Count)
+	return RowRange{From: os, Count: oe - os}
 }
 
 // intersect intersects the row ranges from left hand sight with the row ranges from rhs
@@ -49,13 +49,13 @@ func (rr RowRange) Intersection(o RowRange) RowRange {
 func intersectRowRanges(lhs, rhs []RowRange) []RowRange {
 	res := make([]RowRange, 0)
 	for l, r := 0, 0; l < len(lhs) && r < len(rhs); {
-		al, bl := lhs[l].from, lhs[l].from+lhs[l].count
-		ar, br := rhs[r].from, rhs[r].from+rhs[r].count
+		al, bl := lhs[l].From, lhs[l].From+lhs[l].Count
+		ar, br := rhs[r].From, rhs[r].From+rhs[r].Count
 
 		// check if rows intersect
 		if al <= br && ar <= bl {
 			os, oe := max(al, ar), min(bl, br)
-			res = append(res, RowRange{from: os, count: oe - os})
+			res = append(res, RowRange{From: os, Count: oe - os})
 		}
 
 		// advance the cursor of the range that ends first
@@ -70,9 +70,9 @@ func intersectRowRanges(lhs, rhs []RowRange) []RowRange {
 
 // complementRowRanges returns the ranges that are in rhs but not in lhs.
 // For example, if you have:
-// lhs: [{from: 1, count: 3}]  // represents rows 1,2,3
-// rhs: [{from: 0, count: 5}]  // represents rows 0,1,2,3,4
-// The complement would be [{from: 0, count: 1}, {from: 4, count: 1}]  // represents rows 0,4
+// lhs: [{From: 1, Count: 3}]  // represents rows 1,2,3
+// rhs: [{From: 0, Count: 5}]  // represents rows 0,1,2,3,4
+// The complement would be [{From: 0, Count: 1}, {From: 4, Count: 1}]  // represents rows 0,4
 // because these are the rows in rhs that are not in lhs.
 //
 // The function assumes that lhs and rhs are simplified (no overlapping ranges)
@@ -83,8 +83,8 @@ func complementRowRanges(lhs, rhs []RowRange) []RowRange {
 
 	l, r := 0, 0
 	for l < len(lhs) && r < len(rhs) {
-		al, bl := lhs[l].from, lhs[l].from+lhs[l].count
-		ar, br := rhs[r].from, rhs[r].from+rhs[r].count
+		al, bl := lhs[l].From, lhs[l].From+lhs[l].Count
+		ar, br := rhs[r].From, rhs[r].From+rhs[r].Count
 
 		// check if rows intersect
 		switch {
@@ -93,7 +93,7 @@ func complementRowRanges(lhs, rhs []RowRange) []RowRange {
 			if bl <= br {
 				l++
 			} else {
-				res = append(res, RowRange{from: ar, count: br - ar})
+				res = append(res, RowRange{From: ar, Count: br - ar})
 				r++
 			}
 		case al < ar && bl > br:
@@ -102,20 +102,20 @@ func complementRowRanges(lhs, rhs []RowRange) []RowRange {
 		case al < ar && bl <= br:
 			// l covers r from left but has room on top
 			oe := min(bl, br)
-			rhs[r].from += oe - ar
-			rhs[r].count -= oe - ar
+			rhs[r].From += oe - ar
+			rhs[r].Count -= oe - ar
 			l++
 		case al >= ar && bl > br:
 			// l covers r from right but has room on bottom
 			os := max(al, ar)
-			res = append(res, RowRange{from: ar, count: os - ar})
+			res = append(res, RowRange{From: ar, Count: os - ar})
 			r++
 		case al >= ar && bl <= br:
 			// l is included r
 			os, oe := max(al, ar), min(bl, br)
-			res = append(res, RowRange{from: rhs[r].from, count: os - rhs[r].from})
-			rhs[r].from = oe
-			rhs[r].count = br - oe
+			res = append(res, RowRange{From: rhs[r].From, Count: os - rhs[r].From})
+			rhs[r].From = oe
+			rhs[r].Count = br - oe
 			l++
 		}
 	}
@@ -133,15 +133,15 @@ func simplify(rr []RowRange) []RowRange {
 	}
 
 	sort.Slice(rr, func(i, j int) bool {
-		return rr[i].from < rr[j].from
+		return rr[i].From < rr[j].From
 	})
 
 	tmp := make([]RowRange, 0)
 	l := rr[0]
 	for i := 1; i < len(rr); i++ {
 		r := rr[i]
-		al, bl := l.from, l.from+l.count
-		ar, br := r.from, r.from+r.count
+		al, bl := l.From, l.From+l.Count
+		ar, br := r.From, r.From+r.Count
 		if bl < ar {
 			tmp = append(tmp, l)
 			l = r
@@ -155,15 +155,15 @@ func simplify(rr []RowRange) []RowRange {
 		}
 
 		l = RowRange{
-			from:  from,
-			count: count,
+			From:  from,
+			Count: count,
 		}
 	}
 
 	tmp = append(tmp, l)
 	res := make([]RowRange, 0, len(tmp))
 	for i := range tmp {
-		if tmp[i].count != 0 {
+		if tmp[i].Count != 0 {
 			res = append(res, tmp[i])
 		}
 	}

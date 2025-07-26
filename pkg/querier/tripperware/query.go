@@ -789,6 +789,17 @@ func SetRequestHeaders(h http.Header, defaultCodecType CodecType, compression Co
 	}
 }
 
+func ParseResponseSizeHeader(header string) (int, bool, error) {
+	if header == "" {
+		return 0, false, nil
+	}
+	size, err := strconv.Atoi(header)
+	if err != nil {
+		return 0, false, err
+	}
+	return size, true, nil
+}
+
 func UnmarshalResponse(r *http.Response, buf []byte, resp *PrometheusResponse) error {
 	if r.Header == nil {
 		return json.Unmarshal(buf, resp)

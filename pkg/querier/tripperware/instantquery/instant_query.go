@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -110,26 +109,29 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 		return nil, err
 	}
 
-	responseSize := 0
 	responseSizeHeader := r.Header.Get("X-Uncompressed-Length")
-	if responseSizeHeader != "" {
-		var err error
-		responseSize, err = strconv.Atoi(responseSizeHeader)
-		if err != nil {
-			log.Error(err)
-			return nil, err
-		}
-	}
-
 	responseSizeLimiter := limiter.ResponseSizeLimiterFromContextWithFallback(ctx)
-	if err := responseSizeLimiter.AddResponseBytes(responseSize); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
+	responseSize, hasSizeHeader, err := tripperware.ParseResponseSizeHeader(responseSizeHeader)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	if hasSizeHeader {
+		if err := responseSizeLimiter.AddResponseBytes(responseSize); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
+		}
 	}
 
 	body, err := tripperware.BodyBytes(r, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err
+	}
+
+	if !hasSizeHeader {
+		if err := responseSizeLimiter.AddResponseBytes(len(body)); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
+		}
 	}
 
 	if r.StatusCode/100 != 2 {

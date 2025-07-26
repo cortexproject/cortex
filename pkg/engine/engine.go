@@ -59,15 +59,16 @@ type Engine struct {
 	engineSwitchQueriesTotal *prometheus.CounterVec
 }
 
-func New(opts promql.EngineOpts, enableThanosEngine bool, reg prometheus.Registerer) *Engine {
+func New(opts promql.EngineOpts, thanosEngineCfg ThanosEngineConfig, reg prometheus.Registerer) *Engine {
 	prometheusEngine := promql.NewEngine(opts)
 
 	var thanosEngine *thanosengine.Engine
-	if enableThanosEngine {
+	if thanosEngineCfg.Enabled {
 		thanosEngine = thanosengine.New(thanosengine.Opts{
 			EngineOpts:        opts,
-			LogicalOptimizers: logicalplan.DefaultOptimizers,
+			LogicalOptimizers: thanosEngineCfg.LogicalOptimizers,
 			EnableAnalysis:    true,
+			EnableXFunctions:  thanosEngineCfg.EnableXFunctions,
 		})
 	}
 

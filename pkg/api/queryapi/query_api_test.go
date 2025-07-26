@@ -76,7 +76,7 @@ func Test_CustomAPI(t *testing.T) {
 			MaxSamples: 100,
 			Timeout:    time.Second * 2,
 		},
-		false,
+		engine2.ThanosEngineConfig{Enabled: false},
 		prometheus.NewRegistry())
 
 	mockQueryable := &mockSampleAndChunkQueryable{
@@ -225,7 +225,7 @@ func Test_InvalidCodec(t *testing.T) {
 			MaxSamples: 100,
 			Timeout:    time.Second * 2,
 		},
-		false,
+		engine2.ThanosEngineConfig{Enabled: false},
 		prometheus.NewRegistry())
 
 	mockQueryable := &mockSampleAndChunkQueryable{
@@ -264,7 +264,7 @@ func Test_CustomAPI_StatsRenderer(t *testing.T) {
 			MaxSamples: 100,
 			Timeout:    time.Second * 2,
 		},
-		false,
+		engine2.ThanosEngineConfig{Enabled: false},
 		prometheus.NewRegistry())
 
 	mockQueryable := &mockSampleAndChunkQueryable{
@@ -311,7 +311,7 @@ func Test_Logicalplan_Requests(t *testing.T) {
 			MaxSamples: 100,
 			Timeout:    time.Second * 2,
 		},
-		true,
+		engine2.ThanosEngineConfig{Enabled: true},
 		prometheus.NewRegistry(),
 	)
 

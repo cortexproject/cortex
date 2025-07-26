@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
+	"github.com/thanos-io/promql-engine/execution/parse"
 
 	utillog "github.com/cortexproject/cortex/pkg/util/log"
 )
@@ -39,7 +41,7 @@ func TestEngine_Fallback(t *testing.T) {
 		Logger: utillog.GoKitLogToSlog(log.NewNopLogger()),
 		Reg:    reg,
 	}
-	queryEngine := New(opts, true, reg)
+	queryEngine := New(opts, ThanosEngineConfig{Enabled: true}, reg)
 
 	// instant query, should go to fallback
 	_, _ = queryEngine.NewInstantQuery(ctx, queryable, nil, "unimplemented(foo)", now)
@@ -70,7 +72,7 @@ func TestEngine_Switch(t *testing.T) {
 		Logger: utillog.GoKitLogToSlog(log.NewNopLogger()),
 		Reg:    reg,
 	}
-	queryEngine := New(opts, true, reg)
+	queryEngine := New(opts, ThanosEngineConfig{Enabled: true}, reg)
 
 	// Query Prometheus engine
 	r := &http.Request{Header: http.Header{}}
@@ -99,6 +101,31 @@ func TestEngine_Switch(t *testing.T) {
 	`), "cortex_engine_switch_queries_total"))
 }
 
+func TestEngine_XFunctions(t *testing.T) {
+	ctx := context.Background()
+	reg := prometheus.NewRegistry()
+
+	now := time.Now()
+	start := time.Now().Add(-time.Minute * 5)
+	step := time.Minute
+	queryable := promqltest.LoadedStorage(t, "")
+	opts := promql.EngineOpts{
+		Logger: utillog.GoKitLogToSlog(log.NewNopLogger()),
+		Reg:    reg,
+	}
+	queryEngine := New(opts, ThanosEngineConfig{Enabled: true, EnableXFunctions: true}, reg)
+
+	for name := range parse.XFunctions {
+		t.Run(name, func(t *testing.T) {
+			_, err := queryEngine.NewInstantQuery(ctx, queryable, nil, fmt.Sprintf("%s(foo[1m])", name), now)
+			require.NoError(t, err)
+
+			_, err = queryEngine.NewRangeQuery(ctx, queryable, nil, fmt.Sprintf("%s(foo[1m])", name), start, now, step)
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestEngine_With_Logical_Plan(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewRegistry()
@@ -111,7 +138,7 @@ func TestEngine_With_Logical_Plan(t *testing.T) {
 		Logger: utillog.GoKitLogToSlog(log.NewNopLogger()),
 		Reg:    reg,
 	}
-	queryEngine := New(opts, true, reg)
+	queryEngine := New(opts, ThanosEngineConfig{Enabled: true}, reg)
 
 	range_lp := createTestLogicalPlan(t, start, now, step, "up")
 	instant_lp := createTestLogicalPlan(t, now, now, 0, "up")

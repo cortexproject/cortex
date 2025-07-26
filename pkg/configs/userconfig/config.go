@@ -9,10 +9,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"gopkg.in/yaml.v3"
 
+	"github.com/cortexproject/cortex/pkg/parser"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 

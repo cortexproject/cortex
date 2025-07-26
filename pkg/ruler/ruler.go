@@ -29,6 +29,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/engine"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
@@ -172,6 +174,8 @@ type Config struct {
 
 	EnableHAEvaluation   bool          `yaml:"enable_ha_evaluation"`
 	LivenessCheckTimeout time.Duration `yaml:"liveness_check_timeout"`
+
+	ThanosEngine engine.ThanosEngineConfig `yaml:"thanos_engine"`
 }
 
 // Validate config and returns error on failure
@@ -199,6 +203,11 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 	if !util.StringsContain(supportedQueryResponseFormats, cfg.QueryResponseFormat) {
 		return errInvalidQueryResponseFormat
 	}
+
+	if err := cfg.ThanosEngine.Validate(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -208,6 +217,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ruler.frontendClient", "", f)
 	cfg.Ring.RegisterFlags(f)
 	cfg.Notifier.RegisterFlags(f)
+	cfg.ThanosEngine.RegisterFlagsWithPrefix("ruler.", f)
 
 	// Deprecated Flags that will be maintained to avoid user disruption
 
@@ -1278,7 +1288,7 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 			}
 
 			var ruleDesc *RuleStateDesc
-			query, err := parser.ParseExpr(r.GetExpr())
+			query, err := cortexparser.ParseExpr(r.GetExpr())
 			if err != nil {
 				return nil, errors.Errorf("failed to parse rule query '%v'", r.GetExpr())
 			}

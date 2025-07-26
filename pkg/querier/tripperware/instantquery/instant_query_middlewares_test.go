@@ -79,7 +79,6 @@ func TestRoundTrip(t *testing.T) {
 		time.Minute,
 		0,
 		0,
-		false,
 	)
 
 	for i, tc := range []struct {
@@ -192,7 +191,6 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 				time.Minute,
 				0,
 				0,
-				false,
 			)
 
 			ctx := user.InjectOrgID(context.Background(), "1")

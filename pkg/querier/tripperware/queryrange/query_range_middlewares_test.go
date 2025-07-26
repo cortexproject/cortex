@@ -231,8 +231,7 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 			require.NoError(t, err)
 
 			// check request body
-			body, err := io.ReadAll(req.Body)
-			require.NoError(t, err)
+			body := []byte(req.PostFormValue("plan"))
 			if tc.expectEmptyBody {
 				require.Empty(t, body)
 			} else {

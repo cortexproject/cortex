@@ -3,9 +3,11 @@ package tripperware
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
@@ -123,4 +125,26 @@ func VerticalShardSizeFromContext(ctx context.Context) (int, bool) {
 
 func InjectVerticalShardSizeToContext(ctx context.Context, verticalShardSize int) context.Context {
 	return context.WithValue(ctx, verticalShardsKey{}, verticalShardSize)
+}
+
+type disableWithoutNameAnalyzer struct {
+	analyzer querysharding.Analyzer
+}
+
+func NewDisableWithoutNameAnalyzer(analyzer querysharding.Analyzer) *disableWithoutNameAnalyzer {
+	return &disableWithoutNameAnalyzer{analyzer: analyzer}
+}
+
+func (d *disableWithoutNameAnalyzer) Analyze(query string) (querysharding.QueryAnalysis, error) {
+	analysis, err := d.analyzer.Analyze(query)
+	if err != nil || !analysis.IsShardable() || analysis.ShardBy() {
+		return analysis, err
+	}
+
+	// We are only interested in not shard by case.
+	if slices.Contains(analysis.ShardingLabels(), labels.MetricName) {
+		// Mark as not shardable.
+		return querysharding.QueryAnalysis{}, nil
+	}
+	return analysis, nil
 }

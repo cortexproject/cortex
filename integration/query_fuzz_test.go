@@ -799,7 +799,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000, false)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, false)
 }
 
 func TestProtobufCodecFuzz(t *testing.T) {
@@ -1838,7 +1838,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 				failures++
 			}
 		} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
-			t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
+			t.Logf("case %d results mismatch.\n%s: %s\nres1 len: %d data: %s\nres2 len: %d data: %s\n", i, qt, tc.query, resultLength(tc.res1), tc.res1.String(), resultLength(tc.res2), tc.res2.String())
 			failures++
 		}
 	}
@@ -1871,4 +1871,18 @@ func isValidQuery(generatedQuery parser.Expr, skipStdAggregations bool) bool {
 		return false
 	}
 	return isValid
+}
+
+func resultLength(x model.Value) int {
+	vx, xvec := x.(model.Vector)
+	if xvec {
+		return vx.Len()
+	}
+
+	mx, xMatrix := x.(model.Matrix)
+	if xMatrix {
+		return mx.Len()
+	}
+	// Other type, return 0
+	return 0
 }

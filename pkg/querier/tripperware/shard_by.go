@@ -3,20 +3,25 @@ package tripperware
 import (
 	"context"
 	"net/http"
-	"slices"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/prometheus/model/labels"
+	"github.com/pkg/errors"
+	promqlparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/parser"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	cquerysharding "github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+var (
+	stop = errors.New("stop")
 )
 
 func ShardByMiddleware(logger log.Logger, limits Limits, merger Merger, queryAnalyzer querysharding.Analyzer) Middleware {
@@ -127,22 +132,33 @@ func InjectVerticalShardSizeToContext(ctx context.Context, verticalShardSize int
 	return context.WithValue(ctx, verticalShardsKey{}, verticalShardSize)
 }
 
-type disableWithoutNameAnalyzer struct {
+type disableBinaryExpressionAnalyzer struct {
 	analyzer querysharding.Analyzer
 }
 
-func NewDisableWithoutNameAnalyzer(analyzer querysharding.Analyzer) *disableWithoutNameAnalyzer {
-	return &disableWithoutNameAnalyzer{analyzer: analyzer}
+func NewDisableBinaryExpressionAnalyzer(analyzer querysharding.Analyzer) *disableBinaryExpressionAnalyzer {
+	return &disableBinaryExpressionAnalyzer{analyzer: analyzer}
 }
 
-func (d *disableWithoutNameAnalyzer) Analyze(query string) (querysharding.QueryAnalysis, error) {
+func (d *disableBinaryExpressionAnalyzer) Analyze(query string) (querysharding.QueryAnalysis, error) {
 	analysis, err := d.analyzer.Analyze(query)
-	if err != nil || !analysis.IsShardable() || analysis.ShardBy() {
+	if err != nil || !analysis.IsShardable() {
 		return analysis, err
 	}
 
-	// We are only interested in not shard by case.
-	if slices.Contains(analysis.ShardingLabels(), labels.MetricName) {
+	expr, _ := parser.ParseExpr(query)
+	isShardable := true
+	promqlparser.Inspect(expr, func(node promqlparser.Node, nodes []promqlparser.Node) error {
+		switch n := node.(type) {
+		case *promqlparser.BinaryExpr:
+			if !n.VectorMatching.On && len(n.VectorMatching.MatchingLabels) == 0 {
+				isShardable = false
+				return stop
+			}
+		}
+		return nil
+	})
+	if !isShardable {
 		// Mark as not shardable.
 		return querysharding.QueryAnalysis{}, nil
 	}

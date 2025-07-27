@@ -35,7 +35,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"

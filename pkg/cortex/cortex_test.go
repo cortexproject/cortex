@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	prom_config "github.com/prometheus/prometheus/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
@@ -216,6 +217,42 @@ func TestConfigValidation(t *testing.T) {
 				return configuration
 			},
 			expectedError: nil,
+		},
+		{
+			name: "should not fail validation for empty name validation scheme (use legacy by default)",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = ""
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
+			name: "should not fail validation for legacy name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = prom_config.LegacyValidationConfig
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
+			name: "should not fail validation for utf-8 name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = prom_config.UTF8ValidationConfig
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
+			name: "should fail validation for invalid name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = "invalid"
+				return configuration
+			},
+			expectedError: fmt.Errorf("invalid name validation scheme"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

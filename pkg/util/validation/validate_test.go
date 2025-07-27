@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -15,10 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
-
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestValidateLabels(t *testing.T) {

@@ -137,6 +137,7 @@ prom:
 func (qf *Engine) MakeInstantQueryFromPlan(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, root logicalplan.Node, ts time.Time, qs string) (promql.Query, error) {
 	if engineType := GetEngineType(ctx); engineType == Prometheus {
 		qf.engineSwitchQueriesTotal.WithLabelValues(string(Prometheus)).Inc()
+		goto prom
 	} else if engineType == Thanos {
 		qf.engineSwitchQueriesTotal.WithLabelValues(string(Thanos)).Inc()
 	}
@@ -161,6 +162,7 @@ prom:
 func (qf *Engine) MakeRangeQueryFromPlan(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, root logicalplan.Node, start time.Time, end time.Time, interval time.Duration, qs string) (promql.Query, error) {
 	if engineType := GetEngineType(ctx); engineType == Prometheus {
 		qf.engineSwitchQueriesTotal.WithLabelValues(string(Prometheus)).Inc()
+		goto prom
 	} else if engineType == Thanos {
 		qf.engineSwitchQueriesTotal.WithLabelValues(string(Thanos)).Inc()
 	}

@@ -112,11 +112,11 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	if len(byteLP) != 0 {
 		logicalPlan, err := logicalplan.Unmarshal(byteLP)
 		if err != nil {
-			return apiFuncResult{nil, &apiError{errorBadData, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
+			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
 		}
 		qry, err = q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlan, startTime, endTime, stepDuration, r.FormValue("query"))
 		if err != nil {
-			return apiFuncResult{nil, &apiError{errorBadData, fmt.Errorf("failed to create range query from logical plan: %v", err)}, nil, nil}
+			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("failed to create range query from logical plan: %v", err)}, nil, nil}
 		}
 	} else { // if there is logical plan field is empty, fall back
 		qry, err = q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), startTime, endTime, stepDuration)
@@ -185,11 +185,11 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 	if len(byteLP) != 0 {
 		logicalPlan, err := logicalplan.Unmarshal(byteLP)
 		if err != nil {
-			return apiFuncResult{nil, &apiError{errorBadData, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
+			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
 		}
 		qry, err = q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlan, tsTime, r.FormValue("query"))
 		if err != nil {
-			return apiFuncResult{nil, &apiError{errorBadData, fmt.Errorf("failed to create range query from logical plan: %v", err)}, nil, nil}
+			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("failed to create instant query from logical plan: %v", err)}, nil, nil}
 		}
 	} else { // if there is logical plan field is empty, fall back
 		qry, err = q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), tsTime)

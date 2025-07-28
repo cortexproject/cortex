@@ -44,6 +44,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/instantquery"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
+	cortexquerysharding "github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -511,7 +512,13 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
-	queryAnalyzer := querysharding.NewQueryAnalyzer()
+	var queryAnalyzer querysharding.Analyzer
+	queryAnalyzer = querysharding.NewQueryAnalyzer()
+	if t.Cfg.Querier.EnableParquetQueryable {
+		// Disable vertical sharding for binary expression with ignore for parquet queryable.
+		queryAnalyzer = cortexquerysharding.NewDisableBinaryExpressionAnalyzer(queryAnalyzer)
+	}
+
 	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
 	prometheusCodec := queryrange.NewPrometheusCodec(false, t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)

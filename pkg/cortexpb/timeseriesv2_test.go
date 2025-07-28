@@ -15,7 +15,7 @@ func TestPreallocTimeseriesV2SliceFromPool(t *testing.T) {
 		first := PreallocTimeseriesV2SliceFromPool()
 		second := PreallocTimeseriesV2SliceFromPool()
 
-		assert.NotSame(t, first, second)
+		assert.NotSame(t, &first, &second)
 	})
 
 	t.Run("instance is cleaned before reusing", func(t *testing.T) {

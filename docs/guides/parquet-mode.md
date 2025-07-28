@@ -69,19 +69,19 @@ Configure the parquet converter in your Cortex configuration:
 parquet_converter:
   # Data directory for caching blocks during conversion
   data_dir: "./data"
-  
+
   # Frequency of conversion job execution
   conversion_interval: 1m
-  
+
   # Maximum rows per parquet row group
   max_rows_per_row_group: 1000000
-  
+
   # Number of concurrent meta file sync operations
   meta_sync_concurrency: 20
-  
+
   # Enable file buffering to reduce memory usage
   file_buffer_enabled: true
-  
+
   # Ring configuration for distributed conversion
   ring:
     kvstore:
@@ -102,7 +102,7 @@ Enable parquet conversion per tenant using limits:
 limits:
   # Enable parquet converter for all tenants
   parquet_converter_enabled: true
-  
+
   # Shard size for shuffle sharding (0 = disabled)
   parquet_converter_tenant_shard_size: 0.8
 ```
@@ -126,10 +126,10 @@ To enable querying of Parquet files, configure the querier:
 querier:
   # Enable parquet queryable with fallback (experimental)
   enable_parquet_queryable: true
-  
+
   # Cache size for parquet shards
   parquet_queryable_shard_cache_size: 512
-  
+
   # Default block store: "tsdb" or "parquet"
   parquet_queryable_default_block_store: "parquet"
 ```
@@ -142,11 +142,11 @@ Configure query limits specific to parquet operations:
 limits:
   # Maximum number of rows that can be scanned per query
   parquet_max_fetched_row_count: 1000000
-  
+
   # Maximum chunk bytes per query
   parquet_max_fetched_chunk_bytes: 100MB
-  
-  # Maximum data bytes per query  
+
+  # Maximum data bytes per query
   parquet_max_fetched_data_bytes: 1GB
 ```
 
@@ -164,7 +164,7 @@ blocks_storage:
       max_get_range_requests: 3  # Max sub-GetRange requests per GetRange call
       attributes_ttl: 168h  # TTL for caching object attributes
       subrange_ttl: 24h     # TTL for caching individual chunk subranges
-      
+
       # Memcached configuration (if using memcached backend)
       memcached:
         addresses: "memcached:11211"
@@ -174,7 +174,7 @@ blocks_storage:
         max_async_buffer_size: 10000
         max_get_multi_concurrency: 100
         max_get_multi_batch_size: 0
-    
+
     # Parquet labels cache configuration (experimental)
     parquet_labels_cache:
       backend: "memcached"  # Options: "", "inmemory", "memcached", "redis"
@@ -182,7 +182,7 @@ blocks_storage:
       max_get_range_requests: 3  # Max sub-GetRange requests per GetRange call
       attributes_ttl: 168h  # TTL for caching object attributes
       subrange_ttl: 24h     # TTL for caching individual label subranges
-      
+
       # Memcached configuration (if using memcached backend)
       memcached:
         addresses: "memcached:11211"

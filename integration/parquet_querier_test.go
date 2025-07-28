@@ -63,8 +63,9 @@ func TestParquetFuzz(t *testing.T) {
 			"-store-gateway.sharding-enabled":   "false",
 			"--querier.store-gateway-addresses": "nonExistent", // Make sure we do not call Store gateways
 			// alert manager
-			"-alertmanager.web.external-url":      "http://localhost/alertmanager",
-			"-frontend.query-vertical-shard-size": "1",
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+			// Enable vertical sharding.
+			"-frontend.query-vertical-shard-size": "3",
 			"-frontend.max-cache-freshness":       "1m",
 			// enable experimental promQL funcs
 			"-querier.enable-promql-experimental-functions": "true",
@@ -130,16 +131,20 @@ func TestParquetFuzz(t *testing.T) {
 	// Wait until we convert the blocks
 	cortex_testutil.Poll(t, 30*time.Second, true, func() interface{} {
 		found := false
+		foundBucketIndex := false
 
 		err := bkt.Iter(context.Background(), "", func(name string) error {
 			fmt.Println(name)
 			if name == fmt.Sprintf("parquet-markers/%v-parquet-converter-mark.json", id.String()) {
 				found = true
 			}
+			if name == "bucket-index.json.gz" {
+				foundBucketIndex = true
+			}
 			return nil
 		}, objstore.WithRecursiveIter())
 		require.NoError(t, err)
-		return found
+		return found && foundBucketIndex
 	})
 
 	att, err := bkt.Attributes(context.Background(), "bucket-index.json.gz")
@@ -178,7 +183,7 @@ func TestParquetFuzz(t *testing.T) {
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 500, false)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, false)
 
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_queryable_blocks_queried_total"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "type", "parquet"))))

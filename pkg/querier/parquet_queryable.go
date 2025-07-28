@@ -360,8 +360,7 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 	)
 
 	if len(remaining) > 0 && !q.fallbackEnabled {
-		err = fmt.Errorf("consistency check failed because some blocks were not available as parquet files: %s", strings.Join(convertBlockULIDToString(remaining), " "))
-		return nil, nil, err
+		return nil, nil, parquetConsistencyCheckError(remaining)
 	}
 
 	if len(parquet) > 0 {
@@ -415,8 +414,7 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 	)
 
 	if len(remaining) > 0 && !q.fallbackEnabled {
-		err = fmt.Errorf("consistency check failed because some blocks were not available as parquet files: %s", strings.Join(convertBlockULIDToString(remaining), " "))
-		return nil, nil, err
+		return nil, nil, parquetConsistencyCheckError(remaining)
 	}
 
 	if len(parquet) > 0 {
@@ -485,7 +483,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	}
 
 	if len(remaining) > 0 && !q.fallbackEnabled {
-		err = fmt.Errorf("consistency check failed because some blocks were not available as parquet files: %s", strings.Join(convertBlockULIDToString(remaining), " "))
+		err = parquetConsistencyCheckError(remaining)
 		return storage.ErrSeriesSet(err)
 	}
 
@@ -713,6 +711,10 @@ func extractShardMatcherFromContext(ctx context.Context) (*storepb.ShardMatcher,
 	}
 
 	return nil, false
+}
+
+func parquetConsistencyCheckError(blocks []*bucketindex.Block) error {
+	return fmt.Errorf("consistency check failed because some blocks were not available as parquet files: %s", strings.Join(convertBlockULIDToString(blocks), " "))
 }
 
 func convertBlockULIDToString(blocks []*bucketindex.Block) []string {

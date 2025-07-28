@@ -13,6 +13,29 @@ The parquet mode consists of two main components:
 - **Parquet Converter**: Converts TSDB blocks to Parquet format
 - **Parquet Queryable**: Enables querying of Parquet files with fallback to TSDB blocks
 
+## Why Parquet Mode?
+
+Traditional TSDB format and Store Gateway architecture face significant challenges when dealing with long-term data storage on object storage:
+
+### TSDB Format Limitations
+- **Random Read Intensive**: TSDB index relies heavily on random reads, where each read becomes a separate request to object storage
+- **Overfetching**: To reduce object storage requests, data needs to be merged, leading to higher bandwidth usage and overfetching
+- **High Cardinality Bottlenecks**: Index postings can become a major bottleneck for high cardinality data
+
+### Store Gateway Operational Challenges
+- **Resource Intensive**: Requires significant local disk space for index headers and high memory utilization
+- **Complex State Management**: Needs complex data sharding when scaling, often causing consistency issues
+- **Query Inefficiencies**: Single-threaded block processing leads to high latency for large blocks
+
+### Parquet Advantages
+[Apache Parquet](https://parquet.apache.org/) addresses these challenges through:
+- **Columnar Storage**: Data organized by columns reduces object storage requests as only specific columns need to be fetched
+- **Stateless Design**: Rich file metadata eliminates the need for local state like index headers
+- **Advanced Compression**: Reduces storage costs and improves query performance
+- **Parallel Processing**: Row groups enable parallel processing for better scalability
+
+For more details on the design rationale, see the [Parquet Storage Proposal](../proposals/parquet-storage.md).
+
 ## Architecture
 
 The parquet system works by:
@@ -146,10 +169,7 @@ The conversion process:
 When parquet queryable is enabled:
 
 1. **Primary Query Path**: Attempts to query Parquet files first
-2. **Fallback Logic**: Falls back to TSDB blocks if:
-   - Parquet files are not available
-   - Query fails on Parquet files
-   - Block hasn't been converted yet
+2. **Fallback Logic**: Falls back to TSDB blocks if the Parquet files are not available - block hasn't been converted yet
 3. **Hybrid Queries**: Can query both Parquet and TSDB blocks in the same query
 
 ## Monitoring
@@ -222,11 +242,3 @@ When enabling parquet mode:
 2. **Monitor Resources**: Watch CPU, memory, and storage usage
 3. **Backup Strategy**: Ensure TSDB blocks remain available as fallback
 4. **Testing**: Thoroughly test query patterns before production deployment
-
-## Future Enhancements
-
-The parquet mode is under active development with planned improvements:
-- Better query optimization
-- Reduced storage overhead
-- Enhanced monitoring and observability
-- Improved conversion performance

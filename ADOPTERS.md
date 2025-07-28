@@ -14,6 +14,7 @@ This is the list of organisations that are using Cortex in **production environm
 * [KakaoEnterprise](https://kakaocloud.com/)
 * [MayaData](https://mayadata.io/)
 * [Northflank](https://northflank.com/)
+* [Open-Xchange](https://www.open-xchange.com/)
 * [Opstrace](https://opstrace.com/)
 * [PITS Globale Datenrettungsdienste](https://www.pitsdatenrettung.de/)
 * [Planetary Quantum](https://www.planetary-quantum.com)

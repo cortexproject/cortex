@@ -1375,3 +1375,109 @@ func TestQuerierEngineConfigs(t *testing.T) {
 	}
 
 }
+
+func TestQuerierDistributedExecution(t *testing.T) {
+	// e2e test setup
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsulWithName("consul")
+	memcached := e2ecache.NewMemcached()
+	require.NoError(t, s.StartAndWaitReady(consul, memcached))
+
+	// initialize the flags
+	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
+	flags := mergeFlags(
+		baseFlags,
+		map[string]string{
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.tsdb.block-ranges-period":         "2h",
+			"-blocks-storage.tsdb.ship-interval":               "1h",
+			"-blocks-storage.bucket-store.sync-interval":       "1s",
+			"-blocks-storage.tsdb.retention-period":            "24h",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-querier.query-store-for-labels-enabled":          "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor": "1",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// Alert manager
+			"-alertmanager.web.external-url":      "http://localhost/alertmanager",
+			"-frontend.query-vertical-shard-size": "1",
+			"-frontend.max-cache-freshness":       "1m",
+			// enable experimental promQL funcs
+			"-querier.enable-promql-experimental-functions": "true",
+			// enable distributed execution (logical plan execution)
+			"-querier.distributed-exec-enabled": "true",
+		},
+	)
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	// start services
+	queryScheduler := e2ecortex.NewQueryScheduler("query-scheduler", flags, "")
+	require.NoError(t, s.StartAndWaitReady(queryScheduler))
+	flags["-frontend.scheduler-address"] = queryScheduler.NetworkGRPCEndpoint()
+	flags["-querier.scheduler-address"] = queryScheduler.NetworkGRPCEndpoint()
+
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	querier1 := e2ecortex.NewQuerier("querier-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	querier2 := e2ecortex.NewQuerier("querier-2", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+
+	require.NoError(t, s.StartAndWaitReady(querier1, querier2, ingester, distributor))
+	require.NoError(t, s.WaitReady(queryFrontend))
+
+	// wait until distributor and queriers have updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier1.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier2.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	// push some series to Cortex.
+	distClient, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)
+	require.NoError(t, err)
+
+	series1Timestamp := time.Now()
+	series2Timestamp := series1Timestamp.Add(time.Minute * 1)
+	series1, expectedVector1 := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
+	series2, expectedVector2 := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
+
+	res, err := distClient.Push(series1)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	res, err = distClient.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	for _, q := range []*e2ecortex.CortexService{querier1, querier2} {
+		c, err := e2ecortex.NewClient("", q.HTTPEndpoint(), "", "", userID)
+		require.NoError(t, err)
+
+		_, err = c.Query("series_1", series1Timestamp)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, queryScheduler.WaitSumMetrics(e2e.Equals(2), "cortex_query_scheduler_connected_querier_clients"))
+
+	// main tests
+	// - make sure queries are still executable with distributed execution enabled
+	var body []byte
+	res, body, err = distClient.QueryRaw(`sum({job="test"})`, series1Timestamp, map[string]string{})
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	require.Equal(t, expectedVector1, string(body))
+
+	res, body, err = distClient.QueryRaw(`sum({job="test"})`, series2Timestamp, map[string]string{})
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	require.Equal(t, expectedVector2, string(body))
+}

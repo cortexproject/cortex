@@ -104,7 +104,7 @@ limits:
   parquet_converter_enabled: true
   
   # Shard size for shuffle sharding (0 = disabled)
-  parquet_converter_tenant_shard_size: 0
+  parquet_converter_tenant_shard_size: 0.8
 ```
 
 You can also configure per-tenant settings using runtime configuration:
@@ -168,9 +168,10 @@ The conversion process:
 
 When parquet queryable is enabled:
 
-1. **Primary Query Path**: Attempts to query Parquet files first
-2. **Fallback Logic**: Falls back to TSDB blocks if the Parquet files are not available - block hasn't been converted yet
-3. **Hybrid Queries**: Can query both Parquet and TSDB blocks in the same query
+1. **Block Discovery**: The bucket index is used to discover available blocks
+   * The bucket index now contains metadata indicating whether parquet files are available for querying
+1. **Query Execution**: Queries prioritize parquet files when available, falling back to TSDB blocks when parquet conversion is incomplete
+1. **Hybrid Queries**: Supports querying both parquet and TSDB blocks within the same query operation
 
 ## Monitoring
 
@@ -220,12 +221,6 @@ cortex_parquet_queryable_cache_misses_total
 2. **Cache Size**: Tune `parquet_queryable_shard_cache_size` based on available memory
 3. **Concurrency**: Adjust `meta_sync_concurrency` based on object storage performance
 4. **Conversion Interval**: Balance between conversion latency and system load
-
-### Query Optimization
-
-1. **Time Range Queries**: Parquet performs best with time-range based queries
-2. **Label Filtering**: Use label filters to reduce data scanning
-3. **Aggregation**: Leverage Parquet's columnar format for aggregation queries
 
 ## Limitations
 

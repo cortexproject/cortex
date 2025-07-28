@@ -8,6 +8,10 @@ import "gogoproto/gogo.proto";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
+enum SourceEnum {
+  API = 0;
+  RULE = 1;
+}
 
 message MessageWithBufRef {
   option (gogoproto.typedecl) = false;
@@ -15,15 +19,100 @@ message MessageWithBufRef {
 
 message WriteRequest  {
   repeated TimeSeries timeseries = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "PreallocTimeseries"];
-  enum SourceEnum {
-    API = 0;
-    RULE = 1;
-  }
   SourceEnum Source = 2;
   repeated MetricMetadata metadata = 3 [(gogoproto.nullable) = true];
 
   bool skip_label_name_validation = 1000; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
   MessageWithBufRef Ref = 1001 [(gogoproto.embed) = true, (gogoproto.customtype) = "MessageWithBufRef", (gogoproto.nullable) = false];
+}
+
+// refer to https://github.com/prometheus/prometheus/blob/v3.5.0/prompb/io/prometheus/write/v2/types.proto
+// The histogram and Sample are shared with PRW1.
+message WriteRequestV2 {
+  repeated string symbols = 4;
+  repeated TimeSeriesV2 timeseries = 5 [(gogoproto.nullable) = false, (gogoproto.customtype) = "PreallocTimeseriesV2"];
+  SourceEnum Source = 6;
+
+  bool skip_label_name_validation = 1000; // set intentionally high to keep WriteRequest compatible with upstream Prometheus
+  MessageWithBufRef Ref = 1001 [(gogoproto.embed) = true, (gogoproto.customtype) = "MessageWithBufRef", (gogoproto.nullable) = false];
+}
+
+message TimeSeriesV2 {
+  repeated uint32 labels_refs = 1;
+  // Timeseries messages can either specify samples or (native) histogram samples
+  // (histogram field), but not both. For a typical sender (real-time metric
+  // streaming), in healthy cases, there will be only one sample or histogram.
+  //
+  // Samples and histograms are sorted by timestamp (older first).
+  repeated Sample samples = 2 [(gogoproto.nullable) = false];
+  repeated Histogram histograms = 3 [(gogoproto.nullable) = false];
+
+  // exemplars represents an optional set of exemplars attached to this series' samples.
+  repeated ExemplarV2 exemplars = 4 [(gogoproto.nullable) = false];
+
+  // metadata represents the metadata associated with the given series' samples.
+  MetadataV2 metadata = 5 [(gogoproto.nullable) = false];
+
+  // created_timestamp represents an optional created timestamp associated with
+  // this series' samples in ms format, typically for counter or histogram type
+  // metrics. Created timestamp represents the time when the counter started
+  // counting (sometimes referred to as start timestamp), which can increase
+  // the accuracy of query results.
+  //
+  // Note that some receivers might require this and in return fail to
+  // ingest such samples within the Request.
+  //
+  // For Go, see github.com/prometheus/prometheus/model/timestamp/timestamp.go
+  // for conversion from/to time.Time to Prometheus timestamp.
+  //
+  // Note that the "optional" keyword is omitted due to
+  // https://cloud.google.com/apis/design/design_patterns.md#optional_primitive_fields
+  // Zero value means value not set. If you need to use exactly zero value for
+  // the timestamp, use 1 millisecond before or after.
+  int64 created_timestamp = 6;
+}
+
+// Exemplar is an additional information attached to some series' samples.
+// It is typically used to attach an example trace or request ID associated with
+// the metric changes.
+message ExemplarV2 {
+  // labels_refs is an optional list of label name-value pair references, encoded
+  // as indices to the Request.symbols array. This list's len is always
+  // a multiple of 2, and the underlying labels should be sorted lexicographically.
+  // If the exemplar references a trace it should use the `trace_id` label name, as a best practice.
+  repeated uint32 labels_refs = 1;
+  // value represents an exact example value. This can be useful when the exemplar
+  // is attached to a histogram, which only gives an estimated value through buckets.
+  double value = 2;
+  // timestamp represents the timestamp of the exemplar in ms.
+  //
+  // For Go, see github.com/prometheus/prometheus/model/timestamp/timestamp.go
+  // for conversion from/to time.Time to Prometheus timestamp.
+  int64 timestamp = 3;
+}
+
+// Metadata represents the metadata associated with the given series' samples.
+message MetadataV2 {
+  enum MetricType {
+    METRIC_TYPE_UNSPECIFIED = 0;
+    METRIC_TYPE_COUNTER = 1;
+    METRIC_TYPE_GAUGE = 2;
+    METRIC_TYPE_HISTOGRAM = 3;
+    METRIC_TYPE_GAUGEHISTOGRAM = 4;
+    METRIC_TYPE_SUMMARY = 5;
+    METRIC_TYPE_INFO = 6;
+    METRIC_TYPE_STATESET = 7;
+  }
+
+  MetricType type = 1;
+  // help_ref is a reference to the Request.symbols array representing help
+  // text for the metric. Help is optional, reference should point to an empty string in
+  // such a case.
+  uint32 help_ref = 3;
+  // unit_ref is a reference to the Request.symbols array representing a unit
+  // for the metric. Unit is optional, reference should point to an empty string in
+  // such a case.
+  uint32 unit_ref = 4;
 }
 
 message StreamWriteRequest {

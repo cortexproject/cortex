@@ -1420,8 +1420,7 @@ func TestQuerierDistributedExecution(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(minio))
 
 	// start services
-	var queryScheduler *e2ecortex.CortexService
-	queryScheduler = e2ecortex.NewQueryScheduler("query-scheduler", flags, "")
+	queryScheduler := e2ecortex.NewQueryScheduler("query-scheduler", flags, "")
 	require.NoError(t, s.StartAndWaitReady(queryScheduler))
 	flags["-frontend.scheduler-address"] = queryScheduler.NetworkGRPCEndpoint()
 	flags["-querier.scheduler-address"] = queryScheduler.NetworkGRPCEndpoint()
@@ -1447,7 +1446,7 @@ func TestQuerierDistributedExecution(t *testing.T) {
 	require.NoError(t, err)
 
 	series1Timestamp := time.Now()
-	series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
+	series2Timestamp := series1Timestamp.Add(time.Minute * 1)
 	series1, expectedVector1 := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
 	series2, expectedVector2 := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
 
@@ -1463,7 +1462,7 @@ func TestQuerierDistributedExecution(t *testing.T) {
 		c, err := e2ecortex.NewClient("", q.HTTPEndpoint(), "", "", userID)
 		require.NoError(t, err)
 
-		_, err = c.Query("series_1", now)
+		_, err = c.Query("series_1", series1Timestamp)
 		require.NoError(t, err)
 	}
 
@@ -1471,12 +1470,13 @@ func TestQuerierDistributedExecution(t *testing.T) {
 
 	// main tests
 	// - make sure queries are still executable with distributed execution enabled
-	res, body, err = c.QueryRaw(`sum({job="test"})`, series1Timestamp, map[string]string{})
+	var body []byte
+	res, body, err = distClient.QueryRaw(`sum({job="test"})`, series1Timestamp, map[string]string{})
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 	require.Equal(t, expectedVector1, string(body))
 
-	res, body, err = c.QueryRaw(`sum({job="test"})`, series2Timestamp, map[string]string{})
+	res, body, err = distClient.QueryRaw(`sum({job="test"})`, series2Timestamp, map[string]string{})
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 	require.Equal(t, expectedVector2, string(body))

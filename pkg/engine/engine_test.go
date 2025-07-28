@@ -14,10 +14,11 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/promql/promqltest"
-	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
-	"github.com/thanos-io/promql-engine/execution/parse"
+
+	"github.com/stretchr/testify/require"
 
 	utillog "github.com/cortexproject/cortex/pkg/util/log"
 )

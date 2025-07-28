@@ -19,17 +19,18 @@ Traditional TSDB format and Store Gateway architecture face significant challeng
 
 ### TSDB Format Limitations
 - **Random Read Intensive**: TSDB index relies heavily on random reads, where each read becomes a separate request to object storage
-- **Overfetching**: To reduce object storage requests, data needs to be merged, leading to higher bandwidth usage and overfetching
+- **Overfetching**: To reduce object storage requests, data that are close together are merged in a sigle request, leading to higher bandwidth usage and overfetching
 - **High Cardinality Bottlenecks**: Index postings can become a major bottleneck for high cardinality data
 
 ### Store Gateway Operational Challenges
-- **Resource Intensive**: Requires significant local disk space for index headers and high memory utilization
-- **Complex State Management**: Needs complex data sharding when scaling, often causing consistency and availability issues
+- **Resource Intensive**: Requires significant local disk space for index headers and high memory usage
+- **Complex State Management**: Requires complex data sharding when scaling, which often leads to consistency and availability issues, as well as long startup times
 - **Query Inefficiencies**: Single-threaded block processing leads to high latency for large blocks
 
 ### Parquet Advantages
 [Apache Parquet](https://parquet.apache.org/) addresses these challenges through:
 - **Columnar Storage**: Data organized by columns reduces object storage requests as only specific columns need to be fetched
+- **Data Locality**: Series that are likely to be queried together are co-located to minimize I/O operations
 - **Stateless Design**: Rich file metadata eliminates the need for local state like index headers
 - **Advanced Compression**: Reduces storage costs and improves query performance
 - **Parallel Processing**: Row groups enable parallel processing for better scalability

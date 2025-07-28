@@ -87,15 +87,12 @@ $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 pkg/cortexpb/cortex.pb.go: pkg/cortexpb/cortex.proto
 pkg/ingester/client/ingester.pb.go: pkg/ingester/client/ingester.proto
 pkg/distributor/distributorpb/distributor.pb.go: pkg/distributor/distributorpb/distributor.proto
-pkg/ingester/wal.pb.go: pkg/ingester/wal.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/frontend/v1/frontendv1pb/frontend.pb.go: pkg/frontend/v1/frontendv1pb/frontend.proto
 pkg/frontend/v2/frontendv2pb/frontend.pb.go: pkg/frontend/v2/frontendv2pb/frontend.proto
 pkg/querier/tripperware/queryrange/queryrange.pb.go: pkg/querier/tripperware/queryrange/queryrange.proto
-pkg/querier/tripperware/instantquery/instantquery.pb.go: pkg/querier/tripperware/instantquery/instantquery.proto
 pkg/querier/tripperware/query.pb.go: pkg/querier/tripperware/query.proto
 pkg/querier/stats/stats.pb.go: pkg/querier/stats/stats.proto
-pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 pkg/ruler/rulespb/rules.pb.go: pkg/ruler/rulespb/rules.proto
 pkg/ruler/ruler.pb.go: pkg/ruler/ruler.proto
 pkg/ring/kv/memberlist/kv.pb.go: pkg/ring/kv/memberlist/kv.proto

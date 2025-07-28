@@ -150,6 +150,61 @@ limits:
   parquet_max_fetched_data_bytes: 1GB
 ```
 
+### Cache Configuration
+
+Parquet mode supports dedicated caching for both chunks and labels to improve query performance. Configure caching in the blocks storage section:
+
+```yaml
+blocks_storage:
+  bucket_store:
+    # Chunks cache configuration for parquet data
+    chunks_cache:
+      backend: "memcached"  # Options: "", "inmemory", "memcached", "redis"
+      subrange_size: 16000  # Size of each subrange for better caching
+      max_get_range_requests: 3  # Max sub-GetRange requests per GetRange call
+      attributes_ttl: 168h  # TTL for caching object attributes
+      subrange_ttl: 24h     # TTL for caching individual chunk subranges
+      
+      # Memcached configuration (if using memcached backend)
+      memcached:
+        addresses: "memcached:11211"
+        timeout: 500ms
+        max_idle_connections: 16
+        max_async_concurrency: 10
+        max_async_buffer_size: 10000
+        max_get_multi_concurrency: 100
+        max_get_multi_batch_size: 0
+    
+    # Parquet labels cache configuration (experimental)
+    parquet_labels_cache:
+      backend: "memcached"  # Options: "", "inmemory", "memcached", "redis"
+      subrange_size: 16000  # Size of each subrange for better caching
+      max_get_range_requests: 3  # Max sub-GetRange requests per GetRange call
+      attributes_ttl: 168h  # TTL for caching object attributes
+      subrange_ttl: 24h     # TTL for caching individual label subranges
+      
+      # Memcached configuration (if using memcached backend)
+      memcached:
+        addresses: "memcached:11211"
+        timeout: 500ms
+        max_idle_connections: 16
+```
+
+#### Cache Backend Options
+
+- **Empty string ("")**: Disables caching
+- **inmemory**: Uses in-memory cache (suitable for single-instance deployments)
+- **memcached**: Uses Memcached for distributed caching (recommended for production)
+- **redis**: Uses Redis for distributed caching
+- **Multi-level**: Comma-separated list for multi-tier caching (e.g., "inmemory,memcached")
+
+#### Cache Performance Tuning
+
+- **subrange_size**: Smaller values increase cache hit rates but create more cache entries
+- **max_get_range_requests**: Higher values reduce object storage requests but increase memory usage
+- **TTL values**: Balance between cache freshness and hit rates based on your data patterns
+- **Multi-level caching**: Use "inmemory,memcached" for L1/L2 cache hierarchy
+
 ## Block Conversion Logic
 
 The parquet converter determines which blocks to convert based on:
@@ -227,6 +282,8 @@ cortex_parquet_queryable_cache_misses_total
 1. **Experimental Feature**: Parquet mode is experimental and may have stability issues
 2. **Storage Overhead**: Parquet files are stored in addition to TSDB blocks
 3. **Conversion Latency**: There's a delay between block creation and parquet availability
+4. **Shuffle Sharding Requirement**: Parquet mode only supports shuffle sharding as sharding strategy
+5. **Bucket Index Dependency**: The bucket index must be enabled and properly configured as it provides essential metadata for parquet file discovery and query routing
 
 ## Migration Considerations
 

@@ -151,6 +151,10 @@ func (d *disableBinaryExpressionAnalyzer) Analyze(query string) (querysharding.Q
 	promqlparser.Inspect(expr, func(node promqlparser.Node, nodes []promqlparser.Node) error {
 		switch n := node.(type) {
 		case *promqlparser.BinaryExpr:
+			// No vector matching means one operand is not vector. Skip it.
+			if n.VectorMatching == nil {
+				return nil
+			}
 			if !n.VectorMatching.On && len(n.VectorMatching.MatchingLabels) == 0 {
 				isShardable = false
 				return stop

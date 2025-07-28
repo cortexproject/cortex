@@ -155,7 +155,10 @@ func (d *disableBinaryExpressionAnalyzer) Analyze(query string) (querysharding.Q
 			if n.VectorMatching == nil {
 				return nil
 			}
-			if !n.VectorMatching.On && len(n.VectorMatching.MatchingLabels) == 0 {
+			// Vector matching ignore will add MetricNameLabel as sharding label.
+			// This seems causing correctness issue for Parquet queryable.
+			// Mark this type of query not shardable.
+			if !n.VectorMatching.On {
 				isShardable = false
 				return stop
 			}

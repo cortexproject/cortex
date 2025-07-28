@@ -275,7 +275,6 @@ cortex_parquet_queryable_cache_misses_total
 1. **Row Group Size**: Adjust `max_rows_per_row_group` based on your query patterns
 2. **Cache Size**: Tune `parquet_queryable_shard_cache_size` based on available memory
 3. **Concurrency**: Adjust `meta_sync_concurrency` based on object storage performance
-4. **Conversion Interval**: Balance between conversion latency and system load
 
 ## Limitations
 

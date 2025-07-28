@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -50,7 +51,9 @@ const (
 	parquetBlockStore blockStoreType = "parquet"
 )
 
-var validBlockStoreTypes = []blockStoreType{tsdbBlockStore, parquetBlockStore}
+var (
+	validBlockStoreTypes = []blockStoreType{tsdbBlockStore, parquetBlockStore}
+)
 
 // AddBlockStoreTypeToContext checks HTTP header and set block store key to context if
 // relevant header is set.
@@ -91,6 +94,7 @@ func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQuery
 type parquetQueryableWithFallback struct {
 	services.Service
 
+	fallbackDisabled      bool
 	queryStoreAfter       time.Duration
 	parquetQueryable      storage.Queryable
 	blockStorageQueryable *BlocksStoreQueryable
@@ -255,6 +259,7 @@ func NewParquetQueryable(
 		limits:                limits,
 		logger:                logger,
 		defaultBlockStoreType: blockStoreType(config.ParquetQueryableDefaultBlockStore),
+		fallbackDisabled:      config.ParquetQueryableFallbackDisabled,
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -307,6 +312,7 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		limits:                p.limits,
 		logger:                p.logger,
 		defaultBlockStoreType: p.defaultBlockStoreType,
+		fallbackDisabled:      p.fallbackDisabled,
 	}, nil
 }
 
@@ -329,6 +335,8 @@ type parquetQuerierWithFallback struct {
 	logger log.Logger
 
 	defaultBlockStoreType blockStoreType
+
+	fallbackDisabled bool
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -350,6 +358,10 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 		result       []string
 		rAnnotations annotations.Annotations
 	)
+
+	if len(remaining) > 0 && q.fallbackDisabled {
+		return nil, nil, parquetConsistencyCheckError(remaining)
+	}
 
 	if len(parquet) > 0 {
 		res, ann, qErr := q.parquetQuerier.LabelValues(InjectBlocksIntoContext(ctx, parquet...), name, hints, matchers...)
@@ -400,6 +412,10 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 		result       []string
 		rAnnotations annotations.Annotations
 	)
+
+	if len(remaining) > 0 && q.fallbackDisabled {
+		return nil, nil, parquetConsistencyCheckError(remaining)
+	}
 
 	if len(parquet) > 0 {
 		res, ann, qErr := q.parquetQuerier.LabelNames(InjectBlocksIntoContext(ctx, parquet...), hints, matchers...)
@@ -463,6 +479,11 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	defer q.incrementOpsMetric("Select", remaining, parquet)
 
 	if err != nil {
+		return storage.ErrSeriesSet(err)
+	}
+
+	if len(remaining) > 0 && q.fallbackDisabled {
+		err = parquetConsistencyCheckError(remaining)
 		return storage.ErrSeriesSet(err)
 	}
 
@@ -690,4 +711,16 @@ func extractShardMatcherFromContext(ctx context.Context) (*storepb.ShardMatcher,
 	}
 
 	return nil, false
+}
+
+func parquetConsistencyCheckError(blocks []*bucketindex.Block) error {
+	return fmt.Errorf("consistency check failed because some blocks were not available as parquet files: %s", strings.Join(convertBlockULIDToString(blocks), " "))
+}
+
+func convertBlockULIDToString(blocks []*bucketindex.Block) []string {
+	res := make([]string, len(blocks))
+	for idx, b := range blocks {
+		res[idx] = b.ID.String()
+	}
+	return res
 }

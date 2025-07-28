@@ -716,3 +716,157 @@ func TestMaterializedLabelsFilterCallback(t *testing.T) {
 		})
 	}
 }
+
+func TestParquetQueryableFallbackDisabled(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	minT := int64(10)
+	maxT := util.TimeToMillis(time.Now())
+
+	createStore := func() *blocksStoreSetMock {
+		return &blocksStoreSetMock{mockedResponses: []interface{}{
+			map[BlocksStoreClient][]ulid.ULID{
+				&storeGatewayClientMock{remoteAddr: "1.1.1.1",
+					mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{{Name: labels.MetricName, Value: "fromSg"}}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockHintsResponse(block1, block2),
+					},
+					mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+						Names:    namesFromSeries(labels.FromMap(map[string]string{labels.MetricName: "fromSg", "fromSg": "fromSg"})),
+						Warnings: []string{},
+						Hints:    mockNamesHints(block1, block2),
+					},
+					mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+						Values:   valuesFromSeries(labels.MetricName, labels.FromMap(map[string]string{labels.MetricName: "fromSg", "fromSg": "fromSg"})),
+						Warnings: []string{},
+						Hints:    mockValuesHints(block1, block2),
+					},
+				}: {block1, block2}},
+		},
+		}
+	}
+
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "fromSg"),
+	}
+	ctx := user.InjectOrgID(context.Background(), "user-1")
+
+	t.Run("should return consistency check errors when fallback disabled and some blocks not available as parquet", func(t *testing.T) {
+		finder := &blocksFinderMock{}
+		stores := createStore()
+
+		q := &blocksStoreQuerier{
+			minT:        minT,
+			maxT:        maxT,
+			finder:      finder,
+			stores:      stores,
+			consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+			logger:      log.NewNopLogger(),
+			metrics:     newBlocksStoreQueryableMetrics(prometheus.NewPedanticRegistry()),
+			limits:      &blocksStoreLimitsMock{},
+
+			storeGatewayConsistencyCheckMaxAttempts: 3,
+		}
+
+		mParquetQuerier := &mockParquetQuerier{}
+		pq := &parquetQuerierWithFallback{
+			minT:                  minT,
+			maxT:                  maxT,
+			finder:                finder,
+			blocksStoreQuerier:    q,
+			parquetQuerier:        mParquetQuerier,
+			queryStoreAfter:       time.Hour,
+			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:                defaultOverrides(t, 0),
+			logger:                log.NewNopLogger(),
+			defaultBlockStoreType: parquetBlockStore,
+			fallbackDisabled:      true, // Disable fallback
+		}
+
+		// Set up blocks where block1 has parquet metadata but block2 doesn't
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything).Return(bucketindex.Blocks{
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
+			&bucketindex.Block{ID: block2}, // Not available as parquet
+		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
+
+		expectedError := fmt.Sprintf("consistency check failed because some blocks were not available as parquet files: %s", block2.String())
+
+		t.Run("select should return consistency check error", func(t *testing.T) {
+			ss := pq.Select(ctx, true, nil, matchers...)
+			require.Error(t, ss.Err())
+			require.Contains(t, ss.Err().Error(), expectedError)
+		})
+
+		t.Run("labelNames should return consistency check error", func(t *testing.T) {
+			_, _, err := pq.LabelNames(ctx, nil, matchers...)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), expectedError)
+		})
+
+		t.Run("labelValues should return consistency check error", func(t *testing.T) {
+			_, _, err := pq.LabelValues(ctx, labels.MetricName, nil, matchers...)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), expectedError)
+		})
+	})
+
+	t.Run("should work normally when all blocks are available as parquet and fallback disabled", func(t *testing.T) {
+		finder := &blocksFinderMock{}
+		stores := createStore()
+
+		q := &blocksStoreQuerier{
+			minT:        minT,
+			maxT:        maxT,
+			finder:      finder,
+			stores:      stores,
+			consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+			logger:      log.NewNopLogger(),
+			metrics:     newBlocksStoreQueryableMetrics(prometheus.NewPedanticRegistry()),
+			limits:      &blocksStoreLimitsMock{},
+
+			storeGatewayConsistencyCheckMaxAttempts: 3,
+		}
+
+		mParquetQuerier := &mockParquetQuerier{}
+		pq := &parquetQuerierWithFallback{
+			minT:                  minT,
+			maxT:                  maxT,
+			finder:                finder,
+			blocksStoreQuerier:    q,
+			parquetQuerier:        mParquetQuerier,
+			queryStoreAfter:       time.Hour,
+			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+			limits:                defaultOverrides(t, 0),
+			logger:                log.NewNopLogger(),
+			defaultBlockStoreType: parquetBlockStore,
+			fallbackDisabled:      true, // Disable fallback
+		}
+
+		// Set up blocks where both blocks have parquet metadata
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything).Return(bucketindex.Blocks{
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
+			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
+		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
+
+		t.Run("select should work without error", func(t *testing.T) {
+			mParquetQuerier.Reset()
+			ss := pq.Select(ctx, true, nil, matchers...)
+			require.NoError(t, ss.Err())
+			require.Len(t, mParquetQuerier.queriedBlocks, 2)
+		})
+
+		t.Run("labelNames should work without error", func(t *testing.T) {
+			mParquetQuerier.Reset()
+			_, _, err := pq.LabelNames(ctx, nil, matchers...)
+			require.NoError(t, err)
+			require.Len(t, mParquetQuerier.queriedBlocks, 2)
+		})
+
+		t.Run("labelValues should work without error", func(t *testing.T) {
+			mParquetQuerier.Reset()
+			_, _, err := pq.LabelValues(ctx, labels.MetricName, nil, matchers...)
+			require.NoError(t, err)
+			require.Len(t, mParquetQuerier.queriedBlocks, 2)
+		})
+	})
+}

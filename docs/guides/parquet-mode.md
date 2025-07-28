@@ -132,6 +132,9 @@ querier:
 
   # Default block store: "tsdb" or "parquet"
   parquet_queryable_default_block_store: "parquet"
+
+  # Disable fallback to TSDB blocks when parquet files are not available
+  parquet_queryable_fallback_disabled: false
 ```
 
 ### Query Limits for Parquet
@@ -227,6 +230,7 @@ When parquet queryable is enabled:
    * The bucket index now contains metadata indicating whether parquet files are available for querying
 1. **Query Execution**: Queries prioritize parquet files when available, falling back to TSDB blocks when parquet conversion is incomplete
 1. **Hybrid Queries**: Supports querying both parquet and TSDB blocks within the same query operation
+1. **Fallback Control**: When `parquet_queryable_fallback_disabled` is set to `true`, queries will fail with a consistency check error if any required blocks are not available as parquet files, ensuring strict parquet-only querying
 
 ## Monitoring
 
@@ -275,6 +279,12 @@ cortex_parquet_queryable_cache_misses_total
 1. **Row Group Size**: Adjust `max_rows_per_row_group` based on your query patterns
 2. **Cache Size**: Tune `parquet_queryable_shard_cache_size` based on available memory
 3. **Concurrency**: Adjust `meta_sync_concurrency` based on object storage performance
+
+### Fallback Configuration
+
+1. **Gradual Migration**: Keep `parquet_queryable_fallback_disabled: false` (default) during initial deployment to allow queries to succeed even when parquet conversion is incomplete
+2. **Strict Parquet Mode**: Set `parquet_queryable_fallback_disabled: true` only after ensuring all required blocks have been converted to parquet format
+3. **Monitoring**: Monitor conversion progress and query failures before enabling strict parquet mode
 
 ## Limitations
 

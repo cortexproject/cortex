@@ -294,6 +294,14 @@ querier:
   # fallback to store gateway.
   # CLI flag: -querier.parquet-queryable-default-block-store
   [parquet_queryable_default_block_store: <string> | default = "parquet"]
+
+  # [Experimental] Disable Parquet queryable to fallback queries to Store
+  # Gateway if the block is not available as Parquet files but available in
+  # TSDB. Setting this to true will disable the fallback and users can remove
+  # Store Gateway. But need to make sure Parquet files are created before it is
+  # queryable.
+  # CLI flag: -querier.parquet-queryable-fallback-disabled
+  [parquet_queryable_fallback_disabled: <boolean> | default = false]
 ```
 
 ### `blocks_storage_config`

@@ -780,7 +780,7 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 			limits:                defaultOverrides(t, 0),
 			logger:                log.NewNopLogger(),
 			defaultBlockStoreType: parquetBlockStore,
-			fallbackEnabled:       false, // Disable fallback
+			fallbackDisabled:      true, // Disable fallback
 		}
 
 		// Set up blocks where block1 has parquet metadata but block2 doesn't
@@ -839,7 +839,7 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 			limits:                defaultOverrides(t, 0),
 			logger:                log.NewNopLogger(),
 			defaultBlockStoreType: parquetBlockStore,
-			fallbackEnabled:       false, // Disable fallback
+			fallbackDisabled:      true, // Disable fallback
 		}
 
 		// Set up blocks where both blocks have parquet metadata

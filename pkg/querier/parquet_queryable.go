@@ -94,7 +94,7 @@ func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQuery
 type parquetQueryableWithFallback struct {
 	services.Service
 
-	fallbackEnabled       bool
+	fallbackDisabled      bool
 	queryStoreAfter       time.Duration
 	parquetQueryable      storage.Queryable
 	blockStorageQueryable *BlocksStoreQueryable
@@ -259,7 +259,7 @@ func NewParquetQueryable(
 		limits:                limits,
 		logger:                logger,
 		defaultBlockStoreType: blockStoreType(config.ParquetQueryableDefaultBlockStore),
-		fallbackEnabled:       config.ParquetQueryableFallbackEnabled,
+		fallbackDisabled:      config.ParquetQueryableFallbackDisabled,
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -312,7 +312,7 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		limits:                p.limits,
 		logger:                p.logger,
 		defaultBlockStoreType: p.defaultBlockStoreType,
-		fallbackEnabled:       p.fallbackEnabled,
+		fallbackDisabled:      p.fallbackDisabled,
 	}, nil
 }
 
@@ -336,7 +336,7 @@ type parquetQuerierWithFallback struct {
 
 	defaultBlockStoreType blockStoreType
 
-	fallbackEnabled bool
+	fallbackDisabled bool
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -359,7 +359,7 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 		rAnnotations annotations.Annotations
 	)
 
-	if len(remaining) > 0 && !q.fallbackEnabled {
+	if len(remaining) > 0 && q.fallbackDisabled {
 		return nil, nil, parquetConsistencyCheckError(remaining)
 	}
 
@@ -413,7 +413,7 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 		rAnnotations annotations.Annotations
 	)
 
-	if len(remaining) > 0 && !q.fallbackEnabled {
+	if len(remaining) > 0 && q.fallbackDisabled {
 		return nil, nil, parquetConsistencyCheckError(remaining)
 	}
 
@@ -482,7 +482,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		return storage.ErrSeriesSet(err)
 	}
 
-	if len(remaining) > 0 && !q.fallbackEnabled {
+	if len(remaining) > 0 && q.fallbackDisabled {
 		err = parquetConsistencyCheckError(remaining)
 		return storage.ErrSeriesSet(err)
 	}

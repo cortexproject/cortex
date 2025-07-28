@@ -24,7 +24,7 @@ Traditional TSDB format and Store Gateway architecture face significant challeng
 
 ### Store Gateway Operational Challenges
 - **Resource Intensive**: Requires significant local disk space for index headers and high memory utilization
-- **Complex State Management**: Needs complex data sharding when scaling, often causing consistency issues
+- **Complex State Management**: Needs complex data sharding when scaling, often causing consistency and availability issues
 - **Query Inefficiencies**: Single-threaded block processing leads to high latency for large blocks
 
 ### Parquet Advantages
@@ -232,7 +232,6 @@ cortex_parquet_queryable_cache_misses_total
 1. **Experimental Feature**: Parquet mode is experimental and may have stability issues
 2. **Storage Overhead**: Parquet files are stored in addition to TSDB blocks
 3. **Conversion Latency**: There's a delay between block creation and parquet availability
-4. **Query Compatibility**: Some advanced PromQL features may not be fully supported
 
 ## Migration Considerations
 

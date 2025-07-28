@@ -101,7 +101,7 @@ To enable querying of Parquet files, configure the querier:
 
 ```yaml
 querier:
-  # Enable parquet queryable (experimental)
+  # Enable parquet queryable with fallback (experimental)
   enable_parquet_queryable: true
   
   # Cache size for parquet shards
@@ -118,13 +118,13 @@ Configure query limits specific to parquet operations:
 ```yaml
 limits:
   # Maximum number of rows that can be scanned per query
-  max_parquet_query_row_count: 1000000
+  parquet_max_fetched_row_count: 1000000
   
   # Maximum chunk bytes per query
-  max_parquet_query_chunk_bytes: 100MB
+  parquet_max_fetched_chunk_bytes: 100MB
   
   # Maximum data bytes per query  
-  max_parquet_query_data_bytes: 1GB
+  parquet_max_fetched_data_bytes: 1GB
 ```
 
 ## Block Conversion Logic
@@ -159,14 +159,14 @@ When parquet queryable is enabled:
 Monitor parquet converter operations:
 
 ```promql
-# Conversion operations
-cortex_parquet_converter_operations_total
+# Blocks converted
+cortex_parquet_converter_blocks_converted_total
 
-# Blocks processed
-cortex_parquet_converter_blocks_processed_total
+# Conversion failures
+cortex_parquet_converter_block_convert_failures_total
 
-# Conversion duration
-cortex_parquet_converter_conversion_duration_seconds
+# Delay in minutes of Parquet block to be converted from the TSDB block being uploaded to object store
+cortex_parquet_converter_convert_block_delay_minutes
 ```
 
 ### Parquet Queryable Metrics
@@ -206,36 +206,6 @@ cortex_parquet_queryable_cache_misses_total
 1. **Time Range Queries**: Parquet performs best with time-range based queries
 2. **Label Filtering**: Use label filters to reduce data scanning
 3. **Aggregation**: Leverage Parquet's columnar format for aggregation queries
-
-## Troubleshooting
-
-### Common Issues
-
-**Conversion Failures**:
-- Check disk space in `data_dir`
-- Verify object storage permissions
-- Monitor conversion metrics for errors
-
-**Query Fallbacks**:
-- Check if blocks have been converted (look for marker files)
-- Verify parquet queryable is enabled
-- Monitor fallback metrics
-
-**Performance Issues**:
-- Tune row group size for your query patterns
-- Adjust cache sizes based on memory availability
-- Consider query limits if hitting resource constraints
-
-### Debugging Commands
-
-Check conversion status:
-```bash
-# List parquet marker files
-aws s3 ls s3://your-bucket/parquet-markers/
-
-# Check specific block conversion
-aws s3 ls s3://your-bucket/user-id/block-id/
-```
 
 ## Limitations
 

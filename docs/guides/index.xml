@@ -1017,7 +1017,243 @@ to set up the environment.&lt;/p>
 &lt;p>&lt;strong>Cortex requires that each zone runs the same number of instances&lt;/strong> of a given service for which the zone-aware replication is enabled. This guarantees a fair split of the workload across zones.&lt;/p>
 &lt;p>On the contrary, if zones are unbalanced, the zones with a lower number of instances would have a higher pressure on resources utilization (eg. CPU and memory) compared to zones with a higher number of instances.&lt;/p>
 &lt;h2 id="impact-on-costs">Impact on costs&lt;/h2>
-&lt;p>Depending on the underlying infrastructure being used, deploying Cortex across multiple availability zones may cause an increase in running costs as most cloud providers charge for inter-availability zone networking. The most significant change would be for a Cortex cluster currently running in a single zone.&lt;/p></description></item><item><title>Docs: Protecting Cortex from Heavy Queries</title><link>/docs/guides/protecting-cortex-from-heavy-queries/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/protecting-cortex-from-heavy-queries/</guid><description>
+&lt;p>Depending on the underlying infrastructure being used, deploying Cortex across multiple availability zones may cause an increase in running costs as most cloud providers charge for inter-availability zone networking. The most significant change would be for a Cortex cluster currently running in a single zone.&lt;/p></description></item><item><title>Docs: Parquet Mode</title><link>/docs/guides/parquet-mode/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/parquet-mode/</guid><description>
+&lt;h2 id="overview">Overview&lt;/h2>
+&lt;p>Parquet mode in Cortex provides an experimental feature that converts TSDB blocks to Parquet format for improved query performance and storage efficiency on older data. This feature is particularly beneficial for long-term storage scenarios where data is accessed less frequently but needs to be queried efficiently.&lt;/p>
+&lt;p>The parquet mode consists of two main components:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Parquet Converter&lt;/strong>: Converts TSDB blocks to Parquet format&lt;/li>
+&lt;li>&lt;strong>Parquet Queryable&lt;/strong>: Enables querying of Parquet files with fallback to TSDB blocks&lt;/li>
+&lt;/ul>
+&lt;h2 id="why-parquet-mode">Why Parquet Mode?&lt;/h2>
+&lt;p>Traditional TSDB format and Store Gateway architecture face significant challenges when dealing with long-term data storage on object storage:&lt;/p>
+&lt;h3 id="tsdb-format-limitations">TSDB Format Limitations&lt;/h3>
+&lt;ul>
+&lt;li>&lt;strong>Random Read Intensive&lt;/strong>: TSDB index relies heavily on random reads, where each read becomes a separate request to object storage&lt;/li>
+&lt;li>&lt;strong>Overfetching&lt;/strong>: To reduce object storage requests, data needs to be merged, leading to higher bandwidth usage and overfetching&lt;/li>
+&lt;li>&lt;strong>High Cardinality Bottlenecks&lt;/strong>: Index postings can become a major bottleneck for high cardinality data&lt;/li>
+&lt;/ul>
+&lt;h3 id="store-gateway-operational-challenges">Store Gateway Operational Challenges&lt;/h3>
+&lt;ul>
+&lt;li>&lt;strong>Resource Intensive&lt;/strong>: Requires significant local disk space for index headers and high memory utilization&lt;/li>
+&lt;li>&lt;strong>Complex State Management&lt;/strong>: Needs complex data sharding when scaling, often causing consistency and availability issues&lt;/li>
+&lt;li>&lt;strong>Query Inefficiencies&lt;/strong>: Single-threaded block processing leads to high latency for large blocks&lt;/li>
+&lt;/ul>
+&lt;h3 id="parquet-advantages">Parquet Advantages&lt;/h3>
+&lt;p>&lt;a href="https://parquet.apache.org/">Apache Parquet&lt;/a> addresses these challenges through:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Columnar Storage&lt;/strong>: Data organized by columns reduces object storage requests as only specific columns need to be fetched&lt;/li>
+&lt;li>&lt;strong>Stateless Design&lt;/strong>: Rich file metadata eliminates the need for local state like index headers&lt;/li>
+&lt;li>&lt;strong>Advanced Compression&lt;/strong>: Reduces storage costs and improves query performance&lt;/li>
+&lt;li>&lt;strong>Parallel Processing&lt;/strong>: Row groups enable parallel processing for better scalability&lt;/li>
+&lt;/ul>
+&lt;p>For more details on the design rationale, see the &lt;a href="/docs/proposals/parquet-storage/">Parquet Storage Proposal&lt;/a>.&lt;/p>
+&lt;h2 id="architecture">Architecture&lt;/h2>
+&lt;p>The parquet system works by:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Block Conversion&lt;/strong>: The parquet converter runs periodically to identify TSDB blocks that should be converted to Parquet format&lt;/li>
+&lt;li>&lt;strong>Storage&lt;/strong>: Parquet files are stored alongside TSDB blocks in object storage&lt;/li>
+&lt;li>&lt;strong>Querying&lt;/strong>: The parquet queryable attempts to query Parquet files first, falling back to TSDB blocks when necessary&lt;/li>
+&lt;li>&lt;strong>Marker System&lt;/strong>: Conversion status is tracked using marker files to avoid duplicate conversions&lt;/li>
+&lt;/ol>
+&lt;h2 id="configuration">Configuration&lt;/h2>
+&lt;h3 id="enabling-parquet-converter">Enabling Parquet Converter&lt;/h3>
+&lt;p>To enable the parquet converter service, add it to your target list:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">target&lt;/span>: &lt;span style="color:#ae81ff">parquet-converter&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Or include it in a multi-target deployment:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">target&lt;/span>: &lt;span style="color:#ae81ff">all,parquet-converter&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="parquet-converter-configuration">Parquet Converter Configuration&lt;/h3>
+&lt;p>Configure the parquet converter in your Cortex configuration:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">parquet_converter&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Data directory for caching blocks during conversion&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">data_dir&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;./data&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Frequency of conversion job execution&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">conversion_interval&lt;/span>: &lt;span style="color:#ae81ff">1m&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum rows per parquet row group&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_rows_per_row_group&lt;/span>: &lt;span style="color:#ae81ff">1000000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Number of concurrent meta file sync operations&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">meta_sync_concurrency&lt;/span>: &lt;span style="color:#ae81ff">20&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Enable file buffering to reduce memory usage&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">file_buffer_enabled&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Ring configuration for distributed conversion&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">ring&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">kvstore&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">store&lt;/span>: &lt;span style="color:#ae81ff">consul&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">consul&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">host&lt;/span>: &lt;span style="color:#ae81ff">localhost:8500&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">heartbeat_period&lt;/span>: &lt;span style="color:#ae81ff">5s&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">heartbeat_timeout&lt;/span>: &lt;span style="color:#ae81ff">1m&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">instance_addr&lt;/span>: &lt;span style="color:#ae81ff">127.0.0.1&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">instance_port&lt;/span>: &lt;span style="color:#ae81ff">9095&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="per-tenant-parquet-settings">Per-Tenant Parquet Settings&lt;/h3>
+&lt;p>Enable parquet conversion per tenant using limits:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">limits&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Enable parquet converter for all tenants&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_enabled&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Shard size for shuffle sharding (0 = disabled)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_tenant_shard_size&lt;/span>: &lt;span style="color:#ae81ff">0.8&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can also configure per-tenant settings using runtime configuration:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">overrides&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant-1&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_enabled&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_tenant_shard_size&lt;/span>: &lt;span style="color:#ae81ff">2&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant-2&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_enabled&lt;/span>: &lt;span style="color:#66d9ef">false&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="enabling-parquet-queryable">Enabling Parquet Queryable&lt;/h3>
+&lt;p>To enable querying of Parquet files, configure the querier:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">querier&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Enable parquet queryable with fallback (experimental)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">enable_parquet_queryable&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Cache size for parquet shards&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_queryable_shard_cache_size&lt;/span>: &lt;span style="color:#ae81ff">512&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Default block store: &amp;#34;tsdb&amp;#34; or &amp;#34;parquet&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_queryable_default_block_store&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;parquet&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="query-limits-for-parquet">Query Limits for Parquet&lt;/h3>
+&lt;p>Configure query limits specific to parquet operations:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">limits&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum number of rows that can be scanned per query&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_max_fetched_row_count&lt;/span>: &lt;span style="color:#ae81ff">1000000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum chunk bytes per query&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_max_fetched_chunk_bytes&lt;/span>: &lt;span style="color:#ae81ff">100MB&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum data bytes per query&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_max_fetched_data_bytes&lt;/span>: &lt;span style="color:#ae81ff">1GB&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="cache-configuration">Cache Configuration&lt;/h3>
+&lt;p>Parquet mode supports dedicated caching for both chunks and labels to improve query performance. Configure caching in the blocks storage section:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">blocks_storage&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">bucket_store&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Chunks cache configuration for parquet data&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">chunks_cache&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">backend&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;memcached&amp;#34;&lt;/span> &lt;span style="color:#75715e"># Options: &amp;#34;&amp;#34;, &amp;#34;inmemory&amp;#34;, &amp;#34;memcached&amp;#34;, &amp;#34;redis&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">subrange_size&lt;/span>: &lt;span style="color:#ae81ff">16000&lt;/span> &lt;span style="color:#75715e"># Size of each subrange for better caching&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_get_range_requests&lt;/span>: &lt;span style="color:#ae81ff">3&lt;/span> &lt;span style="color:#75715e"># Max sub-GetRange requests per GetRange call&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">attributes_ttl&lt;/span>: &lt;span style="color:#ae81ff">168h &lt;/span> &lt;span style="color:#75715e"># TTL for caching object attributes&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">subrange_ttl&lt;/span>: &lt;span style="color:#ae81ff">24h &lt;/span> &lt;span style="color:#75715e"># TTL for caching individual chunk subranges&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Memcached configuration (if using memcached backend)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">memcached&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">addresses&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;memcached:11211&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">timeout&lt;/span>: &lt;span style="color:#ae81ff">500ms&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_idle_connections&lt;/span>: &lt;span style="color:#ae81ff">16&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_async_concurrency&lt;/span>: &lt;span style="color:#ae81ff">10&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_async_buffer_size&lt;/span>: &lt;span style="color:#ae81ff">10000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_get_multi_concurrency&lt;/span>: &lt;span style="color:#ae81ff">100&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_get_multi_batch_size&lt;/span>: &lt;span style="color:#ae81ff">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Parquet labels cache configuration (experimental)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_labels_cache&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">backend&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;memcached&amp;#34;&lt;/span> &lt;span style="color:#75715e"># Options: &amp;#34;&amp;#34;, &amp;#34;inmemory&amp;#34;, &amp;#34;memcached&amp;#34;, &amp;#34;redis&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">subrange_size&lt;/span>: &lt;span style="color:#ae81ff">16000&lt;/span> &lt;span style="color:#75715e"># Size of each subrange for better caching&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_get_range_requests&lt;/span>: &lt;span style="color:#ae81ff">3&lt;/span> &lt;span style="color:#75715e"># Max sub-GetRange requests per GetRange call&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">attributes_ttl&lt;/span>: &lt;span style="color:#ae81ff">168h &lt;/span> &lt;span style="color:#75715e"># TTL for caching object attributes&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">subrange_ttl&lt;/span>: &lt;span style="color:#ae81ff">24h &lt;/span> &lt;span style="color:#75715e"># TTL for caching individual label subranges&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Memcached configuration (if using memcached backend)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">memcached&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">addresses&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;memcached:11211&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">timeout&lt;/span>: &lt;span style="color:#ae81ff">500ms&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_idle_connections&lt;/span>: &lt;span style="color:#ae81ff">16&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="cache-backend-options">Cache Backend Options&lt;/h4>
+&lt;ul>
+&lt;li>&lt;strong>Empty string (&amp;quot;&amp;quot;)&lt;/strong>: Disables caching&lt;/li>
+&lt;li>&lt;strong>inmemory&lt;/strong>: Uses in-memory cache (suitable for single-instance deployments)&lt;/li>
+&lt;li>&lt;strong>memcached&lt;/strong>: Uses Memcached for distributed caching (recommended for production)&lt;/li>
+&lt;li>&lt;strong>redis&lt;/strong>: Uses Redis for distributed caching&lt;/li>
+&lt;li>&lt;strong>Multi-level&lt;/strong>: Comma-separated list for multi-tier caching (e.g., &amp;ldquo;inmemory,memcached&amp;rdquo;)&lt;/li>
+&lt;/ul>
+&lt;h4 id="cache-performance-tuning">Cache Performance Tuning&lt;/h4>
+&lt;ul>
+&lt;li>&lt;strong>subrange_size&lt;/strong>: Smaller values increase cache hit rates but create more cache entries&lt;/li>
+&lt;li>&lt;strong>max_get_range_requests&lt;/strong>: Higher values reduce object storage requests but increase memory usage&lt;/li>
+&lt;li>&lt;strong>TTL values&lt;/strong>: Balance between cache freshness and hit rates based on your data patterns&lt;/li>
+&lt;li>&lt;strong>Multi-level caching&lt;/strong>: Use &amp;ldquo;inmemory,memcached&amp;rdquo; for L1/L2 cache hierarchy&lt;/li>
+&lt;/ul>
+&lt;h2 id="block-conversion-logic">Block Conversion Logic&lt;/h2>
+&lt;p>The parquet converter determines which blocks to convert based on:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Time Range&lt;/strong>: Only blocks with time ranges larger than the base TSDB block duration (typically 2h) are converted&lt;/li>
+&lt;li>&lt;strong>Conversion Status&lt;/strong>: Blocks are only converted once, tracked via marker files&lt;/li>
+&lt;li>&lt;strong>Tenant Settings&lt;/strong>: Conversion must be enabled for the specific tenant&lt;/li>
+&lt;/ol>
+&lt;p>The conversion process:&lt;/p>
+&lt;ul>
+&lt;li>Downloads TSDB blocks from object storage&lt;/li>
+&lt;li>Converts time series data to Parquet format&lt;/li>
+&lt;li>Uploads Parquet files (chunks and labels) to object storage&lt;/li>
+&lt;li>Creates conversion marker files to track completion&lt;/li>
+&lt;/ul>
+&lt;h2 id="querying-behavior">Querying Behavior&lt;/h2>
+&lt;p>When parquet queryable is enabled:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Block Discovery&lt;/strong>: The bucket index is used to discover available blocks
+&lt;ul>
+&lt;li>The bucket index now contains metadata indicating whether parquet files are available for querying&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>&lt;strong>Query Execution&lt;/strong>: Queries prioritize parquet files when available, falling back to TSDB blocks when parquet conversion is incomplete&lt;/li>
+&lt;li>&lt;strong>Hybrid Queries&lt;/strong>: Supports querying both parquet and TSDB blocks within the same query operation&lt;/li>
+&lt;/ol>
+&lt;h2 id="monitoring">Monitoring&lt;/h2>
+&lt;h3 id="parquet-converter-metrics">Parquet Converter Metrics&lt;/h3>
+&lt;p>Monitor parquet converter operations:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-promql" data-lang="promql">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Blocks converted&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_parquet_converter_blocks_converted_total
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Conversion failures&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_parquet_converter_block_convert_failures_total
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Delay in minutes of Parquet block to be converted from the TSDB block being uploaded to object store&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_parquet_converter_convert_block_delay_minutes
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="parquet-queryable-metrics">Parquet Queryable Metrics&lt;/h3>
+&lt;p>Monitor parquet query performance:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-promql" data-lang="promql">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Blocks queried by type&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_parquet_queryable_blocks_queried_total
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Query operations&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_parquet_queryable_operations_total
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Cache metrics&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_parquet_queryable_cache_hits_total
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_parquet_queryable_cache_misses_total
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="best-practices">Best Practices&lt;/h2>
+&lt;h3 id="deployment-recommendations">Deployment Recommendations&lt;/h3>
+&lt;ol>
+&lt;li>&lt;strong>Dedicated Converters&lt;/strong>: Run parquet converters on dedicated instances for better resource isolation&lt;/li>
+&lt;li>&lt;strong>Ring Configuration&lt;/strong>: Use a distributed ring for high availability and load distribution&lt;/li>
+&lt;li>&lt;strong>Storage Considerations&lt;/strong>: Ensure sufficient disk space in &lt;code>data_dir&lt;/code> for block processing&lt;/li>
+&lt;li>&lt;strong>Network Bandwidth&lt;/strong>: Consider network bandwidth for downloading/uploading blocks&lt;/li>
+&lt;/ol>
+&lt;h3 id="performance-tuning">Performance Tuning&lt;/h3>
+&lt;ol>
+&lt;li>&lt;strong>Row Group Size&lt;/strong>: Adjust &lt;code>max_rows_per_row_group&lt;/code> based on your query patterns&lt;/li>
+&lt;li>&lt;strong>Cache Size&lt;/strong>: Tune &lt;code>parquet_queryable_shard_cache_size&lt;/code> based on available memory&lt;/li>
+&lt;li>&lt;strong>Concurrency&lt;/strong>: Adjust &lt;code>meta_sync_concurrency&lt;/code> based on object storage performance&lt;/li>
+&lt;/ol>
+&lt;h2 id="limitations">Limitations&lt;/h2>
+&lt;ol>
+&lt;li>&lt;strong>Experimental Feature&lt;/strong>: Parquet mode is experimental and may have stability issues&lt;/li>
+&lt;li>&lt;strong>Storage Overhead&lt;/strong>: Parquet files are stored in addition to TSDB blocks&lt;/li>
+&lt;li>&lt;strong>Conversion Latency&lt;/strong>: There&amp;rsquo;s a delay between block creation and parquet availability&lt;/li>
+&lt;li>&lt;strong>Shuffle Sharding Requirement&lt;/strong>: Parquet mode only supports shuffle sharding as sharding strategy&lt;/li>
+&lt;li>&lt;strong>Bucket Index Dependency&lt;/strong>: The bucket index must be enabled and properly configured as it provides essential metadata for parquet file discovery and query routing&lt;/li>
+&lt;/ol>
+&lt;h2 id="migration-considerations">Migration Considerations&lt;/h2>
+&lt;p>When enabling parquet mode:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Gradual Rollout&lt;/strong>: Enable for specific tenants first&lt;/li>
+&lt;li>&lt;strong>Monitor Resources&lt;/strong>: Watch CPU, memory, and storage usage&lt;/li>
+&lt;li>&lt;strong>Backup Strategy&lt;/strong>: Ensure TSDB blocks remain available as fallback&lt;/li>
+&lt;li>&lt;strong>Testing&lt;/strong>: Thoroughly test query patterns before production deployment&lt;/li>
+&lt;/ol></description></item><item><title>Docs: Protecting Cortex from Heavy Queries</title><link>/docs/guides/protecting-cortex-from-heavy-queries/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/protecting-cortex-from-heavy-queries/</guid><description>
 &lt;p>PromQL is powerful, and is able to result in query requests that have very wide range of data fetched and samples processed. Heavy queries can cause:&lt;/p>
 &lt;ol>
 &lt;li>CPU on any query component to be partially exhausted, increasing latency and causing incoming queries to queue up with high chance of time-out.&lt;/li>

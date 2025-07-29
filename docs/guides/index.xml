@@ -1030,19 +1030,20 @@ to set up the environment.&lt;/p>
 &lt;h3 id="tsdb-format-limitations">TSDB Format Limitations&lt;/h3>
 &lt;ul>
 &lt;li>&lt;strong>Random Read Intensive&lt;/strong>: TSDB index relies heavily on random reads, where each read becomes a separate request to object storage&lt;/li>
-&lt;li>&lt;strong>Overfetching&lt;/strong>: To reduce object storage requests, data needs to be merged, leading to higher bandwidth usage and overfetching&lt;/li>
+&lt;li>&lt;strong>Overfetching&lt;/strong>: To reduce object storage requests, data that are close together are merged in a sigle request, leading to higher bandwidth usage and overfetching&lt;/li>
 &lt;li>&lt;strong>High Cardinality Bottlenecks&lt;/strong>: Index postings can become a major bottleneck for high cardinality data&lt;/li>
 &lt;/ul>
 &lt;h3 id="store-gateway-operational-challenges">Store Gateway Operational Challenges&lt;/h3>
 &lt;ul>
-&lt;li>&lt;strong>Resource Intensive&lt;/strong>: Requires significant local disk space for index headers and high memory utilization&lt;/li>
-&lt;li>&lt;strong>Complex State Management&lt;/strong>: Needs complex data sharding when scaling, often causing consistency and availability issues&lt;/li>
+&lt;li>&lt;strong>Resource Intensive&lt;/strong>: Requires significant local disk space for index headers and high memory usage&lt;/li>
+&lt;li>&lt;strong>Complex State Management&lt;/strong>: Requires complex data sharding when scaling, which often leads to consistency and availability issues, as well as long startup times&lt;/li>
 &lt;li>&lt;strong>Query Inefficiencies&lt;/strong>: Single-threaded block processing leads to high latency for large blocks&lt;/li>
 &lt;/ul>
 &lt;h3 id="parquet-advantages">Parquet Advantages&lt;/h3>
 &lt;p>&lt;a href="https://parquet.apache.org/">Apache Parquet&lt;/a> addresses these challenges through:&lt;/p>
 &lt;ul>
 &lt;li>&lt;strong>Columnar Storage&lt;/strong>: Data organized by columns reduces object storage requests as only specific columns need to be fetched&lt;/li>
+&lt;li>&lt;strong>Data Locality&lt;/strong>: Series that are likely to be queried together are co-located to minimize I/O operations&lt;/li>
 &lt;li>&lt;strong>Stateless Design&lt;/strong>: Rich file metadata eliminates the need for local state like index headers&lt;/li>
 &lt;li>&lt;strong>Advanced Compression&lt;/strong>: Reduces storage costs and improves query performance&lt;/li>
 &lt;li>&lt;strong>Parallel Processing&lt;/strong>: Row groups enable parallel processing for better scalability&lt;/li>
@@ -1116,6 +1117,9 @@ to set up the environment.&lt;/p>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Default block store: &amp;#34;tsdb&amp;#34; or &amp;#34;parquet&amp;#34;&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_queryable_default_block_store&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;parquet&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Disable fallback to TSDB blocks when parquet files are not available&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_queryable_fallback_disabled&lt;/span>: &lt;span style="color:#66d9ef">false&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="query-limits-for-parquet">Query Limits for Parquet&lt;/h3>
 &lt;p>Configure query limits specific to parquet operations:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">limits&lt;/span>:
@@ -1201,6 +1205,7 @@ to set up the environment.&lt;/p>
 &lt;/li>
 &lt;li>&lt;strong>Query Execution&lt;/strong>: Queries prioritize parquet files when available, falling back to TSDB blocks when parquet conversion is incomplete&lt;/li>
 &lt;li>&lt;strong>Hybrid Queries&lt;/strong>: Supports querying both parquet and TSDB blocks within the same query operation&lt;/li>
+&lt;li>&lt;strong>Fallback Control&lt;/strong>: When &lt;code>parquet_queryable_fallback_disabled&lt;/code> is set to &lt;code>true&lt;/code>, queries will fail with a consistency check error if any required blocks are not available as parquet files, ensuring strict parquet-only querying&lt;/li>
 &lt;/ol>
 &lt;h2 id="monitoring">Monitoring&lt;/h2>
 &lt;h3 id="parquet-converter-metrics">Parquet Converter Metrics&lt;/h3>
@@ -1237,6 +1242,12 @@ to set up the environment.&lt;/p>
 &lt;li>&lt;strong>Row Group Size&lt;/strong>: Adjust &lt;code>max_rows_per_row_group&lt;/code> based on your query patterns&lt;/li>
 &lt;li>&lt;strong>Cache Size&lt;/strong>: Tune &lt;code>parquet_queryable_shard_cache_size&lt;/code> based on available memory&lt;/li>
 &lt;li>&lt;strong>Concurrency&lt;/strong>: Adjust &lt;code>meta_sync_concurrency&lt;/code> based on object storage performance&lt;/li>
+&lt;/ol>
+&lt;h3 id="fallback-configuration">Fallback Configuration&lt;/h3>
+&lt;ol>
+&lt;li>&lt;strong>Gradual Migration&lt;/strong>: Keep &lt;code>parquet_queryable_fallback_disabled: false&lt;/code> (default) during initial deployment to allow queries to succeed even when parquet conversion is incomplete&lt;/li>
+&lt;li>&lt;strong>Strict Parquet Mode&lt;/strong>: Set &lt;code>parquet_queryable_fallback_disabled: true&lt;/code> only after ensuring all required blocks have been converted to parquet format&lt;/li>
+&lt;li>&lt;strong>Monitoring&lt;/strong>: Monitor conversion progress and query failures before enabling strict parquet mode&lt;/li>
 &lt;/ol>
 &lt;h2 id="limitations">Limitations&lt;/h2>
 &lt;ol>

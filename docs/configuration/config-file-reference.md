@@ -529,6 +529,12 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 
+  # Set to true to enable ring detailed metrics. These metrics provide detailed
+  # information, such as token count and ownership per tenant. Disabling them
+  # can significantly decrease the number of metrics emitted.
+  # CLI flag: -alertmanager.sharding-ring.detailed-metrics-enabled
+  [detailed_metrics_enabled: <boolean> | default = true]
+
   # The sleep seconds when alertmanager is shutting down. Need to be close to or
   # larger than KV Store information propagation delay
   # CLI flag: -alertmanager.sharding-ring.final-sleep
@@ -2527,6 +2533,12 @@ sharding_ring:
   # CLI flag: -compactor.auto-forget-delay
   [auto_forget_delay: <duration> | default = 2m]
 
+  # Set to true to enable ring detailed metrics. These metrics provide detailed
+  # information, such as token count and ownership per tenant. Disabling them
+  # can significantly decrease the number of metrics emitted.
+  # CLI flag: -compactor.ring.detailed-metrics-enabled
+  [detailed_metrics_enabled: <boolean> | default = true]
+
   # Minimum time to wait for ring stability at startup. 0 to disable.
   # CLI flag: -compactor.ring.wait-stability-min-duration
   [wait_stability_min_duration: <duration> | default = 1m]
@@ -2947,6 +2959,12 @@ ring:
   # within the ring. 0 = never (timeout disabled).
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+
+  # Set to true to enable ring detailed metrics. These metrics provide detailed
+  # information, such as token count and ownership per tenant. Disabling them
+  # can significantly decrease the number of metrics emitted.
+  # CLI flag: -distributor.ring.detailed-metrics-enabled
+  [detailed_metrics_enabled: <boolean> | default = true]
 
   # Name of network interface to read address from.
   # CLI flag: -distributor.ring.instance-interface-names
@@ -5102,6 +5120,12 @@ ring:
   # CLI flag: -ruler.ring.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 
+  # Set to true to enable ring detailed metrics. These metrics provide detailed
+  # information, such as token count and ownership per tenant. Disabling them
+  # can significantly decrease the number of metrics emitted.
+  # CLI flag: -ruler.ring.detailed-metrics-enabled
+  [detailed_metrics_enabled: <boolean> | default = true]
+
   # Name of network interface to read address from.
   # CLI flag: -ruler.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
@@ -6120,6 +6144,12 @@ sharding_ring:
   # 10*heartbeat_timeout.
   # CLI flag: -store-gateway.sharding-ring.keep-instance-in-the-ring-on-shutdown
   [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
+
+  # Set to true to enable ring detailed metrics. These metrics provide detailed
+  # information, such as token count and ownership per tenant. Disabling them
+  # can significantly decrease the number of metrics emitted.
+  # CLI flag: -store-gateway.sharding-ring.detailed-metrics-enabled
+  [detailed_metrics_enabled: <boolean> | default = true]
 
   # Minimum time to wait for ring stability at startup. 0 to disable.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration

@@ -303,6 +303,12 @@ store_gateway:
     # CLI flag: -store-gateway.sharding-ring.keep-instance-in-the-ring-on-shutdown
     [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
 
+    # Set to true to enable ring detailed metrics. These metrics provide
+    # detailed information, such as token count and ownership per tenant.
+    # Disabling them can significantly decrease the number of metrics emitted.
+    # CLI flag: -store-gateway.sharding-ring.detailed-metrics-enabled
+    [detailed_metrics_enabled: <boolean> | default = true]
+
     # Minimum time to wait for ring stability at startup. 0 to disable.
     # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
     [wait_stability_min_duration: <duration> | default = 1m]

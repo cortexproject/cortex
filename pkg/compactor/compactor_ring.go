@@ -18,10 +18,11 @@ import (
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore          kv.Config     `yaml:"kvstore"`
-	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
-	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout"`
-	AutoForgetDelay  time.Duration `yaml:"auto_forget_delay"`
+	KVStore                kv.Config     `yaml:"kvstore"`
+	HeartbeatPeriod        time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout       time.Duration `yaml:"heartbeat_timeout"`
+	AutoForgetDelay        time.Duration `yaml:"auto_forget_delay"`
+	DetailedMetricsEnabled bool          `yaml:"detailed_metrics_enabled"`
 
 	// Wait ring stability.
 	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`
@@ -55,6 +56,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix("compactor.ring.", "collectors/", f)
 	f.DurationVar(&cfg.HeartbeatPeriod, "compactor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "compactor.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which compactors are considered unhealthy within the ring. 0 = never (timeout disabled).")
+	f.BoolVar(&cfg.DetailedMetricsEnabled, "compactor.ring.detailed-metrics-enabled", true, "Set to true to enable ring detailed metrics. These metrics provide detailed information, such as token count and ownership per tenant. Disabling them can significantly decrease the number of metrics emitted.")
 	f.DurationVar(&cfg.AutoForgetDelay, "compactor.auto-forget-delay", 2*cfg.HeartbeatTimeout, "Time since last heartbeat before compactor will be removed from ring. 0 to disable")
 
 	// Wait stability flags.
@@ -89,6 +91,7 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 	rc.KVStore = cfg.KVStore
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
 	rc.ReplicationFactor = 1
+	rc.DetailedMetricsEnabled = cfg.DetailedMetricsEnabled
 
 	// Configure lifecycler
 	lc.RingConfig = rc

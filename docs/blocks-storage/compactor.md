@@ -268,6 +268,12 @@ compactor:
     # CLI flag: -compactor.auto-forget-delay
     [auto_forget_delay: <duration> | default = 2m]
 
+    # Set to true to enable ring detailed metrics. These metrics provide
+    # detailed information, such as token count and ownership per tenant.
+    # Disabling them can significantly decrease the number of metrics emitted.
+    # CLI flag: -compactor.ring.detailed-metrics-enabled
+    [detailed_metrics_enabled: <boolean> | default = true]
+
     # Minimum time to wait for ring stability at startup. 0 to disable.
     # CLI flag: -compactor.ring.wait-stability-min-duration
     [wait_stability_min_duration: <duration> | default = 1m]

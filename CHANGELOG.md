@@ -61,6 +61,7 @@
 * [ENHANCEMENT] Querier: Support query limits in parquet queryable. #6870
 * [ENHANCEMENT] Ring: Add zone label to ring_members metric. #6900
 * [ENHANCEMENT] Ingester: Add new metric `cortex_ingester_push_errors_total` to track reasons for ingester request failures. #6901
+* [ENHANCEMENT] Ring: Expose `detailed_metrics_enabled` for all rings. Default true. #6926
 * [ENHANCEMENT] Parquet Storage: Allow Parquet Queryable to disable fallback to Store Gateway. #6920
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573

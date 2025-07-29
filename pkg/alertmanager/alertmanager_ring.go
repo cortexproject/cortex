@@ -43,12 +43,13 @@ var SyncRingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE, ring.JOINING}, fun
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore              kv.Config     `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances."`
-	HeartbeatPeriod      time.Duration `yaml:"heartbeat_period"`
-	HeartbeatTimeout     time.Duration `yaml:"heartbeat_timeout"`
-	ReplicationFactor    int           `yaml:"replication_factor"`
-	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
-	TokensFilePath       string        `yaml:"tokens_file_path"`
+	KVStore                kv.Config     `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances."`
+	HeartbeatPeriod        time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout       time.Duration `yaml:"heartbeat_timeout"`
+	ReplicationFactor      int           `yaml:"replication_factor"`
+	ZoneAwarenessEnabled   bool          `yaml:"zone_awareness_enabled"`
+	TokensFilePath         string        `yaml:"tokens_file_path"`
+	DetailedMetricsEnabled bool          `yaml:"detailed_metrics_enabled"`
 
 	FinalSleep                      time.Duration `yaml:"final_sleep"`
 	WaitInstanceStateTimeout        time.Duration `yaml:"wait_instance_state_timeout"`
@@ -88,6 +89,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ReplicationFactor, rfprefix+"replication-factor", 3, "The replication factor to use when sharding the alertmanager.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, rfprefix+"zone-awareness-enabled", false, "True to enable zone-awareness and replicate alerts across different availability zones.")
 	f.StringVar(&cfg.TokensFilePath, rfprefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
+	f.BoolVar(&cfg.DetailedMetricsEnabled, rfprefix+"detailed-metrics-enabled", true, "Set to true to enable ring detailed metrics. These metrics provide detailed information, such as token count and ownership per tenant. Disabling them can significantly decrease the number of metrics emitted.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
@@ -134,6 +136,7 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
 	rc.ReplicationFactor = cfg.ReplicationFactor
 	rc.ZoneAwarenessEnabled = cfg.ZoneAwarenessEnabled
+	rc.DetailedMetricsEnabled = cfg.DetailedMetricsEnabled
 
 	return rc
 }

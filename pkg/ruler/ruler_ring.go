@@ -38,12 +38,13 @@ var ListRuleRingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE, ring.LEAVING},
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore              kv.Config     `yaml:"kvstore"`
-	HeartbeatPeriod      time.Duration `yaml:"heartbeat_period"`
-	HeartbeatTimeout     time.Duration `yaml:"heartbeat_timeout"`
-	ReplicationFactor    int           `yaml:"replication_factor"`
-	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
-	TokensFilePath       string        `yaml:"tokens_file_path"`
+	KVStore                kv.Config     `yaml:"kvstore"`
+	HeartbeatPeriod        time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout       time.Duration `yaml:"heartbeat_timeout"`
+	ReplicationFactor      int           `yaml:"replication_factor"`
+	ZoneAwarenessEnabled   bool          `yaml:"zone_awareness_enabled"`
+	TokensFilePath         string        `yaml:"tokens_file_path"`
+	DetailedMetricsEnabled bool          `yaml:"detailed_metrics_enabled"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
@@ -77,6 +78,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ReplicationFactor, "ruler.ring.replication-factor", 1, "EXPERIMENTAL: The replication factor to use when loading rule groups for API HA.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, "ruler.ring.zone-awareness-enabled", false, "EXPERIMENTAL: True to enable zone-awareness and load rule groups across different availability zones for API HA.")
 	f.StringVar(&cfg.TokensFilePath, "ruler.ring.tokens-file-path", "", "EXPERIMENTAL: File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
+	f.BoolVar(&cfg.DetailedMetricsEnabled, "ruler.ring.detailed-metrics-enabled", true, "Set to true to enable ring detailed metrics. These metrics provide detailed information, such as token count and ownership per tenant. Disabling them can significantly decrease the number of metrics emitted.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
@@ -119,6 +121,7 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
 	rc.SubringCacheDisabled = true
 	rc.ZoneAwarenessEnabled = cfg.ZoneAwarenessEnabled
+	rc.DetailedMetricsEnabled = cfg.DetailedMetricsEnabled
 
 	// Each rule group is evaluated by *exactly* one ruler, but it can be loaded by multiple rulers for API HA
 	rc.ReplicationFactor = cfg.ReplicationFactor

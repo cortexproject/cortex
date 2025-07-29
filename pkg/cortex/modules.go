@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"log/slog"
 	"net/http"
 	"runtime"
@@ -18,8 +19,6 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/objstore"
-	"github.com/thanos-io/promql-engine/engine"
-	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
@@ -32,6 +31,7 @@ import (
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
@@ -44,6 +44,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/instantquery"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
+	cortexquerysharding "github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -511,7 +512,13 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
-	queryAnalyzer := querysharding.NewQueryAnalyzer()
+	var queryAnalyzer querysharding.Analyzer
+	queryAnalyzer = querysharding.NewQueryAnalyzer()
+	if t.Cfg.Querier.EnableParquetQueryable {
+		// Disable vertical sharding for binary expression with ignore for parquet queryable.
+		queryAnalyzer = cortexquerysharding.NewDisableBinaryExpressionAnalyzer(queryAnalyzer)
+	}
+
 	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
 	prometheusCodec := queryrange.NewPrometheusCodec(false, t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
@@ -564,7 +571,6 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		t.Cfg.Querier.DefaultEvaluationInterval,
 		t.Cfg.Querier.MaxSubQuerySteps,
 		t.Cfg.Querier.LookbackDelta,
-		t.Cfg.Querier.EnablePromQLExperimentalFunctions,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {
@@ -643,7 +649,6 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
 		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 
-		var queryEngine promql.QueryEngine
 		opts := promql.EngineOpts{
 			Logger:               util_log.SLogger,
 			Reg:                  rulerRegisterer,
@@ -658,15 +663,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
 			},
 		}
-		if t.Cfg.Querier.ThanosEngine {
-			queryEngine = engine.New(engine.Opts{
-				EngineOpts:        opts,
-				LogicalOptimizers: logicalplan.AllOptimizers,
-				EnableAnalysis:    true,
-			})
-		} else {
-			queryEngine = promql.NewEngine(opts)
-		}
+		queryEngine := engine.New(opts, t.Cfg.Ruler.ThanosEngine, rulerRegisterer)
 
 		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, queryEngine, t.Overrides, metrics, prometheus.DefaultRegisterer)
 		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, t.Overrides, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger)

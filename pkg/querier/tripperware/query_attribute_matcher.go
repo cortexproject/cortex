@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -24,7 +24,7 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 
 	if op == "query" || op == "query_range" {
 		query := r.FormValue("query")
-		expr, err := parser.ParseExpr(query)
+		expr, err := cortexparser.ParseExpr(query)
 		if err != nil {
 			return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}

@@ -27,6 +27,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
@@ -326,7 +327,7 @@ func (s resultsCache) isAtModifierCachable(ctx context.Context, r tripperware.Re
 	if !strings.Contains(query, "@") {
 		return true
 	}
-	expr, err := parser.ParseExpr(query)
+	expr, err := cortexparser.ParseExpr(query)
 	if err != nil {
 		// We are being pessimistic in such cases.
 		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering @ modifier as not cacheable", "query", query, "err", err)
@@ -371,7 +372,7 @@ func (s resultsCache) isOffsetCachable(ctx context.Context, r tripperware.Reques
 	if !strings.Contains(query, "offset") {
 		return true
 	}
-	expr, err := parser.ParseExpr(query)
+	expr, err := cortexparser.ParseExpr(query)
 	if err != nil {
 		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering offset as not cacheable", "query", query, "err", err)
 		return false

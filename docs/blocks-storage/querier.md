@@ -252,11 +252,22 @@ querier:
   # CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
   [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 
-  # Experimental. Use Thanos promql engine
-  # https://github.com/thanos-io/promql-engine rather than the Prometheus promql
-  # engine.
-  # CLI flag: -querier.thanos-engine
-  [thanos_engine: <boolean> | default = false]
+  thanos_engine:
+    # Experimental. Use Thanos promql engine
+    # https://github.com/thanos-io/promql-engine rather than the Prometheus
+    # promql engine.
+    # CLI flag: -querier.thanos-engine
+    [enabled: <boolean> | default = false]
+
+    # Enable xincrease, xdelta, xrate etc from Thanos engine.
+    # CLI flag: -querier.enable-x-functions
+    [enable_x_functions: <boolean> | default = false]
+
+    # Logical plan optimizers. Multiple optimizers can be provided as a
+    # comma-separated list. Supported values: default, all, propagate-matchers,
+    # sort-matchers, merge-selects, detect-histogram-stats
+    # CLI flag: -querier.optimizers
+    [optimizers: <string> | default = "default"]
 
   # If enabled, ignore max query length check at Querier select method. Users
   # can choose to ignore it since the validation can be done before Querier
@@ -267,6 +278,30 @@ querier:
   # [Experimental] If true, experimental promQL functions are enabled.
   # CLI flag: -querier.enable-promql-experimental-functions
   [enable_promql_experimental_functions: <boolean> | default = false]
+
+  # [Experimental] If true, querier will try to query the parquet files if
+  # available.
+  # CLI flag: -querier.enable-parquet-queryable
+  [enable_parquet_queryable: <boolean> | default = false]
+
+  # [Experimental] Maximum size of the Parquet queryable shard cache. 0 to
+  # disable.
+  # CLI flag: -querier.parquet-queryable-shard-cache-size
+  [parquet_queryable_shard_cache_size: <int> | default = 512]
+
+  # [Experimental] Parquet queryable's default block store to query. Valid
+  # options are tsdb and parquet. If it is set to tsdb, parquet queryable always
+  # fallback to store gateway.
+  # CLI flag: -querier.parquet-queryable-default-block-store
+  [parquet_queryable_default_block_store: <string> | default = "parquet"]
+
+  # [Experimental] Disable Parquet queryable to fallback queries to Store
+  # Gateway if the block is not available as Parquet files but available in
+  # TSDB. Setting this to true will disable the fallback and users can remove
+  # Store Gateway. But need to make sure Parquet files are created before it is
+  # queryable.
+  # CLI flag: -querier.parquet-queryable-fallback-disabled
+  [parquet_queryable_fallback_disabled: <boolean> | default = false]
 ```
 
 ### `blocks_storage_config`

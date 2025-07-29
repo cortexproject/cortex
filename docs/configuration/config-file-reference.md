@@ -162,6 +162,110 @@ api:
 # The compactor_config configures the compactor for the blocks storage.
 [compactor: <compactor_config>]
 
+parquet_converter:
+  # Maximum concurrent goroutines for downloading block metadata from object
+  # storage.
+  # CLI flag: -parquet-converter.meta-sync-concurrency
+  [meta_sync_concurrency: <int> | default = 20]
+
+  # How often to check for new TSDB blocks to convert to parquet format.
+  # CLI flag: -parquet-converter.conversion-interval
+  [conversion_interval: <duration> | default = 1m]
+
+  # Maximum number of time series per parquet row group. Larger values improve
+  # compression but may reduce performance during reads.
+  # CLI flag: -parquet-converter.max-rows-per-row-group
+  [max_rows_per_row_group: <int> | default = 1000000]
+
+  # Enable disk-based write buffering to reduce memory consumption during
+  # parquet file generation.
+  # CLI flag: -parquet-converter.file-buffer-enabled
+  [file_buffer_enabled: <boolean> | default = true]
+
+  # Local directory path for caching TSDB blocks during parquet conversion.
+  # CLI flag: -parquet-converter.data-dir
+  [data_dir: <string> | default = "./data"]
+
+  ring:
+    kvstore:
+      # Backend storage to use for the ring. Supported values are: consul, etcd,
+      # inmemory, memberlist, multi.
+      # CLI flag: -parquet-converter.ring.store
+      [store: <string> | default = "consul"]
+
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -parquet-converter.ring.prefix
+      [prefix: <string> | default = "collectors/"]
+
+      dynamodb:
+        # Region to access dynamodb.
+        # CLI flag: -parquet-converter.ring.dynamodb.region
+        [region: <string> | default = ""]
+
+        # Table name to use on dynamodb.
+        # CLI flag: -parquet-converter.ring.dynamodb.table-name
+        [table_name: <string> | default = ""]
+
+        # Time to expire items on dynamodb.
+        # CLI flag: -parquet-converter.ring.dynamodb.ttl-time
+        [ttl: <duration> | default = 0s]
+
+        # Time to refresh local ring with information on dynamodb.
+        # CLI flag: -parquet-converter.ring.dynamodb.puller-sync-time
+        [puller_sync_time: <duration> | default = 1m]
+
+        # Maximum number of retries for DDB KV CAS.
+        # CLI flag: -parquet-converter.ring.dynamodb.max-cas-retries
+        [max_cas_retries: <int> | default = 10]
+
+        # Timeout of dynamoDbClient requests. Default is 2m.
+        # CLI flag: -parquet-converter.ring.dynamodb.timeout
+        [timeout: <duration> | default = 2m]
+
+      # The consul_config configures the consul client.
+      # The CLI flags prefix for this block config is: parquet-converter.ring
+      [consul: <consul_config>]
+
+      # The etcd_config configures the etcd client.
+      # The CLI flags prefix for this block config is: parquet-converter.ring
+      [etcd: <etcd_config>]
+
+      multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -parquet-converter.ring.multi.primary
+        [primary: <string> | default = ""]
+
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -parquet-converter.ring.multi.secondary
+        [secondary: <string> | default = ""]
+
+        # Mirror writes to secondary store.
+        # CLI flag: -parquet-converter.ring.multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
+
+        # Timeout for storing value to secondary store.
+        # CLI flag: -parquet-converter.ring.multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
+
+    # Period at which to heartbeat to the ring. 0 = disabled.
+    # CLI flag: -parquet-converter.ring.heartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
+
+    # The heartbeat timeout after which parquet-converter are considered
+    # unhealthy within the ring. 0 = never (timeout disabled).
+    # CLI flag: -parquet-converter.ring.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # Time since last heartbeat before parquet-converter will be removed from
+    # ring. 0 to disable
+    # CLI flag: -parquet-converter.auto-forget-delay
+    [auto_forget_delay: <duration> | default = 2m]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -parquet-converter.ring.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
 # The store_gateway_config configures the store-gateway service used by the
 # blocks storage.
 [store_gateway: <store_gateway_config>]
@@ -2573,6 +2677,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
+- `parquet-converter.ring`
 - `ruler.ring`
 - `store-gateway.sharding-ring`
 
@@ -2894,6 +2999,7 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
+- `parquet-converter.ring`
 - `ruler.ring`
 - `store-gateway.sharding-ring`
 
@@ -4302,11 +4408,22 @@ store_gateway_client:
 # CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
 [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 
-# Experimental. Use Thanos promql engine
-# https://github.com/thanos-io/promql-engine rather than the Prometheus promql
-# engine.
-# CLI flag: -querier.thanos-engine
-[thanos_engine: <boolean> | default = false]
+thanos_engine:
+  # Experimental. Use Thanos promql engine
+  # https://github.com/thanos-io/promql-engine rather than the Prometheus promql
+  # engine.
+  # CLI flag: -querier.thanos-engine
+  [enabled: <boolean> | default = false]
+
+  # Enable xincrease, xdelta, xrate etc from Thanos engine.
+  # CLI flag: -querier.enable-x-functions
+  [enable_x_functions: <boolean> | default = false]
+
+  # Logical plan optimizers. Multiple optimizers can be provided as a
+  # comma-separated list. Supported values: default, all, propagate-matchers,
+  # sort-matchers, merge-selects, detect-histogram-stats
+  # CLI flag: -querier.optimizers
+  [optimizers: <string> | default = "default"]
 
 # If enabled, ignore max query length check at Querier select method. Users can
 # choose to ignore it since the validation can be done before Querier evaluation
@@ -4317,6 +4434,29 @@ store_gateway_client:
 # [Experimental] If true, experimental promQL functions are enabled.
 # CLI flag: -querier.enable-promql-experimental-functions
 [enable_promql_experimental_functions: <boolean> | default = false]
+
+# [Experimental] If true, querier will try to query the parquet files if
+# available.
+# CLI flag: -querier.enable-parquet-queryable
+[enable_parquet_queryable: <boolean> | default = false]
+
+# [Experimental] Maximum size of the Parquet queryable shard cache. 0 to
+# disable.
+# CLI flag: -querier.parquet-queryable-shard-cache-size
+[parquet_queryable_shard_cache_size: <int> | default = 512]
+
+# [Experimental] Parquet queryable's default block store to query. Valid options
+# are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback
+# to store gateway.
+# CLI flag: -querier.parquet-queryable-default-block-store
+[parquet_queryable_default_block_store: <string> | default = "parquet"]
+
+# [Experimental] Disable Parquet queryable to fallback queries to Store Gateway
+# if the block is not available as Parquet files but available in TSDB. Setting
+# this to true will disable the fallback and users can remove Store Gateway. But
+# need to make sure Parquet files are created before it is queryable.
+# CLI flag: -querier.parquet-queryable-fallback-disabled
+[parquet_queryable_fallback_disabled: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`
@@ -5023,6 +5163,23 @@ ring:
 # ruler.enable-ha-evaluation is true.
 # CLI flag: -ruler.liveness-check-timeout
 [liveness_check_timeout: <duration> | default = 1s]
+
+thanos_engine:
+  # Experimental. Use Thanos promql engine
+  # https://github.com/thanos-io/promql-engine rather than the Prometheus promql
+  # engine.
+  # CLI flag: -ruler.thanos-engine
+  [enabled: <boolean> | default = false]
+
+  # Enable xincrease, xdelta, xrate etc from Thanos engine.
+  # CLI flag: -ruler.enable-x-functions
+  [enable_x_functions: <boolean> | default = false]
+
+  # Logical plan optimizers. Multiple optimizers can be provided as a
+  # comma-separated list. Supported values: default, all, propagate-matchers,
+  # sort-matchers, merge-selects, detect-histogram-stats
+  # CLI flag: -ruler.optimizers
+  [optimizers: <string> | default = "default"]
 ```
 
 ### `ruler_storage_config`

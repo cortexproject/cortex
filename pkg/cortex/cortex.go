@@ -114,7 +114,7 @@ type Config struct {
 	QueryRange       queryrange.Config               `yaml:"query_range"`
 	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
 	Compactor        compactor.Config                `yaml:"compactor"`
-	ParquetConverter parquetconverter.Config         `yaml:"parquet_converter" doc:"hidden"`
+	ParquetConverter parquetconverter.Config         `yaml:"parquet_converter"`
 	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
@@ -379,6 +379,7 @@ func New(cfg Config) (*Cortex, error) {
 		return nil, err
 	}
 
+	cortex.setupPromQLFunctions()
 	return cortex, nil
 }
 
@@ -536,4 +537,10 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 
 		util.WriteTextResponse(w, "ready")
 	}
+}
+
+func (t *Cortex) setupPromQLFunctions() {
+	// The holt_winters function is renamed to double_exponential_smoothing and has been experimental since Prometheus v3. (https://github.com/prometheus/prometheus/pull/14930)
+	// The cortex supports holt_winters for users using this function.
+	querier.EnableExperimentalPromQLFunctions(t.Cfg.Querier.EnablePromQLExperimentalFunctions, true)
 }

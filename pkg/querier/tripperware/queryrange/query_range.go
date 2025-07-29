@@ -238,7 +238,6 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		}
 	}
 
-
 	body, err := tripperware.BodyBytes(r, log)
 	if err != nil {
 		log.Error(err)

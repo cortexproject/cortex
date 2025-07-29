@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -208,7 +209,7 @@ func (q *QueryAPI) Wrap(f apiFunc) http.HandlerFunc {
 		w.WriteHeader(http.StatusNoContent)
 	}
 
-	return httputil.CompressionHandler{
+	return CompressionHandler{
 		Handler: http.HandlerFunc(hf),
 	}.ServeHTTP
 }
@@ -237,6 +238,7 @@ func (q *QueryAPI) respond(w http.ResponseWriter, req *http.Request, data interf
 	}
 
 	w.Header().Set("Content-Type", codec.ContentType().String())
+	w.Header().Set("X-Uncompressed-Length", strconv.Itoa(len(b)))
 	w.WriteHeader(http.StatusOK)
 	if n, err := w.Write(b); err != nil {
 		level.Error(q.logger).Log("error writing response", "url", req.URL, "bytesWritten", n, "err", err)

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +15,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/klauspost/compress/snappy"
+	"github.com/klauspost/compress/zstd"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -27,7 +28,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
 
 	"github.com/thanos-io/promql-engine/logicalplan"
@@ -46,6 +46,8 @@ type Compression string
 
 const (
 	GzipCompression     Compression = "gzip"
+	ZstdCompression     Compression = "zstd"
+	SnappyCompression   Compression = "snappy"
 	NonCompression      Compression = ""
 	JsonCodecType       CodecType   = "json"
 	ProtobufCodecType   CodecType   = "protobuf"
@@ -446,7 +448,7 @@ type Buffer interface {
 	Bytes() []byte
 }
 
-func BodyBytes(res *http.Response, responseSizeLimiter *limiter.ResponseSizeLimiter, logger log.Logger) ([]byte, error) {
+func BodyBytes(res *http.Response, logger log.Logger) ([]byte, error) {
 	var buf *bytes.Buffer
 
 	// Attempt to cast the response body to a Buffer and use it if possible.
@@ -464,13 +466,26 @@ func BodyBytes(res *http.Response, responseSizeLimiter *limiter.ResponseSizeLimi
 		}
 	}
 
-	responseSize := getResponseSize(res, buf)
-	if err := responseSizeLimiter.AddResponseBytes(responseSize); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
+	// Handle decoding response if it was compressed
+	encoding := res.Header.Get("Content-Encoding")
+	return decode(buf, encoding, logger)
+}
+
+func BodyBytesFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
+	headers := http.Header{}
+	for _, h := range res.Headers {
+		headers[h.Key] = h.Values
 	}
 
+	// Handle decoding response if it was compressed
+	encoding := headers.Get("Content-Encoding")
+	buf := bytes.NewBuffer(res.Body)
+	return decode(buf, encoding, logger)
+}
+
+func decode(buf *bytes.Buffer, encoding string, logger log.Logger) ([]byte, error) {
 	// if the response is gzipped, lets unzip it here
-	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") {
+	if strings.EqualFold(encoding, "gzip") {
 		gReader, err := gzip.NewReader(buf)
 		if err != nil {
 			return nil, err
@@ -480,35 +495,24 @@ func BodyBytes(res *http.Response, responseSizeLimiter *limiter.ResponseSizeLimi
 		return io.ReadAll(gReader)
 	}
 
-	return buf.Bytes(), nil
-}
-
-func BodyBytesFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
-	// if the response is gzipped, lets unzip it here
-	headers := http.Header{}
-	for _, h := range res.Headers {
-		headers[h.Key] = h.Values
+	// if the response is snappy compressed, decode it here
+	if strings.EqualFold(encoding, "snappy") {
+		sReader := snappy.NewReader(buf)
+		return io.ReadAll(sReader)
 	}
-	if strings.EqualFold(headers.Get("Content-Encoding"), "gzip") {
-		gReader, err := gzip.NewReader(bytes.NewBuffer(res.Body))
+
+	// if the response is zstd compressed, decode it here
+	if strings.EqualFold(encoding, "zstd") {
+		zReader, err := zstd.NewReader(buf)
 		if err != nil {
 			return nil, err
 		}
-		defer runutil.CloseWithLogOnErr(logger, gReader, "close gzip reader")
+		defer runutil.CloseWithLogOnErr(logger, zReader.IOReadCloser(), "close zstd decoder")
 
-		return io.ReadAll(gReader)
+		return io.ReadAll(zReader)
 	}
 
-	return res.Body, nil
-}
-
-func getResponseSize(res *http.Response, buf *bytes.Buffer) int {
-	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") && len(buf.Bytes()) >= 4 {
-		// GZIP body contains the size of the original (uncompressed) input data
-		// modulo 2^32 in the last 4 bytes (https://www.ietf.org/rfc/rfc1952.txt).
-		return int(binary.LittleEndian.Uint32(buf.Bytes()[len(buf.Bytes())-4:]))
-	}
-	return len(buf.Bytes())
+	return buf.Bytes(), nil
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -767,14 +771,33 @@ func (s *PrometheusResponseStats) MarshalJSON() ([]byte, error) {
 }
 
 func SetRequestHeaders(h http.Header, defaultCodecType CodecType, compression Compression) {
-	if compression == GzipCompression {
+	switch compression {
+	case GzipCompression:
 		h.Set("Accept-Encoding", string(GzipCompression))
+
+	case SnappyCompression:
+		h.Set("Accept-Encoding", string(SnappyCompression))
+
+	case ZstdCompression:
+		h.Set("Accept-Encoding", string(ZstdCompression))
 	}
+
 	if defaultCodecType == ProtobufCodecType {
 		h.Set("Accept", ApplicationProtobuf+", "+ApplicationJson)
 	} else {
 		h.Set("Accept", ApplicationJson)
 	}
+}
+
+func ParseResponseSizeHeader(header string) (int, bool, error) {
+	if header == "" {
+		return 0, false, nil
+	}
+	size, err := strconv.Atoi(header)
+	if err != nil {
+		return 0, false, err
+	}
+	return size, true, nil
 }
 
 func UnmarshalResponse(r *http.Response, buf []byte, resp *PrometheusResponse) error {

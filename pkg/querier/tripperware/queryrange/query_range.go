@@ -63,8 +63,15 @@ type prometheusCodec struct {
 
 func NewPrometheusCodec(sharded bool, compressionStr string, defaultCodecTypeStr string) *prometheusCodec { //nolint:revive
 	compression := tripperware.NonCompression // default
-	if compressionStr == string(tripperware.GzipCompression) {
+	switch compressionStr {
+	case string(tripperware.GzipCompression):
 		compression = tripperware.GzipCompression
+
+	case string(tripperware.SnappyCompression):
+		compression = tripperware.SnappyCompression
+
+	case string(tripperware.ZstdCompression):
+		compression = tripperware.ZstdCompression
 	}
 
 	defaultCodecType := tripperware.JsonCodecType // default
@@ -218,11 +225,29 @@ func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		return nil, err
 	}
 
+	responseSizeHeader := r.Header.Get("X-Uncompressed-Length")
 	responseSizeLimiter := limiter.ResponseSizeLimiterFromContextWithFallback(ctx)
-	body, err := tripperware.BodyBytes(r, responseSizeLimiter, log)
+	responseSize, hasSizeHeader, err := tripperware.ParseResponseSizeHeader(responseSizeHeader)
 	if err != nil {
 		log.Error(err)
 		return nil, err
+	}
+	if hasSizeHeader {
+		if err := responseSizeLimiter.AddResponseBytes(responseSize); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
+		}
+	}
+
+	body, err := tripperware.BodyBytes(r, log)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	if !hasSizeHeader {
+		if err := responseSizeLimiter.AddResponseBytes(len(body)); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
+		}
 	}
 
 	if r.StatusCode/100 != 2 {

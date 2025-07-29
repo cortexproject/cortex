@@ -20,6 +20,7 @@
 * [FEATURE] Compactor: Add support for percentage based sharding for compactors. #6738
 * [FEATURE] Querier: Allow choosing PromQL engine via header. #6777
 * [FEATURE] Querier: Support for configuring query optimizers and enabling XFunctions in the Thanos engine. #6873
+* [ENHANCEMENT] Querier: Support snappy and zstd response compression for `-querier.response-compression` flag. #6848
 * [ENHANCEMENT] Tenant Federation: Add a # of query result limit logic when the `-tenant-federation.regex-matcher-enabled` is enabled. #6845
 * [ENHANCEMENT] Query Frontend: Add a `cortex_slow_queries_total` metric to track # of slow queries per user. #6859
 * [ENHANCEMENT] Query Frontend: Change to return 400 when the tenant resolving fail. #6715

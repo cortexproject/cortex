@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/thanos-io/promql-engine/execution"
-	"github.com/thanos-io/promql-engine/execution/function"
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
@@ -146,9 +145,7 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 	functions := make(map[string]*parser.Function, len(parser.Functions))
 	maps.Copy(functions, parser.Functions)
 	if opts.EnableXFunctions {
-		functions["xdelta"] = function.XFunctions["xdelta"]
-		functions["xincrease"] = function.XFunctions["xincrease"]
-		functions["xrate"] = function.XFunctions["xrate"]
+		maps.Copy(functions, parse.XFunctions)
 	}
 
 	metrics := &engineMetrics{
@@ -256,16 +253,21 @@ func (e *Engine) MakeInstantQuery(ctx context.Context, q storage.Queryable, opts
 	planOpts := logicalplan.PlanOptions{
 		DisableDuplicateLabelCheck: e.disableDuplicateLabelChecks,
 	}
-	lplan, warns := logicalplan.NewFromAST(expr, qOpts, planOpts).Optimize(e.getLogicalOptimizers(opts))
+	initialPlan, err := logicalplan.NewFromAST(expr, qOpts, planOpts)
+	if err != nil {
+		return nil, errors.Wrap(err, "creating plan")
+	}
+	optimizedPlan, warns := initialPlan.Optimize(e.getLogicalOptimizers(opts))
 
-	scanners, err := e.storageScanners(q, qOpts, lplan)
+	ctx = warnings.NewContext(ctx)
+	defer func() { warns.Merge(warnings.FromContext(ctx)) }()
+
+	scanners, err := e.storageScanners(q, qOpts, optimizedPlan)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating storage scanners")
 	}
 
-	ctx = warnings.NewContext(ctx)
-	defer func() { warns.Merge(warnings.FromContext(ctx)) }()
-	exec, err := execution.New(ctx, lplan.Root(), scanners, qOpts)
+	exec, err := execution.New(ctx, optimizedPlan.Root(), scanners, qOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +275,7 @@ func (e *Engine) MakeInstantQuery(ctx context.Context, q storage.Queryable, opts
 	return &compatibilityQuery{
 		Query:      &Query{exec: exec, opts: opts},
 		engine:     e,
-		plan:       lplan,
+		plan:       optimizedPlan,
 		warns:      warns,
 		ts:         ts,
 		t:          InstantQuery,
@@ -354,16 +356,22 @@ func (e *Engine) MakeRangeQuery(ctx context.Context, q storage.Queryable, opts *
 	planOpts := logicalplan.PlanOptions{
 		DisableDuplicateLabelCheck: e.disableDuplicateLabelChecks,
 	}
-	lplan, warns := logicalplan.NewFromAST(expr, qOpts, planOpts).Optimize(e.getLogicalOptimizers(opts))
+
+	initialPlan, err := logicalplan.NewFromAST(expr, qOpts, planOpts)
+	if err != nil {
+		return nil, errors.Wrap(err, "creating plan")
+	}
+	optimizedPlan, warns := initialPlan.Optimize(e.getLogicalOptimizers(opts))
 
 	ctx = warnings.NewContext(ctx)
 	defer func() { warns.Merge(warnings.FromContext(ctx)) }()
-	scnrs, err := e.storageScanners(q, qOpts, lplan)
+
+	scnrs, err := e.storageScanners(q, qOpts, optimizedPlan)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating storage scanners")
 	}
 
-	exec, err := execution.New(ctx, lplan.Root(), scnrs, qOpts)
+	exec, err := execution.New(ctx, optimizedPlan.Root(), scnrs, qOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +380,7 @@ func (e *Engine) MakeRangeQuery(ctx context.Context, q storage.Queryable, opts *
 	return &compatibilityQuery{
 		Query:    &Query{exec: exec, opts: opts},
 		engine:   e,
-		plan:     lplan,
+		plan:     optimizedPlan,
 		warns:    warns,
 		t:        RangeQuery,
 		scanners: scnrs,

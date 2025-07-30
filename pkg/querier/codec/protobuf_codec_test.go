@@ -170,10 +170,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 				ResultType: parser.ValueTypeMatrix,
 				Result: promql.Matrix{
 					promql.Series{
-						Metric: labels.Labels{
-							{Name: "__name__", Value: "foo"},
-							{Name: "__job__", Value: "bar"},
-						},
+						Metric: labels.FromStrings("__name__", "foo", "__job__", "bar"),
 						Floats: []promql.FPoint{
 							{F: 0.14, T: 18555000},
 							{F: 2.9, T: 18556000},
@@ -192,8 +189,8 @@ func TestProtobufCodec_Encode(t *testing.T) {
 								SampleStreams: []tripperware.SampleStream{
 									{
 										Labels: []cortexpb.LabelAdapter{
-											{Name: "__name__", Value: "foo"},
 											{Name: "__job__", Value: "bar"},
+											{Name: "__name__", Value: "foo"},
 										},
 										Samples: []cortexpb.Sample{
 											{Value: 0.14, TimestampMs: 18555000},

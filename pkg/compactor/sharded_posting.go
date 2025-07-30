@@ -28,10 +28,10 @@ func NewShardedPosting(ctx context.Context, postings index.Postings, partitionCo
 		if builder.Labels().Hash()%partitionCount == partitionID {
 			posting := postings.At()
 			series = append(series, posting)
-			for _, label := range builder.Labels() {
-				symbols[label.Name] = struct{}{}
-				symbols[label.Value] = struct{}{}
-			}
+			builder.Labels().Range(func(l labels.Label) {
+				symbols[l.Name] = struct{}{}
+				symbols[l.Value] = struct{}{}
+			})
 		}
 	}
 	return index.NewListPostings(series), symbols, nil

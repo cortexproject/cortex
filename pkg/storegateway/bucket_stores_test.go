@@ -659,6 +659,7 @@ func TestBucketStores_SyncBlocksWithIgnoreBlocksBefore(t *testing.T) {
 		cortex_blocks_meta_synced{state="marked-for-deletion"} 0
 		cortex_blocks_meta_synced{state="marked-for-no-compact"} 0
 		cortex_blocks_meta_synced{state="no-meta-json"} 0
+		cortex_blocks_meta_synced{state="parquet-migrated"} 0
 		cortex_blocks_meta_synced{state="time-excluded"} 1
 		cortex_blocks_meta_synced{state="too-fresh"} 0
 		# HELP cortex_blocks_meta_syncs_total Total blocks metadata synchronization attempts
@@ -701,7 +702,7 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 		require.NoError(t, db.Close())
 	}()
 
-	series := labels.Labels{labels.Label{Name: labels.MetricName, Value: metricName}}
+	series := labels.FromStrings(labels.MetricName, metricName)
 
 	app := db.Appender(context.Background())
 	for ts := minT; ts < maxT; ts += int64(step) {

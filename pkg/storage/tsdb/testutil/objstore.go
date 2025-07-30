@@ -79,7 +79,7 @@ func (m *MockBucketFailure) Get(ctx context.Context, name string) (io.ReadCloser
 	return m.Bucket.Get(ctx, name)
 }
 
-func (m *MockBucketFailure) Upload(ctx context.Context, name string, r io.Reader) error {
+func (m *MockBucketFailure) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	m.UploadCalls.Add(1)
 	for prefix, err := range m.UploadFailures {
 		if strings.HasPrefix(name, prefix) {
@@ -90,7 +90,7 @@ func (m *MockBucketFailure) Upload(ctx context.Context, name string, r io.Reader
 		return e
 	}
 
-	return m.Bucket.Upload(ctx, name, r)
+	return m.Bucket.Upload(ctx, name, r, opts...)
 }
 
 func (m *MockBucketFailure) WithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.Bucket {

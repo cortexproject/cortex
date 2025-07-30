@@ -175,10 +175,7 @@ func (m mergeExemplarQuerier) Select(start, end int64, matchers ...[]*labels.Mat
 
 		// append __tenant__ label to `seriesLabels` to identify each tenants
 		for i, e := range res {
-			e.SeriesLabels = setLabelsRetainExisting(e.SeriesLabels, labels.Label{
-				Name:  m.idLabelName,
-				Value: job.id,
-			})
+			e.SeriesLabels = setLabelsRetainExisting(e.SeriesLabels, labels.FromStrings(m.idLabelName, job.id))
 			res[i] = e
 		}
 

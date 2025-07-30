@@ -121,10 +121,10 @@ func undefinedHistogramOp(_ context.Context, _ *histogram.FloatHistogram, _ floa
 
 var lhsHistogramOperations = map[string]histogramFloatOperation{
 	"*": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		return hist.Copy().Mul(float)
+		return hist.Copy().Mul(float).Compact(0)
 	},
 	"/": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		return hist.Copy().Div(float)
+		return hist.Copy().Div(float).Compact(0)
 	},
 	"+": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
 		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "+", "float", posrange.PositionRange{}), ctx)
@@ -174,7 +174,7 @@ var lhsHistogramOperations = map[string]histogramFloatOperation{
 
 var rhsHistogramOperations = map[string]histogramFloatOperation{
 	"*": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		return hist.Copy().Mul(float)
+		return hist.Copy().Mul(float).Compact(0)
 	},
 	"+": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
 		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "+", "histogram", posrange.PositionRange{}), ctx)

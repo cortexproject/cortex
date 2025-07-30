@@ -161,6 +161,7 @@ func DefaultConfigHandler(actualCfg interface{}, defaultCfg interface{}) http.Ha
 // server to fulfill the Prometheus query API.
 func NewQuerierHandler(
 	cfg Config,
+	querierCfg querier.Config,
 	queryable storage.SampleAndChunkQueryable,
 	exemplarQueryable storage.ExemplarQueryable,
 	engine promql.QueryEngine,
@@ -239,6 +240,8 @@ func NewQuerierHandler(
 		false,
 		false,
 		false,
+		false,
+		querierCfg.LookbackDelta,
 	)
 	// Let's clear all codecs to create the instrumented ones
 	api.ClearCodecs()

@@ -108,19 +108,8 @@ func TestNativeHistogramFuzz(t *testing.T) {
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_a"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa(i % 3)},
-			{Name: "status_code", Value: statusCodes[i%5]},
-		})
-
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_b"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa((i + 1) % 3)},
-			{Name: "status_code", Value: statusCodes[(i+1)%5]},
-		})
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
 
 	ctx := context.Background()
@@ -221,19 +210,8 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_a"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa(i % 3)},
-			{Name: "status_code", Value: statusCodes[i%5]},
-		})
-
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_b"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa((i + 1) % 3)},
-			{Name: "status_code", Value: statusCodes[(i+1)%5]},
-		})
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
 
 	ctx := context.Background()
@@ -1209,13 +1187,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 	metricName := "http_requests_total"
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {
-		lbl := labels.Labels{
-			{Name: labels.MetricName, Value: metricName},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa(i % 200)},
-			{Name: "status_code", Value: statusCodes[i%5]},
-		}
-		lbls = append(lbls, lbl)
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
 	rnd := rand.New(rand.NewSource(time.Now().Unix()))
@@ -1367,13 +1339,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 	metricName := "http_requests_total"
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {
-		lbl := labels.Labels{
-			{Name: labels.MetricName, Value: metricName},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa(i % 200)},
-			{Name: "status_code", Value: statusCodes[i%5]},
-		}
-		lbls = append(lbls, lbl)
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
 	rnd := rand.New(rand.NewSource(time.Now().Unix()))
@@ -1673,19 +1639,8 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_a"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa(i % 3)},
-			{Name: "status_code", Value: statusCodes[i%5]},
-		})
-
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_b"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa((i + 1) % 3)},
-			{Name: "status_code", Value: statusCodes[(i+1)%5]},
-		})
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
 
 	ctx := context.Background()

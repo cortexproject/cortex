@@ -1202,11 +1202,16 @@ outer:
 			defaultPartitionIndex = i
 			continue
 		}
-		for _, lbl := range lbls.LabelSet {
+		found := true
+		lbls.LabelSet.Range(func(l labels.Label) {
 			// We did not find some of the labels on the set
-			if v := metric.Get(lbl.Name); v != lbl.Value {
-				continue outer
+			if v := metric.Get(l.Name); v != l.Value {
+				found = false
 			}
+		})
+
+		if !found {
+			continue outer
 		}
 		r = append(r, lbls)
 	}

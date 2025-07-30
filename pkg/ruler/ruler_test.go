@@ -414,7 +414,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	n.Send(&notifier.Alert{
-		Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},
+		Labels: labels.FromStrings("alertname", "testalert"),
 	})
 
 	wg.Wait()
@@ -450,7 +450,7 @@ func TestNotifierSendExternalLabels(t *testing.T) {
 	cfg := defaultRulerConfig(t)
 	cfg.AlertmanagerURL = ts.URL
 	cfg.AlertmanagerDiscovery = false
-	cfg.ExternalLabels = []labels.Label{{Name: "region", Value: "us-east-1"}}
+	cfg.ExternalLabels = labels.FromStrings("region", "us-east-1")
 	limits := &ruleLimits{}
 	engine, queryable, pusher, logger, _, reg := testSetup(t, nil)
 	metrics := NewRuleEvalMetrics(cfg, nil)
@@ -481,12 +481,12 @@ func TestNotifierSendExternalLabels(t *testing.T) {
 		},
 		{
 			name:                   "local labels without overriding",
-			userExternalLabels:     labels.FromStrings("mylabel", "local"),
+			userExternalLabels:     []labels.Label{{Name: "mylabel", Value: "local"}},
 			expectedExternalLabels: []labels.Label{{Name: "region", Value: "us-east-1"}, {Name: "mylabel", Value: "local"}},
 		},
 		{
 			name:                   "local labels that override globals",
-			userExternalLabels:     labels.FromStrings("region", "cloud", "mylabel", "local"),
+			userExternalLabels:     []labels.Label{{Name: "region", Value: "cloud"}, {Name: "mylabel", Value: "local"}},
 			expectedExternalLabels: []labels.Label{{Name: "region", Value: "cloud"}, {Name: "mylabel", Value: "local"}},
 		},
 	}
@@ -494,7 +494,7 @@ func TestNotifierSendExternalLabels(t *testing.T) {
 		test := test
 
 		t.Run(test.name, func(t *testing.T) {
-			limits.setRulerExternalLabels(test.userExternalLabels)
+			limits.setRulerExternalLabels(labels.New(test.userExternalLabels...))
 			manager.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{
 				userID: {&rulespb.RuleGroupDesc{Name: "group", Namespace: "ns", Interval: time.Minute, User: userID}},
 			})
@@ -506,7 +506,7 @@ func TestNotifierSendExternalLabels(t *testing.T) {
 			}, 10*time.Second, 10*time.Millisecond)
 
 			n.notifier.Send(&notifier.Alert{
-				Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},
+				Labels: labels.FromStrings("alertname", "testalert"),
 			})
 			select {
 			case <-time.After(5 * time.Second):
@@ -2680,8 +2680,8 @@ func TestSendAlerts(t *testing.T) {
 		{
 			in: []*promRules.Alert{
 				{
-					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:      labels.FromStrings("l1", "v1"),
+					Annotations: labels.FromStrings("a2", "v2"),
 					ActiveAt:    time.Unix(1, 0),
 					FiredAt:     time.Unix(2, 0),
 					ValidUntil:  time.Unix(3, 0),
@@ -2689,8 +2689,8 @@ func TestSendAlerts(t *testing.T) {
 			},
 			exp: []*notifier.Alert{
 				{
-					Labels:       []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:       labels.FromStrings("l1", "v1"),
+					Annotations:  labels.FromStrings("a2", "v2"),
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(3, 0),
 					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
@@ -2700,8 +2700,8 @@ func TestSendAlerts(t *testing.T) {
 		{
 			in: []*promRules.Alert{
 				{
-					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:      labels.FromStrings("l1", "v1"),
+					Annotations: labels.FromStrings("a2", "v2"),
 					ActiveAt:    time.Unix(1, 0),
 					FiredAt:     time.Unix(2, 0),
 					ResolvedAt:  time.Unix(4, 0),
@@ -2709,8 +2709,8 @@ func TestSendAlerts(t *testing.T) {
 			},
 			exp: []*notifier.Alert{
 				{
-					Labels:       []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:       labels.FromStrings("l1", "v1"),
+					Annotations:  labels.FromStrings("a2", "v2"),
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(4, 0),
 					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",

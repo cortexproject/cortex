@@ -119,6 +119,10 @@ type BucketWithRetries struct {
 	retryMaxBackoff  time.Duration
 }
 
+func (b *BucketWithRetries) Provider() objstore.ObjProvider {
+	return b.bucket.Provider()
+}
+
 func (b *BucketWithRetries) retry(ctx context.Context, f func() error, operationInfo string) error {
 	var lastErr error
 	retries := backoff.New(ctx, backoff.Config{
@@ -191,12 +195,12 @@ func (b *BucketWithRetries) Exists(ctx context.Context, name string) (exists boo
 	return
 }
 
-func (b *BucketWithRetries) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *BucketWithRetries) Upload(ctx context.Context, name string, r io.Reader, uploadOpts ...objstore.ObjectUploadOption) error {
 	rs, ok := r.(io.ReadSeeker)
 	if !ok {
 		// Skip retry if incoming Reader is not seekable to avoid
 		// loading entire content into memory
-		err := b.bucket.Upload(ctx, name, r)
+		err := b.bucket.Upload(ctx, name, r, uploadOpts...)
 		if err != nil {
 			level.Warn(b.logger).Log("msg", "skip upload retry as reader is not seekable", "file", name, "err", err)
 		}
@@ -206,7 +210,7 @@ func (b *BucketWithRetries) Upload(ctx context.Context, name string, r io.Reader
 		if _, err := rs.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
-		return b.bucket.Upload(ctx, name, rs)
+		return b.bucket.Upload(ctx, name, rs, uploadOpts...)
 	}, fmt.Sprintf("Upload %s", name))
 }
 

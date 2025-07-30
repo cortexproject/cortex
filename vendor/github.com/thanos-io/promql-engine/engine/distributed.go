@@ -45,6 +45,10 @@ func (l remoteEngine) LabelSets() []labels.Labels {
 	return l.labelSets
 }
 
+func (l remoteEngine) PartitionLabelSets() []labels.Labels {
+	return l.labelSets
+}
+
 func (l remoteEngine) NewRangeQuery(ctx context.Context, opts promql.QueryOpts, plan api.RemoteQuery, start, end time.Time, interval time.Duration) (promql.Query, error) {
 	return l.engine.NewRangeQuery(ctx, l.q, opts, plan.String(), start, end, interval)
 }

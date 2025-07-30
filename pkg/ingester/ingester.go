@@ -33,7 +33,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
-	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/compression"
 	"github.com/prometheus/prometheus/util/zeropool"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -1147,15 +1147,17 @@ type extendedAppender interface {
 	storage.GetRef
 }
 
-func (i *Ingester) isLabelSetOutOfOrder(labels labels.Labels) bool {
+func (i *Ingester) isLabelSetOutOfOrder(lbls labels.Labels) bool {
 	last := ""
-	for _, l := range labels {
+	ooo := false
+	lbls.Range(func(l labels.Label) {
 		if strings.Compare(last, l.Name) > 0 {
-			return true
+			ooo = true
 		}
 		last = l.Name
-	}
-	return false
+	})
+
+	return ooo
 }
 
 // Push adds metrics to a block
@@ -1312,9 +1314,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			case errors.Is(cause, histogram.ErrHistogramCountMismatch):
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
-			case errors.Is(cause, storage.ErrOOONativeHistogramsDisabled):
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
-
 			default:
 				rollback = true
 			}
@@ -1461,7 +1460,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 						Labels: cortexpb.FromLabelAdaptersToLabelsWithCopy(ex.Labels),
 					}
 
-					if _, err = app.AppendExemplar(ref, nil, e); err == nil {
+					if _, err = app.AppendExemplar(ref, labels.EmptyLabels(), e); err == nil {
 						succeededExemplarsCount++
 						continue
 					}
@@ -2518,9 +2517,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 	oooTimeWindow := i.limits.OutOfOrderTimeWindow(userID)
 
-	walCompressType := wlog.CompressionNone
+	walCompressType := compression.None
 	if i.cfg.BlocksStorageConfig.TSDB.WALCompressionType != "" {
-		walCompressType = wlog.CompressionType(i.cfg.BlocksStorageConfig.TSDB.WALCompressionType)
+		walCompressType = i.cfg.BlocksStorageConfig.TSDB.WALCompressionType
 	}
 
 	// Create a new user database
@@ -2542,7 +2541,6 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
-		EnableOOONativeHistograms:      true,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		EnableNativeHistograms:         true,  // Always enable Native Histograms. Gate keeping is done though a per-tenant limit at ingestion.
 		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
@@ -2578,15 +2576,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
 	// we set the tenant ID as external label and we'll filter it out when reading
 	// the series from the storage.
-	l := labels.Labels{
-		{
-			Name:  cortex_tsdb.TenantIDExternalLabel,
-			Value: userID,
-		}, {
-			Name:  cortex_tsdb.IngesterIDExternalLabel,
-			Value: i.TSDBState.shipperIngesterID,
-		},
-	}
+	l := labels.FromStrings(cortex_tsdb.TenantIDExternalLabel, userID, cortex_tsdb.IngesterIDExternalLabel, i.TSDBState.shipperIngesterID)
 
 	// Create a new shipper for this database
 	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {

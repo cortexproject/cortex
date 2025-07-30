@@ -51,7 +51,7 @@ func (b *SSEBucketClient) Close() error {
 }
 
 // Upload the contents of the reader as an object into the bucket.
-func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	if sse, err := b.getCustomS3SSEConfig(); err != nil {
 		return err
 	} else if sse != nil {
@@ -60,7 +60,11 @@ func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader) 
 		ctx = s3.ContextWithSSEConfig(ctx, sse)
 	}
 
-	return b.bucket.Upload(ctx, name, r)
+	return b.bucket.Upload(ctx, name, r, opts...)
+}
+
+func (b *SSEBucketClient) Provider() objstore.ObjProvider {
+	return b.bucket.Provider()
 }
 
 // Delete implements objstore.Bucket.

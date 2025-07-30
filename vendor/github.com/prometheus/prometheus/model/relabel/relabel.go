@@ -135,12 +135,6 @@ func (c *Config) Validate() error {
 		// Design escaping mechanism to allow that, once valid use case appears.
 		return model.LabelName(value).IsValid()
 	}
-	//nolint:staticcheck
-	if model.NameValidationScheme == model.LegacyValidation {
-		isValidLabelNameWithRegexVarFn = func(value string) bool {
-			return relabelTargetLegacy.MatchString(value)
-		}
-	}
 	if c.Action == Replace && varInRegexTemplate(c.TargetLabel) && !isValidLabelNameWithRegexVarFn(c.TargetLabel) {
 		return fmt.Errorf("%q is invalid 'target_label' for %s action", c.TargetLabel, c.Action)
 	}

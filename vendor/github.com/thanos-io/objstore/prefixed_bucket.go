@@ -39,6 +39,8 @@ func withPrefix(prefix, name string) string {
 	return prefix + DirDelim + name
 }
 
+func (p *PrefixedBucket) Provider() ObjProvider { return p.bkt.Provider() }
+
 func (p *PrefixedBucket) Close() error {
 	return p.bkt.Close()
 }
@@ -93,14 +95,14 @@ func (p *PrefixedBucket) IsAccessDeniedErr(err error) bool {
 }
 
 // Attributes returns information about the specified object.
-func (p PrefixedBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
+func (p *PrefixedBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
 	return p.bkt.Attributes(ctx, conditionalPrefix(p.prefix, name))
 }
 
 // Upload the contents of the reader as an object into the bucket.
 // Upload should be idempotent.
-func (p *PrefixedBucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	return p.bkt.Upload(ctx, conditionalPrefix(p.prefix, name), r)
+func (p *PrefixedBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...ObjectUploadOption) error {
+	return p.bkt.Upload(ctx, conditionalPrefix(p.prefix, name), r, opts...)
 }
 
 // Delete removes the object with the given name.

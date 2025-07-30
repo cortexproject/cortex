@@ -184,8 +184,12 @@ type mockBucket struct {
 	calledCount int
 }
 
+func (m *mockBucket) Provider() objstore.ObjProvider {
+	return objstore.FILESYSTEM
+}
+
 // Upload mocks objstore.Bucket.Upload()
-func (m *mockBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (m *mockBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(r); err != nil {
 		return err

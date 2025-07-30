@@ -120,11 +120,9 @@ var (
 		// Very simple single-point gets, with low step.  Performance should be
 		// similar to above.
 		{
-			query: "foo",
-			step:  sampleRate * 4,
-			labels: labels.Labels{
-				labels.Label{Name: model.MetricNameLabel, Value: "foo"},
-			},
+			query:  "foo",
+			step:   sampleRate * 4,
+			labels: labels.FromStrings(labels.MetricName, "foo"),
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from)/step) + 1
 			},
@@ -182,11 +180,9 @@ var (
 
 		// Single points gets with large step; excersise Seek performance.
 		{
-			query: "foo",
-			step:  sampleRate * 4 * 10,
-			labels: labels.Labels{
-				labels.Label{Name: model.MetricNameLabel, Value: "foo"},
-			},
+			query:  "foo",
+			step:   sampleRate * 4 * 10,
+			labels: labels.FromStrings(labels.MetricName, "foo"),
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from)/step) + 1
 			},

@@ -19,13 +19,13 @@ import (
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/api/queryapi"
+	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/codec"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
@@ -163,7 +163,7 @@ func NewQuerierHandler(
 	cfg Config,
 	queryable storage.SampleAndChunkQueryable,
 	exemplarQueryable storage.ExemplarQueryable,
-	engine promql.QueryEngine,
+	engine engine.QueryEngine,
 	metadataQuerier querier.MetadataQuerier,
 	reg prometheus.Registerer,
 	logger log.Logger,

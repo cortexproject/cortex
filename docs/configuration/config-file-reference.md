@@ -4462,14 +4462,14 @@ thanos_engine:
 # CLI flag: -querier.enable-parquet-queryable
 [enable_parquet_queryable: <boolean> | default = false]
 
-# [Experimental] Maximum size of the Parquet queryable shard cache. 0 to
-# disable.
+# [Experimental] [Experimental] Maximum size of the Parquet queryable shard
+# cache. 0 to disable.
 # CLI flag: -querier.parquet-queryable-shard-cache-size
 [parquet_queryable_shard_cache_size: <int> | default = 512]
 
-# [Experimental] Parquet queryable's default block store to query. Valid options
-# are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback
-# to store gateway.
+# Parquet queryable's default block store to query. Valid options are tsdb and
+# parquet. If it is set to tsdb, parquet queryable always fallback to store
+# gateway.
 # CLI flag: -querier.parquet-queryable-default-block-store
 [parquet_queryable_default_block_store: <string> | default = "parquet"]
 

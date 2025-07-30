@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/httputil"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/engine"
@@ -26,7 +27,7 @@ import (
 
 type QueryAPI struct {
 	queryable     storage.SampleAndChunkQueryable
-	queryEngine   promql.QueryEngine
+	queryEngine   engine.QueryEngine
 	now           func() time.Time
 	statsRenderer v1.StatsRenderer
 	logger        log.Logger
@@ -35,7 +36,7 @@ type QueryAPI struct {
 }
 
 func NewQueryAPI(
-	qe promql.QueryEngine,
+	qe engine.QueryEngine,
 	q storage.SampleAndChunkQueryable,
 	statsRenderer v1.StatsRenderer,
 	logger log.Logger,
@@ -101,10 +102,29 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 
 	ctx = engine.AddEngineTypeToContext(ctx, r)
 	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
-	qry, err := q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(start), convertMsToTime(end), convertMsToDuration(step))
-	if err != nil {
-		return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+
+	var qry promql.Query
+	startTime := convertMsToTime(start)
+	endTime := convertMsToTime(end)
+	stepDuration := convertMsToDuration(step)
+
+	byteLP := []byte(r.PostFormValue("plan"))
+	if len(byteLP) != 0 {
+		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+		if err != nil {
+			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
+		}
+		qry, err = q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlan, startTime, endTime, stepDuration, r.FormValue("query"))
+		if err != nil {
+			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("failed to create range query from logical plan: %v", err)}, nil, nil}
+		}
+	} else { // if there is logical plan field is empty, fall back
+		qry, err = q.queryEngine.NewRangeQuery(ctx, q.queryable, opts, r.FormValue("query"), startTime, endTime, stepDuration)
+		if err != nil {
+			return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+		}
 	}
+
 	// From now on, we must only return with a finalizer in the result (to
 	// be called by the caller) or call qry.Close ourselves (which is
 	// required in the case of a panic).
@@ -157,9 +177,25 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 
 	ctx = engine.AddEngineTypeToContext(ctx, r)
 	ctx = querier.AddBlockStoreTypeToContext(ctx, r.Header.Get(querier.BlockStoreTypeHeader))
-	qry, err := q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), convertMsToTime(ts))
-	if err != nil {
-		return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+
+	var qry promql.Query
+	tsTime := convertMsToTime(ts)
+
+	byteLP := []byte(r.PostFormValue("plan"))
+	if len(byteLP) != 0 {
+		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+		if err != nil {
+			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
+		}
+		qry, err = q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlan, tsTime, r.FormValue("query"))
+		if err != nil {
+			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("failed to create instant query from logical plan: %v", err)}, nil, nil}
+		}
+	} else { // if there is logical plan field is empty, fall back
+		qry, err = q.queryEngine.NewInstantQuery(ctx, q.queryable, opts, r.FormValue("query"), tsTime)
+		if err != nil {
+			return invalidParamError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), "query")
+		}
 	}
 
 	// From now on, we must only return with a finalizer in the result (to

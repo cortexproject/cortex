@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
@@ -35,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/frontend"
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
@@ -322,7 +322,7 @@ type Cortex struct {
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
 	MetadataQuerier          querier.MetadataQuerier
-	QuerierEngine            promql.QueryEngine
+	QuerierEngine            engine.QueryEngine
 	QueryFrontendTripperware tripperware.Tripperware
 	ResourceMonitor          *resource.Monitor
 

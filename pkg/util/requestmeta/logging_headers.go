@@ -26,7 +26,11 @@ func LoggingHeadersFromContext(ctx context.Context) map[string]string {
 	loggingHeadersString := metadataMap[LoggingHeadersKey]
 	if loggingHeadersString == "" {
 		// Backward compatibility: if no specific headers are listed, return all metadata
-		return metadataMap
+		result := make(map[string]string, len(metadataMap))
+		for k, v := range metadataMap {
+			result[k] = v
+		}
+		return result
 	}
 
 	result := make(map[string]string)

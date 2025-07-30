@@ -34,7 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 const (
@@ -259,8 +259,8 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 
-	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
-		util_log.InjectHeadersIntoHTTPRequest(headerMap, request)
+	if requestMetadataMap := requestmeta.MapFromContext(ctx); requestMetadataMap != nil {
+		requestmeta.InjectMetadataIntoHTTPRequestHeaders(requestMetadataMap, request)
 	}
 
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {

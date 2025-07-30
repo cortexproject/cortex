@@ -1,40 +1,51 @@
 package api
 
 import (
-	"context"
 	"net/http"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/google/uuid"
+
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 // HTTPHeaderMiddleware adds specified HTTPHeaders to the request context
 type HTTPHeaderMiddleware struct {
-	TargetHeaders []string
+	TargetHeaders   []string
+	RequestIdHeader string
 }
 
-// InjectTargetHeadersIntoHTTPRequest injects specified HTTPHeaders into the request context
-func (h HTTPHeaderMiddleware) InjectTargetHeadersIntoHTTPRequest(r *http.Request) context.Context {
-	headerMap := make(map[string]string)
+// injectRequestContext injects request related metadata into the request context
+func (h HTTPHeaderMiddleware) injectRequestContext(r *http.Request) *http.Request {
+	requestContextMap := make(map[string]string)
 
-	// Check to make sure that Headers have not already been injected
-	checkMapInContext := util_log.HeaderMapFromContext(r.Context())
+	// Check to make sure that request context have not already been injected
+	checkMapInContext := requestmeta.MapFromContext(r.Context())
 	if checkMapInContext != nil {
-		return r.Context()
+		return r
 	}
 
 	for _, target := range h.TargetHeaders {
 		contents := r.Header.Get(target)
 		if contents != "" {
-			headerMap[target] = contents
+			requestContextMap[target] = contents
 		}
 	}
-	return util_log.ContextWithHeaderMap(r.Context(), headerMap)
+	requestContextMap[requestmeta.LoggingHeadersKey] = requestmeta.LoggingHeaderKeysToString(h.TargetHeaders)
+
+	reqId := r.Header.Get(h.RequestIdHeader)
+	if reqId == "" {
+		reqId = uuid.NewString()
+	}
+	requestContextMap[requestmeta.RequestIdKey] = reqId
+
+	ctx := requestmeta.ContextWithRequestMetadataMap(r.Context(), requestContextMap)
+	return r.WithContext(ctx)
 }
 
 // Wrap implements Middleware
 func (h HTTPHeaderMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := h.InjectTargetHeadersIntoHTTPRequest(r)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		r = h.injectRequestContext(r)
+		next.ServeHTTP(w, r)
 	})
 }

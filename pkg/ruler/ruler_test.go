@@ -1342,7 +1342,8 @@ func TestGetRules(t *testing.T) {
 
 			// Sync Rules
 			forEachRuler(func(_ string, r *Ruler) {
-				r.syncRules(context.Background(), rulerSyncReasonInitial)
+				err := r.syncRules(context.Background(), rulerSyncReasonInitial)
+				require.NoError(t, err)
 			})
 
 			if tc.sharding {
@@ -1572,7 +1573,8 @@ func TestGetRulesFromBackup(t *testing.T) {
 
 	// Sync Rules
 	forEachRuler(func(_ string, r *Ruler) {
-		r.syncRules(context.Background(), rulerSyncReasonInitial)
+		err := r.syncRules(context.Background(), rulerSyncReasonInitial)
+		require.NoError(t, err)
 	})
 
 	// update the State of the rulers in the ring based on tc.rulerStateMap
@@ -1788,7 +1790,8 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 
 		// Sync Rules
 		forEachRuler(func(_ string, r *Ruler) {
-			r.syncRules(context.Background(), rulerSyncReasonInitial)
+			err := r.syncRules(context.Background(), rulerSyncReasonInitial)
+			require.NoError(t, err)
 		})
 
 		// update the State of the rulers in the ring based on tc.rulerStateMap
@@ -1811,8 +1814,10 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 			t.Errorf("ruler %s was not terminated with error %s", "ruler1", err.Error())
 		}
 
-		rulerAddrMap["ruler2"].syncRules(context.Background(), rulerSyncReasonPeriodic)
-		rulerAddrMap["ruler3"].syncRules(context.Background(), rulerSyncReasonPeriodic)
+		err = rulerAddrMap["ruler2"].syncRules(context.Background(), rulerSyncReasonPeriodic)
+		require.NoError(t, err)
+		err = rulerAddrMap["ruler3"].syncRules(context.Background(), rulerSyncReasonPeriodic)
+		require.NoError(t, err)
 
 		requireGroupStateEqual := func(a *GroupStateDesc, b *GroupStateDesc) {
 			require.Equal(t, a.Group.Interval, b.Group.Interval)
@@ -2800,7 +2805,8 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	evalFunc := func(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {}
 
 	r, _ := buildRulerWithIterFunc(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, store, nil, evalFunc)
-	r.syncRules(context.Background(), rulerSyncReasonInitial)
+	err := r.syncRules(context.Background(), rulerSyncReasonInitial)
+	require.NoError(t, err)
 
 	// assert initial state of rule group
 	ruleGroup := r.manager.GetRules("user1")[0]
@@ -3265,7 +3271,8 @@ func TestGetShardSizeForUser(t *testing.T) {
 
 			// Sync Rules
 			forEachRuler(func(_ string, r *Ruler) {
-				r.syncRules(context.Background(), rulerSyncReasonInitial)
+				err := r.syncRules(context.Background(), rulerSyncReasonInitial)
+				require.NoError(t, err)
 			})
 
 			result := testRuler.getShardSizeForUser(tc.userID)

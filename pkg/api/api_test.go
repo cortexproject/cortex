@@ -89,6 +89,7 @@ func TestNewApiWithHeaderLogging(t *testing.T) {
 
 }
 
+// HTTPHeaderMiddleware should be added even if no headers are specified to log because it also handles request ID injection.
 func TestNewApiWithoutHeaderLogging(t *testing.T) {
 	cfg := Config{
 		HTTPRequestHeadersToLog: []string{},
@@ -102,7 +103,8 @@ func TestNewApiWithoutHeaderLogging(t *testing.T) {
 
 	api, err := New(cfg, serverCfg, server, &FakeLogger{})
 	require.NoError(t, err)
-	require.Nil(t, api.HTTPHeaderMiddleware)
+	require.NotNil(t, api.HTTPHeaderMiddleware)
+	require.Empty(t, api.HTTPHeaderMiddleware.TargetHeaders)
 
 }
 

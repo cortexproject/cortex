@@ -403,9 +403,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		// request context.
 		internalQuerierRouter = t.API.AuthMiddleware.Wrap(internalQuerierRouter)
 
-		if len(t.Cfg.API.HTTPRequestHeadersToLog) > 0 {
-			internalQuerierRouter = t.API.HTTPHeaderMiddleware.Wrap(internalQuerierRouter)
-		}
+		internalQuerierRouter = t.API.HTTPHeaderMiddleware.Wrap(internalQuerierRouter)
 	}
 
 	// If neither frontend address or scheduler address is configured, no worker is needed.

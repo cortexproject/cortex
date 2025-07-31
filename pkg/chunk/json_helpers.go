@@ -1,7 +1,6 @@
 package chunk
 
 import (
-	"sort"
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
@@ -19,35 +18,40 @@ func init() {
 // Override Prometheus' labels.Labels decoder which goes via a map
 func DecodeLabels(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	labelsPtr := (*labels.Labels)(ptr)
-	*labelsPtr = make(labels.Labels, 0, 10)
+	b := labels.NewBuilder(labels.EmptyLabels())
+
 	iter.ReadMapCB(func(iter *jsoniter.Iterator, key string) bool {
 		value := iter.ReadString()
-		*labelsPtr = append(*labelsPtr, labels.Label{Name: key, Value: value})
+		b.Set(key, value)
 		return true
 	})
-	// Labels are always sorted, but earlier Cortex using a map would
-	// output in any order so we have to sort on read in
-	sort.Sort(*labelsPtr)
+	*labelsPtr = b.Labels()
 }
 
 // Override Prometheus' labels.Labels encoder which goes via a map
 func EncodeLabels(ptr unsafe.Pointer, stream *jsoniter.Stream) {
-	labelsPtr := (*labels.Labels)(ptr)
+	lbls := *(*labels.Labels)(ptr)
+
 	stream.WriteObjectStart()
-	for i, v := range *labelsPtr {
-		if i != 0 {
+	first := true
+
+	lbls.Range(func(l labels.Label) {
+		if !first {
 			stream.WriteMore()
 		}
-		stream.WriteString(v.Name)
+		first = false
+
+		stream.WriteString(l.Name)
 		stream.WriteRaw(`:`)
-		stream.WriteString(v.Value)
-	}
+		stream.WriteString(l.Value)
+	})
+
 	stream.WriteObjectEnd()
 }
 
 func labelsIsEmpty(ptr unsafe.Pointer) bool {
-	labelsPtr := (*labels.Labels)(ptr)
-	return len(*labelsPtr) == 0
+	labelsPtr := *(*labels.Labels)(ptr)
+	return labelsPtr.Len() == 0
 }
 
 // Decode via jsoniter's float64 routine is faster than getting the string data and decoding as two integers

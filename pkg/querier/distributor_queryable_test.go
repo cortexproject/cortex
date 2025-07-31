@@ -191,13 +191,13 @@ func TestIngesterStreaming(t *testing.T) {
 
 			require.True(t, seriesSet.Next())
 			series := seriesSet.At()
-			require.Equal(t, labels.Labels{{Name: "bar", Value: "baz"}}, series.Labels())
+			require.Equal(t, labels.FromStrings("bar", "baz"), series.Labels())
 			chkIter := series.Iterator(nil)
 			require.Equal(t, enc.ChunkValueType(), chkIter.Next())
 
 			require.True(t, seriesSet.Next())
 			series = seriesSet.At()
-			require.Equal(t, labels.Labels{{Name: "foo", Value: "bar"}}, series.Labels())
+			require.Equal(t, labels.FromStrings("foo", "bar"), series.Labels())
 			chkIter = series.Iterator(chkIter)
 			require.Equal(t, enc.ChunkValueType(), chkIter.Next())
 

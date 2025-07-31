@@ -48,16 +48,18 @@ See [MAINTAINERS.md](https://github.com/thanos-io/thanos/blob/main/MAINTAINERS.m
 
 The core this module is the [`Bucket` interface](objstore.go):
 
-```go mdox-exec="sed -n '39,55p' objstore.go"
+```go mdox-exec="sed -n '55,73p' objstore.go"
 // Bucket provides read and write access to an object storage bucket.
 // NOTE: We assume strong consistency for write-read flow.
 type Bucket interface {
 	io.Closer
 	BucketReader
 
+	Provider() ObjProvider
+
 	// Upload the contents of the reader as an object into the bucket.
 	// Upload should be idempotent.
-	Upload(ctx context.Context, name string, r io.Reader) error
+	Upload(ctx context.Context, name string, r io.Reader, opts ...ObjectUploadOption) error
 
 	// Delete removes the object with the given name.
 	// If object does not exist in the moment of deletion, Delete should throw error.
@@ -70,7 +72,7 @@ type Bucket interface {
 
 All [provider implementations](providers) have to implement `Bucket` interface that allows common read and write operations that all supported by all object providers. If you want to limit the code that will do bucket operation to only read access (smart idea, allowing to limit access permissions), you can use the [`BucketReader` interface](objstore.go):
 
-```go mdox-exec="sed -n '71,106p' objstore.go"
+```go mdox-exec="sed -n '89,124p' objstore.go"
 // BucketReader provides read access to an object storage bucket.
 type BucketReader interface {
 	// Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
@@ -203,6 +205,7 @@ config:
     kms_encryption_context: {}
     encryption_key: ""
   sts_endpoint: ""
+  max_retries: 0
 prefix: ""
 ```
 
@@ -388,6 +391,7 @@ config:
       insecure_skip_verify: false
     disable_compression: false
   chunk_size_bytes: 0
+  max_retries: 0
 prefix: ""
 ```
 
@@ -458,6 +462,9 @@ Config file format is the following:
 ```yaml mdox-exec="go run scripts/cfggen/main.go --name=azure.Config"
 type: AZURE
 config:
+  az_tenant_id: ""
+  client_id: ""
+  client_secret: ""
   storage_account: ""
   storage_account_key: ""
   storage_connection_string: ""
@@ -570,6 +577,7 @@ config:
   endpoint: ""
   secret_key: ""
   secret_id: ""
+  max_retries: 0
   http_config:
     idle_conn_timeout: 1m30s
     response_header_timeout: 2m
@@ -668,6 +676,7 @@ config:
     max_conns_per_host: 0         // Optional maximum total number of connections per host.
     disable_compression: false    // Optional. If true, prevents the Transport from requesting compression.
     client_timeout: 90s           // Optional time limit for requests made by the HTTP Client.
+prefix: ""
 ```
 
 #### Instance Principal Provider
@@ -680,6 +689,7 @@ config:
   provider: "instance-principal"
   bucket: ""
   compartment_ocid: ""
+prefix: ""
 ```
 
 You can also include any of the optional configuration just like the example in `Default Provider`.
@@ -700,6 +710,7 @@ config:
   fingerprint: ""
   privatekey: ""
   passphrase: ""         // Optional passphrase to encrypt the private API Signing key
+prefix: ""
 ```
 
 You can also include any of the optional configuration just like the example in `Default Provider`.
@@ -714,6 +725,7 @@ config:
   provider: "oke-workload-identity"
   bucket: ""
   region: ""
+prefix: ""
 ```
 
 The `bucket` and `region` fields are required. The `region` field identifies the bucket region.
@@ -731,6 +743,7 @@ config:
   endpoint: ""
   access_key: ""
   secret_key: ""
+  max_retries: 0
   http_config:
     idle_conn_timeout: 1m30s
     response_header_timeout: 2m

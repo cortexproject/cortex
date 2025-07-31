@@ -86,13 +86,9 @@ func TestParseLegacyAlerts(t *testing.T) {
 		parsed,
 		5*time.Minute,
 		0,
-		labels.Labels{
-			labels.Label{Name: "severity", Value: "critical"},
-		},
-		labels.Labels{
-			labels.Label{Name: "message", Value: "I am a message"},
-		},
-		nil,
+		labels.FromStrings("severity", "critical"),
+		labels.FromStrings("message", "I am a message"),
+		labels.EmptyLabels(),
 		"",
 		true,
 		util_log.GoKitLogToSlog(log.With(util_log.Logger, "alert", "TestAlert")),

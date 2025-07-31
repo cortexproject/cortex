@@ -364,12 +364,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 		newCtx := user.InjectOrgID(parentCtx, job.id)
 		seriesSets[job.pos] = &addLabelsSeriesSet{
 			upstream: job.querier.Select(newCtx, sortSeries, hints, filteredMatchers...),
-			labels: labels.Labels{
-				{
-					Name:  m.idLabelName,
-					Value: job.id,
-				},
-			},
+			labels:   labels.FromStrings(m.idLabelName, job.id),
 		}
 		return nil
 	}
@@ -442,7 +437,7 @@ func (m *addLabelsSeriesSet) At() storage.Series {
 		upstream := m.upstream.At()
 		m.currSeries = &addLabelsSeries{
 			upstream: upstream,
-			labels:   setLabelsRetainExisting(upstream.Labels(), m.labels...),
+			labels:   setLabelsRetainExisting(upstream.Labels(), m.labels),
 		}
 	}
 	return m.currSeries
@@ -471,11 +466,11 @@ func rewriteLabelName(s string) string {
 }
 
 // this outputs a more readable error format
-func labelsToString(labels labels.Labels) string {
-	parts := make([]string, len(labels))
-	for pos, l := range labels {
-		parts[pos] = rewriteLabelName(l.Name) + " " + l.Value
-	}
+func labelsToString(lbls labels.Labels) string {
+	parts := make([]string, 0, lbls.Len())
+	lbls.Range(func(l labels.Label) {
+		parts = append(parts, rewriteLabelName(l.Name)+" "+l.Value)
+	})
 	return strings.Join(parts, ", ")
 }
 
@@ -496,17 +491,17 @@ func (a *addLabelsSeries) Iterator(it chunkenc.Iterator) chunkenc.Iterator {
 
 // this sets a label and preserves an existing value a new label prefixed with
 // original_. It doesn't do this recursively.
-func setLabelsRetainExisting(src labels.Labels, additionalLabels ...labels.Label) labels.Labels {
+func setLabelsRetainExisting(src labels.Labels, additionalLabels labels.Labels) labels.Labels {
 	lb := labels.NewBuilder(src)
 
-	for _, additionalL := range additionalLabels {
-		if oldValue := src.Get(additionalL.Name); oldValue != "" {
+	for name, value := range additionalLabels.Map() {
+		if oldValue := src.Get(name); oldValue != "" {
 			lb.Set(
-				retainExistingPrefix+additionalL.Name,
+				retainExistingPrefix+name,
 				oldValue,
 			)
 		}
-		lb.Set(additionalL.Name, additionalL.Value)
+		lb.Set(name, value)
 	}
 
 	return lb.Labels()

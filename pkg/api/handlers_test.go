@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/querier"
 )
 
 func TestIndexHandlerPrefix(t *testing.T) {
@@ -229,10 +231,11 @@ func TestBuildInfoAPI(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := Config{buildInfoEnabled: true}
+			querierConfig := querier.Config{}
 			version.Version = tc.version
 			version.Branch = tc.branch
 			version.Revision = tc.revision
-			handler := NewQuerierHandler(cfg, nil, nil, nil, nil, nil, &FakeLogger{})
+			handler := NewQuerierHandler(cfg, querierConfig, nil, nil, nil, nil, nil, &FakeLogger{})
 			writer := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/api/v1/status/buildinfo", nil)
 			req = req.WithContext(user.InjectOrgID(req.Context(), "test"))

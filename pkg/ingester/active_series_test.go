@@ -29,15 +29,15 @@ func TestActiveSeries_UpdateSeries(t *testing.T) {
 	assert.Equal(t, 0, c.ActiveNativeHistogram())
 	labels1Hash := fromLabelToLabels(ls1).Hash()
 	labels2Hash := fromLabelToLabels(ls2).Hash()
-	c.UpdateSeries(ls1, labels1Hash, time.Now(), true, copyFn)
+	c.UpdateSeries(fromLabelToLabels(ls1), labels1Hash, time.Now(), true, copyFn)
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.ActiveNativeHistogram())
 
-	c.UpdateSeries(ls1, labels1Hash, time.Now(), true, copyFn)
+	c.UpdateSeries(fromLabelToLabels(ls1), labels1Hash, time.Now(), true, copyFn)
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.ActiveNativeHistogram())
 
-	c.UpdateSeries(ls2, labels2Hash, time.Now(), true, copyFn)
+	c.UpdateSeries(fromLabelToLabels(ls2), labels2Hash, time.Now(), true, copyFn)
 	assert.Equal(t, 2, c.Active())
 	assert.Equal(t, 2, c.ActiveNativeHistogram())
 }
@@ -56,7 +56,7 @@ func TestActiveSeries_Purge(t *testing.T) {
 		c := NewActiveSeries()
 
 		for i := 0; i < len(series); i++ {
-			c.UpdateSeries(series[i], fromLabelToLabels(series[i]).Hash(), time.Unix(int64(i), 0), true, copyFn)
+			c.UpdateSeries(fromLabelToLabels(series[i]), fromLabelToLabels(series[i]).Hash(), time.Unix(int64(i), 0), true, copyFn)
 		}
 
 		c.Purge(time.Unix(int64(ttl+1), 0))
@@ -109,9 +109,7 @@ func BenchmarkActiveSeriesTest_single_series(b *testing.B) {
 }
 
 func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) {
-	series := labels.Labels{
-		{Name: "a", Value: "a"},
-	}
+	series := labels.FromStrings("a", "a")
 
 	c := NewActiveSeries()
 
@@ -152,7 +150,7 @@ func BenchmarkActiveSeries_UpdateSeries(b *testing.B) {
 	series := make([]labels.Labels, b.N)
 	labelhash := make([]uint64, b.N)
 	for s := 0; s < b.N; s++ {
-		series[s] = labels.Labels{{Name: name, Value: name + strconv.Itoa(s)}}
+		series[s] = labels.FromStrings(name, name+strconv.Itoa(s))
 		labelhash[s] = series[s].Hash()
 	}
 
@@ -182,7 +180,7 @@ func benchmarkPurge(b *testing.B, twice bool) {
 	series := [numSeries]labels.Labels{}
 	labelhash := [numSeries]uint64{}
 	for s := 0; s < numSeries; s++ {
-		series[s] = labels.Labels{{Name: "a", Value: strconv.Itoa(s)}}
+		series[s] = labels.FromStrings("a", strconv.Itoa(s))
 		labelhash[s] = series[s].Hash()
 	}
 

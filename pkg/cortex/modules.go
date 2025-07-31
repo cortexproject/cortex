@@ -365,6 +365,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	// to a Prometheus API struct instantiated with the Cortex Queryable.
 	internalQuerierRouter := api.NewQuerierHandler(
 		t.Cfg.API,
+		t.Cfg.Querier,
 		t.QuerierQueryable,
 		t.ExemplarQueryable,
 		t.QuerierEngine,

@@ -108,12 +108,18 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 
 		switch a.aggregation {
 		case parser.TOPK, parser.BOTTOMK, parser.LIMITK:
-			if val > math.MaxInt64 || val < math.MinInt64 || math.IsNaN(val) {
+			if math.IsNaN(val) {
+				return nil, errors.New("Parameter value is NaN")
+			}
+			if val > math.MaxInt64 {
 				return nil, errors.Newf("Scalar value %v overflows int64", val)
+			}
+			if val < math.MinInt64 {
+				return nil, errors.Newf("Scalar value %v underflows int64", val)
 			}
 		case parser.LIMIT_RATIO:
 			if math.IsNaN(val) {
-				return nil, errors.Newf("Ratio value %v is NaN", val)
+				return nil, errors.Newf("Ratio value is NaN")
 			}
 			switch {
 			case val < -1.0:

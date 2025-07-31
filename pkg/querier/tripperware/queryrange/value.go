@@ -58,10 +58,10 @@ func FromResult(res *promql.Result) ([]tripperware.SampleStream, error) {
 }
 
 func mapLabels(ls labels.Labels) []cortexpb.LabelAdapter {
-	result := make([]cortexpb.LabelAdapter, 0, len(ls))
-	for _, l := range ls {
+	result := make([]cortexpb.LabelAdapter, 0, ls.Len())
+	ls.Range(func(l labels.Label) {
 		result = append(result, cortexpb.LabelAdapter(l))
-	}
+	})
 
 	return result
 }

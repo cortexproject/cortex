@@ -86,6 +86,7 @@ func TestBucketIndexMetadataFetcher_Fetch(t *testing.T) {
 		blocks_meta_synced{state="marked-for-no-compact"} 0
 		blocks_meta_synced{state="no-bucket-index"} 0
 		blocks_meta_synced{state="no-meta-json"} 0
+		blocks_meta_synced{state="parquet-migrated"} 0
 		blocks_meta_synced{state="time-excluded"} 0
 		blocks_meta_synced{state="too-fresh"} 0
 
@@ -134,6 +135,7 @@ func TestBucketIndexMetadataFetcher_Fetch_KeyPermissionDenied(t *testing.T) {
 		blocks_meta_synced{state="marked-for-no-compact"} 0
 		blocks_meta_synced{state="no-bucket-index"} 0
 		blocks_meta_synced{state="no-meta-json"} 0
+		blocks_meta_synced{state="parquet-migrated"} 0
 		blocks_meta_synced{state="time-excluded"} 0
 		blocks_meta_synced{state="too-fresh"} 0
 		# HELP blocks_meta_syncs_total Total blocks metadata synchronization attempts
@@ -185,6 +187,7 @@ func TestBucketIndexMetadataFetcher_Fetch_NoBucketIndex(t *testing.T) {
 		blocks_meta_synced{state="marked-for-no-compact"} 0
 		blocks_meta_synced{state="no-bucket-index"} 1
 		blocks_meta_synced{state="no-meta-json"} 0
+		blocks_meta_synced{state="parquet-migrated"} 0
 		blocks_meta_synced{state="time-excluded"} 0
 		blocks_meta_synced{state="too-fresh"} 0
 
@@ -240,6 +243,7 @@ func TestBucketIndexMetadataFetcher_Fetch_CorruptedBucketIndex(t *testing.T) {
 		blocks_meta_synced{state="marked-for-no-compact"} 0
 		blocks_meta_synced{state="no-bucket-index"} 0
 		blocks_meta_synced{state="no-meta-json"} 0
+		blocks_meta_synced{state="parquet-migrated"} 0
 		blocks_meta_synced{state="time-excluded"} 0
 		blocks_meta_synced{state="too-fresh"} 0
 
@@ -287,6 +291,7 @@ func TestBucketIndexMetadataFetcher_Fetch_ShouldResetGaugeMetrics(t *testing.T) 
 		blocks_meta_synced{state="marked-for-no-compact"} 0
 		blocks_meta_synced{state="no-bucket-index"} 0
 		blocks_meta_synced{state="no-meta-json"} 0
+		blocks_meta_synced{state="parquet-migrated"} 0
 		blocks_meta_synced{state="time-excluded"} 0
 		blocks_meta_synced{state="too-fresh"} 0
 	`), "blocks_meta_synced"))
@@ -311,6 +316,7 @@ func TestBucketIndexMetadataFetcher_Fetch_ShouldResetGaugeMetrics(t *testing.T) 
 		blocks_meta_synced{state="marked-for-no-compact"} 0
 		blocks_meta_synced{state="no-bucket-index"} 1
 		blocks_meta_synced{state="no-meta-json"} 0
+		blocks_meta_synced{state="parquet-migrated"} 0
 		blocks_meta_synced{state="time-excluded"} 0
 		blocks_meta_synced{state="too-fresh"} 0
 	`), "blocks_meta_synced"))
@@ -343,6 +349,7 @@ func TestBucketIndexMetadataFetcher_Fetch_ShouldResetGaugeMetrics(t *testing.T) 
 		blocks_meta_synced{state="marked-for-no-compact"} 0
 		blocks_meta_synced{state="no-bucket-index"} 0
 		blocks_meta_synced{state="no-meta-json"} 0
+		blocks_meta_synced{state="parquet-migrated"} 0
 		blocks_meta_synced{state="time-excluded"} 0
 		blocks_meta_synced{state="too-fresh"} 0
 	`), "blocks_meta_synced"))
@@ -369,6 +376,7 @@ func TestBucketIndexMetadataFetcher_Fetch_ShouldResetGaugeMetrics(t *testing.T) 
 		blocks_meta_synced{state="marked-for-no-compact"} 0
 		blocks_meta_synced{state="no-bucket-index"} 0
 		blocks_meta_synced{state="no-meta-json"} 0
+		blocks_meta_synced{state="parquet-migrated"} 0
 		blocks_meta_synced{state="time-excluded"} 0
 		blocks_meta_synced{state="too-fresh"} 0
 	`), "blocks_meta_synced"))

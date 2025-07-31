@@ -99,19 +99,8 @@ func TestParquetFuzz(t *testing.T) {
 	end := now.Add(-time.Hour)
 
 	for i := 0; i < numSeries; i++ {
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_a"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa(i % 3)},
-			{Name: "status_code", Value: statusCodes[i%5]},
-		})
-
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_b"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa((i + 1) % 3)},
-			{Name: "status_code", Value: statusCodes[(i+1)%5]},
-		})
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
 	id, err := e2e.CreateBlock(ctx, rnd, dir, lbls, numSamples, start.UnixMilli(), end.UnixMilli(), scrapeInterval.Milliseconds(), 10)
 	require.NoError(t, err)

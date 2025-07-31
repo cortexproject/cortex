@@ -12,6 +12,7 @@ run:
     - integration_querier
     - integration_ruler
     - integration_query_fuzz
+    - slicelabels
 output:
   formats:
     text:

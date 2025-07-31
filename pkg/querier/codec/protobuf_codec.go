@@ -5,6 +5,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/stats"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
@@ -101,16 +102,18 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 
 	for i := 0; i < sampleStreamsLen; i++ {
 		sampleStream := data.Result.(promql.Matrix)[i]
-		labelsLen := len(sampleStream.Metric)
-		var labels []cortexpb.LabelAdapter
+		labelsLen := sampleStream.Metric.Len()
+		var lbls []cortexpb.LabelAdapter
 		if labelsLen > 0 {
-			labels = make([]cortexpb.LabelAdapter, labelsLen)
-			for j := 0; j < labelsLen; j++ {
-				labels[j] = cortexpb.LabelAdapter{
-					Name:  sampleStream.Metric[j].Name,
-					Value: sampleStream.Metric[j].Value,
+			lbls = make([]cortexpb.LabelAdapter, labelsLen)
+			j := 0
+			sampleStream.Metric.Range(func(l labels.Label) {
+				lbls[j] = cortexpb.LabelAdapter{
+					Name:  l.Name,
+					Value: l.Value,
 				}
-			}
+				j++
+			})
 		}
 
 		samplesLen := len(sampleStream.Floats)
@@ -145,7 +148,7 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 				}
 			}
 		}
-		sampleStreams[i] = tripperware.SampleStream{Labels: labels, Samples: samples, Histograms: histograms}
+		sampleStreams[i] = tripperware.SampleStream{Labels: lbls, Samples: samples, Histograms: histograms}
 	}
 	return &sampleStreams
 }
@@ -156,18 +159,20 @@ func getVectorSamples(data *v1.QueryData, cortexInternal bool) *[]tripperware.Sa
 
 	for i := 0; i < vectorSamplesLen; i++ {
 		sample := data.Result.(promql.Vector)[i]
-		labelsLen := len(sample.Metric)
-		var labels []cortexpb.LabelAdapter
+		labelsLen := sample.Metric.Len()
+		var lbls []cortexpb.LabelAdapter
 		if labelsLen > 0 {
-			labels = make([]cortexpb.LabelAdapter, labelsLen)
-			for j := 0; j < labelsLen; j++ {
-				labels[j] = cortexpb.LabelAdapter{
-					Name:  sample.Metric[j].Name,
-					Value: sample.Metric[j].Value,
+			lbls = make([]cortexpb.LabelAdapter, labelsLen)
+			j := 0
+			sample.Metric.Range(func(l labels.Label) {
+				lbls[j] = cortexpb.LabelAdapter{
+					Name:  l.Name,
+					Value: l.Value,
 				}
-			}
+				j++
+			})
 		}
-		vectorSamples[i].Labels = labels
+		vectorSamples[i].Labels = lbls
 
 		// Float samples only.
 		if sample.H == nil {

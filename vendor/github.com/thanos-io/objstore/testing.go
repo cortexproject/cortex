@@ -280,6 +280,8 @@ func WithDelay(bkt Bucket, delay time.Duration) Bucket {
 	return &delayingBucket{bkt: bkt, delay: delay}
 }
 
+func (d *delayingBucket) Provider() ObjProvider { return d.bkt.Provider() }
+
 func (d *delayingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	time.Sleep(d.delay)
 	return d.bkt.Get(ctx, name)
@@ -314,9 +316,9 @@ func (d *delayingBucket) Exists(ctx context.Context, name string) (bool, error) 
 	return d.bkt.Exists(ctx, name)
 }
 
-func (d *delayingBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (d *delayingBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...ObjectUploadOption) error {
 	time.Sleep(d.delay)
-	return d.bkt.Upload(ctx, name, r)
+	return d.bkt.Upload(ctx, name, r, opts...)
 }
 
 func (d *delayingBucket) Delete(ctx context.Context, name string) error {

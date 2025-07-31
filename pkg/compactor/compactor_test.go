@@ -1362,7 +1362,7 @@ func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, max
 
 	// Append a sample at the beginning and one at the end of the time range.
 	for i, ts := range []int64{minT, maxT - 1} {
-		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
+		lbls := labels.FromStrings("series_id", strconv.Itoa(i))
 
 		app := db.Appender(context.Background())
 		_, err := app.Append(0, lbls, ts, float64(i))

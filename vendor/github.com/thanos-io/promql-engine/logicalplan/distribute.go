@@ -168,7 +168,7 @@ func (m DistributedExecutionOptimizer) Optimize(plan Node, opts *query.Options) 
 	labelRanges := make(labelSetRanges)
 	engineLabels := make(map[string]struct{})
 	for _, e := range engines {
-		for _, lset := range e.LabelSets() {
+		for _, lset := range e.PartitionLabelSets() {
 			lsetKey := lset.String()
 			labelRanges.addRange(lsetKey, timeRange{
 				start: time.UnixMilli(e.MinT()),
@@ -285,7 +285,7 @@ func newRemoteAggregation(rootAggregation *Aggregation, engines []api.RemoteEngi
 	}
 
 	for _, engine := range engines {
-		for _, lbls := range engine.LabelSets() {
+		for _, lbls := range engine.PartitionLabelSets() {
 			lbls.Range(func(lbl labels.Label) {
 				if rootAggregation.Without {
 					delete(groupingSet, lbl.Name)

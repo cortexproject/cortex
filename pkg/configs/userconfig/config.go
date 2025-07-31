@@ -308,7 +308,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 						time.Duration(rl.KeepFiringFor),
 						labels.FromMap(rl.Labels),
 						labels.FromMap(rl.Annotations),
-						nil,
+						labels.EmptyLabels(),
 						"",
 						true,
 						util_log.GoKitLogToSlog(log.With(util_log.Logger, "alert", rl.Alert)),

@@ -22,7 +22,7 @@ func TestUserExternalLabels(t *testing.T) {
 			name:                   "global labels only",
 			removeBeforeTest:       false,
 			exists:                 false,
-			userExternalLabels:     nil,
+			userExternalLabels:     labels.EmptyLabels(),
 			expectedExternalLabels: labels.FromStrings("from", "cortex"),
 		},
 		{

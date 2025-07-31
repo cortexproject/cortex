@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -53,7 +54,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1",
 					mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{{Name: labels.MetricName, Value: "fromSg"}}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockSeriesResponse(labels.FromStrings(labels.MetricName, "fromSg"), []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block1, block2),
 					},
 					mockedLabelNamesResponse: &storepb.LabelNamesResponse{
@@ -415,10 +416,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 	seriesCount := 100
 	lbls := make([]labels.Labels, seriesCount)
 	for i := 0; i < seriesCount; i++ {
-		lbls[i] = labels.Labels{
-			{Name: labels.MetricName, Value: metricName},
-			{Name: "series", Value: fmt.Sprintf("%d", i)},
-		}
+		lbls[i] = labels.FromStrings(labels.MetricName, metricName, "series", strconv.Itoa(i))
 	}
 
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -728,7 +726,7 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 			map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1",
 					mockedSeriesResponses: []*storepb.SeriesResponse{
-						mockSeriesResponse(labels.Labels{{Name: labels.MetricName, Value: "fromSg"}}, []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockSeriesResponse(labels.FromStrings(labels.MetricName, "fromSg"), []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
 						mockHintsResponse(block1, block2),
 					},
 					mockedLabelNamesResponse: &storepb.LabelNamesResponse{

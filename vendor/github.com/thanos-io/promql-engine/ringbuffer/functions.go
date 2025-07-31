@@ -204,15 +204,40 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if len(f.Samples) == 0 {
 			return 0., nil, false, nil
 		}
-		v, ok := maxOverTime(f.ctx, f.Samples)
+		v, _, ok := maxOverTime(f.ctx, f.Samples)
 		return v, nil, ok, nil
 	},
 	"min_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false, nil
 		}
-		v, ok := minOverTime(f.ctx, f.Samples)
+		v, _, ok := minOverTime(f.ctx, f.Samples)
 		return v, nil, ok, nil
+	},
+	"ts_of_max_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
+		if len(f.Samples) == 0 {
+			return 0., nil, false, nil
+		}
+		_, t, ok := maxOverTime(f.ctx, f.Samples)
+		return float64(t) / 1000, nil, ok, nil
+	},
+	"ts_of_min_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
+		if len(f.Samples) == 0 {
+			return 0., nil, false, nil
+		}
+		_, t, ok := minOverTime(f.ctx, f.Samples)
+		return float64(t) / 1000, nil, ok, nil
+	},
+	"ts_of_last_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
+		if len(f.Samples) == 0 {
+			return 0., nil, false, nil
+		}
+
+		var t int64
+		for _, s := range f.Samples {
+			t = max(t, s.T)
+		}
+		return float64(t) / 1000, nil, true, nil
 	},
 	"avg_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) == 0 {
@@ -229,12 +254,11 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		}
 		if f.Samples[0].V.H != nil {
 			// histogram
-			count := 1
 			mean := f.Samples[0].V.H.Copy()
-			for _, sample := range f.Samples[1:] {
-				count++
-				left := sample.V.H.Copy().Div(float64(count))
-				right := mean.Copy().Div(float64(count))
+			for i, sample := range f.Samples[1:] {
+				count := float64(i + 2)
+				left := sample.V.H.Copy().Div(count)
+				right := mean.Copy().Div(count)
 				toAdd, err := left.Sub(right)
 				if err != nil {
 					if err := handleHistogramErr(f.ctx, err); err != nil {
@@ -508,12 +532,11 @@ func extrapolatedRate(ctx context.Context, samples []Sample, numSamples int, isC
 	// (which is our guess for where the series actually starts or ends).
 
 	extrapolationThreshold := averageDurationBetweenSamples * 1.1
-	extrapolateToInterval := sampledInterval
 
 	if durationToStart >= extrapolationThreshold {
 		durationToStart = averageDurationBetweenSamples / 2
 	}
-	if isCounter && resultValue > 0 && samples[0].V.F >= 0 {
+	if isCounter {
 		// Counters cannot be negative. If we have any slope at
 		// all (i.e. resultValue went up), we can extrapolate
 		// the zero point of the counter. If the duration to the
@@ -521,20 +544,28 @@ func extrapolatedRate(ctx context.Context, samples []Sample, numSamples int, isC
 		// take the zero point as the start of the series,
 		// thereby avoiding extrapolation to negative counter
 		// values.
-		// TODO(beorn7): Do this for histograms, too.
-		durationToZero := sampledInterval * (samples[0].V.F / resultValue)
+		durationToZero := durationToStart
+
+		if resultValue > 0 &&
+			len(samples) > 0 &&
+			samples[0].V.F >= 0 {
+			durationToZero = sampledInterval * (samples[0].V.F / resultValue)
+		} else if resultHistogram != nil &&
+			resultHistogram.Count > 0 &&
+			len(samples) > 0 &&
+			samples[0].V.H.Count >= 0 {
+			durationToZero = sampledInterval * (samples[0].V.H.Count / resultHistogram.Count)
+		}
 		if durationToZero < durationToStart {
 			durationToStart = durationToZero
 		}
 	}
-	extrapolateToInterval += durationToStart
 
 	if durationToEnd >= extrapolationThreshold {
 		durationToEnd = averageDurationBetweenSamples / 2
 	}
-	extrapolateToInterval += durationToEnd
 
-	factor := extrapolateToInterval / sampledInterval
+	factor := (sampledInterval + durationToStart + durationToEnd) / sampledInterval
 	if isRate {
 		factor /= float64(selectRange) / 1000
 	}
@@ -782,8 +813,9 @@ func madOverTime(ctx context.Context, points []Sample) (float64, bool) {
 	return stat.Quantile(0.5, stat.LinInterp, values, nil), true
 }
 
-func maxOverTime(ctx context.Context, points []Sample) (float64, bool) {
-	max := points[0].V.F
+func maxOverTime(ctx context.Context, points []Sample) (float64, int64, bool) {
+	resv := points[0].V.F
+	rest := points[0].T
 
 	var foundFloat bool
 	for _, v := range points {
@@ -794,19 +826,22 @@ func maxOverTime(ctx context.Context, points []Sample) (float64, bool) {
 		} else {
 			foundFloat = true
 		}
-		if v.V.F > max || math.IsNaN(max) {
-			max = v.V.F
+		if v.V.F >= resv || math.IsNaN(resv) {
+			resv = v.V.F
+			rest = v.T
 		}
 	}
 
 	if !foundFloat {
-		return 0, false
+		return 0, 0, false
 	}
-	return max, true
+	return resv, rest, true
 }
 
-func minOverTime(ctx context.Context, points []Sample) (float64, bool) {
-	min := points[0].V.F
+func minOverTime(ctx context.Context, points []Sample) (float64, int64, bool) {
+	resv := points[0].V.F
+	rest := points[0].T
+
 	var foundFloat bool
 	for _, v := range points {
 		if v.V.H != nil {
@@ -816,15 +851,16 @@ func minOverTime(ctx context.Context, points []Sample) (float64, bool) {
 		} else {
 			foundFloat = true
 		}
-		if v.V.F < min || math.IsNaN(min) {
-			min = v.V.F
+		if v.V.F <= resv || math.IsNaN(resv) {
+			resv = v.V.F
+			rest = v.T
 		}
 	}
 
 	if !foundFloat {
-		return 0, false
+		return 0, 0, false
 	}
-	return min, true
+	return resv, rest, true
 }
 
 func countOverTime(points []Sample) float64 {
@@ -833,52 +869,34 @@ func countOverTime(points []Sample) float64 {
 
 func avgOverTime(points []Sample) float64 {
 	var (
-		sum, mean, count, kahanC float64
-		incrementalMean          bool
+		// Pre-set the 1st sample to start the loop with the 2nd.
+		sum, count      = points[0].V.F, 1.
+		mean, kahanC    float64
+		incrementalMean bool
 	)
-	for _, v := range points {
-		count++
+	for i, p := range points[1:] {
+		count = float64(i + 2)
 		if !incrementalMean {
-			newSum, newC := kahanSumInc(v.V.F, sum, kahanC)
+			newSum, newC := aggregate.KahanSumInc(p.V.F, sum, kahanC)
 			// Perform regular mean calculation as long as
-			// the sum doesn't overflow and (in any case)
-			// for the first iteration (even if we start
-			// with ±Inf) to not run into division-by-zero
-			// problems below.
-			if count == 1 || !math.IsInf(newSum, 0) {
+			// the sum doesn't overflow.
+			if !math.IsInf(newSum, 0) {
 				sum, kahanC = newSum, newC
 				continue
 			}
-			// Handle overflow by reverting to incremental calculation of the mean value.
+			// Handle overflow by reverting to incremental
+			// calculation of the mean value.
 			incrementalMean = true
 			mean = sum / (count - 1)
 			kahanC /= count - 1
 		}
-		if math.IsInf(mean, 0) {
-			if math.IsInf(v.V.F, 0) && (mean > 0) == (v.V.F > 0) {
-				// The `mean` and `v.V.F` values are `Inf` of the same sign.  They
-				// can't be subtracted, but the value of `mean` is correct
-				// already.
-				continue
-			}
-			if !math.IsInf(v.V.F, 0) && !math.IsNaN(v.V.F) {
-				// At this stage, the mean is an infinite. If the added
-				// value is neither an Inf or a Nan, we can keep that mean
-				// value.
-				// This is required because our calculation below removes
-				// the mean value, which would look like Inf += x - Inf and
-				// end up as a NaN.
-				continue
-			}
-		}
-		correctedMean := mean + kahanC
-		mean, kahanC = kahanSumInc(v.V.F/count-correctedMean/count, mean, kahanC)
+		q := (count - 1) / count
+		mean, kahanC = aggregate.KahanSumInc(p.V.F/count, q*mean, q*kahanC)
 	}
-
 	if incrementalMean {
 		return mean + kahanC
 	}
-	return (sum + kahanC) / count
+	return sum/count + kahanC/count
 }
 
 func sumOverTime(ctx context.Context, points []Sample) float64 {
@@ -887,7 +905,7 @@ func sumOverTime(ctx context.Context, points []Sample) float64 {
 		if v.V.H != nil {
 			warnings.AddToContext(annotations.NewHistogramIgnoredInMixedRangeInfo("", posrange.PositionRange{}), ctx)
 		}
-		sum, c = kahanSumInc(v.V.F, sum, c)
+		sum, c = aggregate.KahanSumInc(v.V.F, sum, c)
 	}
 	if math.IsInf(sum, 0) {
 		return sum
@@ -910,8 +928,8 @@ func stddevOverTime(ctx context.Context, points []Sample) (float64, bool) {
 		}
 		count++
 		delta := v.V.F - (mean + cMean)
-		mean, cMean = kahanSumInc(delta/count, mean, cMean)
-		aux, cAux = kahanSumInc(delta*(v.V.F-(mean+cMean)), aux, cAux)
+		mean, cMean = aggregate.KahanSumInc(delta/count, mean, cMean)
+		aux, cAux = aggregate.KahanSumInc(delta*(v.V.F-(mean+cMean)), aux, cAux)
 	}
 
 	if !foundFloat {
@@ -935,8 +953,8 @@ func stdvarOverTime(ctx context.Context, points []Sample) (float64, bool) {
 		}
 		count++
 		delta := v.V.F - (mean + cMean)
-		mean, cMean = kahanSumInc(delta/count, mean, cMean)
-		aux, cAux = kahanSumInc(delta*(v.V.F-(mean+cMean)), aux, cAux)
+		mean, cMean = aggregate.KahanSumInc(delta/count, mean, cMean)
+		aux, cAux = aggregate.KahanSumInc(delta*(v.V.F-(mean+cMean)), aux, cAux)
 	}
 
 	if !foundFloat {
@@ -1157,10 +1175,10 @@ func linearRegression(Samples []Sample, interceptTime int64) (slope, intercept f
 		}
 		n += 1.0
 		x := float64(sample.T-interceptTime) / 1e3
-		sumX, cX = kahanSumInc(x, sumX, cX)
-		sumY, cY = kahanSumInc(sample.V.F, sumY, cY)
-		sumXY, cXY = kahanSumInc(x*sample.V.F, sumXY, cXY)
-		sumX2, cX2 = kahanSumInc(x*x, sumX2, cX2)
+		sumX, cX = aggregate.KahanSumInc(x, sumX, cX)
+		sumY, cY = aggregate.KahanSumInc(sample.V.F, sumY, cY)
+		sumXY, cXY = aggregate.KahanSumInc(x*sample.V.F, sumXY, cXY)
+		sumX2, cX2 = aggregate.KahanSumInc(x*x, sumX2, cX2)
 	}
 	if constY {
 		if math.IsInf(initY, 0) {
@@ -1194,19 +1212,4 @@ func filterFloatOnlySamples(samples []Sample) ([]Sample, int) {
 	}
 	samples = samples[:i]
 	return samples, histograms
-}
-
-func kahanSumInc(inc, sum, c float64) (newSum, newC float64) {
-	t := sum + inc
-	switch {
-	case math.IsInf(t, 0):
-		c = 0
-
-	// Using Neumaier improvement, swap if next term larger than sum.
-	case math.Abs(sum) >= math.Abs(inc):
-		c += (sum - t) + inc
-	default:
-		c += (inc - t) + sum
-	}
-	return t, c
 }

@@ -343,11 +343,11 @@ func (ir *mockIndexReader) Postings(ctx context.Context, name string, values ...
 
 func (ir *mockIndexReader) Symbols() index.StringIter { return nil }
 
-func (ir *mockIndexReader) SortedLabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
+func (ir *mockIndexReader) SortedLabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (ir *mockIndexReader) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
+func (ir *mockIndexReader) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 

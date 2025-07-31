@@ -50,6 +50,8 @@ func NewBucket(rootDir string) (*Bucket, error) {
 	return &Bucket{rootDir: absDir}, nil
 }
 
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.FILESYSTEM }
+
 func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
 	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
 }
@@ -245,7 +247,7 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 }
 
 // Upload writes the file specified in src to into the memory.
-func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) (err error) {
+func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader, _ ...objstore.ObjectUploadOption) (err error) {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

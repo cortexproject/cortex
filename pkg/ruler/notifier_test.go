@@ -225,9 +225,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 			name: "with external labels",
 			cfg: &Config{
 				AlertmanagerURL: "http://alertmanager.default.svc.cluster.local/alertmanager",
-				ExternalLabels: []labels.Label{
-					{Name: "region", Value: "us-east-1"},
-				},
+				ExternalLabels:  labels.FromStrings("region", "us-east-1"),
 			},
 			ncfg: &config.Config{
 				AlertingConfig: config.AlertingConfig{
@@ -247,9 +245,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 					},
 				},
 				GlobalConfig: config.GlobalConfig{
-					ExternalLabels: []labels.Label{
-						{Name: "region", Value: "us-east-1"},
-					},
+					ExternalLabels: labels.FromStrings("region", "us-east-1"),
 				},
 			},
 		},

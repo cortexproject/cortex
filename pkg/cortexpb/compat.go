@@ -67,13 +67,13 @@ func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
 // Do NOT use unsafe to convert between data types because this function may
 // get in input labels whose data structure is reused.
 func FromLabelAdaptersToLabelsWithCopy(input []LabelAdapter) labels.Labels {
-	return CopyLabels(FromLabelAdaptersToLabels(input))
+	return CopyLabels(input)
 }
 
 // Efficiently copies labels input slice. To be used in cases where input slice
 // can be reused, but long-term copy is needed.
-func CopyLabels(input []labels.Label) labels.Labels {
-	result := make(labels.Labels, len(input))
+func CopyLabels(input []LabelAdapter) labels.Labels {
+	builder := labels.NewBuilder(labels.EmptyLabels())
 
 	size := 0
 	for _, l := range input {
@@ -84,12 +84,14 @@ func CopyLabels(input []labels.Label) labels.Labels {
 	// Copy all strings into the buffer, and use 'yoloString' to convert buffer
 	// slices to strings.
 	buf := make([]byte, size)
+	var name, value string
 
-	for i, l := range input {
-		result[i].Name, buf = copyStringToBuffer(l.Name, buf)
-		result[i].Value, buf = copyStringToBuffer(l.Value, buf)
+	for _, l := range input {
+		name, buf = copyStringToBuffer(l.Name, buf)
+		value, buf = copyStringToBuffer(l.Value, buf)
+		builder.Set(name, value)
 	}
-	return result
+	return builder.Labels()
 }
 
 // Copies string to buffer (which must be big enough), and converts buffer slice containing

@@ -382,16 +382,16 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 		case o.returnBool:
 			h = nil
 			if keep {
-				step.AppendSample(o.pool, jp.sid, 1.0)
+				step.AppendSample(o.pool, o.outputSeriesID(histogramID+1, jp.sid+1), 1.0)
 			} else {
-				step.AppendSample(o.pool, jp.sid, 0.0)
+				step.AppendSample(o.pool, o.outputSeriesID(histogramID+1, jp.sid+1), 0.0)
 			}
 		case !keep:
 			continue
 		}
 
 		if h != nil {
-			step.AppendHistogram(o.pool, histogramID, h)
+			step.AppendHistogram(o.pool, o.outputSeriesID(histogramID+1, jp.sid+1), h)
 		}
 	}
 
@@ -417,7 +417,7 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 			if err != nil {
 				return model.StepVector{}, err
 			}
-			step.AppendHistogram(o.pool, jp.sid, h)
+			step.AppendHistogram(o.pool, o.outputSeriesID(sampleID+1, jp.sid+1), h)
 		} else {
 			val, _, keep, err = o.computeBinaryPairing(ctx, hcs.Samples[i], jp.val, nil, nil, &annos)
 			if countWarnings, countInfo := annos.CountWarningsAndInfo(); countWarnings > 0 || countInfo > 0 {

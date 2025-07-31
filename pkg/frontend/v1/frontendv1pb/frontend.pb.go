@@ -9,6 +9,13 @@ package frontendv1pb
 import (
 	context "context"
 	fmt "fmt"
+	io "io"
+	math "math"
+	math_bits "math/bits"
+	reflect "reflect"
+	strconv "strconv"
+	strings "strings"
+
 	_ "github.com/cortexproject/cortex/pkg/querier/stats"
 	github_com_cortexproject_cortex_pkg_querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	_ "github.com/gogo/protobuf/gogoproto"
@@ -17,12 +24,6 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-	io "io"
-	math "math"
-	math_bits "math/bits"
-	reflect "reflect"
-	strconv "strconv"
-	strings "strings"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

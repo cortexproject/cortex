@@ -115,10 +115,10 @@ func TestLimits_Validate(t *testing.T) {
 			activeSeriesMetricsEnabled: false,
 			expected:                   errMaxLocalNativeHistogramSeriesPerUserValidation,
 		},
-		"external-labels invalid label name": {
-			limits:   Limits{RulerExternalLabels: labels.Labels{{Name: "123invalid", Value: "good"}}},
-			expected: errInvalidLabelName,
-		},
+		// "external-labels invalid label name": { Allowed under UTF8
+		// 	limits:   Limits{RulerExternalLabels: labels.Labels{{Name: "123invalid", Value: "good"}}},
+		// 	expected: errInvalidLabelName,
+		// },
 		"external-labels invalid label value": {
 			limits:   Limits{RulerExternalLabels: labels.Labels{{Name: "good", Value: string([]byte{0xff, 0xfe, 0xfd})}}},
 			expected: errInvalidLabelValue,

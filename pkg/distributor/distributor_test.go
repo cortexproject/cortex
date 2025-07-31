@@ -35,7 +35,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -2037,44 +2036,121 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 	}
 }
 
+// func TestDistributor_Push_LabelNameValidation(t *testing.T) {
+// 	model.NameValidationScheme = model.LegacyValidation
+// 	t.Parallel()
+// 	inputLabels := labels.Labels{
+// 		{Name: model.MetricNameLabel, Value: "foo"},
+// 		{Name: "999.illegal", Value: "baz"},
+// 	}
+// 	ctx := user.InjectOrgID(context.Background(), "user")
+
+// 	tests := map[string]struct {
+// 		inputLabels                labels.Labels
+// 		skipLabelNameValidationCfg bool
+// 		skipLabelNameValidationReq bool
+// 		errExpected                bool
+// 		errMessage                 string
+// 	}{
+// 		"label name validation is on by default": {
+// 			inputLabels: inputLabels,
+// 			errExpected: true,
+// 			errMessage:  `sample invalid label: "999.illegal" metric "foo{999.illegal=\"baz\"}"`,
+// 		},
+// 		"label name validation can be skipped via config": {
+// 			inputLabels:                inputLabels,
+// 			skipLabelNameValidationCfg: true,
+// 			errExpected:                false,
+// 		},
+// 		"label name validation can be skipped via WriteRequest parameter": {
+// 			inputLabels:                inputLabels,
+// 			skipLabelNameValidationReq: true,
+// 			errExpected:                false,
+// 		},
+// 	}
+
+//		for testName, tc := range tests {
+//			tc := tc
+//			for _, histogram := range []bool{true, false} {
+//				histogram := histogram
+//				t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(histogram)), func(t *testing.T) {
+//					t.Parallel()
+//					ds, _, _, _ := prepare(t, prepConfig{
+//						numIngesters:            2,
+//						happyIngesters:          2,
+//						numDistributors:         1,
+//						shuffleShardSize:        1,
+//						skipLabelNameValidation: tc.skipLabelNameValidationCfg,
+//					})
+//					req := mockWriteRequest([]labels.Labels{tc.inputLabels}, 42, 100000, histogram)
+//					req.SkipLabelNameValidation = tc.skipLabelNameValidationReq
+//					_, err := ds[0].Push(ctx, req)
+//					if tc.errExpected {
+//						fromError, _ := status.FromError(err)
+//						assert.Equal(t, tc.errMessage, fromError.Message())
+//					} else {
+//						assert.Nil(t, err)
+//					}
+//				})
+//			}
+//		}
+//	}
 func TestDistributor_Push_LabelNameValidation(t *testing.T) {
-	t.Parallel()
-	inputLabels := labels.Labels{
-		{Name: model.MetricNameLabel, Value: "foo"},
-		{Name: "999.illegal", Value: "baz"},
-	}
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	tests := map[string]struct {
 		inputLabels                labels.Labels
 		skipLabelNameValidationCfg bool
 		skipLabelNameValidationReq bool
+		useUTF8Validation          bool
 		errExpected                bool
 		errMessage                 string
 	}{
 		"label name validation is on by default": {
-			inputLabels: inputLabels,
+			inputLabels: labels.Labels{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "999.illegal", Value: "baz"},
+			},
 			errExpected: true,
 			errMessage:  `sample invalid label: "999.illegal" metric "foo{999.illegal=\"baz\"}"`,
 		},
 		"label name validation can be skipped via config": {
-			inputLabels:                inputLabels,
+			inputLabels: labels.Labels{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "999.illegal", Value: "baz"},
+			},
 			skipLabelNameValidationCfg: true,
 			errExpected:                false,
 		},
 		"label name validation can be skipped via WriteRequest parameter": {
-			inputLabels:                inputLabels,
+			inputLabels: labels.Labels{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "999.illegal", Value: "baz"},
+			},
 			skipLabelNameValidationReq: true,
 			errExpected:                false,
+		},
+		"UTF-8 validation allows Unicode label names": {
+			inputLabels: labels.Labels{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "Cortex_😃", Value: "baz"},
+			},
+			useUTF8Validation: true,
+			errExpected:       false,
 		},
 	}
 
 	for testName, tc := range tests {
-		tc := tc
 		for _, histogram := range []bool{true, false} {
-			histogram := histogram
-			t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(histogram)), func(t *testing.T) {
-				t.Parallel()
+			t.Run(fmt.Sprintf("%s, histogram=%v", testName, histogram), func(t *testing.T) {
+				if tc.useUTF8Validation {
+					// nolint:staticcheck // SA1019: using deprecated NameValidationScheme intentionally for legacy validation testing
+					model.NameValidationScheme = model.UTF8Validation
+				} else {
+					// nolint:staticcheck // SA1019: using deprecated NameValidationScheme intentionally for legacy validation testing
+					model.NameValidationScheme = model.LegacyValidation
+				}
+
 				ds, _, _, _ := prepare(t, prepConfig{
 					numIngesters:            2,
 					happyIngesters:          2,
@@ -2082,14 +2158,18 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 					shuffleShardSize:        1,
 					skipLabelNameValidation: tc.skipLabelNameValidationCfg,
 				})
+
 				req := mockWriteRequest([]labels.Labels{tc.inputLabels}, 42, 100000, histogram)
 				req.SkipLabelNameValidation = tc.skipLabelNameValidationReq
+
 				_, err := ds[0].Push(ctx, req)
+
 				if tc.errExpected {
+					require.Error(t, err)
 					fromError, _ := status.FromError(err)
 					assert.Equal(t, tc.errMessage, fromError.Message())
 				} else {
-					assert.Nil(t, err)
+					require.NoError(t, err)
 				}
 			})
 		}

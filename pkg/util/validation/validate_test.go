@@ -16,38 +16,45 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestValidateLabels(t *testing.T) {
-	cfg := new(Limits)
-	userID := "testUser"
+	//nolint:staticcheck // SA1019: using deprecated NameValidationScheme intentionally for legacy validation testing
+	originalScheme := model.NameValidationScheme
 
-	reg := prometheus.NewRegistry()
-	validateMetrics := NewValidateMetrics(reg)
+	// nolint:staticcheck // SA1019: using deprecated NameValidationScheme intentionally for legacy validation testing
+	model.NameValidationScheme = model.LegacyValidation
 
-	cfg.MaxLabelValueLength = 25
-	cfg.MaxLabelNameLength = 25
-	cfg.MaxLabelNamesPerSeries = 2
-	cfg.MaxLabelsSizeBytes = 90
-	cfg.EnforceMetricName = true
-	cfg.LimitsPerLabelSet = []LimitsPerLabelSet{
-		{
-			Limits: LimitsPerLabelSetEntry{MaxSeries: 0},
-			LabelSet: labels.FromMap(map[string]string{
-				model.MetricNameLabel: "foo",
-			}),
-			Hash: 0,
-		},
-		// Default partition
-		{
-			Limits:   LimitsPerLabelSetEntry{MaxSeries: 0},
-			LabelSet: labels.EmptyLabels(),
-			Hash:     1,
+	// nolint:staticcheck // SA1019: restoring NameValidationScheme to original after test
+	defer func() { model.NameValidationScheme = originalScheme }()
+
+	cfg := &Limits{
+		MaxLabelValueLength:    25,
+		MaxLabelNameLength:     25,
+		MaxLabelNamesPerSeries: 2,
+		MaxLabelsSizeBytes:     90,
+		EnforceMetricName:      true,
+		LimitsPerLabelSet: []LimitsPerLabelSet{
+			{
+				Limits: LimitsPerLabelSetEntry{MaxSeries: 0},
+				LabelSet: labels.FromMap(map[string]string{
+					model.MetricNameLabel: "foo",
+				}),
+				Hash: 0,
+			},
+			{
+				Limits:   LimitsPerLabelSetEntry{MaxSeries: 0},
+				LabelSet: labels.EmptyLabels(),
+				Hash:     1,
+			},
 		},
 	}
+
+	userID := "testUser"
+	reg := prometheus.NewRegistry()
+	validateMetrics := NewValidateMetrics(reg)
 
 	for _, c := range []struct {
 		metric                  model.Metric
@@ -132,7 +139,6 @@ func TestValidateLabels(t *testing.T) {
 			cortex_discarded_samples_total{reason="metric_name_invalid",user="testUser"} 1
 			cortex_discarded_samples_total{reason="missing_metric_name",user="testUser"} 1
 			cortex_discarded_samples_total{reason="labels_size_bytes_exceeded",user="testUser"} 1
-
 			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_samples_total"))
 

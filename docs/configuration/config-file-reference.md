@@ -4506,6 +4506,17 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # CLI flag: -frontend.enabled-ruler-query-stats
 [enabled_ruler_query_stats_log: <boolean> | default = false]
 
+# Active query tracker monitors active queries, and writes them to the file in
+# given directory. If Cortex discovers any queries in this log during startup,
+# it will log them to the log file. Setting to empty value disables active query
+# tracker, which also disables -frontend.max-concurrent option.
+# CLI flag: -frontend.active-query-tracker-dir
+[active_query_tracker_dir: <string> | default = ""]
+
+# The maximum number of concurrent queries running in query frontend.
+# CLI flag: -frontend.max-concurrent
+[max_concurrent: <int> | default = 500]
+
 # If a querier disconnects without sending notification about graceful shutdown,
 # the query-frontend will keep the querier in the tenant's shard until the
 # forget delay has passed. This feature is useful to reduce the blast radius

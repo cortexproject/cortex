@@ -3010,6 +3010,10 @@ otlp:
   # https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)
   # CLI flag: -distributor.otlp.disable-target-info
   [disable_target_info: <boolean> | default = false]
+
+  # EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.
+  # CLI flag: -distributor.otlp.allow-delta-temporality
+  [allow_delta_temporality: <boolean> | default = false]
 ```
 
 ### `etcd_config`

@@ -429,10 +429,10 @@ func GenerateHistogramSeriesV2(name string, ts time.Time, i uint32, floatHistogr
 	tsMillis := TimeToMilliseconds(ts)
 
 	st := writev2.NewSymbolTable()
-
-	lbs := labels.Labels{labels.Label{Name: "__name__", Value: name}}
+	lb := labels.NewScratchBuilder(0)
+	lb.Add("__name__", name)
 	for _, lbl := range additionalLabels {
-		lbs = append(lbs, labels.Label{Name: lbl.Name, Value: lbl.Value})
+		lb.Add(lbl.Name, lbl.Value)
 	}
 
 	var (
@@ -450,7 +450,7 @@ func GenerateHistogramSeriesV2(name string, ts time.Time, i uint32, floatHistogr
 
 	// Generate the series
 	series = append(series, writev2.TimeSeries{
-		LabelsRefs: st.SymbolizeLabels(lbs, nil),
+		LabelsRefs: st.SymbolizeLabels(lb.Labels(), nil),
 		Histograms: []writev2.Histogram{ph},
 	})
 
@@ -464,17 +464,15 @@ func GenerateSeriesV2(name string, ts time.Time, additionalLabels ...prompb.Labe
 	value := rand.Float64()
 
 	st := writev2.NewSymbolTable()
-	lbs := labels.Labels{{Name: labels.MetricName, Value: name}}
+	lb := labels.NewScratchBuilder(0)
+	lb.Add("__name__", name)
 
 	for _, label := range additionalLabels {
-		lbs = append(lbs, labels.Label{
-			Name:  label.Name,
-			Value: label.Value,
-		})
+		lb.Add(label.Name, label.Value)
 	}
 	series = append(series, writev2.TimeSeries{
 		// Generate the series
-		LabelsRefs: st.SymbolizeLabels(lbs, nil),
+		LabelsRefs: st.SymbolizeLabels(lb.Labels(), nil),
 		Samples: []writev2.Sample{
 			{Value: value, Timestamp: tsMillis},
 		},
@@ -512,13 +510,11 @@ func GenerateV2SeriesWithSamples(
 	durMillis := scrapeInterval.Milliseconds()
 
 	st := writev2.NewSymbolTable()
-	lbs := labels.Labels{{Name: labels.MetricName, Value: name}}
+	lb := labels.NewScratchBuilder(0)
+	lb.Add("__name__", name)
 
 	for _, label := range additionalLabels {
-		lbs = append(lbs, labels.Label{
-			Name:  label.Name,
-			Value: label.Value,
-		})
+		lb.Add(label.Name, label.Value)
 	}
 
 	startTMillis := tsMillis
@@ -533,7 +529,7 @@ func GenerateV2SeriesWithSamples(
 	}
 
 	series = writev2.TimeSeries{
-		LabelsRefs: st.SymbolizeLabels(lbs, nil),
+		LabelsRefs: st.SymbolizeLabels(lb.Labels(), nil),
 		Samples:    samples,
 		Metadata: writev2.Metadata{
 			Type: writev2.Metadata_METRIC_TYPE_GAUGE,

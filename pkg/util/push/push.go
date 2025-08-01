@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
-	"github.com/prometheus/prometheus/storage/remote"
+	"github.com/prometheus/prometheus/util/compression"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 
@@ -140,8 +140,8 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 
 			enc := r.Header.Get("Content-Encoding")
 			if enc == "" {
-			} else if enc != string(remote.SnappyBlockCompression) {
-				err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, remote.SnappyBlockCompression)
+			} else if enc != compression.Snappy {
+				err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, compression.Snappy)
 				level.Error(logger).Log("Error decoding remote write request", "err", err)
 				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 				return

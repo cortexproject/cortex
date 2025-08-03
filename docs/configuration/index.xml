@@ -2945,6 +2945,10 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -distributor.otlp.disable-target-info&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[disable_target_info&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -distributor.otlp.allow-delta-temporality&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[allow_delta_temporality&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="etcd_config">&lt;code>etcd_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>etcd_config&lt;/code> configures the etcd client. The supported CLI flags &lt;code>&amp;lt;prefix&amp;gt;&lt;/code> used to reference this config block are:&lt;/p>
 &lt;ul>
@@ -6887,7 +6891,11 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>&lt;code>alertmanager-sharding-ring.final-sleep&lt;/code> (duration) CLI flag&lt;/li>
 &lt;/ul>
 &lt;/li>
-&lt;li>OTLP Receiver&lt;/li>
+&lt;li>OTLP Receiver
+&lt;ul>
+&lt;li>Ingest delta temporality OTLP metrics (&lt;code>-distributor.otlp.allow-delta-temporality=true&lt;/code>)&lt;/li>
+&lt;/ul>
+&lt;/li>
 &lt;li>Persistent tokens in the Ruler Ring:
 &lt;ul>
 &lt;li>&lt;code>-ruler.ring.tokens-file-path&lt;/code> (path) CLI flag&lt;/li>

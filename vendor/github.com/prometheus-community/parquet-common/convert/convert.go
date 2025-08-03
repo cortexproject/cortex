@@ -58,17 +58,19 @@ type Convertible interface {
 }
 
 type convertOpts struct {
-	numRowGroups       int
-	rowGroupSize       int
-	colDuration        time.Duration
-	name               string
-	sortedLabels       []string
-	bloomfilterLabels  []string
-	pageBufferSize     int
-	writeBufferSize    int
-	columnPageBuffers  parquet.BufferPool
-	concurrency        int
-	maxSamplesPerChunk int
+	numRowGroups          int
+	rowGroupSize          int
+	colDuration           time.Duration
+	name                  string
+	sortedLabels          []string
+	bloomfilterLabels     []string
+	pageBufferSize        int
+	writeBufferSize       int
+	columnPageBuffers     parquet.BufferPool
+	concurrency           int
+	maxSamplesPerChunk    int
+	labelsCompressionOpts []schema.CompressionOpts
+	chunksCompressionOpts []schema.CompressionOpts
 }
 
 func (cfg convertOpts) buildBloomfilterColumns() []parquet.BloomFilterColumn {
@@ -92,54 +94,145 @@ func (cfg convertOpts) buildSortingColumns() []parquet.SortingColumn {
 
 type ConvertOption func(*convertOpts)
 
+// WithSortBy configures the labels used for sorting time series data in the output Parquet files.
+// The specified labels determine the sort order of rows within row groups, which can significantly
+// improve query performance for filters on these labels. By default, data is sorted by __name__.
+//
+// Parameters:
+//   - labels: Label names to sort by, in order of precedence
+//
+// Example:
+//
+//	WithSortBy("__name__", "job", "instance")
 func WithSortBy(labels ...string) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.sortedLabels = labels
 	}
 }
 
+// WithColDuration sets the time duration for each column in the Parquet schema.
+// This determines how time series data is partitioned across columns, affecting
+// both storage efficiency and query performance. Shorter durations create more
+// columns but allow for more precise time-based filtering.
+//
+// Parameters:
+//   - d: Duration for each time column (default: 8 hours)
+//
+// Example:
+//
+//	WithColDuration(4 * time.Hour)  // 4-hour columns
 func WithColDuration(d time.Duration) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.colDuration = d
 	}
 }
 
+// WithWriteBufferSize configures the buffer size used for writing Parquet data.
+// Larger buffers can improve write performance by reducing I/O operations,
+// but consume more memory during the conversion process.
+//
+// Parameters:
+//   - s: Buffer size in bytes (default: parquet.DefaultWriteBufferSize)
+//
+// Example:
+//
+//	WithWriteBufferSize(64 * 1024)  // 64KB buffer
 func WithWriteBufferSize(s int) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.writeBufferSize = s
 	}
 }
 
+// WithPageBufferSize sets the buffer size for Parquet page operations.
+// This affects how data is buffered when reading and writing individual pages
+// within the Parquet file format. Larger page buffers can improve performance
+// for large datasets but increase memory usage.
+//
+// Parameters:
+//   - s: Page buffer size in bytes (default: parquet.DefaultPageBufferSize)
+//
+// Example:
+//
+//	WithPageBufferSize(128 * 1024)  // 128KB page buffer
 func WithPageBufferSize(s int) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.pageBufferSize = s
 	}
 }
 
+// WithName sets the base name used for generated Parquet files.
+// This name is used as a prefix for the output files in the object store bucket.
+//
+// Parameters:
+//   - name: Base name for output files (default: "block")
+//
+// Example:
+//
+//	WithName("prometheus-data")  // Files will be named prometheus-data-*
 func WithName(name string) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.name = name
 	}
 }
 
+// WithNumRowGroups limits the maximum number of row groups to create during conversion.
+// Row groups are the primary unit of parallelization in Parquet files. More row groups
+// allow for better parallelization but may increase metadata overhead.
+//
+// Parameters:
+//   - n: Maximum number of row groups (default: math.MaxInt32, effectively unlimited)
+//
+// Example:
+//
+//	WithNumRowGroups(100)  // Limit to 100 row groups
 func WithNumRowGroups(n int) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.numRowGroups = n
 	}
 }
 
+// WithRowGroupSize sets the target number of rows per row group in the output Parquet files.
+// Larger row groups improve compression and reduce metadata overhead, but require more
+// memory during processing and may reduce parallelization opportunities.
+//
+// Parameters:
+//   - size: Target number of rows per row group (default: 1,000,000)
+//
+// Example:
+//
+//	WithRowGroupSize(500000)  // 500K rows per row group
 func WithRowGroupSize(size int) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.rowGroupSize = size
 	}
 }
 
+// WithConcurrency sets the number of concurrent goroutines used during conversion.
+// Higher concurrency can improve performance on multi-core systems but increases
+// memory usage. The optimal value depends on available CPU cores and memory.
+//
+// Parameters:
+//   - concurrency: Number of concurrent workers (default: runtime.GOMAXPROCS(0))
+//
+// Example:
+//
+//	WithConcurrency(8)  // Use 8 concurrent workers
 func WithConcurrency(concurrency int) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.concurrency = concurrency
 	}
 }
 
+// WithMaxSamplesPerChunk sets the maximum number of samples to include in each chunk
+// during the encoding process. This affects how time series data is chunked and can
+// impact both compression efficiency and query performance.
+//
+// Parameters:
+//   - samplesPerChunk: Maximum samples per chunk (default: tsdb.DefaultSamplesPerChunk)
+//
+// Example:
+//
+//	WithMaxSamplesPerChunk(240)  // Limit chunks to 240 samples each
 func WithMaxSamplesPerChunk(samplesPerChunk int) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.maxSamplesPerChunk = samplesPerChunk
@@ -152,6 +245,66 @@ func WithColumnPageBuffers(buffers parquet.BufferPool) ConvertOption {
 	}
 }
 
+// WithCompression adds compression options to the conversion process.
+// These options will be applied to both labels and chunks projections.
+// For separate configuration, use WithLabelsCompression and WithChunksCompression.
+func WithCompression(compressionOpts ...schema.CompressionOpts) ConvertOption {
+	return func(opts *convertOpts) {
+		opts.labelsCompressionOpts = compressionOpts
+		opts.chunksCompressionOpts = compressionOpts
+	}
+}
+
+// WithLabelsCompression configures compression options specifically for the labels projection.
+// This allows fine-grained control over how label data is compressed in the output Parquet files,
+// which can be optimized differently from chunk data due to different access patterns and data characteristics.
+//
+// Parameters:
+//   - compressionOpts: optional compression options to apply to the projection schema
+//
+// Example:
+//
+//	WithLabelsCompression(schema.WithSnappyCompression())
+func WithLabelsCompression(compressionOpts ...schema.CompressionOpts) ConvertOption {
+	return func(opts *convertOpts) {
+		opts.labelsCompressionOpts = compressionOpts
+	}
+}
+
+// WithChunksCompression configures compression options specifically for the chunks projection.
+// This allows optimization of compression settings for time series chunk data, which typically
+// has different compression characteristics compared to label metadata.
+//
+// Parameters:
+//   - compressionOpts: optional compression options to apply to the projection schema
+//
+// Example:
+//
+//	WithChunksCompression(schema.WithGzipCompression())
+func WithChunksCompression(compressionOpts ...schema.CompressionOpts) ConvertOption {
+	return func(opts *convertOpts) {
+		opts.chunksCompressionOpts = compressionOpts
+	}
+}
+
+// ConvertTSDBBlock converts one or more TSDB blocks to Parquet format and writes them to an object store bucket.
+// It processes time series data within the specified time range and outputs sharded Parquet files.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control
+//   - bkt: Object store bucket where the converted Parquet files will be written
+//   - mint: Minimum timestamp (inclusive) for the time range to convert
+//   - maxt: Maximum timestamp (exclusive) for the time range to convert
+//   - blks: Slice of Convertible blocks (typically TSDB blocks) to be converted
+//   - opts: Optional configuration options to customize the conversion process
+//
+// Returns:
+//   - int: The current shard number after conversion
+//   - error: Any error that occurred during the conversion process
+//
+// The function creates a row reader from the TSDB blocks, generates both labels and chunks
+// projections with optional compression, and writes the data to the bucket using a sharded
+// writer approach for better performance and parallelization.
 func ConvertTSDBBlock(
 	ctx context.Context,
 	bkt objstore.Bucket,
@@ -171,11 +324,11 @@ func ConvertTSDBBlock(
 	}
 	defer func() { _ = rr.Close() }()
 
-	labelsProjection, err := rr.Schema().LabelsProjection()
+	labelsProjection, err := rr.Schema().LabelsProjection(cfg.labelsCompressionOpts...)
 	if err != nil {
 		return 0, errors.Wrap(err, "error getting labels projection from tsdb schema")
 	}
-	chunksProjection, err := rr.Schema().ChunksProjection()
+	chunksProjection, err := rr.Schema().ChunksProjection(cfg.chunksCompressionOpts...)
 	if err != nil {
 		return 0, errors.Wrap(err, "error getting chunks projection from tsdb schema")
 	}

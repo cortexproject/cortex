@@ -116,6 +116,7 @@ Currently experimental features are:
   - `store-gateway.sharding-ring.final-sleep` (duration) CLI flag
   - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag
 - OTLP Receiver
+  - Ingest delta temporality OTLP metrics (`-distributor.otlp.allow-delta-temporality=true`)
 - Persistent tokens in the Ruler Ring:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
 - Native Histograms

@@ -236,7 +236,7 @@ func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries, metadata []promp
 	return metrics
 }
 
-func otlpWriteRequest(name string, labels ...prompb.Label) pmetricotlp.ExportRequest {
+func otlpWriteRequest(name string, temporality pmetric.AggregationTemporality, labels ...prompb.Label) pmetricotlp.ExportRequest {
 	d := pmetric.NewMetrics()
 
 	// Generate One Counter, One Gauge, One Histogram, One Exponential-Histogram
@@ -261,7 +261,7 @@ func otlpWriteRequest(name string, labels ...prompb.Label) pmetricotlp.ExportReq
 	counterMetric.SetDescription("test-counter-description")
 
 	counterMetric.SetEmptySum()
-	counterMetric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	counterMetric.Sum().SetAggregationTemporality(temporality)
 
 	counterDataPoint := counterMetric.Sum().DataPoints().AppendEmpty()
 	counterDataPoint.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
@@ -276,8 +276,8 @@ func otlpWriteRequest(name string, labels ...prompb.Label) pmetricotlp.ExportReq
 	return pmetricotlp.NewExportRequestFromMetrics(d)
 }
 
-func (c *Client) OTLPPushExemplar(name string, labels ...prompb.Label) (*http.Response, error) {
-	data, err := otlpWriteRequest(name, labels...).MarshalProto()
+func (c *Client) OTLPPushExemplar(name string, temporality pmetric.AggregationTemporality, labels ...prompb.Label) (*http.Response, error) {
+	data, err := otlpWriteRequest(name, temporality, labels...).MarshalProto()
 	if err != nil {
 		return nil, err
 	}

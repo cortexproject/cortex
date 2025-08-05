@@ -1127,10 +1127,10 @@ to set up the environment.&lt;/p>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_max_fetched_row_count&lt;/span>: &lt;span style="color:#ae81ff">1000000&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum chunk bytes per query&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_max_fetched_chunk_bytes&lt;/span>: &lt;span style="color:#ae81ff">100MB&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_max_fetched_chunk_bytes&lt;/span>: &lt;span style="color:#ae81ff">100_000_000&lt;/span> &lt;span style="color:#75715e"># 100MB&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum data bytes per query&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_max_fetched_data_bytes&lt;/span>: &lt;span style="color:#ae81ff">1GB&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_max_fetched_data_bytes&lt;/span>: &lt;span style="color:#ae81ff">1_000_000_000&lt;/span> &lt;span style="color:#75715e"># 1GB&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="cache-configuration">Cache Configuration&lt;/h3>
 &lt;p>Parquet mode supports dedicated caching for both chunks and labels to improve query performance. Configure caching in the blocks storage section:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">blocks_storage&lt;/span>:

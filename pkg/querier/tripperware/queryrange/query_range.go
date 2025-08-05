@@ -196,8 +196,7 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 			h.Add(n, v)
 		}
 	}
-
-	h.Add("Content-Type", "application/json")
+	h.Add("Content-Type", "application/x-www-form-urlencoded")
 
 	tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
 
@@ -206,11 +205,15 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		return nil, err
 	}
 
+	form := url.Values{}
+	form.Set("plan", string(bodyBytes))
+	formEncoded := form.Encode()
+
 	req := &http.Request{
 		Method:     "POST",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
-		Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+		Body:       io.NopCloser(strings.NewReader(formEncoded)),
 		Header:     h,
 	}
 

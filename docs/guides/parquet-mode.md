@@ -148,10 +148,10 @@ limits:
   parquet_max_fetched_row_count: 1000000
 
   # Maximum chunk bytes per query
-  parquet_max_fetched_chunk_bytes: 100MB
+  parquet_max_fetched_chunk_bytes: 100_000_000 # 100MB
 
   # Maximum data bytes per query
-  parquet_max_fetched_data_bytes: 1GB
+  parquet_max_fetched_data_bytes: 1_000_000_000 # 1GB
 ```
 
 ### Cache Configuration

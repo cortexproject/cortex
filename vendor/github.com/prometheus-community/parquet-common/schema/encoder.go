@@ -39,6 +39,19 @@ func NewPrometheusParquetChunksEncoder(schema *TSDBSchema, samplesPerChunk int) 
 	}
 }
 
+// Encode re-encodes Prometheus chunks from the given iterator into a format optimized for Parquet storage.
+// It takes chunks (typically for one day) and redistributes the samples across data columns based on the schema's
+// time-based partitioning. The function handles three chunk encodings: XOR (float), Histogram, and FloatHistogram.
+//
+// The encoding process:
+// 1. Sorts input chunks by minimum timestamp
+// 2. Creates new chunks for each data column and encoding type
+// 3. Redistributes samples from input chunks to appropriate data column chunks based on timestamp
+// 4. Cuts new chunks when samplesPerChunk limit is reached
+// 5. Serializes the re-encoded chunks into binary format with metadata
+//
+// Returns a slice of byte slices, where each element corresponds to a data column containing
+// serialized chunk data with encoding type, min/max timestamps, size, and chunk bytes.
 func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, error) {
 	// NOTE: usually 'it' should hold chunks for one day. Chunks are usually length 2h so we should get 12 of them.
 	chks := make([]chunks.Meta, 0, 12)
@@ -241,6 +254,23 @@ func NewPrometheusParquetChunksDecoder(pool chunkenc.Pool) *PrometheusParquetChu
 	}
 }
 
+// Decode deserializes chunk data that was previously encoded by PrometheusParquetChunksEncoder.
+// It takes binary data containing serialized chunks and reconstructs them as chunks.Meta objects.
+// The function filters chunks based on the provided time range [mint, maxt].
+//
+// The binary format contains multiple chunks, each with:
+// - Encoding type (varint)
+// - Min timestamp (varint)
+// - Max timestamp (varint)
+// - Chunk size (varint)
+// - Chunk bytes
+//
+// Parameters:
+//   - data: Binary data containing serialized chunks
+//   - mint: Minimum timestamp filter (inclusive)
+//   - maxt: Maximum timestamp filter (inclusive)
+//
+// Returns chunks that overlap with the time range [mint, maxt], or an error if deserialization fails.
 func (e *PrometheusParquetChunksDecoder) Decode(data []byte, mint, maxt int64) ([]chunks.Meta, error) {
 	// We usually have only 1 chunk per column as the chunks got re-encoded. Lets create a slice with capacity of 5
 	// just in case of re-encoding.

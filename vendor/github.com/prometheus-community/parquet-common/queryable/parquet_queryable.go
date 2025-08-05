@@ -164,6 +164,9 @@ func (p parquetQuerier) LabelValues(ctx context.Context, name string, hints *pro
 	if err != nil {
 		return nil, nil, err
 	}
+	span.SetAttributes(
+		attribute.Int("shards_count", len(shards)),
+	)
 
 	limit := int64(0)
 
@@ -212,6 +215,9 @@ func (p parquetQuerier) LabelNames(ctx context.Context, hints *prom_storage.Labe
 	if err != nil {
 		return nil, nil, err
 	}
+	span.SetAttributes(
+		attribute.Int("shards_count", len(shards)),
+	)
 
 	limit := int64(0)
 
@@ -281,6 +287,11 @@ func (p parquetQuerier) Select(ctx context.Context, sorted bool, sp *prom_storag
 		minT, maxT = sp.Start, sp.End
 	}
 	skipChunks := sp != nil && sp.Func == "series"
+	span.SetAttributes(
+		attribute.Int("shards_count", len(shards)),
+		attribute.Bool("skip_chunks", skipChunks),
+	)
+
 	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(p.opts.concurrency)
 
@@ -295,11 +306,6 @@ func (p parquetQuerier) Select(ctx context.Context, sorted bool, sp *prom_storag
 	if err = errGroup.Wait(); err != nil {
 		return prom_storage.ErrSeriesSet(err)
 	}
-
-	span.SetAttributes(
-		attribute.Int("shards_count", len(shards)),
-		attribute.Bool("skip_chunks", skipChunks),
-	)
 
 	ss := convert.NewMergeChunkSeriesSet(seriesSet, labels.Compare, prom_storage.NewConcatenatingChunkSeriesMerger())
 
@@ -357,7 +363,7 @@ func (b queryableShard) Query(ctx context.Context, sorted bool, sp *prom_storage
 
 	for rgi := range b.shard.LabelsFile().RowGroups() {
 		errGroup.Go(func() error {
-			cs, err := search.MatchersToConstraint(matchers...)
+			cs, err := search.MatchersToConstraints(matchers...)
 			if err != nil {
 				return err
 			}
@@ -411,7 +417,7 @@ func (b queryableShard) LabelNames(ctx context.Context, limit int64, matchers []
 
 	for rgi := range b.shard.LabelsFile().RowGroups() {
 		errGroup.Go(func() error {
-			cs, err := search.MatchersToConstraint(matchers...)
+			cs, err := search.MatchersToConstraints(matchers...)
 			if err != nil {
 				return err
 			}
@@ -451,7 +457,7 @@ func (b queryableShard) LabelValues(ctx context.Context, name string, limit int6
 
 	for rgi := range b.shard.LabelsFile().RowGroups() {
 		errGroup.Go(func() error {
-			cs, err := search.MatchersToConstraint(matchers...)
+			cs, err := search.MatchersToConstraints(matchers...)
 			if err != nil {
 				return err
 			}

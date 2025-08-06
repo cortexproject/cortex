@@ -3075,6 +3075,11 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -distributor.use-stream-push&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[use_stream_push&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># request.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -distributor.remote-writev2-enabled&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[remote_write2_enabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ring&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">kvstore&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Backend storage to use for the ring. Supported values are: consul, etcd,&lt;/span>
@@ -7043,6 +7048,7 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;ul>
 &lt;li>Do not extend writes on unhealthy ingesters (&lt;code>-distributor.extend-writes=false&lt;/code>)&lt;/li>
 &lt;li>Accept multiple HA pairs in the same request (enabled via &lt;code>-experimental.distributor.ha-tracker.mixed-ha-samples=true&lt;/code>)&lt;/li>
+&lt;li>Accept Prometheus remote write 2.0 request (&lt;code>-distributor.remote-writev2-enabled=true&lt;/code>)&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;li>Tenant Deletion in Purger, for blocks storage.&lt;/li>

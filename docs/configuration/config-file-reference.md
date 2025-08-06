@@ -3140,6 +3140,11 @@ ha_tracker:
 # CLI flag: -distributor.use-stream-push
 [use_stream_push: <boolean> | default = false]
 
+# EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push
+# request.
+# CLI flag: -distributor.remote-writev2-enabled
+[remote_write2_enabled: <boolean> | default = false]
+
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,

@@ -17,10 +17,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/exporter-toolkit/web"
+	channelz "github.com/rantav/go-grpc-channelz"
 	"github.com/soheilhy/cmux"
 	"golang.org/x/net/context"
 	"golang.org/x/net/netutil"
 	"google.golang.org/grpc"
+	channelzservice "google.golang.org/grpc/channelz/service"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 
@@ -110,6 +112,8 @@ type Config struct {
 	GRPCServerMinTimeBetweenPings      time.Duration `yaml:"grpc_server_min_time_between_pings"`
 	GRPCServerPingWithoutStreamAllowed bool          `yaml:"grpc_server_ping_without_stream_allowed"`
 
+	EnableChannelz bool `yaml:"enable_channelz"`
+
 	LogFormat                    logging.Format    `yaml:"log_format"`
 	LogLevel                     logging.Level     `yaml:"log_level"`
 	Log                          logging.Interface `yaml:"-"`
@@ -168,6 +172,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.GRPCServerTimeout, "server.grpc.keepalive.timeout", time.Second*20, "After having pinged for keepalive check, the duration after which an idle connection should be closed, Default: 20s")
 	f.DurationVar(&cfg.GRPCServerMinTimeBetweenPings, "server.grpc.keepalive.min-time-between-pings", 5*time.Minute, "Minimum amount of time a client should wait before sending a keepalive ping. If client sends keepalive ping more often, server will send GOAWAY and close the connection.")
 	f.BoolVar(&cfg.GRPCServerPingWithoutStreamAllowed, "server.grpc.keepalive.ping-without-stream-allowed", false, "If true, server allows keepalive pings even when there are no active streams(RPCs). If false, and client sends ping when there are no active streams, server will send GOAWAY and close the connection.")
+	f.BoolVar(&cfg.EnableChannelz, "server.enable-channelz", false, "Enable Channelz for gRPC server. A web UI will be also exposed on the HTTP server at /channelz")
 	f.StringVar(&cfg.PathPrefix, "server.path-prefix", "", "Base path to serve all API routes from (e.g. /v1/)")
 	cfg.LogFormat.RegisterFlags(f)
 	cfg.LogLevel.RegisterFlags(f)
@@ -376,6 +381,12 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	grpcServer := grpc.NewServer(grpcOptions...)
 	grpcOnHttpServer := grpc.NewServer(grpcOptions...)
 
+	// Register channelz service if enabled
+	if cfg.EnableChannelz {
+		channelzservice.RegisterChannelzServiceToServer(grpcServer)
+		channelzservice.RegisterChannelzServiceToServer(grpcOnHttpServer)
+	}
+
 	// Setup HTTP server
 	var router *mux.Router
 	if cfg.Router != nil {
@@ -390,6 +401,13 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	}
 	if cfg.RegisterInstrumentation {
 		RegisterInstrumentationWithGatherer(router, gatherer)
+	}
+
+	// Register channelz web UI if enabled
+	if cfg.EnableChannelz {
+		// Mount channelz handler at /channelz
+		grpcAddr := fmt.Sprintf("%s:%d", cfg.GRPCListenAddress, cfg.GRPCListenPort)
+		router.PathPrefix("/channelz").Handler(channelz.CreateHandler("/", grpcAddr))
 	}
 
 	var sourceIPs *middleware.SourceIPExtractor

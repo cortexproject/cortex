@@ -25,7 +25,7 @@ import (
 )
 
 func TestIngesterRollingUpdate(t *testing.T) {
-	// Test ingester rolling update situation: when -distributor.remote-write2-enabled is true, and ingester uses the v1.19.0 image.
+	// Test ingester rolling update situation: when -distributor.remote-writev2-enabled is true, and ingester uses the v1.19.0 image.
 	// Expected: remote write 2.0 push success
 	const blockRangePeriod = 5 * time.Second
 	ingesterImage := "quay.io/cortexproject/cortex:v1.19.0"
@@ -65,7 +65,7 @@ func TestIngesterRollingUpdate(t *testing.T) {
 	)
 
 	distributorFlag := mergeFlags(flags, map[string]string{
-		"-distributor.remote-write2-enabled": "true",
+		"-distributor.remote-writev2-enabled": "true",
 	})
 
 	// make alert manager config dir
@@ -139,7 +139,7 @@ func TestIngesterRollingUpdate(t *testing.T) {
 }
 
 func TestIngest_SenderSendPRW2_DistributorNotAllowPRW2(t *testing.T) {
-	// Test `-distributor.remote-write2-enabled=false` but the Sender pushes PRW2
+	// Test `-distributor.remote-writev2-enabled=false` but the Sender pushes PRW2
 	// Expected: status code is 200, but samples are not written.
 	const blockRangePeriod = 5 * time.Second
 
@@ -169,8 +169,8 @@ func TestIngest_SenderSendPRW2_DistributorNotAllowPRW2(t *testing.T) {
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
 			// Distributor.
-			"-distributor.replication-factor":    "1",
-			"-distributor.remote-write2-enabled": "false",
+			"-distributor.replication-factor":     "1",
+			"-distributor.remote-writev2-enabled": "false",
 			// Store-gateway.
 			"-store-gateway.sharding-enabled": "false",
 			// alert manager
@@ -237,8 +237,8 @@ func TestIngest(t *testing.T) {
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
 			// Distributor.
-			"-distributor.replication-factor":    "1",
-			"-distributor.remote-write2-enabled": "true",
+			"-distributor.replication-factor":     "1",
+			"-distributor.remote-writev2-enabled": "true",
 			// Store-gateway.
 			"-store-gateway.sharding-enabled": "false",
 			// alert manager
@@ -336,8 +336,8 @@ func TestExemplar(t *testing.T) {
 			"-consul.hostname":        consul.NetworkHTTPEndpoint(),
 			"-ingester.max-exemplars": "100",
 			// Distributor.
-			"-distributor.replication-factor":    "1",
-			"-distributor.remote-write2-enabled": "true",
+			"-distributor.replication-factor":     "1",
+			"-distributor.remote-writev2-enabled": "true",
 			// Store-gateway.
 			"-store-gateway.sharding-enabled": "false",
 			// alert manager
@@ -420,8 +420,8 @@ func Test_WriteStatWithReplication(t *testing.T) {
 			"-consul.hostname":        consul.NetworkHTTPEndpoint(),
 			"-ingester.max-exemplars": "100",
 			// Distributor.
-			"-distributor.replication-factor":    "3",
-			"-distributor.remote-write2-enabled": "true",
+			"-distributor.replication-factor":     "3",
+			"-distributor.remote-writev2-enabled": "true",
 			// Store-gateway.
 			"-store-gateway.sharding-enabled": "false",
 			// alert manager

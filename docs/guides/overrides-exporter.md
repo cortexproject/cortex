@@ -35,7 +35,8 @@ overrides:
     max_global_series_per_metric: 300000
     max_global_series_per_user: 300000
     max_series_per_metric: 0
-    max_series_per_user: 0
+    max_series_per_user: 
+    exitmax_fetched_series_per_query: 100000
 ```
 
 The `overrides-exporter` is configured to run as follows:

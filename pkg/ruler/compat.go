@@ -169,7 +169,7 @@ type RulesLimits interface {
 // EngineQueryFunc returns a new engine query function validating max queryLength.
 // Modified from Prometheus rules.EngineQueryFunc
 // https://github.com/prometheus/prometheus/blob/v2.39.1/rules/manager.go#L189.
-func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
+func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration, frontendExtraParams map[string]string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// Enforce the max query length.
 		maxQueryLength := overrides.MaxQueryLength(userID)
@@ -190,7 +190,7 @@ func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, 
 		ctx = requestmeta.ContextWithRequestId(ctx, uuid.NewString())
 
 		if frontendClient != nil {
-			v, err := frontendClient.InstantQuery(ctx, qs, t)
+			v, err := frontendClient.InstantQuery(ctx, qs, t, frontendExtraParams)
 			if err != nil {
 				return nil, err
 			}
@@ -347,7 +347,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			client = c.(*frontendClient)
 		}
 		var queryFunc rules.QueryFunc
-		engineQueryFunc := EngineQueryFunc(engine, client, q, overrides, userID, cfg.LookbackDelta)
+		engineQueryFunc := EngineQueryFunc(engine, client, q, overrides, userID, cfg.LookbackDelta, cfg.FrontendExtraParams)
 		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)
 		if cfg.EnableQueryStats {
 			queryFunc = RecordAndReportRuleQueryMetrics(metricsQueryFunc, userID, evalMetrics, logger)
@@ -365,7 +365,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			QueryFunc:              queryFunc,
 			Context:                prometheusContext,
 			ExternalURL:            cfg.ExternalURL.URL,
-			NotifyFunc:             SendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			NotifyFunc:             SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DropLabels),
 			Logger:                 util_log.GoKitLogToSlog(log.With(logger, "user", userID)),
 			Registerer:             reg,
 			OutageTolerance:        cfg.OutageTolerance,

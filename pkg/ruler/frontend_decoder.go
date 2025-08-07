@@ -24,7 +24,9 @@ type ProtobufDecoder struct{}
 type Warnings []string
 
 type Decoder interface {
-	Decode(body []byte) (promql.Vector, Warnings, error)
+	DecodeVector(body []byte) (promql.Vector, Warnings, error)
+	DecodeMatrix(body []byte) (model.Matrix, Warnings, error)
+
 	ContentType() string
 }
 
@@ -32,7 +34,44 @@ func (j JsonDecoder) ContentType() string {
 	return "application/json"
 }
 
-func (j JsonDecoder) Decode(body []byte) (promql.Vector, Warnings, error) {
+func (j JsonDecoder) DecodeMatrix(body []byte) (model.Matrix, Warnings, error) {
+	var response api.Response
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, nil, err
+	}
+
+	data := struct {
+		Type   model.ValueType `json:"resultType"`
+		Result json.RawMessage `json:"result"`
+	}{}
+
+	if responseDataBytes, err := json.Marshal(response.Data); err != nil {
+		return nil, response.Warnings, err
+	} else {
+		if err = json.Unmarshal(responseDataBytes, &data); err != nil {
+			return nil, response.Warnings, err
+		}
+	}
+
+	var matrixResult model.Matrix
+
+	switch data.Type {
+	case model.ValMatrix:
+		if err := json.Unmarshal(data.Result, &matrixResult); err != nil {
+			return nil, nil, fmt.Errorf("decode result into ValueTypeMatrix: %w", err)
+		}
+	default:
+		if response.Error != "" {
+			return nil, nil, fmt.Errorf("error: %s, type: %s", response.Error, response.ErrorType)
+		}
+
+		return nil, nil, fmt.Errorf("received status code: 200, unknown response type: '%q'", data.Type)
+	}
+	return matrixResult, []string{}, nil
+}
+
+func (j JsonDecoder) DecodeVector(body []byte) (promql.Vector, Warnings, error) {
 	var response api.Response
 
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&response); err != nil {
@@ -92,7 +131,39 @@ func (p ProtobufDecoder) ContentType() string {
 	return tripperware.QueryResponseCortexMIMEType
 }
 
-func (p ProtobufDecoder) Decode(body []byte) (promql.Vector, Warnings, error) {
+func (p ProtobufDecoder) DecodeMatrix(body []byte) (model.Matrix, Warnings, error) {
+	resp := tripperware.PrometheusResponse{}
+	if err := resp.Unmarshal(body); err != nil {
+		return nil, nil, err
+	}
+
+	if resp.Status == statusError {
+		return nil, resp.Warnings, fmt.Errorf("failed to execute query with error: %s", resp.Error)
+	}
+
+	switch resp.Data.ResultType {
+	case "matrix":
+		data := struct {
+			Type   model.ValueType `json:"resultType"`
+			Result json.RawMessage `json:"result"`
+		}{}
+
+		var matrixResult model.Matrix
+
+		if err := json.Unmarshal(resp.Data.Result.GetRawBytes(), &data); err != nil {
+			return nil, nil, err
+		}
+
+		if err := json.Unmarshal(data.Result, &matrixResult); err != nil {
+			return nil, nil, err
+		}
+		return matrixResult, resp.Warnings, nil
+	default:
+		return nil, resp.Warnings, errors.New("rule result is not a matrix")
+	}
+}
+
+func (p ProtobufDecoder) DecodeVector(body []byte) (promql.Vector, Warnings, error) {
 	resp := tripperware.PrometheusResponse{}
 	if err := resp.Unmarshal(body); err != nil {
 		return nil, nil, err

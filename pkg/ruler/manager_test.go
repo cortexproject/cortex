@@ -31,7 +31,10 @@ func TestSyncRuleGroups(t *testing.T) {
 	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
 	limits := &ruleLimits{externalLabels: labels.FromStrings("from", "cortex")}
 
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, limits, ruleManagerFactory, nil, nil, log.NewNopLogger())
+	cfg := Config{RulePath: dir}
+	frontendPool := NewFrontendPool(cfg, log.NewNopLogger(), prometheus.NewRegistry())
+
+	m, err := NewDefaultMultiTenantManager(cfg, limits, ruleManagerFactory, nil, nil, log.NewNopLogger(), frontendPool)
 	require.NoError(t, err)
 
 	const user = "testUser"
@@ -159,8 +162,10 @@ func TestSlowRuleGroupSyncDoesNotSlowdownListRules(t *testing.T) {
 		1 * time.Second,
 	}
 
+	cfg := Config{RulePath: dir}
+	frontendPool := NewFrontendPool(cfg, log.NewNopLogger(), prometheus.NewRegistry())
 	ruleManagerFactory := RuleManagerFactory(groupsToReturn, waitDurations)
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, &ruleLimits{}, ruleManagerFactory, nil, prometheus.NewRegistry(), log.NewNopLogger())
+	m, err := NewDefaultMultiTenantManager(cfg, &ruleLimits{}, ruleManagerFactory, nil, prometheus.NewRegistry(), log.NewNopLogger(), frontendPool)
 	require.NoError(t, err)
 
 	m.SyncRuleGroups(context.Background(), userRules)
@@ -223,7 +228,10 @@ func TestSyncRuleGroupsCleanUpPerUserMetrics(t *testing.T) {
 
 	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
 
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, &ruleLimits{}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
+	cfg := Config{RulePath: dir}
+	frontendPool := NewFrontendPool(cfg, log.NewNopLogger(), prometheus.NewRegistry())
+	// Create a new DefaultMultiTenantManager with the rule manager factory and evaluation metrics.
+	m, err := NewDefaultMultiTenantManager(cfg, &ruleLimits{}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger(), frontendPool)
 	require.NoError(t, err)
 
 	const user = "testUser"
@@ -271,7 +279,8 @@ func TestBackupRules(t *testing.T) {
 	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
 	config := Config{RulePath: dir}
 	config.Ring.ReplicationFactor = 3
-	m, err := NewDefaultMultiTenantManager(config, &ruleLimits{}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
+	frontendPool := NewFrontendPool(config, log.NewNopLogger(), prometheus.NewRegistry())
+	m, err := NewDefaultMultiTenantManager(config, &ruleLimits{}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger(), frontendPool)
 	require.NoError(t, err)
 
 	const user1 = "testUser"

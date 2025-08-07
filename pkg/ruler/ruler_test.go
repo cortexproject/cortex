@@ -266,7 +266,8 @@ func newManager(t *testing.T, cfg Config) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, nil)
 	metrics := NewRuleEvalMetrics(cfg, nil)
 	managerFactory := DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, metrics, nil)
-	manager, err := NewDefaultMultiTenantManager(cfg, overrides, managerFactory, metrics, reg, logger)
+	frontendPool := NewFrontendPool(cfg, logger, reg)
+	manager, err := NewDefaultMultiTenantManager(cfg, overrides, managerFactory, metrics, reg, logger, frontendPool)
 	require.NoError(t, err)
 
 	return manager
@@ -324,7 +325,8 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.Tes
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, querierTestConfig)
 	metrics := NewRuleEvalMetrics(rulerConfig, reg)
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, metrics, reg)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, &ruleLimits{}, managerFactory, metrics, reg, log.NewNopLogger())
+	frontendPool := NewFrontendPool(rulerConfig, logger, reg)
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, &ruleLimits{}, managerFactory, metrics, reg, log.NewNopLogger(), frontendPool)
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
@@ -455,7 +457,8 @@ func TestNotifierSendExternalLabels(t *testing.T) {
 	engine, queryable, pusher, logger, _, reg := testSetup(t, nil)
 	metrics := NewRuleEvalMetrics(cfg, nil)
 	managerFactory := DefaultTenantManagerFactory(cfg, pusher, queryable, engine, limits, metrics, nil)
-	manager, err := NewDefaultMultiTenantManager(cfg, limits, managerFactory, metrics, reg, logger)
+	frontendPool := NewFrontendPool(cfg, logger, reg)
+	manager, err := NewDefaultMultiTenantManager(cfg, limits, managerFactory, metrics, reg, logger, frontendPool)
 	require.NoError(t, err)
 	t.Cleanup(manager.Stop)
 
@@ -2679,8 +2682,9 @@ func (s senderFunc) Send(alerts ...*notifier.Alert) {
 
 func TestSendAlerts(t *testing.T) {
 	testCases := []struct {
-		in  []*promRules.Alert
-		exp []*notifier.Alert
+		in         []*promRules.Alert
+		exp        []*notifier.Alert
+		dropLabels []string
 	}{
 		{
 			in: []*promRules.Alert{
@@ -2723,6 +2727,27 @@ func TestSendAlerts(t *testing.T) {
 			},
 		},
 		{
+			dropLabels: []string{"l2"},
+			in: []*promRules.Alert{
+				{
+					Labels:      labels.FromStrings("l1", "v1", "l2", "v2", "l3", "v3"),
+					Annotations: labels.FromStrings("a2", "v2"),
+					ActiveAt:    time.Unix(1, 0),
+					FiredAt:     time.Unix(2, 0),
+					ResolvedAt:  time.Unix(4, 0),
+				},
+			},
+			exp: []*notifier.Alert{
+				{
+					Labels:       labels.FromStrings("l1", "v1", "l3", "v3"),
+					Annotations:  labels.FromStrings("a2", "v2"),
+					StartsAt:     time.Unix(2, 0),
+					EndsAt:       time.Unix(4, 0),
+					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
+				},
+			},
+		},
+		{
 			in: []*promRules.Alert{},
 		},
 	}
@@ -2736,7 +2761,7 @@ func TestSendAlerts(t *testing.T) {
 				}
 				require.Equal(t, tc.exp, alerts)
 			})
-			SendAlerts(senderFunc, "http://localhost:9090")(context.TODO(), "up", tc.in...)
+			SendAlerts(senderFunc, "http://localhost:9090", tc.dropLabels)(context.TODO(), "up", tc.in...)
 		})
 	}
 }

@@ -645,8 +645,10 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	metrics := ruler.NewRuleEvalMetrics(t.Cfg.Ruler, prometheus.DefaultRegisterer)
 
+	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
+	frontendPool := ruler.NewFrontendPool(t.Cfg.Ruler, util_log.Logger, rulerRegisterer)
+
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
-		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 
 		opts := promql.EngineOpts{
 			Logger:               util_log.SLogger,
@@ -665,14 +667,26 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		queryEngine := engine.New(opts, t.Cfg.Ruler.ThanosEngine, rulerRegisterer)
 
 		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, queryEngine, t.Overrides, metrics, prometheus.DefaultRegisterer)
-		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, t.Overrides, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger)
+		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, t.Overrides, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger, frontendPool)
 	} else {
-		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
-		// TODO: Consider wrapping logger to differentiate from querier module logger
-		queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.Overrides.RulesPartialData)
+		var pusher ruler.Pusher = t.Distributor
+		if t.Cfg.Ruler.RemoteWriteConfig.URL != "" {
+			pusher = ruler.NewRemoteWritePusher(t.Cfg.Ruler.RemoteWriteConfig.URL, t.Cfg.Ruler.RemoteWriteConfig.Headers)
+		}
 
-		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides, metrics, prometheus.DefaultRegisterer)
-		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, t.Overrides, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger)
+		// TODO: Consider wrapping logger to differentiate from querier module logger
+		var queryable prom_storage.Queryable
+		var engine promql.QueryEngine
+		if t.Cfg.Ruler.FrontendAddress != "" {
+			queryable = ruler.NewFrontendQueryable(
+				frontendPool, util_log.Logger, t.Cfg.Ruler.RestoreIgnoreLabels,
+			)
+		} else {
+			queryable, _, engine = querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.Overrides.RulesPartialData)
+		}
+
+		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, pusher, queryable, engine, t.Overrides, metrics, prometheus.DefaultRegisterer)
+		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, t.Overrides, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger, frontendPool)
 	}
 
 	if err != nil {
@@ -914,7 +928,7 @@ func (t *Cortex) setupModuleManager() error {
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler, Compactor, AlertManager},
 	}
-	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
+	if (t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil) || (t.Cfg.Ruler.FrontendAddress != "" && t.Cfg.Ruler.RemoteWriteConfig.URL != "") {
 		deps[Ruler] = []string{Overrides, RulerStorage}
 	}
 	for mod, targets := range deps {

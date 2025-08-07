@@ -5027,11 +5027,18 @@ The `ruler_config` configures the Cortex ruler.
 # CLI flag: -ruler.frontend-address
 [frontend_address: <string> | default = ""]
 
+# Labels to ignore when restoring alert's state. This is only used if you are
+# using the frontend address with some external system like Thanos.
+[restore_ignore_labels: <list of string> | default = []]
+
 # [Experimental] Query response format to get query results from Query Frontend
 # when the rule evaluation. It will only take effect when
 # `-ruler.frontend-address` is configured. Supported values: json,protobuf
 # CLI flag: -ruler.query-response-format
 [query_response_format: <string> | default = "protobuf"]
+
+# What extra headers to send when evaluating rules.
+[frontend_extra_params: <map of string to string> | default = ]
 
 frontend_client:
   # gRPC client max receive message size (bytes).
@@ -5112,6 +5119,9 @@ frontend_client:
 
 # Labels to add to all alerts.
 [external_labels: <map of string (labelName) to string (labelValue)> | default = []]
+
+# Labels to drop from all alerts.
+[drop_labels: <list of string> | default = []]
 
 ruler_client:
   # gRPC client max receive message size (bytes).
@@ -5201,6 +5211,13 @@ ruler_client:
 # file path to store temporary rule files for the prometheus rule managers
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
+
+remote_write:
+  # Where to remote write samples.
+  [url: <string> | default = ""]
+
+  # Extra headers to set when writing through remote_write.
+  [headers: <map of string to string> | default = ]
 
 # Comma-separated list of URL(s) of the Alertmanager(s) to send notifications
 # to. Each Alertmanager URL is treated as a separate group in the configuration.

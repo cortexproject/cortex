@@ -11,8 +11,9 @@ type memoryBuckets struct {
 	currentIdx int
 }
 
+const maxActiveRequests = 100000
+
 type ResourceTracker struct {
-	cpuData    map[string]time.Duration
 	memoryData map[string]*memoryBuckets
 	lastUpdate map[string]time.Time // Track last update per requestID
 
@@ -20,15 +21,12 @@ type ResourceTracker struct {
 }
 
 type IResourceTracker interface {
-	AddDuration(requestID string, duration time.Duration)
 	AddBytes(requestID string, bytes uint64)
-	GetSlowestQuery() (requestID string, duration time.Duration)
 	GetHeaviestQuery() (requestID string, bytes uint64)
 }
 
 func NewResourceTracker() *ResourceTracker {
 	rt := &ResourceTracker{
-		cpuData:    make(map[string]time.Duration),
 		memoryData: make(map[string]*memoryBuckets),
 		lastUpdate: make(map[string]time.Time),
 	}
@@ -39,27 +37,27 @@ func NewResourceTracker() *ResourceTracker {
 	return rt
 }
 
-func (rt *ResourceTracker) AddDuration(requestID string, duration time.Duration) {
-	rt.mu.Lock()
-	now := time.Now()
-	rt.cpuData[requestID] += duration
-	rt.lastUpdate[requestID] = now
-	rt.mu.Unlock()
-}
-
 func (rt *ResourceTracker) AddBytes(requestID string, bytes uint64) {
 	rt.mu.Lock()
-	now := time.Now().Truncate(time.Second)
+	defer rt.mu.Unlock()
 	
+	now := time.Now().Truncate(time.Second)
+
 	buckets, exists := rt.memoryData[requestID]
 	if !exists {
+		// Check if we're at capacity
+		if len(rt.memoryData) >= maxActiveRequests {
+			// Evict oldest request
+			rt.evictOldest()
+		}
+		
 		buckets = &memoryBuckets{
 			lastUpdate: now,
 			currentIdx: 0,
 		}
 		rt.memoryData[requestID] = buckets
 	}
-	
+
 	// Calculate seconds drift and rotate buckets if needed
 	secondsDrift := int(now.Sub(buckets.lastUpdate).Seconds())
 	if secondsDrift > 0 {
@@ -72,28 +70,10 @@ func (rt *ResourceTracker) AddBytes(requestID string, bytes uint64) {
 		buckets.currentIdx = (buckets.currentIdx + secondsDrift) % 3
 		buckets.lastUpdate = now
 	}
-	
+
 	// Add bytes to current bucket
 	buckets.buckets[buckets.currentIdx] += bytes
 	rt.lastUpdate[requestID] = time.Now()
-	rt.mu.Unlock()
-}
-
-func (rt *ResourceTracker) GetSlowestQuery() (string, time.Duration) {
-	rt.mu.RLock()
-	defer rt.mu.RUnlock()
-
-	var maxID string
-	var maxDuration time.Duration
-
-	for id, duration := range rt.cpuData {
-		if duration > maxDuration {
-			maxDuration = duration
-			maxID = id
-		}
-	}
-
-	return maxID, maxDuration
 }
 
 func (rt *ResourceTracker) GetHeaviestQuery() (string, uint64) {
@@ -132,16 +112,32 @@ func (rt *ResourceTracker) cleanup() {
 	defer rt.mu.Unlock()
 
 	now := time.Now()
-	cutoff := now.Add(-5 * time.Second)
+	cutoff := now.Add(-3 * time.Second)
 
 	// Remove stale requestIDs
 	for requestID, lastUpdate := range rt.lastUpdate {
 		if lastUpdate.Before(cutoff) {
-			delete(rt.cpuData, requestID)
 			delete(rt.memoryData, requestID)
 			delete(rt.lastUpdate, requestID)
 		}
 	}
+}
 
-	// Memory buckets are self-cleaning via rotation, no additional cleanup needed
+func (rt *ResourceTracker) evictOldest() {
+	var oldestID string
+	var oldestTime time.Time
+	
+	// Find oldest request
+	for requestID, lastUpdate := range rt.lastUpdate {
+		if oldestID == "" || lastUpdate.Before(oldestTime) {
+			oldestID = requestID
+			oldestTime = lastUpdate
+		}
+	}
+	
+	// Remove oldest request
+	if oldestID != "" {
+		delete(rt.memoryData, oldestID)
+		delete(rt.lastUpdate, oldestID)
+	}
 }

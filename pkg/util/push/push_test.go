@@ -455,16 +455,21 @@ func createRequest(t *testing.T, protobuf []byte, isV2 bool) *http.Request {
 
 func createCortexRemoteWriteV2Protobuf(t *testing.T, skipLabelNameValidation bool, source cortexpb.SourceEnum) []byte {
 	t.Helper()
-	input := writev2.Request{
+
+	input := cortexpb.WriteRequestV2{
 		Symbols: []string{"", "__name__", "foo"},
-		Timeseries: []writev2.TimeSeries{
+		Timeseries: []cortexpb.PreallocTimeseriesV2{
 			{
-				LabelsRefs: []uint32{1, 2},
-				Samples: []writev2.Sample{
-					{Value: 1, Timestamp: time.Date(2020, 4, 1, 0, 0, 0, 0, time.UTC).UnixNano()},
+				TimeSeriesV2: &cortexpb.TimeSeriesV2{
+					LabelsRefs: []uint32{1, 2},
+					Samples: []cortexpb.Sample{
+						{Value: 1, TimestampMs: time.Date(2020, 4, 1, 0, 0, 0, 0, time.UTC).UnixNano()},
+					},
 				},
 			},
 		},
+		Source:                  source,
+		SkipLabelNameValidation: skipLabelNameValidation,
 	}
 
 	inoutBytes, err := input.Marshal()

@@ -12,18 +12,17 @@ import (
 )
 
 type memoryBuckets struct {
-	buckets    [3]uint64 // 3 buckets for 3 seconds
+	buckets    []uint64
 	lastUpdate time.Time
 	currentIdx int
 }
 
-const maxActiveRequests = 100000
-
 type ResourceTracker struct {
 	services.Service
 
-	memoryData map[string]*memoryBuckets
-	lastUpdate map[string]time.Time // Track last update per requestID
+	memoryData        map[string]*memoryBuckets
+	windowSize        int
+	maxActiveRequests int
 
 	mu sync.RWMutex
 }
@@ -33,10 +32,11 @@ type IResourceTracker interface {
 	GetHeaviestQuery() (requestID string, bytes uint64)
 }
 
-func NewResourceTracker(registerer prometheus.Registerer) *ResourceTracker {
+func NewResourceTracker(windowSize, maxActiveRequests int, registerer prometheus.Registerer) *ResourceTracker {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        windowSize,
+		maxActiveRequests: maxActiveRequests,
 	}
 
 	promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
@@ -56,12 +56,13 @@ func (rt *ResourceTracker) AddBytes(requestID string, bytes uint64) {
 	buckets, exists := rt.memoryData[requestID]
 	if !exists {
 		// Check if we're at capacity
-		if len(rt.memoryData) >= maxActiveRequests {
+		if len(rt.memoryData) >= rt.maxActiveRequests {
 			// Evict oldest request
 			rt.evictOldest()
 		}
 
 		buckets = &memoryBuckets{
+			buckets:    make([]uint64, rt.windowSize),
 			lastUpdate: now,
 			currentIdx: 0,
 		}
@@ -72,18 +73,17 @@ func (rt *ResourceTracker) AddBytes(requestID string, bytes uint64) {
 	secondsDrift := int(now.Sub(buckets.lastUpdate).Seconds())
 	if secondsDrift > 0 {
 		// Clear old buckets
-		for i := 0; i < min(secondsDrift, 3); i++ {
-			nextIdx := (buckets.currentIdx + 1 + i) % 3
+		for i := 0; i < min(secondsDrift, rt.windowSize); i++ {
+			nextIdx := (buckets.currentIdx + 1 + i) % rt.windowSize
 			buckets.buckets[nextIdx] = 0
 		}
 		// Update current index
-		buckets.currentIdx = (buckets.currentIdx + secondsDrift) % 3
+		buckets.currentIdx = (buckets.currentIdx + secondsDrift) % rt.windowSize
 		buckets.lastUpdate = now
 	}
 
 	// Add bytes to current bucket
 	buckets.buckets[buckets.currentIdx] += bytes
-	rt.lastUpdate[requestID] = time.Now()
 }
 
 func (rt *ResourceTracker) GetHeaviestQuery() (string, uint64) {
@@ -94,7 +94,7 @@ func (rt *ResourceTracker) GetHeaviestQuery() (string, uint64) {
 	var maxBytes uint64
 
 	for id, buckets := range rt.memoryData {
-		// Sum all buckets (represents last 3 seconds)
+		// Sum all buckets
 		var totalBytes uint64
 		for _, bytes := range buckets.buckets {
 			totalBytes += bytes
@@ -126,7 +126,7 @@ func (rt *ResourceTracker) activeRequestCount() float64 {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
 
-	return float64(len(rt.lastUpdate))
+	return float64(len(rt.memoryData))
 }
 
 func (rt *ResourceTracker) cleanup() {
@@ -134,13 +134,12 @@ func (rt *ResourceTracker) cleanup() {
 	defer rt.mu.Unlock()
 
 	now := time.Now()
-	cutoff := now.Add(-3 * time.Second)
+	cutoff := now.Add(-time.Duration(rt.windowSize) * time.Second)
 
 	// Remove stale requestIDs
-	for requestID, lastUpdate := range rt.lastUpdate {
-		if lastUpdate.Before(cutoff) {
+	for requestID, buckets := range rt.memoryData {
+		if buckets.lastUpdate.Before(cutoff) {
 			delete(rt.memoryData, requestID)
-			delete(rt.lastUpdate, requestID)
 		}
 	}
 }
@@ -150,16 +149,15 @@ func (rt *ResourceTracker) evictOldest() {
 	var oldestTime time.Time
 
 	// Find oldest request
-	for requestID, lastUpdate := range rt.lastUpdate {
-		if oldestID == "" || lastUpdate.Before(oldestTime) {
+	for requestID, buckets := range rt.memoryData {
+		if oldestID == "" || buckets.lastUpdate.Before(oldestTime) {
 			oldestID = requestID
-			oldestTime = lastUpdate
+			oldestTime = buckets.lastUpdate
 		}
 	}
 
 	// Remove oldest request
 	if oldestID != "" {
 		delete(rt.memoryData, oldestID)
-		delete(rt.lastUpdate, oldestID)
 	}
 }

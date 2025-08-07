@@ -10,8 +10,9 @@ import (
 
 func TestResourceTracker_AddBytes(t *testing.T) {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        3,
+		maxActiveRequests: 10,
 	}
 
 	rt.AddBytes("req1", 1000)
@@ -23,8 +24,9 @@ func TestResourceTracker_AddBytes(t *testing.T) {
 
 func TestResourceTracker_GetHeaviestQuery(t *testing.T) {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        3,
+		maxActiveRequests: 10,
 	}
 
 	rt.AddBytes("req1", 1000)
@@ -38,8 +40,9 @@ func TestResourceTracker_GetHeaviestQuery(t *testing.T) {
 
 func TestResourceTracker_EmptyTracker(t *testing.T) {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        3,
+		maxActiveRequests: 10,
 	}
 
 	requestID, bytes := rt.GetHeaviestQuery()
@@ -49,20 +52,21 @@ func TestResourceTracker_EmptyTracker(t *testing.T) {
 
 func TestResourceTracker_SlidingWindow(t *testing.T) {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        3,
+		maxActiveRequests: 10,
 	}
 
 	// Add bytes at different times
 	rt.AddBytes("req1", 1000)
-	
+
 	// Simulate 1 second later
 	rt.mu.Lock()
 	rt.memoryData["req1"].lastUpdate = rt.memoryData["req1"].lastUpdate.Add(-1 * time.Second)
 	rt.mu.Unlock()
-	
+
 	rt.AddBytes("req1", 2000)
-	
+
 	// Should have both values in different buckets
 	_, bytes := rt.GetHeaviestQuery()
 	assert.Equal(t, uint64(3000), bytes) // 1000 + 2000
@@ -70,19 +74,20 @@ func TestResourceTracker_SlidingWindow(t *testing.T) {
 
 func TestResourceTracker_BucketRotation(t *testing.T) {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        3,
+		maxActiveRequests: 10,
 	}
 
 	rt.AddBytes("req1", 1000)
-	
+
 	// Simulate 4 seconds later (should clear old buckets)
 	rt.mu.Lock()
 	rt.memoryData["req1"].lastUpdate = rt.memoryData["req1"].lastUpdate.Add(-4 * time.Second)
 	rt.mu.Unlock()
-	
+
 	rt.AddBytes("req1", 2000)
-	
+
 	// Should only have the new value (old bucket cleared)
 	_, bytes := rt.GetHeaviestQuery()
 	assert.Equal(t, uint64(2000), bytes)
@@ -90,8 +95,9 @@ func TestResourceTracker_BucketRotation(t *testing.T) {
 
 func TestResourceTracker_Cleanup(t *testing.T) {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        3,
+		maxActiveRequests: 10,
 	}
 
 	rt.AddBytes("req1", 1000)
@@ -99,7 +105,7 @@ func TestResourceTracker_Cleanup(t *testing.T) {
 
 	// Simulate old lastUpdate time
 	rt.mu.Lock()
-	rt.lastUpdate["req1"] = time.Now().Add(-5 * time.Second)
+	rt.memoryData["req1"].lastUpdate = time.Now().Add(-5 * time.Second)
 	rt.mu.Unlock()
 
 	rt.cleanup()
@@ -111,42 +117,52 @@ func TestResourceTracker_Cleanup(t *testing.T) {
 
 func TestResourceTracker_MaxActiveRequests(t *testing.T) {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        3,
+		maxActiveRequests: 100,
 	}
 
 	// Manually set to limit for faster test
 	rt.mu.Lock()
-	for i := 0; i < maxActiveRequests; i++ {
-		rt.memoryData[fmt.Sprintf("req%d", i)] = &memoryBuckets{lastUpdate: time.Now()}
-		rt.lastUpdate[fmt.Sprintf("req%d", i)] = time.Now()
+	for i := 0; i < rt.maxActiveRequests; i++ {
+		rt.memoryData[fmt.Sprintf("req%d", i)] = &memoryBuckets{
+			buckets:    make([]uint64, rt.windowSize),
+			lastUpdate: time.Now(),
+		}
 	}
 	rt.mu.Unlock()
 
 	// Add one more request (should trigger eviction)
 	rt.AddBytes("new_req", 9999)
 
-	assert.Len(t, rt.memoryData, maxActiveRequests)
+	assert.Len(t, rt.memoryData, rt.maxActiveRequests)
 	assert.Contains(t, rt.memoryData, "new_req")
 }
 
 func TestResourceTracker_EvictOldest(t *testing.T) {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        3,
+		maxActiveRequests: 10,
 	}
 
 	now := time.Now()
-	
+
 	// Add requests with different timestamps
-	rt.memoryData["req1"] = &memoryBuckets{}
-	rt.lastUpdate["req1"] = now.Add(-10 * time.Second) // Oldest
-	
-	rt.memoryData["req2"] = &memoryBuckets{}
-	rt.lastUpdate["req2"] = now.Add(-5 * time.Second)
-	
-	rt.memoryData["req3"] = &memoryBuckets{}
-	rt.lastUpdate["req3"] = now
+	rt.memoryData["req1"] = &memoryBuckets{
+		buckets:    make([]uint64, rt.windowSize),
+		lastUpdate: now.Add(-10 * time.Second), // Oldest
+	}
+
+	rt.memoryData["req2"] = &memoryBuckets{
+		buckets:    make([]uint64, rt.windowSize),
+		lastUpdate: now.Add(-5 * time.Second),
+	}
+
+	rt.memoryData["req3"] = &memoryBuckets{
+		buckets:    make([]uint64, rt.windowSize),
+		lastUpdate: now,
+	}
 
 	rt.evictOldest()
 
@@ -158,8 +174,9 @@ func TestResourceTracker_EvictOldest(t *testing.T) {
 
 func TestResourceTracker_ConcurrentAccess(t *testing.T) {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        3,
+		maxActiveRequests: 10,
 	}
 
 	// Test concurrent writes
@@ -192,8 +209,9 @@ func TestResourceTracker_ConcurrentAccess(t *testing.T) {
 
 func TestResourceTracker_AccumulateBytes(t *testing.T) {
 	rt := &ResourceTracker{
-		memoryData: make(map[string]*memoryBuckets),
-		lastUpdate: make(map[string]time.Time),
+		memoryData:        make(map[string]*memoryBuckets),
+		windowSize:        3,
+		maxActiveRequests: 10,
 	}
 
 	// Add bytes multiple times to same request

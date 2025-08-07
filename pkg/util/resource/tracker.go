@@ -1,8 +1,14 @@
 package resource
 
 import (
+	"context"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 type memoryBuckets struct {
@@ -14,6 +20,8 @@ type memoryBuckets struct {
 const maxActiveRequests = 100000
 
 type ResourceTracker struct {
+	services.Service
+
 	memoryData map[string]*memoryBuckets
 	lastUpdate map[string]time.Time // Track last update per requestID
 
@@ -25,22 +33,24 @@ type IResourceTracker interface {
 	GetHeaviestQuery() (requestID string, bytes uint64)
 }
 
-func NewResourceTracker() *ResourceTracker {
+func NewResourceTracker(registerer prometheus.Registerer) *ResourceTracker {
 	rt := &ResourceTracker{
 		memoryData: make(map[string]*memoryBuckets),
 		lastUpdate: make(map[string]time.Time),
 	}
 
-	// Start cleanup goroutine
-	go rt.cleanupLoop()
+	promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cortex_resource_tracker_active_requests",
+	}, rt.activeRequestCount)
 
+	rt.Service = services.NewBasicService(nil, rt.running, nil)
 	return rt
 }
 
 func (rt *ResourceTracker) AddBytes(requestID string, bytes uint64) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	
+
 	now := time.Now().Truncate(time.Second)
 
 	buckets, exists := rt.memoryData[requestID]
@@ -50,7 +60,7 @@ func (rt *ResourceTracker) AddBytes(requestID string, bytes uint64) {
 			// Evict oldest request
 			rt.evictOldest()
 		}
-		
+
 		buckets = &memoryBuckets{
 			lastUpdate: now,
 			currentIdx: 0,
@@ -98,13 +108,25 @@ func (rt *ResourceTracker) GetHeaviestQuery() (string, uint64) {
 	return maxID, maxBytes
 }
 
-func (rt *ResourceTracker) cleanupLoop() {
+func (rt *ResourceTracker) running(ctx context.Context) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		rt.cleanup()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			rt.cleanup()
+		}
 	}
+}
+
+func (rt *ResourceTracker) activeRequestCount() float64 {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+
+	return float64(len(rt.lastUpdate))
 }
 
 func (rt *ResourceTracker) cleanup() {
@@ -126,7 +148,7 @@ func (rt *ResourceTracker) cleanup() {
 func (rt *ResourceTracker) evictOldest() {
 	var oldestID string
 	var oldestTime time.Time
-	
+
 	// Find oldest request
 	for requestID, lastUpdate := range rt.lastUpdate {
 		if oldestID == "" || lastUpdate.Before(oldestTime) {
@@ -134,7 +156,7 @@ func (rt *ResourceTracker) evictOldest() {
 			oldestTime = lastUpdate
 		}
 	}
-	
+
 	// Remove oldest request
 	if oldestID != "" {
 		delete(rt.memoryData, oldestID)

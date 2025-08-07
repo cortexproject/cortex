@@ -321,6 +321,7 @@ overrides:
     max_fetched_series_per_query: 10000
   tenant2:
     max_series_per_metric: 100000
+    max_fetched_series_per_query: 100000
 
 multi_kv_config:
     mirror_enabled: false
@@ -346,8 +347,10 @@ overrides:
   tenant1:
     ingestion_rate: 10000
     max_series_per_metric: 100000
+    max_fetched_series_per_query: 100000
   tenant2:
     max_series_per_metric: 100000
+    max_fetched_series_per_query: 100000
 ```
 
 Valid per-tenant limits are (with their corresponding flags for default values):

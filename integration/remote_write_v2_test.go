@@ -25,7 +25,7 @@ import (
 )
 
 func TestIngesterRollingUpdate(t *testing.T) {
-	// Test ingester rolling update situation: when -distributor.remote-write2-enabled is true, and ingester uses the v1.19.0 image.
+	// Test ingester rolling update situation: when -distributor.remote-writev2-enabled is true, and ingester uses the v1.19.0 image.
 	// Expected: remote write 2.0 push success
 	const blockRangePeriod = 5 * time.Second
 	ingesterImage := "quay.io/cortexproject/cortex:v1.19.0"

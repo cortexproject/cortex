@@ -22,6 +22,7 @@
 * [FEATURE] Querier: Allow choosing PromQL engine via header. #6777
 * [FEATURE] Querier: Support for configuring query optimizers and enabling XFunctions in the Thanos engine. #6873
 * [FEATURE] Query Frontend: Add support /api/v1/format_query API for formatting queries. #6893
+* [ENHANCEMENT] Distributor: Introduce a Protobuf model for Prometheus Remote Write 2.0 and a pool to improve performance. #6917
 * [ENHANCEMENT] Ruler: Emit an error message when the rule synchronization fails. #6902
 * [ENHANCEMENT] Querier: Support snappy and zstd response compression for `-querier.response-compression` flag. #6848
 * [ENHANCEMENT] Tenant Federation: Add a # of query result limit logic when the `-tenant-federation.regex-matcher-enabled` is enabled. #6845

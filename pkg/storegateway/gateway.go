@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -408,7 +409,7 @@ func (g *StoreGateway) syncStores(ctx context.Context, reason string) {
 }
 
 func (g *StoreGateway) Series(req *storepb.SeriesRequest, srv storegatewaypb.StoreGateway_SeriesServer) error {
-	if err := g.checkResourceUtilization(); err != nil {
+	if err := g.checkResourceUtilization(srv.Context()); err != nil {
 		return err
 	}
 	return g.stores.Series(req, srv)
@@ -416,7 +417,7 @@ func (g *StoreGateway) Series(req *storepb.SeriesRequest, srv storegatewaypb.Sto
 
 // LabelNames implements the Storegateway proto service.
 func (g *StoreGateway) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
-	if err := g.checkResourceUtilization(); err != nil {
+	if err := g.checkResourceUtilization(ctx); err != nil {
 		return nil, err
 	}
 	return g.stores.LabelNames(ctx, req)
@@ -424,14 +425,14 @@ func (g *StoreGateway) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 
 // LabelValues implements the Storegateway proto service.
 func (g *StoreGateway) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
-	if err := g.checkResourceUtilization(); err != nil {
+	if err := g.checkResourceUtilization(ctx); err != nil {
 		return nil, err
 	}
 	return g.stores.LabelValues(ctx, req)
 }
 
-func (g *StoreGateway) checkResourceUtilization() error {
-	if g.resourceBasedLimiter == nil {
+func (g *StoreGateway) checkResourceUtilization(ctx context.Context) error {
+	if g.resourceBasedLimiter == nil || requestmeta.RequestFromRuler(ctx) {
 		return nil
 	}
 

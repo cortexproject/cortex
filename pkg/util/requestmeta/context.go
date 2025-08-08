@@ -40,6 +40,7 @@ func ContextWithRequestMetadataMapFromHeaders(ctx context.Context, headers map[s
 		headerKeys = append(headerKeys, LoggingHeadersKey)
 	}
 	headerKeys = append(headerKeys, RequestIdKey)
+	headerKeys = append(headerKeys, RequestSourceKey)
 	for _, header := range headerKeys {
 		if v, ok := headers[textproto.CanonicalMIMEHeaderKey(header)]; ok {
 			headerMap[header] = v

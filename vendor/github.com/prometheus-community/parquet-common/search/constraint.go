@@ -172,40 +172,45 @@ type pageToRead struct {
 type symbolTable struct {
 	dict parquet.Dictionary
 	syms []int32
+	defs []byte
 }
 
-func (s *symbolTable) Get(i int) parquet.Value {
-	switch s.syms[i] {
+func (s *symbolTable) Get(r int) parquet.Value {
+	i := s.GetIndex(r)
+	switch i {
 	case -1:
 		return parquet.NullValue()
 	default:
-		return s.dict.Index(s.syms[i])
+		return s.dict.Index(i)
 	}
 }
 
 func (s *symbolTable) GetIndex(i int) int32 {
-	return s.syms[i]
+	switch s.defs[i] {
+	case 1:
+		return s.syms[i]
+	default:
+		return -1
+	}
 }
 
 func (s *symbolTable) Reset(pg parquet.Page) {
 	dict := pg.Dictionary()
 	data := pg.Data()
 	syms := data.Int32()
-	defs := pg.DefinitionLevels()
+	s.defs = pg.DefinitionLevels()
 
 	if s.syms == nil {
-		s.syms = make([]int32, len(defs))
+		s.syms = make([]int32, len(s.defs))
 	} else {
-		s.syms = slices.Grow(s.syms, len(defs))[:len(defs)]
+		s.syms = slices.Grow(s.syms, len(s.defs))[:len(s.defs)]
 	}
 
 	sidx := 0
-	for i := range defs {
-		if defs[i] == 1 {
+	for i := range s.defs {
+		if s.defs[i] == 1 {
 			s.syms[i] = syms[sidx]
 			sidx++
-		} else {
-			s.syms[i] = -1
 		}
 	}
 	s.dict = dict

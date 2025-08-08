@@ -497,7 +497,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 				return validation.NewOverrides(limits, nil)
 			}(),
 			queryLimiter: limiter.NewQueryLimiter(0, 0, 0, 1),
-			expectedErr:  fmt.Errorf("error materializing labels: materializer failed to materialize columns: would fetch too many data bytes: resource exhausted (used 1)"),
+			expectedErr:  fmt.Errorf("error materializing labels: failed to get column indexes: failed to materialize column indexes: would fetch too many data bytes: resource exhausted (used 1)"),
 		},
 		"limits within bounds - should succeed": {
 			limits: func() *validation.Overrides {

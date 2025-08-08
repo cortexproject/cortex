@@ -53,7 +53,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download Docker Images Artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: build-image
 
@@ -61,7 +61,7 @@ jobs:
         run: make load-multiarch-build-image
 
       - name: Login to Quay.io
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
           registry: quay.io
           username: ${{secrets.QUAY_REGISTRY_USER}}

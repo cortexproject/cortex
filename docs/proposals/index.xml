@@ -1006,7 +1006,162 @@ v
 &lt;ul>
 &lt;li>&lt;a href="https://github.com/fpetkovski">Filip Petkovski&lt;/a> and his initial &lt;a href="https://www.youtube.com/watch?v=V8Y4VuUwg8I">talk about Parquet&lt;/a>&lt;/li>
 &lt;li>&lt;a href="https://github.com/MichaHoffmann">Michael Hoffmann&lt;/a> and his great work of &lt;a href="https://github.com/cloudflare/parquet-tsdb-poc">parquet poc&lt;/a>&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Partition Ring with Multi-AZ Replication</title><link>/docs/proposals/partition-ring-multi-az-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/partition-ring-multi-az-replication/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/danielblando">Daniel Blando&lt;/a>&lt;/li>
+&lt;li>Date: July 2025&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;h2 id="background">Background&lt;/h2>
+&lt;p>Distributors use a token-based ring to shard data across ingesters. Each ingester owns random tokens (32-bit numbers) in a hash ring. For each incoming series, the distributor:&lt;/p>
+&lt;ol>
+&lt;li>Hashes the series labels to get a hash value&lt;/li>
+&lt;li>Finds the primary ingester (smallest token &amp;gt; hash value)&lt;/li>
+&lt;li>When replication is enabled, selects additional replicas by moving clockwise around the ring&lt;/li>
+&lt;li>Ensures replicas are distributed across different availability zones&lt;/li>
+&lt;/ol>
+&lt;p>The issue arises when replication is enabled: each series in a request is hashed independently, causing each series to route to different groups of ingesters.&lt;/p>
+&lt;pre tabindex="0">&lt;code class="language-mermaid" data-lang="mermaid">graph TD
+A[Write Request] --&amp;gt; B[Distributor]
+B --&amp;gt; C[Hash Series 1] --&amp;gt; D[Ingesters: 5,7,9]
+B --&amp;gt; E[Hash Series 2] --&amp;gt; F[Ingesters: 5,3,10]
+B --&amp;gt; G[Hash Series 3] --&amp;gt; H[Ingesters: 7,27,28]
+B --&amp;gt; I[...] --&amp;gt; J[Different ingester sets&amp;lt;br/&amp;gt;for each series]
+&lt;/code>&lt;/pre>&lt;h2 id="problem">Problem&lt;/h2>
+&lt;h3 id="limited-az-failure-tolerance-with-replication-factor">Limited AZ Failure Tolerance with replication factor&lt;/h3>
+&lt;p>While the token ring effectively distributes load across the ingester fleet, the independent hashing and routing of each series creates an amplification effect where a single ingester failure can impact a large number of write requests.&lt;/p>
+&lt;p>Consider a ring with 30 ingesters, each series gets distributed to three different ingesters:&lt;/p>
+&lt;pre tabindex="0">&lt;code>Sample 1: {name=&amp;#34;http_request_latency&amp;#34;,api=&amp;#34;/push&amp;#34;, status=&amp;#34;2xx&amp;#34;}
+→ Ingesters: ing-5, ing-7, ing-9
+Sample 2: {name=&amp;#34;http_request_latency&amp;#34;,api=&amp;#34;/push&amp;#34;, status=&amp;#34;4xx&amp;#34;}
+→ Ingesters: ing-5, ing-3, ing-10
+Sample 3: {name=&amp;#34;http_request_latency&amp;#34;,api=&amp;#34;/push&amp;#34;, status=&amp;#34;2xx&amp;#34;}
+→ Ingesters: ing-7, ing-27, ing-28
+...
+&lt;/code>&lt;/pre>&lt;p>If ingesters &lt;code>ing-15&lt;/code> and &lt;code>ing-18&lt;/code> (in different AZs) are offline, any request containing a series that needs to write to both these ingesters will fail completely:&lt;/p>
+&lt;pre tabindex="0">&lt;code>Sample 15: {name=&amp;#34;http_request_latency&amp;#34;,api=&amp;#34;/push&amp;#34;, status=&amp;#34;5xx&amp;#34;}
+→ Ingesters: ing-10, ing-15, ing-18 // Request fails
+&lt;/code>&lt;/pre>&lt;p>With requests increasing their batch size, the probability of request failure becomes critical in replicated deployments. Given two failed ingesters in different AZs, each individual series has a small chance of requiring both failed ingesters. However, as request batch sizes increase, the probability that at least one series in the batch will hash to both failed ingesters approaches certainty.&lt;/p>
+&lt;p>&lt;strong>Note&lt;/strong>: This problem specifically affects Cortex using replication. Replication as 1 are not impacted by this availability amplification issue.&lt;/p>
+&lt;h2 id="proposed-solution">Proposed Solution&lt;/h2>
+&lt;h3 id="partition-ring-architecture">Partition Ring Architecture&lt;/h3>
+&lt;p>A new Partition Ring is proposed where the ring is divided into partitions, with each partition containing a set of tokens and a group of ingesters. Ingesters are allocated to partitions based on their order in the zonal StatefulSet, ensuring that scaling operations align with StatefulSet&amp;rsquo;s LIFO behavior. Each partition contains a number of ingesters equal to the replication factor, with exactly one ingester per availability zone.&lt;/p>
+&lt;p>This approach provides &lt;strong>reduced failure probability&lt;/strong> where the chances of getting two ingesters in the same partition down decreases significantly compared to random ingester failures affecting multiple series. It also enables &lt;strong>deterministic replication&lt;/strong> where data sent to &lt;code>ing-az1-1&lt;/code> always replicates to &lt;code>ing-az2-1&lt;/code> and &lt;code>ing-az3-1&lt;/code>, making the system behavior more predictable and easier to troubleshoot.&lt;/p>
+&lt;pre tabindex="0">&lt;code class="language-mermaid" data-lang="mermaid">graph TD
+subgraph &amp;#34;Partition Ring&amp;#34;
+subgraph &amp;#34;Partition 3&amp;#34;
+P1A[ing-az1-3]
+P1B[ing-az2-3]
+P1C[ing-az3-3]
+end
+subgraph &amp;#34;Partition 2&amp;#34;
+P2A[ing-az1-2]
+P2B[ing-az2-2]
+P2C[ing-az3-2]
+end
+subgraph &amp;#34;Partition 1&amp;#34;
+P3A[ing-az1-1]
+P3B[ing-az2-1]
+P3C[ing-az3-1]
+end
+end
+T1[Tokens 34] --&amp;gt; P1A
+T2[Tokens 56] --&amp;gt; P2A
+T3[Tokens 12] --&amp;gt; P3A
+&lt;/code>&lt;/pre>&lt;p>Within each partition, ingesters maintain identical data, acting as true replicas of each other. Distributors maintain similar hashing logic but select a partition instead of individual ingesters. Data is then forwarded to all ingesters within the selected partition, making the replication pattern deterministic.&lt;/p>
+&lt;h3 id="protocol-buffer-definitions">Protocol Buffer Definitions&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">PartitionRingDesc&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> map&amp;lt;&lt;span style="color:#66d9ef">string&lt;/span>, PartitionDesc&amp;gt; partitions &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">PartitionDesc&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> PartitionState state &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">repeated&lt;/span> &lt;span style="color:#66d9ef">uint32&lt;/span> tokens &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">2&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> map&amp;lt;&lt;span style="color:#66d9ef">string&lt;/span>, InstanceDesc&amp;gt; instances &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">3&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">int64&lt;/span> registered_timestamp &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">4&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>&lt;span style="color:#75715e">// Unchanged from current implementation
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">InstanceDesc&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">string&lt;/span> addr &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">int64&lt;/span> timestamp &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">2&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> InstanceState state &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">3&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">string&lt;/span> zone &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">7&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">int64&lt;/span> registered_timestamp &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">8&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="partition-states">Partition States&lt;/h3>
+&lt;p>Partitions maintain a simplified state model that provides &lt;strong>clear ownership&lt;/strong> where each series belongs to exactly one partition, but requires &lt;strong>additional state management&lt;/strong> for partition states and lifecycle management:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">type&lt;/span> &lt;span style="color:#a6e22e">PartitionState&lt;/span> &lt;span style="color:#66d9ef">int&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">const&lt;/span> (
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">NON_READY&lt;/span> &lt;span style="color:#a6e22e">PartitionState&lt;/span> = &lt;span style="color:#66d9ef">iota&lt;/span> &lt;span style="color:#75715e">// Insufficient ingesters
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span> &lt;span style="color:#a6e22e">ACTIVE&lt;/span> &lt;span style="color:#75715e">// Fully operational
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span> &lt;span style="color:#a6e22e">READONLY&lt;/span> &lt;span style="color:#75715e">// Scale-down in progress
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span>)
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>State transitions:&lt;/p>
+&lt;pre tabindex="0">&lt;code class="language-mermaid" data-lang="mermaid">stateDiagram-v2
+[*] --&amp;gt; NON_READY
+NON_READY --&amp;gt; ACTIVE : Required ingesters joined&amp;lt;br/&amp;gt;across all AZs
+ACTIVE --&amp;gt; READONLY : Scale-down initiated
+ACTIVE --&amp;gt; NON_READY : Ingester removed
+READONLY --&amp;gt; NON_READY : Ingesters removed
+NON_READY --&amp;gt; [*] : Partition deleted
+&lt;/code>&lt;/pre>&lt;h3 id="partition-lifecycle-management">Partition Lifecycle Management&lt;/h3>
+&lt;h4 id="creating-partitions">Creating Partitions&lt;/h4>
+&lt;p>When a new ingester joins the ring:&lt;/p>
+&lt;ol>
+&lt;li>Check if a suitable partition exists with available slots&lt;/li>
+&lt;li>If no partition exists, create a new partition in &lt;code>NON_READY&lt;/code> state&lt;/li>
+&lt;li>Add partition&amp;rsquo;s tokens to the ring&lt;/li>
+&lt;li>Add the ingester to the partition&lt;/li>
+&lt;li>Wait for required number of ingesters across all AZs (one per AZ)&lt;/li>
+&lt;li>Once all AZs are represented, transition partition to &lt;code>ACTIVE&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;h4 id="removing-partitions">Removing Partitions&lt;/h4>
+&lt;p>The scale-down process follows these steps:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Mark READONLY&lt;/strong>: Partition stops accepting new writes but continues serving reads&lt;/li>
+&lt;li>&lt;strong>Data Transfer&lt;/strong>: Wait for all ingesters in partition to transfer data and become empty&lt;/li>
+&lt;li>&lt;strong>Coordinated Removal&lt;/strong>: Remove one ingester from each AZ simultaneously&lt;/li>
+&lt;li>&lt;strong>State Transition&lt;/strong>: Partition automatically transitions to &lt;code>NON_READY&lt;/code> (insufficient replicas)&lt;/li>
+&lt;li>&lt;strong>Cleanup&lt;/strong>: Remove remaining ingesters and delete partition from ring&lt;/li>
+&lt;/ol>
+&lt;p>If not using READONLY mode, removing an ingester will make the partition as NON_READY. When all ingesters are removed, the last will delete the partition if configuration &lt;code>unregister_on_shutdown&lt;/code> is true&lt;/p>
+&lt;h3 id="multi-ring-migration-strategy">Multi-Ring Migration Strategy&lt;/h3>
+&lt;p>To address the migration challenge for production clusters currently running token-based rings, this proposal also introduces a multi-ring infrastructure that allows gradual traffic shifting from token-based to partition-based rings:&lt;/p>
+&lt;pre tabindex="0">&lt;code class="language-mermaid" data-lang="mermaid">sequenceDiagram
+participant C as Client
+participant D as Distributor
+participant MR as Multi-Ring Router
+participant TR as Token Ring
+participant PR as Partition Ring
+C-&amp;gt;&amp;gt;D: Write Request (1000 series)
+D-&amp;gt;&amp;gt;MR: Route request
+MR-&amp;gt;&amp;gt;MR: Check percentage config&amp;lt;br/&amp;gt;(e.g., 80% token, 20% partition)
+MR-&amp;gt;&amp;gt;TR: Route 800 series to Token Ring
+MR-&amp;gt;&amp;gt;PR: Route 200 series to Partition Ring
+Note over TR,PR: Both rings process their portion
+TR-&amp;gt;&amp;gt;D: Response for 800 series
+PR-&amp;gt;&amp;gt;D: Response for 200 series
+D-&amp;gt;&amp;gt;C: Combined response
+&lt;/code>&lt;/pre>&lt;p>Migration phases for production clusters:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Phase 1&lt;/strong>: Deploy partition ring alongside existing token ring (0% traffic)&lt;/li>
+&lt;li>&lt;strong>Phase 2&lt;/strong>: Route 10% traffic to partition ring&lt;/li>
+&lt;li>&lt;strong>Phase 3&lt;/strong>: Gradually increase to 50% traffic&lt;/li>
+&lt;li>&lt;strong>Phase 4&lt;/strong>: Route 90% traffic to partition ring&lt;/li>
+&lt;li>&lt;strong>Phase 5&lt;/strong>: Complete migration (100% partition ring)&lt;/li>
+&lt;/ol>
+&lt;p>This multi-ring approach solves the migration problem for existing production deployments that cannot afford downtime during the transition from token-based to partition-based rings. It provides &lt;strong>zero downtime migration&lt;/strong> with &lt;strong>rollback capability&lt;/strong> and &lt;strong>incremental validation&lt;/strong> at each step. However, it requires &lt;strong>dual ring participation&lt;/strong> where ingesters must participate in both rings during migration, &lt;strong>increased memory usage&lt;/strong> and &lt;strong>migration coordination&lt;/strong> requiring careful percentage management and monitoring.&lt;/p>
+&lt;h4 id="read-path-considerations">Read Path Considerations&lt;/h4>
+&lt;p>During migration, the read path (queriers and rulers) must have visibility into both rings to ensure all functionality works correctly:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Queriers&lt;/strong> must check both token and partition rings to locate series data, as data may be distributed across both ring types during migration&lt;/li>
+&lt;li>&lt;strong>Rulers&lt;/strong> must evaluate rules against data from both rings to ensure complete rule evaluation&lt;/li>
+&lt;li>&lt;strong>Ring-aware components&lt;/strong> (like shuffle sharding) must operate correctly across both ring types&lt;/li>
+&lt;li>&lt;strong>Metadata operations&lt;/strong> (like label queries) must aggregate results from both rings&lt;/li>
+&lt;/ul>
+&lt;p>All existing Cortex functionality must continue to work seamlessly during the migration period, requiring components to transparently handle the dual-ring architecture.&lt;/p></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/Allenzhli">Allenzhli&lt;/a>&lt;/li>
 &lt;li>Date: January 2021&lt;/li>

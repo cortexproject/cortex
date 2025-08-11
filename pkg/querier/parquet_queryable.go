@@ -396,7 +396,7 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.LabelNames")
 	defer span.Finish()
 
-	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
+	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT, matchers)
 	defer q.incrementOpsMetric("LabelNames", remaining, parquet)
 	if err != nil {
 		return nil, nil, err
@@ -475,7 +475,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		return storage.EmptySeriesSet()
 	}
 
-	remaining, parquet, err := q.getBlocks(ctx, mint, maxt)
+	remaining, parquet, err := q.getBlocks(ctx, mint, maxt, matchers)
 	defer q.incrementOpsMetric("Select", remaining, parquet)
 
 	if err != nil {

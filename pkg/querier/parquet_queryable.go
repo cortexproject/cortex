@@ -343,7 +343,7 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.LabelValues")
 	defer span.Finish()
 
-	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
+	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT, matchers)
 	defer q.incrementOpsMetric("LabelValues", remaining, parquet)
 	if err != nil {
 		return nil, nil, err
@@ -547,7 +547,7 @@ func (q *parquetQuerierWithFallback) Close() error {
 	return mErr.Err()
 }
 
-func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT int64) ([]*bucketindex.Block, []*bucketindex.Block, error) {
+func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT int64, matchers []*labels.Matcher) ([]*bucketindex.Block, []*bucketindex.Block, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -559,7 +559,7 @@ func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT i
 		return nil, nil, nil
 	}
 
-	blocks, _, err := q.finder.GetBlocks(ctx, userID, minT, maxT)
+	blocks, _, err := q.finder.GetBlocks(ctx, userID, minT, maxT, matchers)
 	if err != nil {
 		return nil, nil, err
 	}

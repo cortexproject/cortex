@@ -3140,6 +3140,11 @@ ha_tracker:
 # CLI flag: -distributor.use-stream-push
 [use_stream_push: <boolean> | default = false]
 
+# EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push
+# request.
+# CLI flag: -distributor.remote-writev2-enabled
+[remote_writev2_enabled: <boolean> | default = false]
+
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
@@ -6237,6 +6242,11 @@ grpc_tls_config:
 # streams, server will send GOAWAY and close the connection.
 # CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
 [grpc_server_ping_without_stream_allowed: <boolean> | default = true]
+
+# Enable Channelz for gRPC server. A web UI will be also exposed on the HTTP
+# server at /channelz
+# CLI flag: -server.enable-channelz
+[enable_channelz: <boolean> | default = false]
 
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format

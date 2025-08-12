@@ -20,6 +20,13 @@ const (
 const (
 	sampleMetricTypeFloat     = "float"
 	sampleMetricTypeHistogram = "histogram"
+
+	typeSeries     = "series"
+	typeSamples    = "samples"
+	typeExemplars  = "exemplars"
+	typeHistograms = "histograms"
+	typeMetadata   = "metadata"
+	typeTombstones = "tombstones"
 )
 
 type ingesterMetrics struct {
@@ -330,6 +337,8 @@ type tsdbMetrics struct {
 	tsdbWALTruncateTotal               *prometheus.Desc
 	tsdbWALTruncateDuration            *prometheus.Desc
 	tsdbWALCorruptionsTotal            *prometheus.Desc
+	tsdbWALReplayUnknownRefsTotal      *prometheus.Desc
+	tsdbWBLReplayUnknownRefsTotal      *prometheus.Desc
 	tsdbWALWritesFailed                *prometheus.Desc
 	tsdbHeadTruncateFail               *prometheus.Desc
 	tsdbHeadTruncateTotal              *prometheus.Desc
@@ -437,6 +446,14 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_wal_corruptions_total",
 			"Total number of TSDB WAL corruptions.",
 			nil, nil),
+		tsdbWALReplayUnknownRefsTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_wal_replay_unknown_refs_total",
+			"Total number of unknown series references encountered during TSDB WAL replay.",
+			[]string{"type"}, nil),
+		tsdbWBLReplayUnknownRefsTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_wbl_replay_unknown_refs_total",
+			"Total number of unknown series references encountered during TSDB WBL replay.",
+			[]string{"type"}, nil),
 		tsdbWALWritesFailed: prometheus.NewDesc(
 			"cortex_ingester_tsdb_wal_writes_failed_total",
 			"Total number of TSDB WAL writes that failed.",
@@ -601,6 +618,8 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbWALTruncateTotal
 	out <- sm.tsdbWALTruncateDuration
 	out <- sm.tsdbWALCorruptionsTotal
+	out <- sm.tsdbWALReplayUnknownRefsTotal
+	out <- sm.tsdbWBLReplayUnknownRefsTotal
 	out <- sm.tsdbWALWritesFailed
 	out <- sm.tsdbHeadTruncateFail
 	out <- sm.tsdbHeadTruncateTotal
@@ -659,6 +678,8 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbWALTruncateTotal, "prometheus_tsdb_wal_truncations_total")
 	data.SendSumOfSummaries(out, sm.tsdbWALTruncateDuration, "prometheus_tsdb_wal_truncate_duration_seconds")
 	data.SendSumOfCounters(out, sm.tsdbWALCorruptionsTotal, "prometheus_tsdb_wal_corruptions_total")
+	data.SendSumOfCountersWithLabels(out, sm.tsdbWALReplayUnknownRefsTotal, "prometheus_tsdb_wal_replay_unknown_refs_total", "type")
+	data.SendSumOfCountersWithLabels(out, sm.tsdbWBLReplayUnknownRefsTotal, "prometheus_tsdb_wbl_replay_unknown_refs_total", "type")
 	data.SendSumOfCounters(out, sm.tsdbWALWritesFailed, "prometheus_tsdb_wal_writes_failed_total")
 	data.SendSumOfCounters(out, sm.tsdbHeadTruncateFail, "prometheus_tsdb_head_truncations_failed_total")
 	data.SendSumOfCounters(out, sm.tsdbHeadTruncateTotal, "prometheus_tsdb_head_truncations_total")

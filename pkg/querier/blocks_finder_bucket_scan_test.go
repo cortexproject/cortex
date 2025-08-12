@@ -39,7 +39,7 @@ func TestBucketScanBlocksFinder_InitialScan(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, user1Block2.ULID, blocks[0].ID)
@@ -48,7 +48,7 @@ func TestBucketScanBlocksFinder_InitialScan(t *testing.T) {
 	assert.WithinDuration(t, time.Now(), blocks[1].GetUploadedAt(), 5*time.Second)
 	assert.Empty(t, deletionMarks)
 
-	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-2", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-2", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blocks))
 	assert.Equal(t, user2Block1.ULID, blocks[0].ID)
@@ -110,7 +110,7 @@ func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 	require.NoError(t, s.StartAsync(ctx))
 	require.Error(t, s.AwaitRunning(ctx))
 
-	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	assert.Equal(t, errBucketScanBlocksFinderNotRunning, err)
 	assert.Nil(t, blocks)
 	assert.Nil(t, deletionMarks)
@@ -233,7 +233,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsNewUser(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(blocks))
 	assert.Empty(t, deletionMarks)
@@ -245,7 +245,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsNewUser(t *testing.T) {
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, block2.ULID, blocks[0].ID)
@@ -266,7 +266,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsNewBlock(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blocks))
 	assert.Equal(t, block1.ULID, blocks[0].ID)
@@ -278,7 +278,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsNewBlock(t *testing.T) {
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, block2.ULID, blocks[0].ID)
@@ -298,7 +298,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsBlockMarkedForDeletion(t *testi
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, block2.ULID, blocks[0].ID)
@@ -310,7 +310,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsBlockMarkedForDeletion(t *testi
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, block2.ULID, blocks[0].ID)
@@ -330,7 +330,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsDeletedBlock(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, block2.ULID, blocks[0].ID)
@@ -342,7 +342,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsDeletedBlock(t *testing.T) {
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blocks))
 	assert.Equal(t, block2.ULID, blocks[0].ID)
@@ -359,7 +359,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsDeletedUser(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, block2.ULID, blocks[0].ID)
@@ -371,7 +371,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsDeletedUser(t *testing.T) {
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30, nil)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(blocks))
 	assert.Empty(t, deletionMarks)
@@ -387,7 +387,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 40)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 40, nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, block2.ULID, blocks[0].ID)
@@ -399,7 +399,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 40)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 40, nil)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(blocks))
 	assert.Empty(t, deletionMarks)
@@ -409,7 +409,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 40)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 40, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blocks))
 	assert.Equal(t, block3.ULID, blocks[0].ID)
@@ -506,7 +506,7 @@ func TestBucketScanBlocksFinder_GetBlocks(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			metas, deletionMarks, err := s.GetBlocks(ctx, "user-1", testData.minT, testData.maxT)
+			metas, deletionMarks, err := s.GetBlocks(ctx, "user-1", testData.minT, testData.maxT, nil)
 			require.NoError(t, err)
 			require.Equal(t, len(testData.expectedMetas), len(metas))
 			require.Equal(t, testData.expectedMarks, deletionMarks)

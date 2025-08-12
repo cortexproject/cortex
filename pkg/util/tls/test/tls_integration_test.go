@@ -39,19 +39,6 @@ type grpcHealthCheck struct {
 	healthy bool
 }
 
-func (h *grpcHealthCheck) List(ctx context.Context, request *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
-	checkResp, err := h.Check(ctx, nil)
-	if err != nil {
-		return &grpc_health_v1.HealthListResponse{}, err
-	}
-
-	return &grpc_health_v1.HealthListResponse{
-		Statuses: map[string]*grpc_health_v1.HealthCheckResponse{
-			"server": checkResp,
-		},
-	}, nil
-}
-
 func (h *grpcHealthCheck) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	if !h.healthy {
 		return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, nil

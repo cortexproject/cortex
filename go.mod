@@ -326,3 +326,6 @@ replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0
 
 // Wait for fix for https://github.com/grpc/grpc-go/pull/8504.
 replace google.golang.org/grpc => google.golang.org/grpc v1.71.2
+
+// See https://github.com/envoyproxy/go-control-plane/issues/1083 as this version introduces checksum mismatch.
+exclude github.com/envoyproxy/go-control-plane/envoy v1.32.3

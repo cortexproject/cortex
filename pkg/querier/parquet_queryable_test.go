@@ -108,7 +108,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			defaultBlockStoreType: parquetBlockStore,
 		}
 
-		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything).Return(bucketindex.Blocks{
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything, mock.Anything).Return(bucketindex.Blocks{
 			&bucketindex.Block{ID: block1},
 			&bucketindex.Block{ID: block2},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
@@ -169,7 +169,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			defaultBlockStoreType: parquetBlockStore,
 		}
 
-		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT, mock.Anything).Return(bucketindex.Blocks{
 			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
 			&bucketindex.Block{ID: block2},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
@@ -238,7 +238,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			defaultBlockStoreType: parquetBlockStore,
 		}
 
-		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything).Return(bucketindex.Blocks{
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything, mock.Anything).Return(bucketindex.Blocks{
 			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
 			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
@@ -312,7 +312,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			defaultBlockStoreType: tsdbBlockStore,
 		}
 
-		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT, mock.Anything).Return(bucketindex.Blocks{
 			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
 			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
@@ -433,7 +433,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 
 	// Create a mocked bucket index blocks finder
 	finder := &blocksFinderMock{}
-	finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(bucketindex.Blocks{
+	finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT, mock.Anything).Return(bucketindex.Blocks{
 		&bucketindex.Block{ID: blockID, Parquet: &parquet.ConverterMarkMeta{Version: parquet.CurrentVersion}},
 	}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
@@ -782,7 +782,7 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 		}
 
 		// Set up blocks where block1 has parquet metadata but block2 doesn't
-		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything).Return(bucketindex.Blocks{
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything, mock.Anything).Return(bucketindex.Blocks{
 			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
 			&bucketindex.Block{ID: block2}, // Not available as parquet
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
@@ -841,7 +841,7 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 		}
 
 		// Set up blocks where both blocks have parquet metadata
-		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything).Return(bucketindex.Blocks{
+		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything, mock.Anything).Return(bucketindex.Blocks{
 			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
 			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)

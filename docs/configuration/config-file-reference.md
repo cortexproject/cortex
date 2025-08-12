@@ -3143,7 +3143,7 @@ ha_tracker:
 # EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push
 # request.
 # CLI flag: -distributor.remote-writev2-enabled
-[remote_write2_enabled: <boolean> | default = false]
+[remote_writev2_enabled: <boolean> | default = false]
 
 ring:
   kvstore:

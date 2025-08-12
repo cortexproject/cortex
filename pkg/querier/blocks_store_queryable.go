@@ -86,7 +86,7 @@ type BlocksFinder interface {
 
 	// GetBlocks returns known blocks for userID containing samples within the range minT
 	// and maxT (milliseconds, both included). Returned blocks are sorted by MaxTime descending.
-	GetBlocks(ctx context.Context, userID string, minT, maxT int64) (bucketindex.Blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark, error)
+	GetBlocks(ctx context.Context, userID string, minT, maxT int64, matchers []*labels.Matcher) (bucketindex.Blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark, error)
 }
 
 // BlocksStoreClient is the interface that should be implemented by any client used
@@ -373,7 +373,7 @@ func (q *blocksStoreQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 		return queriedBlocks, nil, retryableError
 	}
 
-	if err := q.queryWithConsistencyCheck(spanCtx, spanLog, minT, maxT, userID, queryFunc); err != nil {
+	if err := q.queryWithConsistencyCheck(spanCtx, spanLog, minT, maxT, matchers, userID, queryFunc); err != nil {
 		return nil, nil, err
 	}
 
@@ -416,7 +416,7 @@ func (q *blocksStoreQuerier) LabelValues(ctx context.Context, name string, hints
 		return queriedBlocks, nil, retryableError
 	}
 
-	if err := q.queryWithConsistencyCheck(spanCtx, spanLog, minT, maxT, userID, queryFunc); err != nil {
+	if err := q.queryWithConsistencyCheck(spanCtx, spanLog, minT, maxT, matchers, userID, queryFunc); err != nil {
 		return nil, nil, err
 	}
 
@@ -472,7 +472,7 @@ func (q *blocksStoreQuerier) selectSorted(ctx context.Context, sp *storage.Selec
 		return queriedBlocks, nil, retryableError
 	}
 
-	if err := q.queryWithConsistencyCheck(spanCtx, spanLog, minT, maxT, userID, queryFunc); err != nil {
+	if err := q.queryWithConsistencyCheck(spanCtx, spanLog, minT, maxT, matchers, userID, queryFunc); err != nil {
 		return storage.ErrSeriesSet(err)
 	}
 
@@ -485,8 +485,8 @@ func (q *blocksStoreQuerier) selectSorted(ctx context.Context, sp *storage.Selec
 		resWarnings)
 }
 
-func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logger log.Logger, minT, maxT int64, userID string,
-	queryFunc func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error, error)) error {
+func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logger log.Logger, minT, maxT int64, matchers []*labels.Matcher,
+	userID string, queryFunc func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error, error)) error {
 	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
 	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
 	// optimization is particularly important for the blocks storage because can be used to skip
@@ -508,7 +508,7 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 	}
 
 	// Find the list of blocks we need to query given the time range.
-	knownBlocks, knownDeletionMarks, err := q.finder.GetBlocks(ctx, userID, minT, maxT)
+	knownBlocks, knownDeletionMarks, err := q.finder.GetBlocks(ctx, userID, minT, maxT, matchers)
 
 	// if blocks were already discovered, we should use then
 	if b, ok := ExtractBlocksFromContext(ctx); ok {

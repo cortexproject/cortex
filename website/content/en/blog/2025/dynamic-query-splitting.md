@@ -7,7 +7,7 @@ categories: [ "blog" ]
 projects: [ "cortex" ]
 description: >
   This article explores the motivations behind adapting dynamic query splitting in Cortex, how the dynamic model works, and how to configure it for more efficient scalable PromQL query execution.
-author: Ahmed Hassan ([@afayek](https://github.com/afhassan))
+author: Ahmed Hassan ([@afhassan](https://github.com/afhassan))
 ---
 
 ## Introduction

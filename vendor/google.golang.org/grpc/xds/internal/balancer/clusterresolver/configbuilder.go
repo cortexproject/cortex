@@ -23,11 +23,10 @@ import (
 	"fmt"
 	"sort"
 
-	"google.golang.org/grpc/internal/balancer/weight"
+	"google.golang.org/grpc/balancer/weightedroundrobin"
 	"google.golang.org/grpc/internal/hierarchy"
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/resolver"
-	"google.golang.org/grpc/resolver/ringhash"
 	"google.golang.org/grpc/xds/internal"
 	"google.golang.org/grpc/xds/internal/balancer/clusterimpl"
 	"google.golang.org/grpc/xds/internal/balancer/outlierdetection"
@@ -150,11 +149,9 @@ func buildClusterImplConfigForDNS(g *nameGenerator, endpoints []resolver.Endpoin
 		retEndpoints[i].Addresses = append([]resolver.Address{}, e.Addresses...)
 	}
 	return pName, &clusterimpl.LBConfig{
-		Cluster:               mechanism.Cluster,
-		TelemetryLabels:       mechanism.TelemetryLabels,
-		ChildPolicy:           &internalserviceconfig.BalancerConfig{Name: childPolicy},
-		MaxConcurrentRequests: mechanism.MaxConcurrentRequests,
-		LoadReportingServer:   mechanism.LoadReportingServer,
+		Cluster:         mechanism.Cluster,
+		TelemetryLabels: mechanism.TelemetryLabels,
+		ChildPolicy:     &internalserviceconfig.BalancerConfig{Name: childPolicy},
 	}, retEndpoints
 }
 
@@ -257,7 +254,10 @@ func priorityLocalitiesToClusterImpl(localities []xdsresource.Locality, priority
 		if locality.Weight != 0 {
 			lw = locality.Weight
 		}
-		localityStr := locality.ID.ToString()
+		localityStr, err := locality.ID.ToString()
+		if err != nil {
+			localityStr = fmt.Sprintf("%+v", locality.ID)
+		}
 		for _, endpoint := range locality.Endpoints {
 			// Filter out all "unhealthy" endpoints (unknown and healthy are
 			// both considered to be healthy:
@@ -281,8 +281,7 @@ func priorityLocalitiesToClusterImpl(localities []xdsresource.Locality, priority
 			if endpoint.Weight != 0 {
 				ew = endpoint.Weight
 			}
-			resolverEndpoint = weight.Set(resolverEndpoint, weight.EndpointInfo{Weight: lw * ew})
-			resolverEndpoint = ringhash.SetHashKey(resolverEndpoint, endpoint.HashKey)
+			resolverEndpoint = weightedroundrobin.SetAddrInfoInEndpoint(resolverEndpoint, weightedroundrobin.AddrInfo{Weight: lw * ew})
 			retEndpoints = append(retEndpoints, resolverEndpoint)
 		}
 	}

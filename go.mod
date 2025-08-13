@@ -148,7 +148,7 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-chi/chi/v5 v5.0.7 // indirect
+	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect

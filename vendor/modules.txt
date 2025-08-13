@@ -211,7 +211,7 @@ github.com/aws/aws-sdk-go/service/sso/ssoiface
 github.com/aws/aws-sdk-go/service/ssooidc
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
-# github.com/aws/aws-sdk-go-v2 v1.36.3
+# github.com/aws/aws-sdk-go-v2 v1.37.0
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/aws
 github.com/aws/aws-sdk-go-v2/aws/defaults
@@ -253,19 +253,19 @@ github.com/aws/aws-sdk-go-v2/credentials/stscreds
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds/internal/config
-# github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.34
+# github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.0
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/internal/configsources
-# github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.34
+# github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.0
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/internal/endpoints/v2
 # github.com/aws/aws-sdk-go-v2/internal/ini v1.8.3
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/internal/ini
-# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.3
+# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.0
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding
-# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.15
+# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.0
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
 # github.com/aws/aws-sdk-go-v2/service/sso v1.25.3
@@ -283,7 +283,7 @@ github.com/aws/aws-sdk-go-v2/service/ssooidc/types
 github.com/aws/aws-sdk-go-v2/service/sts
 github.com/aws/aws-sdk-go-v2/service/sts/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/sts/types
-# github.com/aws/smithy-go v1.22.3
+# github.com/aws/smithy-go v1.22.5
 ## explicit; go 1.22
 github.com/aws/smithy-go
 github.com/aws/smithy-go/auth
@@ -1055,7 +1055,7 @@ github.com/prometheus/common/version
 # github.com/prometheus/exporter-toolkit v0.14.0
 ## explicit; go 1.22
 github.com/prometheus/exporter-toolkit/web
-# github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588
+# github.com/prometheus/otlptranslator v0.0.0-20250731173911-a9673827589a
 ## explicit; go 1.23.0
 github.com/prometheus/otlptranslator
 # github.com/prometheus/procfs v0.16.1
@@ -1063,7 +1063,7 @@ github.com/prometheus/otlptranslator
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.305.1-0.20250721065454-b09cf6be8d56
+# github.com/prometheus/prometheus v0.305.1-0.20250808023455-1e4144a496fb
 ## explicit; go 1.23.0
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery

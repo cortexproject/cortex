@@ -287,7 +287,7 @@ func decodeResponse(opts *xdsresource.DecodeOptions, rType xdsresource.Type, res
 		perResourceErrors[name] = err
 		// Add place holder in the map so we know this resource name was in
 		// the response.
-		ret[name] = ads.DataAndErrTuple{Err: xdsresource.NewError(xdsresource.ErrorTypeNACKed, err.Error())}
+		ret[name] = ads.DataAndErrTuple{Err: err}
 	}
 
 	if len(topLevelErrors) == 0 && len(perResourceErrors) == 0 {
@@ -299,7 +299,7 @@ func decodeResponse(opts *xdsresource.DecodeOptions, rType xdsresource.Type, res
 	errRet := combineErrors(rType.TypeName(), topLevelErrors, perResourceErrors)
 	md.ErrState = &xdsresource.UpdateErrorMetadata{
 		Version:   resp.Version,
-		Err:       xdsresource.NewError(xdsresource.ErrorTypeNACKed, errRet.Error()),
+		Err:       errRet,
 		Timestamp: timestamp,
 	}
 	return ret, md, errRet

@@ -68,7 +68,7 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		scUpdateCh:     buffer.NewUnbounded(),
 		pickerUpdateCh: buffer.NewUnbounded(),
 		channelzParent: bOpts.ChannelzParent,
-		endpoints:      resolver.NewEndpointMap[*endpointInfo](),
+		endpoints:      resolver.NewEndpointMap(),
 	}
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
@@ -196,7 +196,7 @@ type outlierDetectionBalancer struct {
 	// (within the context of a single goroutine).
 	mu sync.Mutex
 	// endpoints stores pointers to endpointInfo objects for each endpoint.
-	endpoints *resolver.EndpointMap[*endpointInfo]
+	endpoints *resolver.EndpointMap // endpoint -> endpointInfo
 	// addrs stores pointers to endpointInfo objects for each address. Addresses
 	// belonging to the same endpoint point to the same object.
 	addrs                 map[string]*endpointInfo
@@ -229,7 +229,8 @@ func (b *outlierDetectionBalancer) onIntervalConfig() {
 	var interval time.Duration
 	if b.timerStartTime.IsZero() {
 		b.timerStartTime = time.Now()
-		for _, epInfo := range b.endpoints.Values() {
+		for _, val := range b.endpoints.Values() {
+			epInfo := val.(*endpointInfo)
 			epInfo.callCounter.clear()
 		}
 		interval = time.Duration(b.cfg.Interval)
@@ -252,7 +253,8 @@ func (b *outlierDetectionBalancer) onNoopConfig() {
 	// do the following:"
 	// "Unset the timer start timestamp."
 	b.timerStartTime = time.Time{}
-	for _, epInfo := range b.endpoints.Values() {
+	for _, val := range b.endpoints.Values() {
+		epInfo := val.(*endpointInfo)
 		// "Uneject all currently ejected endpoints."
 		if !epInfo.latestEjectionTimestamp.IsZero() {
 			b.unejectEndpoint(epInfo)
@@ -296,7 +298,7 @@ func (b *outlierDetectionBalancer) UpdateClientConnState(s balancer.ClientConnSt
 	b.updateUnconditionally = false
 	b.cfg = lbCfg
 
-	newEndpoints := resolver.NewEndpointMap[bool]()
+	newEndpoints := resolver.NewEndpointMap()
 	for _, ep := range s.ResolverState.Endpoints {
 		newEndpoints.Set(ep, true)
 		if _, ok := b.endpoints.Get(ep); !ok {
@@ -313,7 +315,8 @@ func (b *outlierDetectionBalancer) UpdateClientConnState(s balancer.ClientConnSt
 	// populate the addrs map.
 	b.addrs = map[string]*endpointInfo{}
 	for _, ep := range s.ResolverState.Endpoints {
-		epInfo, _ := b.endpoints.Get(ep)
+		val, _ := b.endpoints.Get(ep)
+		epInfo := val.(*endpointInfo)
 		for _, addr := range ep.Addresses {
 			if _, ok := b.addrs[addr.Addr]; ok {
 				b.logger.Errorf("Endpoints contain duplicate address %q", addr.Addr)
@@ -702,7 +705,8 @@ func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 	defer b.mu.Unlock()
 	b.timerStartTime = time.Now()
 
-	for _, epInfo := range b.endpoints.Values() {
+	for _, val := range b.endpoints.Values() {
+		epInfo := val.(*endpointInfo)
 		epInfo.callCounter.swap()
 	}
 
@@ -714,7 +718,8 @@ func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 		b.failurePercentageAlgorithm()
 	}
 
-	for _, epInfo := range b.endpoints.Values() {
+	for _, val := range b.endpoints.Values() {
+		epInfo := val.(*endpointInfo)
 		if epInfo.latestEjectionTimestamp.IsZero() && epInfo.ejectionTimeMultiplier > 0 {
 			epInfo.ejectionTimeMultiplier--
 			continue
@@ -746,7 +751,8 @@ func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 // Caller must hold b.mu.
 func (b *outlierDetectionBalancer) endpointsWithAtLeastRequestVolume(requestVolume uint32) []*endpointInfo {
 	var endpoints []*endpointInfo
-	for _, epInfo := range b.endpoints.Values() {
+	for _, val := range b.endpoints.Values() {
+		epInfo := val.(*endpointInfo)
 		bucket1 := epInfo.callCounter.inactiveBucket
 		rv := bucket1.numSuccesses + bucket1.numFailures
 		if rv >= requestVolume {

@@ -21,13 +21,6 @@ type mockClient struct {
 	status grpc_health_v1.HealthCheckResponse_ServingStatus
 }
 
-func (i mockClient) List(ctx context.Context, in *grpc_health_v1.HealthListRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
-	if !i.happy {
-		return nil, fmt.Errorf("Fail")
-	}
-	return &grpc_health_v1.HealthListResponse{}, nil
-}
-
 func (i mockClient) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
 	if !i.happy {
 		return nil, fmt.Errorf("Fail")

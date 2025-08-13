@@ -260,6 +260,7 @@ doc: clean-doc
 	go run -tags slicelabels ./tools/doc-generator ./docs/guides/encryption-at-rest.template           > ./docs/guides/encryption-at-rest.md
 	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
 	embedmd -w docs/guides/overrides-exporter.md
+	go run -tags slicelabels ./tools/doc-generator -json-schema            						       > ./schemas/cortex-config-schema.json
 
 endif
 

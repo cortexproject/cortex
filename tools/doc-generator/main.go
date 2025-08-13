@@ -317,7 +317,7 @@ func generateBlockMarkdown(blocks []*configBlock, blockName, fieldName string) s
 func generateJSONSchemaMain(outputFile string) {
 	// Create a Cortex config instance
 	cfg := &cortex.Config{}
-	
+
 	// Parse CLI flags to map them with config fields
 	flags := parseFlags(cfg)
 

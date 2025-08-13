@@ -29,10 +29,7 @@ import (
 )
 
 // RouteToMatcher converts a route to a Matcher to match incoming RPC's against.
-//
-// Only expected to be called on a Route that passed validation checks by the
-// xDS client.
-func RouteToMatcher(r *Route) *CompositeMatcher {
+func RouteToMatcher(r *Route) (*CompositeMatcher, error) {
 	var pm pathMatcher
 	switch {
 	case r.Regex != nil:
@@ -42,7 +39,7 @@ func RouteToMatcher(r *Route) *CompositeMatcher {
 	case r.Prefix != nil:
 		pm = newPathPrefixMatcher(*r.Prefix, r.CaseInsensitive)
 	default:
-		panic("illegal route: missing path_matcher")
+		return nil, fmt.Errorf("illegal route: missing path_matcher")
 	}
 
 	headerMatchers := make([]matcher.HeaderMatcher, 0, len(r.Headers))
@@ -65,7 +62,7 @@ func RouteToMatcher(r *Route) *CompositeMatcher {
 		case h.StringMatch != nil:
 			matcherT = matcher.NewHeaderStringMatcher(h.Name, *h.StringMatch, invert)
 		default:
-			panic("illegal route: missing header_match_specifier")
+			return nil, fmt.Errorf("illegal route: missing header_match_specifier")
 		}
 		headerMatchers = append(headerMatchers, matcherT)
 	}
@@ -74,7 +71,7 @@ func RouteToMatcher(r *Route) *CompositeMatcher {
 	if r.Fraction != nil {
 		fractionMatcher = newFractionMatcher(*r.Fraction)
 	}
-	return newCompositeMatcher(pm, headerMatchers, fractionMatcher)
+	return newCompositeMatcher(pm, headerMatchers, fractionMatcher), nil
 }
 
 // CompositeMatcher is a matcher that holds onto many matchers and aggregates

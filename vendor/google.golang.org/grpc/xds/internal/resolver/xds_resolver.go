@@ -249,7 +249,7 @@ type xdsResolver struct {
 	// cluster that includes a ref count and load balancing configuration.
 	activeClusters map[string]*clusterInfo
 
-	curConfigSelector stoppableConfigSelector
+	curConfigSelector *configSelector
 }
 
 // ResolveNow is a no-op at this point.
@@ -281,45 +281,38 @@ func (r *xdsResolver) Close() {
 // sendNewServiceConfig prunes active clusters, generates a new service config
 // based on the current set of active clusters, and sends an update to the
 // channel with that service config and the provided config selector.  Returns
-// false if an error occurs while sending an update to the channel.
+// false if an error occurs while generating the service config and the update
+// cannot be sent.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) sendNewServiceConfig(cs stoppableConfigSelector) bool {
+func (r *xdsResolver) sendNewServiceConfig(cs *configSelector) bool {
 	// Delete entries from r.activeClusters with zero references;
 	// otherwise serviceConfigJSON will generate a config including
 	// them.
 	r.pruneActiveClusters()
 
-	errCS, ok := cs.(*erroringConfigSelector)
-	if ok && len(r.activeClusters) == 0 {
+	if cs == nil && len(r.activeClusters) == 0 {
 		// There are no clusters and we are sending a failing configSelector.
 		// Send an empty config, which picks pick-first, with no address, and
 		// puts the ClientConn into transient failure.
-		//
-		// This call to UpdateState is expected to return ErrBadResolverState
-		// since pick_first doesn't like an update with no addresses.
 		r.cc.UpdateState(resolver.State{ServiceConfig: r.cc.ParseServiceConfig("{}")})
-
-		// Send a resolver error to pick_first so that RPCs will fail with a
-		// more meaningful error, as opposed to one that says that pick_first
-		// received no addresses.
-		r.cc.ReportError(errCS.err)
 		return true
 	}
 
-	sc := serviceConfigJSON(r.activeClusters)
+	sc, err := serviceConfigJSON(r.activeClusters)
+	if err != nil {
+		// JSON marshal error; should never happen.
+		r.logger.Errorf("For Listener resource %q and RouteConfiguration resource %q, failed to marshal newly built service config: %v", r.ldsResourceName, r.rdsResourceName, err)
+		r.cc.ReportError(err)
+		return false
+	}
 	r.logger.Infof("For Listener resource %q and RouteConfiguration resource %q, generated service config: %v", r.ldsResourceName, r.rdsResourceName, pretty.FormatJSON(sc))
 
 	// Send the update to the ClientConn.
 	state := iresolver.SetConfigSelector(resolver.State{
 		ServiceConfig: r.cc.ParseServiceConfig(string(sc)),
 	}, cs)
-	if err := r.cc.UpdateState(xdsclient.SetClient(state, r.xdsClient)); err != nil {
-		if r.logger.V(2) {
-			r.logger.Infof("Channel rejected new state: %+v with error: %v", state, err)
-		}
-		return false
-	}
+	r.cc.UpdateState(xdsclient.SetClient(state, r.xdsClient))
 	return true
 }
 
@@ -328,10 +321,9 @@ func (r *xdsResolver) sendNewServiceConfig(cs stoppableConfigSelector) bool {
 // r.activeClusters for previously-unseen clusters.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) newConfigSelector() *configSelector {
+func (r *xdsResolver) newConfigSelector() (*configSelector, error) {
 	cs := &configSelector{
-		r:         r,
-		xdsNodeID: r.xdsClient.BootstrapConfig().Node().GetId(),
+		r: r,
 		virtualHost: virtualHost{
 			httpFilterConfigOverride: r.currentVirtualHost.HTTPFilterConfigOverride,
 			retryConfig:              r.currentVirtualHost.RetryConfig,
@@ -365,7 +357,11 @@ func (r *xdsResolver) newConfigSelector() *configSelector {
 		}
 		cs.routes[i].clusters = clusters
 
-		cs.routes[i].m = xdsresource.RouteToMatcher(rt)
+		var err error
+		cs.routes[i].m, err = xdsresource.RouteToMatcher(rt)
+		if err != nil {
+			return nil, err
+		}
 		cs.routes[i].actionType = rt.ActionType
 		if rt.MaxStreamDuration == nil {
 			cs.routes[i].maxStreamDuration = r.currentListener.MaxStreamDuration
@@ -385,7 +381,7 @@ func (r *xdsResolver) newConfigSelector() *configSelector {
 		atomic.AddInt32(&ci.refCount, 1)
 	}
 
-	return cs
+	return cs, nil
 }
 
 // pruneActiveClusters deletes entries in r.activeClusters with zero
@@ -441,28 +437,29 @@ func (r *xdsResolver) onResolutionComplete() {
 		return
 	}
 
-	cs := r.newConfigSelector()
+	cs, err := r.newConfigSelector()
+	if err != nil {
+		r.logger.Warningf("Failed to build a config selector for resource %q: %v", r.ldsResourceName, err)
+		r.cc.ReportError(err)
+		return
+	}
+
 	if !r.sendNewServiceConfig(cs) {
-		// Channel didn't like the update we provided (unexpected); erase
+		// JSON error creating the service config (unexpected); erase
 		// this config selector and ignore this update, continuing with
 		// the previous config selector.
 		cs.stop()
 		return
 	}
 
-	if r.curConfigSelector != nil {
-		r.curConfigSelector.stop()
-	}
+	r.curConfigSelector.stop()
 	r.curConfigSelector = cs
 }
 
 func (r *xdsResolver) applyRouteConfigUpdate(update xdsresource.RouteConfigUpdate) {
 	matchVh := xdsresource.FindBestMatchingVirtualHost(r.dataplaneAuthority, update.VirtualHosts)
 	if matchVh == nil {
-		// TODO(purnesh42h): Should this be a resource or ambient error? Note
-		// that its being called only from resource update methods when we have
-		// finished removing the previous update.
-		r.onAmbientError(fmt.Errorf("no matching virtual host found for %q", r.dataplaneAuthority))
+		r.onError(fmt.Errorf("no matching virtual host found for %q", r.dataplaneAuthority))
 		return
 	}
 	r.currentRouteConfig = update
@@ -472,12 +469,12 @@ func (r *xdsResolver) applyRouteConfigUpdate(update xdsresource.RouteConfigUpdat
 	r.onResolutionComplete()
 }
 
-// onAmbientError propagates the error up to the channel. And since this is
-// invoked only for non resource errors, we don't have to update resolver
+// onError propagates the error up to the channel. And since this is invoked
+// only for non resource-not-found errors, we don't have to update resolver
 // state and we can keep using the old config.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onAmbientError(err error) {
+func (r *xdsResolver) onError(err error) {
 	r.cc.ReportError(err)
 }
 
@@ -485,23 +482,20 @@ func (r *xdsResolver) onAmbientError(err error) {
 // are removed.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onResourceError(err error) {
+func (r *xdsResolver) onResourceNotFound() {
 	// We cannot remove clusters from the service config that have ongoing RPCs.
-	// Instead, what we can do is to send an erroring config selector
+	// Instead, what we can do is to send an erroring (nil) config selector
 	// along with normal service config. This will ensure that new RPCs will
 	// fail, and once the active RPCs complete, the reference counts on the
 	// clusters will come down to zero. At that point, we will send an empty
 	// service config with no addresses. This results in the pick-first
 	// LB policy being configured on the channel, and since there are no
 	// address, pick-first will put the channel in TRANSIENT_FAILURE.
-	cs := newErroringConfigSelector(err, r.xdsClient.BootstrapConfig().Node().GetId())
-	r.sendNewServiceConfig(cs)
+	r.sendNewServiceConfig(nil)
 
 	// Stop and dereference the active config selector, if one exists.
-	if r.curConfigSelector != nil {
-		r.curConfigSelector.stop()
-	}
-	r.curConfigSelector = cs
+	r.curConfigSelector.stop()
+	r.curConfigSelector = nil
 }
 
 // Only executed in the context of a serializer callback.
@@ -549,20 +543,21 @@ func (r *xdsResolver) onListenerResourceUpdate(update xdsresource.ListenerUpdate
 	r.routeConfigWatcher = newRouteConfigWatcher(r.rdsResourceName, r)
 }
 
-func (r *xdsResolver) onListenerResourceAmbientError(err error) {
+func (r *xdsResolver) onListenerResourceError(err error) {
 	if r.logger.V(2) {
-		r.logger.Infof("Received ambient error for Listener resource %q: %v", r.ldsResourceName, err)
+		r.logger.Infof("Received error for Listener resource %q: %v", r.ldsResourceName, err)
 	}
-	r.onAmbientError(err)
+	r.onError(err)
 }
 
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onListenerResourceError(err error) {
+func (r *xdsResolver) onListenerResourceNotFound() {
 	if r.logger.V(2) {
-		r.logger.Infof("Received resource error for Listener resource %q: %v", r.ldsResourceName, err)
+		r.logger.Infof("Received resource-not-found-error for Listener resource %q", r.ldsResourceName)
 	}
 
 	r.listenerUpdateRecvd = false
+
 	if r.routeConfigWatcher != nil {
 		r.routeConfigWatcher.stop()
 	}
@@ -571,7 +566,7 @@ func (r *xdsResolver) onListenerResourceError(err error) {
 	r.routeConfigUpdateRecvd = false
 	r.routeConfigWatcher = nil
 
-	r.onResourceError(err)
+	r.onResourceNotFound()
 }
 
 // Only executed in the context of a serializer callback.
@@ -589,23 +584,23 @@ func (r *xdsResolver) onRouteConfigResourceUpdate(name string, update xdsresourc
 }
 
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onRouteConfigResourceAmbientError(name string, err error) {
+func (r *xdsResolver) onRouteConfigResourceError(name string, err error) {
 	if r.logger.V(2) {
-		r.logger.Infof("Received ambient error for RouteConfiguration resource %q: %v", name, err)
+		r.logger.Infof("Received error for RouteConfiguration resource %q: %v", name, err)
 	}
-	r.onAmbientError(err)
+	r.onError(err)
 }
 
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onRouteConfigResourceError(name string, err error) {
+func (r *xdsResolver) onRouteConfigResourceNotFound(name string) {
 	if r.logger.V(2) {
-		r.logger.Infof("Received resource error for RouteConfiguration resource %q: %v", name, err)
+		r.logger.Infof("Received resource-not-found-error for RouteConfiguration resource %q", name)
 	}
 
 	if r.rdsResourceName != name {
 		return
 	}
-	r.onResourceError(err)
+	r.onResourceNotFound()
 }
 
 // Only executed in the context of a serializer callback.

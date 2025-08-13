@@ -241,11 +241,11 @@ func (lrs *StreamImpl) recvFirstLoadStatsResponse(stream transport.StreamingCall
 		lrs.logger.Infof("Received first LoadStatsResponse: %s", pretty.ToJSON(resp))
 	}
 
-	interval := resp.GetLoadReportingInterval()
-	if err := interval.CheckValid(); err != nil {
+	internal := resp.GetLoadReportingInterval()
+	if internal.CheckValid() != nil {
 		return nil, 0, fmt.Errorf("lrs: invalid load_reporting_interval: %v", err)
 	}
-	loadReportingInterval := interval.AsDuration()
+	loadReportingInterval := internal.AsDuration()
 
 	clusters := resp.Clusters
 	if resp.SendAllClusters {

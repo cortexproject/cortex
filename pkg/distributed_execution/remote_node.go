@@ -65,7 +65,7 @@ func (r *Remote) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	r.FragmentKey = *MakeFragmentKey(re.QueryID, re.FragmentID)
+	r.FragmentKey = MakeFragmentKey(re.QueryID, re.FragmentID)
 	r.FragmentAddr = re.FragmentAddr
 	return nil
 }

@@ -118,6 +118,7 @@ Currently experimental features are:
   - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag
 - OTLP Receiver
   - Ingest delta temporality OTLP metrics (`-distributor.otlp.allow-delta-temporality=true`)
+  - Add `__type__` and `__unit__` labels (`-distributor.otlp.enable-type-and-unit-labels`)
 - Persistent tokens in the Ruler Ring:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
 - Native Histograms

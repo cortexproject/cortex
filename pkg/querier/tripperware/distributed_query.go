@@ -9,18 +9,21 @@ import (
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/cortexproject/cortex/pkg/distributed_execution"
 )
 
 const (
 	stepBatch = 10
 )
 
-func DistributedQueryMiddleware(defaultEvaluationInterval time.Duration, lookbackDelta time.Duration) Middleware {
+func DistributedQueryMiddleware(defaultEvaluationInterval time.Duration, lookbackDelta time.Duration, localOptimizers []logicalplan.Optimizer) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return distributedQueryMiddleware{
 			next:                      next,
 			lookbackDelta:             lookbackDelta,
 			defaultEvaluationInterval: defaultEvaluationInterval,
+			localOptimizers:           localOptimizers,
 		}
 	})
 }
@@ -36,6 +39,7 @@ type distributedQueryMiddleware struct {
 	next                      Handler
 	defaultEvaluationInterval time.Duration
 	lookbackDelta             time.Duration
+	localOptimizers           []logicalplan.Optimizer
 }
 
 func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, end time.Time, step time.Duration) (*logicalplan.Plan, error) {
@@ -68,9 +72,16 @@ func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, e
 	if err != nil {
 		return nil, err
 	}
-	optimizedPlan, _ := logicalPlan.Optimize(logicalplan.DefaultOptimizers)
+	optimizedPlan, _ := logicalPlan.Optimize(d.localOptimizers)
 
-	return &optimizedPlan, nil
+	dOptimizer := distributed_execution.DistributedOptimizer{}
+	dOptimizedPlanNode, _, err := dOptimizer.Optimize(optimizedPlan.Root())
+	if err != nil {
+		return nil, err
+	}
+	lp := logicalplan.New(dOptimizedPlanNode, &qOpts, planOpts)
+
+	return &lp, nil
 }
 
 func (d distributedQueryMiddleware) Do(ctx context.Context, r Request) (Response, error) {

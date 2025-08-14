@@ -541,6 +541,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		t.Cfg.Querier.LookbackDelta,
 		t.Cfg.Querier.DefaultEvaluationInterval,
 		t.Cfg.Querier.DistributedExecEnabled,
+		t.Cfg.Querier.ThanosEngine.LogicalOptimizers,
 	)
 	if err != nil {
 		return nil, err
@@ -553,7 +554,8 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryAnalyzer,
 		t.Cfg.Querier.LookbackDelta,
 		t.Cfg.Querier.DefaultEvaluationInterval,
-		t.Cfg.Querier.DistributedExecEnabled)
+		t.Cfg.Querier.DistributedExecEnabled,
+		t.Cfg.Querier.ThanosEngine.LogicalOptimizers)
 	if err != nil {
 		return nil, err
 	}

@@ -141,6 +141,11 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			for _, h := range request.HttpRequest.Headers {
 				headers[h.Key] = h.Values[0]
 			}
+			if request.StatsEnabled {
+				if qs := querier_stats.FromContext(ctx); qs != nil {
+					qs.AddQueuedTime(time.Duration(request.QueuedTime))
+				}
+			}
 			ctx = requestmeta.ContextWithRequestMetadataMapFromHeaders(ctx, headers, sp.targetHeaders)
 
 			tracer := opentracing.GlobalTracer()

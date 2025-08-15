@@ -37,6 +37,7 @@ func (h HTTPHeaderMiddleware) injectRequestContext(r *http.Request) *http.Reques
 		reqId = uuid.NewString()
 	}
 	requestContextMap[requestmeta.RequestIdKey] = reqId
+	requestContextMap[requestmeta.RequestSourceKey] = requestmeta.SourceAPI
 
 	ctx := requestmeta.ContextWithRequestMetadataMap(r.Context(), requestContextMap)
 	return r.WithContext(ctx)

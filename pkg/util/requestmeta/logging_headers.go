@@ -25,9 +25,12 @@ func LoggingHeadersFromContext(ctx context.Context) map[string]string {
 	}
 	loggingHeadersString := metadataMap[LoggingHeadersKey]
 	if loggingHeadersString == "" {
-		// Backward compatibility: if no specific headers are listed, return all metadata
+		// Backward compatibility: if no specific headers are listed, return all metadata excluding requestId and source
 		result := make(map[string]string, len(metadataMap))
 		for k, v := range metadataMap {
+			if k == RequestIdKey || k == RequestSourceKey {
+				continue
+			}
 			result[k] = v
 		}
 		return result
@@ -49,8 +52,9 @@ func LoggingHeadersAndRequestIdFromContext(ctx context.Context) map[string]strin
 	}
 
 	loggingHeaders := LoggingHeadersFromContext(ctx)
-	reqId := RequestIdFromContext(ctx)
-	loggingHeaders[RequestIdKey] = reqId
+	if reqId := RequestIdFromContext(ctx); reqId != "" {
+		loggingHeaders[RequestIdKey] = reqId
+	}
 
 	return loggingHeaders
 }

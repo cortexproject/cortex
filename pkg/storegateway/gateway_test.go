@@ -43,6 +43,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -1236,11 +1237,17 @@ func TestStoreGateway_SeriesThrottledByResourceMonitor(t *testing.T) {
 	g.resourceBasedLimiter, err = util_limiter.NewResourceBasedLimiter(&mockResourceMonitor{cpu: 0.4, heap: 0.6}, limits, nil, "store-gateway")
 	require.NoError(t, err)
 
+	ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceAPI)
 	srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
 	err = g.Series(req, srv)
 	require.Error(t, err)
 	exhaustedErr := util_limiter.ResourceLimitReachedError{}
 	require.ErrorContains(t, err, exhaustedErr.Error())
+
+	ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceRuler)
+	srv = newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
+	err = g.Series(req, srv)
+	require.Nil(t, err)
 }
 
 func mockGatewayConfig() Config {

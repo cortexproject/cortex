@@ -1,4 +1,129 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – blog</title><link>/tags/blog/</link><description>Recent content in blog on Cortex</description><generator>Hugo -- gohugo.io</generator><lastBuildDate>Mon, 04 Aug 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: Block the Blast: How Query Rejection Protects Your Cortex Cluster</title><link>/blog/2025/08/04/block-the-blast-how-query-rejection-protects-your-cortex-cluster/</link><pubDate>Mon, 04 Aug 2025 00:00:00 +0000</pubDate><guid>/blog/2025/08/04/block-the-blast-how-query-rejection-protects-your-cortex-cluster/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – blog</title><link>/tags/blog/</link><description>Recent content in blog on Cortex</description><generator>Hugo -- gohugo.io</generator><lastBuildDate>Tue, 12 Aug 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: Efficient Query Parallelism in Cortex with Dynamic Query Splitting</title><link>/blog/2025/08/12/efficient-query-parallelism-in-cortex-with-dynamic-query-splitting/</link><pubDate>Tue, 12 Aug 2025 00:00:00 +0000</pubDate><guid>/blog/2025/08/12/efficient-query-parallelism-in-cortex-with-dynamic-query-splitting/</guid><description>
+&lt;h2 id="introduction">Introduction&lt;/h2>
+&lt;p>Cortex traditionally relied on &lt;strong>static query splitting&lt;/strong> and &lt;strong>static vertical sharding&lt;/strong> to optimize the execution of long-range PromQL queries. Static query splitting divides a query into fixed time intervals, while vertical sharding—when applicable—splits the query across subsets of time series. These techniques offered improved parallelism and reduced query latency but were limited by their one-size-fits-all approach. They did not account for differences in query range, lookback behavior, and cardinality—leading to inefficiencies like over-sharding, redundant data fetches, and storage pressure in large or complex queries.&lt;/p>
+&lt;p>To address those gaps, Cortex introduced &lt;strong>dynamic query splitting&lt;/strong> and &lt;strong>dynamic vertical sharding&lt;/strong>—two adaptive mechanisms that intelligently adjust how queries are broken down based on query semantics.&lt;/p>
+&lt;p>This article explores the motivations behind this evolution, how the dynamic model works, and how to configure it for more efficient scalable PromQL query execution.&lt;/p>
+&lt;h3 id="query-splitting">Query Splitting&lt;/h3>
+&lt;p>Query splitting breaks a single long-range query into smaller subqueries based on a configured time interval. For example, given this configuration, a 30-day range query will be split into 30 individual 1-day subqueries:&lt;/p>
+&lt;pre tabindex="0">&lt;code>query_range:
+split_queries_by_interval: 24h
+&lt;/code>&lt;/pre>&lt;p>These subqueries are processed in parallel by different queriers, and the results are merged at query-frontend before returning to client. This improved performance for long range queries and helped prevent timeouts and resource exhaustion.&lt;/p>
+&lt;h3 id="vertical-sharding">Vertical Sharding&lt;/h3>
+&lt;p>Unlike query splitting, which divides a query over time intervals, vertical sharding divides a query across shards of the time series data itself. Each shard processes only a portion of the matched series, reducing memory usage and computational load per querier. This is especially useful for high-cardinality queries where the number of series can reach hundreds of thousands or more.&lt;/p>
+&lt;pre tabindex="0">&lt;code>limits:
+query_vertical_shard_size: 4
+&lt;/code>&lt;/pre>&lt;p>For example, suppose the label selector in the following query &lt;code>http_requests_total{job=&amp;quot;api&amp;quot;}&lt;/code> matches 500,000 distinct time series, each corresponding to different combinations of labels like &lt;code>instance&lt;/code>, &lt;code>path&lt;/code>, &lt;code>status&lt;/code>, and &lt;code>method&lt;/code>.&lt;/p>
+&lt;pre tabindex="0">&lt;code>sum(rate(http_requests_total{job=&amp;#34;api&amp;#34;}[5m])) by (instance)
+&lt;/code>&lt;/pre>&lt;p>Without vertical sharding, a single querier must fetch and aggregate all 500,000 series. With vertical sharding enabled and configured to 4, the query would be split into 4 shards each processing ~125,000 series. The results are finally merged at query frontend before returning to client.&lt;/p>
+&lt;p>&lt;img src="/images/blog/2025/query-splitting-and-vertical-sharding.png" alt="QuerySplittingAndVerticalSharding">&lt;/p>
+&lt;h2 id="introducing-dynamic-query-splitting">Introducing Dynamic Query Splitting&lt;/h2>
+&lt;p>Cortex &lt;strong>dynamic query splitting&lt;/strong> was introduced to address the limitations of static configurations. Instead of applying a fixed split interval uniformly across all queries, the dynamic logic computes an optimal split interval per query—as a multiple of the configured base interval—based on query semantics and configurable constraints. If &lt;strong>dynamic vertical sharding&lt;/strong> is also enabled, then both split interval and vertical shard size will be dynamically adjusted for every query.&lt;/p>
+&lt;p>The goal is to maximize query parallelism through both horizontal splitting and vertical sharding, while staying within safe and configurable limits that prevent system overload or inefficiency. This is best explained by how dynamic splitting solves two problems:&lt;/p>
+&lt;h3 id="1-queuing-and-merge-bottlenecks-from-over-splitting">1. &lt;strong>Queuing and Merge Bottlenecks from Over-Splitting&lt;/strong>&lt;/h3>
+&lt;p>While increasing parallelism through splitting and sharding is generally beneficial, it becomes counterproductive when the number of subqueries or shards far exceeds the number of available queriers.&lt;/p>
+&lt;p>The number of splits when using a fixed interval increases with the query’s time range, which is under the user&amp;rsquo;s control. For example:&lt;/p>
+&lt;ul>
+&lt;li>With a static split interval of 24 hours, a 7-day query results in 7 horizontal splits&lt;/li>
+&lt;li>If the user increased query range to 100 days, the query is split into 100 horizontal splits.&lt;/li>
+&lt;li>If vertical sharding is also enabled and configured to use 5 shards (&lt;code>query_vertical_shard_size: 5&lt;/code>), each split is further divided—leading to a total of 500 individual shards.&lt;/li>
+&lt;/ul>
+&lt;p>When the number of shards grows too large:&lt;/p>
+&lt;ul>
+&lt;li>Backend workers become saturated, causing subqueries to queue and increasing total latency.&lt;/li>
+&lt;li>The query-frontend merges hundreds of partial results, which introduces overhead that can outweigh the benefits of parallelism.&lt;/li>
+&lt;li>Overall system throughput degrades, especially when multiple large queries are executed concurrently.&lt;/li>
+&lt;/ul>
+&lt;p>To solve this issue, a new configuration &lt;code>max_shards_per_query&lt;/code> is introduced for the maximum parallelism per query. Given the same example above:&lt;/p>
+&lt;ul>
+&lt;li>With a static split interval of 24 hours and &lt;code>max_shards_per_query&lt;/code> set to 75, a 7-day query still results in 7 splits.&lt;/li>
+&lt;li>If the user increased query range to 100 days, the dynamic splitting algorithm will adjust the split interval to be 48 hours, producing 50 horizontal splits—keeping the total within the target of 75 shards.&lt;/li>
+&lt;li>If vertical sharding is enabled and configured to use up to 5 shards, the dynamic logic selects the optimal combination of split interval and vertical shards to maximize parallelism without exceeding 75 shards.
+&lt;ul>
+&lt;li>In this case, a 96-hour (4-day) split interval with 3 vertical shards yields exactly 75 total shards—the most efficient combination.&lt;/li>
+&lt;li>Note: &lt;code>enable_dynamic_vertical_sharding&lt;/code> must be set to true; otherwise, only the split interval will be adjusted.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>In summary, with dynamic splitting enabled, you can define a target total number of shards, and Cortex will automatically adjust time splitting and vertical sharding to maximize parallelism without crossing that limit.&lt;/p>
+&lt;p>&lt;img src="/images/blog/2025/query-static-and-dynamic-splitting.png" alt="QuerySplittingAndVerticalSharding">&lt;/p>
+&lt;h3 id="2-parallelism-cost-with-query-lookback">2. &lt;strong>Parallelism Cost with Query Lookback&lt;/strong>&lt;/h3>
+&lt;p>In PromQL, some functions like &lt;code>rate()&lt;/code>, &lt;code>increase()&lt;/code>, or &lt;code>max_over_time()&lt;/code> use a &lt;strong>lookback window&lt;/strong>, meaning each query must fetch samples from before the evaluation timestamp to execute.&lt;/p>
+&lt;p>Consider the following query that calculates the maximum container memory usage over a 90-day lookback window:&lt;/p>
+&lt;pre tabindex="0">&lt;code>max_over_time(container_memory_usage_bytes{cluster=&amp;#34;prod&amp;#34;, namespace=&amp;#34;payments&amp;#34;}[90d])
+&lt;/code>&lt;/pre>&lt;p>Suppose this query is evaluated over a 30-day range and static query splitting is configured to split it into 1-day intervals. This produces 30 subqueries, each corresponding to a single day. However, due to the [90d] range vector:&lt;/p>
+&lt;ul>
+&lt;li>Each subquery must fetch the full 90 days of historical data to evaluate correctly.&lt;/li>
+&lt;li>The same data blocks are repeatedly fetched across all subqueries&lt;/li>
+&lt;li>The total duration of data fetched is &lt;code>query range + (lookback window x total shards)&lt;/code>, which results in 30 + 90 x 30 = 2,730 days.&lt;/li>
+&lt;/ul>
+&lt;p>As a result, store-gateways must handle a large amount of mostly redundant reads, repeatedly fetching data blocks for each subquery. This puts additional pressure on the storage layer, and the cumulative effect slows down query execution and degrades overall system performance. In this case, splitting the query further doesn’t reduce backend load—it amplifies it.&lt;/p>
+&lt;p>With dynamic splitting, you can define a target &lt;code>max_fetched_data_duration_per_query&lt;/code>—the maximum cumulative duration of historical data that a single query is allowed to fetch. If the lookback window is long, the algorithm automatically increases the split interval or reduces the vertical shard size to lower the shard count and protect the storage layer.&lt;/p>
+&lt;p>For example, with &lt;code>max_fetched_data_duration_per_query&lt;/code> set to 500d:&lt;/p>
+&lt;ul>
+&lt;li>A larger split interval of 120-hour (5-day) is used to split the query into 5 splits.
+&lt;ul>
+&lt;li>This is the optimal split interval that results in highest parallelism without crossing the limit of 500 days fetched.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>The total duration fetched from storage layer becomes 30 + 90 x 5 = 480 days—lower than the target of 500 days.&lt;/li>
+&lt;/ul>
+&lt;p>&lt;img src="/images/blog/2025/query-static-and-dynamic-splitting-lookback.png" alt="QuerySplittingAndVerticalSharding">&lt;/p>
+&lt;h2 id="how-to-configure-dynamic-query-splitting">How to Configure Dynamic Query Splitting&lt;/h2>
+&lt;p>Dynamic query splitting is configured under the &lt;code>dynamic_query_splits&lt;/code> section in the &lt;code>query_range&lt;/code> block of Cortex’s configuration. Keep in mind that it works in conjunction with static &lt;code>split_queries_by_interval&lt;/code> and &lt;code>query_vertical_shard_size&lt;/code> which are required to be configured as well:&lt;/p>
+&lt;p>Dynamic query splitting considers the following configurations:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>&lt;code>max_shards_per_query:&lt;/code> Defines the maximum number of total shards (horizontal splits × vertical shards) that a single query can generate. If &lt;code>enable_dynamic_vertical_sharding&lt;/code> is set, the dynamic logic will adjust both the split interval and vertical shard size to find the most effective combination that results in the highest degree of sharding without exceeding this limit.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>max_fetched_data_duration_per_query:&lt;/code> Sets a target for the maximum total time duration of data that can be fetched across all subqueries. To keep the duration fetched below this target, a larger split interval and/or less vertical sharding is used. This is especially important for queries with long lookback windows, where excessive splitting can lead to redundant block reads, putting pressure on store-gateways and the storage layer.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>enable_dynamic_vertical_sharding:&lt;/code> When enabled, vertical sharding becomes dynamic per query. Instead of using a fixed shard count, an optimal vertical shard size ranging from 1 (no sharding) to the tenant’s configured &lt;code>query_vertical_shard_size&lt;/code> will be used.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;h2 id="example-configuration">Example Configuration&lt;/h2>
+&lt;p>Let&amp;rsquo;s explore how two different queries will be handled given the following configuration:&lt;/p>
+&lt;pre tabindex="0">&lt;code>query_range:
+split_queries_by_interval: 24h
+dynamic_query_splits:
+max_shards_per_query: 100
+max_fetched_data_duration_per_query: 8760h # 365 day
+enable_dynamic_vertical_sharding: true
+limits:
+query_vertical_shard_size: 4
+&lt;/code>&lt;/pre>&lt;h3 id="query-1">Query #1&lt;/h3>
+&lt;pre tabindex="0">&lt;code>sum by (pod) (
+rate(container_cpu_usage_seconds_total{namespace=&amp;#34;prod&amp;#34;}[1m])
+)
+&lt;/code>&lt;/pre>&lt;ul>
+&lt;li>&lt;strong>Query time range:&lt;/strong> 60 days&lt;/li>
+&lt;li>&lt;strong>Lookback window:&lt;/strong> 1 minute&lt;/li>
+&lt;/ul>
+&lt;p>Since the query has a short lookback window of 1 min, the total duration of data fetched by each shard is not going to be limiting factor. The limiting factor to consider here is maintaining less than 100 total shards. Both dynamic splitting and dynamic vertical sharding are enabled. Cortex finds the most optimal combination that results in the highest number of shards below 100. In this case:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Number of splits by time:&lt;/strong> 30 (2 day interval)&lt;/li>
+&lt;li>&lt;strong>Vertical shard size:&lt;/strong> 3&lt;/li>
+&lt;li>&lt;strong>Total shards:&lt;/strong> 90&lt;/li>
+&lt;/ul>
+&lt;h3 id="query-2">Query #2&lt;/h3>
+&lt;pre tabindex="0">&lt;code>sum by (pod) (
+max_over_time(container_memory_usage_bytes{namespace=&amp;#34;prod&amp;#34;}[30d])
+)
+&lt;/code>&lt;/pre>&lt;ul>
+&lt;li>&lt;strong>Query time range:&lt;/strong> 14 days&lt;/li>
+&lt;li>&lt;strong>Lookback window:&lt;/strong> 30 days&lt;/li>
+&lt;/ul>
+&lt;p>This query can be split into 14 splits and sharded vertically by 4 resulting in a total of 56 shards, which is below the limit of 100 total shards. However, since each shard is going to have to fetch all 30 days of the lookback window to evaluate in addition to the interval itself, this would result in 56 shards each fetching 31 days of data for a total of 1736 days. This is not optimal and will cause a heavy load on the backend storage layer.&lt;/p>
+&lt;p>Luckily we configured &lt;code>max_fetched_data_duration_per_query&lt;/code> to be 365 days. This will limit query sharding to achieve highest parallelism without crossing the duration fetched limit. In this case:&lt;/p>
+&lt;ul>
+&lt;li>Number of splits by time: 5 (3 day interval)&lt;/li>
+&lt;li>Vertical shard size: 2&lt;/li>
+&lt;li>Total shards: 10&lt;/li>
+&lt;/ul>
+&lt;p>The total duration of data fetched for query evaluation is calculated using &lt;code>(interval + lookback window) x total shards&lt;/code>. In this case &lt;code>(3 + 30) x 10 = 330&lt;/code> days fetched, which is below our limit of 365 days.&lt;/p>
+&lt;h2 id="conclusion">Conclusion&lt;/h2>
+&lt;p>Dynamic query splitting and vertical sharding make Cortex smarter about how it executes PromQL queries. By adapting to each query&amp;rsquo;s semantics and backend constraints, Cortex avoids the limitations of static configurations—enabling efficient parallelism across diverse query patterns and consistently delivering high performance at scale.&lt;/p></description></item><item><title>Blog: Block the Blast: How Query Rejection Protects Your Cortex Cluster</title><link>/blog/2025/08/04/block-the-blast-how-query-rejection-protects-your-cortex-cluster/</link><pubDate>Mon, 04 Aug 2025 00:00:00 +0000</pubDate><guid>/blog/2025/08/04/block-the-blast-how-query-rejection-protects-your-cortex-cluster/</guid><description>
 &lt;h1 id="introduction">Introduction&lt;/h1>
 &lt;p>We had events where a set of seemingly &lt;strong>harmless-looking&lt;/strong> dashboard queries kept slipping just under our limits yet repeatedly &lt;strong>OOM-killing the querier pods&lt;/strong>. Our safeguard mechanisms weren’t enough, and the only hope was that the tenant would either stop those queries or that we’d have to throttle all traffic from that tenant. Usually it wasn’t all traffic causing trouble—it was a small set of queries coming from a specific dashboard or some query with specific characteristics. We wished there was a way to manually specify query characteristics and reject them without throttling everything. &lt;strong>This inspired us to build query rejection&lt;/strong>, a last-resort safety net for operators running multi-tenant Cortex clusters.&lt;/p>
 &lt;h2 id="why-limits-arent-enough">Why Limits Aren’t Enough&lt;/h2>

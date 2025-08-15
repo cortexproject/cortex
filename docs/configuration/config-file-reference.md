@@ -5465,6 +5465,257 @@ thanos_engine:
   [optimizers: <string> | default = "default"]
 ```
 
+### `overrides`
+
+The `overrides` configures the Cortex overrides API for managing user overrides.
+
+```yaml
+# Enable the overrides module.
+# CLI flag: -overrides.enabled
+[enabled: <boolean> | default = false]
+
+# Path to the runtime configuration file.
+# CLI flag: -overrides.runtime-config-file
+[runtime_config_file: <string> | default = "runtime.yaml"]
+
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift.
+# CLI flag: -overrides.backend
+[backend: <string> | default = "s3"]
+
+s3:
+  # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+  # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
+  # S3-compatible service in hostname:port format.
+  # CLI flag: -overrides.s3.endpoint
+  [endpoint: <string> | default = ""]
+
+  # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+  # to autodetect it.
+  # CLI flag: -overrides.s3.region
+  [region: <string> | default = ""]
+
+  # S3 bucket name
+  # CLI flag: -overrides.s3.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # S3 secret access key
+  # CLI flag: -overrides.s3.secret-access-key
+  [secret_access_key: <string> | default = ""]
+
+  # S3 access key ID
+  # CLI flag: -overrides.s3.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # If enabled, use http:// for the S3 endpoint instead of https://. This could
+  # be useful in local dev/test environments while using an S3-compatible
+  # backend storage, like Minio.
+  # CLI flag: -overrides.s3.insecure
+  [insecure: <boolean> | default = false]
+
+  # The signature version to use for authenticating against S3. Supported values
+  # are: v4, v2.
+  # CLI flag: -overrides.s3.signature-version
+  [signature_version: <string> | default = "v4"]
+
+  # The s3 bucket lookup style. Supported values are: auto, virtual-hosted,
+  # path.
+  # CLI flag: -overrides.s3.bucket-lookup-type
+  [bucket_lookup_type: <string> | default = "auto"]
+
+  # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+  # algorithm to verify the provided digest. If false, use CRC32C algorithm
+  # instead.
+  # CLI flag: -overrides.s3.send-content-md5
+  [send_content_md5: <boolean> | default = true]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -overrides.s3.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -overrides.s3.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -overrides.s3.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -overrides.s3.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle connections across all hosts. 0 means no limit.
+    # CLI flag: -overrides.s3.max-idle-conns
+    [max_idle_conns: <int> | default = 100]
+
+    # Maximum number of idle connections per host. 0 means no limit.
+    # CLI flag: -overrides.s3.max-idle-conns-per-host
+    [max_idle_conns_per_host: <int> | default = 100]
+
+gcs:
+  # GCS bucket name
+  # CLI flag: -overrides.gcs.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # JSON either from a file or inline.
+  # CLI flag: -overrides.gcs.service-account
+  [service_account: <string> | default = ""]
+
+azure:
+  # Azure storage account name
+  # CLI flag: -overrides.azure.account-name
+  [account_name: <string> | default = ""]
+
+  # Azure storage account key
+  # CLI flag: -overrides.azure.account-key
+  [account_key: <string> | default = ""]
+
+  # Azure storage container name
+  # CLI flag: -overrides.azure.container-name
+  [container_name: <string> | default = ""]
+
+  # Azure storage endpoint suffix without schema. The account name will be
+  # prefixed to this value to create the FQDN. If set to empty string, default
+  # endpoint suffix will be used.
+  # CLI flag: -overrides.azure.endpoint-suffix
+  [endpoint_suffix: <string> | default = ""]
+
+  # Azure storage max retry attempts
+  # CLI flag: -overrides.azure.max-retries
+  [max_retries: <int> | default = 20]
+
+  # Azure storage user domain
+  # CLI flag: -overrides.azure.user-domain
+  [user_domain: <string> | default = ""]
+
+  # Azure storage tenant ID
+  # CLI flag: -overrides.azure.tenant-id
+  [tenant_id: <string> | default = ""]
+
+  # Azure storage client ID
+  # CLI flag: -overrides.azure.client-id
+  [client_id: <string> | default = ""]
+
+  # Azure storage client secret
+  # CLI flag: -overrides.azure.client-secret
+  [client_secret: <string> | default = ""]
+
+  # Azure storage subscription ID
+  # CLI flag: -overrides.azure.subscription-id
+  [subscription_id: <string> | default = ""]
+
+  # Azure storage environment
+  # CLI flag: -overrides.azure.environment
+  [environment: <string> | default = "AzurePublicCloud"]
+
+  # Azure storage max retry attempts
+  # CLI flag: -overrides.azure.max-retries
+  [max_retries: <int> | default = 20]
+
+  # The time an idle connection will remain idle before closing.
+  # CLI flag: -overrides.azure.idle-conn-timeout
+  [idle_conn_timeout: <duration> | default = 1m30s]
+
+  # The amount of time the client will wait for a servers response headers.
+  # CLI flag: -overrides.azure.response-header-timeout
+  [response_header_timeout: <duration> | default = 2m]
+
+  # Maximum time to wait for a TLS handshake. 0 means no limit.
+  # CLI flag: -overrides.azure.tls-handshake-timeout
+  [tls_handshake_timeout: <duration> | default = 10s]
+
+  # The time to wait for a server's first response headers after fully writing
+  # the request headers if the request has an Expect header. 0 to send the
+  # request body immediately.
+  # CLI flag: -overrides.azure.expect-continue-timeout
+  [expect_continue_timeout: <duration> | default = 1s]
+
+  # Maximum number of idle connections across all hosts. 0 means no limit.
+  # CLI flag: -overrides.azure.max-idle-conns
+  [max_idle_conns: <int> | default = 100]
+
+  # Maximum number of idle connections per host. 0 means no limit.
+  # CLI flag: -overrides.azure.max-idle-conns-per-host
+  [max_idle_conns_per_host: <int> | default = 100]
+
+swift:
+  # OpenStack Swift authentication API version. 0 to autodetect.
+  # CLI flag: -overrides.swift.auth-version
+  [auth_version: <int> | default = 0]
+
+  # OpenStack Swift authentication URL
+  # CLI flag: -overrides.swift.auth-url
+  [auth_url: <string> | default = ""]
+
+  # OpenStack Swift username
+  # CLI flag: -overrides.swift.username
+  [username: <string> | default = ""]
+
+  # OpenStack Swift user's domain name
+  # CLI flag: -overrides.swift.user-domain-name
+  [user_domain_name: <string> | default = ""]
+
+  # OpenStack Swift user's domain ID
+  # CLI flag: -overrides.swift.user-domain-id
+  [user_domain_id: <string> | default = ""]
+
+  # OpenStack Swift user ID
+  # CLI flag: -overrides.swift.user-id
+  [user_id: <string> | default = ""]
+
+  # OpenStack Swift user's password
+  # CLI flag: -overrides.swift.password
+  [password: <string> | default = ""]
+
+  # OpenStack Swift user's domain ID
+  # CLI flag: -overrides.swift.domain-id
+  [domain_id: <string> | default = ""]
+
+  # OpenStack Swift domain name
+  # CLI flag: -overrides.swift.domain-name
+  [domain_name: <string> | default = ""]
+
+  # OpenStack Swift project ID
+  # CLI flag: -overrides.swift.project-id
+  [project_id: <string> | default = ""]
+
+  # OpenStack Swift project name
+  # CLI flag: -overrides.swift.project-name
+  [project_name: <string> | default = ""]
+
+  # OpenStack Swift project domain ID
+  # CLI flag: -overrides.swift.project-domain-id
+  [project_domain_id: <string> | default = ""]
+
+  # OpenStack Swift project domain name
+  # CLI flag: -overrides.swift.project-domain-name
+  [project_domain_name: <string> | default = ""]
+
+  # OpenStack Swift region name
+  # CLI flag: -overrides.swift.region-name
+  [region_name: <string> | default = ""]
+
+  # OpenStack Swift container name
+  # CLI flag: -overrides.swift.container-name
+  [container_name: <string> | default = ""]
+
+  # OpenStack Swift max retry attempts
+  # CLI flag: -overrides.swift.max-retries
+  [max_retries: <int> | default = 3]
+
+  # OpenStack Swift connect timeout
+  # CLI flag: -overrides.swift.connect-timeout
+  [connect_timeout: <duration> | default = 10s]
+
+  # OpenStack Swift request timeout
+  # CLI flag: -overrides.swift.request-timeout
+  [request_timeout: <duration> | default = 5s]
+```
+```
+
 ### `ruler_storage_config`
 
 The `ruler_storage_config` configures the Cortex ruler storage backend.

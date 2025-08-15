@@ -40,6 +40,7 @@ import (
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/overrides"
 	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
@@ -126,6 +127,7 @@ type Config struct {
 	RuntimeConfig       runtimeconfig.Config                       `yaml:"runtime_config"`
 	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
 	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
+	Overrides           overrides.Config                           `yaml:"overrides"`
 
 	Tracing tracing.Config `yaml:"tracing"`
 }
@@ -175,6 +177,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
+	c.Overrides.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 }
 
@@ -314,6 +317,7 @@ type Cortex struct {
 	Ring                     *ring.Ring
 	TenantLimits             validation.TenantLimits
 	OverridesConfig          *validation.Overrides
+	Overrides                *overrides.API
 	Distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
 	Flusher                  *flusher.Flusher

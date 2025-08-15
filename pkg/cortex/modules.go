@@ -36,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/overrides"
 	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -68,6 +69,7 @@ const (
 	Ring                     string = "ring"
 	RuntimeConfig            string = "runtime-config"
 	OverridesConfig          string = "overrides-config"
+	Overrides                string = "overrides"
 	OverridesExporter        string = "overrides-exporter"
 	Server                   string = "server"
 	Distributor              string = "distributor"
@@ -205,6 +207,18 @@ func (t *Cortex) initOverridesConfig() (services.Service, error) {
 	// overrides don't have operational state, nor do they need to do anything more in starting/stopping phase,
 	// so there is no need to return any service.
 	return nil, nil
+}
+
+func (t *Cortex) initOverrides() (services.Service, error) {
+	overridesAPI, err := overrides.New(t.Cfg.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create overrides API: %w", err)
+	}
+	t.Overrides = overridesAPI
+
+	t.API.RegisterOverrides(overridesAPI)
+
+	return overridesAPI, nil
 }
 
 func (t *Cortex) initOverridesExporter() (services.Service, error) {
@@ -858,6 +872,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesConfig, t.initOverridesConfig, modules.UserInvisibleModule)
+	mm.RegisterModule(Overrides, t.initOverrides)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(DistributorService, t.initDistributorService, modules.UserInvisibleModule)
@@ -890,6 +905,7 @@ func (t *Cortex) setupModuleManager() error {
 		RuntimeConfig:            {API},
 		Ring:                     {API, RuntimeConfig, MemberlistKV},
 		OverridesConfig:          {RuntimeConfig},
+		Overrides:                {API, OverridesConfig},
 		OverridesExporter:        {RuntimeConfig},
 		Distributor:              {DistributorService, API, GrpcClientService},
 		DistributorService:       {Ring, OverridesConfig},
@@ -912,7 +928,7 @@ func (t *Cortex) setupModuleManager() error {
 		TenantDeletion:           {API, OverridesConfig},
 		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},
-		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler, Compactor, AlertManager},
+		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler, Compactor, AlertManager, Overrides},
 	}
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
 		deps[Ruler] = []string{OverridesConfig, RulerStorage}

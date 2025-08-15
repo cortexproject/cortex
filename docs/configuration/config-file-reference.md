@@ -4114,6 +4114,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <float> | default = 0]
 
+# [Experimental] Number of shards to use when distributing shardable PromQL
+# queries.
+# CLI flag: -frontend.query-vertical-shard-size
+[query_vertical_shard_size: <int> | default = 0]
+
 # Enable to allow queries to be evaluated with data from a single zone, if other
 # zones are not available.
 [query_partial_data: <boolean> | default = false]

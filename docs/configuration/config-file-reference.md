@@ -3265,6 +3265,11 @@ otlp:
   # EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.
   # CLI flag: -distributor.otlp.allow-delta-temporality
   [allow_delta_temporality: <boolean> | default = false]
+
+  # EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for
+  # the OTLP metrics.
+  # CLI flag: -distributor.otlp.enable-type-and-unit-labels
+  [enable_type_and_unit_labels: <boolean> | default = false]
 ```
 
 ### `etcd_config`
@@ -4113,6 +4118,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # query-frontend / query-scheduler, not when using downstream URL.
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <float> | default = 0]
+
+# [Experimental] Number of shards to use when distributing shardable PromQL
+# queries.
+# CLI flag: -frontend.query-vertical-shard-size
+[query_vertical_shard_size: <int> | default = 0]
 
 # Enable to allow queries to be evaluated with data from a single zone, if other
 # zones are not available.

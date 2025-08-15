@@ -22,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 
 	"github.com/thanos-io/promql-engine/logicalplan"
@@ -82,8 +83,7 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 	result.Stats = r.FormValue("stats")
 	result.Path = r.URL.Path
 
-	isSourceRuler := strings.Contains(r.Header.Get("User-Agent"), tripperware.RulerUserAgent)
-	if isSourceRuler {
+	if tripperware.GetSource(r) == requestmeta.SourceRuler {
 		// When the source is the Ruler, then forward whole headers
 		result.Headers = r.Header
 	} else {
@@ -210,7 +210,7 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 
 	h.Add("Content-Type", "application/x-www-form-urlencoded")
 
-	isSourceRuler := strings.Contains(h.Get("User-Agent"), tripperware.RulerUserAgent)
+	isSourceRuler := strings.Contains(h.Get("User-Agent"), tripperware.RulerUserAgent) || requestmeta.RequestFromRuler(ctx)
 	if !isSourceRuler {
 		// When the source is the Ruler, skip set header
 		tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)

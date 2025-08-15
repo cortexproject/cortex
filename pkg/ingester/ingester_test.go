@@ -3228,7 +3228,7 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 	}
 
 	rreq := &client.QueryRequest{}
-	ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceApi)
+	ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceAPI)
 	s := &mockQueryStreamServer{ctx: ctx}
 	err = i.QueryStream(rreq, s)
 	require.Error(t, err)

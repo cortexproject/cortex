@@ -5,7 +5,7 @@ import "context"
 const RequestSourceKey = "x-cortex-request-source"
 
 const (
-	SourceApi   = "api"
+	SourceAPI   = "api"
 	SourceRuler = "ruler"
 )
 

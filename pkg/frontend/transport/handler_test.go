@@ -26,11 +26,11 @@ import (
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -216,7 +216,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResponseBodySizeExceeded, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResponseBodySizeExceeded, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusRequestEntityTooLarge,
@@ -232,7 +232,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManyRequests, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManyRequests, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusTooManyRequests,
@@ -248,7 +248,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManySamples, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManySamples, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -264,7 +264,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTimeRangeExceeded, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTimeRangeExceeded, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -280,7 +280,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesFetched, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesFetched, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -296,7 +296,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksFetched, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksFetched, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -312,7 +312,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunkBytesFetched, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunkBytesFetched, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -328,7 +328,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonDataBytesFetched, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonDataBytesFetched, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -344,7 +344,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesLimitStoreGateway, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesLimitStoreGateway, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -360,7 +360,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksLimitStoreGateway, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksLimitStoreGateway, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -376,7 +376,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonBytesLimitStoreGateway, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonBytesLimitStoreGateway, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -393,7 +393,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResourceExhausted, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResourceExhausted, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -410,7 +410,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.slowQueries.WithLabelValues(tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.slowQueries.WithLabelValues(requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusOK,
@@ -472,12 +472,12 @@ func TestReportQueryStatsFormat(t *testing.T) {
 	tests := map[string]testCase{
 		"should not include query and header details if empty": {
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0`,
-			source:      tripperware.SourceAPI,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include query length and string at the end": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 query_length=2 param_query=up`,
-			source:      tripperware.SourceAPI,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include query stats": {
 			queryStats: &querier_stats.QueryStats{
@@ -494,17 +494,17 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				},
 			},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 response_series_count=100 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 samples_scanned=0 query_storage_wall_time_seconds=6000`,
-			source:      tripperware.SourceAPI,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include user agent": {
 			header:      http.Header{"User-Agent": []string{"Grafana"}},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 user_agent=Grafana`,
-			source:      tripperware.SourceAPI,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include response error": {
 			responseErr: errors.New("foo_err"),
 			expectedLog: `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 error=foo_err`,
-			source:      tripperware.SourceAPI,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include query priority": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
@@ -513,7 +513,7 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				PriorityAssigned: true,
 			},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 query_length=2 priority=99 param_query=up`,
-			source:      tripperware.SourceAPI,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include data fetch min and max time": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
@@ -522,7 +522,7 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				DataSelectMinTime: 1704067200000,
 			},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 data_select_max_time=1704153600 data_select_min_time=1704067200 query_length=2 param_query=up`,
-			source:      tripperware.SourceAPI,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include query stats with store gateway stats": {
 			queryStats: &querier_stats.QueryStats{
@@ -541,16 +541,16 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				},
 			},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 response_series_count=100 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 samples_scanned=0 store_gateway_touched_postings_count=20 store_gateway_touched_posting_bytes=200 query_storage_wall_time_seconds=6000`,
-			source:      tripperware.SourceAPI,
+			source:      requestmeta.SourceAPI,
 		},
 		"should not report a log": {
 			expectedLog:               ``,
-			source:                    tripperware.SourceRuler,
+			source:                    requestmeta.SourceRuler,
 			enabledRulerQueryStatsLog: false,
 		},
 		"should report a log": {
 			expectedLog:               `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0`,
-			source:                    tripperware.SourceRuler,
+			source:                    requestmeta.SourceRuler,
 			enabledRulerQueryStatsLog: true,
 		},
 	}
@@ -559,6 +559,7 @@ func TestReportQueryStatsFormat(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, EnabledRulerQueryStatsLog: testData.enabledRulerQueryStatsLog}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
 			req.Header = testData.header
+			req = req.WithContext(requestmeta.ContextWithRequestSource(context.Background(), testData.source))
 			handler.reportQueryStats(req, testData.source, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
 			data, err := io.ReadAll(outputBuf)
 			require.NoError(t, err)
@@ -706,7 +707,7 @@ func Test_TenantFederation_MaxTenant(t *testing.T) {
 				require.Contains(t, string(body), test.expectedErrMsg)
 
 				if strings.Contains(test.expectedErrMsg, "too many tenants") {
-					v := promtest.ToFloat64(handler.rejectedQueries.WithLabelValues(reasonTooManyTenants, tripperware.SourceAPI, test.orgId))
+					v := promtest.ToFloat64(handler.rejectedQueries.WithLabelValues(reasonTooManyTenants, requestmeta.SourceAPI, test.orgId))
 					assert.Equal(t, float64(1), v)
 				}
 			}

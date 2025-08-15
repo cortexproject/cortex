@@ -159,6 +159,7 @@ type schedulerRequest struct {
 	statsEnabled    bool
 
 	enqueueTime time.Time
+	queuedTime  time.Duration
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -376,8 +377,10 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 
 		r := req.(*schedulerRequest)
 
-		s.queueDuration.Observe(time.Since(r.enqueueTime).Seconds())
+		queuedTime := time.Since(r.enqueueTime)
+		s.queueDuration.Observe(queuedTime.Seconds())
 		r.queueSpan.Finish()
+		r.queuedTime = queuedTime
 
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
@@ -428,6 +431,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 			FrontendAddress: req.frontendAddress,
 			HttpRequest:     req.request,
 			StatsEnabled:    req.statsEnabled,
+			QueuedTime:      int64(req.queuedTime),
 		})
 		if err != nil {
 			errCh <- err

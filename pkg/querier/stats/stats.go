@@ -59,6 +59,32 @@ func (s *QueryStats) Copy() *QueryStats {
 	return copied
 }
 
+// AddQueuedTime adds some time to the queued time counter.
+func (s *QueryStats) AddQueuedTime(t time.Duration) {
+	if s == nil {
+		return
+	}
+
+	for {
+		cur := atomic.LoadInt64((*int64)(&s.QueuedTime))
+		if int64(t) <= cur {
+			return
+		}
+		if atomic.CompareAndSwapInt64((*int64)(&s.QueuedTime), cur, int64(t)) {
+			return
+		}
+	}
+}
+
+// LoadQueuedTime returns queued time.
+func (s *QueryStats) LoadQueuedTime() time.Duration {
+	if s == nil {
+		return 0
+	}
+
+	return time.Duration(atomic.LoadInt64((*int64)(&s.QueuedTime)))
+}
+
 // AddWallTime adds some time to the counter.
 func (s *QueryStats) AddWallTime(t time.Duration) {
 	if s == nil {
@@ -395,6 +421,7 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	s.AddStoreGatewayTouchedPostingBytes(other.LoadStoreGatewayTouchedPostingBytes())
 	s.AddScannedSamples(other.LoadScannedSamples())
 	s.SetPeakSamples(max(s.LoadPeakSamples(), other.LoadPeakSamples()))
+	s.AddQueuedTime(other.LoadQueuedTime())
 	s.AddExtraFields(other.LoadExtraFields()...)
 }
 

@@ -24,6 +24,8 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/codes"
 
+	"github.com/cortexproject/cortex/pkg/engine"
+	"github.com/cortexproject/cortex/pkg/querier"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -499,6 +501,16 @@ func TestReportQueryStatsFormat(t *testing.T) {
 		"should include user agent": {
 			header:      http.Header{"User-Agent": []string{"Grafana"}},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 user_agent=Grafana`,
+			source:      tripperware.SourceAPI,
+		},
+		"should include engine type": {
+			header:      http.Header{http.CanonicalHeaderKey(engine.TypeHeader): []string{string(engine.Thanos)}},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 engine_type=thanos`,
+			source:      tripperware.SourceAPI,
+		},
+		"should include block store type": {
+			header:      http.Header{http.CanonicalHeaderKey(querier.BlockStoreTypeHeader): []string{"parquet"}},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 block_store_type=parquet`,
 			source:      tripperware.SourceAPI,
 		},
 		"should include response error": {

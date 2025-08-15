@@ -22,6 +22,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/engine"
+	"github.com/cortexproject/cortex/pkg/querier"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -397,6 +399,14 @@ func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values, sourc
 		logMessage = append(logMessage, "user_agent", ua)
 	}
 
+	if engineType := r.Header.Get(engine.TypeHeader); len(engineType) > 0 {
+		logMessage = append(logMessage, "engine_type", engineType)
+	}
+
+	if blockStoreType := r.Header.Get(querier.BlockStoreTypeHeader); len(blockStoreType) > 0 {
+		logMessage = append(logMessage, "block_store_type", blockStoreType)
+	}
+
 	if acceptEncoding := r.Header.Get("Accept-Encoding"); len(acceptEncoding) > 0 {
 		logMessage = append(logMessage, "accept_encoding", acceptEncoding)
 	}
@@ -508,6 +518,12 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	}
 	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
 		logMessage = append(logMessage, "user_agent", ua)
+	}
+	if engineType := r.Header.Get(engine.TypeHeader); len(engineType) > 0 {
+		logMessage = append(logMessage, "engine_type", engineType)
+	}
+	if blockStoreType := r.Header.Get(querier.BlockStoreTypeHeader); len(blockStoreType) > 0 {
+		logMessage = append(logMessage, "block_store_type", blockStoreType)
 	}
 	if priority, ok := stats.LoadPriority(); ok {
 		logMessage = append(logMessage, "priority", priority)

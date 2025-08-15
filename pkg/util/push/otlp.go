@@ -178,9 +178,10 @@ func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (
 func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) ([]prompb.TimeSeries, []prompb.MetricMetadata, error) {
 	promConverter := prometheusremotewrite.NewPrometheusConverter()
 	settings := prometheusremotewrite.Settings{
-		AddMetricSuffixes:     true,
-		DisableTargetInfo:     cfg.DisableTargetInfo,
-		AllowDeltaTemporality: cfg.AllowDeltaTemporality,
+		AddMetricSuffixes:       true,
+		DisableTargetInfo:       cfg.DisableTargetInfo,
+		AllowDeltaTemporality:   cfg.AllowDeltaTemporality,
+		EnableTypeAndUnitLabels: cfg.EnableTypeAndUnitLabels,
 	}
 
 	var annots annotations.Annotations

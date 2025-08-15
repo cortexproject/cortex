@@ -3400,6 +3400,11 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -distributor.otlp.allow-delta-temporality&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[allow_delta_temporality&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># EXPERIMENTAL: If true, the &amp;#39;__type__&amp;#39; and &amp;#39;__unit__&amp;#39; labels are added for&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># the OTLP metrics.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -distributor.otlp.enable-type-and-unit-labels&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[enable_type_and_unit_labels&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="etcd_config">&lt;code>etcd_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>etcd_config&lt;/code> configures the etcd client. The supported CLI flags &lt;code>&amp;lt;prefix&amp;gt;&lt;/code> used to reference this config block are:&lt;/p>
 &lt;ul>

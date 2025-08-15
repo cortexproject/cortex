@@ -313,7 +313,7 @@ type Cortex struct {
 	Server                   *server.Server
 	Ring                     *ring.Ring
 	TenantLimits             validation.TenantLimits
-	Overrides                *validation.Overrides
+	OverridesConfig          *validation.Overrides
 	Distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
 	Flusher                  *flusher.Flusher

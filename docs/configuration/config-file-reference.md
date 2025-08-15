@@ -2940,6 +2940,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 - `distributor.ha-tracker`
 - `distributor.ring`
 - `parquet-converter.ring`
+- `querier.ring`
 - `ruler.ring`
 - `store-gateway.sharding-ring`
 
@@ -3282,6 +3283,7 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 - `distributor.ha-tracker`
 - `distributor.ring`
 - `parquet-converter.ring`
+- `querier.ring`
 - `ruler.ring`
 - `store-gateway.sharding-ring`
 
@@ -3485,6 +3487,120 @@ grpc_client_config:
   # using default gRPC client connect timeout 20s.
   # CLI flag: -querier.frontend-client.connect-timeout
   [connect_timeout: <duration> | default = 5s]
+
+ring:
+  # The key-value store used to share the hash ring across multiple instances.
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -querier.ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -querier.ring.prefix
+    [prefix: <string> | default = "querier/"]
+
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -querier.ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -querier.ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -querier.ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
+
+      # Time to refresh local ring with information on dynamodb.
+      # CLI flag: -querier.ring.dynamodb.puller-sync-time
+      [puller_sync_time: <duration> | default = 1m]
+
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -querier.ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
+      # Timeout of dynamoDbClient requests. Default is 2m.
+      # CLI flag: -querier.ring.dynamodb.timeout
+      [timeout: <duration> | default = 2m]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: querier.ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: querier.ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -querier.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -querier.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -querier.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -querier.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring. 0 = disabled.
+  # CLI flag: -querier.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 5s]
+
+  # The heartbeat timeout after which rulers are considered unhealthy within the
+  # ring. 0 = never (timeout disabled).
+  # CLI flag: -querier.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # EXPERIMENTAL: The replication factor to use when loading rule groups for API
+  # HA.
+  # CLI flag: -querier.ring.replication-factor
+  [replication_factor: <int> | default = 1]
+
+  # EXPERIMENTAL: True to enable zone-awareness and load rule groups across
+  # different availability zones for API HA.
+  # CLI flag: -querier.ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
+  # EXPERIMENTAL: File path where tokens are stored. If empty, tokens are not
+  # stored at shutdown and restored at startup.
+  # CLI flag: -querier.ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
+  # Set to true to enable ring detailed metrics. These metrics provide detailed
+  # information, such as token count and ownership per tenant. Disabling them
+  # can significantly decrease the number of metrics emitted.
+  # CLI flag: -querier.ring.detailed-metrics-enabled
+  [detailed_metrics_enabled: <boolean> | default = true]
+
+  # The sleep seconds when ruler is shutting down. Need to be close to or larger
+  # than KV Store information propagation delay
+  # CLI flag: -querier.ring.final-sleep
+  [final_sleep: <duration> | default = 0s]
+
+  # Keep instance in the ring on shut down.
+  # CLI flag: -querier.ring.keep-instance-in-the-ring-on-shutdown
+  [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
+
+  # Name of network interface to read address from.
+  # CLI flag: -querier.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -querier.ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
+
+  # Number of tokens for each ruler.
+  # CLI flag: -querier.ring.num-tokens
+  [num_tokens: <int> | default = 128]
 ```
 
 ### `ingester_config`

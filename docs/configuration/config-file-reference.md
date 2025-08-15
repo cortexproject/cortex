@@ -3265,6 +3265,11 @@ otlp:
   # EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.
   # CLI flag: -distributor.otlp.allow-delta-temporality
   [allow_delta_temporality: <boolean> | default = false]
+
+  # EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for
+  # the OTLP metrics.
+  # CLI flag: -distributor.otlp.enable-type-and-unit-labels
+  [enable_type_and_unit_labels: <boolean> | default = false]
 ```
 
 ### `etcd_config`

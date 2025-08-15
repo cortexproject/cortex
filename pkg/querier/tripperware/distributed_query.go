@@ -9,6 +9,8 @@ import (
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/cortexproject/cortex/pkg/distributed_execution"
 )
 
 const (
@@ -70,7 +72,14 @@ func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, e
 	}
 	optimizedPlan, _ := logicalPlan.Optimize(logicalplan.DefaultOptimizers)
 
-	return &optimizedPlan, nil
+	dOptimizer := distributed_execution.DistributedOptimizer{}
+	dOptimizedPlanNode, _, err := dOptimizer.Optimize(optimizedPlan.Root())
+	if err != nil {
+		return nil, err
+	}
+	lp := logicalplan.New(dOptimizedPlanNode, &qOpts, planOpts)
+
+	return &lp, nil
 }
 
 func (d distributedQueryMiddleware) Do(ctx context.Context, r Request) (Response, error) {

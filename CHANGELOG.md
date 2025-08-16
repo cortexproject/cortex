@@ -71,6 +71,7 @@
 * [ENHANCEMENT] Query Frontend: Add a `format_query` label value to the `op` label at `cortex_query_frontend_queries_total` metric. #6925
 * [ENHANCEMENT] API: add request ID injection to context to enable tracking requests across downstream services. #6895
 * [ENHANCEMENT] gRPC: Add gRPC Channelz monitoring. #6950
+* [ENHANCEMENT] Upgrade build image and Go version to 1.24.6. #6970 #6976
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576

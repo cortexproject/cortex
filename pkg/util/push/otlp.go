@@ -73,7 +73,7 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 		}
 
 		// convert prompb to cortexpb TimeSeries
-		tsList := []cortexpb.PreallocTimeseries(nil)
+		tsList := make([]cortexpb.PreallocTimeseries, 0, len(promTsList))
 		for _, v := range promTsList {
 			tsList = append(tsList, cortexpb.PreallocTimeseries{TimeSeries: &cortexpb.TimeSeries{
 				Labels:     makeLabels(v.Labels),

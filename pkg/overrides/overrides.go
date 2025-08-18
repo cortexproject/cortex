@@ -28,8 +28,6 @@ const (
 // Config holds configuration for the overrides module
 type Config struct {
 	// Enable the overrides API module
-	// CLI flag: -overrides.enabled
-	Enabled bool `yaml:"enabled"`
 
 	// Path to the runtime configuration file that can be updated via the overrides API
 	// CLI flag: -overrides.runtime-config-file
@@ -42,7 +40,7 @@ type Config struct {
 
 // RegisterFlags registers the overrides module flags
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&c.Enabled, "overrides.enabled", false, "Enable the overrides API module")
+
 	f.StringVar(&c.RuntimeConfigFile, "overrides.runtime-config-file", "runtime.yaml", "Path to the runtime configuration file that can be updated via the overrides API")
 
 	c.RegisterFlagsWithPrefix("overrides.", f)
@@ -50,9 +48,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate validates the configuration and returns an error if validation fails
 func (c *Config) Validate() error {
-	if !c.Enabled {
-		return nil
-	}
 
 	if c.RuntimeConfigFile == "" {
 		c.RuntimeConfigFile = "runtime.yaml"

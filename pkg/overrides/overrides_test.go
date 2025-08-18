@@ -32,13 +32,12 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"disabled config should pass": {
 			initConfig: func(cfg *Config) {
-				cfg.Enabled = false
+
 			},
 			expected: nil,
 		},
 		"enabled config should pass": {
 			initConfig: func(cfg *Config) {
-				cfg.Enabled = true
 				cfg.Config = bucket.Config{
 					Backend: bucket.S3,
 					S3: s3.Config{
@@ -87,7 +86,6 @@ func TestNew(t *testing.T) {
 	}{
 		"valid config should create API": {
 			cfg: Config{
-				Enabled: true,
 				Config: bucket.Config{
 					Backend: bucket.S3,
 					S3: s3.Config{
@@ -123,7 +121,6 @@ func TestNew(t *testing.T) {
 func TestOverridesModuleServiceInterface(t *testing.T) {
 	// Create the API instance with proper configuration
 	cfg := Config{
-		Enabled: true,
 		Config: bucket.Config{
 			Backend: bucket.S3,
 			S3: s3.Config{
@@ -298,8 +295,6 @@ hard_overrides:
 
 			// Create the API instance with proper configuration
 			cfg := Config{
-				Enabled: true,
-
 				Config: bucket.Config{
 					Backend: bucket.S3,
 					S3: s3.Config{
@@ -408,8 +403,6 @@ func TestAPITenantExtraction(t *testing.T) {
 
 			// Create the API instance with proper configuration
 			cfg := Config{
-				Enabled: true,
-
 				Config: bucket.Config{
 					Backend: bucket.S3,
 					S3: s3.Config{
@@ -501,8 +494,6 @@ func TestAPIBucketErrors(t *testing.T) {
 
 			// Create the API instance with proper configuration
 			cfg := Config{
-				Enabled: true,
-
 				Config: bucket.Config{
 					Backend: bucket.S3,
 					S3: s3.Config{

@@ -210,9 +210,6 @@ func (t *Cortex) initOverridesConfig() (services.Service, error) {
 }
 
 func (t *Cortex) initOverrides() (services.Service, error) {
-	if !t.Cfg.Overrides.Enabled {
-		return nil, nil
-	}
 
 	overridesAPI, err := overrides.New(t.Cfg.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -932,7 +929,7 @@ func (t *Cortex) setupModuleManager() error {
 		TenantDeletion:           {API, OverridesConfig},
 		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},
-		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler, Compactor, AlertManager, Overrides},
+		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler, Compactor, AlertManager},
 	}
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
 		deps[Ruler] = []string{OverridesConfig, RulerStorage}

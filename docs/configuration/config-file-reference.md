@@ -412,10 +412,6 @@ query_scheduler:
     [connect_timeout: <duration> | default = 5s]
 
 overrides:
-  # Enable the overrides API module
-  # CLI flag: -overrides.enabled
-  [enabled: <boolean> | default = false]
-
   # Path to the runtime configuration file that can be updated via the overrides
   # API
   # CLI flag: -overrides.runtime-config-file

@@ -56,8 +56,8 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 	flags := mergeFlags(
 		baseFlags,
 		map[string]string{
-			"-target":                         "overrides",
-			"-overrides.enabled":              "true",
+			"-target": "overrides",
+
 			"-overrides.runtime-config-file":  "runtime.yaml",
 			"-overrides.backend":              "s3",
 			"-overrides.s3.access-key-id":     e2edb.MinioAccessKey,
@@ -224,8 +224,8 @@ func TestOverridesAPITenantExtraction(t *testing.T) {
 	flags := mergeFlags(
 		baseFlags,
 		map[string]string{
-			"-target":                         "overrides",
-			"-overrides.enabled":              "true",
+			"-target": "overrides",
+
 			"-overrides.runtime-config-file":  "runtime.yaml",
 			"-overrides.backend":              "s3",
 			"-overrides.s3.access-key-id":     e2edb.MinioAccessKey,
@@ -278,7 +278,6 @@ func TestOverridesAPIFilesystemBackendRejected(t *testing.T) {
 			baseFlags,
 			map[string]string{
 				"-target":                        "overrides",
-				"-overrides.enabled":             "true",
 				"-overrides.runtime-config-file": "runtime.yaml",
 				"-overrides.backend":             "filesystem",
 				"-ring.store":                    "consul",
@@ -303,7 +302,6 @@ func TestOverridesAPIFilesystemBackendRejected(t *testing.T) {
 			baseFlags,
 			map[string]string{
 				"-target":                        "overrides",
-				"-overrides.enabled":             "true",
 				"-overrides.runtime-config-file": "runtime.yaml",
 				"-ring.store":                    "consul",
 				"-consul.hostname":               "localhost:8500",

@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] Query Frontend: Add support for /api/v1/parse_query API (experimental) to parse a PromQL expression and return it as a JSON-formatted AST (abstract syntax tree). #6978
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718
 * [CHANGE] Validate a tenantID when to use a single tenant resolver. #6727

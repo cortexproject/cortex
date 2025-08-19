@@ -25,7 +25,8 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 			MaxQueriersPerTenant: 5,
 		},
 	}
-	tenantLimits["tenant-a"].RegisterFlags(flag.CommandLine)
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	tenantLimits["tenant-a"].RegisterFlags(fs)
 
 	exporter := NewOverridesExporter(newMockTenantLimits(tenantLimits))
 
@@ -112,9 +113,10 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 }
 
 func TestExtractNumericalValues(t *testing.T) {
-	limits := Limits{}
-	limits.RegisterFlags(flag.CommandLine)
-	extracted := ExtractNumericalValues(&limits)
+	limits := &Limits{}
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	limits.RegisterFlags(fs)
+	extracted := ExtractNumericalValues(limits)
 	t.Run("float64 should be converted", func(t *testing.T) {
 		require.Equal(t, limits.IngestionRate, extracted["ingestion_rate"])
 	})

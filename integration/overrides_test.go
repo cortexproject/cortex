@@ -25,9 +25,6 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	consul := e2edb.NewConsulWithName("consul")
-	require.NoError(t, s.StartAndWaitReady(consul))
-
 	minio := e2edb.NewMinio(9000, "cortex")
 	require.NoError(t, s.StartAndWaitReady(minio))
 
@@ -52,23 +49,17 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 
 	require.NoError(t, s3Client.Upload(context.Background(), "runtime.yaml", bytes.NewReader(runtimeConfigData)))
 
-	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
-	flags := mergeFlags(
-		baseFlags,
-		map[string]string{
-			"-target": "overrides",
+	flags := map[string]string{
+		"-target": "overrides",
 
-			"-overrides.runtime-config-file":  "runtime.yaml",
-			"-overrides.backend":              "s3",
-			"-overrides.s3.access-key-id":     e2edb.MinioAccessKey,
-			"-overrides.s3.secret-access-key": e2edb.MinioSecretKey,
-			"-overrides.s3.bucket-name":       "cortex",
-			"-overrides.s3.endpoint":          minio.NetworkHTTPEndpoint(),
-			"-overrides.s3.insecure":          "true",
-			"-ring.store":                     "consul",
-			"-consul.hostname":                consul.NetworkHTTPEndpoint(),
-		},
-	)
+		"-overrides.runtime-config-file":  "runtime.yaml",
+		"-overrides.backend":              "s3",
+		"-overrides.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-overrides.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-overrides.s3.bucket-name":       "cortex",
+		"-overrides.s3.endpoint":          minio.NetworkHTTPEndpoint(),
+		"-overrides.s3.insecure":          "true",
+	}
 
 	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides", flags, "")
 	require.NoError(t, s.StartAndWaitReady(cortexSvc))
@@ -220,23 +211,19 @@ func TestOverridesAPITenantExtraction(t *testing.T) {
 	minio := e2edb.NewMinio(9010, "cortex")
 	require.NoError(t, s.StartAndWaitReady(minio))
 
-	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
-	flags := mergeFlags(
-		baseFlags,
-		map[string]string{
-			"-target": "overrides",
+	flags := map[string]string{
+		"-target": "overrides",
 
-			"-overrides.runtime-config-file":  "runtime.yaml",
-			"-overrides.backend":              "s3",
-			"-overrides.s3.access-key-id":     e2edb.MinioAccessKey,
-			"-overrides.s3.secret-access-key": e2edb.MinioSecretKey,
-			"-overrides.s3.bucket-name":       "cortex",
-			"-overrides.s3.endpoint":          minio.NetworkHTTPEndpoint(),
-			"-overrides.s3.insecure":          "true",
-			"-ring.store":                     "consul",
-			"-consul.hostname":                consul.NetworkHTTPEndpoint(),
-		},
-	)
+		"-overrides.runtime-config-file":  "runtime.yaml",
+		"-overrides.backend":              "s3",
+		"-overrides.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-overrides.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-overrides.s3.bucket-name":       "cortex",
+		"-overrides.s3.endpoint":          minio.NetworkHTTPEndpoint(),
+		"-overrides.s3.insecure":          "true",
+		"-ring.store":                     "consul",
+		"-consul.hostname":                consul.NetworkHTTPEndpoint(),
+	}
 
 	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-tenant", flags, "")
 	require.NoError(t, s.StartAndWaitReady(cortexSvc))
@@ -273,17 +260,13 @@ func TestOverridesAPIFilesystemBackendRejected(t *testing.T) {
 	defer s.Close()
 
 	t.Run("filesystem backend should be rejected", func(t *testing.T) {
-		baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
-		flags := mergeFlags(
-			baseFlags,
-			map[string]string{
-				"-target":                        "overrides",
-				"-overrides.runtime-config-file": "runtime.yaml",
-				"-overrides.backend":             "filesystem",
-				"-ring.store":                    "consul",
-				"-consul.hostname":               "localhost:8500",
-			},
-		)
+		flags := map[string]string{
+			"-target":                        "overrides",
+			"-overrides.runtime-config-file": "runtime.yaml",
+			"-overrides.backend":             "filesystem",
+			"-ring.store":                    "consul",
+			"-consul.hostname":               "localhost:8500",
+		}
 
 		cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-filesystem", flags, "")
 
@@ -297,16 +280,12 @@ func TestOverridesAPIFilesystemBackendRejected(t *testing.T) {
 	})
 
 	t.Run("no backend specified should be rejected", func(t *testing.T) {
-		baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
-		flags := mergeFlags(
-			baseFlags,
-			map[string]string{
-				"-target":                        "overrides",
-				"-overrides.runtime-config-file": "runtime.yaml",
-				"-ring.store":                    "consul",
-				"-consul.hostname":               "localhost:8500",
-			},
-		)
+		flags := map[string]string{
+			"-target":                        "overrides",
+			"-overrides.runtime-config-file": "runtime.yaml",
+			"-ring.store":                    "consul",
+			"-consul.hostname":               "localhost:8500",
+		}
 
 		cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-no-backend", flags, "")
 

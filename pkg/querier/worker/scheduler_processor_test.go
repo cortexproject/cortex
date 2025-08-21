@@ -144,7 +144,7 @@ func Test_ToShowNotPanic_RelatedIssue6599(t *testing.T) {
 		go stat.AddFetchedChunkBytes(10)
 	}).Return(&httpgrpc.HTTPResponse{}, nil)
 
-	sp, _ := newSchedulerProcessor(cfg, requestHandler, log.NewNopLogger(), nil)
+	sp, _ := newSchedulerProcessor(cfg, requestHandler, log.NewNopLogger(), nil, "")
 	schedulerClient := &mockSchedulerForQuerierClient{}
 	schedulerClient.On("QuerierLoop", mock.Anything, mock.Anything).Return(querierLoopClient, nil)
 

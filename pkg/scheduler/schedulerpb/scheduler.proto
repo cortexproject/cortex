@@ -45,6 +45,9 @@ message SchedulerToQuerier {
   // Whether query statistics tracking should be enabled. The response will include
   // statistics only when this option is enabled.
   bool statsEnabled = 5;
+
+  // Time in nanoseconds the request spent in the scheduler queue.
+  int64 queuedTime = 6;
 }
 
 // Scheduler interface exposed to Frontend. Frontend can enqueue and cancel requests.

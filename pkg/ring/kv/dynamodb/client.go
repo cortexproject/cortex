@@ -185,9 +185,12 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			continue
 		}
 
-		putRequests := map[dynamodbKey][]byte{}
+		putRequests := map[dynamodbKey]dynamodbItem{}
 		for childKey, bytes := range buf {
-			putRequests[dynamodbKey{primaryKey: key, sortKey: childKey}] = bytes
+			putRequests[dynamodbKey{primaryKey: key, sortKey: childKey}] = dynamodbItem{
+				data:    bytes,
+				version: resp[childKey].version,
+			}
 		}
 
 		deleteRequests := make([]dynamodbKey, 0, len(toDelete))
@@ -273,8 +276,8 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 			continue
 		}
 
-		for key, bytes := range out {
-			decoded, err := c.codec.Decode(bytes)
+		for key, ddbItem := range out {
+			decoded, err := c.codec.Decode(ddbItem.data)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "error decoding key", "key", key, "err", err)
 				continue
@@ -293,8 +296,12 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	}
 }
 
-func (c *Client) decodeMultikey(data map[string][]byte) (codec.MultiKey, error) {
-	res, err := c.codec.DecodeMultiKey(data)
+func (c *Client) decodeMultikey(data map[string]dynamodbItem) (codec.MultiKey, error) {
+	multiKeyData := make(map[string][]byte, len(data))
+	for key, ddbItem := range data {
+		multiKeyData[key] = ddbItem.data
+	}
+	res, err := c.codec.DecodeMultiKey(multiKeyData)
 	if err != nil {
 		return nil, err
 	}

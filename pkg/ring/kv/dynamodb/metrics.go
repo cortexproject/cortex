@@ -59,8 +59,8 @@ func (d dynamodbInstrumentation) List(ctx context.Context, key dynamodbKey) ([]s
 	return resp, totalCapacity, err
 }
 
-func (d dynamodbInstrumentation) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string][]byte, float64, error) {
-	var resp map[string][]byte
+func (d dynamodbInstrumentation) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string]dynamodbItem, float64, error) {
+	var resp map[string]dynamodbItem
 	var totalCapacity float64
 	err := instrument.CollectedRequest(ctx, "Query", d.ddbMetrics.dynamodbRequestDuration, errorCode, func(ctx context.Context) error {
 		var err error
@@ -87,7 +87,7 @@ func (d dynamodbInstrumentation) Put(ctx context.Context, key dynamodbKey, data 
 	})
 }
 
-func (d dynamodbInstrumentation) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
+func (d dynamodbInstrumentation) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem, delete []dynamodbKey) error {
 	return instrument.CollectedRequest(ctx, "Batch", d.ddbMetrics.dynamodbRequestDuration, errorCode, func(ctx context.Context) error {
 		totalCapacity, err := d.kv.Batch(ctx, put, delete)
 		d.ddbMetrics.dynamodbUsageMetrics.WithLabelValues("Batch").Add(totalCapacity)

@@ -27,10 +27,10 @@ type dynamodbKey struct {
 
 type dynamoDbClient interface {
 	List(ctx context.Context, key dynamodbKey) ([]string, float64, error)
-	Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string][]byte, float64, error)
+	Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string]dynamodbItem, float64, error)
 	Delete(ctx context.Context, key dynamodbKey) error
 	Put(ctx context.Context, key dynamodbKey, data []byte) error
-	Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error
+	Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem, delete []dynamodbKey) error
 }
 
 type dynamodbKV struct {
@@ -40,11 +40,17 @@ type dynamodbKV struct {
 	ttlValue  time.Duration
 }
 
+type dynamodbItem struct {
+	data    []byte
+	version string
+}
+
 var (
 	primaryKey  = "RingKey"
 	sortKey     = "InstanceKey"
 	contentData = "Data"
 	timeToLive  = "ttl"
+	version     = "version"
 )
 
 func newDynamodbKV(cfg Config, logger log.Logger) (dynamodbKV, error) {
@@ -120,8 +126,8 @@ func (kv dynamodbKV) List(ctx context.Context, key dynamodbKey) ([]string, float
 	return keys, totalCapacity, nil
 }
 
-func (kv dynamodbKV) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string][]byte, float64, error) {
-	keys := make(map[string][]byte)
+func (kv dynamodbKV) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string]dynamodbItem, float64, error) {
+	keys := make(map[string]dynamodbItem)
 	var totalCapacity float64
 	co := dynamodb.ComparisonOperatorEq
 	if isPrefix {
@@ -145,7 +151,15 @@ func (kv dynamodbKV) Query(ctx context.Context, key dynamodbKey, isPrefix bool) 
 	err := kv.ddbClient.QueryPagesWithContext(ctx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
 		totalCapacity += getCapacityUnits(output.ConsumedCapacity)
 		for _, item := range output.Items {
-			keys[*item[sortKey].S] = item[contentData].B
+			var itemVersion string
+			if item[version] != nil {
+				itemVersion = *item[version].N
+			}
+			keys[*item[sortKey].S] = dynamodbItem{
+				data:    item[contentData].B,
+				version: itemVersion,
+			}
+
 		}
 		return true
 	})
@@ -174,7 +188,7 @@ func (kv dynamodbKV) Put(ctx context.Context, key dynamodbKey, data []byte) (flo
 	input := &dynamodb.PutItemInput{
 		TableName:              kv.tableName,
 		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-		Item:                   kv.generatePutItemRequest(key, data),
+		Item:                   kv.generatePutItemRequest(key, dynamodbItem{data: data}),
 	}
 	totalCapacity := float64(0)
 	output, err := kv.ddbClient.PutItemWithContext(ctx, input)
@@ -184,26 +198,31 @@ func (kv dynamodbKV) Put(ctx context.Context, key dynamodbKey, data []byte) (flo
 	return totalCapacity, err
 }
 
-func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) (float64, error) {
+func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem, delete []dynamodbKey) (float64, error) {
 	totalCapacity := float64(0)
 	writeRequestSize := len(put) + len(delete)
 	if writeRequestSize == 0 {
 		return totalCapacity, nil
 	}
 
-	writeRequestsSlices := make([][]*dynamodb.WriteRequest, int(math.Ceil(float64(writeRequestSize)/float64(DdbBatchSizeLimit))))
+	writeRequestsSlices := make([][]*dynamodb.TransactWriteItem, int(math.Ceil(float64(writeRequestSize)/float64(DdbBatchSizeLimit))))
 	for i := 0; i < len(writeRequestsSlices); i++ {
-		writeRequestsSlices[i] = make([]*dynamodb.WriteRequest, 0, DdbBatchSizeLimit)
+		writeRequestsSlices[i] = make([]*dynamodb.TransactWriteItem, 0, DdbBatchSizeLimit)
 	}
-
 	currIdx := 0
-	for key, data := range put {
-		item := kv.generatePutItemRequest(key, data)
-		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], &dynamodb.WriteRequest{
-			PutRequest: &dynamodb.PutRequest{
-				Item: item,
-			},
-		})
+	for key, ddbItem := range put {
+		item := kv.generatePutItemRequest(key, ddbItem)
+		ddbPut := &dynamodb.Put{
+			TableName: kv.tableName,
+			Item:      item,
+		}
+		if ddbItem.version != "" {
+			ddbPut.ConditionExpression = aws.String("version = :v")
+			ddbPut.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
+				":v": {N: aws.String(ddbItem.version)},
+			}
+		}
+		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], &dynamodb.TransactWriteItem{Put: ddbPut})
 		if len(writeRequestsSlices[currIdx]) == DdbBatchSizeLimit {
 			currIdx++
 		}
@@ -211,9 +230,10 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 
 	for _, key := range delete {
 		item := generateItemKey(key)
-		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], &dynamodb.WriteRequest{
-			DeleteRequest: &dynamodb.DeleteRequest{
-				Key: item,
+		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], &dynamodb.TransactWriteItem{
+			Delete: &dynamodb.Delete{
+				TableName: kv.tableName,
+				Key:       item,
 			},
 		})
 		if len(writeRequestsSlices[currIdx]) == DdbBatchSizeLimit {
@@ -222,33 +242,29 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 	}
 
 	for _, slice := range writeRequestsSlices {
-		input := &dynamodb.BatchWriteItemInput{
-			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-			RequestItems: map[string][]*dynamodb.WriteRequest{
-				*kv.tableName: slice,
-			},
+		transactItems := &dynamodb.TransactWriteItemsInput{
+			TransactItems: slice,
 		}
-
-		resp, err := kv.ddbClient.BatchWriteItemWithContext(ctx, input)
+		resp, err := kv.ddbClient.TransactWriteItems(transactItems)
 		if err != nil {
 			return totalCapacity, err
 		}
 		for _, consumedCapacity := range resp.ConsumedCapacity {
 			totalCapacity += getCapacityUnits(consumedCapacity)
 		}
-
-		if len(resp.UnprocessedItems) > 0 {
-			return totalCapacity, fmt.Errorf("error processing batch request for %s requests", resp.UnprocessedItems)
-		}
 	}
 
 	return totalCapacity, nil
 }
 
-func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, data []byte) map[string]*dynamodb.AttributeValue {
+func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, ddbItem dynamodbItem) map[string]*dynamodb.AttributeValue {
 	item := generateItemKey(key)
 	item[contentData] = &dynamodb.AttributeValue{
-		B: data,
+		B: ddbItem.data,
+	}
+	itemVersion := getItemVersion(ddbItem, kv)
+	item[version] = &dynamodb.AttributeValue{
+		N: aws.String(itemVersion),
 	}
 	if kv.getTTL() > 0 {
 		item[timeToLive] = &dynamodb.AttributeValue{
@@ -257,6 +273,18 @@ func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, data []byte) map[st
 	}
 
 	return item
+}
+
+func getItemVersion(ddbItem dynamodbItem, kv dynamodbKV) string {
+	if ddbItem.version != "" {
+		itemVersion, err := strconv.ParseInt(ddbItem.version, 10, 64)
+		if err != nil {
+			kv.logger.Log("msg", "error converting version to int", "version", ddbItem.version, "err", err)
+			return ""
+		}
+		return strconv.FormatInt(itemVersion+1, 10)
+	}
+	return "0"
 }
 
 type dynamodbKVWithTimeout struct {
@@ -274,7 +302,7 @@ func (d *dynamodbKVWithTimeout) List(ctx context.Context, key dynamodbKey) ([]st
 	return d.ddbClient.List(ctx, key)
 }
 
-func (d *dynamodbKVWithTimeout) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string][]byte, float64, error) {
+func (d *dynamodbKVWithTimeout) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string]dynamodbItem, float64, error) {
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
 	return d.ddbClient.Query(ctx, key, isPrefix)
@@ -292,7 +320,7 @@ func (d *dynamodbKVWithTimeout) Put(ctx context.Context, key dynamodbKey, data [
 	return d.ddbClient.Put(ctx, key, data)
 }
 
-func (d *dynamodbKVWithTimeout) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
+func (d *dynamodbKVWithTimeout) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem, delete []dynamodbKey) error {
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
 	return d.ddbClient.Batch(ctx, put, delete)

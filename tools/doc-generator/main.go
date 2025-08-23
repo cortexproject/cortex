@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -313,11 +314,63 @@ func generateBlockMarkdown(blocks []*configBlock, blockName, fieldName string) s
 	return ""
 }
 
+func generateJSONSchemaMain(outputFile string) {
+	// Create a Cortex config instance
+	cfg := &cortex.Config{}
+
+	// Parse CLI flags to map them with config fields
+	flags := parseFlags(cfg)
+
+	// Parse the config structure
+	blocks, err := parseConfig(nil, cfg, flags, map[string]struct{}{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing config: %s\n", err.Error())
+		os.Exit(1)
+	}
+
+	// Annotate the flags prefix for each root block
+	annotateFlagPrefix(blocks)
+
+	// Generate JSON schema
+	var output io.Writer
+	if outputFile != "" {
+		file, err := os.Create(outputFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating file: %s\n", err.Error())
+			os.Exit(1)
+		}
+		defer file.Close()
+		output = file
+	} else {
+		output = os.Stdout
+	}
+
+	writer := NewJSONSchemaWriter(output)
+	err = writer.WriteSchema(blocks)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing JSON schema: %s\n", err.Error())
+		os.Exit(1)
+	}
+
+	if outputFile != "" {
+		fmt.Printf("JSON schema written to %s\n", outputFile)
+	}
+}
+
 func main() {
 	// Parse the generator flags.
+	jsonSchema := flag.Bool("json-schema", false, "Generate JSON schema instead of markdown documentation")
+	outputFile := flag.String("output", "", "Output file for schema (default: stdout)")
 	flag.Parse()
+
+	// If JSON schema generation is requested
+	if *jsonSchema {
+		generateJSONSchemaMain(*outputFile)
+		return
+	}
+
 	if flag.NArg() != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: doc-generator template-file")
+		fmt.Fprintf(os.Stderr, "Usage: doc-generator [-json-schema] [-output file] template-file")
 		os.Exit(1)
 	}
 

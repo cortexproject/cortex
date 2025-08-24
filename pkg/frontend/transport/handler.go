@@ -22,6 +22,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/engine"
+	"github.com/cortexproject/cortex/pkg/querier"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -74,8 +76,6 @@ const (
 	limitChunksStoreGateway = `exceeded chunks limit`
 	limitBytesStoreGateway  = `exceeded bytes limit`
 )
-
-var noopResponseSizeLimiter = limiter.NewResponseSizeLimiter(0)
 
 // Config for a Handler.
 type HandlerConfig struct {
@@ -332,7 +332,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// If the response status code is not 2xx, try to get the
 			// error message from response body.
 			if resp.StatusCode/100 != 2 {
-				body, err2 := tripperware.BodyBytes(resp, noopResponseSizeLimiter, f.log)
+				body, err2 := tripperware.BodyBytes(resp, f.log)
 				if err2 == nil {
 					err = httpgrpc.Errorf(resp.StatusCode, "%s", string(body))
 				}
@@ -397,6 +397,14 @@ func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values, sourc
 
 	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
 		logMessage = append(logMessage, "user_agent", ua)
+	}
+
+	if engineType := r.Header.Get(engine.TypeHeader); len(engineType) > 0 {
+		logMessage = append(logMessage, "engine_type", engineType)
+	}
+
+	if blockStoreType := r.Header.Get(querier.BlockStoreTypeHeader); len(blockStoreType) > 0 {
+		logMessage = append(logMessage, "block_store_type", blockStoreType)
 	}
 
 	if acceptEncoding := r.Header.Get("Accept-Encoding"); len(acceptEncoding) > 0 {
@@ -510,6 +518,12 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	}
 	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
 		logMessage = append(logMessage, "user_agent", ua)
+	}
+	if engineType := r.Header.Get(engine.TypeHeader); len(engineType) > 0 {
+		logMessage = append(logMessage, "engine_type", engineType)
+	}
+	if blockStoreType := r.Header.Get(querier.BlockStoreTypeHeader); len(blockStoreType) > 0 {
+		logMessage = append(logMessage, "block_store_type", blockStoreType)
 	}
 	if priority, ok := stats.LoadPriority(); ok {
 		logMessage = append(logMessage, "priority", priority)

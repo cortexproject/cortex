@@ -55,6 +55,7 @@ func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Bal
 		Logger:                  b.logger,
 		SubBalancerCloseTimeout: time.Duration(0), // Disable caching of removed child policies
 	})
+	b.bg.Start()
 	b.logger.Infof("Created")
 	return b
 }

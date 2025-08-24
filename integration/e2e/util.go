@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
+	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
@@ -422,4 +423,118 @@ func CreateBlock(
 	}
 
 	return id, nil
+}
+
+func GenerateHistogramSeriesV2(name string, ts time.Time, i uint32, floatHistogram bool, additionalLabels ...prompb.Label) (symbols []string, series []writev2.TimeSeries) {
+	tsMillis := TimeToMilliseconds(ts)
+
+	st := writev2.NewSymbolTable()
+	lb := labels.NewScratchBuilder(0)
+	lb.Add("__name__", name)
+	for _, lbl := range additionalLabels {
+		lb.Add(lbl.Name, lbl.Value)
+	}
+
+	var (
+		h  *histogram.Histogram
+		fh *histogram.FloatHistogram
+		ph writev2.Histogram
+	)
+	if floatHistogram {
+		fh = tsdbutil.GenerateTestFloatHistogram(int64(i))
+		ph = writev2.FromFloatHistogram(tsMillis, fh)
+	} else {
+		h = tsdbutil.GenerateTestHistogram(int64(i))
+		ph = writev2.FromIntHistogram(tsMillis, h)
+	}
+
+	// Generate the series
+	series = append(series, writev2.TimeSeries{
+		LabelsRefs: st.SymbolizeLabels(lb.Labels(), nil),
+		Histograms: []writev2.Histogram{ph},
+	})
+
+	symbols = st.Symbols()
+
+	return
+}
+
+func GenerateSeriesV2(name string, ts time.Time, additionalLabels ...prompb.Label) (symbols []string, series []writev2.TimeSeries, vector model.Vector) {
+	tsMillis := TimeToMilliseconds(ts)
+	value := rand.Float64()
+
+	st := writev2.NewSymbolTable()
+	lb := labels.NewScratchBuilder(0)
+	lb.Add("__name__", name)
+
+	for _, label := range additionalLabels {
+		lb.Add(label.Name, label.Value)
+	}
+	series = append(series, writev2.TimeSeries{
+		// Generate the series
+		LabelsRefs: st.SymbolizeLabels(lb.Labels(), nil),
+		Samples: []writev2.Sample{
+			{Value: value, Timestamp: tsMillis},
+		},
+		Metadata: writev2.Metadata{
+			Type: writev2.Metadata_METRIC_TYPE_GAUGE,
+		},
+	})
+	symbols = st.Symbols()
+
+	// Generate the expected vector when querying it
+	metric := model.Metric{}
+	metric[labels.MetricName] = model.LabelValue(name)
+	for _, lbl := range additionalLabels {
+		metric[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
+
+	vector = append(vector, &model.Sample{
+		Metric:    metric,
+		Value:     model.SampleValue(value),
+		Timestamp: model.Time(tsMillis),
+	})
+
+	return
+}
+
+func GenerateV2SeriesWithSamples(
+	name string,
+	startTime time.Time,
+	scrapeInterval time.Duration,
+	startValue int,
+	numSamples int,
+	additionalLabels ...prompb.Label,
+) (symbols []string, series writev2.TimeSeries) {
+	tsMillis := TimeToMilliseconds(startTime)
+	durMillis := scrapeInterval.Milliseconds()
+
+	st := writev2.NewSymbolTable()
+	lb := labels.NewScratchBuilder(0)
+	lb.Add("__name__", name)
+
+	for _, label := range additionalLabels {
+		lb.Add(label.Name, label.Value)
+	}
+
+	startTMillis := tsMillis
+	samples := make([]writev2.Sample, numSamples)
+	for i := 0; i < numSamples; i++ {
+		scrapeJitter := rand.Int63n(10) + 1 // add a jitter to simulate real-world scenarios, refer to: https://github.com/prometheus/prometheus/issues/13213
+		samples[i] = writev2.Sample{
+			Timestamp: startTMillis + scrapeJitter,
+			Value:     float64(i + startValue),
+		}
+		startTMillis += durMillis
+	}
+
+	series = writev2.TimeSeries{
+		LabelsRefs: st.SymbolizeLabels(lb.Labels(), nil),
+		Samples:    samples,
+		Metadata: writev2.Metadata{
+			Type: writev2.Metadata_METRIC_TYPE_GAUGE,
+		},
+	}
+
+	return st.Symbols(), series
 }

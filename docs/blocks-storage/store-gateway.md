@@ -303,6 +303,12 @@ store_gateway:
     # CLI flag: -store-gateway.sharding-ring.keep-instance-in-the-ring-on-shutdown
     [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
 
+    # Set to true to enable ring detailed metrics. These metrics provide
+    # detailed information, such as token count and ownership per tenant.
+    # Disabling them can significantly decrease the number of metrics emitted.
+    # CLI flag: -store-gateway.sharding-ring.detailed-metrics-enabled
+    [detailed_metrics_enabled: <boolean> | default = true]
+
     # Minimum time to wait for ring stability at startup. 0 to disable.
     # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
     [wait_stability_min_duration: <duration> | default = 1m]
@@ -1503,6 +1509,255 @@ blocks_storage:
       # caching
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.partitioned-groups-list-ttl
       [partitioned_groups_list_ttl: <duration> | default = 0s]
+
+    parquet_labels_cache:
+      # The parquet labels cache backend type. Single or Multiple cache backend
+      # can be provided. Supported values in single cache: memcached, redis,
+      # inmemory, and '' (disable). Supported values in multi level cache: a
+      # comma-separated list of (inmemory, memcached, redis)
+      # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.backend
+      [backend: <string> | default = ""]
+
+      inmemory:
+        # Maximum size in bytes of in-memory parquet-labels cache used (shared
+        # between all tenants).
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.inmemory.max-size-bytes
+        [max_size_bytes: <int> | default = 1073741824]
+
+      memcached:
+        # Comma separated list of memcached addresses. Supported prefixes are:
+        # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV
+        # query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup
+        # made after that).
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.addresses
+        [addresses: <string> | default = ""]
+
+        # The socket read/write timeout.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.timeout
+        [timeout: <duration> | default = 100ms]
+
+        # The maximum number of idle connections that will be maintained per
+        # address.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.max-idle-connections
+        [max_idle_connections: <int> | default = 16]
+
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.max-async-concurrency
+        [max_async_concurrency: <int> | default = 3]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
+        # The maximum number of concurrent connections running get operations.
+        # If set to 0, concurrency is unlimited.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.max-get-multi-concurrency
+        [max_get_multi_concurrency: <int> | default = 100]
+
+        # The maximum number of keys a single underlying get operation should
+        # run. If more keys are specified, internally keys are split into
+        # multiple batches and fetched concurrently, honoring the max
+        # concurrency. If set to 0, the max batch size is unlimited.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.max-get-multi-batch-size
+        [max_get_multi_batch_size: <int> | default = 0]
+
+        # The maximum size of an item stored in memcached. Bigger items are not
+        # stored. If set to 0, no maximum size is enforced.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.max-item-size
+        [max_item_size: <int> | default = 1048576]
+
+        # Use memcached auto-discovery mechanism provided by some cloud provider
+        # like GCP and AWS
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.auto-discovery
+        [auto_discovery: <boolean> | default = false]
+
+        set_async_circuit_breaker_config:
+          # If true, enable circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.enabled
+          [enabled: <boolean> | default = false]
+
+          # Maximum number of requests allowed to pass through when the circuit
+          # breaker is half-open. If set to 0, by default it allows 1 request.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.half-open-max-requests
+          [half_open_max_requests: <int> | default = 10]
+
+          # Period of the open state after which the state of the circuit
+          # breaker becomes half-open. If set to 0, by default open duration is
+          # 60 seconds.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.open-duration
+          [open_duration: <duration> | default = 5s]
+
+          # Minimal requests to trigger the circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.min-requests
+          [min_requests: <int> | default = 50]
+
+          # Consecutive failures to determine if the circuit breaker should
+          # open.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.consecutive-failures
+          [consecutive_failures: <int> | default = 5]
+
+          # Failure percentage to determine if the circuit breaker should open.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.failure-percent
+          [failure_percent: <float> | default = 0.05]
+
+      redis:
+        # Comma separated list of redis addresses. Supported prefixes are: dns+
+        # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+        # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+        # that).
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.addresses
+        [addresses: <string> | default = ""]
+
+        # Redis username.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.username
+        [username: <string> | default = ""]
+
+        # Redis password.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.password
+        [password: <string> | default = ""]
+
+        # Database to be selected after connecting to the server.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.db
+        [db: <int> | default = 0]
+
+        # Specifies the master's name. Must be not empty for Redis Sentinel.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.master-name
+        [master_name: <string> | default = ""]
+
+        # The maximum number of concurrent GetMulti() operations. If set to 0,
+        # concurrency is unlimited.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.max-get-multi-concurrency
+        [max_get_multi_concurrency: <int> | default = 100]
+
+        # The maximum size per batch for mget.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.get-multi-batch-size
+        [get_multi_batch_size: <int> | default = 100]
+
+        # The maximum number of concurrent SetMulti() operations. If set to 0,
+        # concurrency is unlimited.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.max-set-multi-concurrency
+        [max_set_multi_concurrency: <int> | default = 100]
+
+        # The maximum size per batch for pipeline set.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.set-multi-batch-size
+        [set_multi_batch_size: <int> | default = 100]
+
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.max-async-concurrency
+        [max_async_concurrency: <int> | default = 3]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
+        # Client dial timeout.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.dial-timeout
+        [dial_timeout: <duration> | default = 5s]
+
+        # Client read timeout.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.read-timeout
+        [read_timeout: <duration> | default = 3s]
+
+        # Client write timeout.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.write-timeout
+        [write_timeout: <duration> | default = 3s]
+
+        # Whether to enable tls for redis connection.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.tls-enabled
+        [tls_enabled: <boolean> | default = false]
+
+        # Path to the client certificate file, which will be used for
+        # authenticating with the server. Also requires the key path to be
+        # configured.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.tls-cert-path
+        [tls_cert_path: <string> | default = ""]
+
+        # Path to the key file for the client certificate. Also requires the
+        # client certificate to be configured.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.tls-key-path
+        [tls_key_path: <string> | default = ""]
+
+        # Path to the CA certificates file to validate server certificate
+        # against. If not set, the host's root CA certificates are used.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.tls-ca-path
+        [tls_ca_path: <string> | default = ""]
+
+        # Override the expected name on the server certificate.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.tls-server-name
+        [tls_server_name: <string> | default = ""]
+
+        # Skip validating server certificate.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.tls-insecure-skip-verify
+        [tls_insecure_skip_verify: <boolean> | default = false]
+
+        # If not zero then client-side caching is enabled. Client-side caching
+        # is when data is stored in memory instead of fetching data each time.
+        # See https://redis.io/docs/manual/client-side-caching/ for more info.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.cache-size
+        [cache_size: <int> | default = 0]
+
+        set_async_circuit_breaker_config:
+          # If true, enable circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.enabled
+          [enabled: <boolean> | default = false]
+
+          # Maximum number of requests allowed to pass through when the circuit
+          # breaker is half-open. If set to 0, by default it allows 1 request.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.half-open-max-requests
+          [half_open_max_requests: <int> | default = 10]
+
+          # Period of the open state after which the state of the circuit
+          # breaker becomes half-open. If set to 0, by default open duration is
+          # 60 seconds.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.open-duration
+          [open_duration: <duration> | default = 5s]
+
+          # Minimal requests to trigger the circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.min-requests
+          [min_requests: <int> | default = 50]
+
+          # Consecutive failures to determine if the circuit breaker should
+          # open.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.consecutive-failures
+          [consecutive_failures: <int> | default = 5]
+
+          # Failure percentage to determine if the circuit breaker should open.
+          # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.failure-percent
+          [failure_percent: <float> | default = 0.05]
+
+      multilevel:
+        # The maximum number of concurrent asynchronous operations can occur
+        # when backfilling cache items.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.multilevel.max-async-concurrency
+        [max_async_concurrency: <int> | default = 3]
+
+        # The maximum number of enqueued asynchronous operations allowed when
+        # backfilling cache items.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.multilevel.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
+        # The maximum number of items to backfill per asynchronous operation.
+        # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.multilevel.max-backfill-items
+        [max_backfill_items: <int> | default = 10000]
+
+      # Size of each subrange that bucket object is split into for better
+      # caching.
+      # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.subrange-size
+      [subrange_size: <int> | default = 16000]
+
+      # Maximum number of sub-GetRange requests that a single GetRange request
+      # can be split into when fetching parquet labels file. Zero or negative
+      # value = unlimited number of sub-requests.
+      # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.max-get-range-requests
+      [max_get_range_requests: <int> | default = 3]
+
+      # TTL for caching object attributes for parquet labels file.
+      # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.attributes-ttl
+      [attributes_ttl: <duration> | default = 168h]
+
+      # TTL for caching individual subranges.
+      # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.subrange-ttl
+      [subrange_ttl: <duration> | default = 24h]
 
     # Maximum number of entries in the regex matchers cache. 0 to disable.
     # CLI flag: -blocks-storage.bucket-store.matchers-cache-max-items

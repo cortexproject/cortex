@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
@@ -27,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	promql_util "github.com/cortexproject/cortex/pkg/util/promql"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -182,6 +185,9 @@ func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, 
 				}
 			}
 		}
+
+		// Add request ID to the context so that it can be used in logs and metrics for split queries.
+		ctx = requestmeta.ContextWithRequestId(ctx, uuid.NewString())
 
 		if frontendClient != nil {
 			v, err := frontendClient.InstantQuery(ctx, qs, t)

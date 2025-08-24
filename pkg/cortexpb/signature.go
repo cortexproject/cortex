@@ -9,7 +9,7 @@ import (
 // Ref: https://github.com/prometheus/common/blob/main/model/fnv.go
 
 func LabelsToFingerprint(lset labels.Labels) model.Fingerprint {
-	if len(lset) == 0 {
+	if lset.Len() == 0 {
 		return model.Fingerprint(hashNew())
 	}
 

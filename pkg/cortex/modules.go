@@ -44,6 +44,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/instantquery"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
+	cortexquerysharding "github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -364,6 +365,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	// to a Prometheus API struct instantiated with the Cortex Queryable.
 	internalQuerierRouter := api.NewQuerierHandler(
 		t.Cfg.API,
+		t.Cfg.Querier,
 		t.QuerierQueryable,
 		t.ExemplarQueryable,
 		t.QuerierEngine,
@@ -402,9 +404,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		// request context.
 		internalQuerierRouter = t.API.AuthMiddleware.Wrap(internalQuerierRouter)
 
-		if len(t.Cfg.API.HTTPRequestHeadersToLog) > 0 {
-			internalQuerierRouter = t.API.HTTPHeaderMiddleware.Wrap(internalQuerierRouter)
-		}
+		internalQuerierRouter = t.API.HTTPHeaderMiddleware.Wrap(internalQuerierRouter)
 	}
 
 	// If neither frontend address or scheduler address is configured, no worker is needed.
@@ -511,7 +511,13 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
-	queryAnalyzer := querysharding.NewQueryAnalyzer()
+	var queryAnalyzer querysharding.Analyzer
+	queryAnalyzer = querysharding.NewQueryAnalyzer()
+	if t.Cfg.Querier.EnableParquetQueryable {
+		// Disable vertical sharding for binary expression with ignore for parquet queryable.
+		queryAnalyzer = cortexquerysharding.NewDisableBinaryExpressionAnalyzer(queryAnalyzer)
+	}
+
 	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
 	prometheusCodec := queryrange.NewPrometheusCodec(false, t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
@@ -534,7 +540,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		shardedPrometheusCodec,
 		t.Cfg.Querier.LookbackDelta,
 		t.Cfg.Querier.DefaultEvaluationInterval,
-		t.Cfg.Frontend.DistributedExecEnabled,
+		t.Cfg.Querier.DistributedExecEnabled,
 	)
 	if err != nil {
 		return nil, err
@@ -547,7 +553,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryAnalyzer,
 		t.Cfg.Querier.LookbackDelta,
 		t.Cfg.Querier.DefaultEvaluationInterval,
-		t.Cfg.Frontend.DistributedExecEnabled)
+		t.Cfg.Querier.DistributedExecEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -785,6 +791,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Alertmanager.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.ParquetConverter.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	return t.MemberlistKV, nil
 }

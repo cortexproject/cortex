@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 func TestHTTPHeaderPropagationClientInterceptor(t *testing.T) {
@@ -18,14 +18,14 @@ func TestHTTPHeaderPropagationClientInterceptor(t *testing.T) {
 	contentsMap["TestHeader1"] = "RequestID"
 	contentsMap["TestHeader2"] = "ContentsOfTestHeader2"
 	contentsMap["Test3"] = "SomeInformation"
-	ctx = util_log.ContextWithHeaderMap(ctx, contentsMap)
+	ctx = requestmeta.ContextWithRequestMetadataMap(ctx, contentsMap)
 
-	ctx = injectForwardedHeadersIntoMetadata(ctx)
+	ctx = injectForwardedRequestMetadata(ctx)
 
 	md, ok := metadata.FromOutgoingContext(ctx)
 	require.True(t, ok)
 
-	headers := md[util_log.HeaderPropagationStringForRequestLogging]
+	headers := md[requestmeta.PropagationStringForRequestMetadata]
 	assert.Equal(t, 6, len(headers))
 	assert.Contains(t, headers, "TestHeader1")
 	assert.Contains(t, headers, "TestHeader2")
@@ -37,20 +37,20 @@ func TestHTTPHeaderPropagationClientInterceptor(t *testing.T) {
 
 func TestExistingValuesInMetadataForHTTPPropagationClientInterceptor(t *testing.T) {
 	ctx := context.Background()
-	ctx = metadata.AppendToOutgoingContext(ctx, util_log.HeaderPropagationStringForRequestLogging, "testabc123")
+	ctx = metadata.AppendToOutgoingContext(ctx, requestmeta.PropagationStringForRequestMetadata, "testabc123")
 
 	contentsMap := make(map[string]string)
 	contentsMap["TestHeader1"] = "RequestID"
 	contentsMap["TestHeader2"] = "ContentsOfTestHeader2"
 	contentsMap["Test3"] = "SomeInformation"
-	ctx = util_log.ContextWithHeaderMap(ctx, contentsMap)
+	ctx = requestmeta.ContextWithRequestMetadataMap(ctx, contentsMap)
 
-	ctx = injectForwardedHeadersIntoMetadata(ctx)
+	ctx = injectForwardedRequestMetadata(ctx)
 
 	md, ok := metadata.FromOutgoingContext(ctx)
 	require.True(t, ok)
 
-	contents := md[util_log.HeaderPropagationStringForRequestLogging]
+	contents := md[requestmeta.PropagationStringForRequestMetadata]
 	assert.Contains(t, contents, "testabc123")
 	assert.Equal(t, 1, len(contents))
 }
@@ -63,14 +63,14 @@ func TestGRPCHeaderInjectionForHTTPPropagationServerInterceptor(t *testing.T) {
 	testMap["TestHeader2"] = "Results2"
 
 	ctx = metadata.NewOutgoingContext(ctx, nil)
-	ctx = util_log.ContextWithHeaderMap(ctx, testMap)
-	ctx = injectForwardedHeadersIntoMetadata(ctx)
+	ctx = requestmeta.ContextWithRequestMetadataMap(ctx, testMap)
+	ctx = injectForwardedRequestMetadata(ctx)
 
 	md, ok := metadata.FromOutgoingContext(ctx)
 	require.True(t, ok)
-	ctx = util_log.ContextWithHeaderMapFromMetadata(ctx, md)
+	ctx = requestmeta.ContextWithRequestMetadataMapFromMetadata(ctx, md)
 
-	headersMap := util_log.HeaderMapFromContext(ctx)
+	headersMap := requestmeta.MapFromContext(ctx)
 
 	require.NotNil(t, headersMap)
 	assert.Equal(t, 2, len(headersMap))
@@ -82,11 +82,11 @@ func TestGRPCHeaderInjectionForHTTPPropagationServerInterceptor(t *testing.T) {
 
 func TestGRPCHeaderDifferentLengthsForHTTPPropagationServerInterceptor(t *testing.T) {
 	ctx := context.Background()
-	ctx = metadata.AppendToOutgoingContext(ctx, util_log.HeaderPropagationStringForRequestLogging, "Test123")
-	ctx = metadata.AppendToOutgoingContext(ctx, util_log.HeaderPropagationStringForRequestLogging, "Results")
-	ctx = metadata.AppendToOutgoingContext(ctx, util_log.HeaderPropagationStringForRequestLogging, "Results2")
+	ctx = metadata.AppendToOutgoingContext(ctx, requestmeta.PropagationStringForRequestMetadata, "Test123")
+	ctx = metadata.AppendToOutgoingContext(ctx, requestmeta.PropagationStringForRequestMetadata, "Results")
+	ctx = metadata.AppendToOutgoingContext(ctx, requestmeta.PropagationStringForRequestMetadata, "Results2")
 
-	ctx = extractForwardedHeadersFromMetadata(ctx)
+	ctx = extractForwardedRequestMetadataFromMetadata(ctx)
 
-	assert.Nil(t, util_log.HeaderMapFromContext(ctx))
+	assert.Nil(t, requestmeta.MapFromContext(ctx))
 }

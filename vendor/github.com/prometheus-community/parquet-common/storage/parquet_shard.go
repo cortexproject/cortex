@@ -26,6 +26,19 @@ import (
 	"github.com/prometheus-community/parquet-common/schema"
 )
 
+type ParquetFileConfigView interface {
+	SkipMagicBytes() bool
+	SkipPageIndex() bool
+	SkipBloomFilters() bool
+	OptimisticRead() bool
+	ReadBufferSize() int
+	ReadMode() parquet.ReadMode
+
+	// Extended options beyond parquet.FileConfig
+
+	PagePartitioningMaxGapSize() int
+}
+
 var DefaultFileOptions = ExtendedFileConfig{
 	FileConfig: &parquet.FileConfig{
 		SkipPageIndex:    parquet.DefaultSkipPageIndex,
@@ -35,18 +48,56 @@ var DefaultFileOptions = ExtendedFileConfig{
 		ReadBufferSize:   4096,
 		OptimisticRead:   true,
 	},
-	PagePartitioningMaxGapSize: 10 * 1024,
+	pagePartitioningMaxGapSize: 10 * 1024,
 }
 
 type ExtendedFileConfig struct {
 	*parquet.FileConfig
-	PagePartitioningMaxGapSize int
+	pagePartitioningMaxGapSize int
+}
+
+func (c ExtendedFileConfig) SkipMagicBytes() bool {
+	return c.FileConfig.SkipMagicBytes
+}
+
+func (c ExtendedFileConfig) SkipPageIndex() bool {
+	return c.FileConfig.SkipPageIndex
+}
+
+func (c ExtendedFileConfig) SkipBloomFilters() bool {
+	return c.FileConfig.SkipBloomFilters
+}
+
+func (c ExtendedFileConfig) OptimisticRead() bool {
+	return c.FileConfig.OptimisticRead
+}
+
+func (c ExtendedFileConfig) ReadBufferSize() int {
+	return c.FileConfig.ReadBufferSize
+}
+
+func (c ExtendedFileConfig) ReadMode() parquet.ReadMode {
+	return c.FileConfig.ReadMode
+}
+
+func (c ExtendedFileConfig) PagePartitioningMaxGapSize() int {
+	return c.pagePartitioningMaxGapSize
+}
+
+type ParquetFileView interface {
+	parquet.FileView
+	GetPages(ctx context.Context, cc parquet.ColumnChunk, minOffset, maxOffset int64) (parquet.Pages, error)
+	DictionaryPageBounds(rgIdx, colIdx int) (uint64, uint64)
+
+	ReadAtWithContextCloser
+
+	ParquetFileConfigView
 }
 
 type ParquetFile struct {
 	*parquet.File
 	ReadAtWithContextCloser
-	Cfg ExtendedFileConfig
+	ParquetFileConfigView
 }
 
 type FileOption func(*ExtendedFileConfig)
@@ -62,15 +113,15 @@ func WithFileOptions(options ...parquet.FileOption) FileOption {
 // WithPageMaxGapSize set the max gap size between pages that should be downloaded together in a single read call
 func WithPageMaxGapSize(pagePartitioningMaxGapSize int) FileOption {
 	return func(opts *ExtendedFileConfig) {
-		opts.PagePartitioningMaxGapSize = pagePartitioningMaxGapSize
+		opts.pagePartitioningMaxGapSize = pagePartitioningMaxGapSize
 	}
 }
 
-func (f *ParquetFile) GetPages(ctx context.Context, cc parquet.ColumnChunk, minOffset, maxOffset int64) (*parquet.FilePages, error) {
+func (f *ParquetFile) GetPages(ctx context.Context, cc parquet.ColumnChunk, minOffset, maxOffset int64) (parquet.Pages, error) {
 	colChunk := cc.(*parquet.FileColumnChunk)
 	reader := f.WithContext(ctx)
 
-	if f.Cfg.OptimisticRead {
+	if f.OptimisticRead() {
 		reader = NewOptimisticReaderAt(reader, minOffset, maxOffset)
 	}
 
@@ -99,7 +150,7 @@ func Open(ctx context.Context, r ReadAtWithContextCloser, size int64, opts ...Fi
 	return &ParquetFile{
 		File:                    file,
 		ReadAtWithContextCloser: r,
-		Cfg:                     cfg,
+		ParquetFileConfigView:   cfg,
 	}, nil
 }
 
@@ -134,8 +185,8 @@ func OpenFromFile(ctx context.Context, path string, opts ...FileOption) (*Parque
 }
 
 type ParquetShard interface {
-	LabelsFile() *ParquetFile
-	ChunksFile() *ParquetFile
+	LabelsFile() ParquetFileView
+	ChunksFile() ParquetFileView
 	TSDBSchema() (*schema.TSDBSchema, error)
 }
 
@@ -214,11 +265,11 @@ func NewParquetShardOpener(
 	}, nil
 }
 
-func (s *ParquetShardOpener) LabelsFile() *ParquetFile {
+func (s *ParquetShardOpener) LabelsFile() ParquetFileView {
 	return s.labelsFile
 }
 
-func (s *ParquetShardOpener) ChunksFile() *ParquetFile {
+func (s *ParquetShardOpener) ChunksFile() ParquetFileView {
 	return s.chunksFile
 }
 

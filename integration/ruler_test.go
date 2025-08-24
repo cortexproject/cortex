@@ -504,14 +504,14 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 					assert.NoError(t, json.Unmarshal(responseJson, ar))
 					if !ar.LastEvaluation.IsZero() {
 						// Labels will be merged only if groups are loaded to Prometheus rule manager
-						assert.Equal(t, 5, len(ar.Labels))
+						assert.Equal(t, 5, ar.Labels.Len())
 					}
-					for _, label := range ar.Labels {
-						if label.Name == "duplicate_label" {
+					ar.Labels.Range(func(l labels.Label) {
+						if l.Name == "duplicate_label" {
 							// rule label should override group label
-							assert.Equal(t, ruleLabels["duplicate_label"], label.Value)
+							assert.Equal(t, ruleLabels["duplicate_label"], l.Value)
 						}
-					}
+					})
 				}
 			},
 		},

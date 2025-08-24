@@ -36,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/frontend"
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
@@ -116,7 +117,7 @@ type Config struct {
 	QueryRange       queryrange.Config               `yaml:"query_range"`
 	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
 	Compactor        compactor.Config                `yaml:"compactor"`
-	ParquetConverter parquetconverter.Config         `yaml:"parquet_converter" doc:"hidden"`
+	ParquetConverter parquetconverter.Config         `yaml:"parquet_converter"`
 	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
@@ -330,7 +331,7 @@ type Cortex struct {
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
 	MetadataQuerier          querier.MetadataQuerier
-	QuerierEngine            promql.QueryEngine
+	QuerierEngine            engine.QueryEngine
 	QueryFrontendTripperware tripperware.Tripperware
 	ResourceMonitor          *resource.Monitor
 
@@ -406,10 +407,8 @@ func (t *Cortex) setupThanosTracing() {
 // setupGRPCHeaderForwarding appends a gRPC middleware used to enable the propagation of
 // HTTP Headers through child gRPC calls
 func (t *Cortex) setupGRPCHeaderForwarding() {
-	if len(t.Cfg.API.HTTPRequestHeadersToLog) > 0 {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcutil.HTTPHeaderPropagationServerInterceptor)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, grpcutil.HTTPHeaderPropagationStreamServerInterceptor)
-	}
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcutil.HTTPHeaderPropagationServerInterceptor)
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, grpcutil.HTTPHeaderPropagationStreamServerInterceptor)
 }
 
 func (t *Cortex) setupRequestSigning() {

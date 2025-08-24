@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,6 +27,325 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
+
+func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
+	logger := log.NewNopLogger()
+	ctx := context.Background()
+	ts := time.Now()
+
+	tests := []struct {
+		description             string
+		enableTypeAndUnitLabels bool
+		allowDeltaTemporality   bool
+		otlpSeries              pmetric.Metric
+		expectedLabels          labels.Labels
+		expectedMetadata        prompb.MetricMetadata
+	}{
+		{
+			description:             "[enableTypeAndUnitLabels: true], the '__type__' label should be attached when the type is the gauge",
+			enableTypeAndUnitLabels: true,
+			otlpSeries:              createOtelSum("test", "seconds", pmetric.AggregationTemporalityCumulative, ts),
+			expectedLabels: labels.FromMap(map[string]string{
+				"__name__":   "test_seconds",
+				"__type__":   "gauge",
+				"__unit__":   "seconds",
+				"test_label": "test_value",
+			}),
+			expectedMetadata: createPromMetadata("test_seconds", "seconds", prompb.MetricMetadata_GAUGE),
+		},
+		{
+			description:             "[enableTypeAndUnitLabels: true], the '__type__' label should not be attached when the type is unknown",
+			enableTypeAndUnitLabels: true,
+			allowDeltaTemporality:   true,
+			otlpSeries:              createOtelSum("test", "seconds", pmetric.AggregationTemporalityDelta, ts),
+			expectedLabels: labels.FromMap(map[string]string{
+				"__name__":   "test_seconds",
+				"__unit__":   "seconds",
+				"test_label": "test_value",
+			}),
+			expectedMetadata: createPromMetadata("test_seconds", "seconds", prompb.MetricMetadata_UNKNOWN),
+		},
+		{
+			description:             "[enableTypeAndUnitLabels: false]",
+			enableTypeAndUnitLabels: false,
+			otlpSeries:              createOtelSum("test", "seconds", pmetric.AggregationTemporalityCumulative, ts),
+			expectedLabels: labels.FromMap(map[string]string{
+				"__name__":   "test_seconds",
+				"test_label": "test_value",
+			}),
+			expectedMetadata: createPromMetadata("test_seconds", "seconds", prompb.MetricMetadata_GAUGE),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.description, func(t *testing.T) {
+			cfg := distributor.OTLPConfig{
+				EnableTypeAndUnitLabels: test.enableTypeAndUnitLabels,
+				AllowDeltaTemporality:   test.allowDeltaTemporality,
+			}
+			metrics := pmetric.NewMetrics()
+			rm := metrics.ResourceMetrics().AppendEmpty()
+			sm := rm.ScopeMetrics().AppendEmpty()
+
+			test.otlpSeries.CopyTo(sm.Metrics().AppendEmpty())
+
+			limits := validation.Limits{}
+			overrides := validation.NewOverrides(limits, nil)
+			promSeries, metadata, err := convertToPromTS(ctx, metrics, cfg, overrides, "user-1", logger)
+			require.NoError(t, err)
+			require.Equal(t, 1, len(promSeries))
+			require.Equal(t, prompb.FromLabels(test.expectedLabels, nil), promSeries[0].Labels)
+
+			require.Equal(t, 1, len(metadata))
+			require.Equal(t, test.expectedMetadata, metadata[0])
+		})
+	}
+}
+
+func TestOTLP_AllowDeltaTemporality(t *testing.T) {
+	logger := log.NewNopLogger()
+	ctx := context.Background()
+	ts := time.Now()
+
+	tests := []struct {
+		description           string
+		allowDeltaTemporality bool
+		otlpSeries            []pmetric.Metric
+		expectedSeries        []prompb.TimeSeries
+		expectedMetadata      []prompb.MetricMetadata
+		expectedErr           string
+	}{
+		{
+			description:           "[allowDeltaTemporality: false] cumulative type should be converted",
+			allowDeltaTemporality: false,
+			otlpSeries: []pmetric.Metric{
+				createOtelSum("test_1", "", pmetric.AggregationTemporalityCumulative, ts),
+				createOtelSum("test_2", "", pmetric.AggregationTemporalityCumulative, ts),
+			},
+			expectedSeries: []prompb.TimeSeries{
+				createPromFloatSeries("test_1", ts),
+				createPromFloatSeries("test_2", ts),
+			},
+			expectedMetadata: []prompb.MetricMetadata{
+				createPromMetadata("test_1", "", prompb.MetricMetadata_GAUGE),
+				createPromMetadata("test_2", "", prompb.MetricMetadata_GAUGE),
+			},
+		},
+		{
+			description:           "[allowDeltaTemporality: false] delta type should not be converted",
+			allowDeltaTemporality: false,
+			otlpSeries: []pmetric.Metric{
+				createOtelSum("test_1", "", pmetric.AggregationTemporalityDelta, ts),
+				createOtelSum("test_2", "", pmetric.AggregationTemporalityDelta, ts),
+			},
+			expectedSeries:   []prompb.TimeSeries{},
+			expectedMetadata: []prompb.MetricMetadata{},
+			expectedErr:      `invalid temporality and type combination for metric "test_1"; invalid temporality and type combination for metric "test_2"`,
+		},
+		{
+			description:           "[allowDeltaTemporality: true] delta type should be converted",
+			allowDeltaTemporality: true,
+			otlpSeries: []pmetric.Metric{
+				createOtelSum("test_1", "", pmetric.AggregationTemporalityDelta, ts),
+				createOtelSum("test_2", "", pmetric.AggregationTemporalityDelta, ts),
+			},
+			expectedSeries: []prompb.TimeSeries{
+				createPromFloatSeries("test_1", ts),
+				createPromFloatSeries("test_2", ts),
+			},
+			expectedMetadata: []prompb.MetricMetadata{
+				createPromMetadata("test_1", "", prompb.MetricMetadata_UNKNOWN),
+				createPromMetadata("test_2", "", prompb.MetricMetadata_UNKNOWN),
+			},
+		},
+		{
+			description:           "[allowDeltaTemporality: false] mixed delta and cumulative, should be converted only for cumulative type",
+			allowDeltaTemporality: false,
+			otlpSeries: []pmetric.Metric{
+				createOtelSum("test_1", "", pmetric.AggregationTemporalityDelta, ts),
+				createOtelSum("test_2", "", pmetric.AggregationTemporalityCumulative, ts),
+			},
+			expectedSeries: []prompb.TimeSeries{
+				createPromFloatSeries("test_2", ts),
+			},
+			expectedMetadata: []prompb.MetricMetadata{
+				createPromMetadata("test_2", "", prompb.MetricMetadata_GAUGE),
+			},
+			expectedErr: `invalid temporality and type combination for metric "test_1"`,
+		},
+		{
+			description:           "[allowDeltaTemporality: false, exponential histogram] cumulative histogram should be converted",
+			allowDeltaTemporality: false,
+			otlpSeries: []pmetric.Metric{
+				createOtelExponentialHistogram("test_1", pmetric.AggregationTemporalityCumulative, ts),
+				createOtelExponentialHistogram("test_2", pmetric.AggregationTemporalityCumulative, ts),
+			},
+			expectedSeries: []prompb.TimeSeries{
+				createPromNativeHistogramSeries("test_1", prompb.Histogram_UNKNOWN, ts),
+				createPromNativeHistogramSeries("test_2", prompb.Histogram_UNKNOWN, ts),
+			},
+			expectedMetadata: []prompb.MetricMetadata{
+				createPromMetadata("test_1", "", prompb.MetricMetadata_HISTOGRAM),
+				createPromMetadata("test_2", "", prompb.MetricMetadata_HISTOGRAM),
+			},
+		},
+		{
+			description:           "[allowDeltaTemporality: false, exponential histogram] delta histogram should not be converted",
+			allowDeltaTemporality: false,
+			otlpSeries: []pmetric.Metric{
+				createOtelExponentialHistogram("test_1", pmetric.AggregationTemporalityDelta, ts),
+				createOtelExponentialHistogram("test_2", pmetric.AggregationTemporalityDelta, ts),
+			},
+			expectedSeries:   []prompb.TimeSeries{},
+			expectedMetadata: []prompb.MetricMetadata{},
+			expectedErr:      `invalid temporality and type combination for metric "test_1"; invalid temporality and type combination for metric "test_2"`,
+		},
+		{
+			description:           "[allowDeltaTemporality: true, exponential histogram] delta histogram should be converted",
+			allowDeltaTemporality: true,
+			otlpSeries: []pmetric.Metric{
+				createOtelExponentialHistogram("test_1", pmetric.AggregationTemporalityDelta, ts),
+				createOtelExponentialHistogram("test_2", pmetric.AggregationTemporalityDelta, ts),
+			},
+			expectedSeries: []prompb.TimeSeries{
+				createPromNativeHistogramSeries("test_1", prompb.Histogram_GAUGE, ts),
+				createPromNativeHistogramSeries("test_2", prompb.Histogram_GAUGE, ts),
+			},
+			expectedMetadata: []prompb.MetricMetadata{
+				createPromMetadata("test_1", "", prompb.MetricMetadata_UNKNOWN),
+				createPromMetadata("test_2", "", prompb.MetricMetadata_UNKNOWN),
+			},
+		},
+		{
+			description:           "[allowDeltaTemporality: false, exponential histogram] mixed delta and cumulative histogram, should be converted only for cumulative type",
+			allowDeltaTemporality: false,
+			otlpSeries: []pmetric.Metric{
+				createOtelExponentialHistogram("test_1", pmetric.AggregationTemporalityDelta, ts),
+				createOtelExponentialHistogram("test_2", pmetric.AggregationTemporalityCumulative, ts),
+			},
+			expectedSeries: []prompb.TimeSeries{
+				createPromNativeHistogramSeries("test_2", prompb.Histogram_UNKNOWN, ts),
+			},
+			expectedMetadata: []prompb.MetricMetadata{
+				createPromMetadata("test_2", "", prompb.MetricMetadata_HISTOGRAM),
+			},
+			expectedErr: `invalid temporality and type combination for metric "test_1"`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.description, func(t *testing.T) {
+			cfg := distributor.OTLPConfig{AllowDeltaTemporality: test.allowDeltaTemporality}
+			metrics := pmetric.NewMetrics()
+			rm := metrics.ResourceMetrics().AppendEmpty()
+			sm := rm.ScopeMetrics().AppendEmpty()
+
+			for _, s := range test.otlpSeries {
+				s.CopyTo(sm.Metrics().AppendEmpty())
+			}
+
+			limits := validation.Limits{}
+			overrides := validation.NewOverrides(limits, nil)
+			promSeries, metadata, err := convertToPromTS(ctx, metrics, cfg, overrides, "user-1", logger)
+			require.Equal(t, sortTimeSeries(test.expectedSeries), sortTimeSeries(promSeries))
+			require.Equal(t, test.expectedMetadata, metadata)
+			if test.expectedErr != "" {
+				require.Equal(t, test.expectedErr, err.Error())
+			} else {
+				require.NoError(t, err)
+			}
+
+		})
+	}
+}
+
+func createPromMetadata(name, unit string, metadataType prompb.MetricMetadata_MetricType) prompb.MetricMetadata {
+	return prompb.MetricMetadata{
+		Type:             metadataType,
+		Unit:             unit,
+		MetricFamilyName: name,
+	}
+}
+
+// copied from: https://github.com/prometheus/prometheus/blob/v3.5.0/storage/remote/otlptranslator/prometheusremotewrite/metrics_to_prw.go
+func sortTimeSeries(series []prompb.TimeSeries) []prompb.TimeSeries {
+	for i := range series {
+		sort.Slice(series[i].Labels, func(j, k int) bool {
+			return series[i].Labels[j].Name < series[i].Labels[k].Name
+		})
+	}
+
+	sort.Slice(series, func(i, j int) bool {
+		return fmt.Sprint(series[i].Labels) < fmt.Sprint(series[j].Labels)
+	})
+
+	return series
+}
+
+// copied from: https://github.com/prometheus/prometheus/blob/v3.5.0/storage/remote/otlptranslator/prometheusremotewrite/metrics_to_prw.go
+func createPromFloatSeries(name string, ts time.Time) prompb.TimeSeries {
+	return prompb.TimeSeries{
+		Labels: []prompb.Label{
+			{Name: "__name__", Value: name},
+			{Name: "test_label", Value: "test_value"},
+		},
+		Samples: []prompb.Sample{{
+			Value:     5,
+			Timestamp: ts.UnixMilli(),
+		}},
+	}
+}
+
+// copied from: https://github.com/prometheus/prometheus/blob/v3.5.0/storage/remote/otlptranslator/prometheusremotewrite/metrics_to_prw.go
+func createOtelSum(name, unit string, temporality pmetric.AggregationTemporality, ts time.Time) pmetric.Metric {
+	metrics := pmetric.NewMetricSlice()
+	m := metrics.AppendEmpty()
+	m.SetName(name)
+	m.SetUnit(unit)
+	sum := m.SetEmptySum()
+	sum.SetAggregationTemporality(temporality)
+	dp := sum.DataPoints().AppendEmpty()
+	dp.SetDoubleValue(5)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(ts))
+	dp.Attributes().PutStr("test_label", "test_value")
+	return m
+}
+
+// copied from: https://github.com/prometheus/prometheus/blob/v3.5.0/storage/remote/otlptranslator/prometheusremotewrite/metrics_to_prw.go
+func createOtelExponentialHistogram(name string, temporality pmetric.AggregationTemporality, ts time.Time) pmetric.Metric {
+	metrics := pmetric.NewMetricSlice()
+	m := metrics.AppendEmpty()
+	m.SetName(name)
+	hist := m.SetEmptyExponentialHistogram()
+	hist.SetAggregationTemporality(temporality)
+	dp := hist.DataPoints().AppendEmpty()
+	dp.SetCount(1)
+	dp.SetSum(5)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(ts))
+	dp.Attributes().PutStr("test_label", "test_value")
+	return m
+}
+
+// copied from: https://github.com/prometheus/prometheus/blob/v3.5.0/storage/remote/otlptranslator/prometheusremotewrite/metrics_to_prw.go
+func createPromNativeHistogramSeries(name string, hint prompb.Histogram_ResetHint, ts time.Time) prompb.TimeSeries {
+	return prompb.TimeSeries{
+		Labels: []prompb.Label{
+			{Name: "__name__", Value: name},
+			{Name: "test_label", Value: "test_value"},
+		},
+		Histograms: []prompb.Histogram{
+			{
+				Count:         &prompb.Histogram_CountInt{CountInt: 1},
+				Sum:           5,
+				Schema:        0,
+				ZeroThreshold: 1e-128,
+				ZeroCount:     &prompb.Histogram_ZeroCountInt{ZeroCountInt: 0},
+				Timestamp:     ts.UnixMilli(),
+				ResetHint:     hint,
+			},
+		},
+	}
+}
 
 func TestOTLPConvertToPromTS(t *testing.T) {
 	logger := log.NewNopLogger()

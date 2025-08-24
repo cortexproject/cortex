@@ -64,7 +64,10 @@ func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, e
 		DisableDuplicateLabelCheck: false,
 	}
 
-	logicalPlan := logicalplan.NewFromAST(expr, &qOpts, planOpts)
+	logicalPlan, err := logicalplan.NewFromAST(expr, &qOpts, planOpts)
+	if err != nil {
+		return nil, err
+	}
 	optimizedPlan, _ := logicalPlan.Optimize(logicalplan.DefaultOptimizers)
 
 	return &optimizedPlan, nil

@@ -18,9 +18,10 @@ import (
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore          kv.Config     `yaml:"kvstore"`
-	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
-	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout"`
+	KVStore                kv.Config     `yaml:"kvstore"`
+	HeartbeatPeriod        time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout       time.Duration `yaml:"heartbeat_timeout"`
+	DetailedMetricsEnabled bool          `yaml:"detailed_metrics_enabled"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
@@ -44,6 +45,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix("distributor.ring.", "collectors/", f)
 	f.DurationVar(&cfg.HeartbeatPeriod, "distributor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "distributor.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which distributors are considered unhealthy within the ring. 0 = never (timeout disabled).")
+	f.BoolVar(&cfg.DetailedMetricsEnabled, "distributor.ring.detailed-metrics-enabled", true, "Set to true to enable ring detailed metrics. These metrics provide detailed information, such as token count and ownership per tenant. Disabling them can significantly decrease the number of metrics emitted.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
@@ -94,6 +96,7 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 	rc.KVStore = cfg.KVStore
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
 	rc.ReplicationFactor = 1
+	rc.DetailedMetricsEnabled = cfg.DetailedMetricsEnabled
 
 	return rc
 }

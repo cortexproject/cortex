@@ -38,6 +38,7 @@ const (
 	labelNamesQuery               = "/api/v1/labels"
 	labelValuesQuery              = "/api/v1/label/label/values"
 	metadataQuery                 = "/api/v1/metadata"
+	formatQuery                   = "/api/v1/format_query?query=foo/bar"
 
 	responseBody        = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 	instantResponseBody = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
@@ -229,6 +230,18 @@ cortex_query_frontend_queries_total{op="remote_read", source="api", user="1"} 1
 # HELP cortex_query_frontend_queries_total Total queries sent per tenant.
 # TYPE cortex_query_frontend_queries_total counter
 cortex_query_frontend_queries_total{op="query_range", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             formatQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="format_query", source="api", user="1"} 1
 `,
 		},
 		{

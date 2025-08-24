@@ -3,16 +3,17 @@ package querier
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus-community/parquet-common/queryable"
 	"github.com/prometheus-community/parquet-common/schema"
+	"github.com/prometheus-community/parquet-common/search"
 	parquet_storage "github.com/prometheus-community/parquet-common/storage"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -20,17 +21,18 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -49,7 +51,9 @@ const (
 	parquetBlockStore blockStoreType = "parquet"
 )
 
-var validBlockStoreTypes = []blockStoreType{tsdbBlockStore, parquetBlockStore}
+var (
+	validBlockStoreTypes = []blockStoreType{tsdbBlockStore, parquetBlockStore}
+)
 
 // AddBlockStoreTypeToContext checks HTTP header and set block store key to context if
 // relevant header is set.
@@ -90,6 +94,7 @@ func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQuery
 type parquetQueryableWithFallback struct {
 	services.Service
 
+	fallbackDisabled      bool
 	queryStoreAfter       time.Duration
 	parquetQueryable      storage.Queryable
 	blockStorageQueryable *BlocksStoreQueryable
@@ -153,6 +158,7 @@ func NewParquetQueryable(
 			userID, _ := tenant.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedDataBytes(userID))
 		}),
+		queryable.WithMaterializedLabelsFilterCallback(materializedLabelsFilterCallback),
 		queryable.WithMaterializedSeriesCallback(func(ctx context.Context, cs []storage.ChunkSeries) error {
 			queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
 			lbls := make([][]cortexpb.LabelAdapter, 0, len(cs))
@@ -253,6 +259,7 @@ func NewParquetQueryable(
 		limits:                limits,
 		logger:                logger,
 		defaultBlockStoreType: blockStoreType(config.ParquetQueryableDefaultBlockStore),
+		fallbackDisabled:      config.ParquetQueryableFallbackDisabled,
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -305,6 +312,7 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		limits:                p.limits,
 		logger:                p.logger,
 		defaultBlockStoreType: p.defaultBlockStoreType,
+		fallbackDisabled:      p.fallbackDisabled,
 	}, nil
 }
 
@@ -327,13 +335,15 @@ type parquetQuerierWithFallback struct {
 	logger log.Logger
 
 	defaultBlockStoreType blockStoreType
+
+	fallbackDisabled bool
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.LabelValues")
 	defer span.Finish()
 
-	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
+	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT, matchers)
 	defer q.incrementOpsMetric("LabelValues", remaining, parquet)
 	if err != nil {
 		return nil, nil, err
@@ -348,6 +358,10 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 		result       []string
 		rAnnotations annotations.Annotations
 	)
+
+	if len(remaining) > 0 && q.fallbackDisabled {
+		return nil, nil, parquetConsistencyCheckError(remaining)
+	}
 
 	if len(parquet) > 0 {
 		res, ann, qErr := q.parquetQuerier.LabelValues(InjectBlocksIntoContext(ctx, parquet...), name, hints, matchers...)
@@ -382,7 +396,7 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.LabelNames")
 	defer span.Finish()
 
-	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT)
+	remaining, parquet, err := q.getBlocks(ctx, q.minT, q.maxT, matchers)
 	defer q.incrementOpsMetric("LabelNames", remaining, parquet)
 	if err != nil {
 		return nil, nil, err
@@ -398,6 +412,10 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 		result       []string
 		rAnnotations annotations.Annotations
 	)
+
+	if len(remaining) > 0 && q.fallbackDisabled {
+		return nil, nil, parquetConsistencyCheckError(remaining)
+	}
 
 	if len(parquet) > 0 {
 		res, ann, qErr := q.parquetQuerier.LabelNames(InjectBlocksIntoContext(ctx, parquet...), hints, matchers...)
@@ -432,17 +450,11 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.Select")
 	defer span.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	newMatchers, shardMatcher, err := querysharding.ExtractShardingMatchers(matchers)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
-
-	if q.limits.QueryVerticalShardSize(userID) > 1 {
-		uLogger := util_log.WithUserID(userID, q.logger)
-		level.Warn(uLogger).Log("msg", "parquet queryable enabled but vertical sharding > 1. Falling back to the block storage")
-
-		return q.blocksStoreQuerier.Select(ctx, sortSeries, h, matchers...)
-	}
+	defer shardMatcher.Close()
 
 	hints := storage.SelectHints{
 		Start: q.minT,
@@ -463,10 +475,15 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		return storage.EmptySeriesSet()
 	}
 
-	remaining, parquet, err := q.getBlocks(ctx, mint, maxt)
+	remaining, parquet, err := q.getBlocks(ctx, mint, maxt, matchers)
 	defer q.incrementOpsMetric("Select", remaining, parquet)
 
 	if err != nil {
+		return storage.ErrSeriesSet(err)
+	}
+
+	if len(remaining) > 0 && q.fallbackDisabled {
+		err = parquetConsistencyCheckError(remaining)
 		return storage.ErrSeriesSet(err)
 	}
 
@@ -483,7 +500,11 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		go func() {
 			span, _ := opentracing.StartSpanFromContext(ctx, "parquetQuerier.Select")
 			defer span.Finish()
-			p <- q.parquetQuerier.Select(InjectBlocksIntoContext(ctx, parquet...), sortSeries, &hints, matchers...)
+			parquetCtx := InjectBlocksIntoContext(ctx, parquet...)
+			if shardMatcher != nil {
+				parquetCtx = injectShardMatcherIntoContext(parquetCtx, shardMatcher)
+			}
+			p <- q.parquetQuerier.Select(parquetCtx, sortSeries, &hints, newMatchers...)
 		}()
 	}
 
@@ -526,7 +547,7 @@ func (q *parquetQuerierWithFallback) Close() error {
 	return mErr.Err()
 }
 
-func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT int64) ([]*bucketindex.Block, []*bucketindex.Block, error) {
+func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT int64, matchers []*labels.Matcher) ([]*bucketindex.Block, []*bucketindex.Block, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -538,7 +559,7 @@ func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT i
 		return nil, nil, nil
 	}
 
-	blocks, _, err := q.finder.GetBlocks(ctx, userID, minT, maxT)
+	blocks, _, err := q.finder.GetBlocks(ctx, userID, minT, maxT, matchers)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -568,6 +589,26 @@ func (q *parquetQuerierWithFallback) incrementOpsMetric(method string, remaining
 	case len(remaining) == 0 && len(parquetBlocks) > 0:
 		q.metrics.operationsTotal.WithLabelValues("parquet", method).Inc()
 	}
+}
+
+type shardMatcherLabelsFilter struct {
+	shardMatcher *storepb.ShardMatcher
+}
+
+func (f *shardMatcherLabelsFilter) Filter(lbls labels.Labels) bool {
+	return f.shardMatcher.MatchesLabels(lbls)
+}
+
+func (f *shardMatcherLabelsFilter) Close() {
+	f.shardMatcher.Close()
+}
+
+func materializedLabelsFilterCallback(ctx context.Context, _ *storage.SelectHints) (search.MaterializedLabelsFilter, bool) {
+	shardMatcher, exists := extractShardMatcherFromContext(ctx)
+	if !exists || !shardMatcher.IsSharded() {
+		return nil, false
+	}
+	return &shardMatcherLabelsFilter{shardMatcher: shardMatcher}, true
 }
 
 type cacheInterface[T any] interface {
@@ -654,4 +695,32 @@ func (n noopCache[T]) Get(_ string) (r T) {
 
 func (n noopCache[T]) Set(_ string, _ T) {
 
+}
+
+var (
+	shardMatcherCtxKey contextKey = 1
+)
+
+func injectShardMatcherIntoContext(ctx context.Context, sm *storepb.ShardMatcher) context.Context {
+	return context.WithValue(ctx, shardMatcherCtxKey, sm)
+}
+
+func extractShardMatcherFromContext(ctx context.Context) (*storepb.ShardMatcher, bool) {
+	if sm := ctx.Value(shardMatcherCtxKey); sm != nil {
+		return sm.(*storepb.ShardMatcher), true
+	}
+
+	return nil, false
+}
+
+func parquetConsistencyCheckError(blocks []*bucketindex.Block) error {
+	return fmt.Errorf("consistency check failed because some blocks were not available as parquet files: %s", strings.Join(convertBlockULIDToString(blocks), " "))
+}
+
+func convertBlockULIDToString(blocks []*bucketindex.Block) []string {
+	res := make([]string, len(blocks))
+	for idx, b := range blocks {
+		res[idx] = b.ID.String()
+	}
+	return res
 }

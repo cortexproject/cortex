@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
@@ -44,14 +45,14 @@ func TestBlockIDsFetcher_Fetch(t *testing.T) {
 	}))
 
 	blockIdsFetcher := NewBlockLister(logger, bkt, userID, nil)
-	ch := make(chan ulid.ULID)
+	ch := make(chan block.ActiveBlockFetchData)
 	var wg sync.WaitGroup
 	var blockIds []ulid.ULID
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for id := range ch {
-			blockIds = append(blockIds, id)
+			blockIds = append(blockIds, id.ULID)
 		}
 	}()
 	_, err := blockIdsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
@@ -96,14 +97,14 @@ func TestBlockIDsFetcherFetcher_Fetch_NoBucketIndex(t *testing.T) {
 		require.NoError(t, bkt.Upload(ctx, path.Join(userID, mark.ID.String(), metadata.DeletionMarkFilename), &buf))
 	}
 	blockIdsFetcher := NewBlockLister(logger, bkt, userID, nil)
-	ch := make(chan ulid.ULID)
+	ch := make(chan block.ActiveBlockFetchData)
 	var wg sync.WaitGroup
 	var blockIds []ulid.ULID
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for id := range ch {
-			blockIds = append(blockIds, id)
+			blockIds = append(blockIds, id.ULID)
 		}
 	}()
 	_, err := blockIdsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)

@@ -34,7 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 const (
@@ -46,6 +46,7 @@ const (
 	opTypeLabelValues    = "label_values"
 	opTypeMetadata       = "metadata"
 	opTypeQueryExemplars = "query_exemplars"
+	opTypeFormatQuery    = "format_query"
 )
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
@@ -152,6 +153,7 @@ func NewQueryTripperware(
 				isLabelValues := strings.HasSuffix(r.URL.Path, "/values")
 				isMetadata := strings.HasSuffix(r.URL.Path, "/metadata")
 				isQueryExemplars := strings.HasSuffix(r.URL.Path, "/query_exemplars")
+				isFormatQuery := strings.HasSuffix(r.URL.Path, "/format_query")
 
 				op := opTypeQuery
 				switch {
@@ -169,6 +171,8 @@ func NewQueryTripperware(
 					op = opTypeMetadata
 				case isQueryExemplars:
 					op = opTypeQueryExemplars
+				case isFormatQuery:
+					op = opTypeFormatQuery
 				}
 
 				tenantIDs, err := tenant.TenantIDs(r.Context())
@@ -255,8 +259,8 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 
-	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
-		util_log.InjectHeadersIntoHTTPRequest(headerMap, request)
+	if requestMetadataMap := requestmeta.MapFromContext(ctx); requestMetadataMap != nil {
+		requestmeta.InjectMetadataIntoHTTPRequestHeaders(requestMetadataMap, request)
 	}
 
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {

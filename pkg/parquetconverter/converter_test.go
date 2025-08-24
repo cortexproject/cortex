@@ -63,10 +63,7 @@ func TestConverter(t *testing.T) {
 
 	ctx := context.Background()
 
-	lbls := labels.Labels{labels.Label{
-		Name:  "__name__",
-		Value: "test",
-	}}
+	lbls := labels.FromStrings("__name__", "test")
 
 	blocks := []ulid.ULID{}
 	// Create blocks
@@ -254,10 +251,7 @@ func TestConverter_BlockConversionFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create test labels
-	lbls := labels.Labels{labels.Label{
-		Name:  "__name__",
-		Value: "test",
-	}}
+	lbls := labels.FromStrings("__name__", "test")
 
 	// Create a real TSDB block
 	dir := t.TempDir()
@@ -312,10 +306,7 @@ func TestConverter_ShouldNotFailOnAccessDenyError(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create test labels
-	lbls := labels.Labels{labels.Label{
-		Name:  "__name__",
-		Value: "test",
-	}}
+	lbls := labels.FromStrings("__name__", "test")
 
 	// Create a real TSDB block
 	dir := t.TempDir()
@@ -366,11 +357,11 @@ type mockBucket struct {
 	getFailure    error
 }
 
-func (m *mockBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (m *mockBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	if m.uploadFailure != nil {
 		return m.uploadFailure
 	}
-	return m.Bucket.Upload(ctx, name, r)
+	return m.Bucket.Upload(ctx, name, r, opts...)
 }
 
 func (m *mockBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {

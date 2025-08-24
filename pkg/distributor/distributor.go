@@ -40,6 +40,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -153,6 +154,7 @@ type Config struct {
 	ExtendWrites             bool   `yaml:"extend_writes"`
 	SignWriteRequestsEnabled bool   `yaml:"sign_write_requests"`
 	UseStreamPush            bool   `yaml:"use_stream_push"`
+	RemoteWriteV2Enabled     bool   `yaml:"remote_writev2_enabled"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -191,8 +193,10 @@ type InstanceLimits struct {
 }
 
 type OTLPConfig struct {
-	ConvertAllAttributes bool `yaml:"convert_all_attributes"`
-	DisableTargetInfo    bool `yaml:"disable_target_info"`
+	ConvertAllAttributes    bool `yaml:"convert_all_attributes"`
+	DisableTargetInfo       bool `yaml:"disable_target_info"`
+	AllowDeltaTemporality   bool `yaml:"allow_delta_temporality"`
+	EnableTypeAndUnitLabels bool `yaml:"enable_type_and_unit_labels"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -212,6 +216,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
 	f.BoolVar(&cfg.ZoneResultsQuorumMetadata, "distributor.zone-results-quorum-metadata", false, "Experimental, this flag may change in the future. If zone awareness and this both enabled, when querying metadata APIs (labels names and values for now), only results from quorum number of zones will be included.")
 	f.IntVar(&cfg.NumPushWorkers, "distributor.num-push-workers", 0, "EXPERIMENTAL: Number of go routines to handle push calls from distributors to ingesters. When no workers are available, a new goroutine will be spawned automatically. If set to 0 (default), workers are disabled, and a new goroutine will be created for each push request.")
+	f.BoolVar(&cfg.RemoteWriteV2Enabled, "distributor.remote-writev2-enabled", false, "EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push request.")
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
@@ -219,6 +224,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.OTLPConfig.ConvertAllAttributes, "distributor.otlp.convert-all-attributes", false, "If true, all resource attributes are converted to labels.")
 	f.BoolVar(&cfg.OTLPConfig.DisableTargetInfo, "distributor.otlp.disable-target-info", false, "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)")
+	f.BoolVar(&cfg.OTLPConfig.AllowDeltaTemporality, "distributor.otlp.allow-delta-temporality", false, "EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.")
+	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for the OTLP metrics.")
 }
 
 // Validate config and returns error on failure
@@ -820,7 +827,17 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return nil, err
 	}
 
-	return &cortexpb.WriteResponse{}, firstPartialErr
+	resp := &cortexpb.WriteResponse{}
+	if d.cfg.RemoteWriteV2Enabled {
+		// We simply expose validated samples, histograms, and exemplars
+		// to the header. We should improve it to expose the actual
+		// written values by the Ingesters.
+		resp.Samples = int64(validatedFloatSamples)
+		resp.Histograms = int64(validatedHistogramSamples)
+		resp.Exemplars = int64(validatedExemplars)
+	}
+
+	return resp, firstPartialErr
 }
 
 func (d *Distributor) updateLabelSetMetrics() {
@@ -892,9 +909,9 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		localCtx = opentracing.ContextWithSpan(localCtx, sp)
 	}
-	// Get any HTTP headers that are supposed to be added to logs and add to localCtx for later use
-	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
-		localCtx = util_log.ContextWithHeaderMap(localCtx, headerMap)
+	// Get any HTTP request metadata that are supposed to be added to logs and add to localCtx for later use
+	if requestContextMap := requestmeta.MapFromContext(ctx); requestContextMap != nil {
+		localCtx = requestmeta.ContextWithRequestMetadataMap(localCtx, requestContextMap)
 	}
 	// Get clientIP(s) from Context and add it to localCtx
 	source := util.GetSourceIPsFromOutgoingCtx(ctx)
@@ -1017,7 +1034,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 
 		if mrc := limits.MetricRelabelConfigs; len(mrc) > 0 {
 			l, _ := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
-			if len(l) == 0 {
+			if l.Len() == 0 {
 				// all labels are gone, samples will be discarded
 				d.validateMetrics.DiscardedSamples.WithLabelValues(
 					validation.DroppedByRelabelConfiguration,

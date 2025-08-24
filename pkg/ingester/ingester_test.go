@@ -305,9 +305,9 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	// Create first series within the limits
 	for _, set := range limits.LimitsPerLabelSet {
 		lbls := []string{labels.MetricName, "metric_name"}
-		for _, lbl := range set.LabelSet {
-			lbls = append(lbls, lbl.Name, lbl.Value)
-		}
+		set.LabelSet.Range(func(l labels.Label) {
+			lbls = append(lbls, l.Name, l.Value)
+		})
 		for i := 0; i < set.Limits.MaxSeries; i++ {
 			_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
 				[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", fmt.Sprintf("extraValue%v", i))...)}, samples, nil, nil, cortexpb.API))
@@ -330,9 +330,9 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	// Should impose limits
 	for _, set := range limits.LimitsPerLabelSet {
 		lbls := []string{labels.MetricName, "metric_name"}
-		for _, lbl := range set.LabelSet {
-			lbls = append(lbls, lbl.Name, lbl.Value)
-		}
+		set.LabelSet.Range(func(l labels.Label) {
+			lbls = append(lbls, l.Name, l.Value)
+		})
 		_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
 			[]labels.Labels{labels.FromStrings(append(lbls, "newLabel", "newValue")...)}, samples, nil, nil, cortexpb.API))
 		httpResp, ok := httpgrpc.HTTPResponseFromError(err)
@@ -759,7 +759,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 
 	userID := "1"
 	// Series
-	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
+	labels1 := labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar")
 	sample1 := cortexpb.Sample{
 		TimestampMs: 0,
 		Value:       1,
@@ -768,7 +768,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 		TimestampMs: 1,
 		Value:       2,
 	}
-	labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
+	labels3 := labels.FromStrings(labels.MetricName, "testmetric", "foo", "biz")
 	sample3 := cortexpb.Sample{
 		TimestampMs: 1,
 		Value:       3,
@@ -878,8 +878,8 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 
 	userID := "1"
 	// Series
-	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
-	labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
+	labels1 := labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar")
+	labels3 := labels.FromStrings(labels.MetricName, "testmetric", "foo", "biz")
 	sampleNativeHistogram1 := cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(1))
 	sampleNativeHistogram2 := cortexpb.HistogramToHistogramProto(1, tsdbutil.GenerateTestHistogram(2))
 	sampleNativeHistogram3 := cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(3))
@@ -958,13 +958,19 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 
 func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []cortexpb.Sample) {
 	for j := 0; j < nSeries; j++ {
-		labels := chunk.BenchmarkLabels.Copy()
-		for i := range labels {
-			if labels[i].Name == "cpu" {
-				labels[i].Value = fmt.Sprintf("cpu%02d", j)
+		lbls := chunk.BenchmarkLabels.Copy()
+
+		builder := labels.NewBuilder(labels.EmptyLabels())
+		lbls.Range(func(l labels.Label) {
+			val := l.Value
+			if l.Name == "cpu" {
+				val = fmt.Sprintf("cpu%02d", j)
 			}
-		}
-		allLabels = append(allLabels, labels)
+
+			builder.Set(l.Name, val)
+		})
+
+		allLabels = append(allLabels, builder.Labels())
 		allSamples = append(allSamples, cortexpb.Sample{TimestampMs: 0, Value: float64(j)})
 	}
 	return
@@ -978,7 +984,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	limits.MaxLocalMetadataPerMetric = 1
 
 	userID := "1"
-	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
+	labels1 := labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar")
 	sample1 := cortexpb.Sample{
 		TimestampMs: 0,
 		Value:       1,
@@ -987,7 +993,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 		TimestampMs: 1,
 		Value:       2,
 	}
-	labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
+	labels3 := labels.FromStrings(labels.MetricName, "testmetric", "foo", "biz")
 	sample3 := cortexpb.Sample{
 		TimestampMs: 1,
 		Value:       3,
@@ -2472,13 +2478,13 @@ func TestIngester_Push_OutOfOrderLabels(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "test-user")
 
-	outOfOrderLabels := labels.Labels{
+	outOfOrderLabels := []cortexpb.LabelAdapter{
 		{Name: labels.MetricName, Value: "test_metric"},
 		{Name: "c", Value: "3"},
-		{Name: "a", Value: "1"}, // Out of order (a comes before c)
+		{Name: "a", Value: "1"},
 	}
 
-	req, _ := mockWriteRequest(t, outOfOrderLabels, 1, 2)
+	req, _ := mockWriteRequest(t, cortexpb.FromLabelAdaptersToLabels(outOfOrderLabels), 1, 2)
 	_, err = i.Push(ctx, req)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "out-of-order label set found")
@@ -2599,7 +2605,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
 				// Push a single time series to set the TSDB min time.
 				currTimeReq := cortexpb.ToWriteRequest(
-					[]labels.Labels{{{Name: labels.MetricName, Value: metricName}}},
+					[]labels.Labels{labels.FromStrings(labels.MetricName, metricName)},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: util.TimeToMillis(time.Now())}},
 					nil,
 					nil,
@@ -2624,7 +2630,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 				// For each series, push a single sample with a timestamp greater than next pushes.
 				for i := 0; i < numSeriesPerRequest; i++ {
 					currTimeReq := cortexpb.ToWriteRequest(
-						[]labels.Labels{{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}}},
+						[]labels.Labels{labels.FromStrings(labels.MetricName, metricName, "cardinality", strconv.Itoa(i))},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
 						nil,
 						nil,
@@ -2821,7 +2827,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 					metrics := make([]labels.Labels, 0, scenario.numSeriesPerRequest)
 					samples := make([]cortexpb.Sample, 0, scenario.numSeriesPerRequest)
 					for i := 0; i < scenario.numSeriesPerRequest; i++ {
-						metrics = append(metrics, labels.Labels{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}})
+						metrics = append(metrics, labels.FromStrings(labels.MetricName, metricName, "cardinality", strconv.Itoa(i)))
 						samples = append(samples, cortexpb.Sample{Value: float64(i), TimestampMs: sampleTimestamp})
 					}
 
@@ -2857,9 +2863,9 @@ func Test_Ingester_LabelNames(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
+		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "200"), 1, 100000},
+		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "500"), 1, 110000},
+		{labels.FromStrings("__name__", "test_2"), 2, 200000},
 	}
 
 	expected := []string{"__name__", "route", "status"}
@@ -2913,9 +2919,9 @@ func Test_Ingester_LabelValues(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
+		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "200"), 1, 100000},
+		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "500"), 1, 110000},
+		{labels.FromStrings("__name__", "test_2"), 2, 200000},
 	}
 
 	expected := map[string][]string{
@@ -2991,7 +2997,7 @@ func Test_Ingester_LabelValue_MaxInflightQueryRequest(t *testing.T) {
 	// Mock request
 	ctx := user.InjectOrgID(context.Background(), "test")
 
-	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000)
+	wreq, _ := mockWriteRequest(t, labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "200"), 1, 100000)
 	_, err = i.Push(ctx, wreq)
 	require.NoError(t, err)
 
@@ -3007,9 +3013,9 @@ func Test_Ingester_Query(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
+		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "200"), 1, 100000},
+		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "500"), 1, 110000},
+		{labels.FromStrings("__name__", "test_2"), 2, 200000},
 	}
 
 	tests := map[string]struct {
@@ -3150,7 +3156,7 @@ func Test_Ingester_Query_MaxInflightQueryRequest(t *testing.T) {
 	// Mock request
 	ctx := user.InjectOrgID(context.Background(), "test")
 
-	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000)
+	wreq, _ := mockWriteRequest(t, labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "200"), 1, 100000)
 	_, err = i.Push(ctx, wreq)
 	require.NoError(t, err)
 
@@ -3191,7 +3197,7 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
+		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "200"), 1, 100000},
 	}
 
 	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
@@ -3361,12 +3367,12 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "500"}}, 1, 110000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
+		{labels.FromStrings("__name__", "test_1", "status", "200"), 1, 100000},
+		{labels.FromStrings("__name__", "test_1", "status", "500"), 1, 110000},
+		{labels.FromStrings("__name__", "test_2"), 2, 200000},
 		// The two following series have the same FastFingerprint=e002a3a451262627
-		{labels.Labels{{Name: labels.MetricName, Value: "collision"}, {Name: "app", Value: "l"}, {Name: "uniq0", Value: "0"}, {Name: "uniq1", Value: "1"}}, 1, 300000},
-		{labels.Labels{{Name: labels.MetricName, Value: "collision"}, {Name: "app", Value: "m"}, {Name: "uniq0", Value: "1"}, {Name: "uniq1", Value: "1"}}, 1, 300000},
+		{labels.FromStrings("__name__", "collision", "app", "l", "uniq0", "0", "uniq1", "1"), 1, 300000},
+		{labels.FromStrings("__name__", "collision", "app", "m", "uniq0", "1", "uniq1", "1"), 1, 300000},
 	}
 
 	tests := map[string]struct {
@@ -3639,10 +3645,7 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries, numSamples
 			samples := make([]cortexpb.Sample, 0, batchSize)
 
 			for s := 0; s < batchSize; s++ {
-				metrics = append(metrics, labels.Labels{
-					{Name: labels.MetricName, Value: fmt.Sprintf("test_%d", o+s)},
-				})
-
+				metrics = append(metrics, labels.FromStrings("__name__", fmt.Sprintf("test_%d", o+s)))
 				samples = append(samples, cortexpb.Sample{
 					TimestampMs: ts,
 					Value:       1,
@@ -3677,7 +3680,7 @@ func TestIngester_QueryStream(t *testing.T) {
 
 			// Push series.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			lbls := labels.Labels{{Name: labels.MetricName, Value: "foo"}}
+			lbls := labels.FromStrings(labels.MetricName, "foo")
 			var (
 				req                    *cortexpb.WriteRequest
 				expectedResponseChunks *client.QueryStreamResponse
@@ -3773,15 +3776,15 @@ func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
 	}
 
 	// 100k samples in chunks use about 154 KiB,
-	_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "1"}}, samples[0:100000]))
+	_, err = i.Push(ctx, writeRequestSingleSeries(labels.FromStrings("__name__", "foo", "l", "1"), samples[0:100000]))
 	require.NoError(t, err)
 
 	// 1M samples in chunks use about 1.51 MiB,
-	_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "2"}}, samples))
+	_, err = i.Push(ctx, writeRequestSingleSeries(labels.FromStrings("__name__", "foo", "l", "2"), samples))
 	require.NoError(t, err)
 
 	// 500k samples in chunks need 775 KiB,
-	_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "3"}}, samples[0:500000]))
+	_, err = i.Push(ctx, writeRequestSingleSeries(labels.FromStrings("__name__", "foo", "l", "3"), samples[0:500000]))
 	require.NoError(t, err)
 
 	// Create a GRPC server used to query back the data.
@@ -3969,7 +3972,7 @@ func benchmarkQueryStream(b *testing.B, samplesCount, seriesCount int) {
 	}
 
 	for s := 0; s < seriesCount; s++ {
-		_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: strconv.Itoa(s)}}, samples))
+		_, err = i.Push(ctx, writeRequestSingleSeries(labels.FromStrings("__name__", "foo", "l", strconv.Itoa(s)), samples))
 		require.NoError(b, err)
 	}
 
@@ -4717,7 +4720,7 @@ func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
 	sampleTimestamp := int64(model.Now())
 
 	{
-		req, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, sampleTimestamp)
+		req, _ := mockWriteRequest(t, labels.FromStrings("__name__", "test"), 0, sampleTimestamp)
 		_, err = i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -4733,7 +4736,7 @@ func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
 
 	// Push another sample to the same metric and timestamp, with different value. We expect to get error.
 	{
-		req, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 1, sampleTimestamp)
+		req, _ := mockWriteRequest(t, labels.FromStrings("__name__", "test"), 1, sampleTimestamp)
 		_, err = i.Push(ctx, req)
 		require.Error(t, err)
 	}
@@ -5031,9 +5034,10 @@ func Test_Ingester_UserStats(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
+
+		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "200"), 1, 100000},
+		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "500"), 1, 110000},
+		{labels.FromStrings("__name__", "test_2"), 2, 200000},
 	}
 
 	// Create ingester
@@ -5077,11 +5081,11 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
-		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
-		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_2"}}, 2, 200000},
-		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_1"}}, 2, 200000},
-		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_2"}}, 2, 200000},
+		{"user-1", labels.FromStrings("__name__", "test_1_1", "route", "get_user", "status", "200"), 1, 100000},
+		{"user-1", labels.FromStrings("__name__", "test_1_1", "route", "get_user", "status", "500"), 1, 110000},
+		{"user-1", labels.FromStrings("__name__", "test_1_2"), 2, 200000},
+		{"user-2", labels.FromStrings("__name__", "test_2_1"), 2, 200000},
+		{"user-2", labels.FromStrings("__name__", "test_2_2"), 2, 200000},
 	}
 
 	// Create ingester
@@ -5145,11 +5149,11 @@ func Test_Ingester_AllUserStatsHandler(t *testing.T) {
 		value     float64
 		timestamp int64
 	}{
-		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
-		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
-		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_2"}}, 2, 200000},
-		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_1"}}, 2, 200000},
-		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_2"}}, 2, 200000},
+		{"user-1", labels.FromStrings("__name__", "test_1_1", "route", "get_user", "status", "200"), 1, 100000},
+		{"user-1", labels.FromStrings("__name__", "test_1_1", "route", "get_user", "status", "500"), 1, 110000},
+		{"user-1", labels.FromStrings("__name__", "test_1_2"), 2, 200000},
+		{"user-2", labels.FromStrings("__name__", "test_2_1"), 2, 200000},
+		{"user-2", labels.FromStrings("__name__", "test_2_2"), 2, 200000},
 	}
 
 	// Create ingester
@@ -5424,7 +5428,7 @@ func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
 
 func pushSingleSampleWithMetadata(t *testing.T, i *Ingester) {
 	ctx := user.InjectOrgID(context.Background(), userID)
-	req, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
+	req, _ := mockWriteRequest(t, labels.FromStrings("__name__", "test"), 0, util.TimeToMillis(time.Now()))
 	req.Metadata = append(req.Metadata, &cortexpb.MetricMetadata{MetricFamilyName: "test", Help: "a help for metric", Unit: "", Type: cortexpb.COUNTER})
 	_, err := i.Push(ctx, req)
 	require.NoError(t, err)
@@ -5432,7 +5436,7 @@ func pushSingleSampleWithMetadata(t *testing.T, i *Ingester) {
 
 func pushSingleSampleAtTime(t *testing.T, i *Ingester, ts int64) {
 	ctx := user.InjectOrgID(context.Background(), userID)
-	req, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, ts)
+	req, _ := mockWriteRequest(t, labels.FromStrings("__name__", "test"), 0, ts)
 	_, err := i.Push(ctx, req)
 	require.NoError(t, err)
 }
@@ -5461,7 +5465,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 		db.DisableCompactions()
 		head := db.Head()
 
-		l := labels.Labels{{Name: "n", Value: "v"}}
+		l := labels.FromStrings("n", "v")
 		for i := 0; i < numFullChunks; i++ {
 			// Not using db.Appender() as it checks for compaction.
 			app := head.Appender(context.Background())
@@ -5571,7 +5575,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	// Push some data to create 3 blocks.
 	ctx := user.InjectOrgID(context.Background(), userID)
 	for j := int64(0); j < 5; j++ {
-		req, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		req, _ := mockWriteRequest(t, labels.FromStrings(labels.MetricName, "test"), 0, j*chunkRangeMilliSec)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -5599,7 +5603,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 
 	// Add more samples that could trigger another compaction and hence reload of blocks.
 	for j := int64(5); j < 6; j++ {
-		req, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		req, _ := mockWriteRequest(t, labels.FromStrings(labels.MetricName, "test"), 0, j*chunkRangeMilliSec)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -5627,7 +5631,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 
 	// Add more samples that could trigger another compaction and hence reload of blocks.
 	for j := int64(6); j < 7; j++ {
-		req, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		req, _ := mockWriteRequest(t, labels.FromStrings(labels.MetricName, "test"), 0, j*chunkRangeMilliSec)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -5674,7 +5678,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	require.True(t, db.casState(active, forceCompacting))
 
 	// Ingestion should fail with a 503.
-	req, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
+	req, _ := mockWriteRequest(t, labels.FromStrings(labels.MetricName, "test"), 0, util.TimeToMillis(time.Now()))
 	ctx := user.InjectOrgID(context.Background(), userID)
 	_, err = i.Push(ctx, req)
 	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, "%s", wrapWithUser(errors.New("forced compaction in progress"), userID).Error()), err)
@@ -6608,7 +6612,7 @@ func Test_Ingester_QueryExemplar_MaxInflightQueryRequest(t *testing.T) {
 	// Mock request
 	ctx := user.InjectOrgID(context.Background(), "test")
 
-	wreq, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000)
+	wreq, _ := mockWriteRequest(t, labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "200"), 1, 100000)
 	_, err = i.Push(ctx, wreq)
 	require.NoError(t, err)
 
@@ -7149,7 +7153,7 @@ func CreateBlock(t *testing.T, ctx context.Context, dir string, mint, maxt int64
 
 	var ref storage.SeriesRef
 	start := (maxt-mint)/2 + mint
-	_, err = app.Append(ref, labels.Labels{labels.Label{Name: "test_label", Value: "test_value"}}, start, float64(1))
+	_, err = app.Append(ref, labels.FromStrings("test_label", "test_value"), start, float64(1))
 	require.NoError(t, err)
 	err = app.Commit()
 	require.NoError(t, err)

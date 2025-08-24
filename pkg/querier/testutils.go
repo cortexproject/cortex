@@ -142,7 +142,7 @@ func ConvertToChunks(t *testing.T, samples []cortexpb.Sample, histograms []*cort
 		}
 	}
 
-	c := chunk.NewChunk(nil, chk, model.Time(samples[0].TimestampMs), model.Time(samples[len(samples)-1].TimestampMs))
+	c := chunk.NewChunk(labels.EmptyLabels(), chk, model.Time(samples[0].TimestampMs), model.Time(samples[len(samples)-1].TimestampMs))
 	clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{c})
 	require.NoError(t, err)
 

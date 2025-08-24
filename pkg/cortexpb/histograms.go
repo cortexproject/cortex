@@ -16,11 +16,36 @@ package cortexpb
 import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/prompb"
+	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 )
 
 func (h Histogram) IsFloatHistogram() bool {
 	_, ok := h.GetCount().(*Histogram_CountFloat)
 	return ok
+}
+
+func HistogramWriteV2ProtoToHistogramProto(h writev2.Histogram) Histogram {
+	ph := Histogram{
+		Sum:            h.Sum,
+		Schema:         h.Schema,
+		ZeroThreshold:  h.ZeroThreshold,
+		NegativeSpans:  spansWriteV2ProtoToSpansProto(h.NegativeSpans),
+		NegativeDeltas: h.NegativeDeltas,
+		NegativeCounts: h.NegativeCounts,
+		PositiveSpans:  spansWriteV2ProtoToSpansProto(h.PositiveSpans),
+		PositiveDeltas: h.PositiveDeltas,
+		PositiveCounts: h.PositiveCounts,
+		ResetHint:      Histogram_ResetHint(h.ResetHint),
+		TimestampMs:    h.Timestamp,
+	}
+	if h.IsFloatHistogram() {
+		ph.Count = &Histogram_CountFloat{CountFloat: h.GetCountFloat()}
+		ph.ZeroCount = &Histogram_ZeroCountFloat{ZeroCountFloat: h.GetZeroCountFloat()}
+	} else {
+		ph.Count = &Histogram_CountInt{CountInt: h.GetCountInt()}
+		ph.ZeroCount = &Histogram_ZeroCountInt{ZeroCountInt: h.GetZeroCountInt()}
+	}
+	return ph
 }
 
 // HistogramPromProtoToHistogramProto converts a prometheus protobuf Histogram to cortex protobuf Histogram.
@@ -148,6 +173,15 @@ func spansToSpansProto(s []histogram.Span) []BucketSpan {
 }
 
 func spansPromProtoToSpansProto(s []prompb.BucketSpan) []BucketSpan {
+	spans := make([]BucketSpan, len(s))
+	for i := 0; i < len(s); i++ {
+		spans[i] = BucketSpan{Offset: s[i].Offset, Length: s[i].Length}
+	}
+
+	return spans
+}
+
+func spansWriteV2ProtoToSpansProto(s []writev2.BucketSpan) []BucketSpan {
 	spans := make([]BucketSpan, len(s))
 	for i := 0; i < len(s); i++ {
 		spans[i] = BucketSpan{Offset: s[i].Offset, Length: s[i].Length}

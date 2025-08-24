@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite"
@@ -66,7 +67,7 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 
 		// otlp to prompb TimeSeries
 		promTsList, promMetadata, err := convertToPromTS(r.Context(), req.Metrics(), cfg, overrides, userID, logger)
-		if err != nil {
+		if err != nil && len(promTsList) == 0 {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -177,8 +178,10 @@ func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (
 func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) ([]prompb.TimeSeries, []prompb.MetricMetadata, error) {
 	promConverter := prometheusremotewrite.NewPrometheusConverter()
 	settings := prometheusremotewrite.Settings{
-		AddMetricSuffixes: true,
-		DisableTargetInfo: cfg.DisableTargetInfo,
+		AddMetricSuffixes:       true,
+		DisableTargetInfo:       cfg.DisableTargetInfo,
+		AllowDeltaTemporality:   cfg.AllowDeltaTemporality,
+		EnableTypeAndUnitLabels: cfg.EnableTypeAndUnitLabels,
 	}
 
 	var annots annotations.Annotations
@@ -187,7 +190,9 @@ func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distribu
 	if cfg.ConvertAllAttributes {
 		annots, err = promConverter.FromMetrics(ctx, convertToMetricsAttributes(pmetrics), settings)
 	} else {
-		settings.PromoteResourceAttributes = overrides.PromoteResourceAttributes(userID)
+		settings.PromoteResourceAttributes = prometheusremotewrite.NewPromoteResourceAttributes(config.OTLPConfig{
+			PromoteResourceAttributes: overrides.PromoteResourceAttributes(userID),
+		})
 		annots, err = promConverter.FromMetrics(ctx, pmetrics, settings)
 	}
 
@@ -197,19 +202,18 @@ func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distribu
 	}
 
 	if err != nil {
-		level.Error(logger).Log("msg", "Error translating OTLP metrics to Prometheus write request", "err", err)
-		return nil, nil, err
+		level.Warn(logger).Log("msg", "Error translating OTLP metrics to Prometheus write request", "err", err)
 	}
 
-	return promConverter.TimeSeries(), promConverter.Metadata(), nil
+	return promConverter.TimeSeries(), promConverter.Metadata(), err
 }
 
 func makeLabels(in []prompb.Label) []cortexpb.LabelAdapter {
-	out := make(labels.Labels, 0, len(in))
+	builder := labels.NewBuilder(labels.EmptyLabels())
 	for _, l := range in {
-		out = append(out, labels.Label{Name: l.Name, Value: l.Value})
+		builder.Set(l.Name, l.Value)
 	}
-	return cortexpb.FromLabelsToLabelAdapters(out)
+	return cortexpb.FromLabelsToLabelAdapters(builder.Labels())
 }
 
 func makeSamples(in []prompb.Sample) []cortexpb.Sample {

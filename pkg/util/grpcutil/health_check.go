@@ -32,19 +32,6 @@ func (h *HealthCheck) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequ
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
-func (h *HealthCheck) List(ctx context.Context, request *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
-	checkResp, err := h.Check(ctx, nil)
-	if err != nil {
-		return &grpc_health_v1.HealthListResponse{}, err
-	}
-
-	return &grpc_health_v1.HealthListResponse{
-		Statuses: map[string]*grpc_health_v1.HealthCheckResponse{
-			"server": checkResp,
-		},
-	}, nil
-}
-
 // Watch implements the grpc healthcheck.
 func (h *HealthCheck) Watch(_ *grpc_health_v1.HealthCheckRequest, _ grpc_health_v1.Health_WatchServer) error {
 	return status.Error(codes.Unimplemented, "Watching is not supported")

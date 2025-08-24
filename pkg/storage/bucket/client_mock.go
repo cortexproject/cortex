@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,10 @@ type ClientMock struct {
 	uploaded sync.Map
 }
 
+func (m *ClientMock) Provider() objstore.ObjProvider {
+	return objstore.FILESYSTEM
+}
+
 func (m *ClientMock) WithExpectedErrs(objstore.IsOpFailureExpectedFunc) objstore.Bucket {
 	return m
 }
@@ -32,16 +37,21 @@ func (m *ClientMock) ReaderWithExpectedErrs(objstore.IsOpFailureExpectedFunc) ob
 }
 
 // Upload mocks objstore.Bucket.Upload()
-func (m *ClientMock) Upload(ctx context.Context, name string, r io.Reader) error {
+func (m *ClientMock) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	if _, ok := m.uploaded.Load(name); ok {
 		m.uploaded.Store(name, true)
 	}
-	args := m.Called(ctx, name, r)
-	return args.Error(0)
+	if len(opts) > 0 {
+		args := m.Called(ctx, name, r, opts)
+		return args.Error(0)
+	} else {
+		args := m.Called(ctx, name, r)
+		return args.Error(0)
+	}
 }
 
 func (m *ClientMock) MockUpload(name string, err error) {
-	m.On("Upload", mock.Anything, name, mock.Anything).Return(err)
+	m.On("Upload", mock.Anything, name, mock.Anything, mock.Anything).Return(err)
 }
 
 // Delete mocks objstore.Bucket.Delete()
@@ -73,6 +83,42 @@ func (m *ClientMock) Iter(ctx context.Context, dir string, f func(string) error,
 	return args.Error(0)
 }
 
+func (m *ClientMock) MockIterWithAttributes(prefix string, objects []string, err error, cb func()) {
+	m.On("IterWithAttributes", mock.Anything, prefix, mock.Anything, mock.Anything).Return(err).Run(func(args mock.Arguments) {
+		f := args.Get(2).(func(attrs objstore.IterObjectAttributes) error)
+		opts := args.Get(3).([]objstore.IterOption)
+
+		// Determine if recursive flag is passed
+		params := objstore.ApplyIterOptions(opts...)
+		recursive := params.Recursive
+
+		for _, o := range objects {
+			// Check if object is under current prefix
+			if !strings.HasPrefix(o, prefix) {
+				continue
+			}
+
+			// Extract the remaining path after prefix
+			suffix := strings.TrimPrefix(o, prefix)
+
+			// If not recursive and there's a slash in the remaining path, skip it
+			if !recursive && strings.Contains(suffix, "/") {
+				continue
+			}
+
+			attrs := objstore.IterObjectAttributes{
+				Name: o,
+			}
+			if cb != nil {
+				cb()
+			}
+			if err := f(attrs); err != nil {
+				break
+			}
+		}
+	})
+}
+
 // MockIter is a convenient method to mock Iter()
 func (m *ClientMock) MockIter(prefix string, objects []string, err error) {
 	m.MockIterWithCallback(prefix, objects, err, nil)
@@ -81,6 +127,7 @@ func (m *ClientMock) MockIter(prefix string, objects []string, err error) {
 // MockIterWithCallback is a convenient method to mock Iter() and get a callback called when the Iter
 // API is called.
 func (m *ClientMock) MockIterWithCallback(prefix string, objects []string, err error, cb func()) {
+	m.MockIterWithAttributes(prefix, objects, err, cb)
 	m.On("Iter", mock.Anything, prefix, mock.Anything, mock.Anything).Return(err).Run(func(args mock.Arguments) {
 		if cb != nil {
 			cb()

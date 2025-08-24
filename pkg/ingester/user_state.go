@@ -191,9 +191,9 @@ func getCardinalityForLimitsPerLabelSet(ctx context.Context, numSeries uint64, i
 }
 
 func getPostingForLabels(ctx context.Context, ir tsdb.IndexReader, lbls labels.Labels) (index.Postings, error) {
-	postings := make([]index.Postings, 0, len(lbls))
-	for _, lbl := range lbls {
-		p, err := ir.Postings(ctx, lbl.Name, lbl.Value)
+	postings := make([]index.Postings, 0, lbls.Len())
+	for name, value := range lbls.Map() {
+		p, err := ir.Postings(ctx, name, value)
 		if err != nil {
 			return nil, err
 		}

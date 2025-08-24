@@ -1,14 +1,16 @@
 # Changelog
 
 ## master / unreleased
-* [FEATURE] Query Frontend: Add support /api/v1/format_query API for formatting queries. #6893
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718
 * [CHANGE] Validate a tenantID when to use a single tenant resolver. #6727
+* [FEATURE] Distributor: Add an experimental `-distributor.otlp.enable-type-and-unit-labels` flag to add `__type__` and `__unit__` labels for OTLP metrics. #6969
+* [FEATURE] Distributor: Add an experimental `-distributor.otlp.allow-delta-temporality` flag to ingest delta temporality otlp metrics. #6934
 * [FEATURE] Query Frontend: Add dynamic interval size for query splitting. This is enabled by configuring experimental flags `querier.max-shards-per-query` and/or `querier.max-fetched-data-duration-per-query`. The split interval size is dynamically increased to maintain a number of shards and total duration fetched below the configured values. #6458
 * [FEATURE] Querier/Ruler: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
 * [FEATURE] Update prometheus alertmanager version to v0.28.0 and add new integration msteamsv2, jira, and rocketchat. #6590
 * [FEATURE] Ingester/StoreGateway: Add `ResourceMonitor` module in Cortex, and add `ResourceBasedLimiter` in Ingesters and StoreGateways. #6674
+* [FEATURE] Support Prometheus remote write 2.0. #6330
 * [FEATURE] Ingester: Support out-of-order native histogram ingestion. It automatically enabled when `-ingester.out-of-order-time-window > 0` and `-blocks-storage.tsdb.enable-native-histograms=true`. #6626 #6663
 * [FEATURE] Ruler: Add support for percentage based sharding for rulers. #6680
 * [FEATURE] Ruler: Add support for group labels. #6665
@@ -20,7 +22,11 @@
 * [FEATURE] Compactor: Add support for percentage based sharding for compactors. #6738
 * [FEATURE] Querier: Allow choosing PromQL engine via header. #6777
 * [FEATURE] Querier: Support for configuring query optimizers and enabling XFunctions in the Thanos engine. #6873
-*[FEATURE] Config: Name validation scheme for metric and label names can be set using the config file (`name_validation_scheme`) as well as a CLI flag (`-name.validation-scheme`)
+* [FEATURE] Query Frontend: Add support /api/v1/format_query API for formatting queries. #6893
+* [FEATURE] Query Frontend: Add support for /api/v1/parse_query API (experimental) to parse a PromQL expression and return it as a JSON-formatted AST (abstract syntax tree). #6978
+* [ENHANCEMENT] Ingester: Add `cortex_ingester_tsdb_wal_replay_unknown_refs_total` and `cortex_ingester_tsdb_wbl_replay_unknown_refs_total` metrics to track unknown series references during wal/wbl replaying. #6945
+* [ENHANCEMENT] Ruler: Emit an error message when the rule synchronization fails. #6902
+* [ENHANCEMENT] Querier: Support snappy and zstd response compression for `-querier.response-compression` flag. #6848
 * [ENHANCEMENT] Tenant Federation: Add a # of query result limit logic when the `-tenant-federation.regex-matcher-enabled` is enabled. #6845
 * [ENHANCEMENT] Query Frontend: Add a `cortex_slow_queries_total` metric to track # of slow queries per user. #6859
 * [ENHANCEMENT] Query Frontend: Change to return 400 when the tenant resolving fail. #6715
@@ -61,6 +67,12 @@
 * [ENHANCEMENT] Querier: Support query limits in parquet queryable. #6870
 * [ENHANCEMENT] Ring: Add zone label to ring_members metric. #6900
 * [ENHANCEMENT] Ingester: Add new metric `cortex_ingester_push_errors_total` to track reasons for ingester request failures. #6901
+* [ENHANCEMENT] Ring: Expose `detailed_metrics_enabled` for all rings. Default true. #6926
+* [ENHANCEMENT] Parquet Storage: Allow Parquet Queryable to disable fallback to Store Gateway. #6920
+* [ENHANCEMENT] Query Frontend: Add a `format_query` label value to the `op` label at `cortex_query_frontend_queries_total` metric. #6925
+* [ENHANCEMENT] API: add request ID injection to context to enable tracking requests across downstream services. #6895
+* [ENHANCEMENT] gRPC: Add gRPC Channelz monitoring. #6950
+* [ENHANCEMENT] Upgrade build image and Go version to 1.24.6. #6970 #6976
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576

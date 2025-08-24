@@ -17,7 +17,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-7ce1d1b12
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -46,7 +46,7 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-7ce1d1b12
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -64,7 +64,7 @@ jobs:
   test-no-race:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-7ce1d1b12
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -93,21 +93,21 @@ jobs:
 
       # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@181d5eefc20863364f96762470ba6f862bdef56b # v3.29.2
+        uses: github/codeql-action/init@51f77329afa6477de8c49fc9c7046c15b9a4e79d # v3.29.5
         with:
           languages: go
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@181d5eefc20863364f96762470ba6f862bdef56b # v3.29.2
+        uses: github/codeql-action/autobuild@51f77329afa6477de8c49fc9c7046c15b9a4e79d # v3.29.5
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@181d5eefc20863364f96762470ba6f862bdef56b # v3.29.2
+        uses: github/codeql-action/analyze@51f77329afa6477de8c49fc9c7046c15b9a4e79d # v3.29.5
 
   
   build:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-7ce1d1b12
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -162,6 +162,7 @@ jobs:
           - integration_querier
           - integration_ruler
           - integration_query_fuzz
+          - integration_remote_write_v2
     steps:
       - name: Upgrade golang
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -210,8 +211,7 @@ jobs:
             docker pull quay.io/cortexproject/cortex:v1.18.1
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
             docker pull quay.io/cortexproject/cortex:v1.18.1 
-            docker pull quay.io/prometheus/prometheus:v2.51.0
-            docker pull quay.io/prometheus/prometheus:v2.55.1
+            docker pull quay.io/prometheus/prometheus:v3.5.0
           fi
           docker pull memcached:1.6.1
           docker pull redis:7.0.4-alpine
@@ -224,7 +224,7 @@ jobs:
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG-amd64"
           export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
-          go test -tags=integration,${{ matrix.tags }} -timeout 2400s -v -count=1 ./integration/...
+          go test -tags=slicelabels,integration,${{ matrix.tags }} -timeout 2400s -v -count=1 ./integration/...
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
 
@@ -247,14 +247,14 @@ jobs:
         run: |
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
-          make BUILD_IMAGE=quay.io/cortexproject/build-image:master-7ce1d1b12 TTY='' configs-integration-test
+          make BUILD_IMAGE=quay.io/cortexproject/build-image:master-59491e9aae TTY='' configs-integration-test
 
   deploy_website:
     needs: [build, test]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-7ce1d1b12
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -296,7 +296,7 @@ jobs:
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-7ce1d1b12
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

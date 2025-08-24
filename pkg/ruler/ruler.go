@@ -693,13 +693,21 @@ func (r *Ruler) run(ctx context.Context) error {
 		ringTickerChan = ringTicker.C
 	}
 
-	r.syncRules(ctx, rulerSyncReasonInitial)
+	syncRuleErrMsg := func(syncRulesErr error) {
+		level.Error(r.logger).Log("msg", "failed to sync rules", "err", syncRulesErr)
+	}
+
+	initialSyncErr := r.syncRules(ctx, rulerSyncReasonInitial)
+	if initialSyncErr != nil {
+		syncRuleErrMsg(initialSyncErr)
+	}
 	for {
+		var syncRulesErr error
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-tick.C:
-			r.syncRules(ctx, rulerSyncReasonPeriodic)
+			syncRulesErr = r.syncRules(ctx, rulerSyncReasonPeriodic)
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
@@ -707,15 +715,18 @@ func (r *Ruler) run(ctx context.Context) error {
 
 			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState
-				r.syncRules(ctx, rulerSyncReasonRingChange)
+				syncRulesErr = r.syncRules(ctx, rulerSyncReasonRingChange)
 			}
 		case err := <-r.subservicesWatcher.Chan():
 			return errors.Wrap(err, "ruler subservice failed")
 		}
+		if syncRulesErr != nil {
+			syncRuleErrMsg(syncRulesErr)
+		}
 	}
 }
 
-func (r *Ruler) syncRules(ctx context.Context, reason string) {
+func (r *Ruler) syncRules(ctx context.Context, reason string) error {
 	level.Info(r.logger).Log("msg", "syncing rules", "reason", reason)
 	r.rulerSync.WithLabelValues(reason).Inc()
 	timer := prometheus.NewTimer(nil)
@@ -727,12 +738,12 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 
 	loadedConfigs, backupConfigs, err := r.loadRuleGroups(ctx)
 	if err != nil {
-		return
+		return err
 	}
 
 	if ctx.Err() != nil {
 		level.Info(r.logger).Log("msg", "context is canceled. not syncing rules")
-		return
+		return err
 	}
 	// This will also delete local group files for users that are no longer in 'configs' map.
 	r.manager.SyncRuleGroups(ctx, loadedConfigs)
@@ -740,6 +751,8 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 	if r.cfg.RulesBackupEnabled() {
 		r.manager.BackUpRuleGroups(ctx, backupConfigs)
 	}
+
+	return nil
 }
 
 func (r *Ruler) loadRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, map[string]rulespb.RuleGroupList, error) {

@@ -59,6 +59,7 @@ Currently experimental features are:
 - Distributor:
   - Do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
   - Accept multiple HA pairs in the same request (enabled via `-experimental.distributor.ha-tracker.mixed-ha-samples=true`)
+  - Accept Prometheus remote write 2.0 request (`-distributor.remote-writev2-enabled=true`)
 - Tenant Deletion in Purger, for blocks storage.
 - Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)
 - Blocks storage bucket index
@@ -116,6 +117,8 @@ Currently experimental features are:
   - `store-gateway.sharding-ring.final-sleep` (duration) CLI flag
   - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag
 - OTLP Receiver
+  - Ingest delta temporality OTLP metrics (`-distributor.otlp.allow-delta-temporality=true`)
+  - Add `__type__` and `__unit__` labels (`-distributor.otlp.enable-type-and-unit-labels`)
 - Persistent tokens in the Ruler Ring:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
 - Native Histograms

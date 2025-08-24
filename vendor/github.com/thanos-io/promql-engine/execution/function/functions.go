@@ -7,9 +7,9 @@ import (
 	"math"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/aggregate"
+
 	"github.com/prometheus/prometheus/model/histogram"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
 )
 
 type functionCall func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool)
@@ -139,12 +139,6 @@ var instantVectorFuncs = map[string]functionCall{
 			return 0., false
 		}
 		return h.Sum / h.Count, true
-	},
-	"histogram_fraction": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
-		if h == nil || len(vargs) != 2 {
-			return 0., false
-		}
-		return promql.HistogramFraction(vargs[0], vargs[1], h), true
 	},
 	"histogram_stddev": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
 		if h == nil {
@@ -317,26 +311,68 @@ func year(t time.Time) float64 {
 	return float64(t.Year())
 }
 
-var XFunctions = map[string]*parser.Function{
-	"xdelta": {
-		Name:       "xdelta",
-		ArgTypes:   []parser.ValueType{parser.ValueTypeMatrix},
-		ReturnType: parser.ValueTypeVector,
-	},
-	"xincrease": {
-		Name:       "xincrease",
-		ArgTypes:   []parser.ValueType{parser.ValueTypeMatrix},
-		ReturnType: parser.ValueTypeVector,
-	},
-	"xrate": {
-		Name:       "xrate",
-		ArgTypes:   []parser.ValueType{parser.ValueTypeMatrix},
-		ReturnType: parser.ValueTypeVector,
-	},
+// TODO: import from prometheus once exported there.
+func histogramStdDev(h *histogram.FloatHistogram) float64 {
+	mean := h.Sum / h.Count
+	var variance, cVariance float64
+	it := h.AllBucketIterator()
+	for it.Next() {
+		bucket := it.At()
+		if bucket.Count == 0 {
+			continue
+		}
+		var val float64
+		switch {
+		case h.UsesCustomBuckets():
+			// Use arithmetic mean in case of custom buckets.
+			val = (bucket.Upper + bucket.Lower) / 2.0
+		case bucket.Lower <= 0 && bucket.Upper >= 0:
+			// Use zero (effectively the arithmetic mean) in the zero bucket of a standard exponential histogram.
+			val = 0
+		default:
+			// Use geometric mean in case of standard exponential buckets.
+			val = math.Sqrt(bucket.Upper * bucket.Lower)
+			if bucket.Upper < 0 {
+				val = -val
+			}
+		}
+		delta := val - mean
+		variance, cVariance = aggregate.KahanSumInc(bucket.Count*delta*delta, variance, cVariance)
+	}
+	variance += cVariance
+	variance /= h.Count
+	return math.Sqrt(variance)
 }
 
-// IsExtFunction is a convenience function to determine whether extended range calculations are required.
-func IsExtFunction(functionName string) bool {
-	_, ok := XFunctions[functionName]
-	return ok
+// TODO: import from prometheus once exported there.
+func histogramStdVar(h *histogram.FloatHistogram) float64 {
+	mean := h.Sum / h.Count
+	var variance, cVariance float64
+	it := h.AllBucketIterator()
+	for it.Next() {
+		bucket := it.At()
+		if bucket.Count == 0 {
+			continue
+		}
+		var val float64
+		switch {
+		case h.UsesCustomBuckets():
+			// Use arithmetic mean in case of custom buckets.
+			val = (bucket.Upper + bucket.Lower) / 2.0
+		case bucket.Lower <= 0 && bucket.Upper >= 0:
+			// Use zero (effectively the arithmetic mean) in the zero bucket of a standard exponential histogram.
+			val = 0
+		default:
+			// Use geometric mean in case of standard exponential buckets.
+			val = math.Sqrt(bucket.Upper * bucket.Lower)
+			if bucket.Upper < 0 {
+				val = -val
+			}
+		}
+		delta := val - mean
+		variance, cVariance = aggregate.KahanSumInc(bucket.Count*delta*delta, variance, cVariance)
+	}
+	variance += cVariance
+	variance /= h.Count
+	return variance
 }

@@ -1777,53 +1777,56 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		{
 			removeReplica: true,
 			removeLabels:  []string{"cluster"},
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "some_metric"},
-				{Name: "cluster", Value: "one"},
-				{Name: "__replica__", Value: "two"},
-			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "some_metric"},
-			},
+			inputSeries: labels.FromStrings(
+				"__name__", "some_metric",
+				"cluster", "one",
+				"__replica__", "two",
+			),
+			expectedSeries: labels.FromStrings(
+				"__name__", "some_metric",
+			),
 		},
+
 		// Remove multiple labels and replica.
 		{
 			removeReplica: true,
 			removeLabels:  []string{"foo", "some"},
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "some_metric"},
-				{Name: "cluster", Value: "one"},
-				{Name: "__replica__", Value: "two"},
-				{Name: "foo", Value: "bar"},
-				{Name: "some", Value: "thing"},
-			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "some_metric"},
-				{Name: "cluster", Value: "one"},
-			},
+			inputSeries: labels.FromStrings(
+				"__name__", "some_metric",
+				"cluster", "one",
+				"__replica__", "two",
+				"foo", "bar",
+				"some", "thing",
+			),
+			expectedSeries: labels.FromStrings(
+				"__name__", "some_metric",
+				"cluster", "one",
+			),
 		},
+
 		// Don't remove any labels.
 		{
 			removeReplica: false,
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "some_metric"},
-				{Name: "__replica__", Value: "two"},
-				{Name: "cluster", Value: "one"},
-			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "some_metric"},
-				{Name: "__replica__", Value: "two"},
-				{Name: "cluster", Value: "one"},
-			},
+			inputSeries: labels.FromStrings(
+				"__name__", "some_metric",
+				"__replica__", "two",
+				"cluster", "one",
+			),
+			expectedSeries: labels.FromStrings(
+				"__name__", "some_metric",
+				"__replica__", "two",
+				"cluster", "one",
+			),
 		},
+
 		// No labels left.
 		{
 			removeReplica: true,
 			removeLabels:  []string{"cluster"},
-			inputSeries: labels.Labels{
-				{Name: "cluster", Value: "one"},
-				{Name: "__replica__", Value: "two"},
-			},
+			inputSeries: labels.FromStrings(
+				"cluster", "one",
+				"__replica__", "two",
+			),
 			expectedSeries: labels.Labels{},
 			exemplars: []cortexpb.Exemplar{
 				{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("test", "a")), Value: 1, TimestampMs: 0},
@@ -1896,13 +1899,9 @@ func TestDistributor_Push_LabelRemoval_RemovingNameLabelWillError(t *testing.T) 
 	}
 
 	tc := testcase{
-		removeReplica: true,
-		removeLabels:  []string{"__name__"},
-		inputSeries: labels.Labels{
-			{Name: "__name__", Value: "some_metric"},
-			{Name: "cluster", Value: "one"},
-			{Name: "__replica__", Value: "two"},
-		},
+		removeReplica:  true,
+		removeLabels:   []string{"__name__"},
+		inputSeries:    labels.FromStrings("__name__", "some_metric", "cluster", "one", "__replica__", "two"),
 		expectedSeries: labels.Labels{},
 	}
 
@@ -1936,66 +1935,70 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 		expectedToken  uint32
 	}{
 		"metric_1 with value_1": {
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "metric_1"},
-				{Name: "cluster", Value: "cluster_1"},
-				{Name: "key", Value: "value_1"},
-			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "metric_1"},
-				{Name: "cluster", Value: "cluster_1"},
-				{Name: "key", Value: "value_1"},
-			},
+			inputSeries: labels.FromStrings(
+				"__name__", "metric_1",
+				"cluster", "cluster_1",
+				"key", "value_1",
+			),
+			expectedSeries: labels.FromStrings(
+				"__name__", "metric_1",
+				"cluster", "cluster_1",
+				"key", "value_1",
+			),
 			expectedToken: 0xec0a2e9d,
 		},
+
 		"metric_1 with value_1 and dropped label due to config": {
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "metric_1"},
-				{Name: "cluster", Value: "cluster_1"},
-				{Name: "key", Value: "value_1"},
-				{Name: "dropped", Value: "unused"}, // will be dropped, doesn't need to be in correct order
-			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "metric_1"},
-				{Name: "cluster", Value: "cluster_1"},
-				{Name: "key", Value: "value_1"},
-			},
+			inputSeries: labels.FromStrings(
+				"__name__", "metric_1",
+				"cluster", "cluster_1",
+				"key", "value_1",
+				"dropped", "unused",
+			),
+			expectedSeries: labels.FromStrings(
+				"__name__", "metric_1",
+				"cluster", "cluster_1",
+				"key", "value_1",
+			),
 			expectedToken: 0xec0a2e9d,
 		},
+
 		"metric_1 with value_1 and dropped HA replica label": {
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "metric_1"},
-				{Name: "cluster", Value: "cluster_1"},
-				{Name: "key", Value: "value_1"},
-				{Name: "__replica__", Value: "replica_1"},
-			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "metric_1"},
-				{Name: "cluster", Value: "cluster_1"},
-				{Name: "key", Value: "value_1"},
-			},
+			inputSeries: labels.FromStrings(
+				"__name__", "metric_1",
+				"cluster", "cluster_1",
+				"key", "value_1",
+				"__replica__", "replica_1",
+			),
+			expectedSeries: labels.FromStrings(
+				"__name__", "metric_1",
+				"cluster", "cluster_1",
+				"key", "value_1",
+			),
 			expectedToken: 0xec0a2e9d,
 		},
+
 		"metric_2 with value_1": {
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "metric_2"},
-				{Name: "key", Value: "value_1"},
-			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "metric_2"},
-				{Name: "key", Value: "value_1"},
-			},
+			inputSeries: labels.FromStrings(
+				"__name__", "metric_2",
+				"key", "value_1",
+			),
+			expectedSeries: labels.FromStrings(
+				"__name__", "metric_2",
+				"key", "value_1",
+			),
 			expectedToken: 0xa60906f2,
 		},
+
 		"metric_1 with value_2": {
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "metric_1"},
-				{Name: "key", Value: "value_2"},
-			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "metric_1"},
-				{Name: "key", Value: "value_2"},
-			},
+			inputSeries: labels.FromStrings(
+				"__name__", "metric_1",
+				"key", "value_2",
+			),
+			expectedSeries: labels.FromStrings(
+				"__name__", "metric_1",
+				"key", "value_2",
+			),
 			expectedToken: 0x18abc8a2,
 		},
 	}
@@ -2038,10 +2041,7 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 
 func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	t.Parallel()
-	inputLabels := labels.Labels{
-		{Name: model.MetricNameLabel, Value: "foo"},
-		{Name: "999.illegal", Value: "baz"},
-	}
+	inputLabels := labels.FromStrings(model.MetricNameLabel, "foo", "999.illegal", "baz")
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	tests := map[string]struct {
@@ -2234,8 +2234,8 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
+				lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
 				for i := 0; i < numSeriesPerRequest; i++ {
-					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
 					for i := 0; i < 10; i++ {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
@@ -2261,7 +2261,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
-					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
 					for i := 0; i < 10; i++ {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
@@ -2286,7 +2286,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
-					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
 					for i := 1; i < 31; i++ {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
@@ -2311,7 +2311,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
-					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
 					for i := 0; i < 10; i++ {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
@@ -2339,7 +2339,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
-					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
 					for i := 0; i < 10; i++ {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
@@ -2367,7 +2367,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
-					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
 					for i := 0; i < 10; i++ {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
@@ -2396,7 +2396,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
-					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
 					for i := 0; i < 10; i++ {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
@@ -2421,7 +2421,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
-					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
 					for i := 0; i < 10; i++ {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
@@ -2570,7 +2570,8 @@ func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
 		now := model.Now()
 
 		for i := 0; i < 100; i++ {
-			req := mockWriteRequest([]labels.Labels{{{Name: labels.MetricName, Value: "test"}, {Name: "app", Value: "m"}, {Name: "uniq8", Value: strconv.Itoa(i)}}}, 1, now.Unix(), histogram)
+
+			req := mockWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "test", "app", "m", "uniq8", strconv.Itoa(i))}, 1, now.Unix(), histogram)
 			_, err := ds[0].Push(ctx, req)
 			require.NoError(t, err)
 		}
@@ -2591,12 +2592,32 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 		value     int64
 		timestamp int64
 	}{
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}}, 1, 100000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "500"}}, 1, 110000},
-		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
+		{
+			lbls:      labels.FromStrings(labels.MetricName, "test_1", "status", "200"),
+			value:     1,
+			timestamp: 100000,
+		},
+		{
+			lbls:      labels.FromStrings(labels.MetricName, "test_1", "status", "500"),
+			value:     1,
+			timestamp: 110000,
+		},
+		{
+			lbls:      labels.FromStrings(labels.MetricName, "test_2"),
+			value:     2,
+			timestamp: 200000,
+		},
 		// The two following series have the same FastFingerprint=e002a3a451262627
-		{labels.Labels{{Name: labels.MetricName, Value: "fast_fingerprint_collision"}, {Name: "app", Value: "l"}, {Name: "uniq0", Value: "0"}, {Name: "uniq1", Value: "1"}}, 1, 300000},
-		{labels.Labels{{Name: labels.MetricName, Value: "fast_fingerprint_collision"}, {Name: "app", Value: "m"}, {Name: "uniq0", Value: "1"}, {Name: "uniq1", Value: "1"}}, 1, 300000},
+		{
+			lbls:      labels.FromStrings(labels.MetricName, "fast_fingerprint_collision", "app", "l", "uniq0", "0", "uniq1", "1"),
+			value:     1,
+			timestamp: 300000,
+		},
+		{
+			lbls:      labels.FromStrings(labels.MetricName, "fast_fingerprint_collision", "app", "m", "uniq0", "1", "uniq1", "1"),
+			value:     1,
+			timestamp: 300000,
+		},
 	}
 
 	tests := map[string]struct {
@@ -2799,7 +2820,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				for i := 0; i < numSeriesPerRequest; i++ {
-					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: fmt.Sprintf("foo_%d", i)}})
+					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, fmt.Sprintf("foo_%d", i)))
 					for i := 0; i < 10; i++ {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
@@ -3788,7 +3809,9 @@ func TestDistributorValidation(t *testing.T) {
 		// Test validation passes.
 		{
 			metadata: []*cortexpb.MetricMetadata{{MetricFamilyName: "testmetric", Help: "a test metric.", Unit: "", Type: cortexpb.COUNTER}},
-			labels:   []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
+			},
 			samples: []cortexpb.Sample{{
 				TimestampMs: int64(now),
 				Value:       1,
@@ -3799,7 +3822,9 @@ func TestDistributorValidation(t *testing.T) {
 		},
 		// Test validation fails for very old samples.
 		{
-			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
+			},
 			samples: []cortexpb.Sample{{
 				TimestampMs: int64(past),
 				Value:       2,
@@ -3808,7 +3833,9 @@ func TestDistributorValidation(t *testing.T) {
 		},
 		// Test validation fails for samples from the future.
 		{
-			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
+			},
 			samples: []cortexpb.Sample{{
 				TimestampMs: int64(future),
 				Value:       4,
@@ -3818,7 +3845,9 @@ func TestDistributorValidation(t *testing.T) {
 
 		// Test maximum labels names per series.
 		{
-			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}, {Name: "foo2", Value: "bar2"}}},
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar", "foo2", "bar2"),
+			},
 			samples: []cortexpb.Sample{{
 				TimestampMs: int64(now),
 				Value:       2,
@@ -3828,8 +3857,8 @@ func TestDistributorValidation(t *testing.T) {
 		// Test multiple validation fails return the first one.
 		{
 			labels: []labels.Labels{
-				{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}, {Name: "foo2", Value: "bar2"}},
-				{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}},
+				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar", "foo2", "bar2"),
+				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
 			},
 			samples: []cortexpb.Sample{
 				{TimestampMs: int64(now), Value: 2},
@@ -3840,7 +3869,9 @@ func TestDistributorValidation(t *testing.T) {
 		// Test metadata validation fails
 		{
 			metadata: []*cortexpb.MetricMetadata{{MetricFamilyName: "", Help: "a test metric.", Unit: "", Type: cortexpb.COUNTER}},
-			labels:   []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
+			},
 			samples: []cortexpb.Sample{{
 				TimestampMs: int64(now),
 				Value:       1,
@@ -3849,7 +3880,9 @@ func TestDistributorValidation(t *testing.T) {
 		},
 		// Test maximum labels names per series for histogram samples.
 		{
-			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}, {Name: "foo2", Value: "bar2"}}},
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar", "foo2", "bar2"),
+			},
 			histograms: []cortexpb.Histogram{
 				cortexpb.HistogramToHistogramProto(int64(now), testHistogram),
 			},
@@ -3857,7 +3890,9 @@ func TestDistributorValidation(t *testing.T) {
 		},
 		// Test validation fails for very old histogram samples.
 		{
-			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
+			},
 			histograms: []cortexpb.Histogram{
 				cortexpb.HistogramToHistogramProto(int64(past), testHistogram),
 			},
@@ -3865,7 +3900,9 @@ func TestDistributorValidation(t *testing.T) {
 		},
 		// Test validation fails for histogram samples from the future.
 		{
-			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
+			},
 			histograms: []cortexpb.Histogram{
 				cortexpb.FloatHistogramToHistogramProto(int64(future), testFloatHistogram),
 			},
@@ -4003,28 +4040,16 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 		{
 			name: "with no relabel config",
 			inputSeries: []labels.Labels{
-				{
-					{Name: "__name__", Value: "foo"},
-					{Name: "cluster", Value: "one"},
-				},
+				labels.FromStrings("__name__", "foo", "cluster", "one"),
 			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "foo"},
-				{Name: "cluster", Value: "one"},
-			},
+			expectedSeries: labels.FromStrings("__name__", "foo", "cluster", "one"),
 		},
 		{
 			name: "with hardcoded replace",
 			inputSeries: []labels.Labels{
-				{
-					{Name: "__name__", Value: "foo"},
-					{Name: "cluster", Value: "one"},
-				},
+				labels.FromStrings("__name__", "foo", "cluster", "one"),
 			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "foo"},
-				{Name: "cluster", Value: "two"},
-			},
+			expectedSeries: labels.FromStrings("__name__", "foo", "cluster", "two"),
 			metricRelabelConfigs: []*relabel.Config{
 				{
 					SourceLabels: []model.LabelName{"cluster"},
@@ -4038,19 +4063,10 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 		{
 			name: "with drop action",
 			inputSeries: []labels.Labels{
-				{
-					{Name: "__name__", Value: "foo"},
-					{Name: "cluster", Value: "one"},
-				},
-				{
-					{Name: "__name__", Value: "bar"},
-					{Name: "cluster", Value: "two"},
-				},
+				labels.FromStrings("__name__", "foo", "cluster", "one"),
+				labels.FromStrings("__name__", "bar", "cluster", "two"),
 			},
-			expectedSeries: labels.Labels{
-				{Name: "__name__", Value: "bar"},
-				{Name: "cluster", Value: "two"},
-			},
+			expectedSeries: labels.FromStrings("__name__", "bar", "cluster", "two"),
 			metricRelabelConfigs: []*relabel.Config{
 				{
 					SourceLabels: []model.LabelName{"__name__"},
@@ -4112,19 +4128,10 @@ func TestDistributor_Push_EmptyLabel(t *testing.T) {
 		{
 			name: "with empty label",
 			inputSeries: []labels.Labels{
-				{ //Token 1106054332 without filtering
-					{Name: "__name__", Value: "foo"},
-					{Name: "empty", Value: ""},
-				},
-				{ //Token 3827924124 without filtering
-					{Name: "__name__", Value: "foo"},
-					{Name: "changHash", Value: ""},
-				},
+				labels.FromStrings("__name__", "foo", "empty", ""),
+				labels.FromStrings("__name__", "foo", "changHash", ""),
 			},
-			expectedSeries: labels.Labels{
-				//Token 1797290973
-				{Name: "__name__", Value: "foo"},
-			},
+			expectedSeries: labels.FromStrings("__name__", "foo"),
 		},
 	}
 
@@ -4190,14 +4197,8 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	}
 
 	inputSeries := []labels.Labels{
-		{
-			{Name: "__name__", Value: "foo"},
-			{Name: "cluster", Value: "one"},
-		},
-		{
-			{Name: "__name__", Value: "bar"},
-			{Name: "cluster", Value: "two"},
-		},
+		labels.FromStrings("__name__", "foo", "cluster", "one"),
+		labels.FromStrings("__name__", "bar", "cluster", "two"),
 	}
 
 	var err error
@@ -4247,22 +4248,10 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 func TestDistributor_PushLabelSetMetrics(t *testing.T) {
 	t.Parallel()
 	inputSeries := []labels.Labels{
-		{
-			{Name: "__name__", Value: "foo"},
-			{Name: "cluster", Value: "one"},
-		},
-		{
-			{Name: "__name__", Value: "bar"},
-			{Name: "cluster", Value: "one"},
-		},
-		{
-			{Name: "__name__", Value: "bar"},
-			{Name: "cluster", Value: "two"},
-		},
-		{
-			{Name: "__name__", Value: "foo"},
-			{Name: "cluster", Value: "three"},
-		},
+		labels.FromStrings("__name__", "foo", "cluster", "one"),
+		labels.FromStrings("__name__", "bar", "cluster", "one"),
+		labels.FromStrings("__name__", "bar", "cluster", "two"),
+		labels.FromStrings("__name__", "foo", "cluster", "three"),
 	}
 
 	var err error
@@ -4300,14 +4289,8 @@ func TestDistributor_PushLabelSetMetrics(t *testing.T) {
 
 	// Push more series.
 	inputSeries = []labels.Labels{
-		{
-			{Name: "__name__", Value: "baz"},
-			{Name: "cluster", Value: "two"},
-		},
-		{
-			{Name: "__name__", Value: "foo"},
-			{Name: "cluster", Value: "four"},
-		},
+		labels.FromStrings("__name__", "baz", "cluster", "two"),
+		labels.FromStrings("__name__", "foo", "cluster", "four"),
 	}
 	// Write the same request twice for different users.
 	req = mockWriteRequest(inputSeries, 1, 1, false)

@@ -186,41 +186,26 @@ func (r *delegatingResolver) Close() {
 	r.proxyResolver = nil
 }
 
-func needsProxyResolver(state *resolver.State) bool {
+func networkTypeFromAddr(addr resolver.Address) string {
+	networkType, ok := networktype.Get(addr)
+	if !ok {
+		networkType, _ = transport.ParseDialTarget(addr.Addr)
+	}
+	return networkType
+}
+
+func isTCPAddressPresent(state *resolver.State) bool {
 	for _, addr := range state.Addresses {
-		if !skipProxy(addr) {
+		if networkType := networkTypeFromAddr(addr); networkType == "tcp" {
 			return true
 		}
 	}
 	for _, endpoint := range state.Endpoints {
 		for _, addr := range endpoint.Addresses {
-			if !skipProxy(addr) {
+			if networktype := networkTypeFromAddr(addr); networktype == "tcp" {
 				return true
 			}
 		}
-	}
-	return false
-}
-
-func skipProxy(address resolver.Address) bool {
-	// Avoid proxy when network is not tcp.
-	networkType, ok := networktype.Get(address)
-	if !ok {
-		networkType, _ = transport.ParseDialTarget(address.Addr)
-	}
-	if networkType != "tcp" {
-		return true
-	}
-
-	req := &http.Request{URL: &url.URL{
-		Scheme: "https",
-		Host:   address.Addr,
-	}}
-	// Avoid proxy when address included in `NO_PROXY` environment variable or
-	// fails to get the proxy address.
-	url, err := HTTPSProxyFromEnvironment(req)
-	if err != nil || url == nil {
-		return true
 	}
 	return false
 }
@@ -255,7 +240,8 @@ func (r *delegatingResolver) updateClientConnStateLocked() error {
 	}
 	var addresses []resolver.Address
 	for _, targetAddr := range (*r.targetResolverState).Addresses {
-		if skipProxy(targetAddr) {
+		// Avoid proxy when network is not tcp.
+		if networkType := networkTypeFromAddr(targetAddr); networkType != "tcp" {
 			addresses = append(addresses, targetAddr)
 			continue
 		}
@@ -273,7 +259,7 @@ func (r *delegatingResolver) updateClientConnStateLocked() error {
 		var addrs []resolver.Address
 		for _, targetAddr := range endpt.Addresses {
 			// Avoid proxy when network is not tcp.
-			if skipProxy(targetAddr) {
+			if networkType := networkTypeFromAddr(targetAddr); networkType != "tcp" {
 				addrs = append(addrs, targetAddr)
 				continue
 			}
@@ -354,10 +340,9 @@ func (r *delegatingResolver) updateTargetResolverState(state resolver.State) err
 		logger.Infof("Addresses received from target resolver: %v", state.Addresses)
 	}
 	r.targetResolverState = &state
-	// If all addresses returned by the target resolver have a non-TCP network
-	// type, or are listed in the `NO_PROXY` environment variable, do not wait
-	// for proxy update.
-	if !needsProxyResolver(r.targetResolverState) {
+	// If no addresses returned by resolver have network type as tcp , do not
+	// wait for proxy update.
+	if !isTCPAddressPresent(r.targetResolverState) {
 		return r.cc.UpdateState(*r.targetResolverState)
 	}
 

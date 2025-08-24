@@ -285,7 +285,7 @@ type BucketStoreConfig struct {
 	IndexCache               IndexCacheConfig         `yaml:"index_cache"`
 	ChunksCache              ChunksCacheConfig        `yaml:"chunks_cache"`
 	MetadataCache            MetadataCacheConfig      `yaml:"metadata_cache"`
-	ParquetLabelsCache       ParquetLabelsCacheConfig `yaml:"parquet_labels_cache" doc:"hidden"`
+	ParquetLabelsCache       ParquetLabelsCacheConfig `yaml:"parquet_labels_cache"`
 	MatchersCacheMaxItems    int                      `yaml:"matchers_cache_max_items"`
 	IgnoreDeletionMarksDelay time.Duration            `yaml:"ignore_deletion_mark_delay"`
 	IgnoreBlocksWithin       time.Duration            `yaml:"ignore_blocks_within"`

@@ -184,7 +184,7 @@ type Limits struct {
 	MaxQueryResponseSize         int64          `yaml:"max_query_response_size" json:"max_query_response_size"`
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
-	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
+	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size"`
 	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Parquet Queryable enforced limits.
@@ -1202,11 +1202,16 @@ outer:
 			defaultPartitionIndex = i
 			continue
 		}
-		for _, lbl := range lbls.LabelSet {
+		found := true
+		lbls.LabelSet.Range(func(l labels.Label) {
 			// We did not find some of the labels on the set
-			if v := metric.Get(lbl.Name); v != lbl.Value {
-				continue outer
+			if v := metric.Get(l.Name); v != l.Value {
+				found = false
 			}
+		})
+
+		if !found {
+			continue outer
 		}
 		r = append(r, lbls)
 	}

@@ -68,6 +68,7 @@ type RingConfig struct {
 	ZoneAwarenessEnabled            bool          `yaml:"zone_awareness_enabled"`
 	KeepInstanceInTheRingOnShutdown bool          `yaml:"keep_instance_in_the_ring_on_shutdown"`
 	ZoneStableShuffleSharding       bool          `yaml:"zone_stable_shuffle_sharding" doc:"hidden"`
+	DetailedMetricsEnabled          bool          `yaml:"detailed_metrics_enabled"`
 
 	// Wait ring stability.
 	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`
@@ -107,6 +108,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, ringFlagsPrefix+"zone-awareness-enabled", false, "True to enable zone-awareness and replicate blocks across different availability zones.")
 	f.BoolVar(&cfg.KeepInstanceInTheRingOnShutdown, ringFlagsPrefix+"keep-instance-in-the-ring-on-shutdown", false, "True to keep the store gateway instance in the ring when it shuts down. The instance will then be auto-forgotten from the ring after 10*heartbeat_timeout.")
 	f.BoolVar(&cfg.ZoneStableShuffleSharding, ringFlagsPrefix+"zone-stable-shuffle-sharding", true, "If true, use zone stable shuffle sharding algorithm. Otherwise, use the default shuffle sharding algorithm.")
+	f.BoolVar(&cfg.DetailedMetricsEnabled, ringFlagsPrefix+"detailed-metrics-enabled", true, "Set to true to enable ring detailed metrics. These metrics provide detailed information, such as token count and ownership per tenant. Disabling them can significantly decrease the number of metrics emitted.")
 
 	// Wait stability flags.
 	f.DurationVar(&cfg.WaitStabilityMinDuration, ringFlagsPrefix+"wait-stability-min-duration", time.Minute, "Minimum time to wait for ring stability at startup. 0 to disable.")
@@ -138,6 +140,7 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 	rc.ReplicationFactor = cfg.ReplicationFactor
 	rc.ZoneAwarenessEnabled = cfg.ZoneAwarenessEnabled
 	rc.SubringCacheDisabled = true
+	rc.DetailedMetricsEnabled = cfg.DetailedMetricsEnabled
 
 	return rc
 }

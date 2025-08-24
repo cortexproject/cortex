@@ -30,6 +30,7 @@ type OperatorTelemetry interface {
 	IncrementSamplesAtTimestamp(samples int, t int64)
 	Samples() *stats.QuerySamples
 	LogicalNode() logicalplan.Node
+	UpdatePeak(count int)
 }
 
 func NewTelemetry(operator fmt.Stringer, opts *query.Options) OperatorTelemetry {
@@ -91,6 +92,8 @@ func (tm *NoopTelemetry) LogicalNode() logicalplan.Node {
 	return nil
 }
 
+func (tm *NoopTelemetry) UpdatePeak(_ int) {}
+
 type TrackedTelemetry struct {
 	fmt.Stringer
 
@@ -144,7 +147,6 @@ func (ti *TrackedTelemetry) NextExecutionTime() time.Duration {
 }
 
 func (ti *TrackedTelemetry) IncrementSamplesAtTimestamp(samples int, t int64) {
-	ti.updatePeak(samples)
 	ti.LoadedSamples.IncrementSamplesAtTimestamp(t, int64(samples))
 }
 
@@ -152,15 +154,15 @@ func (ti *TrackedTelemetry) LogicalNode() logicalplan.Node {
 	return ti.logicalNode
 }
 
-func (ti *TrackedTelemetry) updatePeak(samples int) {
-	ti.LoadedSamples.UpdatePeak(samples)
-}
-
 func (ti *TrackedTelemetry) Samples() *stats.QuerySamples { return ti.LoadedSamples }
 
 func (ti *TrackedTelemetry) MaxSeriesCount() int { return ti.Series }
 
 func (ti *TrackedTelemetry) SetMaxSeriesCount(count int) { ti.Series = count }
+
+func (ti *TrackedTelemetry) UpdatePeak(count int) {
+	ti.Samples().UpdatePeak(count)
+}
 
 type ObservableVectorOperator interface {
 	model.VectorOperator
@@ -203,8 +205,31 @@ func (t *Operator) Series(ctx context.Context) ([]labels.Labels, error) {
 
 func (t *Operator) Next(ctx context.Context) ([]model.StepVector, error) {
 	start := time.Now()
+	var totalSamplesBeforeCount int64
+	totalSamplesBefore := t.OperatorTelemetry.Samples()
+	if totalSamplesBefore != nil {
+		totalSamplesBeforeCount = totalSamplesBefore.TotalSamples
+	} else {
+		totalSamplesBeforeCount = 0
+	}
+
 	defer func() { t.OperatorTelemetry.AddNextExecutionTime(time.Since(start)) }()
-	return t.inner.Next(ctx)
+	out, err := t.inner.Next(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var totalSamplesAfter int64
+	totalSamplesAfterSamples := t.OperatorTelemetry.Samples()
+	if totalSamplesAfterSamples != nil {
+		totalSamplesAfter = totalSamplesAfterSamples.TotalSamples
+	} else {
+		totalSamplesAfter = 0
+	}
+
+	t.OperatorTelemetry.UpdatePeak(int(totalSamplesAfter) - int(totalSamplesBeforeCount))
+
+	return out, err
 }
 
 func (t *Operator) GetPool() *model.VectorPool {

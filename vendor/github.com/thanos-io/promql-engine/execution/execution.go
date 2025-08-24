@@ -178,7 +178,7 @@ func newRangeVectorFunction(ctx context.Context, e *logicalplan.FunctionCall, t 
 	// TODO(saswatamcode): Range vector result might need new operator
 	// before it can be non-nested. https://github.com/thanos-io/promql-engine/issues/39
 	milliSecondRange := t.Range.Milliseconds()
-	if function.IsExtFunction(e.Func.Name) {
+	if parse.IsExtFunction(e.Func.Name) {
 		milliSecondRange += opts.ExtLookbackDelta.Milliseconds()
 	}
 

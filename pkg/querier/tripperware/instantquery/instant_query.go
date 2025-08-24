@@ -47,8 +47,15 @@ type instantQueryCodec struct {
 
 func NewInstantQueryCodec(compressionStr string, defaultCodecTypeStr string) instantQueryCodec {
 	compression := tripperware.NonCompression // default
-	if compressionStr == string(tripperware.GzipCompression) {
+	switch compressionStr {
+	case string(tripperware.GzipCompression):
 		compression = tripperware.GzipCompression
+
+	case string(tripperware.SnappyCompression):
+		compression = tripperware.SnappyCompression
+
+	case string(tripperware.ZstdCompression):
+		compression = tripperware.ZstdCompression
 	}
 
 	defaultCodecType := tripperware.JsonCodecType // default
@@ -102,11 +109,29 @@ func (c instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response,
 		return nil, err
 	}
 
+	responseSizeHeader := r.Header.Get("X-Uncompressed-Length")
 	responseSizeLimiter := limiter.ResponseSizeLimiterFromContextWithFallback(ctx)
-	body, err := tripperware.BodyBytes(r, responseSizeLimiter, log)
+	responseSize, hasSizeHeader, err := tripperware.ParseResponseSizeHeader(responseSizeHeader)
 	if err != nil {
 		log.Error(err)
 		return nil, err
+	}
+	if hasSizeHeader {
+		if err := responseSizeLimiter.AddResponseBytes(responseSize); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
+		}
+	}
+
+	body, err := tripperware.BodyBytes(r, log)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	if !hasSizeHeader {
+		if err := responseSizeLimiter.AddResponseBytes(len(body)); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", err.Error())
+		}
 	}
 
 	if r.StatusCode/100 != 2 {
@@ -183,7 +208,7 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 		}
 	}
 
-	h.Add("Content-Type", "application/json")
+	h.Add("Content-Type", "application/x-www-form-urlencoded")
 
 	isSourceRuler := strings.Contains(h.Get("User-Agent"), tripperware.RulerUserAgent)
 	if !isSourceRuler {
@@ -191,16 +216,19 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 		tripperware.SetRequestHeaders(h, c.defaultCodecType, c.compression)
 	}
 
-	byteBody, err := c.getSerializedBody(promReq)
+	bodyBytes, err := c.getSerializedBody(promReq)
 	if err != nil {
 		return nil, err
 	}
+	form := url.Values{}
+	form.Set("plan", string(bodyBytes))
+	formEncoded := form.Encode()
 
 	req := &http.Request{
 		Method:     "POST",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
-		Body:       io.NopCloser(bytes.NewReader(byteBody)),
+		Body:       io.NopCloser(strings.NewReader(formEncoded)),
 		Header:     h,
 	}
 

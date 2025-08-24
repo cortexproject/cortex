@@ -49,6 +49,7 @@ func TestCompactorMetrics(t *testing.T) {
 			cortex_compactor_meta_synced{state="marked-for-deletion"} 0
 			cortex_compactor_meta_synced{state="marked-for-no-compact"} 0
 			cortex_compactor_meta_synced{state="no-meta-json"} 0
+			cortex_compactor_meta_synced{state="parquet-migrated"} 0
 			cortex_compactor_meta_synced{state="time-excluded"} 0
 			cortex_compactor_meta_synced{state="too-fresh"} 0
 			# HELP cortex_compactor_meta_syncs_total Total blocks metadata synchronization attempts.

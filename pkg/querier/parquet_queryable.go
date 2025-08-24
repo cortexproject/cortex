@@ -491,6 +491,11 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	if len(parquet) > 0 && len(remaining) > 0 {
 		sortSeries = true
 	}
+	// Also sort when multiple parquet blocks are being merged.
+	// We don't need to sort explicitly
+	if len(parquet) > 1 {
+		sortSeries = true
+	}
 
 	promises := make([]chan storage.SeriesSet, 0, 2)
 

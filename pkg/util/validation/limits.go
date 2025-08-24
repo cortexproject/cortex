@@ -151,7 +151,7 @@ type Limits struct {
 	MetricRelabelConfigs              []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
 	MaxNativeHistogramBuckets         int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
 	PromoteResourceAttributes         []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
-
+	UseUTF8Validation                 bool                `yaml:"use_utf8_validation" json:"use_utf8_validation"`
 	// Ingester enforced limits.
 	// Series
 	MaxLocalSeriesPerUser                 int                 `yaml:"max_series_per_user" json:"max_series_per_user"`

@@ -65,6 +65,19 @@ service:
 ```
 
 ## Configure OTLP
+You can configure OTLP-related flags in a yaml file.
+
+```
+limits:
+ promote_resource_attributes: <list of string>
+...
+distributor:
+  otlp:
+    convert_all_attributes: <boolean>
+    disable_target_info: <boolean>
+    allow_delta_temporality: <boolean>
+    enable_type_and_unit_labels: <boolean>
+```
 
 ### target_info metric
 
@@ -116,6 +129,17 @@ distributor:
     convert_all_attributes: false
     disable_target_info: false
 ```
+
+### Delta temporality
+
+The OpenTelemetry supports two temporalities, [Delta and Cumulative](https://opentelemetry.io/docs/specs/otel/metrics/data-model/#temporality).
+By default, only the cumulative metrics can be ingested.
+To enable the ingestion of OTLP metrics with delta temporality, set the `distributor.otlp.allow-delta-temporality` flag to `true`.
+
+### Enable `__type__` and `__unit__` label
+
+The `__type__` and `__unit__` labels are added to OTLP metrics if `distributor.otlp.enable-type-and-unit-labels` is set to `true`.
+This flag is disabled by default.
 
 ### Configure promote resource attributes per tenants
 

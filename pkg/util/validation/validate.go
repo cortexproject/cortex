@@ -250,6 +250,12 @@ func ValidateExemplar(validateMetrics *ValidateMetrics, userID string, ls []cort
 // ValidateLabels returns an err if the labels are invalid.
 // The returned error may retain the provided series labels.
 func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) ValidationError {
+	//nolint:staticcheck // SA1019: using deprecated NameValidationScheme intentionally as a temporary compatibility workaround for UTF-8 migration issues
+	if limits.UseUTF8Validation {
+		model.NameValidationScheme = model.UTF8Validation
+	} else {
+		model.NameValidationScheme = model.LegacyValidation
+	}
 	if limits.EnforceMetricName {
 		unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
 		if err != nil {

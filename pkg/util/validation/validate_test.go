@@ -151,6 +151,137 @@ func TestValidateLabels(t *testing.T) {
 	`), "cortex_discarded_samples_total"))
 }
 
+// same test
+func TestValidateLabels_Legacy(t *testing.T) {
+	cfg := new(Limits)
+	userID := "testUser"
+
+	reg := prometheus.NewRegistry()
+	validateMetrics := NewValidateMetrics(reg)
+
+	cfg.MaxLabelValueLength = 25
+	cfg.MaxLabelNameLength = 25
+	cfg.MaxLabelNamesPerSeries = 2
+	cfg.MaxLabelsSizeBytes = 90
+	cfg.EnforceMetricName = true
+	cfg.UseUTF8Validation = false // Legacy validation
+	cfg.LimitsPerLabelSet = []LimitsPerLabelSet{
+		{
+			Limits: LimitsPerLabelSetEntry{MaxSeries: 0},
+			LabelSet: labels.FromMap(map[string]string{
+				model.MetricNameLabel: "foo",
+			}),
+			Hash: 0,
+		},
+		{
+			Limits:   LimitsPerLabelSetEntry{MaxSeries: 0},
+			LabelSet: labels.EmptyLabels(),
+			Hash:     1,
+		},
+	}
+
+	for i, c := range []struct {
+		metric                  model.Metric
+		skipLabelNameValidation bool
+		expectedErr             error
+	}{
+		{map[model.LabelName]model.LabelValue{}, false, newNoMetricNameError()},
+		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: " "}, false, newInvalidMetricNameError(" ")},
+		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid", "foo ": "bar"}, false,
+			newInvalidLabelError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "valid"},
+				{Name: "foo ", Value: "bar"},
+			}, "foo ")},
+		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid"}, false, nil},
+		{
+			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelName", "this_is_a_really_really_long_name_that_should_cause_an_error": "test_value_please_ignore"},
+			false,
+			newLabelNameTooLongError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "badLabelName"},
+				{Name: "this_is_a_really_really_long_name_that_should_cause_an_error", Value: "test_value_please_ignore"},
+			}, "this_is_a_really_really_long_name_that_should_cause_an_error", cfg.MaxLabelNameLength),
+		},
+		{
+			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelValue", "much_shorter_name": "test_value_please_ignore_no_really_nothing_to_see_here"},
+			false,
+			newLabelValueTooLongError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "badLabelValue"},
+				{Name: "much_shorter_name", Value: "test_value_please_ignore_no_really_nothing_to_see_here"},
+			}, "much_shorter_name", "test_value_please_ignore_no_really_nothing_to_see_here", cfg.MaxLabelValueLength),
+		},
+		{
+			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "bar": "baz", "blip": "blop"},
+			false,
+			newTooManyLabelsError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "blip", Value: "blop"},
+			}, 2),
+		},
+		{
+			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "exactly_twenty_five_chars", "exactly_twenty_five_chars": "exactly_twenty_five_chars"},
+			false,
+			labelSizeBytesExceededError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "exactly_twenty_five_chars"},
+				{Name: "exactly_twenty_five_chars", Value: "exactly_twenty_five_chars"},
+			}, 91, cfg.MaxLabelsSizeBytes),
+		},
+		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "invalid%label&name": "bar"}, true, nil},
+	} {
+		convertedLabels := cortexpb.FromMetricsToLabelAdapters(c.metric)
+
+		t.Logf("Case %d:\n  Input Metric: %+v\n  SkipLabelNameValidation: %v", i, c.metric, c.skipLabelNameValidation)
+
+		err := ValidateLabels(validateMetrics, cfg, userID, convertedLabels, c.skipLabelNameValidation)
+
+		if err != nil {
+			t.Logf("  Got Error: %v", err)
+		} else {
+			t.Log("  Got Error: <nil>")
+		}
+
+		if c.expectedErr != nil {
+			t.Logf("  Expected Error: %v", c.expectedErr)
+		} else {
+			t.Log("  Expected Error: <nil>")
+		}
+
+		assert.Equal(t, c.expectedErr, err, "wrong error (case %d)", i)
+	}
+
+	// Metrics validation
+	validateMetrics.DiscardedSamples.WithLabelValues("random reason", "different user").Inc()
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+		# TYPE cortex_discarded_samples_total counter
+		cortex_discarded_samples_total{reason="label_invalid",user="testUser"} 1
+		cortex_discarded_samples_total{reason="label_name_too_long",user="testUser"} 1
+		cortex_discarded_samples_total{reason="label_value_too_long",user="testUser"} 1
+		cortex_discarded_samples_total{reason="max_label_names_per_series",user="testUser"} 1
+		cortex_discarded_samples_total{reason="metric_name_invalid",user="testUser"} 1
+		cortex_discarded_samples_total{reason="missing_metric_name",user="testUser"} 1
+		cortex_discarded_samples_total{reason="labels_size_bytes_exceeded",user="testUser"} 1
+		cortex_discarded_samples_total{reason="random reason",user="different user"} 1
+	`), "cortex_discarded_samples_total"))
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_label_size_bytes The combined size in bytes of all labels and label values for a time series.
+		# TYPE cortex_label_size_bytes histogram
+		cortex_label_size_bytes_bucket{user="testUser",le="+Inf"} 3
+		cortex_label_size_bytes_sum{user="testUser"} 148
+		cortex_label_size_bytes_count{user="testUser"} 3
+	`), "cortex_label_size_bytes"))
+
+	DeletePerUserValidationMetrics(validateMetrics, userID, util_log.Logger)
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+		# TYPE cortex_discarded_samples_total counter
+		cortex_discarded_samples_total{reason="random reason",user="different user"} 1
+	`), "cortex_discarded_samples_total"))
+}
+
 func TestValidateExemplars(t *testing.T) {
 	userID := "testUser"
 	reg := prometheus.NewRegistry()

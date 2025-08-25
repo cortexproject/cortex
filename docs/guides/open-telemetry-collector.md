@@ -1,8 +1,8 @@
 ---
-title: "OpenTelemetry Collector"
-linkTitle: "OpenTelemetry Collector"
+title: "Use OpenTelemetry Collector to send metrics to Cortex"
+linkTitle: "Use OpenTelemetry Collector to send metrics to Cortex"
 weight: 10
-slug: opentelemetry-collector
+slug: use-opentelemetry-collector-to-send-metrics-to-cortex
 ---
 
 This guide explains how to configure open-telemetry collector and OTLP(OpenTelemetry Protocol) configurations in the
@@ -64,9 +64,22 @@ service:
       exporters: [otlphttp]
 ```
 
-## Configure OTLP
+## Cortex configurations for ingesting OTLP metrics
+You can configure OTLP-related flags in the config file.
 
-### target_info metric
+```
+limits:
+ promote_resource_attributes: <list of string>
+...
+distributor:
+  otlp:
+    convert_all_attributes: <boolean>
+    disable_target_info: <boolean>
+    allow_delta_temporality: <boolean>
+    enable_type_and_unit_labels: <boolean>
+```
+
+### Ingest `target_info` metric
 
 By default,
 the [target_info](https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)
@@ -116,6 +129,17 @@ distributor:
     convert_all_attributes: false
     disable_target_info: false
 ```
+
+### Ingest delta temporality OTLP metrics
+
+OpenTelemetry supports two temporalities, [Delta and Cumulative](https://opentelemetry.io/docs/specs/otel/metrics/data-model/#temporality).
+By default, only the cumulative metrics can be ingested via OTLP endpoint in Cortex.
+To enable the ingestion of OTLP metrics with delta temporality, set the `distributor.otlp.allow-delta-temporality` flag to `true`.
+
+### Enable `__type__` and `__unit__` label
+
+The `__type__` and `__unit__` labels are added to OTLP metrics if `distributor.otlp.enable-type-and-unit-labels` is set to `true`.
+This flag is disabled by default.
 
 ### Configure promote resource attributes per tenants
 

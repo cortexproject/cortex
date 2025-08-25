@@ -36,7 +36,7 @@ type TestData struct {
 	MaxTime    int64
 }
 
-func GenerateTestData(t *testing.T, st *teststorage.TestStorage, ctx context.Context, cfg TestConfig) TestData {
+func GenerateTestData(t testing.TB, st *teststorage.TestStorage, ctx context.Context, cfg TestConfig) TestData {
 	app := st.Appender(ctx)
 	seriesHash := make(map[uint64]*struct{})
 	builder := labels.NewScratchBuilder(cfg.NumberOfLabels)

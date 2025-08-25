@@ -152,30 +152,56 @@ func Filter(ctx context.Context, s storage.ParquetShard, rgIdx int, cs ...Constr
 	return rr, nil
 }
 
-type pageToRead struct {
+type PageToRead struct {
+	idx int
+
 	// for data pages
 	pfrom int64
 	pto   int64
 
-	idx int
-
 	// for data and dictionary pages
-	off int
-	csz int
+	off int64
+	csz int64 // compressed size
 }
 
-// symbolTable is a helper that can decode the i-th value of a page.
+func NewPageToRead(idx int, pfrom, pto, off, csz int64) PageToRead {
+	return PageToRead{
+		idx:   idx,
+		pfrom: pfrom,
+		pto:   pto,
+		off:   off,
+		csz:   csz,
+	}
+}
+
+func (p *PageToRead) From() int64 {
+	return p.pfrom
+}
+
+func (p *PageToRead) To() int64 {
+	return p.pto
+}
+
+func (p *PageToRead) Offset() int64 {
+	return p.off
+}
+
+func (p *PageToRead) CompressedSize() int64 {
+	return p.csz
+}
+
+// SymbolTable is a helper that can decode the i-th value of a page.
 // Using it we only need to allocate an int32 slice and not a slice of
 // string values.
 // It only works for optional dictionary encoded columns. All of our label
 // columns are that though.
-type symbolTable struct {
+type SymbolTable struct {
 	dict parquet.Dictionary
 	syms []int32
 	defs []byte
 }
 
-func (s *symbolTable) Get(r int) parquet.Value {
+func (s *SymbolTable) Get(r int) parquet.Value {
 	i := s.GetIndex(r)
 	switch i {
 	case -1:
@@ -185,7 +211,7 @@ func (s *symbolTable) Get(r int) parquet.Value {
 	}
 }
 
-func (s *symbolTable) GetIndex(i int) int32 {
+func (s *SymbolTable) GetIndex(i int) int32 {
 	switch s.defs[i] {
 	case 1:
 		return s.syms[i]
@@ -194,7 +220,7 @@ func (s *symbolTable) GetIndex(i int) int32 {
 	}
 }
 
-func (s *symbolTable) Reset(pg parquet.Page) {
+func (s *SymbolTable) Reset(pg parquet.Page) {
 	dict := pg.Dictionary()
 	data := pg.Data()
 	syms := data.Int32()
@@ -268,10 +294,10 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 	}
 	res := make([]RowRange, 0)
 
-	readPgs := make([]pageToRead, 0, 10)
+	readPgs := make([]PageToRead, 0, 10)
 
 	for i := 0; i < cidx.NumPages(); i++ {
-		poff, pcsz := uint64(oidx.Offset(i)), oidx.CompressedPageSize(i)
+		poff, pcsz := oidx.Offset(i), oidx.CompressedPageSize(i)
 
 		// If page does not intersect from, to; we can immediately discard it
 		pfrom := oidx.FirstRowIndex(i)
@@ -309,7 +335,7 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 			continue
 		}
 		// We cannot discard the page through statistics but we might need to read it to see if it has the value
-		readPgs = append(readPgs, pageToRead{pfrom: pfrom, pto: pto, idx: i, off: int(poff), csz: int(pcsz)})
+		readPgs = append(readPgs, NewPageToRead(i, pfrom, pto, poff, pcsz))
 	}
 
 	// Did not find any pages
@@ -319,8 +345,8 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 
 	dictOff, dictSz := ec.f.DictionaryPageBounds(rgIdx, col.ColumnIndex)
 
-	minOffset := uint64(readPgs[0].off)
-	maxOffset := readPgs[len(readPgs)-1].off + readPgs[len(readPgs)-1].csz
+	minOffset := uint64(readPgs[0].Offset())
+	maxOffset := readPgs[len(readPgs)-1].Offset() + readPgs[len(readPgs)-1].CompressedSize()
 
 	// If the gap between the first page and the dic page is less than PagePartitioningMaxGapSize,
 	// we include the dic to be read in the single read
@@ -335,10 +361,10 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 
 	defer func() { _ = pgs.Close() }()
 
-	symbols := new(symbolTable)
+	symbols := new(SymbolTable)
 	for _, p := range readPgs {
-		pfrom := p.pfrom
-		pto := p.pto
+		pfrom := p.From()
+		pto := p.To()
 
 		if err := pgs.SeekToRow(pfrom); err != nil {
 			return nil, fmt.Errorf("unable to seek to row: %w", err)
@@ -481,7 +507,7 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 		return nil, fmt.Errorf("unable to read column index: %w", err)
 	}
 	var (
-		symbols = new(symbolTable)
+		symbols = new(SymbolTable)
 		res     = make([]RowRange, 0)
 	)
 	for i := 0; i < cidx.NumPages(); i++ {

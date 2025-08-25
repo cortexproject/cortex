@@ -58,7 +58,7 @@ func NewBuilder(mint, maxt, colDuration int64) *Builder {
 // It extracts metadata (mint, maxt, dataColDurationMs) from the file's key-value metadata
 // and reconstructs the schema by examining the file's columns to identify label columns.
 // Returns an error if the metadata cannot be parsed or the schema cannot be built.
-func FromLabelsFile(lf *parquet.File) (*TSDBSchema, error) {
+func FromLabelsFile(lf parquet.FileView) (*TSDBSchema, error) {
 	md := MetadataToMap(lf.Metadata().KeyValueMetadata)
 	mint, err := strconv.ParseInt(md[MinTMd], 0, 64)
 	if err != nil {

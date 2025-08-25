@@ -29,6 +29,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
 	"github.com/thanos-io/objstore"
@@ -362,7 +363,17 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 	var (
 		seriesSets = make([]storage.ChunkSeriesSet, 0, len(blks))
 		closers    = make([]io.Closer, 0, len(blks))
+		ok         = false
 	)
+	// If we fail to build the row reader, make sure we release resources.
+	// This could be either a controlled error or a panic.
+	defer func() {
+		if !ok {
+			for i := range closers {
+				_ = closers[i].Close()
+			}
+		}
+	}()
 
 	b := schema.NewBuilder(mint, maxt, colDuration)
 
@@ -400,7 +411,7 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 			return nil, fmt.Errorf("unable to get label names from block: %w", err)
 		}
 
-		postings := sortedPostings(ctx, indexr, ops.sortedLabels...)
+		postings := sortedPostings(ctx, indexr, mint, maxt, ops.sortedLabels...)
 		seriesSet := tsdb.NewBlockChunkSeriesSet(blk.Meta().ULID, indexr, chunkr, tombsr, postings, mint, maxt, false)
 		seriesSets = append(seriesSets, seriesSet)
 
@@ -414,7 +425,7 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 		return nil, fmt.Errorf("unable to build index reader from block: %w", err)
 	}
 
-	return &TsdbRowReader{
+	rr := &TsdbRowReader{
 		ctx:         ctx,
 		seriesSet:   cseriesSet,
 		closers:     closers,
@@ -423,7 +434,9 @@ func NewTsdbRowReader(ctx context.Context, mint, maxt, colDuration int64, blks [
 
 		rowBuilder: parquet.NewRowBuilder(s.Schema),
 		encoder:    schema.NewPrometheusParquetChunksEncoder(s, ops.maxSamplesPerChunk),
-	}, nil
+	}
+	ok = true
+	return rr, nil
 }
 
 func (rr *TsdbRowReader) Close() error {
@@ -438,7 +451,7 @@ func (rr *TsdbRowReader) Schema() *schema.TSDBSchema {
 	return rr.tsdbSchema
 }
 
-func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, sortedLabels ...string) index.Postings {
+func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, mint, maxt int64, sortedLabels ...string) index.Postings {
 	p := tsdb.AllSortedPostings(ctx, indexr)
 
 	if len(sortedLabels) == 0 {
@@ -451,16 +464,25 @@ func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, sortedLabels .
 		labels labels.Labels
 	}
 	series := make([]s, 0, 128)
+	chks := make([]chunks.Meta, 0, 128)
 
 	scratchBuilder := labels.NewScratchBuilder(10)
 	lb := labels.NewBuilder(labels.EmptyLabels())
 	i := 0
+P:
 	for p.Next() {
 		scratchBuilder.Reset()
-		err := indexr.Series(p.At(), &scratchBuilder, nil)
-		if err != nil {
-			return index.ErrPostings(fmt.Errorf("expand series: %w", err))
+		chks = chks[:0]
+		if err := indexr.Series(p.At(), &scratchBuilder, &chks); err != nil {
+			return index.ErrPostings(fmt.Errorf("unable to expand series: %w", err))
 		}
+		hasChunks := slices.ContainsFunc(chks, func(chk chunks.Meta) bool {
+			return mint <= chk.MaxTime && chk.MinTime <= maxt
+		})
+		if !hasChunks {
+			continue P
+		}
+
 		lb.Reset(scratchBuilder.Labels())
 
 		series = append(series, s{labels: lb.Keep(sortedLabels...).Labels(), ref: p.At(), idx: i})

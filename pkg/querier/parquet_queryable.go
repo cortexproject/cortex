@@ -159,38 +159,34 @@ func NewParquetQueryable(
 			return int64(limits.ParquetMaxFetchedDataBytes(userID))
 		}),
 		queryable.WithMaterializedLabelsFilterCallback(materializedLabelsFilterCallback),
-		queryable.WithMaterializedSeriesCallback(func(ctx context.Context, cs []storage.ChunkSeries) error {
+		queryable.WithMaterializedSeriesCallback(func(ctx context.Context, series storage.ChunkSeries) error {
 			queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
-			lbls := make([][]cortexpb.LabelAdapter, 0, len(cs))
-			for _, series := range cs {
-				chkCount := 0
-				chunkSize := 0
-				lblSize := 0
-				lblAdapter := cortexpb.FromLabelsToLabelAdapters(series.Labels())
-				lbls = append(lbls, lblAdapter)
-				for _, lbl := range lblAdapter {
-					lblSize += lbl.Size()
+			chkCount := 0
+			chunkSize := 0
+			lblSize := 0
+			lblAdapter := cortexpb.FromLabelsToLabelAdapters(series.Labels())
+			for _, lbl := range lblAdapter {
+				lblSize += lbl.Size()
+			}
+			iter := series.Iterator(nil)
+			for iter.Next() {
+				chk := iter.At()
+				chunkSize += len(chk.Chunk.Bytes())
+				chkCount++
+			}
+			if chkCount > 0 {
+				if err := queryLimiter.AddChunks(chkCount); err != nil {
+					return validation.LimitError(err.Error())
 				}
-				iter := series.Iterator(nil)
-				for iter.Next() {
-					chk := iter.At()
-					chunkSize += len(chk.Chunk.Bytes())
-					chkCount++
-				}
-				if chkCount > 0 {
-					if err := queryLimiter.AddChunks(chkCount); err != nil {
-						return validation.LimitError(err.Error())
-					}
-					if err := queryLimiter.AddChunkBytes(chunkSize); err != nil {
-						return validation.LimitError(err.Error())
-					}
-				}
-
-				if err := queryLimiter.AddDataBytes(chunkSize + lblSize); err != nil {
+				if err := queryLimiter.AddChunkBytes(chunkSize); err != nil {
 					return validation.LimitError(err.Error())
 				}
 			}
-			if err := queryLimiter.AddSeries(lbls...); err != nil {
+
+			if err := queryLimiter.AddDataBytes(chunkSize + lblSize); err != nil {
+				return validation.LimitError(err.Error())
+			}
+			if err := queryLimiter.AddSeries(lblAdapter); err != nil {
 				return validation.LimitError(err.Error())
 			}
 			return nil

@@ -492,7 +492,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		sortSeries = true
 	}
 	// Also sort when multiple parquet blocks are being merged.
-	// We don't need to sort explicitly
+	// We don't need to sort explicitly if only Store Gateway blocks as they are sorted by default.
 	if len(parquet) > 1 {
 		sortSeries = true
 	}

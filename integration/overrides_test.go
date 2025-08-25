@@ -205,9 +205,6 @@ func TestOverridesAPITenantExtraction(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	consul := e2edb.NewConsulWithName("consul-tenant")
-	require.NoError(t, s.StartAndWaitReady(consul))
-
 	minio := e2edb.NewMinio(9010, "cortex")
 	require.NoError(t, s.StartAndWaitReady(minio))
 
@@ -221,8 +218,6 @@ func TestOverridesAPITenantExtraction(t *testing.T) {
 		"-overrides.s3.bucket-name":       "cortex",
 		"-overrides.s3.endpoint":          minio.NetworkHTTPEndpoint(),
 		"-overrides.s3.insecure":          "true",
-		"-ring.store":                     "consul",
-		"-consul.hostname":                consul.NetworkHTTPEndpoint(),
 	}
 
 	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-tenant", flags, "")
@@ -264,8 +259,6 @@ func TestOverridesAPIFilesystemBackendRejected(t *testing.T) {
 			"-target":                        "overrides",
 			"-overrides.runtime-config-file": "runtime.yaml",
 			"-overrides.backend":             "filesystem",
-			"-ring.store":                    "consul",
-			"-consul.hostname":               "localhost:8500",
 		}
 
 		cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-filesystem", flags, "")
@@ -283,8 +276,6 @@ func TestOverridesAPIFilesystemBackendRejected(t *testing.T) {
 		flags := map[string]string{
 			"-target":                        "overrides",
 			"-overrides.runtime-config-file": "runtime.yaml",
-			"-ring.store":                    "consul",
-			"-consul.hostname":               "localhost:8500",
 		}
 
 		cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-no-backend", flags, "")

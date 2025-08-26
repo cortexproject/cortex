@@ -15,16 +15,12 @@ func Test_ResourceBasedLimiter(t *testing.T) {
 		resource.Heap: 0.5,
 	}
 
-	_, err := NewResourceBasedLimiter(&mockMonitor{}, limits, prometheus.DefaultRegisterer, "ingester")
+	limiter, err := NewResourceBasedLimiter(&MockMonitor{
+		CpuUtilization:  0.2,
+		HeapUtilization: 0.2,
+	}, limits, prometheus.DefaultRegisterer, "ingester")
 	require.NoError(t, err)
-}
 
-type mockMonitor struct{}
-
-func (m *mockMonitor) GetCPUUtilization() float64 {
-	return 0
-}
-
-func (m *mockMonitor) GetHeapUtilization() float64 {
-	return 0
+	err = limiter.AcceptNewRequest()
+	require.NoError(t, err)
 }

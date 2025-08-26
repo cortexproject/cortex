@@ -64,9 +64,22 @@ func (l *ResourceBasedLimiter) AcceptNewRequest() error {
 
 		if utilization >= limit {
 			l.limitBreachedCount.WithLabelValues(string(resType)).Inc()
-			return fmt.Errorf("%s utilization limit reached (limit: %.3f, utilization: %.3f)", resType, limit, utilization)
+			return fmt.Errorf("%s utilization limit reached (limit: %.3f, utilization: %.3f): %w", resType, limit, utilization, &ResourceLimitReachedError{})
 		}
 	}
 
 	return nil
+}
+
+type MockMonitor struct {
+	CpuUtilization  float64
+	HeapUtilization float64
+}
+
+func (m *MockMonitor) GetCPUUtilization() float64 {
+	return m.CpuUtilization
+}
+
+func (m *MockMonitor) GetHeapUtilization() float64 {
+	return m.HeapUtilization
 }

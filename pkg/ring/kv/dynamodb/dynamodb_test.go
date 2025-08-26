@@ -67,11 +67,11 @@ func Test_Batch(t *testing.T) {
 		sortKey:    "SKDelete",
 	}
 	update := map[dynamodbKey]dynamodbItem{
-		ddbKeyUpdate1: dynamodbItem{
+		ddbKeyUpdate1: {
 			data:    []byte{},
 			version: "",
 		},
-		ddbKeyUpdate2: dynamodbItem{
+		ddbKeyUpdate2: {
 			data:    []byte{},
 			version: "0",
 		},
@@ -84,7 +84,7 @@ func Test_Batch(t *testing.T) {
 			require.EqualValues(t, 3, len(input.TransactItems))
 			require.True(t,
 				(checkPutForItem(input.TransactItems[0].Put, ddbKeyUpdate1)) &&
-					(checkPutForNoConditionalExpression(input.TransactItems[0].Put, ddbKeyUpdate2)) &&
+					(checkPutForNoConditionalExpression(input.TransactItems[0].Put, ddbKeyUpdate1)) &&
 					(checkPutForItem(input.TransactItems[1].Put, ddbKeyUpdate2)) &&
 					(checkPutForConditionalExpression(input.TransactItems[1].Put, ddbKeyUpdate2)) &&
 					(checkDeleteForItem(input.TransactItems[2].Delete, ddbKeyDelete)))
@@ -93,7 +93,7 @@ func Test_Batch(t *testing.T) {
 	}
 
 	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
-	_, err := ddb.Batch(context.TODO(), update, delete)
+	_, _, err := ddb.Batch(context.TODO(), update, delete)
 	require.NoError(t, err)
 }
 
@@ -141,7 +141,7 @@ func Test_BatchSlices(t *testing.T) {
 				delete = append(delete, ddbKeyDelete)
 			}
 
-			_, err := ddb.Batch(context.TODO(), nil, delete)
+			_, _, err := ddb.Batch(context.TODO(), nil, delete)
 			require.NoError(t, err)
 			require.EqualValues(t, tc.expectedCalls, numOfCalls)
 
@@ -155,7 +155,7 @@ func Test_EmptyBatch(t *testing.T) {
 	ddbClientMock := &mockDynamodb{}
 
 	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
-	_, err := ddb.Batch(context.TODO(), nil, nil)
+	_, _, err := ddb.Batch(context.TODO(), nil, nil)
 	require.NoError(t, err)
 }
 
@@ -174,7 +174,7 @@ func Test_Batch_Error(t *testing.T) {
 	}
 
 	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
-	_, err := ddb.Batch(context.TODO(), nil, delete)
+	_, _, err := ddb.Batch(context.TODO(), nil, delete)
 	require.Errorf(t, err, "mocked error")
 }
 
@@ -207,18 +207,13 @@ func checkPutForNoConditionalExpression(request *dynamodb.Put, key dynamodbKey) 
 
 type mockDynamodb struct {
 	putItem           func(input *dynamodb.PutItemInput) *dynamodb.PutItemOutput
-	batchWriteItem    func(input *dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error)
 	transactWriteItem func(input *dynamodb.TransactWriteItemsInput) (*dynamodb.TransactWriteItemsOutput, error)
 
 	dynamodbiface.DynamoDBAPI
 }
 
-func (m *mockDynamodb) PutItemWithContext(_ context.Context, input *dynamodb.PutItemInput, _ ...request.Option) (*dynamodb.PutItemOutput, error) {
+func (m *mockDynamodb) PutItemWithContext(_ aws.Context, input *dynamodb.PutItemInput, _ ...request.Option) (*dynamodb.PutItemOutput, error) {
 	return m.putItem(input), nil
-}
-
-func (m *mockDynamodb) BatchWriteItemWithContext(ctx context.Context, input *dynamodb.BatchWriteItemInput, opts ...request.Option) (*dynamodb.BatchWriteItemOutput, error) {
-	return m.batchWriteItem(input)
 }
 
 func (m *mockDynamodb) TransactWriteItems(input *dynamodb.TransactWriteItemsInput) (*dynamodb.TransactWriteItemsOutput, error) {

@@ -87,12 +87,16 @@ func (d dynamodbInstrumentation) Put(ctx context.Context, key dynamodbKey, data 
 	})
 }
 
-func (d dynamodbInstrumentation) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem, delete []dynamodbKey) error {
-	return instrument.CollectedRequest(ctx, "Batch", d.ddbMetrics.dynamodbRequestDuration, errorCode, func(ctx context.Context) error {
-		totalCapacity, err := d.kv.Batch(ctx, put, delete)
+func (d dynamodbInstrumentation) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem, delete []dynamodbKey) (bool, error) {
+	retry := false
+	err := instrument.CollectedRequest(ctx, "Batch", d.ddbMetrics.dynamodbRequestDuration, errorCode, func(ctx context.Context) error {
+		var err error
+		totalCapacity, shouldRetry, err := d.kv.Batch(ctx, put, delete)
+		retry = shouldRetry
 		d.ddbMetrics.dynamodbUsageMetrics.WithLabelValues("Batch").Add(totalCapacity)
 		return err
 	})
+	return retry, err
 }
 
 // errorCode converts an error into an error code string.

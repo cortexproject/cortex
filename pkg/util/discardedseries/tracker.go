@@ -4,44 +4,45 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/common/model"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
-	trackedLabels = []string{"sample_out_of_bounds", "sample_out_of_order", "sample_too_old", "new_value_for_timestamp", "per_user_series_limit", "per_labelset_series_limit", "per_metric_series_limit"}
 	resetInterval = 30 * time.Second
 )
 
-type seriesCounter struct {
+var trackedLabels = []string{"sample_out_of_bounds", "sample_out_of_order", "sample_too_old", "new_value_for_timestamp", "per_user_series_limit", "per_labelset_series_limit", "per_metric_series_limit"}
+
+type SeriesCounter struct {
 	*sync.RWMutex
 	seriesMap map[string]uint64
 }
 
-type workspaceCounter struct {
+type WorkspaceCounter struct {
 	*sync.RWMutex
-	workspaceMap map[string]*seriesCounter
+	workspaceMap map[string]*SeriesCounter
 }
 
 type DiscardedSeriesTracker struct {
-	labelMap map[string]*workspaceCounter
+	labelMap             map[string]*WorkspaceCounter
+	discardedSeriesGauge *prometheus.GaugeVec
 }
 
-func NewDiscardedSeriesTracker() *DiscardedSeriesTracker {
-	labelMap := make(map[string]*workspaceCounter)
+func NewDiscardedSeriesTracker(discardedSeriesGauge *prometheus.GaugeVec) *DiscardedSeriesTracker {
+	labelMap := make(map[string]*WorkspaceCounter)
 	for _, label := range trackedLabels {
-		labelMap[label] = &workspaceCounter{
+		labelMap[label] = &WorkspaceCounter{
 			RWMutex:      &sync.RWMutex{},
-			workspaceMap: make(map[string]*seriesCounter),
+			workspaceMap: make(map[string]*SeriesCounter),
 		}
 	}
-	return &DiscardedSeriesTracker{labelMap: labelMap}
+	return &DiscardedSeriesTracker{labelMap: labelMap, discardedSeriesGauge: discardedSeriesGauge}
 }
 
 func (t *DiscardedSeriesTracker) Track(label string, workspace string, seriesLabel string) {
 	if workspaceCounter, ok := t.labelMap[label]; ok {
 		locked := false
-		if seriesCounter, ok := workspaceCounter.workspaceMap[workspace]; !ok {
+		if _, ok := workspaceCounter.workspaceMap[workspace]; !ok {
 			workspaceCounter.Lock()
 			locked = true
 		}
@@ -52,9 +53,9 @@ func (t *DiscardedSeriesTracker) Track(label string, workspace string, seriesLab
 			seriesCounter.seriesMap[seriesLabel]++
 			seriesCounter.Unlock()
 		} else {
-			workspaceCounter.workspaceMap[workspace] = &seriesCounter{
-				RWMutex:  &sync.RWMutex{},
-				seriesMap: make(map[string]int),
+			workspaceCounter.workspaceMap[workspace] = &SeriesCounter{
+				RWMutex:   &sync.RWMutex{},
+				seriesMap: make(map[string]uint64),
 			}
 			workspaceCounter.workspaceMap[workspace].seriesMap[seriesLabel] = 1
 		}
@@ -71,6 +72,7 @@ func (t *DiscardedSeriesTracker) UpdateMetrics() {
 		for workspace, seriesCounter := range workspaceCounter.workspaceMap {
 			seriesCounter.Lock()
 			for seriesLabel, count := range seriesCounter.seriesMap {
+				t.discardedSeriesGauge.WithLabelValues(label, workspace, seriesLabel).Set(float64(count))
 				if count == 0 {
 					delete(seriesCounter.seriesMap, seriesLabel)
 				} else {
@@ -88,7 +90,6 @@ func (t *DiscardedSeriesTracker) UpdateMetrics() {
 		workspaceCounter.Unlock()
 	}
 }
-
 
 func (t *DiscardedSeriesTracker) StartDiscardedSeriesGoroutine() {
 	go func() {

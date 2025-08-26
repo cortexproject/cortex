@@ -47,6 +47,7 @@ const (
 	opTypeMetadata       = "metadata"
 	opTypeQueryExemplars = "query_exemplars"
 	opTypeFormatQuery    = "format_query"
+	opTypeParseQuery     = "parse_query"
 )
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
@@ -154,6 +155,7 @@ func NewQueryTripperware(
 				isMetadata := strings.HasSuffix(r.URL.Path, "/metadata")
 				isQueryExemplars := strings.HasSuffix(r.URL.Path, "/query_exemplars")
 				isFormatQuery := strings.HasSuffix(r.URL.Path, "/format_query")
+				isParseQuery := strings.HasSuffix(r.URL.Path, "/parse_query")
 
 				op := opTypeQuery
 				switch {
@@ -173,6 +175,8 @@ func NewQueryTripperware(
 					op = opTypeQueryExemplars
 				case isFormatQuery:
 					op = opTypeFormatQuery
+				case isParseQuery:
+					op = opTypeParseQuery
 				}
 
 				tenantIDs, err := tenant.TenantIDs(r.Context())

@@ -44,6 +44,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -2496,6 +2497,22 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestBlocksStoreQuerier_ShouldRetryResourceBasedThrottlingError(t *testing.T) {
+	limits := map[resource.Type]float64{
+		resource.CPU:  0.5,
+		resource.Heap: 0.5,
+	}
+
+	resourceBasedLimiter, err := limiter.NewResourceBasedLimiter(&limiter.MockMonitor{
+		CpuUtilization:  0.7,
+		HeapUtilization: 0.7,
+	}, limits, prometheus.DefaultRegisterer, "ingester")
+	require.NoError(t, err)
+
+	err = resourceBasedLimiter.AcceptNewRequest()
+	require.True(t, isRetryableError(err))
 }
 
 type blocksStoreSetMock struct {

@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -700,6 +701,30 @@ func TestMaterializedLabelsFilterCallback(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMaterializedLabelsFilterCallbackConcurrent(t *testing.T) {
+	wg := sync.WaitGroup{}
+	wg.Add(10)
+	si := &storepb.ShardInfo{
+		ShardIndex:  0,
+		TotalShards: 2,
+		By:          true,
+		Labels:      []string{"__name__"},
+	}
+	for i := 0; i < 10; i++ {
+		go func() {
+			defer wg.Done()
+			ctx := injectShardInfoIntoContext(context.Background(), si)
+			filter, exists := materializedLabelsFilterCallback(ctx, nil)
+			require.Equal(t, true, exists)
+			for j := 0; j < 1000; j++ {
+				filter.Filter(labels.FromStrings("__name__", "test_metric", "label_1", strconv.Itoa(j)))
+			}
+			filter.Close()
+		}()
+	}
+	wg.Wait()
 }
 
 func TestParquetQueryableFallbackDisabled(t *testing.T) {

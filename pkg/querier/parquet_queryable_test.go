@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"path/filepath"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -654,13 +653,7 @@ func TestMaterializedLabelsFilterCallback(t *testing.T) {
 					Labels:      []string{"__name__"},
 				}
 
-				buffers := &sync.Pool{New: func() interface{} {
-					b := make([]byte, 0, 100)
-					return &b
-				}}
-				shardMatcher := shardInfo.Matcher(buffers)
-
-				return injectShardMatcherIntoContext(context.Background(), shardMatcher)
+				return injectShardInfoIntoContext(context.Background(), shardInfo)
 			},
 			expectedFilterReturned:   false,
 			expectedCallbackReturned: false,
@@ -676,13 +669,7 @@ func TestMaterializedLabelsFilterCallback(t *testing.T) {
 					Labels:      []string{"__name__"},
 				}
 
-				buffers := &sync.Pool{New: func() interface{} {
-					b := make([]byte, 0, 100)
-					return &b
-				}}
-				shardMatcher := shardInfo.Matcher(buffers)
-
-				return injectShardMatcherIntoContext(context.Background(), shardMatcher)
+				return injectShardInfoIntoContext(context.Background(), shardInfo)
 			},
 			expectedFilterReturned:   true,
 			expectedCallbackReturned: true,

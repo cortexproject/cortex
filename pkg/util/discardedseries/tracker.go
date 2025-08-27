@@ -7,95 +7,112 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const (
-	resetInterval = 30 * time.Second
-)
-
-var trackedLabels = []string{"sample_out_of_bounds", "sample_out_of_order", "sample_too_old", "new_value_for_timestamp", "per_user_series_limit", "per_labelset_series_limit", "per_metric_series_limit"}
+var trackedLabels = []string{
+	"sample_out_of_bounds",
+	"sample_out_of_order",
+	"sample_too_old",
+	"new_value_for_timestamp",
+	"per_user_series_limit",
+	"per_labelset_series_limit",
+	"per_metric_series_limit",
+}
+var vendMetricsInterval = 30 * time.Second
 
 type SeriesCounter struct {
 	*sync.RWMutex
-	seriesMap map[string]uint64
+	seriesCountMap map[string]uint64
 }
 
-type WorkspaceCounter struct {
+type UserCounter struct {
 	*sync.RWMutex
-	workspaceMap map[string]*SeriesCounter
+	userSeriesMap map[string]*SeriesCounter
 }
 
 type DiscardedSeriesTracker struct {
-	labelMap             map[string]*WorkspaceCounter
+	labelUserMap         map[string]*UserCounter
 	discardedSeriesGauge *prometheus.GaugeVec
 }
 
 func NewDiscardedSeriesTracker(discardedSeriesGauge *prometheus.GaugeVec) *DiscardedSeriesTracker {
-	labelMap := make(map[string]*WorkspaceCounter)
+	labelUserMap := make(map[string]*UserCounter)
 	for _, label := range trackedLabels {
-		labelMap[label] = &WorkspaceCounter{
-			RWMutex:      &sync.RWMutex{},
-			workspaceMap: make(map[string]*SeriesCounter),
+		labelUserMap[label] = &UserCounter{
+			RWMutex:       &sync.RWMutex{},
+			userSeriesMap: make(map[string]*SeriesCounter),
 		}
 	}
-	return &DiscardedSeriesTracker{labelMap: labelMap, discardedSeriesGauge: discardedSeriesGauge}
+	return &DiscardedSeriesTracker{labelUserMap: labelUserMap, discardedSeriesGauge: discardedSeriesGauge}
 }
 
-func (t *DiscardedSeriesTracker) Track(label string, workspace string, seriesLabel string) {
-	if workspaceCounter, ok := t.labelMap[label]; ok {
+func (t *DiscardedSeriesTracker) Track(label string, user string, series string) {
+	if userCounter, ok := t.labelUserMap[label]; ok {
 		locked := false
-		if _, ok := workspaceCounter.workspaceMap[workspace]; !ok {
-			workspaceCounter.Lock()
+		if _, ok := userCounter.userSeriesMap[user]; !ok {
+			userCounter.Lock()
 			locked = true
 		}
 
 		// Rechecking after locking to avoid race conditions
-		if seriesCounter, ok := workspaceCounter.workspaceMap[workspace]; ok {
+		if seriesCounter, ok := userCounter.userSeriesMap[user]; ok {
 			seriesCounter.Lock()
-			seriesCounter.seriesMap[seriesLabel]++
+			seriesCounter.seriesCountMap[series]++
 			seriesCounter.Unlock()
 		} else {
-			workspaceCounter.workspaceMap[workspace] = &SeriesCounter{
-				RWMutex:   &sync.RWMutex{},
-				seriesMap: make(map[string]uint64),
+			userCounter.userSeriesMap[user] = &SeriesCounter{
+				RWMutex:        &sync.RWMutex{},
+				seriesCountMap: make(map[string]uint64),
 			}
-			workspaceCounter.workspaceMap[workspace].seriesMap[seriesLabel] = 1
+			userCounter.userSeriesMap[user].seriesCountMap[series] = 1
 		}
 
 		if locked {
-			workspaceCounter.Unlock()
+			userCounter.Unlock()
 		}
 	}
 }
 
 func (t *DiscardedSeriesTracker) UpdateMetrics() {
-	for label, workspaceCounter := range t.labelMap {
-		workspaceCounter.Lock()
-		for workspace, seriesCounter := range workspaceCounter.workspaceMap {
+	for label, userCounter := range t.labelUserMap {
+		userCounter.Lock()
+		for user, seriesCounter := range userCounter.userSeriesMap {
 			seriesCounter.Lock()
-			for seriesLabel, count := range seriesCounter.seriesMap {
-				t.discardedSeriesGauge.WithLabelValues(label, workspace, seriesLabel).Set(float64(count))
+			for seriesLabel, count := range seriesCounter.seriesCountMap {
+				t.discardedSeriesGauge.WithLabelValues(label, user, seriesLabel).Set(float64(count))
 				if count == 0 {
-					delete(seriesCounter.seriesMap, seriesLabel)
+					delete(seriesCounter.seriesCountMap, seriesLabel)
 				} else {
-					seriesCounter.seriesMap[seriesLabel] = 0
+					seriesCounter.seriesCountMap[seriesLabel] = 0
 				}
 			}
-			if len(seriesCounter.seriesMap) == 0 {
-				delete(workspaceCounter.workspaceMap, workspace)
+			if len(seriesCounter.seriesCountMap) == 0 {
+				delete(userCounter.userSeriesMap, user)
 			}
 			seriesCounter.Unlock()
 		}
-		if len(workspaceCounter.workspaceMap) == 0 {
-			delete(t.labelMap, label)
+		if len(userCounter.userSeriesMap) == 0 {
+			delete(t.labelUserMap, label)
 		}
-		workspaceCounter.Unlock()
+		userCounter.Unlock()
 	}
 }
 
 func (t *DiscardedSeriesTracker) StartDiscardedSeriesGoroutine() {
 	go func() {
 		for {
-			time.Sleep(resetInterval)
+			time.Sleep(vendMetricsInterval)
 			t.UpdateMetrics()
 		}
 	}()
+}
+
+// only used in testing
+func (t *DiscardedSeriesTracker) getSeriesCount(label string, user string, series string) int {
+	if userCounter, ok := t.labelUserMap[label]; ok {
+		if seriesCounter, ok := userCounter.userSeriesMap[user]; ok {
+			if count, ok := seriesCounter.seriesCountMap[series]; ok {
+				return int(count)
+			}
+		}
+	}
+	return -1
 }

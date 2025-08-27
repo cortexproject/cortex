@@ -450,11 +450,10 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.Select")
 	defer span.Finish()
 
-	newMatchers, shardMatcher, err := querysharding.ExtractShardingMatchers(matchers)
+	newMatchers, shardInfo, err := querysharding.ExtractShardingInfo(matchers)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
-	defer shardMatcher.Close()
 
 	hints := storage.SelectHints{
 		Start: q.minT,
@@ -501,8 +500,8 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 			span, _ := opentracing.StartSpanFromContext(ctx, "parquetQuerier.Select")
 			defer span.Finish()
 			parquetCtx := InjectBlocksIntoContext(ctx, parquet...)
-			if shardMatcher != nil {
-				parquetCtx = injectShardMatcherIntoContext(parquetCtx, shardMatcher)
+			if shardInfo != nil {
+				parquetCtx = injectShardInfoIntoContext(parquetCtx, shardInfo)
 			}
 			p <- q.parquetQuerier.Select(parquetCtx, sortSeries, &hints, newMatchers...)
 		}()
@@ -604,11 +603,15 @@ func (f *shardMatcherLabelsFilter) Close() {
 }
 
 func materializedLabelsFilterCallback(ctx context.Context, _ *storage.SelectHints) (search.MaterializedLabelsFilter, bool) {
-	shardMatcher, exists := extractShardMatcherFromContext(ctx)
-	if !exists || !shardMatcher.IsSharded() {
+	shardInfo, exists := extractShardInfoFromContext(ctx)
+	if !exists {
 		return nil, false
 	}
-	return &shardMatcherLabelsFilter{shardMatcher: shardMatcher}, true
+	sm := shardInfo.Matcher(&querysharding.Buffers)
+	if !sm.IsSharded() {
+		return nil, false
+	}
+	return &shardMatcherLabelsFilter{shardMatcher: sm}, true
 }
 
 type cacheInterface[T any] interface {
@@ -698,16 +701,16 @@ func (n noopCache[T]) Set(_ string, _ T) {
 }
 
 var (
-	shardMatcherCtxKey contextKey = 1
+	shardInfoCtxKey contextKey = 1
 )
 
-func injectShardMatcherIntoContext(ctx context.Context, sm *storepb.ShardMatcher) context.Context {
-	return context.WithValue(ctx, shardMatcherCtxKey, sm)
+func injectShardInfoIntoContext(ctx context.Context, si *storepb.ShardInfo) context.Context {
+	return context.WithValue(ctx, shardInfoCtxKey, si)
 }
 
-func extractShardMatcherFromContext(ctx context.Context) (*storepb.ShardMatcher, bool) {
-	if sm := ctx.Value(shardMatcherCtxKey); sm != nil {
-		return sm.(*storepb.ShardMatcher), true
+func extractShardInfoFromContext(ctx context.Context) (*storepb.ShardInfo, bool) {
+	if si := ctx.Value(shardInfoCtxKey); si != nil {
+		return si.(*storepb.ShardInfo), true
 	}
 
 	return nil, false

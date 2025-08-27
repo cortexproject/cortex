@@ -69,7 +69,7 @@
 * [ENHANCEMENT] Ingester: Add new metric `cortex_ingester_push_errors_total` to track reasons for ingester request failures. #6901
 * [ENHANCEMENT] Ring: Expose `detailed_metrics_enabled` for all rings. Default true. #6926
 * [ENHANCEMENT] Parquet Storage: Allow Parquet Queryable to disable fallback to Store Gateway. #6920
-* [ENHANCEMENT] Query Frontend: Add a `format_query` label value to the `op` label at `cortex_query_frontend_queries_total` metric. #6925
+* [ENHANCEMENT] Query Frontend: Add a `format_query` and `parse_query` labels value to the `op` label at `cortex_query_frontend_queries_total` metric. #6925 #6990
 * [ENHANCEMENT] API: add request ID injection to context to enable tracking requests across downstream services. #6895
 * [ENHANCEMENT] gRPC: Add gRPC Channelz monitoring. #6950
 * [ENHANCEMENT] Upgrade build image and Go version to 1.24.6. #6970 #6976

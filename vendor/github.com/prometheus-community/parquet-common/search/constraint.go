@@ -21,7 +21,6 @@ import (
 	"sort"
 
 	"github.com/parquet-go/parquet-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/prometheus-community/parquet-common/schema"
@@ -47,26 +46,48 @@ type Constraint interface {
 func MatchersToConstraints(matchers ...*labels.Matcher) ([]Constraint, error) {
 	r := make([]Constraint, 0, len(matchers))
 	for _, matcher := range matchers {
+		var c Constraint
+	S:
 		switch matcher.Type {
 		case labels.MatchEqual:
-			r = append(r, Equal(schema.LabelToColumn(matcher.Name), parquet.ValueOf(matcher.Value)))
+			c = Equal(schema.LabelToColumn(matcher.Name), parquet.ValueOf(matcher.Value))
 		case labels.MatchNotEqual:
-			r = append(r, Not(Equal(schema.LabelToColumn(matcher.Name), parquet.ValueOf(matcher.Value))))
+			c = Not(Equal(schema.LabelToColumn(matcher.Name), parquet.ValueOf(matcher.Value)))
 		case labels.MatchRegexp:
-			res, err := labels.NewFastRegexMatcher(matcher.Value)
-			if err != nil {
-				return nil, err
+			if matcher.GetRegexString() == ".*" {
+				continue
 			}
-			r = append(r, Regex(schema.LabelToColumn(matcher.Name), res))
+			if matcher.GetRegexString() == ".+" {
+				c = Not(Equal(schema.LabelToColumn(matcher.Name), parquet.ValueOf("")))
+				break S
+			}
+			if set := matcher.SetMatches(); len(set) == 1 {
+				c = Equal(schema.LabelToColumn(matcher.Name), parquet.ValueOf(set[0]))
+				break S
+			}
+			rc, err := Regex(schema.LabelToColumn(matcher.Name), matcher)
+			if err != nil {
+				return nil, fmt.Errorf("unable to construct regex matcher: %w", err)
+			}
+			c = rc
 		case labels.MatchNotRegexp:
-			res, err := labels.NewFastRegexMatcher(matcher.Value)
+			inverted, err := matcher.Inverse()
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("unable to invert matcher: %w", err)
 			}
-			r = append(r, Not(Regex(schema.LabelToColumn(matcher.Name), res)))
+			if set := inverted.SetMatches(); len(set) == 1 {
+				c = Not(Equal(schema.LabelToColumn(matcher.Name), parquet.ValueOf(set[0])))
+				break S
+			}
+			rc, err := Regex(schema.LabelToColumn(matcher.Name), inverted)
+			if err != nil {
+				return nil, fmt.Errorf("unable to construct regex matcher: %w", err)
+			}
+			c = Not(rc)
 		default:
 			return nil, fmt.Errorf("unsupported matcher type %s", matcher.Type)
 		}
+		r = append(r, c)
 	}
 	return r, nil
 }
@@ -242,6 +263,33 @@ func (s *SymbolTable) Reset(pg parquet.Page) {
 	s.dict = dict
 }
 
+func (s *SymbolTable) ResetWithRange(pg parquet.Page, l, r int) {
+	dict := pg.Dictionary()
+	data := pg.Data()
+	syms := data.Int32()
+	s.defs = pg.DefinitionLevels()
+
+	if s.syms == nil {
+		s.syms = make([]int32, len(s.defs))
+	} else {
+		s.syms = slices.Grow(s.syms, len(s.defs))[:len(s.defs)]
+	}
+
+	sidx := 0
+	for i := 0; i < l; i++ {
+		if s.defs[i] == 1 {
+			sidx++
+		}
+	}
+	for i := l; i < r; i++ {
+		if s.defs[i] == 1 {
+			s.syms[i] = syms[sidx]
+			sidx++
+		}
+	}
+	s.dict = dict
+}
+
 type equalConstraint struct {
 	pth string
 
@@ -374,8 +422,6 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 			return nil, fmt.Errorf("unable to read page: %w", err)
 		}
 
-		symbols.Reset(pg)
-
 		// The page has the value, we need to find the matching row ranges
 		n := int(pg.NumRows())
 		bl := int(max(pfrom, from) - pfrom)
@@ -383,6 +429,7 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 		var l, r int
 		switch {
 		case cidx.IsAscending() && primary:
+			symbols.Reset(pg)
 			l = sort.Search(n, func(i int) bool { return ec.comp(ec.val, symbols.Get(i)) <= 0 })
 			r = sort.Search(n, func(i int) bool { return ec.comp(ec.val, symbols.Get(i)) < 0 })
 
@@ -391,6 +438,7 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 			}
 		default:
 			off, count := bl, 0
+			symbols.ResetWithRange(pg, bl, br)
 			for j := bl; j < br; j++ {
 				if !ec.matches(symbols.Get(j)) {
 					if count != 0 {
@@ -408,6 +456,7 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 				res = append(res, RowRange{pfrom + int64(off), int64(count)})
 			}
 		}
+		parquet.Release(pg)
 	}
 
 	if len(res) == 0 {
@@ -457,15 +506,31 @@ func (ec *equalConstraint) skipByBloomfilter(cc parquet.ColumnChunk) (bool, erro
 	return !ok, nil
 }
 
-func Regex(path string, r *labels.FastRegexMatcher) Constraint {
-	return &regexConstraint{pth: path, cache: make(map[parquet.Value]bool), r: r}
+func Regex(path string, r *labels.Matcher) (Constraint, error) {
+	if r.Type != labels.MatchRegexp {
+		return nil, fmt.Errorf("unsupported matcher type: %s", r.Type)
+	}
+	return &regexConstraint{
+		pth:   path,
+		cache: make(map[int32]bool),
+		r:     r,
+	}, nil
 }
 
 type regexConstraint struct {
-	pth   string
-	cache map[parquet.Value]bool
 	f     storage.ParquetFileView
-	r     *labels.FastRegexMatcher
+	pth   string
+	cache map[int32]bool
+
+	// if its a "set" or "prefix" regex
+	// for set, those are minv and maxv of the set, for prefix minv is the prefix, maxv is prefix+max(charset)*16
+	minv parquet.Value
+	maxv parquet.Value
+
+	r            *labels.Matcher
+	matchesEmpty bool
+
+	comp func(l, r parquet.Value) int
 }
 
 func (rc *regexConstraint) String() string {
@@ -484,19 +549,12 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 	if !ok {
 		// If match empty, return rr (filter nothing)
 		// otherwise return empty
-		if rc.matches(parquet.ValueOf("")) {
+		if rc.matchesEmpty {
 			return rr, nil
 		}
 		return []RowRange{}, nil
 	}
 	cc := rg.ColumnChunks()[col.ColumnIndex]
-
-	pgs, err := rc.f.GetPages(ctx, cc, 0, 0)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get pages")
-	}
-
-	defer func() { _ = pgs.Close() }()
 
 	oidx, err := cc.OffsetIndex()
 	if err != nil {
@@ -506,11 +564,13 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 	if err != nil {
 		return nil, fmt.Errorf("unable to read column index: %w", err)
 	}
-	var (
-		symbols = new(SymbolTable)
-		res     = make([]RowRange, 0)
-	)
+	res := make([]RowRange, 0)
+
+	readPgs := make([]PageToRead, 0, 10)
+
 	for i := 0; i < cidx.NumPages(); i++ {
+		poff, pcsz := uint64(oidx.Offset(i)), oidx.CompressedPageSize(i)
+
 		// If page does not intersect from, to; we can immediately discard it
 		pfrom := oidx.FirstRowIndex(i)
 		pcount := rg.NumRows() - pfrom
@@ -526,14 +586,61 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 		}
 		// Page intersects [from, to] but we might be able to discard it with statistics
 		if cidx.NullPage(i) {
-			if rc.matches(parquet.ValueOf("")) {
+			if rc.matchesEmpty {
 				res = append(res, RowRange{pfrom, pcount})
 			}
 			continue
 		}
-		// TODO: use setmatches / prefix for statistics
+		// If we have a special regular expression that works with statistics, we can use them to skip.
+		// This works for i.e.: 'pod_name=~"thanos-.*"' or 'status_code=~"403|404"'
+		minv, maxv := cidx.MinValue(i), cidx.MaxValue(i)
+		if !rc.minv.IsNull() && !rc.maxv.IsNull() {
+			if !rc.matchesEmpty && !maxv.IsNull() && rc.comp(rc.minv, maxv) > 0 {
+				if cidx.IsDescending() {
+					break
+				}
+				continue
+			}
+			if !rc.matchesEmpty && !minv.IsNull() && rc.comp(rc.maxv, minv) < 0 {
+				if cidx.IsAscending() {
+					break
+				}
+				continue
+			}
+		}
 
 		// We cannot discard the page through statistics but we might need to read it to see if it has the value
+		readPgs = append(readPgs, PageToRead{pfrom: pfrom, pto: pto, idx: i, off: int64(poff), csz: pcsz})
+	}
+
+	// Did not find any pages
+	if len(readPgs) == 0 {
+		return intersectRowRanges(simplify(res), rr), nil
+	}
+
+	dictOff, dictSz := rc.f.DictionaryPageBounds(rgIdx, col.ColumnIndex)
+
+	minOffset := uint64(readPgs[0].off)
+	maxOffset := readPgs[len(readPgs)-1].off + readPgs[len(readPgs)-1].csz
+
+	// If the gap between the first page and the dic page is less than PagePartitioningMaxGapSize,
+	// we include the dic to be read in the single read
+	if int(minOffset-(dictOff+dictSz)) < rc.f.PagePartitioningMaxGapSize() {
+		minOffset = dictOff
+	}
+
+	pgs, err := rc.f.GetPages(ctx, cc, int64(minOffset), int64(maxOffset))
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = pgs.Close() }()
+
+	symbols := new(SymbolTable)
+	for _, p := range readPgs {
+		pfrom := p.pfrom
+		pto := p.pto
+
 		if err := pgs.SeekToRow(pfrom); err != nil {
 			return nil, fmt.Errorf("unable to seek to row: %w", err)
 		}
@@ -542,15 +649,14 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 			return nil, fmt.Errorf("unable to read page: %w", err)
 		}
 
-		symbols.Reset(pg)
-
 		// The page has the value, we need to find the matching row ranges
 		n := int(pg.NumRows())
 		bl := int(max(pfrom, from) - pfrom)
 		br := n - int(pto-min(pto, to))
 		off, count := bl, 0
+		symbols.ResetWithRange(pg, bl, br)
 		for j := bl; j < br; j++ {
-			if !rc.matches(symbols.Get(j)) {
+			if !rc.matches(symbols, symbols.GetIndex(j)) {
 				if count != 0 {
 					res = append(res, RowRange{pfrom + int64(off), int64(count)})
 				}
@@ -565,7 +671,9 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 		if count != 0 {
 			res = append(res, RowRange{pfrom + int64(off), int64(count)})
 		}
+		parquet.Release(pg)
 	}
+
 	if len(res) == 0 {
 		return nil, nil
 	}
@@ -575,13 +683,32 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 func (rc *regexConstraint) init(f storage.ParquetFileView) error {
 	c, ok := f.Schema().Lookup(rc.path())
 	rc.f = f
+	rc.matchesEmpty = rc.r.Matches("")
 	if !ok {
 		return nil
 	}
 	if stringKind := parquet.String().Type().Kind(); c.Node.Type().Kind() != stringKind {
 		return fmt.Errorf("schema: cannot search value of kind %s in column of kind %s", stringKind, c.Node.Type().Kind())
 	}
-	rc.cache = make(map[parquet.Value]bool)
+	rc.cache = make(map[int32]bool)
+	rc.comp = c.Node.Type().Compare
+
+	// if applicable compute the minv and maxv of the implied set of matches
+	rc.minv = parquet.NullValue()
+	rc.maxv = parquet.NullValue()
+	if len(rc.r.SetMatches()) > 0 {
+		sm := make([]parquet.Value, len(rc.r.SetMatches()))
+		for i, m := range rc.r.SetMatches() {
+			sm[i] = parquet.ValueOf(m)
+		}
+		rc.minv = slices.MinFunc(sm, rc.comp)
+		rc.maxv = slices.MaxFunc(sm, rc.comp)
+	} else if len(rc.r.Prefix()) > 0 {
+		rc.minv = parquet.ValueOf(rc.r.Prefix())
+		// 16 is the default prefix length, maybe we should read the actual value from somewhere?
+		rc.maxv = parquet.ValueOf(append([]byte(rc.r.Prefix()), bytes.Repeat([]byte{0xff}, 16)...))
+	}
+
 	return nil
 }
 
@@ -589,11 +716,18 @@ func (rc *regexConstraint) path() string {
 	return rc.pth
 }
 
-func (rc *regexConstraint) matches(v parquet.Value) bool {
-	accept, seen := rc.cache[v]
+func (rc *regexConstraint) matches(symbols *SymbolTable, i int32) bool {
+	accept, seen := rc.cache[i]
 	if !seen {
-		accept = rc.r.MatchString(util.YoloString(v.ByteArray()))
-		rc.cache[v] = accept
+		var v parquet.Value
+		switch i {
+		case -1:
+			v = parquet.NullValue()
+		default:
+			v = symbols.dict.Index(i)
+		}
+		accept = rc.r.Matches(util.YoloString(v.ByteArray()))
+		rc.cache[i] = accept
 	}
 	return accept
 }

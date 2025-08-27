@@ -44,37 +44,6 @@ func (c ConcreteChunksSeries) Iterator(_ chunks.Iterator) chunks.Iterator {
 	return prom_storage.NewListChunkSeriesIterator(c.chks...)
 }
 
-type IteratorChunksSeries struct {
-	lbls labels.Labels
-	chks chunks.Iterator
-}
-
-func (i *IteratorChunksSeries) Labels() labels.Labels {
-	return i.lbls
-}
-
-func (i *IteratorChunksSeries) Iterator(_ chunks.Iterator) chunks.Iterator {
-	return i.chks
-}
-
-// ChunkCount returns the number of chunks in the series, consuming the inner iterator.
-// The current implementation is an expensive operation which reads the chunks from storage.
-// It is implemented only to satisfy the Mimir Prometheus fork's extended ChunkSeries interface.
-// It may be optimized in the future with extended metadata and indexes in the parquet chunks file.
-func (i *IteratorChunksSeries) ChunkCount() (int, error) {
-	if i.chks == nil {
-		return 0, nil
-	}
-	count := 0
-	for i.chks.Next() {
-		count++
-	}
-	if err := i.chks.Err(); err != nil {
-		return 0, err
-	}
-	return count, nil
-}
-
 type ChunkSeriesSetCloser interface {
 	prom_storage.ChunkSeriesSet
 
@@ -133,7 +102,7 @@ type FilterEmptyChunkSeriesSet struct {
 	lblsSet []labels.Labels
 	chnkSet ChunksIteratorIterator
 
-	currentSeries              *IteratorChunksSeries
+	currentSeries              *ConcreteChunksSeries
 	materializedSeriesCallback MaterializedSeriesFunc
 	err                        error
 }
@@ -157,6 +126,7 @@ func (s *FilterEmptyChunkSeriesSet) At() prom_storage.ChunkSeries {
 }
 
 func (s *FilterEmptyChunkSeriesSet) Next() bool {
+	metas := make([]chunks.Meta, 0, 128)
 	for s.chnkSet.Next() {
 		if len(s.lblsSet) == 0 {
 			s.err = errors.New("less labels than chunks, this should not happen")
@@ -165,24 +135,28 @@ func (s *FilterEmptyChunkSeriesSet) Next() bool {
 		lbls := s.lblsSet[0]
 		s.lblsSet = s.lblsSet[1:]
 		iter := s.chnkSet.At()
-		if iter.Next() {
-			// The series has chunks, keep it
-			meta := iter.At()
-			s.currentSeries = &IteratorChunksSeries{
-				lbls: lbls,
-				chks: &PeekedChunksIterator{
-					inner:       iter,
-					peekedValue: &meta,
-				},
-			}
-			s.err = s.materializedSeriesCallback(s.ctx, s.currentSeries)
-			return s.err == nil
+		for iter.Next() {
+			metas = append(metas, iter.At())
 		}
 
 		if iter.Err() != nil {
 			s.err = iter.Err()
 			return false
 		}
+
+		if len(metas) == 0 {
+			// This series has no chunks, skip it and continue to the next
+			continue
+		}
+		metasCpy := make([]chunks.Meta, len(metas))
+		copy(metasCpy, metas) // copying prevents metas from escaping to heap
+
+		s.currentSeries = &ConcreteChunksSeries{
+			lbls: lbls,
+			chks: metasCpy,
+		}
+		s.err = s.materializedSeriesCallback(s.ctx, s.currentSeries)
+		return s.err == nil
 		// This series has no chunks, skip it and continue to the next
 	}
 	if s.chnkSet.Err() != nil {
@@ -207,39 +181,6 @@ func (s *FilterEmptyChunkSeriesSet) Warnings() annotations.Annotations {
 
 func (s *FilterEmptyChunkSeriesSet) Close() error {
 	return s.chnkSet.Close()
-}
-
-// PeekedChunksIterator is used to yield the first chunk of chunks.Iterator
-// which has already had its Next() method called to check if it has any chunks.
-// The already-consumed chunks.Meta is stored in peekedValue and returned on the first call to At().
-// Subsequent calls to Next then continue with the inner chunks.Iterator.
-type PeekedChunksIterator struct {
-	inner       chunks.Iterator
-	peekedValue *chunks.Meta
-	nextCalled  bool
-}
-
-func (i *PeekedChunksIterator) Next() bool {
-	if !i.nextCalled {
-		i.nextCalled = true
-		return true
-	}
-	if i.peekedValue != nil {
-		// This is the second call to Next, discard the peeked value
-		i.peekedValue = nil
-	}
-	return i.inner.Next()
-}
-
-func (i *PeekedChunksIterator) At() chunks.Meta {
-	if i.peekedValue != nil {
-		return *i.peekedValue
-	}
-	return i.inner.At()
-}
-
-func (i *PeekedChunksIterator) Err() error {
-	return i.inner.Err()
 }
 
 type ChunksIteratorIterator interface {
@@ -530,7 +471,7 @@ func (i *RowRangesValueIterator) Next() bool {
 					i.remainingRr = i.remainingRr[1:]
 				}
 			}
-			if i.pageIterator.CanSkip() && i.remaining > 0 {
+			if i.remaining > 0 {
 				i.currentRow += i.pageIterator.Skip(i.next - i.currentRow - 1)
 			}
 			i.currentRow++
@@ -590,6 +531,11 @@ func (i *PageValueIterator) Next() bool {
 		return false
 	}
 
+	// End early if no value reader available.
+	if i.vr == nil {
+		return true
+	}
+
 	i.currentBufferIndex++
 
 	if i.currentBufferIndex == len(i.buffer) {
@@ -604,13 +550,24 @@ func (i *PageValueIterator) Next() bool {
 	return true
 }
 
-func (i *PageValueIterator) CanSkip() bool {
-	return i.vr == nil
-}
+func (vi *PageValueIterator) Skip(n int64) int64 {
+	r := min(n, vi.p.NumRows()-int64(vi.current)-1)
+	// Move the row index cursor.
+	vi.current += int(r)
+	if vi.vr != nil {
+		// Move the page values index cursor.
+		vi.currentBufferIndex += int(r)
+		// Read more values if the current buffer is exhausted.
+		for vi.currentBufferIndex >= len(vi.buffer) {
+			vi.currentBufferIndex = vi.currentBufferIndex - len(vi.buffer)
+			num, err := vi.vr.ReadValues(vi.buffer[:cap(vi.buffer)])
+			if err != nil && err != io.EOF {
+				vi.err = err
+			}
+			vi.buffer = vi.buffer[:num]
+		}
+	}
 
-func (i *PageValueIterator) Skip(n int64) int64 {
-	r := min(n, i.p.NumRows()-int64(i.current)-1)
-	i.current += int(r)
 	return r
 }
 

@@ -94,9 +94,9 @@ func NewMaterializer(s *schema.TSDBSchema,
 	materializeSeriesCallback MaterializedSeriesFunc,
 	materializeLabelsFilterCallback MaterializedLabelsFilterCallback,
 ) (*Materializer, error) {
-	colIdx, ok := block.LabelsFile().Schema().Lookup(schema.ColIndexes)
+	colIdx, ok := block.LabelsFile().Schema().Lookup(schema.ColIndexesColumn)
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("schema index %s not found", schema.ColIndexes))
+		return nil, errors.New(fmt.Sprintf("schema index %s not found", schema.ColIndexesColumn))
 	}
 
 	dataColToIndex := make([]int, len(block.ChunksFile().Schema().Columns()))

@@ -15,6 +15,7 @@ package convert
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -553,9 +554,13 @@ func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
 
 	i, j := 0, 0
 	lblsIdxs := []int{}
-	colIndex, ok := rr.tsdbSchema.Schema.Lookup(schema.ColIndexes)
+	colIndex, ok := rr.tsdbSchema.Schema.Lookup(schema.ColIndexesColumn)
 	if !ok {
 		return 0, fmt.Errorf("unable to find indexes")
+	}
+	seriesHashIndex, ok := rr.tsdbSchema.Schema.Lookup(schema.SeriesHashColumn)
+	if !ok {
+		return 0, fmt.Errorf("unable to find series hash column")
 	}
 
 	for promise := range c {
@@ -570,7 +575,8 @@ func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
 		rr.rowBuilder.Reset()
 		lblsIdxs = lblsIdxs[:0]
 
-		promise.s.Labels().Range(func(l labels.Label) {
+		seriesLabels := promise.s.Labels()
+		seriesLabels.Range(func(l labels.Label) {
 			colName := schema.LabelToColumn(l.Name)
 			lc, _ := rr.tsdbSchema.Schema.Lookup(colName)
 			rr.rowBuilder.Add(lc.ColumnIndex, parquet.ValueOf(l.Value))
@@ -578,6 +584,12 @@ func (rr *TsdbRowReader) ReadRows(buf []parquet.Row) (int, error) {
 		})
 
 		rr.rowBuilder.Add(colIndex.ColumnIndex, parquet.ValueOf(schema.EncodeIntSlice(lblsIdxs)))
+
+		// Compute and store the series hash as a byte slice in big-endian format
+		seriesHashValue := labels.StableHash(seriesLabels)
+		seriesHashBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(seriesHashBytes, seriesHashValue)
+		rr.rowBuilder.Add(seriesHashIndex.ColumnIndex, parquet.ValueOf(seriesHashBytes))
 
 		// skip series that have no chunks in the requested time
 		if allChunksEmpty(chkBytes) {

@@ -43,7 +43,7 @@ type dynamodbKV struct {
 
 type dynamodbItem struct {
 	data    []byte
-	version string
+	version int64
 }
 
 var (
@@ -152,10 +152,16 @@ func (kv dynamodbKV) Query(ctx context.Context, key dynamodbKey, isPrefix bool) 
 	err := kv.ddbClient.QueryPagesWithContext(ctx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
 		totalCapacity += getCapacityUnits(output.ConsumedCapacity)
 		for _, item := range output.Items {
-			var itemVersion string
+			itemVersion := int64(0)
 			if item[version] != nil {
-				itemVersion = *item[version].N
+				parsedVersion, err := strconv.ParseInt(*item[version].N, 10, 0)
+				if err != nil {
+					kv.logger.Log("msg", "failed to parse item version", "version", *item[version].N, "err", err)
+				} else {
+					itemVersion = parsedVersion
+				}
 			}
+
 			keys[*item[sortKey].S] = dynamodbItem{
 				data:    item[contentData].B,
 				version: itemVersion,
@@ -217,11 +223,9 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem
 			TableName: kv.tableName,
 			Item:      item,
 		}
-		if ddbItem.version != "" {
-			ddbPut.ConditionExpression = aws.String("attribute_not_exists(version) OR version = :v")
-			ddbPut.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
-				":v": {N: aws.String(ddbItem.version)},
-			}
+		ddbPut.ConditionExpression = aws.String("attribute_not_exists(version) OR version = :v")
+		ddbPut.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
+			":v": {N: aws.String(strconv.FormatInt(ddbItem.version, 10))},
 		}
 
 		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], &dynamodb.TransactWriteItem{Put: ddbPut})
@@ -247,7 +251,7 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem
 		transactItems := &dynamodb.TransactWriteItemsInput{
 			TransactItems: slice,
 		}
-		resp, err := kv.ddbClient.TransactWriteItems(transactItems)
+		resp, err := kv.ddbClient.TransactWriteItemsWithContext(ctx, transactItems)
 		if err != nil {
 			var checkFailed *dynamodb.ConditionalCheckFailedException
 			return totalCapacity, errors.As(err, &checkFailed), err
@@ -265,9 +269,8 @@ func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, ddbItem dynamodbIte
 	item[contentData] = &dynamodb.AttributeValue{
 		B: ddbItem.data,
 	}
-	itemVersion := getItemVersion(ddbItem, kv)
 	item[version] = &dynamodb.AttributeValue{
-		N: aws.String(itemVersion),
+		N: aws.String(strconv.FormatInt(ddbItem.version+1, 10)),
 	}
 	if kv.getTTL() > 0 {
 		item[timeToLive] = &dynamodb.AttributeValue{
@@ -276,18 +279,6 @@ func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, ddbItem dynamodbIte
 	}
 
 	return item
-}
-
-func getItemVersion(ddbItem dynamodbItem, kv dynamodbKV) string {
-	if ddbItem.version != "" {
-		itemVersion, err := strconv.ParseInt(ddbItem.version, 10, 64)
-		if err != nil {
-			kv.logger.Log("msg", "error converting version to int", "version", ddbItem.version, "err", err)
-			return ""
-		}
-		return strconv.FormatInt(itemVersion+1, 10)
-	}
-	return "0"
 }
 
 type dynamodbKVWithTimeout struct {

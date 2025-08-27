@@ -54,26 +54,18 @@ func Test_TTL(t *testing.T) {
 
 func Test_Batch(t *testing.T) {
 	tableName := "TEST"
-	ddbKeyUpdate1 := dynamodbKey{
+	ddbKeyUpdate := dynamodbKey{
 		primaryKey: "PKUpdate1",
 		sortKey:    "SKUpdate1",
-	}
-	ddbKeyUpdate2 := dynamodbKey{
-		primaryKey: "PKUpdate2",
-		sortKey:    "SKUpdate2",
 	}
 	ddbKeyDelete := dynamodbKey{
 		primaryKey: "PKDelete",
 		sortKey:    "SKDelete",
 	}
 	update := map[dynamodbKey]dynamodbItem{
-		ddbKeyUpdate1: {
+		ddbKeyUpdate: {
 			data:    []byte{},
-			version: "",
-		},
-		ddbKeyUpdate2: {
-			data:    []byte{},
-			version: "0",
+			version: 0,
 		},
 	}
 	delete := []dynamodbKey{ddbKeyDelete}
@@ -81,13 +73,11 @@ func Test_Batch(t *testing.T) {
 	ddbClientMock := &mockDynamodb{
 		transactWriteItem: func(input *dynamodb.TransactWriteItemsInput) (*dynamodb.TransactWriteItemsOutput, error) {
 			require.NotNil(t, input.TransactItems)
-			require.EqualValues(t, 3, len(input.TransactItems))
+			require.EqualValues(t, 2, len(input.TransactItems))
 			require.True(t,
-				(checkPutForItem(input.TransactItems[0].Put, ddbKeyUpdate1)) &&
-					(checkPutForNoConditionalExpression(input.TransactItems[0].Put, ddbKeyUpdate1)) &&
-					(checkPutForItem(input.TransactItems[1].Put, ddbKeyUpdate2)) &&
-					(checkPutForConditionalExpression(input.TransactItems[1].Put, ddbKeyUpdate2)) &&
-					(checkDeleteForItem(input.TransactItems[2].Delete, ddbKeyDelete)))
+				(checkPutForItem(input.TransactItems[0].Put, ddbKeyUpdate)) &&
+					(checkPutForConditionalExpression(input.TransactItems[0].Put, ddbKeyUpdate)) &&
+					(checkDeleteForItem(input.TransactItems[1].Delete, ddbKeyDelete)))
 			return &dynamodb.TransactWriteItemsOutput{}, nil
 		},
 	}
@@ -201,10 +191,6 @@ func checkPutForConditionalExpression(request *dynamodb.Put, key dynamodbKey) bo
 		strings.Contains(*request.ConditionExpression, "version = :v")
 }
 
-func checkPutForNoConditionalExpression(request *dynamodb.Put, key dynamodbKey) bool {
-	return request != nil && request.ConditionExpression == nil
-}
-
 type mockDynamodb struct {
 	putItem           func(input *dynamodb.PutItemInput) *dynamodb.PutItemOutput
 	transactWriteItem func(input *dynamodb.TransactWriteItemsInput) (*dynamodb.TransactWriteItemsOutput, error)
@@ -216,7 +202,7 @@ func (m *mockDynamodb) PutItemWithContext(_ aws.Context, input *dynamodb.PutItem
 	return m.putItem(input), nil
 }
 
-func (m *mockDynamodb) TransactWriteItems(input *dynamodb.TransactWriteItemsInput) (*dynamodb.TransactWriteItemsOutput, error) {
+func (m *mockDynamodb) TransactWriteItemsWithContext(_ aws.Context, input *dynamodb.TransactWriteItemsInput, _ ...request.Option) (*dynamodb.TransactWriteItemsOutput, error) {
 	return m.transactWriteItem(input)
 }
 

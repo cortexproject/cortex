@@ -45,4 +45,6 @@ message Stats {
   // The highest count of samples considered while evaluating a query.
   // Equal to PeakSamples in https://github.com/prometheus/prometheus/blob/main/util/stats/query_stats.go
   uint64 peak_samples = 14;
+  // The time spent waiting in queue before being processed.
+  google.protobuf.Duration queued_time = 15 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
 }

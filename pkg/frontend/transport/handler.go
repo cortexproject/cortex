@@ -450,6 +450,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	numStoreGatewayTouchedPostings := stats.LoadStoreGatewayTouchedPostings()
 	numStoreGatewayTouchedPostingBytes := stats.LoadStoreGatewayTouchedPostingBytes()
 	splitQueries := stats.LoadSplitQueries()
+	queryQueuedTime := stats.LoadQueuedTime()
 	dataSelectMaxTime := stats.LoadDataSelectMaxTime()
 	dataSelectMinTime := stats.LoadDataSelectMinTime()
 	splitInterval := stats.LoadSplitInterval()
@@ -481,6 +482,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		"path", r.URL.Path,
 		"response_time", queryResponseTime,
 		"query_wall_time_seconds", wallTime.Seconds(),
+		"queue_time_seconds", queryQueuedTime.Seconds(),
 		"response_series_count", numResponseSeries,
 		"fetched_series_count", numFetchedSeries,
 		"fetched_chunks_count", numFetchedChunks,
@@ -650,6 +652,7 @@ func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Head
 	if stats != nil {
 		parts := make([]string, 0)
 		parts = append(parts, statsValue("querier_wall_time", stats.LoadWallTime()))
+		parts = append(parts, statsValue("queue_time", stats.LoadQueuedTime()))
 		parts = append(parts, statsValue("response_time", queryResponseTime))
 		headers.Set(ServiceTimingHeaderName, strings.Join(parts, ", "))
 	}

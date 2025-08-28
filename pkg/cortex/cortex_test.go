@@ -86,6 +86,7 @@ func TestCortex(t *testing.T) {
 				IndexCache: tsdb.IndexCacheConfig{
 					Backend: tsdb.IndexCacheBackendInMemory,
 				},
+				BucketStoreType: string(tsdb.TSDBBucketStore),
 			},
 			UsersScanner: tsdb.UsersScannerConfig{
 				Strategy: tsdb.UserScanStrategyList,

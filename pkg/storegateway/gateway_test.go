@@ -183,10 +183,11 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 			assert.Equal(t, RingNumTokens, len(g.ringLifecycler.GetTokens()))
 			assert.Subset(t, g.ringLifecycler.GetTokens(), testData.initialTokens)
 
-			assert.NotNil(t, g.stores.getStore("user-1"))
-			assert.NotNil(t, g.stores.getStore("user-2"))
-			assert.Nil(t, g.stores.getStore("user-disabled"))
-			assert.Nil(t, g.stores.getStore("user-unknown"))
+			thanosStores := g.stores.(*ThanosBucketStores)
+			assert.NotNil(t, thanosStores.getStore("user-1"))
+			assert.NotNil(t, thanosStores.getStore("user-2"))
+			assert.Nil(t, thanosStores.getStore("user-disabled"))
+			assert.Nil(t, thanosStores.getStore("user-unknown"))
 		})
 	}
 }
@@ -217,10 +218,11 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 	bucketClient.MockExists(path.Join("user-disabled", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
-	assert.NotNil(t, g.stores.getStore("user-1"))
-	assert.NotNil(t, g.stores.getStore("user-2"))
-	assert.Nil(t, g.stores.getStore("user-disabled"))
-	assert.Nil(t, g.stores.getStore("user-unknown"))
+	thanosStores := g.stores.(*ThanosBucketStores)
+	assert.NotNil(t, thanosStores.getStore("user-1"))
+	assert.NotNil(t, thanosStores.getStore("user-2"))
+	assert.Nil(t, thanosStores.getStore("user-disabled"))
+	assert.Nil(t, thanosStores.getStore("user-unknown"))
 }
 
 func TestStoreGateway_InitialSyncFailure(t *testing.T) {

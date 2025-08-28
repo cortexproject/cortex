@@ -18,7 +18,7 @@ const (
 )
 
 var (
-	buffers = sync.Pool{New: func() interface{} {
+	Buffers = sync.Pool{New: func() interface{} {
 		b := make([]byte, 0, 100)
 		return &b
 	}}
@@ -79,7 +79,7 @@ func ExtractShardingMatchers(matchers []*labels.Matcher) ([]*labels.Matcher, *st
 		return r, nil, err
 	}
 
-	return r, shardInfo.Matcher(&buffers), nil
+	return r, shardInfo.Matcher(&Buffers), nil
 }
 
 type disableBinaryExpressionAnalyzer struct {

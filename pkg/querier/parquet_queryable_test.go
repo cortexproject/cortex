@@ -478,7 +478,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 				return validation.NewOverrides(limits, nil)
 			}(),
 			queryLimiter: limiter.NewQueryLimiter(0, 1, 0, 0),
-			expectedErr:  fmt.Errorf("materializer failed to materialize chunks: would fetch too many chunk bytes: resource exhausted (used 1)"),
+			expectedErr:  fmt.Errorf("materializer failed to create chunks iterator: failed to create column value iterator: would fetch too many chunk bytes: resource exhausted (used 1)"),
 		},
 		"max chunk bytes per query limit hit": {
 			limits: func() *validation.Overrides {
@@ -654,13 +654,7 @@ func TestMaterializedLabelsFilterCallback(t *testing.T) {
 					Labels:      []string{"__name__"},
 				}
 
-				buffers := &sync.Pool{New: func() interface{} {
-					b := make([]byte, 0, 100)
-					return &b
-				}}
-				shardMatcher := shardInfo.Matcher(buffers)
-
-				return injectShardMatcherIntoContext(context.Background(), shardMatcher)
+				return injectShardInfoIntoContext(context.Background(), shardInfo)
 			},
 			expectedFilterReturned:   false,
 			expectedCallbackReturned: false,
@@ -676,13 +670,7 @@ func TestMaterializedLabelsFilterCallback(t *testing.T) {
 					Labels:      []string{"__name__"},
 				}
 
-				buffers := &sync.Pool{New: func() interface{} {
-					b := make([]byte, 0, 100)
-					return &b
-				}}
-				shardMatcher := shardInfo.Matcher(buffers)
-
-				return injectShardMatcherIntoContext(context.Background(), shardMatcher)
+				return injectShardInfoIntoContext(context.Background(), shardInfo)
 			},
 			expectedFilterReturned:   true,
 			expectedCallbackReturned: true,
@@ -713,6 +701,30 @@ func TestMaterializedLabelsFilterCallback(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMaterializedLabelsFilterCallbackConcurrent(t *testing.T) {
+	wg := sync.WaitGroup{}
+	wg.Add(10)
+	si := &storepb.ShardInfo{
+		ShardIndex:  0,
+		TotalShards: 2,
+		By:          true,
+		Labels:      []string{"__name__"},
+	}
+	for i := 0; i < 10; i++ {
+		go func() {
+			defer wg.Done()
+			ctx := injectShardInfoIntoContext(context.Background(), si)
+			filter, exists := materializedLabelsFilterCallback(ctx, nil)
+			require.Equal(t, true, exists)
+			for j := 0; j < 1000; j++ {
+				filter.Filter(labels.FromStrings("__name__", "test_metric", "label_1", strconv.Itoa(j)))
+			}
+			filter.Close()
+		}()
+	}
+	wg.Wait()
 }
 
 func TestParquetQueryableFallbackDisabled(t *testing.T) {

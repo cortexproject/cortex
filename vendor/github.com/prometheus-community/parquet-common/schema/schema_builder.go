@@ -58,7 +58,7 @@ func NewBuilder(mint, maxt, colDuration int64) *Builder {
 // It extracts metadata (mint, maxt, dataColDurationMs) from the file's key-value metadata
 // and reconstructs the schema by examining the file's columns to identify label columns.
 // Returns an error if the metadata cannot be parsed or the schema cannot be built.
-func FromLabelsFile(lf *parquet.File) (*TSDBSchema, error) {
+func FromLabelsFile(lf parquet.FileView) (*TSDBSchema, error) {
 	md := MetadataToMap(lf.Metadata().KeyValueMetadata)
 	mint, err := strconv.ParseInt(md[MinTMd], 0, 64)
 	if err != nil {
@@ -105,7 +105,8 @@ func (b *Builder) AddLabelNameColumn(lbls ...string) {
 func (b *Builder) Build() (*TSDBSchema, error) {
 	colIdx := 0
 
-	b.g[ColIndexes] = parquet.Encoded(parquet.Leaf(parquet.ByteArrayType), &parquet.DeltaByteArray)
+	b.g[ColIndexesColumn] = parquet.Encoded(parquet.Leaf(parquet.ByteArrayType), &parquet.DeltaByteArray)
+	b.g[SeriesHashColumn] = parquet.Leaf(parquet.ByteArrayType)
 	for i := b.mint; i <= b.maxt; i += b.dataColDurationMs {
 		b.g[DataColumn(colIdx)] = parquet.Encoded(parquet.Leaf(parquet.ByteArrayType), &parquet.DeltaLengthByteArray)
 		colIdx++
@@ -158,7 +159,7 @@ func (s *TSDBSchema) DataColumIdx(t int64) int {
 // LabelsProjection creates a TSDBProjection containing only label columns and column indexes.
 // This projection is used for creating parquet files that contain only the label metadata
 // without the actual time series data columns. The resulting projection includes:
-//   - ColIndexes column for row indexing
+//   - ColIndexesColumn column for row indexing
 //   - All label columns extracted from the original schema
 //
 // Parameters:
@@ -168,11 +169,17 @@ func (s *TSDBSchema) DataColumIdx(t int64) int {
 func (s *TSDBSchema) LabelsProjection(opts ...CompressionOpts) (*TSDBProjection, error) {
 	g := make(parquet.Group)
 
-	lc, ok := s.Schema.Lookup(ColIndexes)
+	lc, ok := s.Schema.Lookup(ColIndexesColumn)
 	if !ok {
-		return nil, fmt.Errorf("column %v not found", ColIndexes)
+		return nil, fmt.Errorf("column %v not found", ColIndexesColumn)
 	}
-	g[ColIndexes] = lc.Node
+	g[ColIndexesColumn] = lc.Node
+
+	lhc, ok := s.Schema.Lookup(SeriesHashColumn)
+	if !ok {
+		return nil, fmt.Errorf("column %v not found", SeriesHashColumn)
+	}
+	g[SeriesHashColumn] = lhc.Node
 
 	for _, c := range s.Schema.Columns() {
 		if _, ok := ExtractLabelFromColumn(c[0]); !ok {
@@ -189,7 +196,7 @@ func (s *TSDBSchema) LabelsProjection(opts ...CompressionOpts) (*TSDBProjection,
 			return LabelsPfileNameForShard(name, shard)
 		},
 		Schema:       WithCompression(parquet.NewSchema("labels-projection", g), opts...),
-		ExtraOptions: []parquet.WriterOption{parquet.SkipPageBounds(ColIndexes)},
+		ExtraOptions: []parquet.WriterOption{parquet.SkipPageBounds(ColIndexesColumn), parquet.SkipPageBounds(SeriesHashColumn)},
 	}, nil
 }
 

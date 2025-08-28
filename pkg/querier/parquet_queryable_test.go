@@ -478,7 +478,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 				return validation.NewOverrides(limits, nil)
 			}(),
 			queryLimiter: limiter.NewQueryLimiter(0, 1, 0, 0),
-			expectedErr:  fmt.Errorf("materializer failed to materialize chunks: would fetch too many chunk bytes: resource exhausted (used 1)"),
+			expectedErr:  fmt.Errorf("materializer failed to create chunks iterator: failed to create column value iterator: would fetch too many chunk bytes: resource exhausted (used 1)"),
 		},
 		"max chunk bytes per query limit hit": {
 			limits: func() *validation.Overrides {

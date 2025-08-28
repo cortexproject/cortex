@@ -27,7 +27,8 @@ import (
 const (
 	LabelColumnPrefix = "l_"
 	DataColumnPrefix  = "s_data_"
-	ColIndexes        = "s_col_indexes"
+	ColIndexesColumn  = "s_col_indexes"
+	SeriesHashColumn  = "s_series_hash"
 
 	DataColSizeMd = "data_col_duration_ms"
 	MinTMd        = "minT"

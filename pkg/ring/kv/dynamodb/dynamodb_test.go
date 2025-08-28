@@ -55,8 +55,8 @@ func Test_TTL(t *testing.T) {
 func Test_Batch(t *testing.T) {
 	tableName := "TEST"
 	ddbKeyUpdate := dynamodbKey{
-		primaryKey: "PKUpdate1",
-		sortKey:    "SKUpdate1",
+		primaryKey: "PKUpdate",
+		sortKey:    "SKUpdate",
 	}
 	ddbKeyDelete := dynamodbKey{
 		primaryKey: "PKDelete",
@@ -151,21 +151,41 @@ func Test_EmptyBatch(t *testing.T) {
 
 func Test_Batch_Error(t *testing.T) {
 	tableName := "TEST"
-	ddbKeyDelete := dynamodbKey{
-		primaryKey: "PKDelete",
-		sortKey:    "SKDelete",
-	}
-	delete := []dynamodbKey{ddbKeyDelete}
 
-	ddbClientMock := &mockDynamodb{
-		transactWriteItem: func(input *dynamodb.TransactWriteItemsInput) (*dynamodb.TransactWriteItemsOutput, error) {
-			return &dynamodb.TransactWriteItemsOutput{}, fmt.Errorf("mocked error")
+	testCases := []struct {
+		name          string
+		mockError     error
+		expectedRetry bool
+	}{
+		{
+			name:          "generic_error_no_retry",
+			mockError:     fmt.Errorf("mocked error"),
+			expectedRetry: false,
+		},
+		{
+			name:          "conditional_check_failed_should_retry",
+			mockError:     &dynamodb.ConditionalCheckFailedException{},
+			expectedRetry: true,
 		},
 	}
 
-	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
-	_, _, err := ddb.Batch(context.TODO(), nil, delete)
-	require.Errorf(t, err, "mocked error")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ddbClientMock := &mockDynamodb{
+				transactWriteItem: func(input *dynamodb.TransactWriteItemsInput) (*dynamodb.TransactWriteItemsOutput, error) {
+					return nil, tc.mockError
+				},
+			}
+
+			ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
+
+			delete := []dynamodbKey{{primaryKey: "PKDelete", sortKey: "SKDelete"}}
+			_, retry, err := ddb.Batch(context.TODO(), nil, delete)
+
+			require.Error(t, err)
+			require.Equal(t, tc.expectedRetry, retry)
+		})
+	}
 }
 
 func checkPutForItem(request *dynamodb.Put, key dynamodbKey) bool {

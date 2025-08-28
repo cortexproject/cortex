@@ -223,6 +223,8 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem
 			TableName: kv.tableName,
 			Item:      item,
 		}
+		// condition for optimistic locking; DynamoDB will only succeed the request if either the version attribute does not exist
+		// (for backwards compatibility) or the object version has not changed since it was last read
 		ddbPut.ConditionExpression = aws.String("attribute_not_exists(version) OR version = :v")
 		ddbPut.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
 			":v": {N: aws.String(strconv.FormatInt(ddbItem.version, 10))},

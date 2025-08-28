@@ -1251,7 +1251,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			}
 		}
 
-		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels, matchedLabelSetLimits []validation.LimitsPerLabelSet) (rollback bool) {
+		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels, matchedLabelSetLimits []validation.LimitsPerLabelSet, seriesHash uint64) (rollback bool) {
 			// Check if the error is a soft error we can proceed on. If so, we keep track
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
@@ -1259,22 +1259,27 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			switch cause := errors.Cause(err); {
 			case errors.Is(cause, storage.ErrOutOfBounds):
 				sampleOutOfBoundsCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track("sample_out_of_bounds", userID, seriesHash)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrOutOfOrderSample):
 				sampleOutOfOrderCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track("sample_out_of_order", userID, seriesHash)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrDuplicateSampleForTimestamp):
 				newValueForTimestampCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track("new_value_for_timestamp", userID, seriesHash)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrTooOldSample):
 				sampleTooOldCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track("sample_too_old", userID, seriesHash)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track("per_user_series_limit", userID, seriesHash)
 				updateFirstPartial(func() error {
 					return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
@@ -1287,12 +1292,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
 				perMetricSeriesLimitCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track("per_metric_series_limit", userID, seriesHash)
 				updateFirstPartial(func() error {
 					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
 
 			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
 				perLabelSetSeriesLimitCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track("per_labelset_series_limit", userID, seriesHash)
 				// We only track per labelset discarded samples for throttling by labelset limit.
 				reasonCounter.increment(matchedLabelSetLimits, perLabelsetSeriesLimit)
 				updateFirstPartial(func() error {
@@ -1374,7 +1381,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			failedSamplesCount++
 
-			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
+			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, tsLabelsHash); !rollback {
 				continue
 			}
 			// The error looks an issue on our side, so we should rollback
@@ -1419,7 +1426,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 				failedHistogramsCount++
 
-				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
+				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, tsLabelsHash); !rollback {
 					continue
 				}
 				// The error looks an issue on our side, so we should rollback

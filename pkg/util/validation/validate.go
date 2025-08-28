@@ -17,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/discardedseries"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/labelset"
 )
@@ -87,6 +88,8 @@ type ValidateMetrics struct {
 
 	DiscardedSamplesPerLabelSet *prometheus.CounterVec
 	LabelSetTracker             *labelset.LabelSetTracker
+	DiscardedSeriesGauge        *prometheus.GaugeVec
+	DiscardedSeriesTracker      *discardedseries.DiscardedSeriesTracker
 }
 
 func registerCollector(r prometheus.Registerer, c prometheus.Collector) {
@@ -145,6 +148,14 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		NativeHistogramMinResetDuration: 1 * time.Hour,
 	}, []string{"user"})
 	registerCollector(r, labelSizeBytes)
+	discardedSeriesGauge := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cortex_discarded_series_total",
+			Help: "The total number of series that include discarded samples.",
+		},
+		[]string{discardReasonLabel, "user"},
+	)
+	registerCollector(r, discardedSeriesGauge)
 
 	m := &ValidateMetrics{
 		DiscardedSamples:                  discardedSamples,
@@ -154,6 +165,8 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		HistogramSamplesReducedResolution: histogramSamplesReducedResolution,
 		LabelSizeBytes:                    labelSizeBytes,
 		LabelSetTracker:                   labelset.NewLabelSetTracker(),
+		DiscardedSeriesGauge:              discardedSeriesGauge,
+		DiscardedSeriesTracker:            discardedseries.NewDiscardedSeriesTracker(discardedSeriesGauge),
 	}
 
 	return m
@@ -433,5 +446,8 @@ func DeletePerUserValidationMetrics(validateMetrics *ValidateMetrics, userID str
 	}
 	if err := util.DeleteMatchingLabels(validateMetrics.LabelSizeBytes, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_label_size_bytes metric for user", "user", userID, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(validateMetrics.DiscardedSeriesGauge, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_discarded_series_total metric for user", "user", userID, "err", err)
 	}
 }

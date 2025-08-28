@@ -20,7 +20,7 @@ var vendMetricsInterval = 30 * time.Second
 
 type SeriesCounter struct {
 	*sync.RWMutex
-	seriesCountMap map[string]uint64
+	seriesCountMap map[uint64]struct{}
 }
 
 type UserCounter struct {
@@ -44,29 +44,23 @@ func NewDiscardedSeriesTracker(discardedSeriesGauge *prometheus.GaugeVec) *Disca
 	return &DiscardedSeriesTracker{labelUserMap: labelUserMap, discardedSeriesGauge: discardedSeriesGauge}
 }
 
-func (t *DiscardedSeriesTracker) Track(label string, user string, series string) {
+func (t *DiscardedSeriesTracker) Track(label string, user string, series uint64) {
 	if userCounter, ok := t.labelUserMap[label]; ok {
-		locked := false
-		if _, ok := userCounter.userSeriesMap[user]; !ok {
-			userCounter.Lock()
-			locked = true
-		}
-
-		// Rechecking after locking to avoid race conditions
-		if seriesCounter, ok := userCounter.userSeriesMap[user]; ok {
-			seriesCounter.Lock()
-			seriesCounter.seriesCountMap[series]++
-			seriesCounter.Unlock()
-		} else {
-			userCounter.userSeriesMap[user] = &SeriesCounter{
+		seriesCounter, ok := userCounter.userSeriesMap[user]
+		if !ok {
+			seriesCounter = &SeriesCounter{
 				RWMutex:        &sync.RWMutex{},
-				seriesCountMap: make(map[string]uint64),
+				seriesCountMap: make(map[uint64]struct{}),
 			}
-			userCounter.userSeriesMap[user].seriesCountMap[series] = 1
+			userCounter.Lock()
+			userCounter.userSeriesMap[user] = seriesCounter
+			userCounter.Unlock()
 		}
 
-		if locked {
-			userCounter.Unlock()
+		if _, ok := seriesCounter.seriesCountMap[series]; !ok {
+			seriesCounter.Lock()
+			seriesCounter.seriesCountMap[series] = struct{}{}
+			seriesCounter.Unlock()
 		}
 	}
 }
@@ -76,21 +70,13 @@ func (t *DiscardedSeriesTracker) UpdateMetrics() {
 		userCounter.Lock()
 		for user, seriesCounter := range userCounter.userSeriesMap {
 			seriesCounter.Lock()
-			for seriesLabel, count := range seriesCounter.seriesCountMap {
-				t.discardedSeriesGauge.WithLabelValues(label, user, seriesLabel).Set(float64(count))
-				if count == 0 {
-					delete(seriesCounter.seriesCountMap, seriesLabel)
-				} else {
-					seriesCounter.seriesCountMap[seriesLabel] = 0
-				}
-			}
-			if len(seriesCounter.seriesCountMap) == 0 {
+			seriesCount := len(seriesCounter.seriesCountMap)
+			t.discardedSeriesGauge.WithLabelValues(label, user).Set(float64(seriesCount))
+			clear(seriesCounter.seriesCountMap)
+			if seriesCount == 0 {
 				delete(userCounter.userSeriesMap, user)
 			}
 			seriesCounter.Unlock()
-		}
-		if len(userCounter.userSeriesMap) == 0 {
-			delete(t.labelUserMap, label)
 		}
 		userCounter.Unlock()
 	}
@@ -106,12 +92,10 @@ func (t *DiscardedSeriesTracker) StartDiscardedSeriesGoroutine() {
 }
 
 // only used in testing
-func (t *DiscardedSeriesTracker) getSeriesCount(label string, user string, series string) int {
+func (t *DiscardedSeriesTracker) getSeriesCount(label string, user string) int {
 	if userCounter, ok := t.labelUserMap[label]; ok {
 		if seriesCounter, ok := userCounter.userSeriesMap[user]; ok {
-			if count, ok := seriesCounter.seriesCountMap[series]; ok {
-				return int(count)
-			}
+			return len(seriesCounter.seriesCountMap)
 		}
 	}
 	return -1

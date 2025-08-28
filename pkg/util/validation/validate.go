@@ -153,7 +153,7 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 			Name: "cortex_discarded_series_total",
 			Help: "The total number of series that include discarded samples.",
 		},
-		[]string{discardReasonLabel, "user", "series"},
+		[]string{discardReasonLabel, "user"},
 	)
 	registerCollector(r, discardedSeriesGauge)
 

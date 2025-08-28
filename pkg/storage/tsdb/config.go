@@ -61,6 +61,7 @@ var (
 	ErrBlockDiscoveryStrategy                           = errors.New("invalid block discovery strategy")
 	ErrInvalidTokenBucketBytesLimiterMode               = errors.New("invalid token bucket bytes limiter mode")
 	ErrInvalidLazyExpandedPostingGroupMaxKeySeriesRatio = errors.New("lazy expanded posting group max key series ratio needs to be equal or greater than 0")
+	ErrInvalidBucketStoreType                           = errors.New("invalid bucket store type")
 )
 
 // BlocksStorageConfig holds the config information for the blocks storage.
@@ -292,6 +293,7 @@ type BucketStoreConfig struct {
 	IgnoreBlocksBefore       time.Duration            `yaml:"ignore_blocks_before"`
 	BucketIndex              BucketIndexConfig        `yaml:"bucket_index"`
 	BlockDiscoveryStrategy   string                   `yaml:"block_discovery_strategy"`
+	BucketStoreType          string                   `yaml:"bucket_store_type"`
 
 	// Chunk pool.
 	MaxChunkPoolBytes           uint64 `yaml:"max_chunk_pool_bytes"`
@@ -378,6 +380,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.LazyExpandedPostingGroupMaxKeySeriesRatio, "blocks-storage.bucket-store.lazy-expanded-posting-group-max-key-series-ratio", 100, "Mark posting group as lazy if it fetches more keys than R * max series the query should fetch. With R set to 100, a posting group which fetches 100K keys will be marked as lazy if the current query only fetches 1000 series. This config is only valid if lazy expanded posting is enabled. 0 disables the limit.")
 	f.IntVar(&cfg.SeriesBatchSize, "blocks-storage.bucket-store.series-batch-size", store.SeriesBatchSize, "Controls how many series to fetch per batch in Store Gateway. Default value is 10000.")
 	f.StringVar(&cfg.BlockDiscoveryStrategy, "blocks-storage.bucket-store.block-discovery-strategy", string(ConcurrentDiscovery), "One of "+strings.Join(supportedBlockDiscoveryStrategies, ", ")+". When set to concurrent, stores will concurrently issue one call per directory to discover active blocks in the bucket. The recursive strategy iterates through all objects in the bucket, recursively traversing into each directory. This avoids N+1 calls at the expense of having slower bucket iterations. bucket_index strategy can be used in Compactor only and utilizes the existing bucket index to fetch block IDs to sync. This avoids iterating the bucket but can be impacted by delays of cleaner creating bucket index.")
+	f.StringVar(&cfg.BucketStoreType, "blocks-storage.bucket-store.bucket-store-type", "tsdb", "Type of bucket store to use (tsdb or parquet).")
 	f.StringVar(&cfg.TokenBucketBytesLimiter.Mode, "blocks-storage.bucket-store.token-bucket-bytes-limiter.mode", string(TokenBucketBytesLimiterDisabled), fmt.Sprintf("Token bucket bytes limiter mode. Supported values are: %s", strings.Join(supportedTokenBucketBytesLimiterModes, ", ")))
 	f.Int64Var(&cfg.TokenBucketBytesLimiter.InstanceTokenBucketSize, "blocks-storage.bucket-store.token-bucket-bytes-limiter.instance-token-bucket-size", int64(820*units.Mebibyte), "Instance token bucket size")
 	f.Int64Var(&cfg.TokenBucketBytesLimiter.UserTokenBucketSize, "blocks-storage.bucket-store.token-bucket-bytes-limiter.user-token-bucket-size", int64(615*units.Mebibyte), "User token bucket size")
@@ -415,6 +418,9 @@ func (cfg *BucketStoreConfig) Validate() error {
 	if !slices.Contains(supportedTokenBucketBytesLimiterModes, cfg.TokenBucketBytesLimiter.Mode) {
 		return ErrInvalidTokenBucketBytesLimiterMode
 	}
+	if !util.StringsContain(supportedBucketStoreTypes, cfg.BucketStoreType) {
+		return ErrInvalidBucketStoreType
+	}
 	if cfg.LazyExpandedPostingGroupMaxKeySeriesRatio < 0 {
 		return ErrInvalidLazyExpandedPostingGroupMaxKeySeriesRatio
 	}
@@ -448,6 +454,19 @@ var supportedBlockDiscoveryStrategies = []string{
 	string(ConcurrentDiscovery),
 	string(RecursiveDiscovery),
 	string(BucketIndexDiscovery),
+}
+
+// BucketStoreType represents the type of bucket store
+type BucketStoreType string
+
+const (
+	TSDBBucketStore    BucketStoreType = "tsdb"
+	ParquetBucketStore BucketStoreType = "parquet"
+)
+
+var supportedBucketStoreTypes = []string{
+	string(TSDBBucketStore),
+	string(ParquetBucketStore),
 }
 
 type TokenBucketBytesLimiterMode string

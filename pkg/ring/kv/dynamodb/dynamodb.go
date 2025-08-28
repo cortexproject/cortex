@@ -256,7 +256,11 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem
 		resp, err := kv.ddbClient.TransactWriteItemsWithContext(ctx, transactItems)
 		if err != nil {
 			var checkFailed *dynamodb.ConditionalCheckFailedException
-			return totalCapacity, errors.As(err, &checkFailed), err
+			isCheckFailedException := errors.As(err, &checkFailed)
+			if isCheckFailedException {
+				kv.logger.Log("msg", "conditional check failed on DynamoDB Batch", "item", fmt.Sprintf("%v", checkFailed.Item), "err", err)
+			}
+			return totalCapacity, isCheckFailedException, err
 		}
 		for _, consumedCapacity := range resp.ConsumedCapacity {
 			totalCapacity += getCapacityUnits(consumedCapacity)

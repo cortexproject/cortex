@@ -17,9 +17,10 @@ type dynamodbInstrumentation struct {
 }
 
 type dynamodbMetrics struct {
-	dynamodbRequestDuration *instrument.HistogramCollector
-	dynamodbUsageMetrics    *prometheus.CounterVec
-	dynamodbCasAttempts     prometheus.Counter
+	dynamodbRequestDuration          *instrument.HistogramCollector
+	dynamodbUsageMetrics             *prometheus.CounterVec
+	dynamodbCasAttempts              prometheus.Counter
+	dynamodbConditionalCheckFailures prometheus.Counter
 }
 
 func newDynamoDbMetrics(registerer prometheus.Registerer) *dynamodbMetrics {
@@ -39,10 +40,16 @@ func newDynamoDbMetrics(registerer prometheus.Registerer) *dynamodbMetrics {
 		Help: "DynamoDB KV Store Attempted CAS operations",
 	})
 
+	dynamodbConditionalCheckFailures := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "dynamodb_kv_conditional_check_failed_total",
+		Help: "Total number of DynamoDB conditional check failures",
+	})
+
 	dynamodbMetrics := dynamodbMetrics{
-		dynamodbRequestDuration: dynamodbRequestDurationCollector,
-		dynamodbUsageMetrics:    dynamodbUsageMetrics,
-		dynamodbCasAttempts:     dynamodbCasAttempts,
+		dynamodbRequestDuration:          dynamodbRequestDurationCollector,
+		dynamodbUsageMetrics:             dynamodbUsageMetrics,
+		dynamodbCasAttempts:              dynamodbCasAttempts,
+		dynamodbConditionalCheckFailures: dynamodbConditionalCheckFailures,
 	}
 	return &dynamodbMetrics
 }
@@ -93,6 +100,9 @@ func (d dynamodbInstrumentation) Batch(ctx context.Context, put map[dynamodbKey]
 		var err error
 		totalCapacity, shouldRetry, err := d.kv.Batch(ctx, put, delete)
 		retry = shouldRetry
+		if retry {
+			d.ddbMetrics.dynamodbConditionalCheckFailures.Inc()
+		}
 		d.ddbMetrics.dynamodbUsageMetrics.WithLabelValues("Batch").Add(totalCapacity)
 		return err
 	})

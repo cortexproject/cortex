@@ -187,9 +187,13 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 
 		putRequests := map[dynamodbKey]dynamodbItem{}
 		for childKey, bytes := range buf {
+			version := int64(0)
+			if ddbItem, ok := resp[childKey]; ok {
+				version = ddbItem.version
+			}
 			putRequests[dynamodbKey{primaryKey: key, sortKey: childKey}] = dynamodbItem{
 				data:    bytes,
-				version: resp[childKey].version,
+				version: version,
 			}
 		}
 

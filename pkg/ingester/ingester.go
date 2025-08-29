@@ -63,7 +63,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -1697,7 +1696,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 	}
 
 	// We will report *this* request in the error too.
-	c, err := i.trackInflightQueryRequest(ctx)
+	c, err := i.trackInflightQueryRequest()
 	if err != nil {
 		return nil, err
 	}
@@ -1805,7 +1804,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		q.Close()
 	}
 
-	c, err := i.trackInflightQueryRequest(ctx)
+	c, err := i.trackInflightQueryRequest()
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1902,7 +1901,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		q.Close()
 	}
 
-	c, err := i.trackInflightQueryRequest(ctx)
+	c, err := i.trackInflightQueryRequest()
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -2253,7 +2252,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	return nil
 }
 
-func (i *Ingester) trackInflightQueryRequest(ctx context.Context) (func(), error) {
+func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 	gl := i.getInstanceLimits()
 	if gl != nil && gl.MaxInflightQueryRequests > 0 {
 		if i.inflightQueryRequests.Load() >= gl.MaxInflightQueryRequests {
@@ -2263,7 +2262,7 @@ func (i *Ingester) trackInflightQueryRequest(ctx context.Context) (func(), error
 
 	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
 
-	if i.resourceBasedLimiter != nil && !requestmeta.RequestFromRuler(ctx) {
+	if i.resourceBasedLimiter != nil {
 		if err := i.resourceBasedLimiter.AcceptNewRequest(); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to accept request", "err", err)
 			return nil, httpgrpc.Errorf(http.StatusServiceUnavailable, "failed to query: %s", limiter.ErrResourceLimitReachedStr)
@@ -2283,7 +2282,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	}
 	defer q.Close()
 
-	c, err := i.trackInflightQueryRequest(ctx)
+	c, err := i.trackInflightQueryRequest()
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}

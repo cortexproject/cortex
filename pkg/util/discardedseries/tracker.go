@@ -87,7 +87,9 @@ func (t *DiscardedSeriesTracker) UpdateMetrics() {
 		}
 		userCounter.Lock()
 		for _, user := range usersToDelete {
-			delete(userCounter.userSeriesMap, user)
+			if len(userCounter.userSeriesMap[user].seriesCountMap) == 0 {
+				delete(userCounter.userSeriesMap, user)
+			}
 		}
 		userCounter.Unlock()
 	}

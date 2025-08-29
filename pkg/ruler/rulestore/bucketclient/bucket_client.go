@@ -13,12 +13,16 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 )
 
@@ -42,14 +46,24 @@ type BucketRuleStore struct {
 	bucket      objstore.Bucket
 	cfgProvider bucket.TenantConfigProvider
 	logger      log.Logger
+
+	usersScanner users.Scanner
 }
 
-func NewBucketRuleStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *BucketRuleStore {
-	return &BucketRuleStore{
-		bucket:      bucket.NewPrefixedBucketClient(bkt, rulesPrefix),
-		cfgProvider: cfgProvider,
-		logger:      logger,
+func NewBucketRuleStore(bkt objstore.Bucket, userScannerCfg tsdb.UsersScannerConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (*BucketRuleStore, error) {
+	rulesBucket := bucket.NewPrefixedBucketClient(bkt, rulesPrefix)
+
+	usersScanner, err := users.NewScanner(userScannerCfg, rulesBucket, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "ruler"}, reg))
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to initialize ruler users scanner")
 	}
+
+	return &BucketRuleStore{
+		bucket:       rulesBucket,
+		cfgProvider:  cfgProvider,
+		logger:       logger,
+		usersScanner: usersScanner,
+	}, nil
 }
 
 // getRuleGroup loads and return a rules group. If existing rule group is supplied, it is Reset and reused. If nil, new RuleGroupDesc is allocated.
@@ -94,16 +108,14 @@ func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, g
 
 // ListAllUsers implements rules.RuleStore.
 func (b *BucketRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
-	var users []string
-	err := b.bucket.Iter(ctx, "", func(user string) error {
-		users = append(users, strings.TrimSuffix(user, objstore.DirDelim))
-		return nil
-	})
+	active, deleting, _, err := b.usersScanner.ScanUsers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to list users in rule store bucket: %w", err)
 	}
-
-	return users, nil
+	userIDs := make([]string, 0, len(active)+len(deleting))
+	userIDs = append(userIDs, active...)
+	userIDs = append(userIDs, deleting...)
+	return userIDs, nil
 }
 
 // ListAllRuleGroups implements rules.RuleStore.

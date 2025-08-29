@@ -1,6 +1,6 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – rejection</title><link>/tags/rejection/</link><description>Recent content in rejection on Cortex</description><generator>Hugo -- gohugo.io</generator><lastBuildDate>Mon, 04 Aug 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/rejection/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: Block the Blast: How Query Rejection Protects Your Cortex Cluster</title><link>/blog/2025/08/04/block-the-blast-how-query-rejection-protects-your-cortex-cluster/</link><pubDate>Mon, 04 Aug 2025 00:00:00 +0000</pubDate><guid>/blog/2025/08/04/block-the-blast-how-query-rejection-protects-your-cortex-cluster/</guid><description>
 &lt;h1 id="introduction">Introduction&lt;/h1>
-&lt;p>We had events where a set of seemingly &lt;strong>harmless-looking&lt;/strong> dashboard queries kept slipping just under our limits yet repeatedly &lt;strong>OOM-killing the querier pods&lt;/strong>. Our safeguard mechanisms weren’t enough, and the only hope was that the tenant would either stop those queries or that we’d have to throttle all traffic from that tenant. Usually it wasn’t all traffic causing trouble—it was a small set of queries coming from a specific dashboard or some query with specific characteristics. We wished there was a way to manually specify query characteristics and reject them without throttling everything. &lt;strong>This inspired us to build query rejection&lt;/strong>, a last-resort safety net for operators running multi-tenant Cortex clusters.&lt;/p>
+&lt;p>Although Cortex includes various safeguards to protect against overload, they can’t prevent every failure scenario. In some environments, a small set of seemingly harmless-looking dashboard queries have repeatedly slipped just under the limits yet still OOM-killed the querier pods. Built-in protections weren’t enough, and the only available option was to throttle all incoming traffic. These queries often came from a specific dashboard or followed a predictable pattern. There was no way to block just those without affecting everything else. This inspired the introduction of query rejection, a last-resort safety net for operators running multi-tenant Cortex clusters.&lt;/p>
 &lt;h2 id="why-limits-arent-enough">Why Limits Aren’t Enough&lt;/h2>
 &lt;p>Cortex already includes resource limiting, throttling and other resource safeguards, but these protections can’t cover every edge case. Some limits are enforced too late in the query lifecycle to matter; others are broad and can’t target specific bad actors. As a result, a single heavy query can bypass all service limits and still:&lt;/p>
 &lt;ul>
@@ -13,8 +13,8 @@
 &lt;p>Think of query rejection as an “emergency stop” in a factory. It sits in front of the query engine and checks each request against a set of operator-defined rules. If a request matches criteria, it’s rejected immediately. This allows you to target the handful of queries that cause trouble without imposing a blanket slowdown on everyone else.&lt;/p>
 &lt;p>&lt;strong>Key features:&lt;/strong>&lt;/p>
 &lt;ul>
-&lt;li>&lt;strong>Per-tenant control:&lt;/strong> It&amp;rsquo;s defined in the tenant limit configuration, which only targets queries from specific tenant. &lt;/li>
-&lt;li>&lt;strong>Precise matching:&lt;/strong> You can specify different query attributes to narrow down to specific queries. All fields within a rule set must match (AND logic). If needed, you can define multiple independent rule sets to target different types of queries.&lt;/li>
+&lt;li>&lt;strong>Per-tenant control:&lt;/strong> It&amp;rsquo;s defined in the tenant limit configuration, which only targets queries from specific tenant.&lt;/li>
+&lt;li>&lt;strong>Precise matching:&lt;/strong> You can specify different query attributes to narrow down to specific queries. All fields within a rejection rule must match (AND logic). If needed, you can define multiple independent rejection rules to target different types of queries.&lt;/li>
 &lt;li>&lt;strong>Pre-processing enforcement:&lt;/strong> Query rejection is applied before the query is executed, allowing known-bad patterns to be blocked before consuming any resources.&lt;/li>
 &lt;/ul>
 &lt;h2 id="matching-criteria">Matching Criteria&lt;/h2>
@@ -29,7 +29,7 @@
 &lt;/ul>
 &lt;p>By combining these fields, you can zero in on the exact query patterns causing problems without over-blocking.&lt;/p>
 &lt;h2 id="configuring-query-rejection">Configuring Query Rejection&lt;/h2>
-&lt;p>You define query rejection rules per tenant in a runtime config file. Each rule specifies a set of attributes that must all match for the query to be rejected. The configuration supports multiple such rule sets.&lt;/p>
+&lt;p>You define query rejection rules per tenant in a runtime config file. Each rejection rule specifies a set of attributes that must all match for the query to be rejected. The configuration supports multiple such rules.&lt;/p>
 &lt;p>Here’s an example configuration:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># runtime_config.yaml&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">overrides&lt;/span>:
@@ -75,6 +75,17 @@
 &lt;p>&lt;strong>Communicate with tenants.&lt;/strong> Let affected tenants know if their queries are being blocked, and help them adjust their dashboards accordingly.&lt;/p>
 &lt;/li>
 &lt;/ul>
+&lt;h2 id="ruler-queries">Ruler Queries&lt;/h2>
+&lt;p>Query rejection only applies to API queries and does not apply to ruler queries. However, Ruler queries are typically instant and lightweight, so a complex query‑rejection mechanism isn’t required for them.
+In situations where a rule group contains heavy queries and no other mitigations are effective, operators can disable the entire rule group. This is especially helpful to prevent Rulers from getting OOMKilled due to resource-intensive rules.&lt;/p>
+&lt;p>Rule group disabling is configured per tenant, similar to query rejection. When you disable a rule group, Cortex stops evaluating the rules within that group, removing the problematic queries altogether. For example:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># runtime_config.yaml&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">overrides&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;lt;tenant_id&amp;gt;&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">disabled_rule_groups&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">namespace&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;keep_firing_for_test&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;smallsteps&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>This makes it easy to mitigate issues from the ruler without introducing query rejection logic for those queries.&lt;/p>
 &lt;h2 id="conclusion">Conclusion&lt;/h2>
-&lt;p>When traditional safeguards fall short, query rejection gives operators precise control to block only what’s harmful—without slowing down everything else.&lt;/p>
-&lt;p>If you operate a shared Cortex environment, consider learning how to use query rejection effectively. It might just save you from the next incident—by preventing OOM kills, degraded performance, or disruption to other tenants.&lt;/p></description></item></channel></rss>
+&lt;p>When traditional safeguards fall short, query rejection gives operators precise control to block only what’s harmful; without slowing down everything else.&lt;/p>
+&lt;p>If you operate a shared Cortex environment, consider learning how to use query rejection effectively. It might just save you from the next incident; by preventing OOM kills, degraded performance, or disruption to other tenants.&lt;/p></description></item></channel></rss>

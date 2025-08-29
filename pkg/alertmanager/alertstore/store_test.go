@@ -2,8 +2,6 @@ package alertstore
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -18,12 +16,8 @@ import (
 	cortextsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
-var (
-	errAccessDenied = fmt.Errorf("access denied")
-)
-
 func TestAlertStore_ListAllUsers(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *MockBucket, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -57,7 +51,7 @@ func TestAlertStore_ListAllUsers(t *testing.T) {
 }
 
 func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *MockBucket, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -95,7 +89,7 @@ func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
 }
 
 func TestStore_GetAlertConfigs(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *MockBucket, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -140,7 +134,7 @@ func TestStore_GetAlertConfigs(t *testing.T) {
 }
 
 func TestAlertStore_DeleteAlertConfig(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *MockBucket, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -180,9 +174,9 @@ func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 	})
 }
 
-func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, b *mockBucket, client interface{})) {
+func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, b *MockBucket, client interface{})) {
 	bucketClient := objstore.NewInMemBucket()
-	mBucketClient := &mockBucket{Bucket: bucketClient}
+	mBucketClient := &MockBucket{Bucket: bucketClient}
 	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 	bucketStore, err := bucketclient.NewBucketAlertStore(mBucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
@@ -225,7 +219,7 @@ func makeTestFullState(content string) alertspb.FullStateDesc {
 
 func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	mBucketClient := &mockBucket{Bucket: bucket}
+	mBucketClient := &MockBucket{Bucket: bucket}
 	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 	store, err := bucketclient.NewBucketAlertStore(mBucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
@@ -307,28 +301,4 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 		// Delete again (should be idempotent).
 		require.NoError(t, store.DeleteFullState(ctx, "user-1"))
 	}
-}
-
-type mockBucket struct {
-	objstore.Bucket
-	err error
-}
-
-func (m *mockBucket) WithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.Bucket {
-	return m
-}
-
-func (m *mockBucket) ReaderWithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
-	return m
-}
-
-func (m *mockBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.Bucket.Get(ctx, name)
-}
-
-func (m *mockBucket) IsAccessDeniedErr(err error) bool {
-	return err == errAccessDenied
 }

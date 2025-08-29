@@ -12,7 +12,7 @@ author: Erlan Zholdubai uulu ([@erlan-z](https://github.com/erlan-z))
 
 # Introduction
 
-We had events where a set of seemingly **harmless-looking** dashboard queries kept slipping just under our limits yet repeatedly **OOM-killing the querier pods**. Our safeguard mechanisms weren’t enough, and the only hope was that the tenant would either stop those queries or that we’d have to throttle all traffic from that tenant. Usually it wasn’t all traffic causing trouble—it was a small set of queries coming from a specific dashboard or some query with specific characteristics. We wished there was a way to manually specify query characteristics and reject them without throttling everything. **This inspired us to build query rejection**, a last-resort safety net for operators running multi-tenant Cortex clusters.
+Although Cortex includes various safeguards to protect against overload, they can’t prevent every failure scenario. In some environments, a small set of seemingly harmless-looking dashboard queries have repeatedly slipped just under the limits yet still OOM-killed the querier pods. Built-in protections weren’t enough, and the only available option was to throttle all incoming traffic. These queries often came from a specific dashboard or followed a predictable pattern. There was no way to block just those without affecting everything else. This inspired the introduction of query rejection, a last-resort safety net for operators running multi-tenant Cortex clusters.
 
 ## Why Limits Aren’t Enough
 
@@ -30,8 +30,8 @@ Think of query rejection as an “emergency stop” in a factory. It sits in fro
 
 **Key features:**
 
-- **Per-tenant control:** It's defined in the tenant limit configuration, which only targets queries from specific tenant. 
-- **Precise matching:** You can specify different query attributes to narrow down to specific queries. All fields within a rule set must match (AND logic). If needed, you can define multiple independent rule sets to target different types of queries.
+- **Per-tenant control:** It's defined in the tenant limit configuration, which only targets queries from specific tenant.
+- **Precise matching:** You can specify different query attributes to narrow down to specific queries. All fields within a rejection rule must match (AND logic). If needed, you can define multiple independent rejection rules to target different types of queries.
 - **Pre-processing enforcement:** Query rejection is applied before the query is executed, allowing known-bad patterns to be blocked before consuming any resources.
 
 ## Matching Criteria
@@ -49,7 +49,7 @@ By combining these fields, you can zero in on the exact query patterns causing p
 
 ## Configuring Query Rejection
 
-You define query rejection rules per tenant in a runtime config file. Each rule specifies a set of attributes that must all match for the query to be rejected. The configuration supports multiple such rule sets.
+You define query rejection rules per tenant in a runtime config file. Each rejection rule specifies a set of attributes that must all match for the query to be rejected. The configuration supports multiple such rules.
 
 Here’s an example configuration:
 
@@ -103,9 +103,26 @@ Because this request matches all the configured attributes, it will be blocked. 
 
 - **Communicate with tenants.** Let affected tenants know if their queries are being blocked, and help them adjust their dashboards accordingly.
 
+## Ruler Queries
+
+Query rejection only applies to API queries and does not apply to ruler queries. However, Ruler queries are typically instant and lightweight, so a complex query‑rejection mechanism isn’t required for them. 
+In situations where a rule group contains heavy queries and no other mitigations are effective, operators can disable the entire rule group. This is especially helpful to prevent Rulers from getting OOMKilled due to resource-intensive rules.
+
+Rule group disabling is configured per tenant, similar to query rejection. When you disable a rule group, Cortex stops evaluating the rules within that group, removing the problematic queries altogether. For example:
+
+```yaml
+# runtime_config.yaml
+overrides:
+  <tenant_id>:
+    disabled_rule_groups:
+      - namespace: "keep_firing_for_test"
+        name: "smallsteps"
+```
+
+This makes it easy to mitigate issues from the ruler without introducing query rejection logic for those queries.
+
 ## Conclusion
 
-When traditional safeguards fall short, query rejection gives operators precise control to block only what’s harmful—without slowing down everything else.
+When traditional safeguards fall short, query rejection gives operators precise control to block only what’s harmful; without slowing down everything else.
 
-If you operate a shared Cortex environment, consider learning how to use query rejection effectively. It might just save you from the next incident—by preventing OOM kills, degraded performance, or disruption to other tenants.
-
+If you operate a shared Cortex environment, consider learning how to use query rejection effectively. It might just save you from the next incident; by preventing OOM kills, degraded performance, or disruption to other tenants.

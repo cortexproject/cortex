@@ -620,10 +620,6 @@ func getOTLPHttpRequest(otlpRequest *pmetricotlp.ExportRequest, contentType, enc
 	return req, nil
 }
 
-func BenchmarkOTLPHandlerWithNumOfSeries(b *testing.B) {
-
-}
-
 func BenchmarkOTLPWriteHandlerCompression(b *testing.B) {
 	cfg := distributor.OTLPConfig{
 		ConvertAllAttributes: false,

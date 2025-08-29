@@ -61,6 +61,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -3227,11 +3228,18 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 	}
 
 	rreq := &client.QueryRequest{}
+	ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceAPI)
 	s := &mockQueryStreamServer{ctx: ctx}
 	err = i.QueryStream(rreq, s)
 	require.Error(t, err)
 	exhaustedErr := limiter.ResourceLimitReachedError{}
 	require.ErrorContains(t, err, exhaustedErr.Error())
+
+	// we shouldn't reject queries from ruler
+	ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceRuler)
+	s = &mockQueryStreamServer{ctx: ctx}
+	err = i.QueryStream(rreq, s)
+	require.Nil(t, err)
 }
 
 func TestIngester_LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {

@@ -18,7 +18,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
 	prom_storage "github.com/prometheus/prometheus/storage"
@@ -263,7 +262,6 @@ func (p parquetQuerier) Select(ctx context.Context, sorted bool, sp *prom_storag
 	}()
 
 	span.SetAttributes(
-		attribute.Bool("sorted", sorted),
 		attribute.Int64("mint", p.mint),
 		attribute.Int64("maxt", p.maxt),
 		attribute.String("matchers", matchersToString(matchers)),
@@ -280,6 +278,11 @@ func (p parquetQuerier) Select(ctx context.Context, sorted bool, sp *prom_storag
 	if err != nil {
 		return prom_storage.ErrSeriesSet(err)
 	}
+	// If we are merging multiple shards then each shard series set needs to be sorted.
+	if len(shards) > 1 {
+		sorted = true
+	}
+	span.SetAttributes(attribute.Bool("sorted", sorted))
 	seriesSet := make([]prom_storage.ChunkSeriesSet, len(shards))
 
 	minT, maxT := p.mint, p.maxt
@@ -358,10 +361,13 @@ func (b queryableShard) Query(ctx context.Context, sorted bool, sp *prom_storage
 	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(b.concurrency)
 
-	results := make([]prom_storage.ChunkSeries, 0, 1024)
-	rMtx := sync.Mutex{}
+	rowGroupCount := len(b.shard.LabelsFile().RowGroups())
+	results := make([][]prom_storage.ChunkSeries, rowGroupCount)
+	for i := range results {
+		results[i] = make([]prom_storage.ChunkSeries, 0, 1024/rowGroupCount)
+	}
 
-	for rgi := range b.shard.LabelsFile().RowGroups() {
+	for rgi := range rowGroupCount {
 		errGroup.Go(func() error {
 			cs, err := search.MatchersToConstraints(matchers...)
 			if err != nil {
@@ -380,18 +386,18 @@ func (b queryableShard) Query(ctx context.Context, sorted bool, sp *prom_storage
 				return nil
 			}
 
-			series, err := b.m.Materialize(ctx, sp, rgi, mint, maxt, skipChunks, rr)
+			seriesSetIter, err := b.m.Materialize(ctx, sp, rgi, mint, maxt, skipChunks, rr)
 			if err != nil {
 				return err
 			}
-			if len(series) == 0 {
-				return nil
+			defer func() { _ = seriesSetIter.Close() }()
+			for seriesSetIter.Next() {
+				results[rgi] = append(results[rgi], seriesSetIter.At())
 			}
-
-			rMtx.Lock()
-			results = append(results, series...)
-			rMtx.Unlock()
-			return nil
+			if sorted {
+				sort.Sort(byLabels(results[rgi]))
+			}
+			return seriesSetIter.Err()
 		})
 	}
 
@@ -399,10 +405,20 @@ func (b queryableShard) Query(ctx context.Context, sorted bool, sp *prom_storage
 		return nil, err
 	}
 
-	if sorted {
-		sort.Sort(byLabels(results))
+	totalResults := 0
+	for _, res := range results {
+		totalResults += len(res)
 	}
-	return convert.NewChunksSeriesSet(results), nil
+
+	resultsFlattened := make([]prom_storage.ChunkSeries, 0, totalResults)
+	for _, res := range results {
+		resultsFlattened = append(resultsFlattened, res...)
+	}
+	if sorted {
+		sort.Sort(byLabels(resultsFlattened))
+	}
+
+	return convert.NewChunksSeriesSet(resultsFlattened), nil
 }
 
 func (b queryableShard) LabelNames(ctx context.Context, limit int64, matchers []*labels.Matcher) ([]string, error) {

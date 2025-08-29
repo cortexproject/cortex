@@ -4,18 +4,14 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	cortexmiddleware "github.com/cortexproject/cortex/pkg/util/middleware"
 )
 
 type frontendPool struct {
@@ -55,11 +51,7 @@ func newFrontendPool(cfg Config, log log.Logger, reg prometheus.Registerer) *cli
 }
 
 func (f *frontendPool) createFrontendClient(addr string) (client.PoolClient, error) {
-	opts, err := f.grpcConfig.DialOption([]grpc.UnaryClientInterceptor{
-		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-		middleware.ClientUserHeaderInterceptor,
-		cortexmiddleware.PrometheusGRPCUnaryInstrumentation(f.frontendClientRequestDuration),
-	}, nil)
+	opts, err := f.grpcConfig.DialOption(grpcclient.Instrument(f.frontendClientRequestDuration))
 	if err != nil {
 		return nil, err
 	}

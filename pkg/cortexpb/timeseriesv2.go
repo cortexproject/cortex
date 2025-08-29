@@ -1,0 +1,131 @@
+package cortexpb
+
+import (
+	"sync"
+)
+
+var (
+	expectedSymbols = 20
+
+	slicePoolV2 = sync.Pool{
+		New: func() interface{} {
+			return make([]PreallocTimeseriesV2, 0, expectedTimeseries)
+		},
+	}
+
+	timeSeriesPoolV2 = sync.Pool{
+		New: func() interface{} {
+			return &TimeSeriesV2{
+				LabelsRefs: make([]uint32, 0, expectedLabels),
+				Samples:    make([]Sample, 0, expectedSamplesPerSeries),
+				Histograms: make([]Histogram, 0, expectedHistogramsPerSeries),
+				Exemplars:  make([]ExemplarV2, 0, expectedExemplarsPerSeries),
+				Metadata:   MetadataV2{},
+			}
+		},
+	}
+
+	writeRequestPoolV2 = sync.Pool{
+		New: func() interface{} {
+			return &PreallocWriteRequestV2{
+				WriteRequestV2: WriteRequestV2{
+					Symbols: make([]string, 0, expectedSymbols),
+				},
+			}
+		},
+	}
+	bytePoolV2 = newSlicePool(20)
+)
+
+// PreallocWriteRequestV2 is a WriteRequestV2 which preallocs slices on Unmarshal.
+type PreallocWriteRequestV2 struct {
+	WriteRequestV2
+	data *[]byte
+}
+
+// Unmarshal implements proto.Message.
+func (p *PreallocWriteRequestV2) Unmarshal(dAtA []byte) error {
+	p.Timeseries = PreallocTimeseriesV2SliceFromPool()
+	return p.WriteRequestV2.Unmarshal(dAtA)
+}
+
+func (p *PreallocWriteRequestV2) Marshal() (dAtA []byte, err error) {
+	size := p.Size()
+	p.data = bytePoolV2.getSlice(size)
+	dAtA = *p.data
+	n, err := p.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+// PreallocTimeseriesV2 is a TimeSeries which preallocs slices on Unmarshal.
+type PreallocTimeseriesV2 struct {
+	*TimeSeriesV2
+}
+
+// Unmarshal implements proto.Message.
+func (p *PreallocTimeseriesV2) Unmarshal(dAtA []byte) error {
+	p.TimeSeriesV2 = TimeseriesV2FromPool()
+	return p.TimeSeriesV2.Unmarshal(dAtA)
+}
+
+func ReuseWriteRequestV2(req *PreallocWriteRequestV2) {
+	if req.data != nil {
+		bytePoolV2.reuseSlice(req.data)
+		req.data = nil
+	}
+	req.Source = 0
+	req.Symbols = req.Symbols[:0]
+	if req.Timeseries != nil {
+		ReuseSliceV2(req.Timeseries)
+		req.Timeseries = nil
+	}
+	writeRequestPoolV2.Put(req)
+}
+
+func PreallocWriteRequestV2FromPool() *PreallocWriteRequestV2 {
+	return writeRequestPoolV2.Get().(*PreallocWriteRequestV2)
+}
+
+// PreallocTimeseriesV2SliceFromPool retrieves a slice of PreallocTimeseriesV2 from a sync.Pool.
+// ReuseSliceV2 should be called once done.
+func PreallocTimeseriesV2SliceFromPool() []PreallocTimeseriesV2 {
+	return slicePoolV2.Get().([]PreallocTimeseriesV2)
+}
+
+// ReuseSliceV2 puts the slice back into a sync.Pool for reuse.
+func ReuseSliceV2(ts []PreallocTimeseriesV2) {
+	for i := range ts {
+		ReuseTimeseriesV2(ts[i].TimeSeriesV2)
+	}
+
+	slicePoolV2.Put(ts[:0]) //nolint:staticcheck //see comment on slicePool for more details
+}
+
+// TimeseriesV2FromPool retrieves a pointer to a TimeSeriesV2 from a sync.Pool.
+// ReuseTimeseriesV2 should be called once done, unless ReuseSliceV2 was called on the slice that contains this TimeSeriesV2 .
+func TimeseriesV2FromPool() *TimeSeriesV2 {
+	return timeSeriesPoolV2.Get().(*TimeSeriesV2)
+}
+
+// ReuseTimeseriesV2 puts the timeseriesV2 back into a sync.Pool for reuse.
+func ReuseTimeseriesV2(ts *TimeSeriesV2) {
+	// clear ts labelRef and samples
+	ts.LabelsRefs = ts.LabelsRefs[:0]
+	ts.Samples = ts.Samples[:0]
+
+	// clear exemplar label refs
+	for i := range ts.Exemplars {
+		ts.Exemplars[i].LabelsRefs = ts.Exemplars[i].LabelsRefs[:0]
+	}
+
+	for i := range ts.Histograms {
+		ts.Histograms[i].Reset()
+	}
+
+	ts.Exemplars = ts.Exemplars[:0]
+	ts.Histograms = ts.Histograms[:0]
+	timeSeriesPoolV2.Put(ts)
+}

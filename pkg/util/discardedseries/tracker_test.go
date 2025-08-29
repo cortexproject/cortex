@@ -19,8 +19,8 @@ func TestLabelSetTracker(t *testing.T) {
 
 	tracker := NewDiscardedSeriesTracker(gauge)
 	label1 := "sample_out_of_bounds"
-	label2 := "new_value_for_timestamp"
-	label3 := "invalid_label_name"
+	label2 := "label_2"
+	label3 := "unused_label"
 	user1 := "user1"
 	user2 := "user2"
 	series1 := uint64(1)
@@ -28,7 +28,6 @@ func TestLabelSetTracker(t *testing.T) {
 
 	tracker.Track(label1, user1, series1)
 	tracker.Track(label2, user1, series1)
-	tracker.Track(label3, user1, series1)
 
 	tracker.Track(label1, user2, series1)
 	tracker.Track(label1, user2, series1)

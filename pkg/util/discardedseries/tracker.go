@@ -7,16 +7,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var trackedLabels = []string{
-	"sample_out_of_bounds",
-	"sample_out_of_order",
-	"sample_too_old",
-	"new_value_for_timestamp",
-	"per_user_series_limit",
-	"per_labelset_series_limit",
-	"per_metric_series_limit",
-}
-var vendMetricsInterval = 30 * time.Second
+const (
+	vendMetricsInterval = 30 * time.Second
+)
 
 type SeriesCounter struct {
 	*sync.RWMutex
@@ -29,54 +22,72 @@ type UserCounter struct {
 }
 
 type DiscardedSeriesTracker struct {
+	*sync.RWMutex
 	labelUserMap         map[string]*UserCounter
 	discardedSeriesGauge *prometheus.GaugeVec
 }
 
 func NewDiscardedSeriesTracker(discardedSeriesGauge *prometheus.GaugeVec) *DiscardedSeriesTracker {
-	labelUserMap := make(map[string]*UserCounter)
-	for _, label := range trackedLabels {
-		labelUserMap[label] = &UserCounter{
-			RWMutex:       &sync.RWMutex{},
-			userSeriesMap: make(map[string]*SeriesCounter),
-		}
+	discardedSeriesTracker := &DiscardedSeriesTracker{
+		RWMutex:              &sync.RWMutex{},
+		labelUserMap:         make(map[string]*UserCounter),
+		discardedSeriesGauge: discardedSeriesGauge,
 	}
-	return &DiscardedSeriesTracker{labelUserMap: labelUserMap, discardedSeriesGauge: discardedSeriesGauge}
+	return discardedSeriesTracker
 }
 
-func (t *DiscardedSeriesTracker) Track(label string, user string, series uint64) {
-	if userCounter, ok := t.labelUserMap[label]; ok {
-		seriesCounter, ok := userCounter.userSeriesMap[user]
+func (t *DiscardedSeriesTracker) Track(reason string, user string, series uint64) {
+	userCounter, ok := t.labelUserMap[reason]
+	if !ok {
+		t.Lock()
+		userCounter, ok = t.labelUserMap[reason]
+		if !ok {
+			userCounter = &UserCounter{
+				RWMutex:       &sync.RWMutex{},
+				userSeriesMap: make(map[string]*SeriesCounter),
+			}
+			t.labelUserMap[reason] = userCounter
+		}
+		t.Unlock()
+	}
+
+	seriesCounter, ok := userCounter.userSeriesMap[user]
+	if !ok {
+		userCounter.Lock()
+		seriesCounter, ok = userCounter.userSeriesMap[user]
 		if !ok {
 			seriesCounter = &SeriesCounter{
 				RWMutex:        &sync.RWMutex{},
 				seriesCountMap: make(map[uint64]struct{}),
 			}
-			userCounter.Lock()
 			userCounter.userSeriesMap[user] = seriesCounter
-			userCounter.Unlock()
 		}
+		userCounter.Unlock()
+	}
 
-		if _, ok := seriesCounter.seriesCountMap[series]; !ok {
-			seriesCounter.Lock()
-			seriesCounter.seriesCountMap[series] = struct{}{}
-			seriesCounter.Unlock()
-		}
+	if _, ok := seriesCounter.seriesCountMap[series]; !ok {
+		seriesCounter.Lock()
+		seriesCounter.seriesCountMap[series] = struct{}{}
+		seriesCounter.Unlock()
 	}
 }
 
 func (t *DiscardedSeriesTracker) UpdateMetrics() {
+	usersToDelete := make([]string, 0)
 	for label, userCounter := range t.labelUserMap {
-		userCounter.Lock()
 		for user, seriesCounter := range userCounter.userSeriesMap {
 			seriesCounter.Lock()
 			seriesCount := len(seriesCounter.seriesCountMap)
 			t.discardedSeriesGauge.WithLabelValues(label, user).Set(float64(seriesCount))
 			clear(seriesCounter.seriesCountMap)
 			if seriesCount == 0 {
-				delete(userCounter.userSeriesMap, user)
+				usersToDelete = append(usersToDelete, user)
 			}
 			seriesCounter.Unlock()
+		}
+		userCounter.Lock()
+		for _, user := range usersToDelete {
+			delete(userCounter.userSeriesMap, user)
 		}
 		userCounter.Unlock()
 	}
@@ -84,8 +95,8 @@ func (t *DiscardedSeriesTracker) UpdateMetrics() {
 
 func (t *DiscardedSeriesTracker) StartDiscardedSeriesGoroutine() {
 	go func() {
-		for {
-			time.Sleep(vendMetricsInterval)
+		ticker := time.NewTicker(vendMetricsInterval)
+		for range ticker.C {
 			t.UpdateMetrics()
 		}
 	}()

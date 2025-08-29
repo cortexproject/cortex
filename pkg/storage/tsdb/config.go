@@ -115,7 +115,7 @@ func (cfg *BlocksStorageConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Bucket.RegisterFlagsWithPrefix("blocks-storage.", f)
 	cfg.BucketStore.RegisterFlags(f)
 	cfg.TSDB.RegisterFlags(f)
-	cfg.UsersScanner.RegisterFlagsWithPrefix("blocks-storage", f)
+	cfg.UsersScanner.RegisterFlagsWithPrefix("blocks-storage.", f)
 }
 
 // Validate the config.

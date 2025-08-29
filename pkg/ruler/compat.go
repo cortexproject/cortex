@@ -188,6 +188,7 @@ func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, 
 
 		// Add request ID to the context so that it can be used in logs and metrics for split queries.
 		ctx = requestmeta.ContextWithRequestId(ctx, uuid.NewString())
+		ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceRuler)
 
 		if frontendClient != nil {
 			v, err := frontendClient.InstantQuery(ctx, qs, t)

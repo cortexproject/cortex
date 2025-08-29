@@ -187,7 +187,7 @@ func NewQueryTripperware(
 				now := time.Now()
 				userStr := tenant.JoinTenantIDs(tenantIDs)
 				activeUsers.UpdateUserTimestamp(userStr, now)
-				source := GetSource(r.Header.Get("User-Agent"))
+				source := GetSource(r)
 				queriesPerTenant.WithLabelValues(op, source, userStr).Inc()
 
 				if maxSubQuerySteps > 0 && (isQuery || isQueryRange) {
@@ -283,11 +283,13 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	return q.codec.DecodeResponse(ctx, response, r)
 }
 
-func GetSource(userAgent string) string {
-	if strings.Contains(userAgent, RulerUserAgent) {
+func GetSource(r *http.Request) string {
+	// check it for backwards compatibility
+	userAgent := r.Header.Get("User-Agent")
+	if strings.Contains(userAgent, RulerUserAgent) || requestmeta.RequestFromRuler(r.Context()) {
 		// caller is ruler
-		return SourceRuler
+		return requestmeta.SourceRuler
 	}
 
-	return SourceAPI
+	return requestmeta.SourceAPI
 }

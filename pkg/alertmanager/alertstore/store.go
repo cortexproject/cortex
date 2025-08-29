@@ -67,5 +67,5 @@ func NewAlertStore(ctx context.Context, cfg Config, cfgProvider bucket.TenantCon
 		return nil, err
 	}
 
-	return bucketclient.NewBucketAlertStore(bucketClient, cfgProvider, logger), nil
+	return bucketclient.NewBucketAlertStore(bucketClient, cfg.UsersScanner, cfgProvider, logger, reg)
 }

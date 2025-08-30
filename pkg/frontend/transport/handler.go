@@ -584,7 +584,10 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonChunksLimitStoreGateway
 		} else if strings.Contains(errMsg, limitBytesStoreGateway) {
 			reason = reasonBytesLimitStoreGateway
-		} else if strings.Contains(errMsg, limiter.ErrResourceLimitReachedStr) {
+		}
+	} else if statusCode == http.StatusServiceUnavailable && error != nil {
+		errMsg := error.Error()
+		if strings.Contains(errMsg, limiter.ErrResourceLimitReachedStr) {
 			reason = reasonResourceExhausted
 		}
 	}

@@ -3731,12 +3731,6 @@ instance_limits:
 
 query_protection:
   rejection:
-    # EXPERIMENTAL: Enable query rejection feature, where the component return
-    # 503 to all incoming query requests when the configured thresholds are
-    # breached.
-    # CLI flag: -ingester.query-protection.rejection.enabled
-    [enabled: <boolean> | default = false]
-
     threshold:
       # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
       # rejecting new query request (across all tenants) in percentage, between
@@ -6472,12 +6466,6 @@ sharding_ring:
 
 query_protection:
   rejection:
-    # EXPERIMENTAL: Enable query rejection feature, where the component return
-    # 503 to all incoming query requests when the configured thresholds are
-    # breached.
-    # CLI flag: -store-gateway.query-protection.rejection.enabled
-    [enabled: <boolean> | default = false]
-
     threshold:
       # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
       # rejecting new query request (across all tenants) in percentage, between

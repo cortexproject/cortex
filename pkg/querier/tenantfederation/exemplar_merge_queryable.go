@@ -12,9 +12,9 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // NewExemplarQueryable returns a exemplarQueryable that iterates through all the
@@ -35,7 +35,7 @@ func NewExemplarQueryable(upstream storage.ExemplarQueryable, maxConcurrent int,
 
 func tenantExemplarQuerierCallback(exemplarQueryable storage.ExemplarQueryable) MergeExemplarQuerierCallback {
 	return func(ctx context.Context) ([]string, []storage.ExemplarQuerier, error) {
-		tenantIDs, err := tenant.TenantIDs(ctx)
+		tenantIDs, err := users.TenantIDs(ctx)
 		if err != nil {
 			return nil, nil, err
 		}

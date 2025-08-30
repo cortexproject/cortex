@@ -19,12 +19,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -355,7 +355,7 @@ func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {
 }
 
 func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	if err != nil {
 		return err
 	}
@@ -367,7 +367,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	// aggregate the max queriers limit in the case of a multi tenant query
 	maxQueriers := validation.SmallestPositiveNonZeroFloat64PerTenant(tenantIDs, f.limits.MaxQueriersPerUser)
 
-	joinedTenantID := tenant.JoinTenantIDs(tenantIDs)
+	joinedTenantID := users.JoinTenantIDs(tenantIDs)
 	f.activeUsers.UpdateUserTimestamp(joinedTenantID, now)
 
 	err = f.requestQueue.EnqueueRequest(joinedTenantID, req, maxQueriers, nil)

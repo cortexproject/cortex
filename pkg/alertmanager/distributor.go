@@ -21,10 +21,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/merger"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // Distributor forwards requests to individual alertmanagers.
@@ -101,7 +101,7 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request, 
 	d.requestsInFlight.Add(1)
 	defer d.requestsInFlight.Done()
 
-	userID, err := tenant.TenantID(r.Context())
+	userID, err := users.TenantID(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return

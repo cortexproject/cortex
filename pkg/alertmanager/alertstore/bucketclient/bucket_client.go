@@ -3,6 +3,7 @@ package bucketclient
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -10,14 +11,16 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/thanos-io/thanos/pkg/extprom"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -45,27 +48,36 @@ type BucketAlertStore struct {
 	amBucket     objstore.Bucket
 	cfgProvider  bucket.TenantConfigProvider
 	logger       log.Logger
+
+	usersScanner users.Scanner
 }
 
-func NewBucketAlertStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *BucketAlertStore {
+func NewBucketAlertStore(bkt objstore.InstrumentedBucket, userScannerCfg users.UsersScannerConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (*BucketAlertStore, error) {
+	alertBucket := bucket.NewPrefixedBucketClient(bkt, alertsPrefix)
+
+	usersScanner, err := users.NewScanner(userScannerCfg, alertBucket, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "alertmanager"}, reg))
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to initialize alertmanager users scanner")
+	}
 	return &BucketAlertStore{
-		alertsBucket: bucket.NewPrefixedBucketClient(bkt, alertsPrefix),
+		usersScanner: usersScanner,
+		alertsBucket: alertBucket,
 		amBucket:     bucket.NewPrefixedBucketClient(bkt, alertmanagerPrefix),
 		cfgProvider:  cfgProvider,
 		logger:       logger,
-	}
+	}, nil
 }
 
 // ListAllUsers implements alertstore.AlertStore.
 func (s *BucketAlertStore) ListAllUsers(ctx context.Context) ([]string, error) {
-	var userIDs []string
-
-	err := s.alertsBucket.Iter(ctx, "", func(key string) error {
-		userIDs = append(userIDs, key)
-		return nil
-	})
-
-	return userIDs, err
+	active, deleting, _, err := s.usersScanner.ScanUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to list users in alertmanager store bucket: %w", err)
+	}
+	userIDs := make([]string, 0, len(active)+len(deleting))
+	userIDs = append(userIDs, active...)
+	userIDs = append(userIDs, deleting...)
+	return userIDs, nil
 }
 
 // GetAlertConfigs implements alertstore.AlertStore.

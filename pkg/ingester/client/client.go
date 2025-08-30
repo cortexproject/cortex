@@ -8,11 +8,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
-
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +17,11 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -101,7 +101,7 @@ func (c *closableHealthAndIngesterClient) PushStreamConnection(ctx context.Conte
 		default:
 		}
 
-		tenantID, err := tenant.TenantID(ctx)
+		tenantID, err := users.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}

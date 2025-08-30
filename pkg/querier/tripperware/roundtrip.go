@@ -31,10 +31,10 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -179,13 +179,13 @@ func NewQueryTripperware(
 					op = opTypeParseQuery
 				}
 
-				tenantIDs, err := tenant.TenantIDs(r.Context())
+				tenantIDs, err := users.TenantIDs(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
 					return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 				}
 				now := time.Now()
-				userStr := tenant.JoinTenantIDs(tenantIDs)
+				userStr := users.JoinTenantIDs(tenantIDs)
 				activeUsers.UpdateUserTimestamp(userStr, now)
 				source := GetSource(r)
 				queriesPerTenant.WithLabelValues(op, source, userStr).Inc()

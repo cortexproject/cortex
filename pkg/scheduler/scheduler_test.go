@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/uber/jaeger-client-go/config"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
@@ -26,16 +28,17 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
+	"github.com/cortexproject/cortex/pkg/util/logical_plan"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 const testMaxOutstandingPerTenant = 5
 
-func setupScheduler(t *testing.T, reg prometheus.Registerer) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
+func setupScheduler(t *testing.T, reg prometheus.Registerer, distributedExecEnabled bool) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MockLimits: queue.MockLimits{MaxOutstanding: testMaxOutstandingPerTenant}}, log.NewNopLogger(), reg)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MockLimits: queue.MockLimits{MaxOutstanding: testMaxOutstandingPerTenant}}, log.NewNopLogger(), reg, distributedExecEnabled)
 	require.NoError(t, err)
 
 	server := grpc.NewServer()
@@ -69,7 +72,7 @@ func setupScheduler(t *testing.T, reg prometheus.Registerer) (*Scheduler, schedu
 }
 
 func TestSchedulerBasicEnqueue(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, nil, false)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -97,7 +100,7 @@ func TestSchedulerBasicEnqueue(t *testing.T) {
 }
 
 func TestSchedulerEnqueueWithCancel(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, nil, false)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -127,7 +130,7 @@ func initQuerierLoop(t *testing.T, querierClient schedulerpb.SchedulerForQuerier
 }
 
 func TestSchedulerEnqueueByMultipleFrontendsWithCancel(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, nil, false)
 
 	frontendLoop1 := initFrontendLoop(t, frontendClient, "frontend-1")
 	frontendLoop2 := initFrontendLoop(t, frontendClient, "frontend-2")
@@ -168,7 +171,7 @@ func TestSchedulerEnqueueByMultipleFrontendsWithCancel(t *testing.T) {
 }
 
 func TestSchedulerEnqueueWithFrontendDisconnect(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, nil, false)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -198,7 +201,7 @@ func TestSchedulerEnqueueWithFrontendDisconnect(t *testing.T) {
 }
 
 func TestCancelRequestInProgress(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, nil, false)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -231,7 +234,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 }
 
 func TestTracingContext(t *testing.T) {
-	scheduler, frontendClient, _ := setupScheduler(t, nil)
+	scheduler, frontendClient, _ := setupScheduler(t, nil, false)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 
@@ -262,7 +265,7 @@ func TestTracingContext(t *testing.T) {
 }
 
 func TestSchedulerShutdown_FrontendLoop(t *testing.T) {
-	scheduler, frontendClient, _ := setupScheduler(t, nil)
+	scheduler, frontendClient, _ := setupScheduler(t, nil, false)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 
@@ -283,7 +286,7 @@ func TestSchedulerShutdown_FrontendLoop(t *testing.T) {
 }
 
 func TestSchedulerShutdown_QuerierLoop(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, nil, false)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -315,7 +318,7 @@ func TestSchedulerShutdown_QuerierLoop(t *testing.T) {
 }
 
 func TestSchedulerMaxOutstandingRequests(t *testing.T) {
-	_, frontendClient, _ := setupScheduler(t, nil)
+	_, frontendClient, _ := setupScheduler(t, nil, false)
 
 	for i := 0; i < testMaxOutstandingPerTenant; i++ {
 		// coming from different frontends
@@ -347,7 +350,7 @@ func TestSchedulerMaxOutstandingRequests(t *testing.T) {
 }
 
 func TestSchedulerForwardsErrorToFrontend(t *testing.T) {
-	_, frontendClient, querierClient := setupScheduler(t, nil)
+	_, frontendClient, querierClient := setupScheduler(t, nil, false)
 
 	fm := &frontendMock{resp: map[uint64]*httpgrpc.HTTPResponse{}}
 	frontendAddress := ""
@@ -409,7 +412,7 @@ func TestSchedulerForwardsErrorToFrontend(t *testing.T) {
 func TestSchedulerMetrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 
-	scheduler, frontendClient, _ := setupScheduler(t, reg)
+	scheduler, frontendClient, _ := setupScheduler(t, reg, false)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -446,6 +449,70 @@ func TestSchedulerMetrics(t *testing.T) {
 		# TYPE cortex_request_queue_requests_total counter
 		cortex_request_queue_requests_total{priority="0",user="another"} 1
 	`), "cortex_query_scheduler_queue_length", "cortex_request_queue_requests_total"))
+}
+
+// TestQuerierLoopClient_WithLogicalPlan tests to see if the scheduler enqueues the fragment
+// with the expected QueryID, logical plan, and other fragment meta-data
+
+func TestQuerierLoopClient_WithLogicalPlan(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+
+	_, frontendClient, querierClient := setupScheduler(t, reg, true)
+	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
+	querierLoop, err := querierClient.QuerierLoop(context.Background())
+	require.NoError(t, err)
+
+	// CASE 1: request with corrupted logical plan --> expect to fail at un-marshal stage
+	require.NoError(t, frontendLoop.Send(&schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
+		QueryID:     1,
+		UserID:      "test",
+		HttpRequest: &httpgrpc.HTTPRequest{Method: "POST", Url: "/hello", Body: []byte("test")},
+	}))
+	msg, err := frontendLoop.Recv()
+	require.NoError(t, err)
+	require.True(t, msg.Status == schedulerpb.ERROR)
+
+	// CASE 2: request without logical plan
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
+		QueryID:     2,
+		UserID:      "test",
+		HttpRequest: &httpgrpc.HTTPRequest{Method: "POST", Url: "/hello", Body: []byte{}}, // empty logical plan
+	})
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{QuerierID: "querier-1", QuerierAddress: "localhost:8000"}))
+
+	s2, err := querierLoop.Recv()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), s2.QueryID)
+	// (the below fields should be empty because the logical plan is not in the request)
+	require.Empty(t, s2.FragmentID)
+	require.Empty(t, s2.ChildIDtoAddrs)
+	require.Empty(t, s2.HttpRequest.Body)
+	require.True(t, s2.IsRoot)
+
+	// CASE 3: request with correct logical plan --> expect to have fragment metadata
+	lp, err := logical_plan.CreateTestLogicalPlan("up", time.Now(), time.Now(), 0)
+	require.NoError(t, err)
+	bytesLp, err := logicalplan.Marshal((*lp).Root())
+	form := url.Values{}
+	form.Set("plan", string(bytesLp)) // this is to imitate how the real format of http request body
+	require.NoError(t, err)
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
+		QueryID:     3,
+		UserID:      "test",
+		HttpRequest: &httpgrpc.HTTPRequest{Method: "POST", Url: "/hello", Body: []byte(form.Encode())},
+	})
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{QuerierID: "querier-2", QuerierAddress: "localhost:8000"}))
+
+	s3, err := querierLoop.Recv()
+	require.NoError(t, err)
+	require.NotEmpty(t, s3.FragmentID)
+	require.Equal(t, uint64(3), s3.QueryID)
+	require.Empty(t, s3.ChildIDtoAddrs) // there is only one fragment for the logical plan, so no child fragments
+	require.Equal(t, s3.HttpRequest.Body, []byte(form.Encode()))
+	require.True(t, s3.IsRoot)
 }
 
 func initFrontendLoop(t *testing.T, client schedulerpb.SchedulerForFrontendClient, frontendAddr string) schedulerpb.SchedulerForFrontend_FrontendLoopClient {

@@ -3485,6 +3485,10 @@ grpc_client_config:
   # using default gRPC client connect timeout 20s.
   # CLI flag: -querier.frontend-client.connect-timeout
   [connect_timeout: <duration> | default = 5s]
+
+# Name of network interface to read address from.
+# CLI flag: -querier.instance-interface-names
+[instance_interface_names: <list of string> | default = [eth0 en0]]
 ```
 
 ### `ingester_config`

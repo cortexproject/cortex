@@ -7,15 +7,15 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // Config configures the alertmanager storage backend.
 type Config struct {
 	bucket.Config `yaml:",inline"`
-	ConfigDB      client.Config           `yaml:"configdb"`
-	Local         local.StoreConfig       `yaml:"local"`
-	UsersScanner  tsdb.UsersScannerConfig `yaml:"users_scanner"`
+	ConfigDB      client.Config            `yaml:"configdb"`
+	Local         local.StoreConfig        `yaml:"local"`
+	UsersScanner  users.UsersScannerConfig `yaml:"users_scanner"`
 }
 
 // RegisterFlags registers the backend storage config.

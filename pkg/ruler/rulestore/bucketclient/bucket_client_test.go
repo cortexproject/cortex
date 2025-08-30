@@ -20,8 +20,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	cortextsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 type testGroup struct {
@@ -107,7 +107,7 @@ func TestListRules(t *testing.T) {
 func TestLoadPartialRules(t *testing.T) {
 	bucketClient := objstore.NewInMemBucket()
 	mockedBucketClient := &testutil.MockBucketFailure{Bucket: bucketClient, GetFailures: map[string]error{}}
-	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 	bucketStore, err := NewBucketRuleStore(mockedBucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
@@ -269,7 +269,7 @@ func TestDelete(t *testing.T) {
 func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore.RuleStore, bucketClient interface{})) {
 	bucketClient := objstore.NewInMemBucket()
 	reg := prometheus.NewPedanticRegistry()
-	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	bucketStore, err := NewBucketRuleStore(bucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
 	assert.NoError(t, err)
 
@@ -434,7 +434,7 @@ func TestListAllRuleGroupsWithNoNamespaceOrGroup(t *testing.T) {
 			"rules/user3/bnM=/Z3JvdXAx", // namespace "ns", group "group1"
 		},
 	}
-	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 
 	s, err := NewBucketRuleStore(obj, usersScannerConfig, nil, log.NewNopLogger(), reg)

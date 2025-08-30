@@ -1,4 +1,4 @@
-package tsdb
+package users
 
 import (
 	"bytes"

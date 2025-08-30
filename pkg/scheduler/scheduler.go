@@ -21,11 +21,11 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	//lint:ignore faillint scheduler needs to retrieve priority from the context
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
@@ -315,7 +315,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	tenantIDs, err := tenant.TenantIDsFromOrgID(userID)
+	tenantIDs, err := users.TenantIDsFromOrgID(userID)
 	if err != nil {
 		return err
 	}

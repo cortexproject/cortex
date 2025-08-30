@@ -24,10 +24,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
-	cortextsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestAMConfigValidationAPI(t *testing.T) {
@@ -745,7 +745,7 @@ func TestMultitenantAlertmanager_DeleteUserConfig(t *testing.T) {
 	storage := objstore.NewInMemBucket()
 	bkt := &alertstore.MockBucket{Bucket: storage}
 
-	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 	alertStore, err := bucketclient.NewBucketAlertStore(bkt, usersScannerConfig, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
@@ -834,7 +834,7 @@ receivers:
 	storage := objstore.NewInMemBucket()
 	bkt := &alertstore.MockBucket{Bucket: storage}
 
-	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 	alertStore, err := bucketclient.NewBucketAlertStore(bkt, usersScannerConfig, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)

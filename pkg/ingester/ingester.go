@@ -55,7 +55,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
@@ -67,6 +66,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -1170,7 +1170,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.Push")
 	defer span.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1669,7 +1669,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1776,7 +1776,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1873,7 +1873,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1978,7 +1978,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return cleanup, err
 	}
@@ -2068,7 +2068,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 	}
 	i.stoppedMtx.RUnlock()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -2097,7 +2097,7 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return nil, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -2203,7 +2203,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	spanlog, ctx := spanlogger.New(stream.Context(), "QueryStream")
 	defer spanlog.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -2831,7 +2831,7 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 			// Even if check fails with error, we don't want to repeat it too often.
 			userDB.lastDeletionMarkCheck.Store(time.Now().Unix())
 
-			deletionMarkExists, err := cortex_tsdb.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
+			deletionMarkExists, err := users.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
 			if err != nil {
 				// If we cannot check for deletion mark, we continue anyway, even though in production shipper will likely fail too.
 				// This however simplifies unit tests, where tenant deletion check is enabled by default, but tests don't setup bucket.

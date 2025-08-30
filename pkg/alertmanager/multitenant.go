@@ -33,12 +33,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -1048,7 +1048,7 @@ func (am *MultitenantAlertmanager) HandleRequest(ctx context.Context, in *httpgr
 
 // serveRequest serves the Alertmanager's web UI and API.
 func (am *MultitenantAlertmanager) serveRequest(w http.ResponseWriter, req *http.Request) {
-	userID, err := tenant.TenantID(req.Context())
+	userID, err := users.TenantID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -1197,7 +1197,7 @@ func (am *MultitenantAlertmanager) ReadFullStateForUser(ctx context.Context, use
 
 // UpdateState implements the Alertmanager service.
 func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *clusterpb.Part) (*alertmanagerpb.UpdateStateResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1307,7 +1307,7 @@ func (am *MultitenantAlertmanager) getPerUserDirectories() map[string]string {
 
 // UpdateState implements the Alertmanager service.
 func (am *MultitenantAlertmanager) ReadState(ctx context.Context, req *alertmanagerpb.ReadStateRequest) (*alertmanagerpb.ReadStateResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}

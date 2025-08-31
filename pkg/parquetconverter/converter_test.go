@@ -59,7 +59,19 @@ func TestConverter(t *testing.T) {
 	flagext.DefaultValues(limits)
 	limits.ParquetConverterEnabled = true
 
-	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits)
+	userSpecificSortColumns := []string{"cluster", "namespace"}
+
+	// Create a mock tenant limits implementation
+	tenantLimits := &mockTenantLimits{
+		limits: map[string]*validation.Limits{
+			user: {
+				ParquetConverterSortColumns: userSpecificSortColumns,
+				ParquetConverterEnabled:     true,
+			},
+		},
+	}
+
+	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits, tenantLimits)
 
 	ctx := context.Background()
 
@@ -157,7 +169,7 @@ func prepareConfig() Config {
 	return cfg
 }
 
-func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket, limits *validation.Limits) (*Converter, log.Logger, prometheus.Gatherer) {
+func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket, limits *validation.Limits, tenantLimits validation.TenantLimits) (*Converter, log.Logger, prometheus.Gatherer) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	blockRanges := cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
 	flagext.DefaultValues(&storageCfg)
@@ -176,7 +188,7 @@ func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket,
 		flagext.DefaultValues(limits)
 	}
 
-	overrides := validation.NewOverrides(*limits, nil)
+	overrides := validation.NewOverrides(*limits, tenantLimits)
 
 	scanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
 		Strategy: cortex_tsdb.UserScanStrategyList,
@@ -350,6 +362,45 @@ func TestConverter_ShouldNotFailOnAccessDenyError(t *testing.T) {
 	assert.Equal(t, 0.0, testutil.ToFloat64(converter.metrics.convertBlockFailures.WithLabelValues(userID)))
 }
 
+func TestConverter_SortColumns(t *testing.T) {
+	bucketClient, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ParquetConverterEnabled = true
+
+	testCases := []struct {
+		desc                string
+		cfg                 Config
+		expectedSortColumns []string
+	}{
+		{
+			desc: "no additional sort columns are added",
+			cfg: Config{
+				MetaSyncConcurrency: 1,
+				DataDir:             t.TempDir(),
+			},
+			expectedSortColumns: []string{labels.MetricName},
+		},
+		{
+			desc: "additional sort columns are added",
+			cfg: Config{
+				MetaSyncConcurrency: 1,
+				DataDir:             t.TempDir(),
+				SortColumns:         []string{"cluster", "namespace"},
+			},
+			expectedSortColumns: []string{labels.MetricName, "cluster", "namespace"},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			c, _, _ := prepare(t, tC.cfg, objstore.WithNoopInstr(bucketClient), limits, nil)
+			assert.Equal(t, tC.expectedSortColumns, c.cfg.SortColumns,
+				"Converter should be created with the expected sort columns")
+		})
+	}
+}
+
 // mockBucket implements objstore.Bucket for testing
 type mockBucket struct {
 	objstore.Bucket
@@ -383,4 +434,20 @@ func (r *RingMock) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDe
 			},
 		},
 	}, nil
+}
+
+// mockTenantLimits implements the validation.TenantLimits interface for testing
+type mockTenantLimits struct {
+	limits map[string]*validation.Limits
+}
+
+func (m *mockTenantLimits) ByUserID(userID string) *validation.Limits {
+	if limits, ok := m.limits[userID]; ok {
+		return limits
+	}
+	return nil
+}
+
+func (m *mockTenantLimits) AllByUserID() map[string]*validation.Limits {
+	return m.limits
 }

@@ -5,6 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // ManagerMetrics aggregates metrics exported by the Prometheus
@@ -307,10 +308,10 @@ func (m *RuleEvalMetrics) deletePerUserMetrics(userID string) {
 type RuleGroupMetrics struct {
 	RuleGroupsInStore *prometheus.GaugeVec
 	tenants           map[string]struct{}
-	allowedTenants    *util.AllowedTenants
+	allowedTenants    *users.AllowedTenants
 }
 
-func NewRuleGroupMetrics(reg prometheus.Registerer, allowedTenants *util.AllowedTenants) *RuleGroupMetrics {
+func NewRuleGroupMetrics(reg prometheus.Registerer, allowedTenants *users.AllowedTenants) *RuleGroupMetrics {
 	m := &RuleGroupMetrics{
 		RuleGroupsInStore: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_ruler_rule_groups_in_store",

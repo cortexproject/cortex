@@ -17,10 +17,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 var (
@@ -159,16 +159,16 @@ func Test_mergeMetadataQuerier_MetricsMetadata_WhenUseRegexResolver(t *testing.T
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-2"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(tenant.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(tenant.GetLocalDeletionMarkPath("user-2"), false, nil)
 
 	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 		return bucketClient, nil
 	}
 
-	usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	tenantFederationConfig := Config{UserSyncInterval: time.Second}
 	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 	require.NoError(t, err)

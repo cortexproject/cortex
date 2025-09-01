@@ -8,8 +8,8 @@ import (
 	"github.com/uber/jaeger-client-go"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 // WithUserID returns a Logger that has information about the current user in

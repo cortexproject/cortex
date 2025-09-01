@@ -55,7 +55,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
@@ -66,7 +65,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/users"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -659,8 +658,8 @@ type TSDBState struct {
 }
 
 type requestWithUsersAndCallback struct {
-	users    *users.AllowedTenants // if nil, all tenants are allowed.
-	callback chan<- struct{}       // when compaction/shipping is finished, this channel is closed
+	users    *tenant.AllowedTenants // if nil, all tenants are allowed.
+	callback chan<- struct{}        // when compaction/shipping is finished, this channel is closed
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
@@ -2801,7 +2800,7 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 }
 
 // shipBlocks runs shipping for all users.
-func (i *Ingester) shipBlocks(ctx context.Context, allowed *users.AllowedTenants) {
+func (i *Ingester) shipBlocks(ctx context.Context, allowed *tenant.AllowedTenants) {
 	// Do not ship blocks if the ingester is PENDING or JOINING. It's
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
@@ -2918,7 +2917,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 }
 
 // Compacts all compactable blocks. Force flag will force compaction even if head is not compactable yet.
-func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users.AllowedTenants) {
+func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *tenant.AllowedTenants) {
 	// Don't compact TSDB blocks while JOINING as there may be ongoing blocks transfers.
 	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
 	if i.lifecycler != nil {
@@ -3228,7 +3227,7 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 
 	tenants := r.Form[tenantParam]
 
-	allowedUsers := users.NewAllowedTenants(tenants, nil)
+	allowedUsers := tenant.NewAllowedTenants(tenants, nil)
 	run := func() {
 		ingCtx := i.ServiceContext()
 		if ingCtx == nil || ingCtx.Err() != nil {

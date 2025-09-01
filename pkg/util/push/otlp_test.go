@@ -766,9 +766,8 @@ func BenchmarkOTLPWriteHandlerPush(b *testing.B) {
 			req, err := getOTLPHttpRequest(&exportRequest, pbContentType, "gzip")
 			require.NoError(b, err)
 
-			b.ResetTimer()
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				recorder := httptest.NewRecorder()
 				handler.ServeHTTP(recorder, req)
 

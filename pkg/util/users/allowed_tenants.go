@@ -1,4 +1,4 @@
-package util
+package users
 
 import "github.com/cortexproject/cortex/pkg/tenant"
 

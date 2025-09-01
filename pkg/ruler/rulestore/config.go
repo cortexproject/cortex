@@ -8,16 +8,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/configdb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // Config configures a rule store.
 type Config struct {
 	bucket.Config `yaml:",inline"`
-	ConfigDB      client.Config           `yaml:"configdb"`
-	Local         local.Config            `yaml:"local"`
-	UsersScanner  tsdb.UsersScannerConfig `yaml:"users_scanner"`
+	ConfigDB      client.Config            `yaml:"configdb"`
+	Local         local.Config             `yaml:"local"`
+	UsersScanner  users.UsersScannerConfig `yaml:"users_scanner"`
 }
 
 // RegisterFlags registers the backend storage config.

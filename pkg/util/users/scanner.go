@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/objstore"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 )
 
@@ -29,15 +28,15 @@ type Scanner interface {
 	ScanUsers(ctx context.Context) (active, deleting, deleted []string, err error)
 }
 
-func NewScanner(cfg tsdb.UsersScannerConfig, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (Scanner, error) {
+func NewScanner(cfg UsersScannerConfig, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (Scanner, error) {
 	var scanner Scanner
 	switch cfg.Strategy {
-	case tsdb.UserScanStrategyList:
+	case UserScanStrategyList:
 		scanner = &listScanner{bkt: bkt}
-	case tsdb.UserScanStrategyUserIndex:
+	case UserScanStrategyUserIndex:
 		scanner = newUserIndexScanner(&listScanner{bkt: bkt}, cfg, bkt, logger, reg)
 	default:
-		return nil, tsdb.ErrInvalidUserScannerStrategy
+		return nil, ErrInvalidUserScannerStrategy
 	}
 
 	if cfg.CacheTTL > 0 {
@@ -92,7 +91,7 @@ func (s *listScanner) ScanUsers(ctx context.Context) (active, deleting, deleted 
 	for userID := range scannedActiveUsers {
 		// Tenant deletion mark could exist in local path for legacy code.
 		// If tenant deletion mark exists but user ID prefix exists in the bucket, mark it as deleting.
-		if deletionMarkExists, err := tsdb.TenantDeletionMarkExists(ctx, s.bkt, userID); err == nil && deletionMarkExists {
+		if deletionMarkExists, err := tenant.TenantDeletionMarkExists(ctx, s.bkt, userID); err == nil && deletionMarkExists {
 			deletingUsers[userID] = struct{}{}
 			continue
 		}
@@ -131,7 +130,7 @@ type userIndexScanner struct {
 	userIndexUpdateDelay prometheus.Gauge
 }
 
-func newUserIndexScanner(baseScanner Scanner, cfg tsdb.UsersScannerConfig, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) *userIndexScanner {
+func newUserIndexScanner(baseScanner Scanner, cfg UsersScannerConfig, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) *userIndexScanner {
 	return &userIndexScanner{
 		bkt:            bkt,
 		logger:         logger,

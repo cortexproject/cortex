@@ -39,6 +39,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -284,7 +285,7 @@ type MultitenantAlertmanager struct {
 
 	limits Limits
 
-	allowedTenants *util.AllowedTenants
+	allowedTenants *users.AllowedTenants
 
 	registry          prometheus.Registerer
 	ringCheckErrors   prometheus.Counter
@@ -377,7 +378,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		logger:              log.With(logger, "component", "MultiTenantAlertmanager"),
 		registry:            registerer,
 		limits:              limits,
-		allowedTenants:      util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		allowedTenants:      users.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 		ringCheckErrors: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_alertmanager_ring_check_errors_total",
 			Help: "Number of errors that have occurred when checking the ring for ownership.",

@@ -13,7 +13,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
-	cortextsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestAlertStore_ListAllUsers(t *testing.T) {
@@ -177,7 +177,7 @@ func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, b *MockBucket, client any)) {
 	bucketClient := objstore.NewInMemBucket()
 	mBucketClient := &MockBucket{Bucket: bucketClient}
-	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 	bucketStore, err := bucketclient.NewBucketAlertStore(mBucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
 	assert.NoError(t, err)
@@ -220,7 +220,7 @@ func makeTestFullState(content string) alertspb.FullStateDesc {
 func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	mBucketClient := &MockBucket{Bucket: bucket}
-	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 	store, err := bucketclient.NewBucketAlertStore(mBucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
 	assert.NoError(t, err)

@@ -35,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -131,7 +132,7 @@ func NewQueryTripperware(
 		Help: "Total rejected queries per tenant.",
 	}, []string{"op", "user"})
 
-	activeUsers := util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
+	activeUsers := users.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 		err := util.DeleteMatchingLabels(queriesPerTenant, map[string]string{"user": user})
 		if err != nil {
 			level.Warn(log).Log("msg", "failed to remove cortex_query_frontend_queries_total metric for user", "user", user)

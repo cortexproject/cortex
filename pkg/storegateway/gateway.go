@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -168,7 +169,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 			Help: "Total number of times the bucket sync operation triggered.",
 		}, []string{"reason"}),
 	}
-	allowedTenants := util.NewAllowedTenants(gatewayCfg.EnabledTenants, gatewayCfg.DisabledTenants)
+	allowedTenants := users.NewAllowedTenants(gatewayCfg.EnabledTenants, gatewayCfg.DisabledTenants)
 
 	// Init metrics.
 	g.bucketSync.WithLabelValues(syncReasonInitial)

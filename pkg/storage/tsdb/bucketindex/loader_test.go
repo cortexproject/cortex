@@ -17,16 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	cotex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
 )
 
 func TestLoader_GetIndex_ShouldLazyLoadBucketIndex(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -91,7 +90,7 @@ func TestLoader_GetIndex_ShouldLazyLoadBucketIndex(t *testing.T) {
 func TestLoader_GetIndex_ShouldCacheError(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create the loader.
 	loader := NewLoader(prepareLoaderConfig(), bkt, nil, log.NewNopLogger(), reg)
@@ -130,7 +129,7 @@ func TestLoader_GetIndex_ShouldCacheError(t *testing.T) {
 func TestLoader_GetIndex_ShouldCacheIndexNotFoundError(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create the loader.
 	loader := NewLoader(prepareLoaderConfig(), bkt, nil, log.NewNopLogger(), reg)
@@ -166,7 +165,7 @@ func TestLoader_GetIndex_ShouldCacheIndexNotFoundError(t *testing.T) {
 func TestLoader_ShouldNotCacheContextCancelled(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -206,7 +205,7 @@ func TestLoader_ShouldNotCacheContextCancelled(t *testing.T) {
 func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadSuccess(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -271,7 +270,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadSuccess(t *testing.T)
 func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadFailure(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Write a corrupted index.
 	require.NoError(t, bkt.Upload(ctx, path.Join("user-1", IndexCompressedFilename), strings.NewReader("invalid!}")))
@@ -327,7 +326,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadFailure(t *testing.T)
 func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousIndexNotFound(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create the loader.
 	cfg := LoaderConfig{
@@ -380,7 +379,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousIndexNotFound(t *testing.
 func TestLoader_ShouldNotCacheCriticalErrorOnBackgroundUpdates(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -436,7 +435,7 @@ func TestLoader_ShouldNotCacheCriticalErrorOnBackgroundUpdates(t *testing.T) {
 func TestLoader_ShouldCacheIndexNotFoundOnBackgroundUpdates(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -496,7 +495,7 @@ func TestLoader_ShouldCacheIndexNotFoundOnBackgroundUpdates(t *testing.T) {
 func TestLoader_ShouldOffloadIndexIfNotFoundDuringBackgroundUpdates(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -551,7 +550,7 @@ func TestLoader_ShouldOffloadIndexIfNotFoundDuringBackgroundUpdates(t *testing.T
 func TestLoader_ShouldOffloadIndexIfIdleTimeoutIsReachedDuringBackgroundUpdates(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -619,7 +618,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAccessDenied(t *testin
 	user := "user-1"
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
 	// Create the loader.
 	cfg := LoaderConfig{
@@ -629,10 +628,10 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAccessDenied(t *testin
 		IdleTimeout:           time.Hour, // Intentionally high to not hit it.
 	}
 
-	mockedBkt := &cortex_testutil.MockBucketFailure{
+	mockedBkt := &cotex_testutil.MockBucketFailure{
 		Bucket: bkt,
 		GetFailures: map[string]error{
-			path.Join(user, "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
+			path.Join(user, "bucket-index.json.gz"): cotex_testutil.ErrKeyAccessDeniedError,
 		},
 	}
 
@@ -707,12 +706,12 @@ func TestLoader_GetIndex_ShouldCacheKeyDeniedErrors(t *testing.T) {
 	user := "user-1"
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := cotex_testutil.PrepareFilesystemBucket(t)
 
-	bkt = &cortex_testutil.MockBucketFailure{
+	bkt = &cotex_testutil.MockBucketFailure{
 		Bucket: bkt,
 		GetFailures: map[string]error{
-			path.Join(user, "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
+			path.Join(user, "bucket-index.json.gz"): cotex_testutil.ErrKeyAccessDeniedError,
 		},
 	}
 

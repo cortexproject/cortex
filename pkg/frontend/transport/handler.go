@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,7 +29,6 @@ import (
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -111,7 +112,7 @@ type Handler struct {
 	queryDataBytes      *prometheus.CounterVec
 	rejectedQueries     *prometheus.CounterVec
 	slowQueries         *prometheus.CounterVec
-	activeUsers         *util.ActiveUsersCleanupService
+	activeUsers         *users.ActiveUsersCleanupService
 
 	initSlowQueryMetric sync.Once
 	reg                 prometheus.Registerer
@@ -174,7 +175,7 @@ func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, 
 			},
 			[]string{"reason", "source", "user"},
 		)
-		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(h.cleanupMetricsForInactiveUser)
+		h.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(h.cleanupMetricsForInactiveUser)
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
 	}

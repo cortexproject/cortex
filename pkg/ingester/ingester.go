@@ -66,6 +66,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -658,8 +659,8 @@ type TSDBState struct {
 }
 
 type requestWithUsersAndCallback struct {
-	users    *util.AllowedTenants // if nil, all tenants are allowed.
-	callback chan<- struct{}      // when compaction/shipping is finished, this channel is closed
+	users    *users.AllowedTenants // if nil, all tenants are allowed.
+	callback chan<- struct{}       // when compaction/shipping is finished, this channel is closed
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
@@ -2797,7 +2798,7 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 }
 
 // shipBlocks runs shipping for all users.
-func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants) {
+func (i *Ingester) shipBlocks(ctx context.Context, allowed *users.AllowedTenants) {
 	// Do not ship blocks if the ingester is PENDING or JOINING. It's
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
@@ -2830,7 +2831,7 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 			// Even if check fails with error, we don't want to repeat it too often.
 			userDB.lastDeletionMarkCheck.Store(time.Now().Unix())
 
-			deletionMarkExists, err := cortex_tsdb.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
+			deletionMarkExists, err := tenant.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
 			if err != nil {
 				// If we cannot check for deletion mark, we continue anyway, even though in production shipper will likely fail too.
 				// This however simplifies unit tests, where tenant deletion check is enabled by default, but tests don't setup bucket.
@@ -2914,7 +2915,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 }
 
 // Compacts all compactable blocks. Force flag will force compaction even if head is not compactable yet.
-func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.AllowedTenants) {
+func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users.AllowedTenants) {
 	// Don't compact TSDB blocks while JOINING as there may be ongoing blocks transfers.
 	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
 	if i.lifecycler != nil {
@@ -3224,7 +3225,7 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 
 	tenants := r.Form[tenantParam]
 
-	allowedUsers := util.NewAllowedTenants(tenants, nil)
+	allowedUsers := users.NewAllowedTenants(tenants, nil)
 	run := func() {
 		ingCtx := i.ServiceContext()
 		if ingCtx == nil || ingCtx.Err() != nil {

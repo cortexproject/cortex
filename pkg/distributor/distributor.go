@@ -42,6 +42,7 @@ import (
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -103,7 +104,7 @@ type Distributor struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	activeUsers *util.ActiveUsersCleanupService
+	activeUsers *users.ActiveUsersCleanupService
 
 	ingestionRate          *util_math.EwmaRate
 	inflightPushRequests   atomic.Int64
@@ -454,7 +455,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	})
 
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
-	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
+	d.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
 
 	subservices = append(subservices, d.ingesterPool, d.activeUsers)
 	d.subservices, err = services.NewManager(subservices...)

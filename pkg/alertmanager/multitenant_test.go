@@ -46,12 +46,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	cortextsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -1133,7 +1133,7 @@ func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 
 			// Use an alert store with a mocked backend.
 			bkt := &bucket.ClientMock{}
-			usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+			usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 			reg := prometheus.NewPedanticRegistry()
 			alertStore, err := bucketclient.NewBucketAlertStore(bkt, usersScannerConfig, nil, log.NewNopLogger(), reg)
 			require.NoError(t, err)
@@ -1631,7 +1631,7 @@ func TestMultitenantAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	bkt := &bucket.ClientMock{}
 	bkt.MockIter("alerts/", nil, errors.New("failed to list alerts"))
 	bkt.MockIter("alertmanager/", nil, nil)
-	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 	store, err := bucketclient.NewBucketAlertStore(bkt, usersScannerConfig, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
@@ -2131,7 +2131,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 
 // prepareInMemoryAlertStore builds and returns an in-memory alert store.
 func prepareInMemoryAlertStore() (alertstore.AlertStore, error) {
-	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 	bucket := objstore.NewInMemBucket()
 	mBucketClient := &alertstore.MockBucket{Bucket: bucket}

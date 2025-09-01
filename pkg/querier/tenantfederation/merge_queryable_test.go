@@ -26,11 +26,11 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -667,16 +667,16 @@ func TestMergeQueryable_Select(t *testing.T) {
 							bucketClient.MockIter("", scenario.tenants, nil)
 							bucketClient.MockIter("__markers__", []string{}, nil)
 
-							for _, tenant := range scenario.tenants {
-								bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenant), false, nil)
-								bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenant), false, nil)
+							for _, scenarioTenant := range scenario.tenants {
+								bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath(scenarioTenant), false, nil)
+								bucketClient.MockExists(tenant.GetLocalDeletionMarkPath(scenarioTenant), false, nil)
 							}
 
 							bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 								return bucketClient, nil
 							}
 
-							usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
+							usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 							tenantFederationConfig := Config{UserSyncInterval: time.Second}
 							regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 							require.NoError(t, err)
@@ -867,15 +867,15 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 					bucketClient.MockIter("", scenario.tenants, nil)
 					bucketClient.MockIter("__markers__", []string{}, nil)
 
-					for _, tenant := range scenario.tenants {
-						bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenant), false, nil)
-						bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenant), false, nil)
+					for _, scenarioTenant := range scenario.tenants {
+						bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath(scenarioTenant), false, nil)
+						bucketClient.MockExists(tenant.GetLocalDeletionMarkPath(scenarioTenant), false, nil)
 					}
 
 					bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 						return bucketClient, nil
 					}
-					usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
+					usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 					tenantFederationConfig := Config{UserSyncInterval: time.Second}
 					regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 					require.NoError(t, err)
@@ -1105,15 +1105,15 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 							bucketClient.MockIter("", scenario.tenants, nil)
 							bucketClient.MockIter("__markers__", []string{}, nil)
 
-							for _, tenant := range scenario.tenants {
-								bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenant), false, nil)
-								bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenant), false, nil)
+							for _, scenarioTenant := range scenario.tenants {
+								bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath(scenarioTenant), false, nil)
+								bucketClient.MockExists(tenant.GetLocalDeletionMarkPath(scenarioTenant), false, nil)
 							}
 
 							bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 								return bucketClient, nil
 							}
-							usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
+							usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 							tenantFederationConfig := Config{UserSyncInterval: time.Second}
 							regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 							require.NoError(t, err)

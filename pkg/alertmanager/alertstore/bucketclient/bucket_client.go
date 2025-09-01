@@ -17,10 +17,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -52,7 +52,7 @@ type BucketAlertStore struct {
 	usersScanner users.Scanner
 }
 
-func NewBucketAlertStore(bkt objstore.InstrumentedBucket, userScannerCfg tsdb.UsersScannerConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (*BucketAlertStore, error) {
+func NewBucketAlertStore(bkt objstore.InstrumentedBucket, userScannerCfg users.UsersScannerConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (*BucketAlertStore, error) {
 	alertBucket := bucket.NewPrefixedBucketClient(bkt, alertsPrefix)
 
 	usersScanner, err := users.NewScanner(userScannerCfg, alertBucket, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "alertmanager"}, reg))
@@ -229,5 +229,5 @@ func (s *BucketAlertStore) getUserBucket(userID string) objstore.Bucket {
 
 func (s *BucketAlertStore) getAlertmanagerUserBucket(userID string) objstore.Bucket {
 	uBucket := bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider)
-	return uBucket.WithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(uBucket.IsAccessDeniedErr, uBucket.IsObjNotFoundErr))
+	return uBucket.WithExpectedErrs(cortex_errors.IsOneOfTheExpectedErrors(uBucket.IsAccessDeniedErr, uBucket.IsObjNotFoundErr))
 }

@@ -58,6 +58,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -4394,7 +4395,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	numObjects := len(bucket.Objects())
 	require.NotZero(t, numObjects)
 
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, tenant.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, tenant.NewTenantDeletionMark(time.Now())))
 	numObjects++ // For deletion marker
 
 	db, err := i.getTSDB(userID)
@@ -4427,7 +4428,7 @@ func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testin
 	bucket := objstore.NewInMemBucket()
 
 	// Write tenant deletion mark.
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, tenant.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, tenant.NewTenantDeletionMark(time.Now())))
 
 	i.TSDBState.bucket = bucket
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))

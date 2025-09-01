@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -12,7 +13,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )

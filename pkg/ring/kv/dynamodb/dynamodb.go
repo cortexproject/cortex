@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/go-kit/log"
 )
 
@@ -34,8 +34,15 @@ type dynamoDbClient interface {
 	Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem, delete []dynamodbKey) (bool, error)
 }
 
+type dynamoDBAPI interface {
+	dynamodb.QueryAPIClient
+	DeleteItem(ctx context.Context, params *dynamodb.DeleteItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DeleteItemOutput, error)
+	PutItem(ctx context.Context, params *dynamodb.PutItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
+	TransactWriteItems(ctx context.Context, params *dynamodb.TransactWriteItemsInput, optFns ...func(*dynamodb.Options)) (*dynamodb.TransactWriteItemsOutput, error)
+}
+
 type dynamodbKV struct {
-	ddbClient dynamodbiface.DynamoDBAPI
+	ddbClient dynamoDBAPI
 	logger    log.Logger
 	tableName *string
 	ttlValue  time.Duration
@@ -59,37 +66,30 @@ func newDynamodbKV(cfg Config, logger log.Logger) (dynamodbKV, error) {
 		return dynamodbKV{}, err
 	}
 
-	sess, err := session.NewSession()
+	awsCfg, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(cfg.Region),
+	)
 	if err != nil {
 		return dynamodbKV{}, err
 	}
 
-	awsCfg := aws.NewConfig()
-	if len(cfg.Region) > 0 {
-		awsCfg = awsCfg.WithRegion(cfg.Region)
-	}
+	dynamoDB := dynamodb.NewFromConfig(awsCfg)
 
-	dynamoDB := dynamodb.New(sess, awsCfg)
-
-	ddbKV := &dynamodbKV{
+	return dynamodbKV{
 		ddbClient: dynamoDB,
 		logger:    logger,
 		tableName: aws.String(cfg.TableName),
 		ttlValue:  cfg.TTL,
-	}
-
-	return *ddbKV, nil
+	}, nil
 }
 
 func validateConfigInput(cfg Config) error {
 	if len(cfg.TableName) < 3 {
 		return fmt.Errorf("invalid dynamodb table name: %s", cfg.TableName)
 	}
-
 	return nil
 }
 
-// for testing
 func (kv dynamodbKV) getTTL() time.Duration {
 	return kv.ttlValue
 }
@@ -97,31 +97,34 @@ func (kv dynamodbKV) getTTL() time.Duration {
 func (kv dynamodbKV) List(ctx context.Context, key dynamodbKey) ([]string, float64, error) {
 	var keys []string
 	var totalCapacity float64
+
 	input := &dynamodb.QueryInput{
 		TableName:              kv.tableName,
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-		KeyConditions: map[string]*dynamodb.Condition{
+		ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
+		KeyConditions: map[string]types.Condition{
 			primaryKey: {
-				ComparisonOperator: aws.String("EQ"),
-				AttributeValueList: []*dynamodb.AttributeValue{
-					{
-						S: aws.String(key.primaryKey),
-					},
+				ComparisonOperator: types.ComparisonOperatorEq,
+				AttributeValueList: []types.AttributeValue{
+					&types.AttributeValueMemberS{Value: key.primaryKey},
 				},
 			},
 		},
-		AttributesToGet: []*string{aws.String(sortKey)},
+		AttributesToGet: []string{sortKey},
 	}
 
-	err := kv.ddbClient.QueryPagesWithContext(ctx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
-		totalCapacity += getCapacityUnits(output.ConsumedCapacity)
-		for _, item := range output.Items {
-			keys = append(keys, item[sortKey].String())
+	paginator := dynamodb.NewQueryPaginator(kv.ddbClient, input)
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, totalCapacity, err
 		}
-		return true
-	})
-	if err != nil {
-		return nil, totalCapacity, err
+		totalCapacity += getCapacityUnits(page.ConsumedCapacity)
+		for _, item := range page.Items {
+			if v, ok := item[sortKey].(*types.AttributeValueMemberS); ok {
+				keys = append(keys, v.Value)
+			}
+		}
 	}
 
 	return keys, totalCapacity, nil
@@ -130,48 +133,54 @@ func (kv dynamodbKV) List(ctx context.Context, key dynamodbKey) ([]string, float
 func (kv dynamodbKV) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string]dynamodbItem, float64, error) {
 	keys := make(map[string]dynamodbItem)
 	var totalCapacity float64
-	co := dynamodb.ComparisonOperatorEq
+
+	co := types.ComparisonOperatorEq
 	if isPrefix {
-		co = dynamodb.ComparisonOperatorBeginsWith
+		co = types.ComparisonOperatorBeginsWith
 	}
+
 	input := &dynamodb.QueryInput{
 		TableName:              kv.tableName,
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-		KeyConditions: map[string]*dynamodb.Condition{
+		ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
+		KeyConditions: map[string]types.Condition{
 			primaryKey: {
-				ComparisonOperator: aws.String(co),
-				AttributeValueList: []*dynamodb.AttributeValue{
-					{
-						S: aws.String(key.primaryKey),
-					},
+				ComparisonOperator: co,
+				AttributeValueList: []types.AttributeValue{
+					&types.AttributeValueMemberS{Value: key.primaryKey},
 				},
 			},
 		},
 	}
 
-	err := kv.ddbClient.QueryPagesWithContext(ctx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
-		totalCapacity += getCapacityUnits(output.ConsumedCapacity)
-		for _, item := range output.Items {
+	paginator := dynamodb.NewQueryPaginator(kv.ddbClient, input)
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, totalCapacity, err
+		}
+		totalCapacity += getCapacityUnits(page.ConsumedCapacity)
+
+		for _, item := range page.Items {
 			itemVersion := int64(0)
-			if item[version] != nil {
-				parsedVersion, err := strconv.ParseInt(*item[version].N, 10, 0)
+			if v, ok := item[version].(*types.AttributeValueMemberN); ok {
+				parsedVersion, err := strconv.ParseInt(v.Value, 10, 0)
 				if err != nil {
-					kv.logger.Log("msg", "failed to parse item version", "version", *item[version].N, "err", err)
+					kv.logger.Log("msg", "failed to parse item version", "version", v.Value, "err", err)
 				} else {
 					itemVersion = parsedVersion
 				}
 			}
 
-			keys[*item[sortKey].S] = dynamodbItem{
-				data:    item[contentData].B,
-				version: itemVersion,
+			if d, ok := item[contentData].(*types.AttributeValueMemberB); ok {
+				if s, ok := item[sortKey].(*types.AttributeValueMemberS); ok {
+					keys[s.Value] = dynamodbItem{
+						data:    d.Value,
+						version: itemVersion,
+					}
+				}
 			}
-
 		}
-		return true
-	})
-	if err != nil {
-		return nil, totalCapacity, err
 	}
 
 	return keys, totalCapacity, nil
@@ -180,28 +189,22 @@ func (kv dynamodbKV) Query(ctx context.Context, key dynamodbKey, isPrefix bool) 
 func (kv dynamodbKV) Delete(ctx context.Context, key dynamodbKey) (float64, error) {
 	input := &dynamodb.DeleteItemInput{
 		TableName:              kv.tableName,
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
 		Key:                    generateItemKey(key),
 	}
-	totalCapacity := float64(0)
-	output, err := kv.ddbClient.DeleteItemWithContext(ctx, input)
-	if err != nil {
-		totalCapacity = getCapacityUnits(output.ConsumedCapacity)
-	}
+	output, err := kv.ddbClient.DeleteItem(ctx, input)
+	totalCapacity := getCapacityUnits(output.ConsumedCapacity)
 	return totalCapacity, err
 }
 
 func (kv dynamodbKV) Put(ctx context.Context, key dynamodbKey, data []byte) (float64, error) {
 	input := &dynamodb.PutItemInput{
 		TableName:              kv.tableName,
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
 		Item:                   kv.generatePutItemRequest(key, dynamodbItem{data: data}),
 	}
-	totalCapacity := float64(0)
-	output, err := kv.ddbClient.PutItemWithContext(ctx, input)
-	if err != nil {
-		totalCapacity = getCapacityUnits(output.ConsumedCapacity)
-	}
+	output, err := kv.ddbClient.PutItem(ctx, input)
+	totalCapacity := getCapacityUnits(output.ConsumedCapacity)
 	return totalCapacity, err
 }
 
@@ -212,25 +215,24 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem
 		return totalCapacity, false, nil
 	}
 
-	writeRequestsSlices := make([][]*dynamodb.TransactWriteItem, int(math.Ceil(float64(writeRequestSize)/float64(DdbBatchSizeLimit))))
-	for i := 0; i < len(writeRequestsSlices); i++ {
-		writeRequestsSlices[i] = make([]*dynamodb.TransactWriteItem, 0, DdbBatchSizeLimit)
+	writeRequestsSlices := make([][]types.TransactWriteItem, int(math.Ceil(float64(writeRequestSize)/float64(DdbBatchSizeLimit))))
+	for i := range writeRequestsSlices {
+		writeRequestsSlices[i] = make([]types.TransactWriteItem, 0, DdbBatchSizeLimit)
 	}
+
 	currIdx := 0
 	for key, ddbItem := range put {
 		item := kv.generatePutItemRequest(key, ddbItem)
-		ddbPut := &dynamodb.Put{
-			TableName: kv.tableName,
-			Item:      item,
-		}
-		// condition for optimistic locking; DynamoDB will only succeed the request if either the version attribute does not exist
-		// (for backwards compatibility) or the object version has not changed since it was last read
-		ddbPut.ConditionExpression = aws.String("attribute_not_exists(version) OR version = :v")
-		ddbPut.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
-			":v": {N: aws.String(strconv.FormatInt(ddbItem.version, 10))},
+		ddbPut := &types.Put{
+			TableName:           kv.tableName,
+			Item:                item,
+			ConditionExpression: aws.String("attribute_not_exists(version) OR version = :v"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":v": &types.AttributeValueMemberN{Value: strconv.FormatInt(ddbItem.version, 10)},
+			},
 		}
 
-		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], &dynamodb.TransactWriteItem{Put: ddbPut})
+		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], types.TransactWriteItem{Put: ddbPut})
 		if len(writeRequestsSlices[currIdx]) == DdbBatchSizeLimit {
 			currIdx++
 		}
@@ -238,49 +240,47 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem
 
 	for _, key := range delete {
 		item := generateItemKey(key)
-		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], &dynamodb.TransactWriteItem{
-			Delete: &dynamodb.Delete{
-				TableName: kv.tableName,
-				Key:       item,
-			},
-		})
+		ddbDelete := &types.Delete{
+			TableName: kv.tableName,
+			Key:       item,
+		}
+		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], types.TransactWriteItem{Delete: ddbDelete})
 		if len(writeRequestsSlices[currIdx]) == DdbBatchSizeLimit {
 			currIdx++
 		}
 	}
 
 	for _, slice := range writeRequestsSlices {
-		transactItems := &dynamodb.TransactWriteItemsInput{
-			TransactItems: slice,
+		if len(slice) == 0 {
+			continue
 		}
-		resp, err := kv.ddbClient.TransactWriteItemsWithContext(ctx, transactItems)
+		resp, err := kv.ddbClient.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+			TransactItems: slice,
+		})
 		if err != nil {
-			var checkFailed *dynamodb.ConditionalCheckFailedException
-			isCheckFailedException := errors.As(err, &checkFailed)
-			if isCheckFailedException {
-				kv.logger.Log("msg", "conditional check failed on DynamoDB Batch", "item", fmt.Sprintf("%v", checkFailed.Item), "err", err)
+			var checkFailed *types.ConditionalCheckFailedException
+			isCheckFailed := errors.As(err, &checkFailed)
+			if isCheckFailed {
+				kv.logger.Log("msg", "conditional check failed on DynamoDB Batch", "err", err)
 			}
-			return totalCapacity, isCheckFailedException, err
+			return totalCapacity, isCheckFailed, err
 		}
 		for _, consumedCapacity := range resp.ConsumedCapacity {
-			totalCapacity += getCapacityUnits(consumedCapacity)
+			totalCapacity += getCapacityUnits(&consumedCapacity)
 		}
 	}
 
 	return totalCapacity, false, nil
 }
 
-func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, ddbItem dynamodbItem) map[string]*dynamodb.AttributeValue {
+func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, ddbItem dynamodbItem) map[string]types.AttributeValue {
 	item := generateItemKey(key)
-	item[contentData] = &dynamodb.AttributeValue{
-		B: ddbItem.data,
-	}
-	item[version] = &dynamodb.AttributeValue{
-		N: aws.String(strconv.FormatInt(ddbItem.version+1, 10)),
-	}
+	item[contentData] = &types.AttributeValueMemberB{Value: ddbItem.data}
+	item[version] = &types.AttributeValueMemberN{Value: strconv.FormatInt(ddbItem.version+1, 10)}
+
 	if kv.getTTL() > 0 {
-		item[timeToLive] = &dynamodb.AttributeValue{
-			N: aws.String(strconv.FormatInt(time.Now().UTC().Add(kv.getTTL()).Unix(), 10)),
+		item[timeToLive] = &types.AttributeValueMemberN{
+			Value: strconv.FormatInt(time.Now().UTC().Add(kv.getTTL()).Unix(), 10),
 		}
 	}
 
@@ -326,22 +326,17 @@ func (d *dynamodbKVWithTimeout) Batch(ctx context.Context, put map[dynamodbKey]d
 	return d.ddbClient.Batch(ctx, put, delete)
 }
 
-func generateItemKey(key dynamodbKey) map[string]*dynamodb.AttributeValue {
-	resp := map[string]*dynamodb.AttributeValue{
-		primaryKey: {
-			S: aws.String(key.primaryKey),
-		},
+func generateItemKey(key dynamodbKey) map[string]types.AttributeValue {
+	resp := map[string]types.AttributeValue{
+		primaryKey: &types.AttributeValueMemberS{Value: key.primaryKey},
 	}
 	if len(key.sortKey) > 0 {
-		resp[sortKey] = &dynamodb.AttributeValue{
-			S: aws.String(key.sortKey),
-		}
+		resp[sortKey] = &types.AttributeValueMemberS{Value: key.sortKey}
 	}
-
 	return resp
 }
 
-func getCapacityUnits(cap *dynamodb.ConsumedCapacity) float64 {
+func getCapacityUnits(cap *types.ConsumedCapacity) float64 {
 	if cap != nil && cap.CapacityUnits != nil {
 		return *cap.CapacityUnits
 	}

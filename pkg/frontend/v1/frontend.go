@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
@@ -19,8 +21,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -78,7 +78,7 @@ type Frontend struct {
 	retry  *transport.Retry
 
 	requestQueue *queue.RequestQueue
-	activeUsers  *util.ActiveUsersCleanupService
+	activeUsers  *users.ActiveUsersCleanupService
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -133,7 +133,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 	}
 
 	f.requestQueue = queue.NewRequestQueue(cfg.QuerierForgetDelay, f.queueLength, f.discardedRequests, f.limits, registerer)
-	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
+	f.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
 	var err error
 	f.subservices, err = services.NewManager(f.requestQueue, f.activeUsers)

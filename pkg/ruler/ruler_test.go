@@ -52,12 +52,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
-	cortextsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -2618,7 +2618,7 @@ func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, r *Ruler, userID strin
 
 func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*objstore.InMemBucket, rulestore.RuleStore) {
 	bucketClient := objstore.NewInMemBucket()
-	usersScannerConfig := cortextsdb.UsersScannerConfig{Strategy: cortextsdb.UserScanStrategyList}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 	reg := prometheus.NewPedanticRegistry()
 	rs, err := bucketclient.NewBucketRuleStore(bucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)

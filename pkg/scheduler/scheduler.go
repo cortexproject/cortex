@@ -26,12 +26,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/distributed_execution"
 	"github.com/cortexproject/cortex/pkg/distributed_execution/plan_fragments"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
+	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
+	//lint:ignore faillint scheduler needs to retrieve priority from the context
 	"github.com/cortexproject/cortex/pkg/querier/stats" //lint:ignore faillint scheduler needs to retrieve priority from the context
 	"github.com/cortexproject/cortex/pkg/scheduler/fragment_table"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
@@ -57,7 +58,7 @@ type Scheduler struct {
 	connectedFrontends   map[string]*connectedFrontend
 
 	requestQueue *queue.RequestQueue
-	activeUsers  *util.ActiveUsersCleanupService
+	activeUsers  *users.ActiveUsersCleanupService
 
 	pendingRequestsMu sync.Mutex
 
@@ -156,7 +157,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
 	}, s.getConnectedFrontendClientsMetric)
 
-	s.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
+	s.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
 
 	var err error
 	s.subservices, err = services.NewManager(s.requestQueue, s.activeUsers)

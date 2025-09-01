@@ -21,9 +21,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -50,7 +49,7 @@ type BucketRuleStore struct {
 	usersScanner users.Scanner
 }
 
-func NewBucketRuleStore(bkt objstore.Bucket, userScannerCfg tsdb.UsersScannerConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (*BucketRuleStore, error) {
+func NewBucketRuleStore(bkt objstore.Bucket, userScannerCfg users.UsersScannerConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (*BucketRuleStore, error) {
 	rulesBucket := bucket.NewPrefixedBucketClient(bkt, rulesPrefix)
 
 	usersScanner, err := users.NewScanner(userScannerCfg, rulesBucket, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "ruler"}, reg))

@@ -43,11 +43,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
-	"github.com/cortexproject/cortex/pkg/util/users"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 func TestBucketStores_CustomerKeyError(t *testing.T) {
@@ -401,14 +400,14 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 	tests := map[string]struct {
 		shardingStrategy ShardingStrategy
 		expectedStores   int32
-		allowedTenants   *users.AllowedTenants
+		allowedTenants   *tenant.AllowedTenants
 	}{
 		"when sharding is disabled all users should be synced": {
 			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), nil),
 			expectedStores:   3,
 		},
 		"sharding disabled, user-1 disabled": {
-			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), users.NewAllowedTenants(nil, []string{"user-1"})),
+			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), tenant.NewAllowedTenants(nil, []string{"user-1"})),
 			expectedStores:   2,
 		},
 		"when sharding is enabled only stores for filtered users should be created": {

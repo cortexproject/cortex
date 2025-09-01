@@ -12,7 +12,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 func TestDeleteTenant(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 const maxBufferSize = 1024

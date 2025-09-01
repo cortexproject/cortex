@@ -28,11 +28,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)

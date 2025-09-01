@@ -22,8 +22,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/model"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 var (

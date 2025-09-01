@@ -33,13 +33,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/users"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -405,7 +405,7 @@ type Compactor struct {
 	logger         log.Logger
 	parentLogger   log.Logger
 	registerer     prometheus.Registerer
-	allowedTenants *users.AllowedTenants
+	allowedTenants *tenant.AllowedTenants
 	limits         *validation.Overrides
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
@@ -543,7 +543,7 @@ func newCompactor(
 		blocksCompactorFactory:             blocksCompactorFactory,
 		blockDeletableCheckerFactory:       blockDeletableCheckerFactory,
 		compactionLifecycleCallbackFactory: compactionLifecycleCallbackFactory,
-		allowedTenants:                     users.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
+		allowedTenants:                     tenant.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
 
 		CompactorStartDurationSeconds: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_compactor_start_duration_seconds",

@@ -23,12 +23,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
 	"github.com/cortexproject/cortex/pkg/util/users"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 type testBlocksCleanerOptions struct {

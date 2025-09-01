@@ -12,9 +12,9 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 // NewExemplarQueryable returns a exemplarQueryable that iterates through all the

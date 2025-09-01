@@ -21,8 +21,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 const (

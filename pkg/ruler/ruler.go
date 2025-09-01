@@ -35,7 +35,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -43,7 +42,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/users"
+	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -341,7 +340,7 @@ type Ruler struct {
 	rulerGetRulesFailures      *prometheus.CounterVec
 	ruleGroupMetrics           *RuleGroupMetrics
 
-	allowedTenants *users.AllowedTenants
+	allowedTenants *tenant.AllowedTenants
 
 	registry prometheus.Registerer
 	logger   log.Logger
@@ -361,7 +360,7 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		logger:         logger,
 		limits:         limits,
 		clientsPool:    clientPool,
-		allowedTenants: users.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		allowedTenants: tenant.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",

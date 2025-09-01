@@ -21,8 +21,6 @@ type TenantDeletionMark struct {
 
 	// Unix timestamp when cleanup was finished.
 	FinishedTime int64 `json:"finished_time,omitempty"`
-
-	logger log.Logger
 }
 
 func NewTenantDeletionMark(deletionTime time.Time) *TenantDeletionMark {

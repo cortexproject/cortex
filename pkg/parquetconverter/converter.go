@@ -39,6 +39,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -58,6 +59,7 @@ type Config struct {
 	ConversionInterval  time.Duration `yaml:"conversion_interval"`
 	MaxRowsPerRowGroup  int           `yaml:"max_rows_per_row_group"`
 	FileBufferEnabled   bool          `yaml:"file_buffer_enabled"`
+	SortColumns         []string      `yaml:"sort_columns"`
 
 	DataDir string `yaml:"data_dir"`
 
@@ -109,6 +111,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRowsPerRowGroup, "parquet-converter.max-rows-per-row-group", 1e6, "Maximum number of time series per parquet row group. Larger values improve compression but may reduce performance during reads.")
 	f.DurationVar(&cfg.ConversionInterval, "parquet-converter.conversion-interval", time.Minute, "How often to check for new TSDB blocks to convert to parquet format.")
 	f.BoolVar(&cfg.FileBufferEnabled, "parquet-converter.file-buffer-enabled", true, "Enable disk-based write buffering to reduce memory consumption during parquet file generation.")
+	f.Var((*flagext.StringSlice)(&cfg.SortColumns), "parquet-converter.sort-columns", "Configure the sort columns, in order of precedence, to improve query performance. These will be applied during parquet file generation.")
 }
 
 func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Converter, error) {
@@ -126,6 +129,13 @@ func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockR
 }
 
 func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides, usersScanner users.Scanner) *Converter {
+	// Create base sort columns with metric name as the primary sort column
+	sortColumns := []string{labels.MetricName}
+	if len(cfg.SortColumns) > 0 {
+		sortColumns = append(sortColumns, cfg.SortColumns...)
+	}
+	cfg.SortColumns = sortColumns
+
 	c := &Converter{
 		cfg:            cfg,
 		reg:            registerer,
@@ -139,7 +149,7 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 		metrics:        newMetrics(registerer),
 		bkt:            bkt,
 		baseConverterOptions: []convert.ConvertOption{
-			convert.WithSortBy(labels.MetricName),
+			convert.WithSortBy(sortColumns...),
 			convert.WithColDuration(time.Hour * 8),
 			convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
 		},
@@ -429,6 +439,13 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		start := time.Now()
 
 		converterOpts := append(c.baseConverterOptions, convert.WithName(b.ULID.String()))
+
+		userConfiguredSortColumns := c.limits.ParquetConverterSortColumns(userID)
+		if len(userConfiguredSortColumns) > 0 {
+			sortColumns := []string{labels.MetricName}
+			sortColumns = append(sortColumns, userConfiguredSortColumns...)
+			converterOpts = append(converterOpts, convert.WithSortBy(sortColumns...))
+		}
 
 		if c.cfg.FileBufferEnabled {
 			converterOpts = append(converterOpts, convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")))

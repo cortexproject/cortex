@@ -219,8 +219,9 @@ type Limits struct {
 	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
 
 	// Parquet converter
-	ParquetConverterEnabled         bool    `yaml:"parquet_converter_enabled" json:"parquet_converter_enabled" doc:"hidden"`
-	ParquetConverterTenantShardSize float64 `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size" doc:"hidden"`
+	ParquetConverterEnabled         bool     `yaml:"parquet_converter_enabled" json:"parquet_converter_enabled" doc:"hidden"`
+	ParquetConverterTenantShardSize float64  `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size" doc:"hidden"`
+	ParquetConverterSortColumns     []string `yaml:"parquet_converter_sort_columns" json:"parquet_converter_sort_columns" doc:"hidden"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -324,6 +325,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.Float64Var(&l.ParquetConverterTenantShardSize, "parquet-converter.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the parquet converter. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 and > 0 the shard size will be a percentage of the total parquet converters.")
 	f.BoolVar(&l.ParquetConverterEnabled, "parquet-converter.enabled", false, "If set, enables the Parquet converter to create the parquet files.")
+	f.Var((*flagext.StringSlice)(&l.ParquetConverterSortColumns), "parquet-converter.sort-columns", "Additional label names for specific tenants to sort by after metric name, in order of precedence. These are applied during Parquet file generation.")
 
 	// Parquet Queryable enforced limits.
 	f.IntVar(&l.ParquetMaxFetchedRowCount, "querier.parquet-queryable.max-fetched-row-count", 0, "The maximum number of rows that can be fetched when querying parquet storage. Each row maps to a series in a parquet file. This limit applies before materializing chunks. 0 to disable.")
@@ -902,6 +904,11 @@ func (o *Overrides) ParquetConverterTenantShardSize(userID string) float64 {
 // ParquetConverterEnabled returns true is parquet is enabled.
 func (o *Overrides) ParquetConverterEnabled(userID string) bool {
 	return o.GetOverridesForUser(userID).ParquetConverterEnabled
+}
+
+// ParquetConverterSortColumns returns the additional sort columns for parquet files.
+func (o *Overrides) ParquetConverterSortColumns(userID string) []string {
+	return o.GetOverridesForUser(userID).ParquetConverterSortColumns
 }
 
 // ParquetMaxFetchedRowCount returns the maximum number of rows that can be fetched when querying parquet storage.

@@ -4,8 +4,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 
+	"github.com/cortexproject/cortex/pkg/distributed_execution"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
@@ -17,6 +19,7 @@ func Middlewares(
 	lookbackDelta time.Duration,
 	defaultEvaluationInterval time.Duration,
 	distributedExecEnabled bool,
+	localOptimizers []logicalplan.Optimizer,
 ) ([]tripperware.Middleware, error) {
 	m := []tripperware.Middleware{
 		NewLimitsMiddleware(limits, lookbackDelta),
@@ -25,7 +28,8 @@ func Middlewares(
 
 	if distributedExecEnabled {
 		m = append(m,
-			tripperware.DistributedQueryMiddleware(defaultEvaluationInterval, lookbackDelta))
+			tripperware.DistributedQueryMiddleware(defaultEvaluationInterval, lookbackDelta,
+				append(localOptimizers, &distributed_execution.DistributedOptimizer{})))
 	}
 
 	return m, nil

@@ -15,12 +15,13 @@ const (
 	stepBatch = 10
 )
 
-func DistributedQueryMiddleware(defaultEvaluationInterval time.Duration, lookbackDelta time.Duration) Middleware {
+func DistributedQueryMiddleware(defaultEvaluationInterval time.Duration, lookbackDelta time.Duration, optimizers []logicalplan.Optimizer) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return distributedQueryMiddleware{
 			next:                      next,
 			lookbackDelta:             lookbackDelta,
 			defaultEvaluationInterval: defaultEvaluationInterval,
+			optimizers:                optimizers,
 		}
 	})
 }
@@ -36,6 +37,7 @@ type distributedQueryMiddleware struct {
 	next                      Handler
 	defaultEvaluationInterval time.Duration
 	lookbackDelta             time.Duration
+	optimizers                []logicalplan.Optimizer
 }
 
 func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, end time.Time, step time.Duration) (*logicalplan.Plan, error) {
@@ -68,7 +70,7 @@ func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, e
 	if err != nil {
 		return nil, err
 	}
-	optimizedPlan, _ := logicalPlan.Optimize(logicalplan.DefaultOptimizers)
+	optimizedPlan, _ := logicalPlan.Optimize(d.optimizers)
 
 	return &optimizedPlan, nil
 }

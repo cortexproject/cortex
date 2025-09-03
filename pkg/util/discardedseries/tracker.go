@@ -11,29 +11,29 @@ const (
 	vendMetricsInterval = 30 * time.Second
 )
 
-type SeriesCounter struct {
+type seriesCounterStruct struct {
 	*sync.RWMutex
 	seriesCountMap map[uint64]struct{}
 }
 
-type UserCounter struct {
+type userCounterStruct struct {
 	*sync.RWMutex
-	userSeriesMap map[string]*SeriesCounter
+	userSeriesMap map[string]*seriesCounterStruct
 }
 
 type DiscardedSeriesTracker struct {
 	*sync.RWMutex
-	labelUserMap         map[string]*UserCounter
+	labelUserMap         map[string]*userCounterStruct
 	discardedSeriesGauge *prometheus.GaugeVec
 }
 
 func NewDiscardedSeriesTracker(discardedSeriesGauge *prometheus.GaugeVec) *DiscardedSeriesTracker {
-	discardedSeriesTracker := &DiscardedSeriesTracker{
+	tracker := &DiscardedSeriesTracker{
 		RWMutex:              &sync.RWMutex{},
-		labelUserMap:         make(map[string]*UserCounter),
+		labelUserMap:         make(map[string]*userCounterStruct),
 		discardedSeriesGauge: discardedSeriesGauge,
 	}
-	return discardedSeriesTracker
+	return tracker
 }
 
 func (t *DiscardedSeriesTracker) Track(reason string, user string, series uint64) {
@@ -44,9 +44,9 @@ func (t *DiscardedSeriesTracker) Track(reason string, user string, series uint64
 		t.Lock()
 		userCounter, ok = t.labelUserMap[reason]
 		if !ok {
-			userCounter = &UserCounter{
+			userCounter = &userCounterStruct{
 				RWMutex:       &sync.RWMutex{},
-				userSeriesMap: make(map[string]*SeriesCounter),
+				userSeriesMap: make(map[string]*seriesCounterStruct),
 			}
 			t.labelUserMap[reason] = userCounter
 		}
@@ -60,7 +60,7 @@ func (t *DiscardedSeriesTracker) Track(reason string, user string, series uint64
 		userCounter.Lock()
 		seriesCounter, ok = userCounter.userSeriesMap[user]
 		if !ok {
-			seriesCounter = &SeriesCounter{
+			seriesCounter = &seriesCounterStruct{
 				RWMutex:        &sync.RWMutex{},
 				seriesCountMap: make(map[uint64]struct{}),
 			}

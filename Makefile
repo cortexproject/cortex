@@ -126,7 +126,7 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
-exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos web-build web-pre web-deploy doc: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos web-build web-pre web-deploy doc check-modernize: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -307,6 +307,12 @@ clean-white-noise:
 
 check-white-noise: clean-white-noise
 	@git diff --exit-code --quiet -- '*.md' || (echo "Please remove trailing whitespaces running 'make clean-white-noise'" && false)
+
+modernize:
+	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.20.0 -fix ./...
+
+check-modernize: modernize
+	@git diff --exit-code -- . || (echo "Please modernize running 'make modernize'" && false)
 
 web-serve:
 	cd website && hugo --config config.toml --minify -v server

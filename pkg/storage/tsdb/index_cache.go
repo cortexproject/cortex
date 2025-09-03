@@ -249,10 +249,7 @@ func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, regi
 	maxCacheSize := model.Bytes(cfg.MaxSizeBytes)
 
 	// Calculate the max item size.
-	maxItemSize := defaultMaxItemSize
-	if maxItemSize > maxCacheSize {
-		maxItemSize = maxCacheSize
-	}
+	maxItemSize := min(defaultMaxItemSize, maxCacheSize)
 
 	return NewInMemoryIndexCacheWithConfig(logger, nil, registerer, storecache.InMemoryIndexCacheConfig{
 		MaxSize:     maxCacheSize,

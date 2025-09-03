@@ -20,7 +20,7 @@ func CloseWithErrCapture(err *error, closer io.Closer, msg string) {
 
 // CloseWithLogOnErr closes an io.Closer and logs any relevant error from it wrapped with the provided format string and
 // args.
-func CloseWithLogOnErr(logger log.Logger, closer io.Closer, format string, args ...interface{}) {
+func CloseWithLogOnErr(logger log.Logger, closer io.Closer, format string, args ...any) {
 	err := closer.Close()
 	if err == nil || errors.Is(err, os.ErrClosed) {
 		return

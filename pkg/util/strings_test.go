@@ -99,7 +99,7 @@ func BenchmarkMergeSlicesParallel(b *testing.B) {
 				b.ResetTimer()
 				var r []string
 				var err error
-				for i := 0; i < b.N; i++ {
+				for b.Loop() {
 					if p == usingMap {
 						r = sortUsingMap(input...)
 						require.NotEmpty(b, r)

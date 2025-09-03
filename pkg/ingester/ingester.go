@@ -213,7 +213,7 @@ func (cfg *Config) getIgnoreSeriesLimitForMetricNamesMap() map[string]struct{} {
 
 	result := map[string]struct{}{}
 
-	for _, s := range strings.Split(cfg.IgnoreSeriesLimitForMetricNames, ",") {
+	for s := range strings.SplitSeq(cfg.IgnoreSeriesLimitForMetricNames, ",") {
 		tr := strings.TrimSpace(s)
 		if tr != "" {
 			result[tr] = struct{}{}
@@ -1745,10 +1745,7 @@ func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream clie
 	}
 
 	for i := 0; i < len(resp.LabelValues); i += metadataStreamBatchSize {
-		j := i + metadataStreamBatchSize
-		if j > len(resp.LabelValues) {
-			j = len(resp.LabelValues)
-		}
+		j := min(i+metadataStreamBatchSize, len(resp.LabelValues))
 		resp := &client.LabelValuesStreamResponse{
 			LabelValues: resp.LabelValues[i:j],
 		}
@@ -1842,10 +1839,7 @@ func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client
 	}
 
 	for i := 0; i < len(resp.LabelNames); i += metadataStreamBatchSize {
-		j := i + metadataStreamBatchSize
-		if j > len(resp.LabelNames) {
-			j = len(resp.LabelNames)
-		}
+		j := min(i+metadataStreamBatchSize, len(resp.LabelNames))
 		resp := &client.LabelNamesStreamResponse{
 			LabelNames: resp.LabelNames[i:j],
 		}
@@ -2612,7 +2606,6 @@ func (i *Ingester) closeAllTSDB() {
 
 	// Concurrently close all users TSDB
 	for userID, userDB := range i.TSDBState.dbs {
-		userID := userID
 
 		go func(db *userTSDB) {
 			defer wg.Done()

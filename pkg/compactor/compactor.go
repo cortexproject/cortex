@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -353,10 +354,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {
-	for _, blockRange := range cfg.BlockRanges {
-		if blockRange == 0 {
-			return errors.New("compactor block range period cannot be zero")
-		}
+	if slices.Contains(cfg.BlockRanges, 0) {
+		return errors.New("compactor block range period cannot be zero")
 	}
 	// Each block range period should be divisible by the previous one.
 	for i := 1; i < len(cfg.BlockRanges); i++ {
@@ -1280,12 +1279,7 @@ func (c *Compactor) isCausedByPermissionDenied(err error) bool {
 		cause = errors.Unwrap(cause)
 	}
 	if multiErr, ok := cause.(errutil.NonNilMultiRootError); ok {
-		for _, err := range multiErr {
-			if c.isPermissionDeniedErr(err) {
-				return true
-			}
-		}
-		return false
+		return slices.ContainsFunc(multiErr, c.isPermissionDeniedErr)
 	}
 	return c.isPermissionDeniedErr(cause)
 }

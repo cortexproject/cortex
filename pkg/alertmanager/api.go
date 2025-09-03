@@ -283,7 +283,7 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 	}
 
 	done := make(chan struct{})
-	iter := make(chan interface{})
+	iter := make(chan any)
 
 	go func() {
 		util.StreamWriteYAMLResponse(w, iter, logger)
@@ -321,7 +321,7 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 // validateAlertmanagerConfig recursively scans the input config looking for data types for which
 // we have a specific validation and, whenever encountered, it runs their validation. Returns the
 // first error or nil if validation succeeds.
-func validateAlertmanagerConfig(cfg interface{}) error {
+func validateAlertmanagerConfig(cfg any) error {
 	v := reflect.ValueOf(cfg)
 	t := v.Type()
 

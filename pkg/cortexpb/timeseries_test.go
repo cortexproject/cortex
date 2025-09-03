@@ -70,7 +70,7 @@ func TestTimeseriesFromPool(t *testing.T) {
 func BenchmarkMarshallWriteRequest(b *testing.B) {
 	ts := PreallocTimeseriesSliceFromPool()
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		ts = append(ts, PreallocTimeseries{TimeSeries: TimeseriesFromPool()})
 		ts[i].Labels = []LabelAdapter{
 			{Name: "foo", Value: "bar"},
@@ -85,14 +85,14 @@ func BenchmarkMarshallWriteRequest(b *testing.B) {
 	tests := []struct {
 		name                string
 		writeRequestFactory func() proto.Marshaler
-		clean               func(in interface{})
+		clean               func(in any)
 	}{
 		{
 			name: "no-pool",
 			writeRequestFactory: func() proto.Marshaler {
 				return &WriteRequest{Timeseries: ts}
 			},
-			clean: func(in interface{}) {},
+			clean: func(in any) {},
 		},
 		{
 			name: "byte pool",
@@ -101,7 +101,7 @@ func BenchmarkMarshallWriteRequest(b *testing.B) {
 				w.Timeseries = ts
 				return w
 			},
-			clean: func(in interface{}) {
+			clean: func(in any) {
 				ReuseWriteRequest(in.(*PreallocWriteRequest))
 			},
 		},
@@ -112,7 +112,7 @@ func BenchmarkMarshallWriteRequest(b *testing.B) {
 				w.Timeseries = ts
 				return w
 			},
-			clean: func(in interface{}) {
+			clean: func(in any) {
 				ReuseWriteRequest(in.(*PreallocWriteRequest))
 			},
 		},
@@ -120,7 +120,7 @@ func BenchmarkMarshallWriteRequest(b *testing.B) {
 
 	for _, tc := range tests {
 		b.Run(tc.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				w := tc.writeRequestFactory()
 				_, err := w.Marshal()
 				require.NoError(b, err)

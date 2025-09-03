@@ -132,10 +132,7 @@ func (cfg *InMemoryBucketCacheConfig) toInMemoryCacheConfig() cache.InMemoryCach
 	maxCacheSize := model.Bytes(cfg.MaxSizeBytes)
 
 	// Calculate the max item size.
-	maxItemSize := defaultMaxItemSize
-	if maxItemSize > maxCacheSize {
-		maxItemSize = maxCacheSize
-	}
+	maxItemSize := min(defaultMaxItemSize, maxCacheSize)
 
 	return cache.InMemoryCacheConfig{
 		MaxSize:     maxCacheSize,

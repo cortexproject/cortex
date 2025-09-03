@@ -38,7 +38,7 @@ func (cfg *InstanceLimits) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix strin
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface. If give
-func (l *InstanceLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *InstanceLimits) UnmarshalYAML(unmarshal func(any) error) error {
 	if defaultInstanceLimits != nil {
 		*l = *defaultInstanceLimits
 	}

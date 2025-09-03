@@ -16,7 +16,7 @@ func NewRateLimiter(cfg *Config) grpc.UnaryClientInterceptor {
 		burst = int(cfg.RateLimit)
 	}
 	limiter := rate.NewLimiter(rate.Limit(cfg.RateLimit), burst)
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		err := limiter.Wait(ctx)
 		if err != nil {
 			return status.Error(codes.ResourceExhausted, err.Error())

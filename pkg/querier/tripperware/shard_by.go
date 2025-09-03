@@ -92,7 +92,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 
 func (s shardBy) shardQuery(l log.Logger, verticalShardSize int, r Request, analysis querysharding.QueryAnalysis) []Request {
 	reqs := make([]Request, verticalShardSize)
-	for i := 0; i < verticalShardSize; i++ {
+	for i := range verticalShardSize {
 		q, err := cquerysharding.InjectShardingInfo(r.GetQuery(), &storepb.ShardInfo{
 			TotalShards: int64(verticalShardSize),
 			ShardIndex:  int64(i),

@@ -21,10 +21,10 @@ func newSlicePool(pools int) *byteSlicePools {
 
 func (sp *byteSlicePools) init(pools int) {
 	sp.pools = make([]sync.Pool, pools)
-	for i := 0; i < pools; i++ {
+	for i := range pools {
 		size := int(math.Pow(2, float64(i+minPoolSizePower)))
 		sp.pools[i] = sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				buf := make([]byte, 0, size)
 				return &buf
 			},

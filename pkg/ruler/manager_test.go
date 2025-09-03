@@ -51,7 +51,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	mgr := getManager(m, user)
 	require.NotNil(t, mgr)
 
-	test.Poll(t, 1*time.Second, true, func() interface{} {
+	test.Poll(t, 1*time.Second, true, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
@@ -72,7 +72,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	require.Nil(t, getManager(m, user))
 
 	// Make sure old manager was stopped.
-	test.Poll(t, 1*time.Second, false, func() interface{} {
+	test.Poll(t, 1*time.Second, false, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
@@ -94,7 +94,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	require.NotNil(t, newMgr)
 	require.True(t, mgr != newMgr)
 
-	test.Poll(t, 1*time.Second, true, func() interface{} {
+	test.Poll(t, 1*time.Second, true, func() any {
 		return newMgr.(*mockRulesManager).running.Load()
 	})
 
@@ -107,7 +107,7 @@ func TestSyncRuleGroups(t *testing.T) {
 
 	m.Stop()
 
-	test.Poll(t, 1*time.Second, false, func() interface{} {
+	test.Poll(t, 1*time.Second, false, func() any {
 		return newMgr.(*mockRulesManager).running.Load()
 	})
 }
@@ -167,7 +167,7 @@ func TestSlowRuleGroupSyncDoesNotSlowdownListRules(t *testing.T) {
 	mgr := getManager(m, user)
 	require.NotNil(t, mgr)
 
-	test.Poll(t, 1*time.Second, true, func() interface{} {
+	test.Poll(t, 1*time.Second, true, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 	groups := m.GetRules(user)
@@ -195,18 +195,18 @@ func TestSlowRuleGroupSyncDoesNotSlowdownListRules(t *testing.T) {
 	groups = m.GetRules(user)
 
 	require.Len(t, groups, len(groupsToReturn[0]), "expected %d but got %d", len(groupsToReturn[0]), len(groups))
-	test.Poll(t, 5*time.Second, len(groupsToReturn[1]), func() interface{} {
+	test.Poll(t, 5*time.Second, len(groupsToReturn[1]), func() any {
 		groups = m.GetRules(user)
 		return len(groups)
 	})
 
-	test.Poll(t, 1*time.Second, true, func() interface{} {
+	test.Poll(t, 1*time.Second, true, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
 	m.Stop()
 
-	test.Poll(t, 1*time.Second, false, func() interface{} {
+	test.Poll(t, 1*time.Second, false, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 }

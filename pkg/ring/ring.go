@@ -307,7 +307,7 @@ func (r *Ring) loop(ctx context.Context) error {
 	r.updateRingMetrics(Different)
 	r.mtx.Unlock()
 
-	r.KVClient.WatchKey(ctx, r.key, func(value interface{}) bool {
+	r.KVClient.WatchKey(ctx, r.key, func(value any) bool {
 		if value == nil {
 			level.Info(r.logger).Log("msg", "ring doesn't exist in KV store yet")
 			return true
@@ -589,10 +589,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	} else {
 		// Calculate the number of required instances;
 		// ensure we always require at least RF-1 when RF=3.
-		numRequired := len(r.ringDesc.Ingesters)
-		if numRequired < r.cfg.ReplicationFactor {
-			numRequired = r.cfg.ReplicationFactor
-		}
+		numRequired := max(len(r.ringDesc.Ingesters), r.cfg.ReplicationFactor)
 		// We can tolerate this many failures
 		numRequired -= r.cfg.ReplicationFactor / 2
 

@@ -12,7 +12,7 @@ func TestNonOverlappingIter(t *testing.T) {
 	t.Parallel()
 	forEncodings(t, func(t *testing.T, enc encoding.Encoding) {
 		cs := []GenericChunk(nil)
-		for i := int64(0); i < 100; i++ {
+		for i := range int64(100) {
 			cs = append(cs, mkGenericChunk(t, model.TimeFromUnix(i*10), 10, enc))
 		}
 		testIter(t, 10*100, newIteratorAdapter(newNonOverlappingIterator(cs)), enc)

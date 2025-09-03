@@ -45,7 +45,7 @@ func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMe
 }
 
 func (w *WriteRequest) AddHistogramTimeSeries(lbls []labels.Labels, histograms []Histogram) {
-	for i := 0; i < len(lbls); i++ {
+	for i := range lbls {
 		ts := TimeseriesFromPool()
 		ts.Labels = append(ts.Labels, FromLabelsToLabelAdapters(lbls[i])...)
 		ts.Histograms = append(ts.Histograms, histograms[i])
@@ -213,7 +213,7 @@ func (s Sample) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []byte(fmt.Sprintf("[%s,%s]", t, v)), nil
+	return fmt.Appendf(nil, "[%s,%s]", t, v), nil
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

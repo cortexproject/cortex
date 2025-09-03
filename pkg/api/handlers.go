@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"html/template"
+	"maps"
 	"net/http"
 	"path"
 	"sync"
@@ -70,9 +71,7 @@ func (pc *IndexPageContent) GetContent() map[string]map[string]string {
 	result := map[string]map[string]string{}
 	for k, v := range pc.content {
 		sm := map[string]string{}
-		for smK, smV := range v {
-			sm[smK] = smV
-		}
+		maps.Copy(sm, v)
 		result[k] = sm
 	}
 	return result
@@ -100,7 +99,7 @@ var indexPageTemplate = `
 
 func indexHandler(httpPathPrefix string, content *IndexPageContent) http.HandlerFunc {
 	templ := template.New("main")
-	templ.Funcs(map[string]interface{}{
+	templ.Funcs(map[string]any{
 		"AddPathPrefix": func(link string) string {
 			return path.Join(httpPathPrefix, link)
 		},
@@ -115,16 +114,16 @@ func indexHandler(httpPathPrefix string, content *IndexPageContent) http.Handler
 	}
 }
 
-func (cfg *Config) configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
+func (cfg *Config) configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	if cfg.CustomConfigHandler != nil {
 		return cfg.CustomConfigHandler(actualCfg, defaultCfg)
 	}
 	return DefaultConfigHandler(actualCfg, defaultCfg)
 }
 
-func DefaultConfigHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
+func DefaultConfigHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var output interface{}
+		var output any
 		switch r.URL.Query().Get("mode") {
 		case "diff":
 			defaultCfgObj, err := util.YAMLMarshalUnmarshal(defaultCfg)

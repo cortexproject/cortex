@@ -350,8 +350,8 @@ func parseConfigFormat(v string, defaultFormat string) string {
 	if v == "" {
 		return defaultFormat
 	}
-	parts := strings.Split(v, ",")
-	for _, part := range parts {
+	parts := strings.SplitSeq(v, ",")
+	for part := range parts {
 		mimeType, _, err := mime.ParseMediaType(part)
 		if err != nil {
 			continue

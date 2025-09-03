@@ -631,12 +631,11 @@ func benchmarkMetricsCollection(b *testing.B, users int) {
 	mainReg.MustRegister(tsdbMetrics)
 
 	base := 123456.0
-	for i := 0; i < users; i++ {
+	for i := range users {
 		tsdbMetrics.AddUserRegistry(fmt.Sprintf("user-%d", i), populateMockedBucketStoreMetrics(base*float64(i)))
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = mainReg.Gather()
 	}
 }

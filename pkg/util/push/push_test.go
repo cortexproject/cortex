@@ -38,7 +38,7 @@ var (
 func makeV2ReqWithSeries(num int) *writev2.Request {
 	ts := make([]writev2.TimeSeries, 0, num)
 	symbols := []string{"", "__name__", "test_metric1", "b", "c", "baz", "qux", "d", "e", "foo", "bar", "f", "g", "h", "i", "Test gauge for test purposes", "Maybe op/sec who knows (:", "Test counter for test purposes"}
-	for i := 0; i < num; i++ {
+	for range num {
 		ts = append(ts, writev2.TimeSeries{
 			LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
 			Metadata: writev2.Metadata{
@@ -121,7 +121,7 @@ func Benchmark_Handler(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				resp := httptest.NewRecorder()
 				handler.ServeHTTP(resp, req)
 				assert.Equal(b, http.StatusOK, resp.Code)
@@ -136,7 +136,7 @@ func Benchmark_Handler(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				resp := httptest.NewRecorder()
 				handler.ServeHTTP(resp, req)
 				assert.Equal(b, http.StatusOK, resp.Code)
@@ -155,7 +155,7 @@ func Benchmark_convertV2RequestToV1(b *testing.B) {
 
 			b.ResetTimer()
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := convertV2RequestToV1(series)
 				require.NoError(b, err)
 			}

@@ -3,6 +3,7 @@ package ruler
 import (
 	"net/url"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -378,13 +379,7 @@ func Test_mapper_MapRulesSpecialCharNamespace(t *testing.T) {
 func sliceContains(t *testing.T, find string, in []string) bool {
 	t.Helper()
 
-	for _, s := range in {
-		if find == s {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(in, find)
 }
 
 func TestYamlFormatting(t *testing.T) {

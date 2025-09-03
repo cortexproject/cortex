@@ -38,7 +38,7 @@ type metricCounter struct {
 
 func newMetricCounter(limiter *Limiter, ignoredMetricsForSeriesCount map[string]struct{}) *metricCounter {
 	shards := make([]metricCounterShard, 0, numMetricCounterShards)
-	for i := 0; i < numMetricCounterShards; i++ {
+	for range numMetricCounterShards {
 		shards = append(shards, metricCounterShard{
 			m: map[string]int{},
 		})
@@ -103,7 +103,7 @@ type labelSetCounter struct {
 
 func newLabelSetCounter(limiter *Limiter) *labelSetCounter {
 	shards := make([]*labelSetCounterShard, 0, numMetricCounterShards)
-	for i := 0; i < numMetricCounterShards; i++ {
+	for range numMetricCounterShards {
 		shards = append(shards, &labelSetCounterShard{
 			RWMutex:       &sync.RWMutex{},
 			valuesCounter: map[uint64]*labelSetCounterEntry{},
@@ -252,7 +252,7 @@ func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, metrics
 	}
 
 	nonDefaultPartitionChanged := false
-	for i := 0; i < numMetricCounterShards; i++ {
+	for i := range numMetricCounterShards {
 		s := m.shards[i]
 		s.RLock()
 		for h, entry := range s.valuesCounter {

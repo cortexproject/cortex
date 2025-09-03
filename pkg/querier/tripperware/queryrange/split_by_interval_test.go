@@ -61,7 +61,6 @@ func TestNextIntervalBoundary(t *testing.T) {
 		{toMs(day) + 15*seconds, 35 * seconds, 2*toMs(day) - 5*seconds, day},
 		{toMs(time.Hour) + 15*seconds, 35 * seconds, 2*toMs(time.Hour) - 15*seconds, time.Hour},
 	} {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.out, nextIntervalBoundary(tc.in, tc.step, tc.interval))
@@ -266,7 +265,6 @@ func TestSplitQuery(t *testing.T) {
 			interval: 3 * time.Hour,
 		},
 	} {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			days, err := splitQuery(tc.input, tc.interval)
@@ -321,7 +319,6 @@ func TestSplitByDay(t *testing.T) {
 			intervalFn:         dynamicIntervalFn(Config{SplitQueriesByInterval: day, DynamicQuerySplitsConfig: DynamicQuerySplitsConfig{MaxShardsPerQuery: 10}}, mockLimits{}, querysharding.NewQueryAnalyzer(), lookbackDelta),
 		},
 	} {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			var actualCount atomic.Int32
@@ -423,7 +420,6 @@ func Test_evaluateAtModifier(t *testing.T) {
 			expectedErrorCode: http.StatusBadRequest,
 		},
 	} {
-		tt := tt
 		t.Run(tt.in, func(t *testing.T) {
 			out, err := evaluateAtModifierFunction(tt.in, start, end)
 			if tt.expectedErrorCode != 0 {

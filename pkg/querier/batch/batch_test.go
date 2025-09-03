@@ -56,7 +56,7 @@ func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
 			b.ReportAllocs()
 
 			var it chunkenc.Iterator
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				it = NewChunkMergeIterator(it, chunks, 0, 0)
 				for it.Next() != chunkenc.ValNone {
 					it.At()
@@ -110,7 +110,7 @@ func BenchmarkNewChunkMergeIterator_Seek(b *testing.B) {
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
 			var it chunkenc.Iterator
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				it = NewChunkMergeIterator(it, chunks, 0, 0)
 				i := int64(0)
 				for it.Seek(i*scenario.seekStep.Milliseconds()) != chunkenc.ValNone {
@@ -164,8 +164,8 @@ func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
 func createChunks(b *testing.B, step time.Duration, numChunks, numSamplesPerChunk, duplicationFactor int, enc promchunk.Encoding) []chunk.Chunk {
 	result := make([]chunk.Chunk, 0, numChunks)
 
-	for d := 0; d < duplicationFactor; d++ {
-		for c := 0; c < numChunks; c++ {
+	for range duplicationFactor {
+		for c := range numChunks {
 			minTime := step * time.Duration(c*numSamplesPerChunk)
 			result = append(result, util.GenerateChunk(b, step, model.Time(minTime.Milliseconds()), numSamplesPerChunk, enc))
 		}

@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 	"unsafe"
@@ -19,13 +20,7 @@ const (
 
 // StringsContain returns true if the search value is within the list of input values.
 func StringsContain(values []string, search string) bool {
-	for _, v := range values {
-		if search == v {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(values, search)
 }
 
 // StringsMap returns a map where keys are input values.

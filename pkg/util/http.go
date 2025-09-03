@@ -46,7 +46,7 @@ func (b BasicAuth) IsEnabled() bool {
 }
 
 // WriteJSONResponse writes some JSON as a HTTP response.
-func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
+func WriteJSONResponse(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 
 	data, err := json.Marshal(v)
@@ -62,7 +62,7 @@ func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 }
 
 // WriteYAMLResponse writes some YAML as a HTTP response.
-func WriteYAMLResponse(w http.ResponseWriter, v interface{}) {
+func WriteYAMLResponse(w http.ResponseWriter, v any) {
 	// There is not standardised content-type for YAML, text/plain ensures the
 	// YAML is displayed in the browser instead of offered as a download
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -97,7 +97,7 @@ func WriteHTMLResponse(w http.ResponseWriter, message string) {
 
 // RenderHTTPResponse either responds with json or a rendered html page using the passed in template
 // by checking the Accepts header
-func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Template, r *http.Request) {
+func RenderHTTPResponse(w http.ResponseWriter, v any, t *template.Template, r *http.Request) {
 	accept := r.Header.Get("Accept")
 	if strings.Contains(accept, "application/json") {
 		WriteJSONResponse(w, v)
@@ -111,7 +111,7 @@ func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 }
 
 // StreamWriteYAMLResponseCommon stream writes data as http response
-func streamWriteYAMLResponseCommon(w http.ResponseWriter, iter chan interface{}, logger log.Logger, marshalFn func(in interface{}) (out []byte, err error)) {
+func streamWriteYAMLResponseCommon(w http.ResponseWriter, iter chan any, logger log.Logger, marshalFn func(in any) (out []byte, err error)) {
 	w.Header().Set("Content-Type", "application/yaml")
 	for v := range iter {
 		data, err := marshalFn(v)
@@ -128,12 +128,12 @@ func streamWriteYAMLResponseCommon(w http.ResponseWriter, iter chan interface{},
 }
 
 // StreamWriteYAMLResponse stream writes data as http response using yaml v2 library
-func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan interface{}, logger log.Logger) {
+func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan any, logger log.Logger) {
 	streamWriteYAMLResponseCommon(w, iter, logger, yaml.Marshal)
 }
 
 // StreamWriteYAMLV3Response stream writes data as http response using yaml v3 library
-func StreamWriteYAMLV3Response(w http.ResponseWriter, iter chan interface{}, logger log.Logger) {
+func StreamWriteYAMLV3Response(w http.ResponseWriter, iter chan any, logger log.Logger) {
 	streamWriteYAMLResponseCommon(w, iter, logger, yamlv3.Marshal)
 }
 

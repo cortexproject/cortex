@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"maps"
 	"path"
 	"path/filepath"
 	"sort"
@@ -257,17 +258,11 @@ pushJobsLoop:
 	} else {
 		// If an error occurred, we prefer to partially update the metas map instead of
 		// not updating it at all. At least we'll update blocks for the successful tenants.
-		for userID, metas := range resMetas {
-			d.userMetas[userID] = metas
-		}
+		maps.Copy(d.userMetas, resMetas)
 
-		for userID, metas := range resMetasLookup {
-			d.userMetasLookup[userID] = metas
-		}
+		maps.Copy(d.userMetasLookup, resMetasLookup)
 
-		for userID, deletionMarks := range resDeletionMarks {
-			d.userDeletionMarks[userID] = deletionMarks
-		}
+		maps.Copy(d.userDeletionMarks, resDeletionMarks)
 	}
 	d.userMx.Unlock()
 

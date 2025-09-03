@@ -205,7 +205,7 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 
 	var workerErr error
 	var wg sync.WaitGroup
-	for i := 0; i < INGESTER_CLIENT_STREAM_WORKER_COUNT; i++ {
+	for i := range INGESTER_CLIENT_STREAM_WORKER_COUNT {
 		workerName := fmt.Sprintf("ingester-%s-stream-push-worker-%d", c.addr, i)
 		wg.Add(1)
 		go func() {

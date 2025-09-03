@@ -499,7 +499,6 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 
 	for _, querier := range queriers {
 		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
-		querier := querier
 		g.Go(func() error {
 			// NB: Values are sorted in Cortex already.
 			myValues, myWarnings, err := querier.LabelValues(ctx, name, hints, matchers...)
@@ -568,7 +567,6 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 
 	for _, querier := range queriers {
 		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
-		querier := querier
 		g.Go(func() error {
 			// NB: Names are sorted in Cortex already.
 			myNames, myWarnings, err := querier.LabelNames(ctx, hints, matchers...)

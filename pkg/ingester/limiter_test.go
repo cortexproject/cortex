@@ -221,7 +221,6 @@ func runLimiterMaxFunctionTest(
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -288,7 +287,6 @@ func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -349,7 +347,6 @@ func TestLimiter_AssertMaxMetadataPerMetric(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -411,7 +408,6 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -473,7 +469,6 @@ func TestLimiter_AssertMaxNativeHistogramsSeriesPerUser(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -557,7 +552,6 @@ func TestLimiter_AssertMaxSeriesPerLabelSet(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -618,7 +612,6 @@ func TestLimiter_AssertMaxMetricsWithMetadataPerUser(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -714,7 +707,6 @@ func TestLimiter_minNonZero(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			assert.Equal(t, testData.expected, minNonZero(testData.first, testData.second))

@@ -287,7 +287,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			// Since the response is sent as soon as the quorum is reached, when we
 			// reach this point the 3rd AM may not have received the request yet.
 			// To avoid flaky test we retry until we hit the desired state within a reasonable timeout.
-			test.Poll(t, time.Second, c.expectedTotalCalls, func() interface{} {
+			test.Poll(t, time.Second, c.expectedTotalCalls, func() any {
 				totalReqCount := 0
 				for _, a := range ams {
 					reqCount := a.requestsCount(route)
@@ -306,7 +306,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBody []byte) (*Distributor, []*mockAlertmanager, func()) {
 	ams := []*mockAlertmanager{}
 	remainingFailure := atomic.NewInt32(int32(numAM - numHappyAM))
-	for i := 0; i < numAM; i++ {
+	for i := range numAM {
 		ams = append(ams, newMockAlertmanager(i, remainingFailure, responseBody))
 	}
 
@@ -329,7 +329,7 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBod
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	err := kvStore.CAS(context.Background(), RingKey,
-		func(_ interface{}) (interface{}, bool, error) {
+		func(_ any) (any, bool, error) {
 			return &ring.Desc{
 				Ingesters: amDescs,
 			}, true, nil
@@ -346,7 +346,7 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBod
 	}, RingNameForServer, RingKey, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), amRing))
-	test.Poll(t, time.Second, numAM, func() interface{} {
+	test.Poll(t, time.Second, numAM, func() any {
 		return amRing.InstancesCount()
 	})
 

@@ -71,8 +71,8 @@ func (m metrics) List(ctx context.Context, prefix string) ([]string, error) {
 	return result, err
 }
 
-func (m metrics) Get(ctx context.Context, key string) (interface{}, error) {
-	var result interface{}
+func (m metrics) Get(ctx context.Context, key string) (any, error) {
+	var result any
 	err := instrument.CollectedRequest(ctx, "GET", m.requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		result, err = m.c.Get(ctx, key)
@@ -88,20 +88,20 @@ func (m metrics) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-func (m metrics) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (m metrics) CAS(ctx context.Context, key string, f func(in any) (out any, retry bool, err error)) error {
 	return instrument.CollectedRequest(ctx, "CAS", m.requestDuration, getCasErrorCode, func(ctx context.Context) error {
 		return m.c.CAS(ctx, key, f)
 	})
 }
 
-func (m metrics) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+func (m metrics) WatchKey(ctx context.Context, key string, f func(any) bool) {
 	_ = instrument.CollectedRequest(ctx, "WatchKey", m.requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		m.c.WatchKey(ctx, key, f)
 		return nil
 	})
 }
 
-func (m metrics) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+func (m metrics) WatchPrefix(ctx context.Context, prefix string, f func(string, any) bool) {
 	_ = instrument.CollectedRequest(ctx, "WatchPrefix", m.requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		m.c.WatchPrefix(ctx, prefix, f)
 		return nil

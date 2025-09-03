@@ -235,7 +235,7 @@ func TestBuildInfoAPI(t *testing.T) {
 			version.Version = tc.version
 			version.Branch = tc.branch
 			version.Revision = tc.revision
-			handler := NewQuerierHandler(cfg, querierConfig, nil, nil, nil, nil, nil, &FakeLogger{})
+			handler := NewQuerierHandler(cfg, querierConfig, nil, nil, nil, nil, nil, &FakeLogger{}, nil, false, nil)
 			writer := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/api/v1/status/buildinfo", nil)
 			req = req.WithContext(user.InjectOrgID(req.Context(), "test"))

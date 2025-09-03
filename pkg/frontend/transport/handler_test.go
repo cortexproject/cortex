@@ -32,7 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -626,7 +626,7 @@ func Test_ExtractTenantIDs(t *testing.T) {
 
 func Test_TenantFederation_MaxTenant(t *testing.T) {
 	// set a multi tenant resolver
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+	users.WithDefaultResolver(users.NewMultiResolver())
 
 	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{

@@ -21,7 +21,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 var (
@@ -132,7 +131,7 @@ func (r *RegexResolver) TenantIDs(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	return tenant.ValidateOrgIDs(orgIDs)
+	return users.ValidateOrgIDs(orgIDs)
 }
 
 func (r *RegexResolver) getRegexMatchedOrgIds(orgID string) ([]string, error) {
@@ -153,7 +152,7 @@ func (r *RegexResolver) getRegexMatchedOrgIds(orgID string) ([]string, error) {
 	}
 
 	if len(matched) == 0 {
-		if err := tenant.ValidTenantID(orgID); err == nil {
+		if err := users.ValidTenantID(orgID); err == nil {
 			// when querying for a newly created orgID, the query may not
 			// work because it has not been uploaded to object storage.
 			// To make the query work (not breaking existing behavior),
@@ -194,11 +193,11 @@ func (r *RegexValidator) TenantID(ctx context.Context) (string, error) {
 		return "", errInvalidRegex
 	}
 
-	if err := tenant.CheckTenantIDLength(id); err != nil {
+	if err := users.CheckTenantIDLength(id); err != nil {
 		return "", err
 	}
 
-	if err := tenant.CheckTenantIDIsSupported(id); err != nil {
+	if err := users.CheckTenantIDIsSupported(id); err != nil {
 		return "", err
 	}
 

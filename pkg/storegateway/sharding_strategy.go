@@ -14,7 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -45,7 +45,7 @@ type ShardingLimits interface {
 	StoreGatewayTenantShardSize(userID string) float64
 }
 
-func filterDisallowedTenants(userIDs []string, logger log.Logger, allowedTenants *tenant.AllowedTenants) []string {
+func filterDisallowedTenants(userIDs []string, logger log.Logger, allowedTenants *users.AllowedTenants) []string {
 	filteredUserIDs := []string{}
 	for _, userID := range userIDs {
 		if !allowedTenants.IsAllowed(userID) {
@@ -62,10 +62,10 @@ func filterDisallowedTenants(userIDs []string, logger log.Logger, allowedTenants
 // NoShardingStrategy is a no-op strategy. When this strategy is used, no tenant/block is filtered out.
 type NoShardingStrategy struct {
 	logger         log.Logger
-	allowedTenants *tenant.AllowedTenants
+	allowedTenants *users.AllowedTenants
 }
 
-func NewNoShardingStrategy(logger log.Logger, allowedTenants *tenant.AllowedTenants) *NoShardingStrategy {
+func NewNoShardingStrategy(logger log.Logger, allowedTenants *users.AllowedTenants) *NoShardingStrategy {
 	return &NoShardingStrategy{
 		logger:         logger,
 		allowedTenants: allowedTenants,
@@ -90,11 +90,11 @@ type DefaultShardingStrategy struct {
 	r              *ring.Ring
 	instanceAddr   string
 	logger         log.Logger
-	allowedTenants *tenant.AllowedTenants
+	allowedTenants *users.AllowedTenants
 }
 
 // NewDefaultShardingStrategy creates DefaultShardingStrategy.
-func NewDefaultShardingStrategy(r *ring.Ring, instanceAddr string, logger log.Logger, allowedTenants *tenant.AllowedTenants) *DefaultShardingStrategy {
+func NewDefaultShardingStrategy(r *ring.Ring, instanceAddr string, logger log.Logger, allowedTenants *users.AllowedTenants) *DefaultShardingStrategy {
 	return &DefaultShardingStrategy{
 		r:            r,
 		instanceAddr: instanceAddr,
@@ -136,11 +136,11 @@ type ShuffleShardingStrategy struct {
 	logger       log.Logger
 
 	zoneStableShuffleSharding bool
-	allowedTenants            *tenant.AllowedTenants
+	allowedTenants            *users.AllowedTenants
 }
 
 // NewShuffleShardingStrategy makes a new ShuffleShardingStrategy.
-func NewShuffleShardingStrategy(r *ring.Ring, instanceID, instanceAddr string, limits ShardingLimits, logger log.Logger, allowedTenants *tenant.AllowedTenants, zoneStableShuffleSharding bool) *ShuffleShardingStrategy {
+func NewShuffleShardingStrategy(r *ring.Ring, instanceID, instanceAddr string, limits ShardingLimits, logger log.Logger, allowedTenants *users.AllowedTenants, zoneStableShuffleSharding bool) *ShuffleShardingStrategy {
 	return &ShuffleShardingStrategy{
 		r:            r,
 		instanceID:   instanceID,

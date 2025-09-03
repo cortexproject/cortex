@@ -23,7 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestDefaultShardingStrategy(t *testing.T) {
@@ -646,9 +646,9 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				// Wait until the ring client has synced.
 				require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE))
 
-				var allowedTenants *tenant.AllowedTenants
+				var allowedTenants *users.AllowedTenants
 				if testData.isTenantDisabled {
-					allowedTenants = tenant.NewAllowedTenants(nil, []string{userID})
+					allowedTenants = users.NewAllowedTenants(nil, []string{userID})
 				}
 
 				// Assert on filter users.

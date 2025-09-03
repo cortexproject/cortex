@@ -14,7 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // NewMetadataQuerier returns a MetadataQuerier that merges metric
@@ -50,7 +50,7 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 	log, ctx := spanlogger.New(ctx, "mergeMetadataQuerier.MetricsMetadata")
 	defer log.Finish()
 
-	tenantIds, err := tenant.TenantIDs(ctx)
+	tenantIds, err := users.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}

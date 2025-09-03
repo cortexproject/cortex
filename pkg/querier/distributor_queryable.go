@@ -22,7 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const retryMinBackoff = time.Millisecond
@@ -361,7 +361,7 @@ func (q *distributorQuerier) Close() error {
 }
 
 func (q *distributorQuerier) partialDataEnabled(ctx context.Context) bool {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return false
 	}

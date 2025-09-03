@@ -13,12 +13,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/objstore"
-
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 var (
-	userIDsToSkip = []string{tenant.GlobalMarkersDir, UserIndexCompressedFilename}
+	userIDsToSkip = []string{GlobalMarkersDir, UserIndexCompressedFilename}
 )
 
 type Scanner interface {
@@ -77,7 +75,7 @@ func (s *listScanner) ScanUsers(ctx context.Context) (active, deleting, deleted 
 	}
 
 	// Scan users from the __markers__ directory.
-	err = s.bkt.Iter(ctx, tenant.GlobalMarkersDir, func(entry string) error {
+	err = s.bkt.Iter(ctx, GlobalMarkersDir, func(entry string) error {
 		// entry will be of the form __markers__/<user>/
 		parts := strings.Split(entry, objstore.DirDelim)
 		userID := parts[1]
@@ -91,7 +89,7 @@ func (s *listScanner) ScanUsers(ctx context.Context) (active, deleting, deleted 
 	for userID := range scannedActiveUsers {
 		// Tenant deletion mark could exist in local path for legacy code.
 		// If tenant deletion mark exists but user ID prefix exists in the bucket, mark it as deleting.
-		if deletionMarkExists, err := tenant.TenantDeletionMarkExists(ctx, s.bkt, userID); err == nil && deletionMarkExists {
+		if deletionMarkExists, err := TenantDeletionMarkExists(ctx, s.bkt, userID); err == nil && deletionMarkExists {
 			deletingUsers[userID] = struct{}{}
 			continue
 		}

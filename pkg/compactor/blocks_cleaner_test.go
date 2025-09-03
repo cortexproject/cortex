@@ -28,7 +28,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 type testBlocksCleanerOptions struct {
@@ -165,15 +164,15 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	createDeletionMark(t, bucketClient, "user-2", block7, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 
 	// Blocks for user-3, tenant marked for deletion.
-	require.NoError(t, tenant.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", tenant.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", users.NewTenantDeletionMark(time.Now())))
 	block9 := createTSDBBlock(t, bucketClient, "user-3", 10, 30, nil)
 	block10 := createTSDBBlock(t, bucketClient, "user-3", 30, 50, nil)
 	createParquetMarker(t, bucketClient, "user-3", block10)
 
 	// User-4 with no more blocks, but couple of mark and debug files. Should be fully deleted.
-	user4Mark := tenant.NewTenantDeletionMark(time.Now())
+	user4Mark := users.NewTenantDeletionMark(time.Now())
 	user4Mark.FinishedTime = time.Now().Unix() - 60 // Set to check final user cleanup.
-	require.NoError(t, tenant.WriteTenantDeletionMark(context.Background(), bucketClient, "user-4", user4Mark))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), bucketClient, "user-4", user4Mark))
 	user4DebugMetaFile := path.Join("user-4", block.DebugMetas, "meta.json")
 	require.NoError(t, bucketClient.Upload(context.Background(), user4DebugMetaFile, strings.NewReader("some random content here")))
 
@@ -271,7 +270,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		{"user-3", true},
 		{"user-4", options.user4FilesExist},
 	} {
-		exists, err := tenant.TenantDeletionMarkExists(ctx, bucketClient, tc.user)
+		exists, err := users.TenantDeletionMarkExists(ctx, bucketClient, tc.user)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedExists, exists, tc.user)
 	}

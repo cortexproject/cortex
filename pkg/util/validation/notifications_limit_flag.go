@@ -3,10 +3,9 @@ package validation
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/pkg/errors"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var allowedIntegrationNames = []string{
@@ -43,7 +42,7 @@ func (m NotificationRateLimitMap) updateMap(unmarshalErr error, newMap map[strin
 	}
 
 	for k, v := range newMap {
-		if !util.StringsContain(allowedIntegrationNames, k) {
+		if !slices.Contains(allowedIntegrationNames, k) {
 			return errors.Errorf("unknown integration name: %s", k)
 		}
 		m[k] = v

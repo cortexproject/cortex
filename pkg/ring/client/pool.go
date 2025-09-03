@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -165,7 +165,7 @@ func (p *Pool) removeStaleClients() {
 	}
 
 	for _, addr := range p.RegisteredAddresses() {
-		if util.StringsContain(serviceAddrs, addr) {
+		if slices.Contains(serviceAddrs, addr) {
 			continue
 		}
 		level.Info(p.logger).Log("msg", "removing stale client", "addr", addr)

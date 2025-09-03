@@ -18,7 +18,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 func Test_RegexResolver(t *testing.T) {
@@ -82,8 +81,8 @@ func Test_RegexResolver(t *testing.T) {
 			bucketClient.MockIter("", tc.existingTenants, nil)
 			bucketClient.MockIter("__markers__", []string{}, nil)
 			for _, existingTenant := range tc.existingTenants {
-				bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath(existingTenant), false, nil)
-				bucketClient.MockExists(tenant.GetLocalDeletionMarkPath(existingTenant), false, nil)
+				bucketClient.MockExists(users.GetGlobalDeletionMarkPath(existingTenant), false, nil)
+				bucketClient.MockExists(users.GetLocalDeletionMarkPath(existingTenant), false, nil)
 			}
 
 			bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {

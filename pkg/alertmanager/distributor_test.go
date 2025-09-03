@@ -31,7 +31,7 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestDistributor_DistributeRequest(t *testing.T) {
@@ -262,9 +262,9 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 				req.Method = http.MethodDelete
 			}
 			req.RequestURI = url
-			var allowedTenants *tenant.AllowedTenants
+			var allowedTenants *users.AllowedTenants
 			if c.isTenantDisabled {
-				allowedTenants = tenant.NewAllowedTenants(nil, []string{"1"})
+				allowedTenants = users.NewAllowedTenants(nil, []string{"1"})
 			}
 
 			w := httptest.NewRecorder()

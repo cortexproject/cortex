@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,7 +31,7 @@ import (
 	util_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -90,7 +91,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate the Config.
 func (cfg *Config) Validate(limits validation.Limits, monitoredResources flagext.StringSliceCSV) error {
 	if cfg.ShardingEnabled {
-		if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+		if !slices.Contains(supportedShardingStrategies, cfg.ShardingStrategy) {
 			return errInvalidShardingStrategy
 		}
 
@@ -169,7 +170,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 			Help: "Total number of times the bucket sync operation triggered.",
 		}, []string{"reason"}),
 	}
-	allowedTenants := tenant.NewAllowedTenants(gatewayCfg.EnabledTenants, gatewayCfg.DisabledTenants)
+	allowedTenants := users.NewAllowedTenants(gatewayCfg.EnabledTenants, gatewayCfg.DisabledTenants)
 
 	// Init metrics.
 	g.bucketSync.WithLabelValues(syncReasonInitial)

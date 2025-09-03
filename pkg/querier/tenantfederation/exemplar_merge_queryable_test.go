@@ -21,7 +21,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 var (
@@ -62,7 +61,7 @@ type mockExemplarQueryable struct {
 
 func (m *mockExemplarQueryable) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier, error) {
 	// Due to lint check for `ensure the query path is supporting multiple tenants`
-	ids, err := tenant.TenantIDs(ctx)
+	ids, err := users.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +123,7 @@ func getFixtureExemplarResult2() []exemplar.QueryResult {
 
 func Test_MergeExemplarQuerier_Select(t *testing.T) {
 	// set a multi tenant resolver
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+	users.WithDefaultResolver(users.NewMultiResolver())
 
 	tests := []struct {
 		name            string
@@ -325,10 +324,10 @@ func Test_MergeExemplarQuerier_Select_WhenUseRegexResolver(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
-	bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(tenant.GetLocalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath("user-2"), false, nil)
-	bucketClient.MockExists(tenant.GetLocalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-2"), false, nil)
 
 	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 		return bucketClient, nil
@@ -338,7 +337,7 @@ func Test_MergeExemplarQuerier_Select_WhenUseRegexResolver(t *testing.T) {
 	tenantFederationConfig := Config{UserSyncInterval: time.Second}
 	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 	require.NoError(t, err)
-	tenant.WithDefaultResolver(regexResolver)
+	users.WithDefaultResolver(regexResolver)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 	// wait update knownUsers

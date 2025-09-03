@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,7 +20,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	shardUtil "github.com/cortexproject/cortex/pkg/ring/shard"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -327,7 +327,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	// Filter out all instances belonging to excluded zones.
 	if len(r.cfg.ExcludedZones) > 0 {
 		for instanceID, instance := range ringDesc.Ingesters {
-			if util.StringsContain(r.cfg.ExcludedZones, instance.Zone) {
+			if slices.Contains(r.cfg.ExcludedZones, instance.Zone) {
 				delete(ringDesc.Ingesters, instanceID)
 			}
 		}
@@ -411,7 +411,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 		}
 
 		// We want n *distinct* instances.
-		if util.StringsContain(distinctHosts, info.InstanceID) {
+		if slices.Contains(distinctHosts, info.InstanceID) {
 			continue
 		}
 

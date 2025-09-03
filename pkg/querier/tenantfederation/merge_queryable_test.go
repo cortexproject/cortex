@@ -30,7 +30,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 const (
@@ -46,13 +45,13 @@ const (
 	seriesWithLabelNames = "series_with_label_names"
 )
 
-// mockTenantQueryableWithFilter is a storage.Queryable that can be use to return specific warnings or errors by tenant.
+// mockTenantQueryableWithFilter is a storage.Queryable that can be use to return specific warnings or errors by users.
 type mockTenantQueryableWithFilter struct {
 	// extraLabels are labels added to all series for all tenants.
 	extraLabels []string
-	// warningsByTenant are warnings that will be returned for queries of that tenant.
+	// warningsByTenant are warnings that will be returned for queries of that users.
 	warningsByTenant map[string]annotations.Annotations
-	// queryErrByTenant is an error that will be returne for queries of that tenant.
+	// queryErrByTenant is an error that will be returne for queries of that users.
 	queryErrByTenant map[string]error
 }
 
@@ -80,9 +79,9 @@ type mockTenantQuerier struct {
 	warnings annotations.Annotations
 	queryErr error
 
-	// warningsByTenant are warnings that will be returned for queries of that tenant.
+	// warningsByTenant are warnings that will be returned for queries of that users.
 	warningsByTenant map[string]annotations.Annotations
-	// queryErrByTenant is an error that will be returne for queries of that tenant.
+	// queryErrByTenant is an error that will be returne for queries of that users.
 	queryErrByTenant map[string]error
 }
 
@@ -155,7 +154,7 @@ func (m *mockSeriesSet) Warnings() annotations.Annotations {
 
 // Select implements the storage.Querier interface.
 func (m mockTenantQuerier) Select(ctx context.Context, _ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
@@ -194,7 +193,7 @@ func (m mockTenantQuerier) Select(ctx context.Context, _ bool, sp *storage.Selec
 // LabelValues implements the storage.LabelQuerier interface.
 // The mockTenantQuerier returns all a sorted slice of all label values and does not support reducing the result set with matchers.
 func (m mockTenantQuerier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -242,7 +241,7 @@ func (m mockTenantQuerier) LabelValues(ctx context.Context, name string, hints *
 // If only one matcher is provided with label Name=seriesWithLabelNames then the resulting set will have the values of that matchers pipe-split appended.
 // I.e. querying for {seriesWithLabelNames="foo|bar|baz"} will have as result [bar, baz, foo, <rest of label names from querier matrix> ]
 func (m mockTenantQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -668,8 +667,8 @@ func TestMergeQueryable_Select(t *testing.T) {
 							bucketClient.MockIter("__markers__", []string{}, nil)
 
 							for _, scenarioTenant := range scenario.tenants {
-								bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath(scenarioTenant), false, nil)
-								bucketClient.MockExists(tenant.GetLocalDeletionMarkPath(scenarioTenant), false, nil)
+								bucketClient.MockExists(users.GetGlobalDeletionMarkPath(scenarioTenant), false, nil)
+								bucketClient.MockExists(users.GetLocalDeletionMarkPath(scenarioTenant), false, nil)
 							}
 
 							bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
@@ -682,7 +681,7 @@ func TestMergeQueryable_Select(t *testing.T) {
 							require.NoError(t, err)
 
 							// set a regex tenant resolver
-							tenant.WithDefaultResolver(regexResolver)
+							users.WithDefaultResolver(regexResolver)
 							require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 							// wait update knownUsers
@@ -693,7 +692,7 @@ func TestMergeQueryable_Select(t *testing.T) {
 							ctx = user.InjectOrgID(ctx, "team-.+")
 						} else {
 							// Set a multi tenant resolver.
-							tenant.WithDefaultResolver(tenant.NewMultiResolver())
+							users.WithDefaultResolver(users.NewMultiResolver())
 
 							// inject tenants into context
 							if len(scenario.tenants) > 0 {
@@ -868,8 +867,8 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 					bucketClient.MockIter("__markers__", []string{}, nil)
 
 					for _, scenarioTenant := range scenario.tenants {
-						bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath(scenarioTenant), false, nil)
-						bucketClient.MockExists(tenant.GetLocalDeletionMarkPath(scenarioTenant), false, nil)
+						bucketClient.MockExists(users.GetGlobalDeletionMarkPath(scenarioTenant), false, nil)
+						bucketClient.MockExists(users.GetLocalDeletionMarkPath(scenarioTenant), false, nil)
 					}
 
 					bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
@@ -881,7 +880,7 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 					require.NoError(t, err)
 
 					// set a regex tenant resolver
-					tenant.WithDefaultResolver(regexResolver)
+					users.WithDefaultResolver(regexResolver)
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 					// wait update knownUsers
@@ -892,7 +891,7 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 					ctx = user.InjectOrgID(ctx, "team-.+")
 				} else {
 					// Set a multi tenant resolver.
-					tenant.WithDefaultResolver(tenant.NewMultiResolver())
+					users.WithDefaultResolver(users.NewMultiResolver())
 
 					// inject tenants into context
 					if len(scenario.tenants) > 0 {
@@ -1106,8 +1105,8 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 							bucketClient.MockIter("__markers__", []string{}, nil)
 
 							for _, scenarioTenant := range scenario.tenants {
-								bucketClient.MockExists(tenant.GetGlobalDeletionMarkPath(scenarioTenant), false, nil)
-								bucketClient.MockExists(tenant.GetLocalDeletionMarkPath(scenarioTenant), false, nil)
+								bucketClient.MockExists(users.GetGlobalDeletionMarkPath(scenarioTenant), false, nil)
+								bucketClient.MockExists(users.GetLocalDeletionMarkPath(scenarioTenant), false, nil)
 							}
 
 							bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
@@ -1119,7 +1118,7 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 							require.NoError(t, err)
 
 							// set a regex tenant resolver
-							tenant.WithDefaultResolver(regexResolver)
+							users.WithDefaultResolver(regexResolver)
 							require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 							// wait update knownUsers
@@ -1130,7 +1129,7 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 							ctx = user.InjectOrgID(ctx, "team-.+")
 						} else {
 							// Set a multi tenant resolver.
-							tenant.WithDefaultResolver(tenant.NewMultiResolver())
+							users.WithDefaultResolver(users.NewMultiResolver())
 
 							// inject tenants into context
 							if len(scenario.tenants) > 0 {
@@ -1214,7 +1213,7 @@ func TestTracingMergeQueryable(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "team-a|team-b")
 
 	// set a multi tenant resolver
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+	users.WithDefaultResolver(users.NewMultiResolver())
 	filter := mockTenantQueryableWithFilter{}
 	q := NewQueryable(&filter, defaultMaxConcurrency, false, nil)
 	// retrieve querier if set

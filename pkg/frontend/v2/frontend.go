@@ -27,7 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // Config for a Frontend.
@@ -172,11 +172,11 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		return nil, fmt.Errorf("frontend not running: %v", s)
 	}
 
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	userID := tenant.JoinTenantIDs(tenantIDs)
+	userID := users.JoinTenantIDs(tenantIDs)
 
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
@@ -267,11 +267,11 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	userID := tenant.JoinTenantIDs(tenantIDs)
+	userID := users.JoinTenantIDs(tenantIDs)
 
 	req := f.requests.get(qrReq.QueryID)
 	// It is possible that some old response belonging to different user was received, if frontend has restarted.

@@ -43,7 +43,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -695,7 +694,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}

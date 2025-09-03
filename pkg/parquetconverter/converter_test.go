@@ -39,7 +39,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -138,7 +137,7 @@ func TestConverter(t *testing.T) {
 	require.Contains(t, syncedTenants, user)
 
 	// Mark user as deleted
-	require.NoError(t, tenant.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucketClient), user, tenant.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucketClient), user, users.NewTenantDeletionMark(time.Now())))
 
 	// Should clean sync folders
 	test.Poll(t, time.Minute, 0, func() any {

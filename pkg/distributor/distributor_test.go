@@ -50,7 +50,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -1280,7 +1280,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 
 					d := ds[0]
 
-					userID, err := tenant.TenantID(ctx)
+					userID, err := users.TenantID(ctx)
 					assert.NoError(t, err)
 					err = d.HATracker.CheckReplica(ctx, userID, tc.cluster, tc.acceptedReplica, time.Now())
 					assert.NoError(t, err)
@@ -3574,7 +3574,7 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 		i.metadata = map[uint32]map[cortexpb.MetricMetadata]struct{}{}
 	}
 
-	orgid, err := tenant.TenantID(ctx)
+	orgid, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}

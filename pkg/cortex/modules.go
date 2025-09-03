@@ -60,7 +60,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -303,7 +303,7 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize regex resolver: %v", err)
 			}
-			tenant.WithDefaultResolver(regexResolver)
+			users.WithDefaultResolver(regexResolver)
 
 			return regexResolver, nil
 		}
@@ -532,7 +532,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 
 	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
 		// If regex matcher enabled, we use regex validator to pass regex to the querier
-		tenant.WithDefaultResolver(tenantfederation.NewRegexValidator())
+		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
 	}
 
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
@@ -834,7 +834,7 @@ func (t *Cortex) initTenantDeletionAPI() (services.Service, error) {
 func (t *Cortex) initQueryScheduler() (services.Service, error) {
 	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
 		// If regex matcher enabled, we use regex validator to pass regex to the querier
-		tenant.WithDefaultResolver(tenantfederation.NewRegexValidator())
+		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
 	}
 
 	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.Querier.DistributedExecEnabled)

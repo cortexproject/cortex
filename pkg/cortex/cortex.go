@@ -63,7 +63,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -363,7 +363,7 @@ func New(cfg Config) (*Cortex, error) {
 	// Swap out the default resolver to support multiple tenant IDs separated by a '|'
 	if cfg.TenantFederation.Enabled {
 		util_log.WarnExperimentalUse("tenant-federation")
-		tenant.WithDefaultResolver(tenant.NewMultiResolver())
+		users.WithDefaultResolver(users.NewMultiResolver())
 	}
 
 	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled,

@@ -37,7 +37,9 @@ func NewDiscardedSeriesTracker(discardedSeriesGauge *prometheus.GaugeVec) *Disca
 }
 
 func (t *DiscardedSeriesTracker) Track(reason string, user string, series uint64) {
+	t.RLock()
 	userCounter, ok := t.labelUserMap[reason]
+	t.RUnlock()
 	if !ok {
 		t.Lock()
 		userCounter, ok = t.labelUserMap[reason]
@@ -51,7 +53,9 @@ func (t *DiscardedSeriesTracker) Track(reason string, user string, series uint64
 		t.Unlock()
 	}
 
+	userCounter.RLock()
 	seriesCounter, ok := userCounter.userSeriesMap[user]
+	userCounter.RUnlock()
 	if !ok {
 		userCounter.Lock()
 		seriesCounter, ok = userCounter.userSeriesMap[user]
@@ -65,7 +69,10 @@ func (t *DiscardedSeriesTracker) Track(reason string, user string, series uint64
 		userCounter.Unlock()
 	}
 
-	if _, ok := seriesCounter.seriesCountMap[series]; !ok {
+	seriesCounter.RLock()
+	_, ok = seriesCounter.seriesCountMap[series]
+	seriesCounter.RUnlock()
+	if !ok {
 		seriesCounter.Lock()
 		seriesCounter.seriesCountMap[series] = struct{}{}
 		seriesCounter.Unlock()
@@ -74,7 +81,9 @@ func (t *DiscardedSeriesTracker) Track(reason string, user string, series uint64
 
 func (t *DiscardedSeriesTracker) UpdateMetrics() {
 	usersToDelete := make([]string, 0)
+	t.RLock()
 	for label, userCounter := range t.labelUserMap {
+		userCounter.RLock()
 		for user, seriesCounter := range userCounter.userSeriesMap {
 			seriesCounter.Lock()
 			seriesCount := len(seriesCounter.seriesCountMap)
@@ -85,6 +94,7 @@ func (t *DiscardedSeriesTracker) UpdateMetrics() {
 			}
 			seriesCounter.Unlock()
 		}
+		userCounter.RUnlock()
 		userCounter.Lock()
 		for _, user := range usersToDelete {
 			if len(userCounter.userSeriesMap[user].seriesCountMap) == 0 {
@@ -93,6 +103,7 @@ func (t *DiscardedSeriesTracker) UpdateMetrics() {
 		}
 		userCounter.Unlock()
 	}
+	t.RUnlock()
 }
 
 func (t *DiscardedSeriesTracker) StartDiscardedSeriesGoroutine() {

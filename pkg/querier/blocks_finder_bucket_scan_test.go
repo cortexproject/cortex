@@ -25,7 +25,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 func TestBucketScanBlocksFinder_InitialScan(t *testing.T) {
@@ -104,8 +103,8 @@ func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 	bucket.MockIter("", []string{"user-1"}, nil)
 	bucket.MockIter("__markers__", []string{}, nil)
 	bucket.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json"}, nil)
-	bucket.MockExists(tenant.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucket.MockExists(tenant.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucket.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucket.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucket.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "invalid", errors.New("mocked error"))
 
 	require.NoError(t, s.StartAsync(ctx))
@@ -153,8 +152,8 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *t
 		bucket.MockIterWithCallback(tenantID+"/", []string{}, nil, func() {
 			time.Sleep(time.Second)
 		})
-		bucket.MockExists(tenant.GetGlobalDeletionMarkPath(tenantID), false, nil)
-		bucket.MockExists(tenant.GetLocalDeletionMarkPath(tenantID), false, nil)
+		bucket.MockExists(users.GetGlobalDeletionMarkPath(tenantID), false, nil)
+		bucket.MockExists(users.GetLocalDeletionMarkPath(tenantID), false, nil)
 	}
 
 	cfg := prepareBucketScanBlocksFinderConfig()

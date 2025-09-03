@@ -40,7 +40,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -235,7 +234,7 @@ func (c *Converter) running(ctx context.Context) error {
 					continue
 				}
 
-				if markedForDeletion, err := tenant.TenantDeletionMarkExists(ctx, c.bkt, userID); err != nil {
+				if markedForDeletion, err := users.TenantDeletionMarkExists(ctx, c.bkt, userID); err != nil {
 					level.Warn(userLogger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
 					continue
 				} else if markedForDeletion {
@@ -509,7 +508,7 @@ func (c *Converter) isPermissionDeniedErr(err error) bool {
 }
 
 func (c *Converter) ownUser(r ring.ReadRing, userId string) (bool, error) {
-	if userId == tenant.GlobalMarkersDir {
+	if userId == users.GlobalMarkersDir {
 		// __markers__ is reserved for global markers and no tenant should be allowed to have that name.
 		return false, nil
 	}

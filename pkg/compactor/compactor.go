@@ -40,7 +40,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -404,7 +403,7 @@ type Compactor struct {
 	logger         log.Logger
 	parentLogger   log.Logger
 	registerer     prometheus.Registerer
-	allowedTenants *tenant.AllowedTenants
+	allowedTenants *users.AllowedTenants
 	limits         *validation.Overrides
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
@@ -542,7 +541,7 @@ func newCompactor(
 		blocksCompactorFactory:             blocksCompactorFactory,
 		blockDeletableCheckerFactory:       blockDeletableCheckerFactory,
 		compactionLifecycleCallbackFactory: compactionLifecycleCallbackFactory,
-		allowedTenants:                     tenant.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
+		allowedTenants:                     users.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
 
 		CompactorStartDurationSeconds: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_compactor_start_duration_seconds",
@@ -895,7 +894,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 
 		ownedUsers[userID] = struct{}{}
 
-		if markedForDeletion, err := tenant.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
+		if markedForDeletion, err := users.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
 			c.CompactionRunSkippedTenants.Inc()
 			level.Warn(c.logger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
 			continue

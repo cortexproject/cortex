@@ -37,7 +37,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -421,7 +420,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	tenantIDs, err := tenant.TenantIDsFromOrgID(userID)
+	tenantIDs, err := users.TenantIDsFromOrgID(userID)
 	if err != nil {
 		return err
 	}

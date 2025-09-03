@@ -34,7 +34,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/users"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
 )
 
 const (
@@ -243,13 +242,13 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		queryString url.Values
 	)
 
-	tenantIDs, err := tenant.TenantIDs(r.Context())
+	tenantIDs, err := users.TenantIDs(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	userID := tenant.JoinTenantIDs(tenantIDs)
+	userID := users.JoinTenantIDs(tenantIDs)
 	source := tripperware.GetSource(r)
 
 	if f.tenantFederationCfg.Enabled {

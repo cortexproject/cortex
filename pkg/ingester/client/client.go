@@ -21,7 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
-	"github.com/cortexproject/cortex/pkg/util/users/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -101,7 +101,7 @@ func (c *closableHealthAndIngesterClient) PushStreamConnection(ctx context.Conte
 		default:
 		}
 
-		tenantID, err := tenant.TenantID(ctx)
+		tenantID, err := users.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}

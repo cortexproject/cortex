@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,8 +22,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/cacheutil"
 	"github.com/thanos-io/thanos/pkg/model"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
@@ -62,7 +61,7 @@ func (cfg *BucketCacheBackend) Validate() error {
 	}
 
 	for _, backend := range splitBackends {
-		if !util.StringsContain(supportedBucketCacheBackends, backend) {
+		if !slices.Contains(supportedBucketCacheBackends, backend) {
 			return errUnsupportedBucketCacheBackend
 		}
 

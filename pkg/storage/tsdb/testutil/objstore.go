@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,8 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
-
-	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 )
@@ -45,7 +44,7 @@ type MockBucketFailure struct {
 }
 
 func (m *MockBucketFailure) Delete(ctx context.Context, name string) error {
-	if util.StringsContain(m.DeleteFailures, name) {
+	if slices.Contains(m.DeleteFailures, name) {
 		return errors.New("mocked delete failure")
 	}
 	return m.Bucket.Delete(ctx, name)

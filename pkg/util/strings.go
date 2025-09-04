@@ -2,7 +2,6 @@ package util
 
 import (
 	"context"
-	"slices"
 	"sync"
 	"time"
 	"unsafe"
@@ -17,11 +16,6 @@ const (
 	// TTL should be similar to the head compaction interval
 	internerLruCacheTTL = time.Hour * 2
 )
-
-// StringsContain returns true if the search value is within the list of input values.
-func StringsContain(values []string, search string) bool {
-	return slices.Contains(values, search)
-}
 
 // StringsMap returns a map where keys are input values.
 func StringsMap(values []string) map[string]bool {

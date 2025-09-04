@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -89,7 +90,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate the Config.
 func (cfg *Config) Validate(limits validation.Limits, monitoredResources flagext.StringSliceCSV) error {
 	if cfg.ShardingEnabled {
-		if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+		if !slices.Contains(supportedShardingStrategies, cfg.ShardingStrategy) {
 			return errInvalidShardingStrategy
 		}
 

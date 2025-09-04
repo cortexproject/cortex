@@ -365,7 +365,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 	}
 
 	// Make sure a valid sharding strategy is being used
-	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+	if !slices.Contains(supportedShardingStrategies, cfg.ShardingStrategy) {
 		return errInvalidShardingStrategy
 	}
 
@@ -376,7 +376,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 	}
 
 	// Make sure a valid compaction strategy is being used
-	if !util.StringsContain(supportedCompactionStrategies, cfg.CompactionStrategy) {
+	if !slices.Contains(supportedCompactionStrategies, cfg.CompactionStrategy) {
 		return errInvalidCompactionStrategy
 	}
 

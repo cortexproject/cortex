@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -250,7 +251,7 @@ func (c *Config) Validate(log log.Logger) error {
 }
 
 func (c *Config) isModuleEnabled(m string) bool {
-	return util.StringsContain(c.Target, m)
+	return slices.Contains(c.Target, m)
 }
 
 // validateYAMLEmptyNodes ensure that no empty node has been specified in the YAML config file.

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -996,7 +997,7 @@ func (u *userShardingStrategy) FilterUsers(ctx context.Context, userIDs []string
 }
 
 func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*thanos_metadata.Meta, loaded map[ulid.ULID]struct{}, synced block.GaugeVec) error {
-	if util.StringsContain(u.users, userID) {
+	if slices.Contains(u.users, userID) {
 		return nil
 	}
 
@@ -1007,7 +1008,7 @@ func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, 
 }
 
 func (u *userShardingStrategy) OwnBlock(userID string, _ thanos_metadata.Meta) (bool, error) {
-	if util.StringsContain(u.users, userID) {
+	if slices.Contains(u.users, userID) {
 		return true, nil
 	}
 

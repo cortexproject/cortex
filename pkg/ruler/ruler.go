@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -180,7 +181,7 @@ type Config struct {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
-	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+	if !slices.Contains(supportedShardingStrategies, cfg.ShardingStrategy) {
 		return errInvalidShardingStrategy
 	}
 
@@ -200,7 +201,7 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 		return errInvalidMaxConcurrentEvals
 	}
 
-	if !util.StringsContain(supportedQueryResponseFormats, cfg.QueryResponseFormat) {
+	if !slices.Contains(supportedQueryResponseFormats, cfg.QueryResponseFormat) {
 		return errInvalidQueryResponseFormat
 	}
 

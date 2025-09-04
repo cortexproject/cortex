@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -230,7 +231,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate(limits validation.Limits) error {
-	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+	if !slices.Contains(supportedShardingStrategies, cfg.ShardingStrategy) {
 		return errInvalidShardingStrategy
 	}
 

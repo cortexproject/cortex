@@ -66,8 +66,15 @@ func newDynamodbKV(cfg Config, logger log.Logger) (dynamodbKV, error) {
 		return dynamodbKV{}, err
 	}
 
-	awsCfg, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(cfg.Region),
+	awsConfig := []func(*config.LoadOptions) error{}
+
+	if len(cfg.Region) > 0 {
+		awsConfig = append(awsConfig, config.WithRegion(cfg.Region))
+	}
+
+	awsCfg, err := config.LoadDefaultConfig(
+		context.Background(),
+		awsConfig...,
 	)
 	if err != nil {
 		return dynamodbKV{}, err

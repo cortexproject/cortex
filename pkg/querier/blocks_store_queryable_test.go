@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"sort"
 	"strings"
 	"testing"
@@ -28,13 +29,15 @@ import (
 	"github.com/thanos-io/promql-engine/engine"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/pool"
-	"github.com/thanos-io/thanos/pkg/store/hintspb"
-	"github.com/thanos-io/thanos/pkg/store/labelpb"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/thanos-io/thanos/pkg/store/hintspb"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -44,7 +47,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -1527,7 +1529,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{
 						remoteAddr:      "1.1.1.1",
-						mockedSeriesErr: &limiter.ResourceLimitReachedError{},
+						mockedSeriesErr: limiter.ErrResourceLimitReached,
 					}: {block1},
 				},
 				map[BlocksStoreClient][]ulid.ULID{
@@ -2499,20 +2501,18 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	}
 }
 
-func TestBlocksStoreQuerier_ShouldRetryResourceBasedThrottlingError(t *testing.T) {
-	limits := map[resource.Type]float64{
-		resource.CPU:  0.5,
-		resource.Heap: 0.5,
-	}
+func TestBlocksStoreQuerier_isRetryableError(t *testing.T) {
+	require.True(t, isRetryableError(status.Error(codes.Unavailable, "")))
+	require.True(t, isRetryableError(storegateway.ErrTooManyInflightRequests))
+	require.True(t, isRetryableError(limiter.ErrResourceLimitReached))
+	require.True(t, isRetryableError(status.Error(codes.Canceled, "grpc: the client connection is closing")))
+	require.True(t, isRetryableError(errors.New("pool exhausted")))
 
-	resourceBasedLimiter, err := limiter.NewResourceBasedLimiter(&limiter.MockMonitor{
-		CpuUtilization:  0.7,
-		HeapUtilization: 0.7,
-	}, limits, prometheus.DefaultRegisterer, "ingester")
-	require.NoError(t, err)
-
-	err = resourceBasedLimiter.AcceptNewRequest()
-	require.True(t, isRetryableError(err))
+	require.False(t, isRetryableError(status.Error(codes.ResourceExhausted, "some other error")))
+	require.False(t, isRetryableError(status.Error(codes.Canceled, "some other error")))
+	require.False(t, isRetryableError(errors.New("some other error")))
+	require.False(t, isRetryableError(fmt.Errorf("some other error")))
+	require.False(t, isRetryableError(httpgrpc.Errorf(http.StatusServiceUnavailable, "some other error")))
 }
 
 type blocksStoreSetMock struct {

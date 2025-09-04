@@ -39,11 +39,11 @@ var inmemoryStoreInit sync.Once
 var inmemoryStore Client
 
 // StoreConfig is a configuration used for building single store client, either
-// Consul, Etcd, Memberlist or MultiClient. It was extracted from Config to keep
+// Consul, DynamoDB, Etcd, Memberlist or MultiClient. It was extracted from Config to keep
 // single-client config separate from final client-config (with all the wrappers)
 type StoreConfig struct {
-	DynamoDB dynamodb.Config `yaml:"dynamodb"`
 	Consul   consul.Config   `yaml:"consul"`
+	DynamoDB dynamodb.Config `yaml:"dynamodb"`
 	Etcd     etcd.Config     `yaml:"etcd"`
 	Multi    MultiConfig     `yaml:"multi"`
 
@@ -81,7 +81,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(flagsPrefix, defaultPrefix string, f 
 		flagsPrefix = "ring."
 	}
 	f.StringVar(&cfg.Prefix, flagsPrefix+"prefix", defaultPrefix, "The prefix for the keys in the store. Should end with a /.")
-	f.StringVar(&cfg.Store, flagsPrefix+"store", "consul", "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.")
+	f.StringVar(&cfg.Store, flagsPrefix+"store", "consul", "Backend storage to use for the ring. Supported values are: consul, dynamodb, etcd, inmemory, memberlist, multi.")
 }
 
 // Client is a high-level client for key-value stores (such as Etcd and
@@ -120,7 +120,7 @@ type Client interface {
 	LastUpdateTime(key string) time.Time
 }
 
-// NewClient creates a new Client (consul, etcd or inmemory) based on the config,
+// NewClient creates a new Client based on the config,
 // encodes and decodes data for storage using the codec.
 func NewClient(cfg Config, codec codec.Codec, reg prometheus.Registerer, logger log.Logger) (Client, error) {
 	if cfg.Mock != nil {

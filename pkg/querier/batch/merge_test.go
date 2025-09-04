@@ -37,7 +37,6 @@ func BenchmarkMergeIterator(b *testing.B) {
 
 	for _, r := range []bool{true, false} {
 		b.Run(fmt.Sprintf("reuse-%t", r), func(b *testing.B) {
-			b.ResetTimer()
 			b.ReportAllocs()
 			for b.Loop() {
 				if r {

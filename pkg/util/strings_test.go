@@ -96,7 +96,6 @@ func BenchmarkMergeSlicesParallel(b *testing.B) {
 			b.Run(name, func(b *testing.B) {
 				// Run the benchmark.
 				b.ReportAllocs()
-				b.ResetTimer()
 				var r []string
 				var err error
 				for b.Loop() {

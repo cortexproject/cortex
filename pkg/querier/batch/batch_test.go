@@ -51,7 +51,6 @@ func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
 
 		chunks := createChunks(b, step, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
 
-		b.ResetTimer()
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
 
@@ -106,7 +105,6 @@ func BenchmarkNewChunkMergeIterator_Seek(b *testing.B) {
 
 		chunks := createChunks(b, scenario.scrapeInterval, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
 
-		b.ResetTimer()
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
 			var it chunkenc.Iterator

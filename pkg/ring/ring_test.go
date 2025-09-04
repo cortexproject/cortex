@@ -89,7 +89,6 @@ func benchmarkBatch(b *testing.B, g TokenGenerator, numInstances, numKeys int) {
 	for n, c := range tc {
 		b.Run(n, func(b *testing.B) {
 			// Generate a batch of N random keys, and look them up
-			b.ResetTimer()
 			b.ReportAllocs()
 			for b.Loop() {
 				generateKeys(rnd, numKeys, keys)

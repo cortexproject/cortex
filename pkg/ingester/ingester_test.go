@@ -2835,7 +2835,6 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 					start := make(chan struct{})
 
 					b.ReportAllocs()
-					b.ResetTimer()
 
 					for c := 0; c < scenario.numConcurrentClients; c++ {
 						go func() {

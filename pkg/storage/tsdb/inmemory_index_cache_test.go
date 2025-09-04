@@ -162,7 +162,6 @@ func BenchmarkInMemoryIndexCacheStore(b *testing.B) {
 		cache, err := newInMemoryIndexCache(cfg, logger, prometheus.NewRegistry())
 		require.NoError(b, err)
 		b.ReportAllocs()
-		b.ResetTimer()
 		for i := 0; b.Loop(); i++ {
 			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
 		}
@@ -172,7 +171,6 @@ func BenchmarkInMemoryIndexCacheStore(b *testing.B) {
 		cache, err := storecache.NewInMemoryIndexCacheWithConfig(logger, nil, prometheus.NewRegistry(), storecache.DefaultInMemoryIndexCacheConfig)
 		require.NoError(b, err)
 		b.ReportAllocs()
-		b.ResetTimer()
 		for i := 0; b.Loop(); i++ {
 			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
 		}
@@ -182,7 +180,7 @@ func BenchmarkInMemoryIndexCacheStore(b *testing.B) {
 		cache, err := newInMemoryIndexCache(cfg, logger, prometheus.NewRegistry())
 		require.NoError(b, err)
 		b.ReportAllocs()
-		b.ResetTimer()
+
 		for i := 0; b.Loop(); i++ {
 			cache.StoreSeries(blockID, storage.SeriesRef(i), postingData, tenancy.DefaultTenant)
 		}
@@ -192,7 +190,6 @@ func BenchmarkInMemoryIndexCacheStore(b *testing.B) {
 		cache, err := storecache.NewInMemoryIndexCacheWithConfig(logger, nil, prometheus.NewRegistry(), storecache.DefaultInMemoryIndexCacheConfig)
 		require.NoError(b, err)
 		b.ReportAllocs()
-		b.ResetTimer()
 		for i := 0; b.Loop(); i++ {
 			cache.StoreSeries(blockID, storage.SeriesRef(i), postingData, tenancy.DefaultTenant)
 		}
@@ -219,7 +216,6 @@ func BenchmarkInMemoryIndexCacheStoreConcurrent(b *testing.B) {
 		require.NoError(b, err)
 		ch := make(chan int)
 		b.ReportAllocs()
-		b.ResetTimer()
 
 		for range 500 {
 			go func() {
@@ -241,7 +237,6 @@ func BenchmarkInMemoryIndexCacheStoreConcurrent(b *testing.B) {
 		require.NoError(b, err)
 		ch := make(chan int)
 		b.ReportAllocs()
-		b.ResetTimer()
 
 		for range 500 {
 			go func() {
@@ -263,7 +258,6 @@ func BenchmarkInMemoryIndexCacheStoreConcurrent(b *testing.B) {
 		require.NoError(b, err)
 		ch := make(chan int)
 		b.ReportAllocs()
-		b.ResetTimer()
 
 		for range 500 {
 			go func() {
@@ -285,7 +279,6 @@ func BenchmarkInMemoryIndexCacheStoreConcurrent(b *testing.B) {
 		require.NoError(b, err)
 		ch := make(chan int)
 		b.ReportAllocs()
-		b.ResetTimer()
 
 		for range 500 {
 			go func() {
@@ -328,7 +321,6 @@ func BenchmarkInMemoryIndexCacheFetch(b *testing.B) {
 			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
 		}
 		b.ReportAllocs()
-		b.ResetTimer()
 		for b.Loop() {
 			cache.FetchMultiSeries(ctx, blockID, ids, tenancy.DefaultTenant)
 		}
@@ -341,7 +333,6 @@ func BenchmarkInMemoryIndexCacheFetch(b *testing.B) {
 			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
 		}
 		b.ReportAllocs()
-		b.ResetTimer()
 		for b.Loop() {
 			cache.FetchMultiSeries(ctx, blockID, ids, tenancy.DefaultTenant)
 		}
@@ -373,7 +364,6 @@ func BenchmarkInMemoryIndexCacheFetchConcurrent(b *testing.B) {
 			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
 		}
 		b.ReportAllocs()
-		b.ResetTimer()
 
 		ch := make(chan int)
 		for range 500 {
@@ -397,7 +387,6 @@ func BenchmarkInMemoryIndexCacheFetchConcurrent(b *testing.B) {
 			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
 		}
 		b.ReportAllocs()
-		b.ResetTimer()
 
 		ch := make(chan int)
 		for range 500 {

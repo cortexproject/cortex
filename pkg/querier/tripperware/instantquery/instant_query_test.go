@@ -1860,7 +1860,6 @@ func Benchmark_Decode(b *testing.B) {
 			body, err := json.Marshal(r)
 			require.NoError(b, err)
 
-			b.ResetTimer()
 			b.ReportAllocs()
 
 			for b.Loop() {
@@ -1924,7 +1923,6 @@ func Benchmark_Decode_Protobuf(b *testing.B) {
 			body, err := proto.Marshal(&r)
 			require.NoError(b, err)
 
-			b.ResetTimer()
 			b.ReportAllocs()
 
 			for b.Loop() {

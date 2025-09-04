@@ -26,7 +26,6 @@ func BenchmarkSignRequest(b *testing.B) {
 	for _, tc := range tests {
 		b.Run(fmt.Sprintf("WriteRequestSize: %v", tc.size), func(b *testing.B) {
 			wr := createWriteRequest(tc.size, true, "family1", "help1", "unit")
-			b.ResetTimer()
 			b.ReportAllocs()
 			for b.Loop() {
 				_, err := wr.Sign(ctx)

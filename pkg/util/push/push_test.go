@@ -118,7 +118,6 @@ func Benchmark_Handler(b *testing.B) {
 			req, err := createPRW1HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
-			b.ResetTimer()
 			b.ReportAllocs()
 
 			for b.Loop() {
@@ -133,7 +132,6 @@ func Benchmark_Handler(b *testing.B) {
 			req, err := createPRW2HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
-			b.ResetTimer()
 			b.ReportAllocs()
 
 			for b.Loop() {
@@ -153,7 +151,6 @@ func Benchmark_convertV2RequestToV1(b *testing.B) {
 		b.Run(fmt.Sprintf("%d series", seriesNum), func(b *testing.B) {
 			series := makeV2ReqWithSeries(seriesNum)
 
-			b.ResetTimer()
 			b.ReportAllocs()
 			for b.Loop() {
 				_, err := convertV2RequestToV1(series)

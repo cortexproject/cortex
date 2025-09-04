@@ -2226,7 +2226,6 @@ func BenchmarkDistributor_GetLabelsValues(b *testing.B) {
 			lblValuesDuplicateRatio: tc.lblValuesDuplicateRatio,
 		})
 		b.Run(name, func(b *testing.B) {
-			b.ResetTimer()
 			b.ReportAllocs()
 			for b.Loop() {
 				_, err := ds[0].LabelValuesForLabelName(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__", nil, false)
@@ -2522,7 +2521,6 @@ func BenchmarkDistributor_Push(b *testing.B) {
 
 			// Run the benchmark.
 			b.ReportAllocs()
-			b.ResetTimer()
 
 			for b.Loop() {
 				_, err := distributor.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
@@ -2884,7 +2882,6 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 
 			// Run the benchmark.
 			b.ReportAllocs()
-			b.ResetTimer()
 
 			for b.Loop() {
 				now := model.Now()

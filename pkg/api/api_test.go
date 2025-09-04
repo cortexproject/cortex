@@ -187,7 +187,6 @@ func Benchmark_Compression(b *testing.B) {
 			req.Header.Set(acceptEncodingHeader, "gzip")
 
 			b.ReportAllocs()
-			b.ResetTimer()
 
 			// Reusing the array to read the body and avoid allocation on the test
 			encRespBody := make([]byte, len(respBody))

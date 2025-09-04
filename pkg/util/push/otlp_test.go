@@ -637,7 +637,6 @@ func BenchmarkOTLPWriteHandlerCompression(b *testing.B) {
 		req, err := getOTLPHttpRequest(&exportRequest, jsonContentType, "")
 		require.NoError(b, err)
 
-		b.ResetTimer()
 		b.ReportAllocs()
 		for b.Loop() {
 			recorder := httptest.NewRecorder()
@@ -652,7 +651,6 @@ func BenchmarkOTLPWriteHandlerCompression(b *testing.B) {
 		req, err := getOTLPHttpRequest(&exportRequest, jsonContentType, "gzip")
 		require.NoError(b, err)
 
-		b.ResetTimer()
 		b.ReportAllocs()
 		for b.Loop() {
 			recorder := httptest.NewRecorder()
@@ -667,7 +665,6 @@ func BenchmarkOTLPWriteHandlerCompression(b *testing.B) {
 		req, err := getOTLPHttpRequest(&exportRequest, pbContentType, "")
 		require.NoError(b, err)
 
-		b.ResetTimer()
 		b.ReportAllocs()
 		for b.Loop() {
 			recorder := httptest.NewRecorder()
@@ -682,7 +679,6 @@ func BenchmarkOTLPWriteHandlerCompression(b *testing.B) {
 		req, err := getOTLPHttpRequest(&exportRequest, pbContentType, "gzip")
 		require.NoError(b, err)
 
-		b.ResetTimer()
 		b.ReportAllocs()
 		for b.Loop() {
 			recorder := httptest.NewRecorder()

@@ -15,9 +15,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/extprom"
-	"github.com/weaveworks/common/logging"
-
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/logging"
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/ring"

@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"maps"
 	"math"
 	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -971,7 +971,6 @@ func TestRing_GetAllHealthy(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
-			maps.Copy(ringDesc.Ingesters, ringDesc.Ingesters)
 
 			ring := Ring{
 				cfg:                 Config{HeartbeatTimeout: heartbeatTimeout},
@@ -1191,7 +1190,6 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
-			maps.Copy(ringDesc.Ingesters, ringDesc.Ingesters)
 
 			ring := Ring{
 				cfg: Config{
@@ -2596,7 +2594,6 @@ func TestRing_ShuffleShardWithReadOnlyIngesters(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
-			maps.Copy(ringDesc.Ingesters, ringDesc.Ingesters)
 
 			ring := Ring{
 				cfg: Config{

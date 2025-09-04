@@ -28,12 +28,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/pool"
 	thanosquery "github.com/thanos-io/thanos/pkg/query"
-	"github.com/thanos-io/thanos/pkg/store/hintspb"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 	grpc_metadata "google.golang.org/grpc/metadata"
+
+	"github.com/thanos-io/thanos/pkg/store/hintspb"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/series"
@@ -1204,17 +1205,11 @@ func countSamplesAndChunks(series ...*storepb.Series) (samplesCount, chunksCount
 
 // only retry connection issues
 func isRetryableError(err error) bool {
-	// retry upon resource exhaustion error from resource monitor
-	var resourceExhaustedErr *limiter.ResourceLimitReachedError
-	if errors.As(err, &resourceExhaustedErr) {
-		return true
-	}
-
 	switch status.Code(err) {
 	case codes.Unavailable:
 		return true
 	case codes.ResourceExhausted:
-		return errors.Is(err, storegateway.ErrTooManyInflightRequests)
+		return errors.Is(err, storegateway.ErrTooManyInflightRequests) || errors.Is(err, limiter.ErrResourceLimitReached)
 	// Client side connection closing, this error happens during store gateway deployment.
 	// https://github.com/grpc/grpc-go/blob/03172006f5d168fc646d87928d85cb9c4a480291/clientconn.go#L67
 	case codes.Canceled:

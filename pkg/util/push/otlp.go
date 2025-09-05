@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/util/push/cortexotlpconverter"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/config"
@@ -24,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/push/cortexotlpconverter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -86,14 +86,6 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 			http.Error(w, string(resp.Body), int(resp.Code))
 		}
 	})
-}
-
-func makeMetadata(promMetadata []cortexpb.MetricMetadata) []*cortexpb.MetricMetadata {
-	metadata := make([]*cortexpb.MetricMetadata, 0, len(promMetadata))
-	for _, m := range promMetadata {
-		metadata = append(metadata, &m)
-	}
-	return metadata
 }
 
 func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (pmetricotlp.ExportRequest, error) {

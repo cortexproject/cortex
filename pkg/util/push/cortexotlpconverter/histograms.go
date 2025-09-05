@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/common/model"
-	"go.opentelemetry.io/collector/pdata/pcommon"
-	"go.opentelemetry.io/collector/pdata/pmetric"
-
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/util/annotations"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 const defaultZeroThreshold = 1e-128

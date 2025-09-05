@@ -8,14 +8,14 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/otlptranslator"
+	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/util/annotations"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/multierr"
 
-	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 type PromoteResourceAttributes struct {

@@ -4,10 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/promql-engine/logicalplan"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 func TestDistributedOptimizer(t *testing.T) {
@@ -58,7 +56,7 @@ func TestDistributedOptimizer(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			lp, _, err := CreateTestLogicalPlan(tc.query, now, now, time.Minute)
+			lp, err := CreateTestLogicalPlan(tc.query, now, now, time.Minute)
 			require.NoError(t, err)
 
 			node := (*lp).Root()
@@ -74,50 +72,4 @@ func TestDistributedOptimizer(t *testing.T) {
 			require.Equal(t, (*lp).Root().String(), tc.expectedResult)
 		})
 	}
-}
-
-func getStartAndEnd(start time.Time, end time.Time, step time.Duration) (time.Time, time.Time) {
-	if step == 0 {
-		return start, start
-	}
-	return start, end
-}
-
-func CreateTestLogicalPlan(qs string, start time.Time, end time.Time, step time.Duration) (*logicalplan.Plan, query.Options, error) {
-
-	start, end = getStartAndEnd(start, end, step)
-
-	qOpts := query.Options{
-		Start:      start,
-		End:        end,
-		Step:       step,
-		StepsBatch: 10,
-		NoStepSubqueryIntervalFn: func(duration time.Duration) time.Duration {
-			return 0
-		},
-		LookbackDelta:      0,
-		EnablePerStepStats: false,
-	}
-
-	expr, err := parser.NewParser(qs, parser.WithFunctions(parser.Functions)).ParseExpr()
-	if err != nil {
-		return nil, qOpts, err
-	}
-
-	planOpts := logicalplan.PlanOptions{
-		DisableDuplicateLabelCheck: false,
-	}
-
-	logicalPlan, err := logicalplan.NewFromAST(expr, &qOpts, planOpts)
-	if err != nil {
-		return nil, qOpts, err
-	}
-	optimizedPlan, _ := logicalPlan.Optimize(logicalplan.DefaultOptimizers)
-
-	distributedOptimizer := DistributedOptimizer{}
-	dOptimizedNode, _ := distributedOptimizer.Optimize(optimizedPlan.Root(), &qOpts)
-
-	plan := logicalplan.New(dOptimizedNode, &qOpts, planOpts)
-
-	return &plan, qOpts, nil
 }

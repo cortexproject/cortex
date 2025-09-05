@@ -14,7 +14,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -39,7 +38,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 		allowDeltaTemporality   bool
 		otlpSeries              pmetric.Metric
 		expectedLabels          labels.Labels
-		expectedMetadata        prompb.MetricMetadata
+		expectedMetadata        *cortexpb.MetricMetadata
 	}{
 		{
 			description:             "[enableTypeAndUnitLabels: true], the '__type__' label should be attached when the type is the gauge",
@@ -51,7 +50,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 				"__unit__":   "seconds",
 				"test_label": "test_value",
 			}),
-			expectedMetadata: createPromMetadata("test_seconds", "seconds", prompb.MetricMetadata_GAUGE),
+			expectedMetadata: createPromMetadata("test_seconds", "seconds", cortexpb.GAUGE),
 		},
 		{
 			description:             "[enableTypeAndUnitLabels: true], the '__type__' label should not be attached when the type is unknown",
@@ -63,7 +62,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 				"__unit__":   "seconds",
 				"test_label": "test_value",
 			}),
-			expectedMetadata: createPromMetadata("test_seconds", "seconds", prompb.MetricMetadata_UNKNOWN),
+			expectedMetadata: createPromMetadata("test_seconds", "seconds", cortexpb.UNKNOWN),
 		},
 		{
 			description:             "[enableTypeAndUnitLabels: false]",
@@ -73,7 +72,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 				"__name__":   "test_seconds",
 				"test_label": "test_value",
 			}),
-			expectedMetadata: createPromMetadata("test_seconds", "seconds", prompb.MetricMetadata_GAUGE),
+			expectedMetadata: createPromMetadata("test_seconds", "seconds", cortexpb.GAUGE),
 		},
 	}
 
@@ -94,7 +93,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 			promSeries, metadata, err := convertToPromTS(ctx, metrics, cfg, overrides, "user-1", logger)
 			require.NoError(t, err)
 			require.Equal(t, 1, len(promSeries))
-			require.Equal(t, prompb.FromLabels(test.expectedLabels, nil), promSeries[0].Labels)
+			require.Equal(t, test.expectedLabels, cortexpb.FromLabelAdaptersToLabels(promSeries[0].Labels))
 
 			require.Equal(t, 1, len(metadata))
 			require.Equal(t, test.expectedMetadata, metadata[0])
@@ -111,8 +110,8 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 		description           string
 		allowDeltaTemporality bool
 		otlpSeries            []pmetric.Metric
-		expectedSeries        []prompb.TimeSeries
-		expectedMetadata      []prompb.MetricMetadata
+		expectedSeries        []cortexpb.PreallocTimeseries
+		expectedMetadata      []*cortexpb.MetricMetadata
 		expectedErr           string
 	}{
 		{
@@ -122,13 +121,13 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 				createOtelSum("test_1", "", pmetric.AggregationTemporalityCumulative, ts),
 				createOtelSum("test_2", "", pmetric.AggregationTemporalityCumulative, ts),
 			},
-			expectedSeries: []prompb.TimeSeries{
+			expectedSeries: []cortexpb.PreallocTimeseries{
 				createPromFloatSeries("test_1", ts),
 				createPromFloatSeries("test_2", ts),
 			},
-			expectedMetadata: []prompb.MetricMetadata{
-				createPromMetadata("test_1", "", prompb.MetricMetadata_GAUGE),
-				createPromMetadata("test_2", "", prompb.MetricMetadata_GAUGE),
+			expectedMetadata: []*cortexpb.MetricMetadata{
+				createPromMetadata("test_1", "", cortexpb.GAUGE),
+				createPromMetadata("test_2", "", cortexpb.GAUGE),
 			},
 		},
 		{
@@ -138,8 +137,8 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 				createOtelSum("test_1", "", pmetric.AggregationTemporalityDelta, ts),
 				createOtelSum("test_2", "", pmetric.AggregationTemporalityDelta, ts),
 			},
-			expectedSeries:   []prompb.TimeSeries{},
-			expectedMetadata: []prompb.MetricMetadata{},
+			expectedSeries:   []cortexpb.PreallocTimeseries{},
+			expectedMetadata: []*cortexpb.MetricMetadata{},
 			expectedErr:      `invalid temporality and type combination for metric "test_1"; invalid temporality and type combination for metric "test_2"`,
 		},
 		{
@@ -149,13 +148,13 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 				createOtelSum("test_1", "", pmetric.AggregationTemporalityDelta, ts),
 				createOtelSum("test_2", "", pmetric.AggregationTemporalityDelta, ts),
 			},
-			expectedSeries: []prompb.TimeSeries{
+			expectedSeries: []cortexpb.PreallocTimeseries{
 				createPromFloatSeries("test_1", ts),
 				createPromFloatSeries("test_2", ts),
 			},
-			expectedMetadata: []prompb.MetricMetadata{
-				createPromMetadata("test_1", "", prompb.MetricMetadata_UNKNOWN),
-				createPromMetadata("test_2", "", prompb.MetricMetadata_UNKNOWN),
+			expectedMetadata: []*cortexpb.MetricMetadata{
+				createPromMetadata("test_1", "", cortexpb.UNKNOWN),
+				createPromMetadata("test_2", "", cortexpb.UNKNOWN),
 			},
 		},
 		{
@@ -165,11 +164,11 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 				createOtelSum("test_1", "", pmetric.AggregationTemporalityDelta, ts),
 				createOtelSum("test_2", "", pmetric.AggregationTemporalityCumulative, ts),
 			},
-			expectedSeries: []prompb.TimeSeries{
+			expectedSeries: []cortexpb.PreallocTimeseries{
 				createPromFloatSeries("test_2", ts),
 			},
-			expectedMetadata: []prompb.MetricMetadata{
-				createPromMetadata("test_2", "", prompb.MetricMetadata_GAUGE),
+			expectedMetadata: []*cortexpb.MetricMetadata{
+				createPromMetadata("test_2", "", cortexpb.GAUGE),
 			},
 			expectedErr: `invalid temporality and type combination for metric "test_1"`,
 		},
@@ -180,13 +179,13 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 				createOtelExponentialHistogram("test_1", pmetric.AggregationTemporalityCumulative, ts),
 				createOtelExponentialHistogram("test_2", pmetric.AggregationTemporalityCumulative, ts),
 			},
-			expectedSeries: []prompb.TimeSeries{
-				createPromNativeHistogramSeries("test_1", prompb.Histogram_UNKNOWN, ts),
-				createPromNativeHistogramSeries("test_2", prompb.Histogram_UNKNOWN, ts),
+			expectedSeries: []cortexpb.PreallocTimeseries{
+				createPromNativeHistogramSeries("test_1", cortexpb.Histogram_UNKNOWN, ts),
+				createPromNativeHistogramSeries("test_2", cortexpb.Histogram_UNKNOWN, ts),
 			},
-			expectedMetadata: []prompb.MetricMetadata{
-				createPromMetadata("test_1", "", prompb.MetricMetadata_HISTOGRAM),
-				createPromMetadata("test_2", "", prompb.MetricMetadata_HISTOGRAM),
+			expectedMetadata: []*cortexpb.MetricMetadata{
+				createPromMetadata("test_1", "", cortexpb.HISTOGRAM),
+				createPromMetadata("test_2", "", cortexpb.HISTOGRAM),
 			},
 		},
 		{
@@ -196,8 +195,8 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 				createOtelExponentialHistogram("test_1", pmetric.AggregationTemporalityDelta, ts),
 				createOtelExponentialHistogram("test_2", pmetric.AggregationTemporalityDelta, ts),
 			},
-			expectedSeries:   []prompb.TimeSeries{},
-			expectedMetadata: []prompb.MetricMetadata{},
+			expectedSeries:   []cortexpb.PreallocTimeseries{},
+			expectedMetadata: []*cortexpb.MetricMetadata{},
 			expectedErr:      `invalid temporality and type combination for metric "test_1"; invalid temporality and type combination for metric "test_2"`,
 		},
 		{
@@ -207,13 +206,13 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 				createOtelExponentialHistogram("test_1", pmetric.AggregationTemporalityDelta, ts),
 				createOtelExponentialHistogram("test_2", pmetric.AggregationTemporalityDelta, ts),
 			},
-			expectedSeries: []prompb.TimeSeries{
-				createPromNativeHistogramSeries("test_1", prompb.Histogram_GAUGE, ts),
-				createPromNativeHistogramSeries("test_2", prompb.Histogram_GAUGE, ts),
+			expectedSeries: []cortexpb.PreallocTimeseries{
+				createPromNativeHistogramSeries("test_1", cortexpb.Histogram_GAUGE, ts),
+				createPromNativeHistogramSeries("test_2", cortexpb.Histogram_GAUGE, ts),
 			},
-			expectedMetadata: []prompb.MetricMetadata{
-				createPromMetadata("test_1", "", prompb.MetricMetadata_UNKNOWN),
-				createPromMetadata("test_2", "", prompb.MetricMetadata_UNKNOWN),
+			expectedMetadata: []*cortexpb.MetricMetadata{
+				createPromMetadata("test_1", "", cortexpb.UNKNOWN),
+				createPromMetadata("test_2", "", cortexpb.UNKNOWN),
 			},
 		},
 		{
@@ -223,11 +222,11 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 				createOtelExponentialHistogram("test_1", pmetric.AggregationTemporalityDelta, ts),
 				createOtelExponentialHistogram("test_2", pmetric.AggregationTemporalityCumulative, ts),
 			},
-			expectedSeries: []prompb.TimeSeries{
-				createPromNativeHistogramSeries("test_2", prompb.Histogram_UNKNOWN, ts),
+			expectedSeries: []cortexpb.PreallocTimeseries{
+				createPromNativeHistogramSeries("test_2", cortexpb.Histogram_UNKNOWN, ts),
 			},
-			expectedMetadata: []prompb.MetricMetadata{
-				createPromMetadata("test_2", "", prompb.MetricMetadata_HISTOGRAM),
+			expectedMetadata: []*cortexpb.MetricMetadata{
+				createPromMetadata("test_2", "", cortexpb.HISTOGRAM),
 			},
 			expectedErr: `invalid temporality and type combination for metric "test_1"`,
 		},
@@ -259,8 +258,8 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 	}
 }
 
-func createPromMetadata(name, unit string, metadataType prompb.MetricMetadata_MetricType) prompb.MetricMetadata {
-	return prompb.MetricMetadata{
+func createPromMetadata(name, unit string, metadataType cortexpb.MetricMetadata_MetricType) *cortexpb.MetricMetadata {
+	return &cortexpb.MetricMetadata{
 		Type:             metadataType,
 		Unit:             unit,
 		MetricFamilyName: name,
@@ -268,7 +267,7 @@ func createPromMetadata(name, unit string, metadataType prompb.MetricMetadata_Me
 }
 
 // copied from: https://github.com/prometheus/prometheus/blob/v3.5.0/storage/remote/otlptranslator/prometheusremotewrite/metrics_to_prw.go
-func sortTimeSeries(series []prompb.TimeSeries) []prompb.TimeSeries {
+func sortTimeSeries(series []cortexpb.PreallocTimeseries) []cortexpb.PreallocTimeseries {
 	for i := range series {
 		sort.Slice(series[i].Labels, func(j, k int) bool {
 			return series[i].Labels[j].Name < series[i].Labels[k].Name
@@ -283,16 +282,18 @@ func sortTimeSeries(series []prompb.TimeSeries) []prompb.TimeSeries {
 }
 
 // copied from: https://github.com/prometheus/prometheus/blob/v3.5.0/storage/remote/otlptranslator/prometheusremotewrite/metrics_to_prw.go
-func createPromFloatSeries(name string, ts time.Time) prompb.TimeSeries {
-	return prompb.TimeSeries{
-		Labels: []prompb.Label{
-			{Name: "__name__", Value: name},
-			{Name: "test_label", Value: "test_value"},
+func createPromFloatSeries(name string, ts time.Time) cortexpb.PreallocTimeseries {
+	return cortexpb.PreallocTimeseries{
+		TimeSeries: &cortexpb.TimeSeries{
+			Labels: []cortexpb.LabelAdapter{
+				{Name: "__name__", Value: name},
+				{Name: "test_label", Value: "test_value"},
+			},
+			Samples: []cortexpb.Sample{{
+				Value:       5,
+				TimestampMs: ts.UnixMilli(),
+			}},
 		},
-		Samples: []prompb.Sample{{
-			Value:     5,
-			Timestamp: ts.UnixMilli(),
-		}},
 	}
 }
 
@@ -327,21 +328,23 @@ func createOtelExponentialHistogram(name string, temporality pmetric.Aggregation
 }
 
 // copied from: https://github.com/prometheus/prometheus/blob/v3.5.0/storage/remote/otlptranslator/prometheusremotewrite/metrics_to_prw.go
-func createPromNativeHistogramSeries(name string, hint prompb.Histogram_ResetHint, ts time.Time) prompb.TimeSeries {
-	return prompb.TimeSeries{
-		Labels: []prompb.Label{
-			{Name: "__name__", Value: name},
-			{Name: "test_label", Value: "test_value"},
-		},
-		Histograms: []prompb.Histogram{
-			{
-				Count:         &prompb.Histogram_CountInt{CountInt: 1},
-				Sum:           5,
-				Schema:        0,
-				ZeroThreshold: 1e-128,
-				ZeroCount:     &prompb.Histogram_ZeroCountInt{ZeroCountInt: 0},
-				Timestamp:     ts.UnixMilli(),
-				ResetHint:     hint,
+func createPromNativeHistogramSeries(name string, hint cortexpb.Histogram_ResetHint, ts time.Time) cortexpb.PreallocTimeseries {
+	return cortexpb.PreallocTimeseries{
+		TimeSeries: &cortexpb.TimeSeries{
+			Labels: []cortexpb.LabelAdapter{
+				{Name: "__name__", Value: name},
+				{Name: "test_label", Value: "test_value"},
+			},
+			Histograms: []cortexpb.Histogram{
+				{
+					Count:         &cortexpb.Histogram_CountInt{CountInt: 1},
+					Sum:           5,
+					Schema:        0,
+					ZeroThreshold: 1e-128,
+					ZeroCount:     &cortexpb.Histogram_ZeroCountInt{ZeroCountInt: 0},
+					TimestampMs:   ts.UnixMilli(),
+					ResetHint:     hint,
+				},
 			},
 		},
 	}
@@ -376,7 +379,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 		description               string
 		PromoteResourceAttributes []string
 		cfg                       distributor.OTLPConfig
-		expectedLabels            []prompb.Label
+		expectedLabels            []labels.Label
 	}{
 		{
 			description:               "target_info should be generated and an attribute that exist in promote resource attributes should be converted",
@@ -385,7 +388,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 				ConvertAllAttributes: false,
 				DisableTargetInfo:    false,
 			},
-			expectedLabels: []prompb.Label{
+			expectedLabels: []labels.Label{
 				{
 					Name:  "__name__",
 					Value: "test_counter_total",
@@ -407,7 +410,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 				ConvertAllAttributes: false,
 				DisableTargetInfo:    true,
 			},
-			expectedLabels: []prompb.Label{
+			expectedLabels: []labels.Label{
 				{
 					Name:  "__name__",
 					Value: "test_counter_total",
@@ -429,7 +432,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 				ConvertAllAttributes: false,
 				DisableTargetInfo:    true,
 			},
-			expectedLabels: []prompb.Label{
+			expectedLabels: []labels.Label{
 				{
 					Name:  "__name__",
 					Value: "test_counter_total",
@@ -447,7 +450,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 				ConvertAllAttributes: true,
 				DisableTargetInfo:    true,
 			},
-			expectedLabels: []prompb.Label{
+			expectedLabels: []labels.Label{
 				{
 					Name:  "__name__",
 					Value: "test_counter_total",
@@ -481,7 +484,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 				ConvertAllAttributes: true,
 				DisableTargetInfo:    true,
 			},
-			expectedLabels: []prompb.Label{
+			expectedLabels: []labels.Label{
 				{
 					Name:  "__name__",
 					Value: "test_counter_total",
@@ -521,7 +524,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 
 			// test metadata conversion
 			require.Equal(t, 1, len(metadata))
-			require.Equal(t, prompb.MetricMetadata_MetricType(1), metadata[0].Type)
+			require.Equal(t, cortexpb.MetricMetadata_MetricType(1), metadata[0].Type)
 			require.Equal(t, "test_counter_total", metadata[0].MetricFamilyName)
 			require.Equal(t, "test-counter-description", metadata[0].Help)
 
@@ -532,7 +535,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 				require.Equal(t, 2, len(tsList)) // test_counter_total + target_info
 			}
 
-			var counterTs prompb.TimeSeries
+			var counterTs cortexpb.PreallocTimeseries
 			for _, ts := range tsList {
 				for _, label := range ts.Labels {
 					if label.Name == "__name__" && label.Value == "test_counter_total" {
@@ -542,7 +545,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 				}
 			}
 
-			require.ElementsMatch(t, test.expectedLabels, counterTs.Labels)
+			require.ElementsMatch(t, test.expectedLabels, cortexpb.FromLabelAdaptersToLabels(counterTs.Labels))
 		})
 	}
 }

@@ -8,12 +8,10 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/util/push/cortexotlpconverter"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
@@ -65,28 +63,14 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 			SkipLabelNameValidation: false,
 		}
 
-		// otlp to prompb TimeSeries
-		promTsList, promMetadata, err := convertToPromTS(r.Context(), req.Metrics(), cfg, overrides, userID, logger)
-		if err != nil && len(promTsList) == 0 {
+		// otlp to cortex TimeSeries
+		tsList, metadataList, err := convertToPromTS(r.Context(), req.Metrics(), cfg, overrides, userID, logger)
+		if err != nil && len(tsList) == 0 {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
-		// convert prompb to cortexpb TimeSeries
-		tsList := make([]cortexpb.PreallocTimeseries, 0, len(promTsList))
-		for _, v := range promTsList {
-			tsList = append(tsList, cortexpb.PreallocTimeseries{TimeSeries: &cortexpb.TimeSeries{
-				Labels:     makeLabels(v.Labels),
-				Samples:    makeSamples(v.Samples),
-				Exemplars:  makeExemplars(v.Exemplars),
-				Histograms: makeHistograms(v.Histograms),
-			}})
-		}
-
-		metadata := makeMetadata(promMetadata)
-
 		prwReq.Timeseries = tsList
-		prwReq.Metadata = metadata
+		prwReq.Metadata = metadataList
 
 		if _, err := push(ctx, &prwReq); err != nil {
 			resp, ok := httpgrpc.HTTPResponseFromError(err)
@@ -104,15 +88,10 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 	})
 }
 
-func makeMetadata(promMetadata []prompb.MetricMetadata) []*cortexpb.MetricMetadata {
+func makeMetadata(promMetadata []cortexpb.MetricMetadata) []*cortexpb.MetricMetadata {
 	metadata := make([]*cortexpb.MetricMetadata, 0, len(promMetadata))
 	for _, m := range promMetadata {
-		metadata = append(metadata, &cortexpb.MetricMetadata{
-			Type:             cortexpb.MetricMetadata_MetricType(m.Type),
-			MetricFamilyName: m.MetricFamilyName,
-			Help:             m.Help,
-			Unit:             m.Unit,
-		})
+		metadata = append(metadata, &m)
 	}
 	return metadata
 }
@@ -175,9 +154,9 @@ func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (
 	return decoderFunc(r.Body)
 }
 
-func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) ([]prompb.TimeSeries, []prompb.MetricMetadata, error) {
-	promConverter := prometheusremotewrite.NewPrometheusConverter()
-	settings := prometheusremotewrite.Settings{
+func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) ([]cortexpb.PreallocTimeseries, []*cortexpb.MetricMetadata, error) {
+	promConverter := cortexotlpconverter.NewCortexConverter()
+	settings := cortexotlpconverter.Settings{
 		AddMetricSuffixes:       true,
 		DisableTargetInfo:       cfg.DisableTargetInfo,
 		AllowDeltaTemporality:   cfg.AllowDeltaTemporality,
@@ -190,7 +169,7 @@ func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distribu
 	if cfg.ConvertAllAttributes {
 		annots, err = promConverter.FromMetrics(ctx, convertToMetricsAttributes(pmetrics), settings)
 	} else {
-		settings.PromoteResourceAttributes = prometheusremotewrite.NewPromoteResourceAttributes(config.OTLPConfig{
+		settings.PromoteResourceAttributes = cortexotlpconverter.NewPromoteResourceAttributes(config.OTLPConfig{
 			PromoteResourceAttributes: overrides.PromoteResourceAttributes(userID),
 		})
 		annots, err = promConverter.FromMetrics(ctx, pmetrics, settings)
@@ -206,45 +185,6 @@ func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distribu
 	}
 
 	return promConverter.TimeSeries(), promConverter.Metadata(), err
-}
-
-func makeLabels(in []prompb.Label) []cortexpb.LabelAdapter {
-	builder := labels.NewBuilder(labels.EmptyLabels())
-	for _, l := range in {
-		builder.Set(l.Name, l.Value)
-	}
-	return cortexpb.FromLabelsToLabelAdapters(builder.Labels())
-}
-
-func makeSamples(in []prompb.Sample) []cortexpb.Sample {
-	out := make([]cortexpb.Sample, 0, len(in))
-	for _, s := range in {
-		out = append(out, cortexpb.Sample{
-			Value:       s.Value,
-			TimestampMs: s.Timestamp,
-		})
-	}
-	return out
-}
-
-func makeExemplars(in []prompb.Exemplar) []cortexpb.Exemplar {
-	out := make([]cortexpb.Exemplar, 0, len(in))
-	for _, e := range in {
-		out = append(out, cortexpb.Exemplar{
-			Labels:      makeLabels(e.Labels),
-			Value:       e.Value,
-			TimestampMs: e.Timestamp,
-		})
-	}
-	return out
-}
-
-func makeHistograms(in []prompb.Histogram) []cortexpb.Histogram {
-	out := make([]cortexpb.Histogram, 0, len(in))
-	for _, h := range in {
-		out = append(out, cortexpb.HistogramPromProtoToHistogramProto(h))
-	}
-	return out
 }
 
 func convertToMetricsAttributes(md pmetric.Metrics) pmetric.Metrics {

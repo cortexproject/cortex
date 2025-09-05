@@ -16,23 +16,28 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/httputil"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/distributed_execution"
 	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/api"
 )
 
 type QueryAPI struct {
-	queryable     storage.SampleAndChunkQueryable
-	queryEngine   engine.QueryEngine
-	now           func() time.Time
-	statsRenderer v1.StatsRenderer
-	logger        log.Logger
-	codecs        []v1.Codec
-	CORSOrigin    *regexp.Regexp
+	queryable              storage.SampleAndChunkQueryable
+	queryEngine            engine.QueryEngine
+	now                    func() time.Time
+	statsRenderer          v1.StatsRenderer
+	logger                 log.Logger
+	codecs                 []v1.Codec
+	CORSOrigin             *regexp.Regexp
+	queryTracker           *distributed_execution.QueryTracker
+	distributedExecEnabled bool
+	querierClientPool      *client.Pool
 }
 
 func NewQueryAPI(
@@ -42,15 +47,21 @@ func NewQueryAPI(
 	logger log.Logger,
 	codecs []v1.Codec,
 	CORSOrigin *regexp.Regexp,
+	queryTracker *distributed_execution.QueryTracker,
+	distributedExecEnabled bool,
+	querierClientPool *client.Pool,
 ) *QueryAPI {
 	return &QueryAPI{
-		queryEngine:   qe,
-		queryable:     q,
-		statsRenderer: statsRenderer,
-		logger:        logger,
-		codecs:        codecs,
-		CORSOrigin:    CORSOrigin,
-		now:           time.Now,
+		queryEngine:            qe,
+		queryable:              q,
+		statsRenderer:          statsRenderer,
+		logger:                 logger,
+		codecs:                 codecs,
+		CORSOrigin:             CORSOrigin,
+		now:                    time.Now,
+		queryTracker:           queryTracker,
+		distributedExecEnabled: distributedExecEnabled,
+		querierClientPool:      querierClientPool,
 	}
 }
 
@@ -108,14 +119,42 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	endTime := convertMsToTime(end)
 	stepDuration := convertMsToDuration(step)
 
+	var isRoot bool
+	var queryID, fragmentID uint64
+	if q.distributedExecEnabled {
+		isRoot, queryID, fragmentID, _, _ = distributed_execution.ExtractFragmentMetaData(ctx)
+		if !isRoot {
+			key := distributed_execution.MakeFragmentKey(queryID, fragmentID)
+			q.queryTracker.InitWriting(key)
+		}
+	}
+
 	byteLP := []byte(r.PostFormValue("plan"))
-	if len(byteLP) != 0 {
-		logicalPlan, err := distributed_execution.Unmarshal(byteLP)
+	if len(byteLP) != 0 && q.distributedExecEnabled {
+		logicalPlanNode, err := distributed_execution.Unmarshal(byteLP)
 		if err != nil {
+			if !isRoot {
+				key := distributed_execution.MakeFragmentKey(queryID, fragmentID)
+				q.queryTracker.SetError(key)
+			}
 			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
 		}
-		qry, err = q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlan, startTime, endTime, stepDuration, r.FormValue("query"))
+		logicalplan.TraverseBottomUp(nil, &logicalPlanNode, func(parent, current *logicalplan.Node) bool {
+			if (*current).Type() == distributed_execution.RemoteNode {
+				remote, ok := (*current).(*distributed_execution.Remote)
+				if ok {
+					remote.InsertClientPool(q.querierClientPool)
+				}
+			}
+			return false
+		})
+
+		qry, err = q.queryEngine.MakeRangeQueryFromPlan(ctx, q.queryable, opts, logicalPlanNode, startTime, endTime, stepDuration, r.FormValue("query"))
 		if err != nil {
+			if !isRoot {
+				key := distributed_execution.MakeFragmentKey(queryID, fragmentID)
+				q.queryTracker.SetError(key)
+			}
 			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("failed to create range query from logical plan: %v", err)}, nil, nil}
 		}
 	} else { // if there is logical plan field is empty, fall back
@@ -135,6 +174,14 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	}()
 
 	ctx = httputil.ContextFromRequest(ctx, r)
+
+	if q.distributedExecEnabled {
+		isRoot, queryID, fragmentID, _, _ := distributed_execution.ExtractFragmentMetaData(ctx)
+		if !isRoot {
+			key := distributed_execution.MakeFragmentKey(queryID, fragmentID)
+			q.queryTracker.InitWriting(key)
+		}
+	}
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
@@ -181,14 +228,45 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 	var qry promql.Query
 	tsTime := convertMsToTime(ts)
 
-	byteLP := []byte(r.PostFormValue("plan"))
-	if len(byteLP) != 0 {
-		logicalPlan, err := distributed_execution.Unmarshal(byteLP)
+	var isRoot bool
+	var queryID, fragmentID uint64
+	if q.distributedExecEnabled {
+		isRoot, queryID, fragmentID, _, _ = distributed_execution.ExtractFragmentMetaData(ctx)
+		if !isRoot {
+			key := distributed_execution.MakeFragmentKey(queryID, fragmentID)
+			q.queryTracker.InitWriting(key)
+		}
+	}
+
+	byteLogicalPlan := []byte(r.PostFormValue("plan"))
+	if len(byteLogicalPlan) != 0 && q.distributedExecEnabled {
+		logicalPlanNode, err := distributed_execution.Unmarshal(byteLogicalPlan)
 		if err != nil {
+			if q.distributedExecEnabled {
+				if !isRoot {
+					key := distributed_execution.MakeFragmentKey(queryID, fragmentID)
+					q.queryTracker.SetError(key)
+				}
+			}
 			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
 		}
-		qry, err = q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlan, tsTime, r.FormValue("query"))
+
+		logicalplan.TraverseBottomUp(nil, &logicalPlanNode, func(parent, current *logicalplan.Node) bool {
+			if (*current).Type() == distributed_execution.RemoteNode {
+				remote, ok := (*current).(*distributed_execution.Remote)
+				if ok {
+					remote.InsertClientPool(q.querierClientPool)
+				}
+			}
+			return false
+		})
+
+		qry, err = q.queryEngine.MakeInstantQueryFromPlan(ctx, q.queryable, opts, logicalPlanNode, tsTime, r.FormValue("query"))
 		if err != nil {
+			if !isRoot {
+				key := distributed_execution.MakeFragmentKey(queryID, fragmentID)
+				q.queryTracker.SetError(key)
+			}
 			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("failed to create instant query from logical plan: %v", err)}, nil, nil}
 		}
 	} else { // if there is logical plan field is empty, fall back
@@ -239,6 +317,19 @@ func (q *QueryAPI) Wrap(f apiFunc) http.HandlerFunc {
 		}
 
 		if result.data != nil {
+			ctx := httputil.ContextFromRequest(r.Context(), r)
+
+			if q.distributedExecEnabled {
+				isRoot, queryID, fragmentID, _, _ := distributed_execution.ExtractFragmentMetaData(ctx)
+				key := distributed_execution.MakeFragmentKey(queryID, fragmentID)
+
+				q.queryTracker.SetComplete(key, result.data)
+
+				if isRoot {
+					q.respond(w, r, result.data, result.warnings, r.FormValue("query"))
+				}
+				return
+			}
 			q.respond(w, r, result.data, result.warnings, r.FormValue("query"))
 			return
 		}

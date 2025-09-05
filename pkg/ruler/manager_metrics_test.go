@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestManagerMetricsWithRuleGroupLabel(t *testing.T) {
@@ -606,7 +607,7 @@ func TestRuleEvalMetricsDeletePerUserMetrics(t *testing.T) {
 
 func TestRuleGroupMetrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
-	m := NewRuleGroupMetrics(reg, util.NewAllowedTenants(nil, []string{"fake3"}))
+	m := NewRuleGroupMetrics(reg, users.NewAllowedTenants(nil, []string{"fake3"}))
 	m.UpdateRuleGroupsInStore(map[string]int{
 		"fake1": 10,
 		"fake2": 20,

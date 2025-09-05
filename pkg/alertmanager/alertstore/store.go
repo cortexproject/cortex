@@ -2,9 +2,12 @@ package alertstore
 
 import (
 	"context"
+	"fmt"
+	"io"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
@@ -12,6 +15,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+)
+
+var (
+	errAccessDenied = fmt.Errorf("access denied")
 )
 
 // AlertStore stores and configures users rule configs
@@ -67,5 +74,29 @@ func NewAlertStore(ctx context.Context, cfg Config, cfgProvider bucket.TenantCon
 		return nil, err
 	}
 
-	return bucketclient.NewBucketAlertStore(bucketClient, cfgProvider, logger), nil
+	return bucketclient.NewBucketAlertStore(bucketClient, cfg.UsersScanner, cfgProvider, logger, reg)
+}
+
+type MockBucket struct {
+	objstore.Bucket
+	err error
+}
+
+func (m *MockBucket) WithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.Bucket {
+	return m
+}
+
+func (m *MockBucket) ReaderWithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
+	return m
+}
+
+func (m *MockBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.Bucket.Get(ctx, name)
+}
+
+func (m *MockBucket) IsAccessDeniedErr(err error) bool {
+	return err == errAccessDenied
 }

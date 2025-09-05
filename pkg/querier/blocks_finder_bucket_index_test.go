@@ -14,12 +14,10 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-
-	"github.com/cortexproject/cortex/pkg/util/validation"
-
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestBucketIndexBlocksFinder_GetBlocks(t *testing.T) {

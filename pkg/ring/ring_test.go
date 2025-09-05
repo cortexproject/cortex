@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1871,7 +1872,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 
 			numMatching := 0
 			for _, c := range currShard {
-				if util.StringsContain(otherShard, c) {
+				if slices.Contains(otherShard, c) {
 					numMatching++
 				}
 			}
@@ -3024,7 +3025,7 @@ func TestRingUpdates(t *testing.T) {
 
 				// Ensure there's no instance in an excluded zone.
 				if len(testData.excludedZones) > 0 {
-					assert.False(t, util.StringsContain(testData.excludedZones, ing.Zone))
+					assert.False(t, slices.Contains(testData.excludedZones, ing.Zone))
 				}
 			}
 

@@ -3,6 +3,7 @@ package tsdb
 import (
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/model"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -84,7 +84,7 @@ func (cfg *IndexCacheConfig) Validate() error {
 	}
 
 	for _, backend := range splitBackends {
-		if !util.StringsContain(supportedIndexCacheBackends, backend) {
+		if !slices.Contains(supportedIndexCacheBackends, backend) {
 			return errUnsupportedIndexCacheBackend
 		}
 

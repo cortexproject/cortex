@@ -96,7 +96,8 @@ type Config struct {
 	ParquetQueryableShardCacheSize    int    `yaml:"parquet_queryable_shard_cache_size"`
 	ParquetQueryableDefaultBlockStore string `yaml:"parquet_queryable_default_block_store"`
 	ParquetQueryableFallbackDisabled  bool   `yaml:"parquet_queryable_fallback_disabled"`
-	DistributedExecEnabled            bool   `yaml:"distributed_exec_enabled" doc:"hidden"`
+
+	DistributedExecEnabled bool `yaml:"distributed_exec_enabled" doc:"hidden"`
 }
 
 var (

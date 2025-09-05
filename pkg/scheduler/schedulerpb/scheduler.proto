@@ -27,7 +27,10 @@ service SchedulerForQuerier {
 // Querier reports its own clientID when it connects, so that scheduler knows how many *different* queriers are connected.
 // To signal that querier is ready to accept another request, querier sends empty message.
 message QuerierToScheduler {
+
   string querierID = 1;
+
+  string querierAddress = 2;
 }
 
 message SchedulerToQuerier {
@@ -45,6 +48,16 @@ message SchedulerToQuerier {
   // Whether query statistics tracking should be enabled. The response will include
   // statistics only when this option is enabled.
   bool statsEnabled = 5;
+
+  // Below are the meta data that will be used for distributed execution
+  // The ID of current logical query plan fragment.
+  uint64 fragmentID = 6;
+
+  // The IDs and addresses of its child fragments
+  map<uint64, string> childIDtoAddrs = 7;
+
+  // Whether the current fragment is the root
+  bool isRoot = 8;
 }
 
 // Scheduler interface exposed to Frontend. Frontend can enqueue and cancel requests.

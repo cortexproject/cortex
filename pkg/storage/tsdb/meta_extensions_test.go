@@ -139,7 +139,7 @@ func TestGetPartitionedInfo(t *testing.T) {
 							PartitionedGroupID uint32 `json:"partitionedGroupId"`
 							PartitionCount     int    `json:"partitionCount"`
 							PartitionID        int    `json:"partitionId"`
-						} `json:"partition_info,omitempty"`
+						} `json:"partition_info"`
 					}{
 						PartitionInfo: struct {
 							PartitionedGroupID uint32 `json:"partitionedGroupId"`

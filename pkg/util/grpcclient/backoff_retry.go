@@ -12,7 +12,7 @@ import (
 
 // NewBackoffRetry gRPC middleware.
 func NewBackoffRetry(cfg backoff.Config) grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		backoff := backoff.New(ctx, cfg)
 		for backoff.Ongoing() {
 			err := invoker(ctx, method, req, reply, cc, opts...)

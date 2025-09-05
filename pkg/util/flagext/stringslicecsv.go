@@ -18,7 +18,7 @@ func (v *StringSliceCSV) Set(s string) error {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (v *StringSliceCSV) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (v *StringSliceCSV) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
@@ -28,6 +28,6 @@ func (v *StringSliceCSV) UnmarshalYAML(unmarshal func(interface{}) error) error 
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (v StringSliceCSV) MarshalYAML() (interface{}, error) {
+func (v StringSliceCSV) MarshalYAML() (any, error) {
 	return v.String(), nil
 }

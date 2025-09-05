@@ -53,7 +53,7 @@ func (v RuleFormatVersion) MarshalJSON() ([]byte, error) {
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (v RuleFormatVersion) MarshalYAML() (interface{}, error) {
+func (v RuleFormatVersion) MarshalYAML() (any, error) {
 	switch v {
 	case RuleFormatV1:
 		return yaml.Marshal("1")
@@ -82,7 +82,7 @@ func (v *RuleFormatVersion) UnmarshalJSON(data []byte) error {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (v *RuleFormatVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (v *RuleFormatVersion) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
@@ -129,7 +129,7 @@ func (c Config) MarshalJSON() ([]byte, error) {
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (c Config) MarshalYAML() (interface{}, error) {
+func (c Config) MarshalYAML() (any, error) {
 	compat := &configCompat{
 		RulesFiles:         c.RulesConfig.Files,
 		RuleFormatVersion:  c.RulesConfig.FormatVersion,
@@ -158,7 +158,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 	compat := configCompat{}
 	if err := unmarshal(&compat); err != nil {
 		return errors.WithStack(err)

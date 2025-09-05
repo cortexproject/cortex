@@ -33,7 +33,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor(t *testing.T) {
 	// of returned clients (we expect an even distribution).
 	clientsCount := map[string]int{}
 
-	for i := 0; i < numGets; i++ {
+	for range numGets {
 		clients, err := s.GetClientsFor("", []ulid.ULID{block1}, map[ulid.ULID][]string{}, nil)
 		require.NoError(t, err)
 		require.Len(t, clients, 1)
@@ -131,7 +131,6 @@ func TestBlocksStoreBalancedSet_GetClientsFor_Exclude(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()

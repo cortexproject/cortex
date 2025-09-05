@@ -1153,7 +1153,7 @@ func (am *MultitenantAlertmanager) ReadFullStateForUser(ctx context.Context, use
 
 	// Note that the jobs swallow the errors - this is because we want to give each replica a chance to respond.
 	jobs := concurrency.CreateJobsFromStrings(addrs)
-	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
+	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job any) error {
 		addr := job.(string)
 		level.Debug(am.logger).Log("msg", "contacting replica for full state", "user", userID, "addr", addr)
 

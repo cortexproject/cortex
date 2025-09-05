@@ -79,7 +79,7 @@ func main() {
 
 }
 
-func fatal(msg string, args ...interface{}) {
+func fatal(msg string, args ...any) {
 	fmt.Fprintf(os.Stderr, msg+"\n", args...)
 	os.Exit(1)
 }

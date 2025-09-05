@@ -80,7 +80,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 	maxQueriersPerUser := 5
 
 	// Add some queriers.
-	for ix := 0; ix < queriers; ix++ {
+	for ix := range queriers {
 		qid := fmt.Sprintf("querier-%d", ix)
 		uq.addQuerierConnection(qid)
 
@@ -93,7 +93,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 	assert.NoError(t, isConsistent(uq))
 
 	// Add user queues.
-	for u := 0; u < users; u++ {
+	for u := range users {
 		uid := fmt.Sprintf("user-%d", u)
 		getOrAdd(t, uq, uid, maxQueriersPerUser)
 
@@ -106,7 +106,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 	// and compute mean and stdDev.
 	queriersMap := make(map[string]int)
 
-	for q := 0; q < queriers; q++ {
+	for q := range queriers {
 		qid := fmt.Sprintf("querier-%d", q)
 
 		lastUserIndex := -1
@@ -158,7 +158,7 @@ func TestQueuesConsistency(t *testing.T) {
 
 			conns := map[string]int{}
 
-			for i := 0; i < 10000; i++ {
+			for i := range 10000 {
 				switch r.Int() % 6 {
 				case 0:
 					assert.NotNil(t, uq.getOrAddQueue(generateTenant(r), 3))
@@ -208,7 +208,7 @@ func TestQueues_ForgetDelay(t *testing.T) {
 	}
 
 	// Add user queues.
-	for i := 0; i < numUsers; i++ {
+	for i := range numUsers {
 		userID := fmt.Sprintf("user-%d", i)
 		getOrAdd(t, uq, userID, maxQueriersPerUser)
 	}
@@ -300,7 +300,7 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	}
 
 	// Add user queues.
-	for i := 0; i < numUsers; i++ {
+	for i := range numUsers {
 		userID := fmt.Sprintf("user-%d", i)
 		getOrAdd(t, uq, userID, maxQueriersPerUser)
 	}
@@ -446,7 +446,7 @@ func TestGetOrAddQueueShouldUpdateProperties(t *testing.T) {
 	assert.IsType(t, &FIFORequestQueue{}, queue)
 
 	// check the queriers and reservedQueriers map are consistent
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		queriers := q.userQueues["userID"].queriers
 		reservedQueriers := q.userQueues["userID"].reservedQueriers
 		q.userQueues["userID"].maxQueriers = 0          // reset to trigger querier assignment
@@ -473,7 +473,7 @@ func TestQueueConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numGoRoutines)
 
-	for i := 0; i < numGoRoutines; i++ {
+	for i := range numGoRoutines {
 		go func(cnt int) {
 			defer wg.Done()
 			queue := q.getOrAddQueue("userID", 2)
@@ -577,7 +577,7 @@ func getUsersByQuerier(queues *queues, querierID string) []string {
 	return userIDs
 }
 
-func getKeys(x interface{}) []string {
+func getKeys(x any) []string {
 	var keys []string
 
 	switch i := x.(type) {
@@ -620,14 +620,14 @@ func TestShuffleQueriersCorrectness(t *testing.T) {
 	const queriersCount = 100
 
 	var allSortedQueriers []string
-	for i := 0; i < queriersCount; i++ {
+	for i := range queriersCount {
 		allSortedQueriers = append(allSortedQueriers, fmt.Sprintf("%d", i))
 	}
 	sort.Strings(allSortedQueriers)
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	const tests = 1000
-	for i := 0; i < tests; i++ {
+	for range tests {
 		toSelect := r.Intn(queriersCount)
 		if toSelect == 0 {
 			toSelect = 3

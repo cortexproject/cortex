@@ -637,8 +637,6 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 	// Concurrently fetch series from all clients.
 	for c, blockIDs := range clients {
 		// Change variables scope since it will be used in a goroutine.
-		c := c
-		blockIDs := blockIDs
 
 		g.Go(func() error {
 			// See: https://github.com/prometheus/prometheus/pull/8050
@@ -860,8 +858,6 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 	// Concurrently fetch series from all clients.
 	for c, blockIDs := range clients {
 		// Change variables scope since it will be used in a goroutine.
-		c := c
-		blockIDs := blockIDs
 
 		g.Go(func() error {
 			req, err := createLabelNamesRequest(minT, maxT, limit, blockIDs, matchers)
@@ -967,8 +963,6 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 	// Concurrently fetch series from all clients.
 	for c, blockIDs := range clients {
 		// Change variables scope since it will be used in a goroutine.
-		c := c
-		blockIDs := blockIDs
 
 		g.Go(func() error {
 			req, err := createLabelValuesRequest(minT, maxT, limit, name, blockIDs, matchers...)

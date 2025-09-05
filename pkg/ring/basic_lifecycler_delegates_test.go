@@ -172,7 +172,7 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 			defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
 			// Add the instance to the ring.
-			require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+			require.NoError(t, store.CAS(ctx, testRingKey, func(in any) (out any, retry bool, err error) {
 				ringDesc := NewDesc()
 				ringDesc.AddIngester(cfg.ID, cfg.Addr, cfg.Zone, testData.initialTokens, testData.initialState, registeredAt)
 				return ringDesc, true, nil
@@ -278,7 +278,7 @@ func TestAutoForgetDelegate(t *testing.T) {
 			require.NoError(t, err)
 
 			// Setup the initial state of the ring.
-			require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+			require.NoError(t, store.CAS(ctx, testRingKey, func(in any) (out any, retry bool, err error) {
 				ringDesc := NewDesc()
 				testData.setup(ringDesc)
 				return ringDesc, true, nil
@@ -289,7 +289,7 @@ func TestAutoForgetDelegate(t *testing.T) {
 			defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
 			// Wait until an heartbeat has been sent.
-			test.Poll(t, time.Second, true, func() interface{} {
+			test.Poll(t, time.Second, true, func() any {
 				return testutil.ToFloat64(lifecycler.metrics.heartbeats) > 0
 			})
 

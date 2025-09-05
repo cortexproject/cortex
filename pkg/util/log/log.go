@@ -72,7 +72,7 @@ func newLoggerWithFormat(format logging.Format) log.Logger {
 	return logger
 }
 
-func newPrometheusLoggerFrom(logger log.Logger, logLevel logging.Level, keyvals ...interface{}) log.Logger {
+func newPrometheusLoggerFrom(logger log.Logger, logLevel logging.Level, keyvals ...any) log.Logger {
 	// Sort the logger chain to avoid expensive log.Valuer evaluation for disallowed level.
 	// Ref: https://github.com/go-kit/log/issues/14#issuecomment-945038252
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
@@ -90,7 +90,7 @@ func newPrometheusLoggerFrom(logger log.Logger, logLevel logging.Level, keyvals 
 }
 
 // Log increments the appropriate Prometheus counter depending on the log level.
-func (pl *PrometheusLogger) Log(kv ...interface{}) error {
+func (pl *PrometheusLogger) Log(kv ...any) error {
 	pl.logger.Log(kv...)
 	l := "unknown"
 	for i := 1; i < len(kv); i += 2 {

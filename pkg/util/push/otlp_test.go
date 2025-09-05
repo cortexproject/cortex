@@ -637,9 +637,8 @@ func BenchmarkOTLPWriteHandlerCompression(b *testing.B) {
 		req, err := getOTLPHttpRequest(&exportRequest, jsonContentType, "")
 		require.NoError(b, err)
 
-		b.ResetTimer()
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, req)
 
@@ -652,9 +651,8 @@ func BenchmarkOTLPWriteHandlerCompression(b *testing.B) {
 		req, err := getOTLPHttpRequest(&exportRequest, jsonContentType, "gzip")
 		require.NoError(b, err)
 
-		b.ResetTimer()
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, req)
 
@@ -667,9 +665,8 @@ func BenchmarkOTLPWriteHandlerCompression(b *testing.B) {
 		req, err := getOTLPHttpRequest(&exportRequest, pbContentType, "")
 		require.NoError(b, err)
 
-		b.ResetTimer()
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, req)
 
@@ -682,9 +679,8 @@ func BenchmarkOTLPWriteHandlerCompression(b *testing.B) {
 		req, err := getOTLPHttpRequest(&exportRequest, pbContentType, "gzip")
 		require.NoError(b, err)
 
-		b.ResetTimer()
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, req)
 
@@ -892,7 +888,7 @@ func generateOTLPWriteRequestWithSeries(numSeries, samplesPerSeries, numHistogra
 	attributes.PutStr("label2", "value2")
 	attributes.PutStr("label3", "value3")
 
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		metricName := fmt.Sprintf("series_%d", i)
 		metricUnit := fmt.Sprintf("unit_%d", i)
 		metricDescription := fmt.Sprintf("description_%d", i)
@@ -911,7 +907,7 @@ func generateOTLPWriteRequestWithSeries(numSeries, samplesPerSeries, numHistogra
 		metric.SetUnit(metricUnit)
 		metric.SetEmptyGauge()
 
-		for j := 0; j < samplesPerSeries; j++ {
+		for j := range samplesPerSeries {
 			v := float64(j + i)
 			ts := time.Now().Add(time.Second * 30 * time.Duration(samplesPerSeries-j+1))
 			dataPoint := metric.Gauge().DataPoints().AppendEmpty()
@@ -927,7 +923,7 @@ func generateOTLPWriteRequestWithSeries(numSeries, samplesPerSeries, numHistogra
 			exemplar.SetTraceID(pcommon.TraceID{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 		}
 
-		for j := 0; j < numHistogram; j++ {
+		for j := range numHistogram {
 			ts := time.Now().Add(time.Second * 30 * time.Duration(numHistogram-j+1))
 			// Generate One Histogram
 			histogramMetric := scopeMetric.AppendEmpty().Metrics().AppendEmpty()

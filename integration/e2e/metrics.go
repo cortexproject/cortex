@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"math"
+	"slices"
 
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
@@ -143,12 +144,7 @@ func EqualsAmong(values ...float64) func(sums ...float64) bool {
 		if len(sums) != 1 {
 			panic("equals among: expected one value")
 		}
-		for _, value := range values {
-			if sums[0] == value {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(values, sums[0])
 	}
 }
 

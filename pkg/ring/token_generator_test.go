@@ -59,7 +59,7 @@ func TestGenerateTokens_IgnoresOldTokens(t *testing.T) {
 			d := NewDesc()
 			dups := make(map[uint32]bool)
 
-			for i := 0; i < 500; i++ {
+			for i := range 500 {
 				id := strconv.Itoa(i)
 				zone := strconv.Itoa(i % 3)
 				tokens := tc.tg.GenerateTokens(d, id, zone, 500, true)
@@ -91,7 +91,7 @@ func TestMinimizeSpreadTokenGenerator(t *testing.T) {
 	require.Equal(t, mTokenGenerator.called, len(zones))
 
 	// Should Generate tokens based on the ring state
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		generateTokensForIngesters(t, rindDesc, fmt.Sprintf("minimize-%v", i), zones, minimizeTokenGenerator, dups)
 		assertDistancePerIngester(t, rindDesc, 0.01)
 	}

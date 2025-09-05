@@ -26,9 +26,8 @@ func BenchmarkSignRequest(b *testing.B) {
 	for _, tc := range tests {
 		b.Run(fmt.Sprintf("WriteRequestSize: %v", tc.size), func(b *testing.B) {
 			wr := createWriteRequest(tc.size, true, "family1", "help1", "unit")
-			b.ResetTimer()
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := wr.Sign(ctx)
 				require.NoError(b, err)
 			}
@@ -72,7 +71,7 @@ func TestWriteRequest_Sign(t *testing.T) {
 			itNumber := 1000
 			wg := sync.WaitGroup{}
 			wg.Add(itNumber)
-			for i := 0; i < itNumber; i++ {
+			for range itNumber {
 				go func() {
 					defer wg.Done()
 					s, err := tc.w.Sign(ctx)
@@ -96,7 +95,7 @@ func createWriteRequest(numTs int, exemplar bool, family string, help string, un
 		},
 	}
 
-	for i := 0; i < numTs; i++ {
+	for i := range numTs {
 		w.Timeseries = append(w.Timeseries, PreallocTimeseries{
 			TimeSeries: &TimeSeries{
 				Labels: []LabelAdapter{

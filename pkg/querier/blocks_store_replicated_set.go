@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
@@ -179,7 +180,7 @@ func getNonExcludedInstance(set ring.ReplicationSet, exclude []string, balancing
 		}
 	}
 	for _, instance := range set.Instances {
-		if util.StringsContain(exclude, instance.Addr) {
+		if slices.Contains(exclude, instance.Addr) {
 			continue
 		}
 		// If zone awareness is not enabled, pick first non-excluded instance.

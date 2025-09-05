@@ -1,7 +1,6 @@
 package compactor
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -2080,12 +2079,8 @@ func TestPartitionCompactionGrouper_GenerateCompactionJobs(t *testing.T) {
 				b.fixPartitionInfo(t, userID)
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			ingestionReplicationFactor := 1
-			if testCase.ingestionReplicationFactor > 1 {
-				ingestionReplicationFactor = testCase.ingestionReplicationFactor
-			}
+			ctx := t.Context()
+			ingestionReplicationFactor := max(testCase.ingestionReplicationFactor, 1)
 			g := NewPartitionCompactionGrouper(
 				ctx,
 				nil,

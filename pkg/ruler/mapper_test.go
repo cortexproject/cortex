@@ -3,6 +3,7 @@ package ruler
 import (
 	"net/url"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -296,8 +297,8 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, twoFilesRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 2)
-		require.True(t, sliceContains(t, fileOnePath, files))
-		require.True(t, sliceContains(t, fileTwoPath, files))
+		require.True(t, slices.Contains(files, fileOnePath))
+		require.True(t, slices.Contains(files, fileTwoPath))
 		require.NoError(t, err)
 
 		exists, err := afero.Exists(m.FS, fileOnePath)
@@ -312,8 +313,8 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, twoFilesUpdatedRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 2)
-		require.True(t, sliceContains(t, fileOnePath, files))
-		require.True(t, sliceContains(t, fileTwoPath, files))
+		require.True(t, slices.Contains(files, fileOnePath))
+		require.True(t, slices.Contains(files, fileTwoPath))
 		require.NoError(t, err)
 
 		exists, err := afero.Exists(m.FS, fileOnePath)
@@ -373,18 +374,6 @@ func Test_mapper_MapRulesSpecialCharNamespace(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, exists)
 	})
-}
-
-func sliceContains(t *testing.T, find string, in []string) bool {
-	t.Helper()
-
-	for _, s := range in {
-		if find == s {
-			return true
-		}
-	}
-
-	return false
 }
 
 func TestYamlFormatting(t *testing.T) {

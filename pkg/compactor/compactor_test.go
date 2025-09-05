@@ -193,7 +193,7 @@ func TestCompactor_SkipCompactionWhenCmkError(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -214,7 +214,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -291,7 +291,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
@@ -386,7 +386,7 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
@@ -450,7 +450,7 @@ func TestCompactor_ShouldCompactAndRemoveUserFolder(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -519,7 +519,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -654,7 +654,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -787,7 +787,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -851,7 +851,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -961,7 +961,7 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 5*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 5*time.Second, true, func() any {
 		if _, err := os.Stat(path.Join(dir, "no-compact-mark.json")); err == nil {
 			return true
 		}
@@ -1047,7 +1047,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 5*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 5*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -1150,7 +1150,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 120*time.Second, true, func() interface{} {
+		cortex_testutil.Poll(t, 120*time.Second, true, func() any {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
 		})
 	}
@@ -1294,7 +1294,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 60*time.Second, 2.0, func() interface{} {
+		cortex_testutil.Poll(t, 60*time.Second, 2.0, func() any {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 		})
 	}
@@ -1511,7 +1511,7 @@ func removeIgnoredLogs(input []string) []string {
 	executionIDRe := regexp.MustCompile(`\s?execution_id=\S+`)
 
 main:
-	for i := 0; i < len(input); i++ {
+	for i := range input {
 		log := input[i]
 
 		// Remove any duration from logs.
@@ -1821,7 +1821,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c1))
 
 	// Wait until a run has been completed on first compactor. This happens as soon as compactor starts.
-	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c1.CompactionRunsCompleted)
 	})
 
@@ -1832,7 +1832,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Now start second compactor, and wait until it runs compaction.
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
-	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c2.CompactionRunsCompleted)
 	})
 
@@ -1918,7 +1918,7 @@ func TestCompactor_ShouldNotTreatInterruptionsAsErrors(t *testing.T) {
 	}, nil)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
 
-	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsInterrupted)
 	})
 
@@ -1991,7 +1991,7 @@ func TestCompactor_ShouldNotFailCompactionIfAccessDeniedErrDuringMetaSync(t *tes
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -2042,7 +2042,7 @@ func TestCompactor_ShouldNotFailCompactionIfAccessDeniedErrReturnedFromBucket(t 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -2088,7 +2088,7 @@ func TestCompactor_FailedWithRetriableError(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
-	cortex_testutil.Poll(t, 1*time.Second, 2.0, func() interface{} {
+	cortex_testutil.Poll(t, 1*time.Second, 2.0, func() any {
 		return prom_testutil.ToFloat64(c.compactorMetrics.compactionErrorsCount.WithLabelValues("user-1", retriableError))
 	})
 
@@ -2142,7 +2142,7 @@ func TestCompactor_FailedWithHaltError(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
-	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.compactorMetrics.compactionErrorsCount.WithLabelValues("user-1", haltError))
 	})
 
@@ -2173,7 +2173,7 @@ func TestCompactor_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T
 	// Create two compactors
 	var compactors []*Compactor
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		// Setup config
 		cfg := prepareConfig()
 
@@ -2209,11 +2209,11 @@ func TestCompactor_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), compactor2))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(compactor2.CompactionRunsCompleted)
 	})
 
-	cortex_testutil.Poll(t, 5000*time.Millisecond, true, func() interface{} {
+	cortex_testutil.Poll(t, 5000*time.Millisecond, true, func() any {
 		healthy, unhealthy, _ := compactor.ring.GetAllInstanceDescs(ring.Reporting)
 		return len(healthy) == 2 && len(unhealthy) == 0
 	})
@@ -2222,7 +2222,7 @@ func TestCompactor_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T
 	// compactor service while UnregisterOnShutdown is false
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), compactor2))
 
-	cortex_testutil.Poll(t, 5000*time.Millisecond, true, func() interface{} {
+	cortex_testutil.Poll(t, 5000*time.Millisecond, true, func() any {
 		healthy, unhealthy, _ := compactor.ring.GetAllInstanceDescs(ring.Reporting)
 		return len(healthy) == 1 && len(unhealthy) == 0
 	})
@@ -2282,7 +2282,7 @@ func TestCompactor_GetShardSizeForUser(t *testing.T) {
 
 	// Create compactors
 	var compactors []*Compactor
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		// Setup config
 		cfg := prepareConfig()
 
@@ -2317,7 +2317,7 @@ func TestCompactor_GetShardSizeForUser(t *testing.T) {
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 120*time.Second, true, func() interface{} {
+		cortex_testutil.Poll(t, 120*time.Second, true, func() any {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
 		})
 	}
@@ -2366,7 +2366,7 @@ func TestCompactor_GetShardSizeForUser(t *testing.T) {
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors2 {
-		cortex_testutil.Poll(t, 120*time.Second, true, func() interface{} {
+		cortex_testutil.Poll(t, 120*time.Second, true, func() any {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
 		})
 	}

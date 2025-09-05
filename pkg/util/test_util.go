@@ -19,10 +19,10 @@ func GenerateRandomStrings() []string {
 	randomChar := "0123456789abcdef"
 	randomStrings := make([]string, 0, 1000000)
 	sb := strings.Builder{}
-	for i := 0; i < 1000000; i++ {
+	for range 1000000 {
 		sb.Reset()
 		sb.WriteString("pod://")
-		for j := 0; j < 14; j++ {
+		for range 14 {
 			sb.WriteByte(randomChar[rand.Int()%len(randomChar)])
 		}
 		randomStrings = append(randomStrings, sb.String())
@@ -50,20 +50,20 @@ func GenerateChunk(t require.TestingT, step time.Duration, from model.Time, poin
 
 	switch pe {
 	case chunkenc.EncXOR:
-		for i := 0; i < points; i++ {
+		for range points {
 			appender.Append(int64(ts), float64(ts))
 			ts = ts.Add(step)
 		}
 	case chunkenc.EncHistogram:
 		histograms := histogram_util.GenerateTestHistograms(int(from), int(step/time.Millisecond), points)
-		for i := 0; i < points; i++ {
+		for i := range points {
 			_, _, appender, err = appender.AppendHistogram(nil, int64(ts), histograms[i], true)
 			require.NoError(t, err)
 			ts = ts.Add(step)
 		}
 	case chunkenc.EncFloatHistogram:
 		histograms := histogram_util.GenerateTestHistograms(int(from), int(step/time.Millisecond), points)
-		for i := 0; i < points; i++ {
+		for i := range points {
 			_, _, appender, err = appender.AppendFloatHistogram(nil, int64(ts), histograms[i].ToFloat(nil), true)
 			require.NoError(t, err)
 			ts = ts.Add(step)

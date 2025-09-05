@@ -20,7 +20,7 @@ func (b *CortexBridgeTracerWrapper) StartSpan(operationName string, opts ...open
 	return b.bt.StartSpan(operationName, opts...)
 }
 
-func (b *CortexBridgeTracerWrapper) Inject(sm opentracing.SpanContext, format interface{}, carrier interface{}) error {
+func (b *CortexBridgeTracerWrapper) Inject(sm opentracing.SpanContext, format any, carrier any) error {
 	builtinFormat, ok := format.(opentracing.BuiltinFormat)
 
 	if !ok {
@@ -57,7 +57,7 @@ func (b *CortexBridgeTracerWrapper) Inject(sm opentracing.SpanContext, format in
 	}
 }
 
-func (b *CortexBridgeTracerWrapper) Extract(format interface{}, carrier interface{}) (opentracing.SpanContext, error) {
+func (b *CortexBridgeTracerWrapper) Extract(format any, carrier any) (opentracing.SpanContext, error) {
 	builtinFormat, ok := format.(opentracing.BuiltinFormat)
 
 	if !ok {

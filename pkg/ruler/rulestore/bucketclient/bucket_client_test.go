@@ -28,7 +28,7 @@ type testGroup struct {
 }
 
 func TestListRules(t *testing.T) {
-	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ interface{}) {
+	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ any) {
 		groups := []testGroup{
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup"}},
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "second testGroup"}},
@@ -132,7 +132,7 @@ func TestLoadPartialRules(t *testing.T) {
 }
 
 func TestLoadRules(t *testing.T) {
-	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ interface{}) {
+	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ any) {
 		groups := []testGroup{
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup", Interval: model.Duration(time.Minute), Rules: []rulefmt.Rule{{
 				For:    model.Duration(5 * time.Minute),
@@ -201,7 +201,7 @@ func TestLoadRules(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, bucketClient interface{}) {
+	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, bucketClient any) {
 		groups := []testGroup{
 			{user: "user1", namespace: "A", ruleGroup: rulefmt.RuleGroup{Name: "1"}},
 			{user: "user1", namespace: "A", ruleGroup: rulefmt.RuleGroup{Name: "2"}},
@@ -261,13 +261,13 @@ func TestDelete(t *testing.T) {
 	})
 }
 
-func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore.RuleStore, bucketClient interface{})) {
+func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore.RuleStore, bucketClient any)) {
 	bucketClient := objstore.NewInMemBucket()
 	bucketStore := NewBucketRuleStore(bucketClient, nil, log.NewNopLogger())
 
 	stores := map[string]struct {
 		store  rulestore.RuleStore
-		client interface{}
+		client any
 	}{
 		"bucket": {store: bucketStore, client: bucketClient},
 	}
@@ -279,7 +279,7 @@ func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore
 	}
 }
 
-func getSortedObjectKeys(bucketClient interface{}) []string {
+func getSortedObjectKeys(bucketClient any) []string {
 	if typed, ok := bucketClient.(*objstore.InMemBucket); ok {
 		var keys []string
 		for key := range typed.Objects() {

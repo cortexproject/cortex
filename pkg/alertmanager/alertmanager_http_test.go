@@ -1,7 +1,6 @@
 package alertmanager
 
 import (
-	"context"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -14,8 +13,7 @@ import (
 )
 
 func TestMultitenantAlertmanager_GetStatusHandler(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	var peer *cluster.Peer
 	{
 		logger := promslog.NewNopLogger()

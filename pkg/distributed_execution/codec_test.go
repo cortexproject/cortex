@@ -62,7 +62,7 @@ func verifyNodeStructure(t *testing.T, expected logicalplan.Node, actual logical
 
 	require.Equal(t, len(expectedChildren), len(actualChildren))
 
-	for i := 0; i < len(expectedChildren); i++ {
+	for i := range expectedChildren {
 		if expectedChildren[i] != nil && actualChildren[i] != nil {
 			verifyNodeStructure(t, *expectedChildren[i], *actualChildren[i])
 		}

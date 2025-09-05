@@ -47,7 +47,6 @@ func TestStream(t *testing.T) {
 				output: []promchunk.Batch{mkBatch(0, enc), mkBatch(promchunk.BatchSize, enc), mkBatch(2*promchunk.BatchSize, enc), mkBatch(3*promchunk.BatchSize, enc)},
 			},
 		} {
-			tc := tc
 			t.Run(strconv.Itoa(i), func(t *testing.T) {
 				t.Parallel()
 				result := make(batchStream, len(tc.input1)+len(tc.input2))
@@ -60,7 +59,7 @@ func TestStream(t *testing.T) {
 
 func mkBatch(from int64, enc encoding.Encoding) promchunk.Batch {
 	var result promchunk.Batch
-	for i := int64(0); i < promchunk.BatchSize; i++ {
+	for i := range int64(promchunk.BatchSize) {
 		result.Timestamps[i] = from + i
 		switch enc {
 		case encoding.PrometheusXorChunk:
@@ -91,13 +90,13 @@ func testHistogram(count, numSpans, numBuckets int) *histogram.Histogram {
 		NegativeBuckets:  make([]int64, bucketsPerSide),
 		PositiveBuckets:  make([]int64, bucketsPerSide),
 	}
-	for j := 0; j < numSpans; j++ {
+	for j := range numSpans {
 		s := histogram.Span{Offset: 1, Length: spanLength}
 		h.NegativeSpans[j] = s
 		h.PositiveSpans[j] = s
 	}
 
-	for j := 0; j < bucketsPerSide; j++ {
+	for j := range bucketsPerSide {
 		h.NegativeBuckets[j] = 1
 		h.PositiveBuckets[j] = 1
 	}

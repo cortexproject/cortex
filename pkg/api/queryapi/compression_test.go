@@ -110,7 +110,7 @@ func TestNewCompressedResponseWriter_MultipleEncodings(t *testing.T) {
 	tests := []struct {
 		header     string
 		expectEnc  string
-		expectType interface{}
+		expectType any
 	}{
 		{"snappy, gzip", snappyEncoding, &snappy.Writer{}},
 		{"unknown, gzip", gzipEncoding, &gzip.Writer{}},

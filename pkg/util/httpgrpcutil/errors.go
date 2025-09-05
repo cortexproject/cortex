@@ -7,7 +7,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 )
 
-func WrapHTTPGrpcError(err error, format string, args ...interface{}) error {
+func WrapHTTPGrpcError(err error, format string, args ...any) error {
 	if err == nil {
 		return nil
 	}
@@ -19,6 +19,6 @@ func WrapHTTPGrpcError(err error, format string, args ...interface{}) error {
 	return httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
 		Code:    resp.Code,
 		Headers: resp.Headers,
-		Body:    []byte(fmt.Sprintf("%s, %s", msg, err)),
+		Body:    fmt.Appendf(nil, "%s, %s", msg, err),
 	})
 }

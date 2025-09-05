@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,7 +48,7 @@ func benchmarkBatch(b *testing.B, g TokenGenerator, numInstances, numKeys int) {
 	// Make a random ring with N instances, and M tokens per ingests
 	desc := NewDesc()
 	ring := &Desc{}
-	for i := 0; i < numInstances; i++ {
+	for i := range numInstances {
 		tokens := g.GenerateTokens(ring, strconv.Itoa(i), "zone", numTokens, true)
 		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("instance-%d", i), strconv.Itoa(i), tokens, ACTIVE, time.Now())
 	}
@@ -88,9 +89,8 @@ func benchmarkBatch(b *testing.B, g TokenGenerator, numInstances, numKeys int) {
 	for n, c := range tc {
 		b.Run(n, func(b *testing.B) {
 			// Generate a batch of N random keys, and look them up
-			b.ResetTimer()
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				generateKeys(rnd, numKeys, keys)
 				err := DoBatch(ctx, Write, &r, c.exe, keys, callback, cleanup)
 				require.NoError(b, err)
@@ -100,7 +100,7 @@ func benchmarkBatch(b *testing.B, g TokenGenerator, numInstances, numKeys int) {
 }
 
 func generateKeys(r *rand.Rand, numTokens int, dest []uint32) {
-	for i := 0; i < numTokens; i++ {
+	for i := range numTokens {
 		dest[i] = r.Uint32()
 	}
 }
@@ -136,7 +136,7 @@ func benchmarkUpdateRingState(b *testing.B, g TokenGenerator, numInstances, numZ
 	// Also make a copy with different timestamps and one with different tokens
 	desc := NewDesc()
 	otherDesc := NewDesc()
-	for i := 0; i < numInstances; i++ {
+	for i := range numInstances {
 		id := fmt.Sprintf("%d", i)
 		tokens := g.GenerateTokens(desc, id, "zone", numTokens, true)
 		now := time.Now()
@@ -156,8 +156,8 @@ func benchmarkUpdateRingState(b *testing.B, g TokenGenerator, numInstances, numZ
 	}
 
 	flipFlop := true
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+
+	for b.Loop() {
 		if flipFlop {
 			ring.updateRingState(desc)
 		} else {
@@ -285,7 +285,7 @@ func TestRing_Get_ZoneAwarenessWithIngesterLeaving(t *testing.T) {
 			// Use the GenerateTokens to get an array of random uint32 values.
 			testValues := g.GenerateTokens(r, "", "", testCount, true)
 
-			for i := 0; i < testCount; i++ {
+			for i := range testCount {
 				set, err := ring.Get(testValues[i], Write, instancesList, bufHosts, bufZones)
 				require.NoError(t, err)
 
@@ -362,7 +362,7 @@ func TestRing_Get_ZoneAwarenessWithIngesterJoining(t *testing.T) {
 			// Use the GenerateTokens to get an array of random uint32 values.
 			testValues := g.GenerateTokens(ring.ringDesc, "", "", testCount, true)
 
-			for i := 0; i < testCount; i++ {
+			for i := range testCount {
 				set, err := ring.Get(testValues[i], Write, instancesList, bufHosts, bufZones)
 				require.NoError(t, err)
 
@@ -467,7 +467,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 
 			var set ReplicationSet
 			var err error
-			for i := 0; i < testCount; i++ {
+			for i := range testCount {
 				set, err = ring.Get(testValues[i], Write, instances, bufHosts, bufZones)
 				if testData.expectedErr != "" {
 					require.EqualError(t, err, testData.expectedErr)
@@ -557,12 +557,12 @@ func TestRing_Get_Stability(t *testing.T) {
 				KVClient:            &MockClient{},
 			}
 
-			for i := 0; i < numOfTokensToTest; i++ {
+			for i := range numOfTokensToTest {
 				expectedSet, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
 				assert.NoError(t, err)
 				assert.Equal(t, testData.replicationFactor, len(expectedSet.Instances))
 
-				for j := 0; j < numOfInvocations; j++ {
+				for range numOfInvocations {
 					newSet, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
 					assert.NoError(t, err)
 					assert.Equal(t, expectedSet, newSet)
@@ -687,7 +687,7 @@ func TestRing_Get_Consistency(t *testing.T) {
 			ringDesc := &Desc{Ingesters: generateRingInstances(testData.initialInstances, testData.numZones, 128)}
 			testValues := g.GenerateTokens(ringDesc, "", "", 128, true)
 			bufDescs, bufHosts, bufZones := MakeBuffersForGet()
-			for i := 0; i < 128; i++ {
+			for i := range 128 {
 				ring := Ring{
 					cfg: Config{
 						HeartbeatTimeout:     time.Hour,
@@ -971,9 +971,6 @@ func TestRing_GetAllHealthy(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
-			for id, instance := range ringDesc.Ingesters {
-				ringDesc.Ingesters[id] = instance
-			}
 
 			ring := Ring{
 				cfg:                 Config{HeartbeatTimeout: heartbeatTimeout},
@@ -1193,9 +1190,6 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
-			for id, instance := range ringDesc.Ingesters {
-				ringDesc.Ingesters[id] = instance
-			}
 
 			ring := Ring{
 				cfg: Config{
@@ -1782,7 +1776,7 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 			require.NoError(t, err)
 
 			// Assert that multiple invocations generate the same exact shard.
-			for n := 0; n < numInvocations; n++ {
+			for range numInvocations {
 				r := ring.ShuffleShard(tenantID, size)
 				actual, err := r.GetAllHealthy(Read)
 				require.NoError(t, err)
@@ -1814,7 +1808,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 	// Initialise the ring instances. To have stable tests we generate tokens using a linear
 	// distribution. Tokens within the same zone are evenly distributed too.
 	instances := make(map[string]InstanceDesc, numInstances)
-	for i := 0; i < numInstances; i++ {
+	for i := range numInstances {
 		id := fmt.Sprintf("instance-%d", i)
 		instances[id] = InstanceDesc{
 			Addr:                fmt.Sprintf("127.0.0.%d", i),
@@ -1871,7 +1865,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 
 			numMatching := 0
 			for _, c := range currShard {
-				if util.StringsContain(otherShard, c) {
+				if slices.Contains(otherShard, c) {
 					numMatching++
 				}
 			}
@@ -1944,7 +1938,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 
 			// Compute the initial shard for each tenant.
 			initial := map[int]ReplicationSet{}
-			for id := 0; id < numTenants; id++ {
+			for id := range numTenants {
 				set, err := ring.ShuffleShard(fmt.Sprintf("%d", id), s.shardSize).GetAllHealthy(Read)
 				require.NoError(t, err)
 				initial[id] = set
@@ -1971,7 +1965,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 			// Compute the update shard for each tenant and compare it with the initial one.
 			// If the "consistency" property is guaranteed, we expect no more then 1 different instance
 			// in the updated shard.
-			for id := 0; id < numTenants; id++ {
+			for id := range numTenants {
 				updated, err := ring.ShuffleShard(fmt.Sprintf("%d", id), s.shardSize).GetAllHealthy(Read)
 				require.NoError(t, err)
 
@@ -1986,7 +1980,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	// Create 30 instances in 3 zones.
 	ringInstances := map[string]InstanceDesc{}
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		name, desc := generateRingInstance(i, i%3, 128)
 		ringInstances[name] = desc
 	}
@@ -2067,7 +2061,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 func TestRing_ShuffleShardWithZoneStability_ConsistencyOnShardSizeChanged(t *testing.T) {
 	// Create 300 instances in 3 zones.
 	ringInstances := map[string]InstanceDesc{}
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		name, desc := generateRingInstance(i, i%3, 128)
 		ringInstances[name] = desc
 	}
@@ -2129,7 +2123,7 @@ func TestRing_ShuffleShardWithZoneStability_ConsistencyOnShardSizeChanged(t *tes
 func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 	// Create 20 instances in 2 zones.
 	ringInstances := map[string]InstanceDesc{}
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		name, desc := generateRingInstance(i, i%2, 128)
 		ringInstances[name] = desc
 	}
@@ -2206,7 +2200,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 func TestRing_ShuffleShardWithZoneStability_ConsistencyOnZonesChanged(t *testing.T) {
 	// Create 20 instances in 2 zones.
 	ringInstances := map[string]InstanceDesc{}
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		name, desc := generateRingInstance(i, i%2, 128)
 		ringInstances[name] = desc
 	}
@@ -2600,9 +2594,6 @@ func TestRing_ShuffleShardWithReadOnlyIngesters(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
-			for id, instance := range ringDesc.Ingesters {
-				ringDesc.Ingesters[id] = instance
-			}
 
 			ring := Ring{
 				cfg: Config{
@@ -2823,9 +2814,7 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, numTokens, s
 		KVClient:             &MockClient{},
 	}
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		ring.ShuffleShard("tenant-1", shardSize)
 	}
 }
@@ -2855,9 +2844,7 @@ func BenchmarkRing_Get(b *testing.B) {
 	buf, bufHosts, bufZones := MakeBuffersForGet()
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		set, err := ring.Get(r.Uint32(), Write, buf, bufHosts, bufZones)
 		if err != nil || len(set.Instances) != replicationFactor {
 			b.Fatal()
@@ -3007,7 +2994,7 @@ func TestRingUpdates(t *testing.T) {
 			}
 
 			// Ensure the ring client got updated.
-			test.Poll(t, 1*time.Second, testData.expectedInstances, func() interface{} {
+			test.Poll(t, 1*time.Second, testData.expectedInstances, func() any {
 				return ring.InstancesCount()
 			})
 
@@ -3024,7 +3011,7 @@ func TestRingUpdates(t *testing.T) {
 
 				// Ensure there's no instance in an excluded zone.
 				if len(testData.excludedZones) > 0 {
-					assert.False(t, util.StringsContain(testData.excludedZones, ing.Zone))
+					assert.False(t, slices.Contains(testData.excludedZones, ing.Zone))
 				}
 			}
 
@@ -3034,7 +3021,7 @@ func TestRingUpdates(t *testing.T) {
 			}
 
 			// Ensure the ring client got updated.
-			test.Poll(t, 1*time.Second, 0, func() interface{} {
+			test.Poll(t, 1*time.Second, 0, func() any {
 				return ring.InstancesCount()
 			})
 		})
@@ -3099,14 +3086,14 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	const zones = 3
 
 	lcs := []*Lifecycler(nil)
-	for i := 0; i < numLifecyclers; i++ {
+	for i := range numLifecyclers {
 		lc := startLifecycler(t, cfg, 500*time.Millisecond, i, zones)
 
 		lcs = append(lcs, lc)
 	}
 
 	// Wait until all instances in the ring are ACTIVE.
-	test.Poll(t, 5*time.Second, numLifecyclers, func() interface{} {
+	test.Poll(t, 5*time.Second, numLifecyclers, func() any {
 		active := 0
 		rs, _ := ring.GetReplicationSetForOperation(Read)
 		for _, ing := range rs.Instances {
@@ -3127,7 +3114,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	// Do 100 iterations over two seconds. Make sure we get the same subring.
 	const iters = 100
 	sleep := (2 * time.Second) / iters
-	for i := 0; i < iters; i++ {
+	for range iters {
 		newSubring := ring.ShuffleShard(user, shardSize)
 		require.True(t, subring == newSubring, "cached subring reused")
 		require.Equal(t, shardSize, subring.InstancesCount())
@@ -3147,11 +3134,11 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	}
 
 	// Now stop one lifecycler from each zone. Subring needs to be recomputed.
-	for i := 0; i < zones; i++ {
+	for i := range zones {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lcs[i]))
 	}
 
-	test.Poll(t, 5*time.Second, numLifecyclers-zones, func() interface{} {
+	test.Poll(t, 5*time.Second, numLifecyclers-zones, func() any {
 		return ring.InstancesCount()
 	})
 

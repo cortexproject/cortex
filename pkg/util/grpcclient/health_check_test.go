@@ -76,17 +76,17 @@ func TestNewHealthCheckService(t *testing.T) {
 	// Generate healthcheck error and wait instance to become unhealthy
 	hMock.err.Store(errors.New("some error"))
 
-	cortex_testutil.Poll(t, 5*time.Second, false, func() interface{} {
+	cortex_testutil.Poll(t, 5*time.Second, false, func() any {
 		return instances[0].isHealthy()
 	})
 
 	// Mark instance back to a healthy state
 	hMock.err.Store(nil)
-	cortex_testutil.Poll(t, 5*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 5*time.Second, true, func() any {
 		return instances[0].isHealthy()
 	})
 
-	cortex_testutil.Poll(t, i.instanceGcTimeout*2, 0, func() interface{} {
+	cortex_testutil.Poll(t, i.instanceGcTimeout*2, 0, func() any {
 		return len(i.registeredInstances())
 	})
 
@@ -137,7 +137,7 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 	require.NoError(t, i.iteration(context.Background()))
 	require.False(t, hMock.open.Load())
 
-	cortex_testutil.Poll(t, time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, true, func() any {
 		err := ui(context.Background(), "", struct{}{}, struct{}{}, ccUnhealthy, invoker)
 		return errors.Is(err, unhealthyErr) || status.Code(err) == codes.Unavailable
 	})
@@ -148,7 +148,7 @@ func TestNewHealthCheckInterceptors(t *testing.T) {
 	// Should mark the instance back to healthy
 	hMock.err.Store(nil)
 	require.NoError(t, i.iteration(context.Background()))
-	cortex_testutil.Poll(t, time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, true, func() any {
 		return ui(context.Background(), "", struct{}{}, struct{}{}, ccUnhealthy, invoker) == nil
 	})
 }

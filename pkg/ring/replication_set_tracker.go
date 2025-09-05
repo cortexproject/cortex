@@ -8,7 +8,7 @@ type replicationSetResultTracker interface {
 	// Signals an instance has done the execution, either successful (no error)
 	// or failed (with error). If successful, result will be recorded and can
 	// be accessed via getResults.
-	done(instance *InstanceDesc, result interface{}, err error)
+	done(instance *InstanceDesc, result any, err error)
 
 	// Returns true if all instances are done executing
 	finished() bool
@@ -23,7 +23,7 @@ type replicationSetResultTracker interface {
 	failedCompletely() bool
 
 	// Returns recorded results.
-	getResults() []interface{}
+	getResults() []any
 
 	// Returns errors
 	getErrors() []error
@@ -34,7 +34,7 @@ type defaultResultTracker struct {
 	numSucceeded int
 	numErrors    int
 	maxErrors    int
-	results      []interface{}
+	results      []any
 	numInstances int
 	errors       []error
 }
@@ -46,12 +46,12 @@ func newDefaultResultTracker(instances []InstanceDesc, maxErrors int) *defaultRe
 		numErrors:    0,
 		maxErrors:    maxErrors,
 		errors:       make([]error, 0, len(instances)),
-		results:      make([]interface{}, 0, len(instances)),
+		results:      make([]any, 0, len(instances)),
 		numInstances: len(instances),
 	}
 }
 
-func (t *defaultResultTracker) done(instance *InstanceDesc, result interface{}, err error) {
+func (t *defaultResultTracker) done(instance *InstanceDesc, result any, err error) {
 	if err == nil {
 		t.numSucceeded++
 		t.results = append(t.results, result)
@@ -77,7 +77,7 @@ func (t *defaultResultTracker) failedCompletely() bool {
 	return t.numInstances == t.numErrors
 }
 
-func (t *defaultResultTracker) getResults() []interface{} {
+func (t *defaultResultTracker) getResults() []any {
 	return t.results
 }
 
@@ -92,7 +92,7 @@ type zoneAwareResultTracker struct {
 	failuresByZone      map[string]int
 	minSuccessfulZones  int
 	maxUnavailableZones int
-	resultsPerZone      map[string][]interface{}
+	resultsPerZone      map[string][]any
 	numInstances        int
 	zoneResultsQuorum   bool
 	zoneCount           int
@@ -114,13 +114,13 @@ func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int
 		t.waitingByZone[instance.Zone]++
 	}
 	t.minSuccessfulZones = len(t.waitingByZone) - maxUnavailableZones
-	t.resultsPerZone = make(map[string][]interface{}, len(t.waitingByZone))
+	t.resultsPerZone = make(map[string][]any, len(t.waitingByZone))
 	t.zoneCount = len(t.waitingByZone)
 
 	return t
 }
 
-func (t *zoneAwareResultTracker) done(instance *InstanceDesc, result interface{}, err error) {
+func (t *zoneAwareResultTracker) done(instance *InstanceDesc, result any, err error) {
 	if err != nil {
 		t.failuresByZone[instance.Zone]++
 		t.errors = append(t.errors, fmt.Errorf("(%s, %s) %w", instance.GetAddr(), instance.GetZone(), err))
@@ -128,7 +128,7 @@ func (t *zoneAwareResultTracker) done(instance *InstanceDesc, result interface{}
 		if _, ok := t.resultsPerZone[instance.Zone]; !ok {
 			// If it is the first result in the zone, then total number of instances
 			// in this zone should be number of waiting required.
-			t.resultsPerZone[instance.Zone] = make([]interface{}, 0, t.waitingByZone[instance.Zone])
+			t.resultsPerZone[instance.Zone] = make([]any, 0, t.waitingByZone[instance.Zone])
 		}
 		t.resultsPerZone[instance.Zone] = append(t.resultsPerZone[instance.Zone], result)
 	}
@@ -167,8 +167,8 @@ func (t *zoneAwareResultTracker) failedCompletely() bool {
 	return allZonesFailed || (t.failed() && atLeastHalfOfFleetFailed)
 }
 
-func (t *zoneAwareResultTracker) getResults() []interface{} {
-	results := make([]interface{}, 0, t.numInstances)
+func (t *zoneAwareResultTracker) getResults() []any {
+	results := make([]any, 0, t.numInstances)
 	if t.zoneResultsQuorum {
 		for zone, waiting := range t.waitingByZone {
 			// No need to check failuresByZone since tracker

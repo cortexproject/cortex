@@ -27,7 +27,7 @@ func makeMockChunks(t require.TestingT, numChunks int, enc encoding.Encoding, fr
 	var (
 		chunks = make([]chunk.Chunk, 0, numChunks)
 	)
-	for i := 0; i < numChunks; i++ {
+	for range numChunks {
 		c := util.GenerateChunk(t, sampleRate, from, int(samplesPerChunk), enc, additionalLabels...)
 		chunks = append(chunks, c)
 		from = from.Add(chunkOffset)

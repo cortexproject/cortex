@@ -274,12 +274,12 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetr
 			queryChunkBytes.Add(float64(queryStats.FetchedChunkBytes))
 			queryDataBytes.Add(float64(queryStats.FetchedDataBytes))
 			// Log ruler query stats.
-			logMessage := []interface{}{
+			logMessage := []any{
 				"msg", "query stats",
 				"component", "ruler",
 			}
 			if origin := ctx.Value(promql.QueryOrigin{}); origin != nil {
-				queryLabels := origin.(map[string]interface{})
+				queryLabels := origin.(map[string]any)
 				rgMap := queryLabels["ruleGroup"].(map[string]string)
 				logMessage = append(logMessage,
 					"rule_group", rgMap["name"],

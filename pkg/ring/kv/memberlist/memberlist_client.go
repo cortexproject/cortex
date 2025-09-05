@@ -60,7 +60,7 @@ func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
 }
 
 // Get is part of kv.Client interface.
-func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
+func (c *Client) Get(ctx context.Context, key string) (any, error) {
 	err := c.awaitKVRunningOrStopping(ctx)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 }
 
 // CAS is part of kv.Client interface
-func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (c *Client) CAS(ctx context.Context, key string, f func(in any) (out any, retry bool, err error)) error {
 	err := c.awaitKVRunningOrStopping(ctx)
 	if err != nil {
 		return err
@@ -85,7 +85,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 }
 
 // WatchKey is part of kv.Client interface.
-func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+func (c *Client) WatchKey(ctx context.Context, key string, f func(any) bool) {
 	err := c.awaitKVRunningOrStopping(ctx)
 	if err != nil {
 		return
@@ -96,7 +96,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 
 // WatchPrefix calls f whenever any value stored under prefix changes.
 // Part of kv.Client interface.
-func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, any) bool) {
 	err := c.awaitKVRunningOrStopping(ctx)
 	if err != nil {
 		return
@@ -658,13 +658,13 @@ func (m *KV) List(prefix string) []string {
 
 // Get returns current value associated with given key.
 // No communication with other nodes in the cluster is done here.
-func (m *KV) Get(key string, codec codec.Codec) (interface{}, error) {
+func (m *KV) Get(key string, codec codec.Codec) (any, error) {
 	val, _, err := m.get(key, codec)
 	return val, err
 }
 
 // Returns current value with removed tombstones.
-func (m *KV) get(key string, codec codec.Codec) (out interface{}, version uint, err error) {
+func (m *KV) get(key string, codec codec.Codec) (out any, version uint, err error) {
 	m.storeMu.Lock()
 	v := m.store[key].Clone()
 	m.storeMu.Unlock()
@@ -682,7 +682,7 @@ func (m *KV) get(key string, codec codec.Codec) (out interface{}, version uint, 
 // latest value. Notifications that arrive while 'f' is running are coalesced into one subsequent 'f' call.
 //
 // Watching ends when 'f' returns false, context is done, or this client is shut down.
-func (m *KV) WatchKey(ctx context.Context, key string, codec codec.Codec, f func(interface{}) bool) {
+func (m *KV) WatchKey(ctx context.Context, key string, codec codec.Codec, f func(any) bool) {
 	// keep one extra notification, to avoid missing notification if we're busy running the function
 	w := make(chan string, 1)
 
@@ -729,7 +729,7 @@ func (m *KV) WatchKey(ctx context.Context, key string, codec codec.Codec, f func
 // some notifications may be lost.
 //
 // Watching ends when 'f' returns false, context is done, or this client is shut down.
-func (m *KV) WatchPrefix(ctx context.Context, prefix string, codec codec.Codec, f func(string, interface{}) bool) {
+func (m *KV) WatchPrefix(ctx context.Context, prefix string, codec codec.Codec, f func(string, any) bool) {
 	// we use bigger buffer here, since keys are interesting and we don't want to lose them.
 	w := make(chan string, 16)
 
@@ -828,7 +828,7 @@ func (m *KV) notifyWatchers(key string) {
 // KV store, and change is broadcast to cluster peers. Merge function is called with CAS flag on, so that it can
 // detect removals. If Merge doesn't result in any change (returns nil), then operation fails and is retried again.
 // After too many failed retries, this method returns error.
-func (m *KV) CAS(ctx context.Context, key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (m *KV) CAS(ctx context.Context, key string, codec codec.Codec, f func(in any) (out any, retry bool, err error)) error {
 	var lastError error
 
 outer:
@@ -885,7 +885,7 @@ outer:
 
 // returns change, error (or nil, if CAS succeeded), and whether to retry or not.
 // returns errNoChangeDetected if merge failed to detect change in f's output.
-func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, bool, error) {
+func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in any) (out any, retry bool, err error)) (Mergeable, uint, bool, error) {
 	val, ver, err := m.get(key, codec)
 	if err != nil {
 		return nil, 0, false, fmt.Errorf("failed to get value: %v", err)

@@ -21,7 +21,7 @@ const (
 
 type FakeLogger struct{}
 
-func (fl *FakeLogger) Log(keyvals ...interface{}) error {
+func (fl *FakeLogger) Log(keyvals ...any) error {
 	return nil
 }
 
@@ -187,12 +187,11 @@ func Benchmark_Compression(b *testing.B) {
 			req.Header.Set(acceptEncodingHeader, "gzip")
 
 			b.ReportAllocs()
-			b.ResetTimer()
 
 			// Reusing the array to read the body and avoid allocation on the test
 			encRespBody := make([]byte, len(respBody))
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				resp, err := client.Do(req)
 
 				require.NoError(b, err)

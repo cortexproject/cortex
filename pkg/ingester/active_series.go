@@ -42,7 +42,7 @@ func NewActiveSeries() *ActiveSeries {
 	c := &ActiveSeries{}
 
 	// Stripes are pre-allocated so that we only read on them and no lock is required.
-	for i := 0; i < numActiveSeriesStripes; i++ {
+	for i := range numActiveSeriesStripes {
 		c.stripes[i].refs = map[uint64][]activeSeriesEntry{}
 	}
 
@@ -59,21 +59,21 @@ func (c *ActiveSeries) UpdateSeries(series labels.Labels, hash uint64, now time.
 // Purge removes expired entries from the cache. This function should be called
 // periodically to avoid memory leaks.
 func (c *ActiveSeries) Purge(keepUntil time.Time) {
-	for s := 0; s < numActiveSeriesStripes; s++ {
+	for s := range numActiveSeriesStripes {
 		c.stripes[s].purge(keepUntil)
 	}
 }
 
 // nolint // Linter reports that this method is unused, but it is.
 func (c *ActiveSeries) clear() {
-	for s := 0; s < numActiveSeriesStripes; s++ {
+	for s := range numActiveSeriesStripes {
 		c.stripes[s].clear()
 	}
 }
 
 func (c *ActiveSeries) Active() int {
 	total := 0
-	for s := 0; s < numActiveSeriesStripes; s++ {
+	for s := range numActiveSeriesStripes {
 		total += c.stripes[s].getActive()
 	}
 	return total
@@ -81,7 +81,7 @@ func (c *ActiveSeries) Active() int {
 
 func (c *ActiveSeries) ActiveNativeHistogram() int {
 	total := 0
-	for s := 0; s < numActiveSeriesStripes; s++ {
+	for s := range numActiveSeriesStripes {
 		total += c.stripes[s].getActiveNativeHistogram()
 	}
 	return total

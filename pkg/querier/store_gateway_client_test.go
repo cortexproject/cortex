@@ -42,7 +42,7 @@ func Test_newStoreGatewayClientFactory(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	factory := newStoreGatewayClientFactory(cfg, reg)
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		client, err := factory(listener.Addr().String())
 		require.NoError(t, err)
 		defer client.Close() //nolint:errcheck

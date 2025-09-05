@@ -61,7 +61,7 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 		return m.upstream.MetricsMetadata(ctx, req)
 	}
 
-	jobs := make([]interface{}, len(tenantIds))
+	jobs := make([]any, len(tenantIds))
 	results := make([][]scrape.MetricMetadata, len(tenantIds))
 
 	var jobPos int
@@ -74,7 +74,7 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 		jobPos++
 	}
 
-	run := func(ctx context.Context, jobIntf interface{}) error {
+	run := func(ctx context.Context, jobIntf any) error {
 		job, ok := jobIntf.(*metadataSelectJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)

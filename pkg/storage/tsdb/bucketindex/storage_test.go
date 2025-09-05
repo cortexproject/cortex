@@ -115,7 +115,7 @@ func BenchmarkReadIndex(b *testing.B) {
 
 	// Mock some blocks and deletion marks in the storage.
 	bkt = BucketWithGlobalMarkers(bkt)
-	for i := 0; i < numBlocks; i++ {
+	for i := range numBlocks {
 		minT := int64(i * 10)
 		maxT := int64((i + 1) * 10)
 
@@ -138,9 +138,7 @@ func BenchmarkReadIndex(b *testing.B) {
 	require.Len(b, idx.Blocks, numBlocks)
 	require.Len(b, idx.BlockDeletionMarks, numBlockDeletionMarks)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_, err := ReadIndex(ctx, bkt, userID, nil, logger)
 		require.NoError(b, err)
 	}

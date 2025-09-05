@@ -34,7 +34,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 		mgr.processQueriesOnSingleStream(ctx, cc, "test:12345")
 	}()
 
-	test.Poll(t, time.Second, true, func() interface{} {
+	test.Poll(t, time.Second, true, func() any {
 		return running.Load()
 	})
 
@@ -44,7 +44,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	assert.Equal(t, true, running.Load())
 
 	cancel()
-	test.Poll(t, time.Second, false, func() interface{} {
+	test.Poll(t, time.Second, false, func() any {
 		return running.Load()
 	})
 }
@@ -61,18 +61,18 @@ func TestContextCancelStopsProcess(t *testing.T) {
 	pm := newProcessorManager(ctx, &mockProcessor{}, cc, "test")
 	pm.concurrency(1)
 
-	test.Poll(t, time.Second, 1, func() interface{} {
+	test.Poll(t, time.Second, 1, func() any {
 		return int(pm.currentProcessors.Load())
 	})
 
 	cancel()
 
-	test.Poll(t, time.Second, 0, func() interface{} {
+	test.Poll(t, time.Second, 0, func() any {
 		return int(pm.currentProcessors.Load())
 	})
 
 	pm.stop()
-	test.Poll(t, time.Second, 0, func() interface{} {
+	test.Poll(t, time.Second, 0, func() any {
 		return int(pm.currentProcessors.Load())
 	})
 }

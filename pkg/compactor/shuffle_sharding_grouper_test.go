@@ -2,7 +2,6 @@ package compactor
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"path"
 	"testing"
@@ -380,8 +379,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				return testData.noCompactBlocks
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			g := NewShuffleShardingGrouper(
 				ctx,
 				nil,

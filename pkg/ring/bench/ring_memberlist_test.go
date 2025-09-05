@@ -81,7 +81,7 @@ func BenchmarkMemberlistReceiveWithRingDesc(b *testing.B) {
 	const numTokens = 128
 	initialDesc := ring.NewDesc()
 	{
-		for i := 0; i < numInstances; i++ {
+		for i := range numInstances {
 			tokens := generateUniqueTokens(i, numTokens)
 			initialDesc.AddIngester(fmt.Sprintf("instance-%d", i), "127.0.0.1", "zone", tokens, ring.ACTIVE, time.Now())
 		}
@@ -101,9 +101,7 @@ func BenchmarkMemberlistReceiveWithRingDesc(b *testing.B) {
 		testMsgs[i] = encodeMessage(b, "ring", testDesc)
 	}
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		mkv.NotifyMsg(testMsgs[i])
 	}
 }

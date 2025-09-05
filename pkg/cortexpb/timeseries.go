@@ -24,13 +24,13 @@ var (
 		is re-used. But since the slices are far far larger, we come out ahead.
 	*/
 	slicePool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return make([]PreallocTimeseries, 0, expectedTimeseries)
 		},
 	}
 
 	timeSeriesPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &TimeSeries{
 				Labels:     make([]LabelAdapter, 0, expectedLabels),
 				Samples:    make([]Sample, 0, expectedSamplesPerSeries),
@@ -41,7 +41,7 @@ var (
 	}
 
 	writeRequestPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &PreallocWriteRequest{
 				WriteRequest: WriteRequest{},
 			}

@@ -51,11 +51,11 @@ const (
 
 type wrappedQuerier struct {
 	storage.Querier
-	selectCallsArgs [][]interface{}
+	selectCallsArgs [][]any
 }
 
 func (q *wrappedQuerier) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	q.selectCallsArgs = append(q.selectCallsArgs, []interface{}{sortSeries, hints, matchers})
+	q.selectCallsArgs = append(q.selectCallsArgs, []any{sortSeries, hints, matchers})
 	return q.Querier.Select(ctx, sortSeries, hints, matchers...)
 }
 
@@ -325,7 +325,6 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 
 		for _, tc := range tCases {
 			for _, thanosEngine := range []bool{false, true} {
-				thanosEngine := thanosEngine
 				t.Run(tc.name+fmt.Sprintf("thanos engine: %t, encoding=%s", thanosEngine, enc.String()), func(t *testing.T) {
 					wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
 					var wQueriables []QueryableWithFilter
@@ -1670,7 +1669,6 @@ func TestConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			cfg := &Config{}

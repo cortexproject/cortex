@@ -225,7 +225,6 @@ func TestExpandEnv(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test
 		t.Run(test.in, func(t *testing.T) {
 			_ = os.Setenv("y", "y")
 			output := expandEnv([]byte(test.in))
@@ -263,7 +262,6 @@ func TestParseConfigFileParameter(t *testing.T) {
 		{"--config.expand-env --opt1 --config.file=foo", "foo", true},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.args, func(t *testing.T) {
 			args := strings.Split(test.args, " ")
 			configFile, expandENV := parseConfigFileParameter(args)

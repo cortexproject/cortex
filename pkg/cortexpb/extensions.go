@@ -15,7 +15,7 @@ const maxBufferSize = 1024
 const signVersion = "v1"
 
 var signerPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return newSigner()
 	},
 }

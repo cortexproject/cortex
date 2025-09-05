@@ -206,31 +206,31 @@ func Test_stripEvaluationFields(t *testing.T) {
 
 // stripEvaluationFields sets evaluation-related fields of a rules API response to zero values.
 func stripEvaluationFields(t *testing.T, r util_api.Response) {
-	dataMap, ok := r.Data.(map[string]interface{})
+	dataMap, ok := r.Data.(map[string]any)
 	if !ok {
 		t.Fatalf("expected map[string]interface{} got %T", r.Data)
 	}
 
-	groups, ok := dataMap["groups"].([]interface{})
+	groups, ok := dataMap["groups"].([]any)
 	if !ok {
 		t.Fatalf("expected []interface{} got %T", dataMap["groups"])
 	}
 
 	for i := range groups {
-		group, ok := groups[i].(map[string]interface{})
+		group, ok := groups[i].(map[string]any)
 		if !ok {
 			t.Fatalf("expected map[string]interface{} got %T", groups[i])
 		}
 		group["evaluationTime"] = 0
 		group["lastEvaluation"] = "0001-01-01T00:00:00Z"
 
-		rules, ok := group["rules"].([]interface{})
+		rules, ok := group["rules"].([]any)
 		if !ok {
 			t.Fatalf("expected []interface{} got %T", group["rules"])
 		}
 
 		for i := range rules {
-			rule, ok := rules[i].(map[string]interface{})
+			rule, ok := rules[i].(map[string]any)
 			if !ok {
 				t.Fatalf("expected map[string]interface{} got %T", rules[i])
 			}

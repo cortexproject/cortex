@@ -48,7 +48,6 @@ func TestInstanceDesc_IsHealthy_ForIngesterOperations(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			actual := testData.ingester.IsHealthy(Write, testData.timeout, time.Now())
@@ -560,22 +559,22 @@ func TestMergeTokensByZone(t *testing.T) {
 func TestDesc_SplitById_JoinIds(t *testing.T) {
 	tests := map[string]struct {
 		ring  *Desc
-		split map[string]interface{}
+		split map[string]any
 	}{
 		"empty ring": {
 			ring:  &Desc{Ingesters: map[string]InstanceDesc{}},
-			split: map[string]interface{}{},
+			split: map[string]any{},
 		},
 		"single instance": {
 			ring:  &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 123456, State: JOINING, Zone: "zone1", RegisteredTimestamp: 123}}},
-			split: map[string]interface{}{"ing1": &InstanceDesc{Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 123456, State: JOINING, Zone: "zone1", RegisteredTimestamp: 123}},
+			split: map[string]any{"ing1": &InstanceDesc{Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 123456, State: JOINING, Zone: "zone1", RegisteredTimestamp: 123}},
 		},
 		"two instances": {
 			ring: &Desc{Ingesters: map[string]InstanceDesc{
 				"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 123456, State: JOINING, Zone: "zone1", RegisteredTimestamp: 123},
 				"ing2": {Addr: "addr2", Tokens: []uint32{3, 4, 5}, Timestamp: 5678, State: ACTIVE, Zone: "zone2", RegisteredTimestamp: 567},
 			}},
-			split: map[string]interface{}{
+			split: map[string]any{
 				"ing1": &InstanceDesc{Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 123456, State: JOINING, Zone: "zone1", RegisteredTimestamp: 123},
 				"ing2": &InstanceDesc{Addr: "addr2", Tokens: []uint32{3, 4, 5}, Timestamp: 5678, State: ACTIVE, Zone: "zone2", RegisteredTimestamp: 567},
 			},
@@ -612,8 +611,8 @@ func TestDesc_FindDifference(t *testing.T) {
 	tests := map[string]struct {
 		r1       *Desc
 		r2       *Desc
-		toUpdate interface{}
-		toDelete interface{}
+		toUpdate any
+		toDelete any
 	}{
 		"nil rings": {
 			r1:       nil,

@@ -122,7 +122,7 @@ func New(cfg Config, codec codec.Codec, logger log.Logger) (*Client, error) {
 }
 
 // CAS implements kv.Client.
-func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (c *Client) CAS(ctx context.Context, key string, f func(in any) (out any, retry bool, err error)) error {
 	var revision int64
 	var lastErr error
 
@@ -137,7 +137,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			continue
 		}
 
-		var intermediate interface{}
+		var intermediate any
 		if len(resp.Kvs) > 0 {
 			intermediate, err = c.codec.Decode(resp.Kvs[0].Value)
 			if err != nil {
@@ -195,7 +195,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 }
 
 // WatchKey implements kv.Client.
-func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+func (c *Client) WatchKey(ctx context.Context, key string, f func(any) bool) {
 	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
@@ -236,7 +236,7 @@ outer:
 }
 
 // WatchPrefix implements kv.Client.
-func (c *Client) WatchPrefix(ctx context.Context, key string, f func(string, interface{}) bool) {
+func (c *Client) WatchPrefix(ctx context.Context, key string, f func(string, any) bool) {
 	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
@@ -298,7 +298,7 @@ func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
 }
 
 // Get implements kv.Client.
-func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
+func (c *Client) Get(ctx context.Context, key string) (any, error) {
 	opsCtx, cancel := c.opsContext(ctx)
 	defer cancel()
 

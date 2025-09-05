@@ -242,8 +242,6 @@ func TestDefaultShardingStrategy(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testName := testName
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
@@ -253,7 +251,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			// Initialize the ring state.
-			require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+			require.NoError(t, store.CAS(ctx, "test", func(in any) (any, bool, error) {
 				d := ring.NewDesc()
 				testData.setupRing(d)
 				return d, true, nil
@@ -620,9 +618,6 @@ func TestShuffleShardingStrategy(t *testing.T) {
 
 	for testName, testData := range tests {
 		for _, zoneStableShuffleSharding := range []bool{false, true} {
-			testName := testName
-			testData := testData
-
 			t.Run(fmt.Sprintf("%s %s", testName, strconv.FormatBool(zoneStableShuffleSharding)), func(t *testing.T) {
 				t.Parallel()
 
@@ -631,7 +626,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 				// Initialize the ring state.
-				require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+				require.NoError(t, store.CAS(ctx, "test", func(in any) (any, bool, error) {
 					d := ring.NewDesc()
 					testData.setupRing(d)
 					return d, true, nil
@@ -722,7 +717,7 @@ func TestDefaultShardingStrategy_OwnBlock(t *testing.T) {
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	// Initialize the ring state.
-	require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+	require.NoError(t, store.CAS(ctx, "test", func(in any) (any, bool, error) {
 		d := ring.NewDesc()
 		d.AddIngester("instance-1", "127.0.0.1", "zone-a", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
 		d.AddIngester("instance-2", "127.0.0.2", "zone-b", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
@@ -772,7 +767,7 @@ func TestShuffleShardingStrategy_OwnBlock(t *testing.T) {
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	// Initialize the ring state.
-	require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+	require.NoError(t, store.CAS(ctx, "test", func(in any) (any, bool, error) {
 		d := ring.NewDesc()
 		d.AddIngester("instance-1", "127.0.0.1", "zone-a", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
 		d.AddIngester("instance-2", "127.0.0.2", "zone-b", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)

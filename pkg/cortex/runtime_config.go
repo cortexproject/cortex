@@ -64,7 +64,7 @@ type runtimeConfigLoader struct {
 	cfg Config
 }
 
-func (l runtimeConfigLoader) load(r io.Reader) (interface{}, error) {
+func (l runtimeConfigLoader) load(r io.Reader) (any, error) {
 	var overrides = &RuntimeConfigValues{}
 
 	decoder := yaml.NewDecoder(r)
@@ -145,7 +145,7 @@ func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager, defaultLimit
 			return
 		}
 
-		var output interface{}
+		var output any
 		switch r.URL.Query().Get("mode") {
 		case "diff":
 			// Default runtime config is just empty struct, but to make diff work,

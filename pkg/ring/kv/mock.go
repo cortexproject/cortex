@@ -21,7 +21,7 @@ func (m mockClient) List(ctx context.Context, prefix string) ([]string, error) {
 	return []string{}, nil
 }
 
-func (m mockClient) Get(ctx context.Context, key string) (interface{}, error) {
+func (m mockClient) Get(ctx context.Context, key string) (any, error) {
 	return "", nil
 }
 
@@ -29,14 +29,14 @@ func (m mockClient) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (m mockClient) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (m mockClient) CAS(ctx context.Context, key string, f func(in any) (out any, retry bool, err error)) error {
 	return nil
 }
 
-func (m mockClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+func (m mockClient) WatchKey(ctx context.Context, key string, f func(any) bool) {
 }
 
-func (m mockClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+func (m mockClient) WatchPrefix(ctx context.Context, prefix string, f func(string, any) bool) {
 }
 
 func (m mockClient) LastUpdateTime(key string) time.Time {

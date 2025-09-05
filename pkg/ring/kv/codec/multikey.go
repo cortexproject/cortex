@@ -9,11 +9,11 @@ type MultiKey interface {
 
 	// SplitByID Split interface in array of key and value. THe key is a unique identifier of an instance in the ring. The value is
 	// interface with its data. The interface resultant need to be a proto.Message
-	SplitByID() map[string]interface{}
+	SplitByID() map[string]any
 
 	// JoinIds update the current interface to add receiving key value information. The key is an unique identifier for an instance.
 	// The value is the information for that instance.
-	JoinIds(in map[string]interface{})
+	JoinIds(in map[string]any)
 
 	// GetItemFactory method to be used for deserilaize the value information from an instance
 	GetItemFactory() proto.Message
@@ -21,5 +21,5 @@ type MultiKey interface {
 	// FindDifference returns the difference between two Multikeys. The returns are an interface which also implements Multikey
 	// with an array of keys which were changed, and an array of strings which are unique identifiers deleted. An error is
 	// returned when that does not implement the correct codec
-	FindDifference(that MultiKey) (interface{}, []string, error)
+	FindDifference(that MultiKey) (any, []string, error)
 }

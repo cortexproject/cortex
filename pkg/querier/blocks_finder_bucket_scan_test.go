@@ -502,7 +502,6 @@ func TestBucketScanBlocksFinder_GetBlocks(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 

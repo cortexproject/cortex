@@ -70,9 +70,7 @@ func BenchmarkRateLimiter_CustomMultiTenant(b *testing.B) {
 	limiter := NewRateLimiter(strategy, 10*time.Second)
 	now := time.Now()
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		limiter.AllowN(now, "test", 1)
 	}
 }
@@ -81,9 +79,7 @@ func BenchmarkRateLimiter_OriginalSingleTenant(b *testing.B) {
 	limiter := rate.NewLimiter(rate.Limit(1), 1)
 	now := time.Now()
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		limiter.AllowN(now, 1)
 	}
 }

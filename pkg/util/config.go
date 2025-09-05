@@ -6,8 +6,8 @@ import (
 )
 
 // DiffConfig utility function that returns the diff between two config map objects
-func DiffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[interface{}]interface{}, error) {
-	output := make(map[interface{}]interface{})
+func DiffConfig(defaultConfig, actualConfig map[any]any) (map[any]any, error) {
+	output := make(map[any]any)
 
 	for key, value := range actualConfig {
 
@@ -33,8 +33,8 @@ func DiffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 			if !ok || defaultV != v {
 				output[key] = v
 			}
-		case []interface{}:
-			defaultV, ok := defaultValue.([]interface{})
+		case []any:
+			defaultV, ok := defaultValue.([]any)
 			if !ok || !reflect.DeepEqual(defaultV, v) {
 				output[key] = v
 			}
@@ -47,8 +47,8 @@ func DiffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 			if defaultValue != nil {
 				output[key] = v
 			}
-		case map[interface{}]interface{}:
-			defaultV, ok := defaultValue.(map[interface{}]interface{})
+		case map[any]any:
+			defaultV, ok := defaultValue.(map[any]any)
 			if !ok {
 				output[key] = value
 			}

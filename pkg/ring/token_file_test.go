@@ -12,7 +12,7 @@ import (
 
 func TestTokenFile_Serialization(t *testing.T) {
 	tokens := make(Tokens, 0, 512)
-	for i := 0; i < 512; i++ {
+	for range 512 {
 		tokens = append(tokens, uint32(rand.Int31()))
 	}
 	tokenFile := TokenFile{
@@ -30,7 +30,7 @@ func TestTokenFile_Serialization(t *testing.T) {
 
 func TestTokenFile_Serialization_ForwardCompatibility(t *testing.T) {
 	tokens := make(Tokens, 0, 512)
-	for i := 0; i < 512; i++ {
+	for range 512 {
 		tokens = append(tokens, uint32(rand.Int31()))
 	}
 	b, err := oldMarshal(tokens)
@@ -44,7 +44,7 @@ func TestTokenFile_Serialization_ForwardCompatibility(t *testing.T) {
 
 func TestTokenFile_Serialization_BackwardCompatibility(t *testing.T) {
 	tokens := make(Tokens, 0, 512)
-	for i := 0; i < 512; i++ {
+	for range 512 {
 		tokens = append(tokens, uint32(rand.Int31()))
 	}
 	tokenFile := TokenFile{

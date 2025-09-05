@@ -115,7 +115,7 @@ func TestSampleStreamJSONSerialization(t *testing.T) {
 }
 
 func generateData(timeseries, datapoints int) (floatMatrix, histogramMatrix []*SampleStream) {
-	for i := 0; i < timeseries; i++ {
+	for i := range timeseries {
 		lset := labels.FromMap(map[string]string{
 			model.MetricNameLabel: "timeseries_" + strconv.Itoa(i),
 			"foo":                 "bar",

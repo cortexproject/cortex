@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"math"
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -59,9 +60,7 @@ func (g *RandomTokenGenerator) GenerateTokens(ring *Desc, _, _ string, numTokens
 	}
 
 	// Ensure returned tokens are sorted.
-	sort.Slice(tokens, func(i, j int) bool {
-		return tokens[i] < tokens[j]
-	})
+	slices.Sort(tokens)
 
 	return tokens
 }
@@ -235,9 +234,7 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 		}
 	}
 
-	sort.Slice(r, func(i, j int) bool {
-		return r[i] < r[j]
-	})
+	slices.Sort(r)
 
 	return r
 }
@@ -291,7 +288,7 @@ func tokenDistance(from, to uint32) int64 {
 }
 
 func findFirst(n int, f func(int) bool) int {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if f(i) {
 			return i
 		}

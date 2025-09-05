@@ -46,7 +46,7 @@ func (t *Time) Set(s string) error {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (t *Time) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (t *Time) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
@@ -55,6 +55,6 @@ func (t *Time) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (t Time) MarshalYAML() (interface{}, error) {
+func (t Time) MarshalYAML() (any, error) {
 	return t.String(), nil
 }

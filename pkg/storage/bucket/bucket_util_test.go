@@ -38,7 +38,7 @@ func TestDeletePrefixConcurrent(t *testing.T) {
 	require.NoError(t, mem.Upload(context.Background(), "prefix/sub2/4", strings.NewReader("hello")))
 	require.NoError(t, mem.Upload(context.Background(), "outside/obj", strings.NewReader("hello")))
 	n := 10000
-	for i := 0; i < n; i++ {
+	for i := range n {
 		require.NoError(t, mem.Upload(context.Background(), fmt.Sprintf("prefix/sub/%d", i), strings.NewReader(fmt.Sprintf("hello%d", i))))
 	}
 

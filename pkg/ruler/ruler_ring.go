@@ -163,10 +163,7 @@ func GetReplicationSetForListRule(r ring.ReadRing, cfg *RingConfig) (ring.Replic
 			return ring.ReplicationSet{}, zoneFailures, ring.ErrTooManyUnhealthyInstances
 		}
 	} else {
-		numRequired := len(healthy) + len(unhealthy)
-		if numRequired < r.ReplicationFactor() {
-			numRequired = r.ReplicationFactor()
-		}
+		numRequired := max(len(healthy)+len(unhealthy), r.ReplicationFactor())
 		// quorum is not required so 1 replica is enough to handle the request
 		numRequired -= r.ReplicationFactor() - 1
 		if len(healthy) < numRequired {

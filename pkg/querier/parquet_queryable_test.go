@@ -50,7 +50,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 	maxT := util.TimeToMillis(time.Now())
 
 	createStore := func() *blocksStoreSetMock {
-		return &blocksStoreSetMock{mockedResponses: []interface{}{
+		return &blocksStoreSetMock{mockedResponses: []any{
 			map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1",
 					mockedSeriesResponses: []*storepb.SeriesResponse{
@@ -415,7 +415,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 	ctx := context.Background()
 	seriesCount := 100
 	lbls := make([]labels.Labels, seriesCount)
-	for i := 0; i < seriesCount; i++ {
+	for i := range seriesCount {
 		lbls[i] = labels.FromStrings(labels.MetricName, metricName, "series", strconv.Itoa(i))
 	}
 
@@ -514,7 +514,6 @@ func TestParquetQueryable_Limits(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
@@ -712,13 +711,13 @@ func TestMaterializedLabelsFilterCallbackConcurrent(t *testing.T) {
 		By:          true,
 		Labels:      []string{"__name__"},
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			defer wg.Done()
 			ctx := injectShardInfoIntoContext(context.Background(), si)
 			filter, exists := materializedLabelsFilterCallback(ctx, nil)
 			require.Equal(t, true, exists)
-			for j := 0; j < 1000; j++ {
+			for j := range 1000 {
 				filter.Filter(labels.FromStrings("__name__", "test_metric", "label_1", strconv.Itoa(j)))
 			}
 			filter.Close()
@@ -734,7 +733,7 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 	maxT := util.TimeToMillis(time.Now())
 
 	createStore := func() *blocksStoreSetMock {
-		return &blocksStoreSetMock{mockedResponses: []interface{}{
+		return &blocksStoreSetMock{mockedResponses: []any{
 			map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1",
 					mockedSeriesResponses: []*storepb.SeriesResponse{

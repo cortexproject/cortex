@@ -17,7 +17,7 @@ type mockClientStream struct {
 	recvErr error
 }
 
-func (m *mockClientStream) RecvMsg(msg interface{}) error {
+func (m *mockClientStream) RecvMsg(msg any) error {
 	return m.recvErr
 }
 
@@ -37,7 +37,7 @@ func (m *mockClientStream) Context() context.Context {
 	return context.Background()
 }
 
-func (m *mockClientStream) SendMsg(interface{}) error {
+func (m *mockClientStream) SendMsg(any) error {
 	return nil
 }
 
@@ -78,7 +78,7 @@ func TestUnwrapErrorStreamClientInterceptor(t *testing.T) {
 	ctx := context.Background()
 	stream, err := chainedStreamer(ctx, &grpc.StreamDesc{}, nil, "test")
 	require.NoError(t, err)
-	var msg interface{}
+	var msg any
 	err = stream.RecvMsg(&msg)
 	require.Error(t, err)
 	require.EqualError(t, err, originalErr.Error())

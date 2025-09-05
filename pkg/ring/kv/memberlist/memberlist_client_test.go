@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand"
 	"net"
@@ -111,7 +112,7 @@ func (m member) clone() member {
 	return out
 }
 
-func (d *data) Clone() interface{} {
+func (d *data) Clone() any {
 	out := &data{
 		Members: make(map[string]member, len(d.Members)),
 	}
@@ -137,22 +138,22 @@ func (d dataCodec) CodecID() string {
 	return "testDataCodec"
 }
 
-func (d dataCodec) Decode(b []byte) (interface{}, error) {
+func (d dataCodec) Decode(b []byte) (any, error) {
 	dec := gob.NewDecoder(bytes.NewBuffer(b))
 	out := &data{}
 	err := dec.Decode(out)
 	return out, err
 }
 
-func (d dataCodec) DecodeMultiKey(map[string][]byte) (interface{}, error) {
+func (d dataCodec) DecodeMultiKey(map[string][]byte) (any, error) {
 	return nil, errors.New("dataCodec does not support DecodeMultiKey")
 }
 
-func (d dataCodec) EncodeMultiKey(interface{}) (map[string][]byte, error) {
+func (d dataCodec) EncodeMultiKey(any) (map[string][]byte, error) {
 	return nil, errors.New("dataCodec does not support EncodeMultiKey")
 }
 
-func (d dataCodec) Encode(val interface{}) ([]byte, error) {
+func (d dataCodec) Encode(val any) ([]byte, error) {
 	buf := bytes.Buffer{}
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(val)
@@ -196,7 +197,7 @@ func updateFn(name string) func(*data) (*data, bool, error) {
 	}
 }
 
-func get(t *testing.T, kv *Client, key string) interface{} {
+func get(t *testing.T, kv *Client, key string) any {
 	val, err := kv.Get(context.Background(), key)
 	if err != nil {
 		t.Fatalf("Failed to get value for key %s: %v", key, err)
@@ -227,7 +228,7 @@ func cas(t *testing.T, kv *Client, key string, updateFn func(*data) (*data, bool
 
 func casWithErr(ctx context.Context, t *testing.T, kv *Client, key string, updateFn func(*data) (*data, bool, error)) error {
 	t.Helper()
-	fn := func(in interface{}) (out interface{}, retry bool, err error) {
+	fn := func(in any) (out any, retry bool, err error) {
 		var r *data
 		if in != nil {
 			r = in.(*data)
@@ -469,7 +470,7 @@ func TestMultipleCAS(t *testing.T) {
 	const members = 10
 	const namePattern = "Member-%d"
 
-	for i := 0; i < members; i++ {
+	for i := range members {
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
@@ -487,7 +488,7 @@ func TestMultipleCAS(t *testing.T) {
 	r := getData(t, kv, "test")
 	require.True(t, r != nil, "nil ring")
 
-	for i := 0; i < members; i++ {
+	for i := range members {
 		n := fmt.Sprintf(namePattern, i)
 
 		if r.Members[n].State != ACTIVE {
@@ -498,7 +499,7 @@ func TestMultipleCAS(t *testing.T) {
 	// Make all members leave
 	start = make(chan struct{})
 
-	for i := 0; i < members; i++ {
+	for i := range members {
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
@@ -518,7 +519,7 @@ func TestMultipleCAS(t *testing.T) {
 	r = getData(t, kv, "test")
 	require.True(t, r != nil, "nil ring")
 
-	for i := 0; i < members; i++ {
+	for i := range members {
 		n := fmt.Sprintf(namePattern, i)
 
 		if r.Members[n].State != LEFT {
@@ -540,7 +541,7 @@ func TestMultipleClients(t *testing.T) {
 
 	port := 0
 
-	for i := 0; i < members; i++ {
+	for i := range members {
 		id := fmt.Sprintf("Member-%d", i)
 		var cfg KVConfig
 		flagext.DefaultValues(&cfg)
@@ -581,7 +582,7 @@ func TestMultipleClients(t *testing.T) {
 	firstKv := clients[0]
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	updates := 0
-	firstKv.WatchKey(ctx, key, func(in interface{}) bool {
+	firstKv.WatchKey(ctx, key, func(in any) bool {
 		updates++
 
 		r := in.(*data)
@@ -610,7 +611,7 @@ func TestMultipleClients(t *testing.T) {
 	// And same tokens.
 	allTokens := []uint32(nil)
 
-	for i := 0; i < members; i++ {
+	for i := range members {
 		kv := clients[i]
 
 		r := getData(t, kv, key)
@@ -743,7 +744,7 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 	firstKv := clients[0]
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	observedMembers := 0
-	firstKv.WatchKey(ctx, key, func(in interface{}) bool {
+	firstKv.WatchKey(ctx, key, func(in any) bool {
 		r := in.(*data)
 		observedMembers = len(r.Members)
 
@@ -823,7 +824,7 @@ func TestMemberlistJoinOnStarting(t *testing.T) {
 	mkv2 := NewKV(cfg2, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
 	require.NoError(t, mkv2.starting(context.Background()))
 
-	membersFunc := func() interface{} {
+	membersFunc := func() any {
 		return mkv2.memberlist.NumMembers()
 	}
 
@@ -832,7 +833,7 @@ func TestMemberlistJoinOnStarting(t *testing.T) {
 
 func getFreePorts(count int) ([]int, error) {
 	var ports []int
-	for i := 0; i < count; i++ {
+	for range count {
 		addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
@@ -945,11 +946,9 @@ func (dc distributedCounter) RemoveTombstones(limit time.Time) (_, _ int) {
 	return
 }
 
-func (dc distributedCounter) Clone() interface{} {
+func (dc distributedCounter) Clone() any {
 	out := make(distributedCounter, len(dc))
-	for k, v := range dc {
-		out[k] = v
-	}
+	maps.Copy(out, dc)
 	return out
 }
 
@@ -959,25 +958,25 @@ func (d distributedCounterCodec) CodecID() string {
 	return "distributedCounter"
 }
 
-func (d distributedCounterCodec) Decode(b []byte) (interface{}, error) {
+func (d distributedCounterCodec) Decode(b []byte) (any, error) {
 	dec := gob.NewDecoder(bytes.NewBuffer(b))
 	out := &distributedCounter{}
 	err := dec.Decode(out)
 	return *out, err
 }
 
-func (d distributedCounterCodec) Encode(val interface{}) ([]byte, error) {
+func (d distributedCounterCodec) Encode(val any) ([]byte, error) {
 	buf := bytes.Buffer{}
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(val)
 	return buf.Bytes(), err
 }
 
-func (d distributedCounterCodec) DecodeMultiKey(map[string][]byte) (interface{}, error) {
+func (d distributedCounterCodec) DecodeMultiKey(map[string][]byte) (any, error) {
 	return nil, errors.New("distributedCounterCodec does not support DecodeMultiKey")
 }
 
-func (d distributedCounterCodec) EncodeMultiKey(interface{}) (map[string][]byte, error) {
+func (d distributedCounterCodec) EncodeMultiKey(any) (map[string][]byte, error) {
 	return nil, errors.New("distributedCounterCodec does not support EncodeMultiKey")
 }
 
@@ -1006,7 +1005,7 @@ func TestMultipleCodecs(t *testing.T) {
 	kv2, err := NewClient(mkv1, distributedCounterCodec{})
 	require.NoError(t, err)
 
-	err = kv1.CAS(context.Background(), "data", func(in interface{}) (out interface{}, retry bool, err error) {
+	err = kv1.CAS(context.Background(), "data", func(in any) (out any, retry bool, err error) {
 		var d *data
 		if in != nil {
 			d = in.(*data)
@@ -1025,7 +1024,7 @@ func TestMultipleCodecs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = kv2.CAS(context.Background(), "counter", func(in interface{}) (out interface{}, retry bool, err error) {
+	err = kv2.CAS(context.Background(), "counter", func(in any) (out any, retry bool, err error) {
 		var dc distributedCounter
 		if in != nil {
 			dc = in.(distributedCounter)
@@ -1099,7 +1098,7 @@ func TestRejoin(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv2))
 	defer services.StopAndAwaitTerminated(context.Background(), mkv2) //nolint:errcheck
 
-	membersFunc := func() interface{} {
+	membersFunc := func() any {
 		return mkv2.memberlist.NumMembers()
 	}
 
@@ -1156,7 +1155,7 @@ func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
 
 	now := time.Now()
 
-	require.NoError(t, client.CAS(context.Background(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+	require.NoError(t, client.CAS(context.Background(), key, func(in any) (out any, retry bool, err error) {
 		d := getOrCreateData(in)
 		d.Members["a"] = member{Timestamp: now.Unix(), State: JOINING}
 		d.Members["b"] = member{Timestamp: now.Unix(), State: JOINING}
@@ -1299,7 +1298,7 @@ func decodeDataFromMarshalledKeyValuePair(t *testing.T, marshalledKVP []byte, ke
 	return d
 }
 
-func marshalKeyValuePair(t *testing.T, key string, codec codec.Codec, value interface{}) []byte {
+func marshalKeyValuePair(t *testing.T, key string, codec codec.Codec, value any) []byte {
 	data, err := codec.Encode(value)
 	require.NoError(t, err)
 
@@ -1309,7 +1308,7 @@ func marshalKeyValuePair(t *testing.T, key string, codec codec.Codec, value inte
 	return data
 }
 
-func getOrCreateData(in interface{}) *data {
+func getOrCreateData(in any) *data {
 	// Modify value that was passed as a parameter.
 	// Client takes care of concurrent modifications.
 	r, ok := in.(*data)
@@ -1320,7 +1319,7 @@ func getOrCreateData(in interface{}) *data {
 }
 
 // poll repeatedly evaluates condition until we either timeout, or it succeeds.
-func poll(t testing.TB, d time.Duration, want interface{}, have func() interface{}) {
+func poll(t testing.TB, d time.Duration, want any, have func() any) {
 	t.Helper()
 
 	deadline := time.Now().Add(d)
@@ -1340,7 +1339,7 @@ func poll(t testing.TB, d time.Duration, want interface{}, have func() interface
 type testLogger struct {
 }
 
-func (l testLogger) Log(keyvals ...interface{}) error {
+func (l testLogger) Log(keyvals ...any) error {
 	return nil
 }
 

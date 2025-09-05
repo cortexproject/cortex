@@ -104,8 +104,7 @@ func BenchmarkCompress(b *testing.B) {
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
 			c := encoding.GetCompressor(tc.name)
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				w, _ := c.Compress(io.Discard)
 				_, _ = w.Write(data)
 				_ = w.Close()
@@ -139,8 +138,7 @@ func BenchmarkDecompress(b *testing.B) {
 			w, _ := c.Compress(&buf)
 			_, _ = w.Write(data)
 			w.Close()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, _, err := decompress(c, buf.Bytes(), 10000)
 				require.NoError(b, err)
 			}

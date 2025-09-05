@@ -3,6 +3,7 @@ package tripperware
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -247,7 +248,7 @@ func statsMerge(shouldSumStats bool, resps []*PrometheusResponse) *PrometheusRes
 		keys = append(keys, key)
 	}
 
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	slices.Sort(keys)
 
 	result := &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
 	for _, key := range keys {

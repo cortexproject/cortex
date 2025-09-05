@@ -176,7 +176,7 @@ func Test_mergeMetadataQuerier_MetricsMetadata_WhenUseRegexResolver(t *testing.T
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 	// wait update knownUsers
-	test.Poll(t, time.Second*10, true, func() interface{} {
+	test.Poll(t, time.Second*10, true, func() any {
 		return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == 2
 	})
 

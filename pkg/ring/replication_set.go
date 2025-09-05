@@ -27,9 +27,9 @@ type ReplicationSet struct {
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise. zoneResultsQuorum allows only include
 // results from zones that already reach quorum to improve performance.
-func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResultsQuorum bool, partialDataEnabled bool, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
+func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResultsQuorum bool, partialDataEnabled bool, f func(context.Context, *InstanceDesc) (any, error)) ([]any, error) {
 	type instanceResult struct {
-		res      interface{}
+		res      any
 		err      error
 		instance *InstanceDesc
 	}
@@ -180,7 +180,7 @@ func hasReplicationSetChangedExcluding(before, after ReplicationSet, exclude fun
 	sort.Sort(ByAddr(beforeInstances))
 	sort.Sort(ByAddr(afterInstances))
 
-	for i := 0; i < len(beforeInstances); i++ {
+	for i := range beforeInstances {
 		b := beforeInstances[i]
 		a := afterInstances[i]
 

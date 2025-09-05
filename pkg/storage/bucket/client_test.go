@@ -76,7 +76,6 @@ func TestNewClient(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Load config
@@ -145,7 +144,7 @@ func TestClientMock_MockGet(t *testing.T) {
 	// Run many goroutines all requesting the same mocked object and
 	// ensure there's no race.
 	wg := sync.WaitGroup{}
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

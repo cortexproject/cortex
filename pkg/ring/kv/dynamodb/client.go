@@ -98,7 +98,7 @@ func (c *Client) List(ctx context.Context, key string) ([]string, error) {
 	return resp, err
 }
 
-func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
+func (c *Client) Get(ctx context.Context, key string) (any, error) {
 	resp, _, err := c.kv.Query(ctx, dynamodbKey{primaryKey: key}, false)
 	if err != nil {
 		level.Warn(c.logger).Log("msg", "error Get", "key", key, "err", err)
@@ -135,7 +135,7 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (c *Client) CAS(ctx context.Context, key string, f func(in any) (out any, retry bool, err error)) error {
 	bo := backoff.New(ctx, c.backoffConfig)
 	for bo.Ongoing() {
 		c.ddbMetrics.dynamodbCasAttempts.Inc()
@@ -229,7 +229,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 	return err
 }
 
-func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+func (c *Client) WatchKey(ctx context.Context, key string, f func(any) bool) {
 	bo := backoff.New(ctx, c.backoffConfig)
 
 	for bo.Ongoing() {
@@ -271,7 +271,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 	}
 }
 
-func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, any) bool) {
 	bo := backoff.New(ctx, c.backoffConfig)
 
 	for bo.Ongoing() {

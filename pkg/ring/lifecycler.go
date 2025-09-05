@@ -446,7 +446,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 	fn := func() {
 		var tokens Tokens
 
-		claimTokens := func(in interface{}) (out interface{}, retry bool, err error) {
+		claimTokens := func(in any) (out any, retry bool, err error) {
 			ringDesc, ok := in.(*Desc)
 			if !ok || ringDesc == nil {
 				return nil, false, fmt.Errorf("cannot claim tokens in an empty ring")
@@ -722,7 +722,7 @@ func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 		level.Info(i.logger).Log("msg", "not loading tokens from file, tokens file path is empty")
 	}
 
-	err = i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err = i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -821,7 +821,7 @@ func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
 	if ratio > 1 {
 		ratio = 1
 	}
-	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			return in, false, nil
 		}
@@ -837,7 +837,7 @@ func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
 		ringTokens, _ := ringDesc.TokensFor(i.ID)
 
 		// Removing random tokens
-		for i := 0; i < tokensToBeRenewed; i++ {
+		for range tokensToBeRenewed {
 			if len(ringTokens) == 0 {
 				break
 			}
@@ -869,7 +869,7 @@ func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
 func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 	result := false
 
-	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		var ringDesc *Desc
 		if in == nil {
 			ringDesc = NewDesc()
@@ -920,7 +920,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 		return false
 	}
 
-	for i := 0; i < len(tokens); i++ {
+	for i := range tokens {
 		if tokens[i] != fromRing[i] {
 			return false
 		}
@@ -932,7 +932,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, alreadyInRing bool) error {
 	var ringDesc *Desc
 
-	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -987,7 +987,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 func (i *Lifecycler) updateConsul(ctx context.Context) error {
 	var ringDesc *Desc
 
-	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -1121,7 +1121,7 @@ func (i *Lifecycler) processShutdown(ctx context.Context) {
 func (i *Lifecycler) unregister(ctx context.Context) error {
 	level.Debug(i.logger).Log("msg", "unregistering instance from ring", "ring", i.RingName)
 
-	return i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	return i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
 		}

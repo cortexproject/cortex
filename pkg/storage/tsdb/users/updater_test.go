@@ -73,7 +73,6 @@ func TestUserIndexUpdater_UpdateUserIndex(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)

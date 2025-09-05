@@ -44,7 +44,7 @@ func runNotifications(t *testing.T, rateLimitedNotifier *rateLimitedNotifier, co
 	success := 0
 	rateLimited := 0
 
-	for i := 0; i < count; i++ {
+	for range count {
 		retry, err := rateLimitedNotifier.Notify(context.Background(), &types.Alert{})
 
 		switch err {

@@ -39,7 +39,6 @@ func forEncodings(t *testing.T, f func(t *testing.T, enc promchunk.Encoding)) {
 		promchunk.PrometheusHistogramChunk,
 		//promchunk.PrometheusFloatHistogramChunk,
 	} {
-		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
 			f(t, enc)
@@ -55,7 +54,7 @@ func mkGenericChunk(t require.TestingT, from model.Time, points int, enc promchu
 func testIter(t require.TestingT, points int, iter chunkenc.Iterator, enc promchunk.Encoding) {
 	histograms := histogram_util.GenerateTestHistograms(0, 1000, points)
 	ets := model.TimeFromUnix(0)
-	for i := 0; i < points; i++ {
+	for i := range points {
 		require.Equal(t, iter.Next(), enc.ChunkValueType(), strconv.Itoa(i))
 		switch enc {
 		case promchunk.PrometheusXorChunk:
@@ -132,7 +131,7 @@ func TestSeek(t *testing.T) {
 		it: &it,
 	}
 
-	for i := 0; i < chunk.BatchSize-1; i++ {
+	for i := range chunk.BatchSize - 1 {
 		require.Equal(t, chunkenc.ValFloat, c.Seek(int64(i), 1))
 	}
 	require.Equal(t, 1, it.seeks)
@@ -159,7 +158,7 @@ func (i *mockIterator) Batch(size int, valType chunkenc.ValueType) chunk.Batch {
 		Length:  chunk.BatchSize,
 		ValType: valType,
 	}
-	for i := 0; i < chunk.BatchSize; i++ {
+	for i := range chunk.BatchSize {
 		batch.Timestamps[i] = int64(i)
 	}
 	return batch

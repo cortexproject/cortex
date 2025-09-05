@@ -29,7 +29,7 @@ func NewLogger(w io.Writer) *Logger {
 	}
 }
 
-func (l *Logger) Log(keyvals ...interface{}) error {
+func (l *Logger) Log(keyvals ...any) error {
 	log := strings.Builder{}
 	log.WriteString(time.Now().Format("15:04:05"))
 

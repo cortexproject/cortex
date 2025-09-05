@@ -36,7 +36,7 @@ func BenchmarkDisallowedLogLevels(b *testing.B) {
 	require.NoError(b, cfg.LogLevel.Set("warn"))
 	InitLogger(cfg)
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		level.Info(Logger).Log("hello", "world", "number", i)
 		level.Debug(Logger).Log("hello", "world", "number", i)
 	}

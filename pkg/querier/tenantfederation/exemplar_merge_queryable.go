@@ -144,7 +144,7 @@ func (m mergeExemplarQuerier) Select(start, end int64, matchers ...[]*labels.Mat
 
 	// filter out tenants to query and unrelated matchers
 	allMatchedTenantIds, allUnrelatedMatchers := filterAllTenantsAndMatchers(m.idLabelName, m.tenantIds, matchers)
-	jobs := make([]interface{}, len(allMatchedTenantIds))
+	jobs := make([]any, len(allMatchedTenantIds))
 	results := make([][]exemplar.QueryResult, len(allMatchedTenantIds))
 
 	var jobPos int
@@ -162,7 +162,7 @@ func (m mergeExemplarQuerier) Select(start, end int64, matchers ...[]*labels.Mat
 		jobPos++
 	}
 
-	run := func(ctx context.Context, jobIntf interface{}) error {
+	run := func(ctx context.Context, jobIntf any) error {
 		job, ok := jobIntf.(*exemplarSelectJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)

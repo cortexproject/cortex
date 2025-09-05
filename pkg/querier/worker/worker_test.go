@@ -69,7 +69,6 @@ func TestResetConcurrency(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			cfg := Config{
@@ -88,13 +87,13 @@ func TestResetConcurrency(t *testing.T) {
 				w.AddressAdded(fmt.Sprintf("127.0.0.1:%d", i))
 			}
 
-			test.Poll(t, 250*time.Millisecond, tt.expectedConcurrency, func() interface{} {
+			test.Poll(t, 250*time.Millisecond, tt.expectedConcurrency, func() any {
 				return getConcurrentProcessors(w)
 			})
 
 			// now we remove an address and ensure we still have the expected concurrency
 			w.AddressRemoved(fmt.Sprintf("127.0.0.1:%d", rand.Intn(tt.numTargets)))
-			test.Poll(t, 250*time.Millisecond, tt.expectedConcurrencyAfterTargetRemoval, func() interface{} {
+			test.Poll(t, 250*time.Millisecond, tt.expectedConcurrencyAfterTargetRemoval, func() any {
 				return getConcurrentProcessors(w)
 			})
 

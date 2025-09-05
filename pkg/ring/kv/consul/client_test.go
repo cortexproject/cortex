@@ -28,7 +28,7 @@ func writeValuesToKV(t *testing.T, client *Client, key string, start, end int, s
 		defer close(ch)
 		for i := start; i <= end; i++ {
 			t.Log("ts", time.Now(), "msg", "writing value", "val", i)
-			_, _ = client.kv.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
+			_, _ = client.kv.Put(&consul.KVPair{Key: key, Value: fmt.Appendf(nil, "%d", i)}, nil)
 			time.Sleep(sleep)
 		}
 	}()
@@ -181,7 +181,7 @@ func TestReset(t *testing.T) {
 		defer close(ch)
 		for i := 0; i <= max; i++ {
 			t.Log("ts", time.Now(), "msg", "writing value", "val", i)
-			_, _ = c.kv.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
+			_, _ = c.kv.Put(&consul.KVPair{Key: key, Value: fmt.Appendf(nil, "%d", i)}, nil)
 			if i == 1 {
 				c.kv.(*mockKV).ResetIndex()
 			}
@@ -214,7 +214,7 @@ func observeValueForSomeTime(t *testing.T, client *Client, key string, timeout t
 	observed := []string(nil)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	client.WatchKey(ctx, key, func(i interface{}) bool {
+	client.WatchKey(ctx, key, func(i any) bool {
 		s, ok := i.(string)
 		if !ok {
 			return false
@@ -248,7 +248,7 @@ func TestWatchKeyWithNoStartValue(t *testing.T) {
 	defer fn()
 
 	reported := 0
-	c.WatchKey(ctx, key, func(i interface{}) bool {
+	c.WatchKey(ctx, key, func(i any) bool {
 		reported++
 		return reported != 2
 	})
@@ -260,6 +260,6 @@ func TestWatchKeyWithNoStartValue(t *testing.T) {
 type testLogger struct {
 }
 
-func (l testLogger) Log(keyvals ...interface{}) error {
+func (l testLogger) Log(keyvals ...any) error {
 	return nil
 }

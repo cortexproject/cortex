@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -180,7 +181,7 @@ type Config struct {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
-	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+	if !slices.Contains(supportedShardingStrategies, cfg.ShardingStrategy) {
 		return errInvalidShardingStrategy
 	}
 
@@ -200,7 +201,7 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 		return errInvalidMaxConcurrentEvals
 	}
 
-	if !util.StringsContain(supportedQueryResponseFormats, cfg.QueryResponseFormat) {
+	if !slices.Contains(supportedQueryResponseFormats, cfg.QueryResponseFormat) {
 		return errInvalidQueryResponseFormat
 	}
 
@@ -621,7 +622,7 @@ func (r *Ruler) nonPrimaryInstanceOwnsRuleGroup(g *rulespb.RuleGroupDesc, replic
 	ctx, cancel := context.WithTimeout(ctx, r.cfg.LivenessCheckTimeout)
 	defer cancel()
 
-	err := concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
+	err := concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job any) error {
 		addr := job.(string)
 		rulerClient, err := r.GetClientFor(addr)
 		if err != nil {
@@ -910,13 +911,10 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	gLock := sync.Mutex{}
 	ruleGroupCounts := make(map[string]int, len(userRings))
 
-	concurrency := loadRulesConcurrency
-	if len(userRings) < concurrency {
-		concurrency = len(userRings)
-	}
+	concurrency := min(len(userRings), loadRulesConcurrency)
 
 	g, gctx := errgroup.WithContext(ctx)
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		g.Go(func() error {
 			for userID := range userCh {
 				groups, err := r.store.ListRuleGroupsForUserAndNamespace(gctx, userID, "")
@@ -1387,7 +1385,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 	}
 	// Concurrently fetch rules from all rulers.
 	jobs := concurrency.CreateJobsFromStrings(rulers.GetAddresses())
-	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
+	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job any) error {
 		addr := job.(string)
 
 		rulerClient, err := r.clientsPool.GetClientFor(addr)
@@ -1533,7 +1531,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	done := make(chan struct{})
-	iter := make(chan interface{})
+	iter := make(chan any)
 
 	go func() {
 		util.StreamWriteYAMLV3Response(w, iter, logger)

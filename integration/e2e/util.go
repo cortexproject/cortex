@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"maps"
 	"math"
 	"math/rand"
 	"net/http"
@@ -63,9 +64,7 @@ func MergeFlagsWithoutRemovingEmpty(inputs ...map[string]string) map[string]stri
 	output := map[string]string{}
 
 	for _, input := range inputs {
-		for name, value := range input {
-			output[name] = value
-		}
+		maps.Copy(output, input)
 	}
 
 	return output
@@ -211,7 +210,7 @@ func GenerateSeriesWithSamples(
 
 	startTMillis := tsMillis
 	samples := make([]prompb.Sample, numSamples)
-	for i := 0; i < numSamples; i++ {
+	for i := range numSamples {
 		scrapeJitter := rand.Int63n(10) + 1 // add a jitter to simulate real-world scenarios, refer to: https://github.com/prometheus/prometheus/issues/13213
 		samples[i] = prompb.Sample{
 			Timestamp: startTMillis + scrapeJitter,
@@ -288,11 +287,11 @@ func CreateNHBlock(
 	}()
 
 	app := h.Appender(ctx)
-	for i := 0; i < len(series); i++ {
+	for i := range series {
 		num := random.Intn(i + 1)
 		var ref storage.SeriesRef
 		start := RandRange(rnd, mint, maxt)
-		for j := 0; j < numNHSamples; j++ {
+		for j := range numNHSamples {
 			if num%2 == 0 {
 				// append float histogram
 				ref, err = app.AppendHistogram(ref, series[i], start, nil, tsdbutil.GenerateTestFloatHistogram(int64(i+j)))
@@ -372,11 +371,11 @@ func CreateBlock(
 	}()
 
 	app := h.Appender(ctx)
-	for i := 0; i < len(series); i++ {
+	for i := range series {
 
 		var ref storage.SeriesRef
 		start := RandRange(rnd, mint, maxt)
-		for j := 0; j < numSamples; j++ {
+		for j := range numSamples {
 			ref, err = app.Append(ref, series[i], start, float64(i+j))
 			if err != nil {
 				if rerr := app.Rollback(); rerr != nil {
@@ -519,7 +518,7 @@ func GenerateV2SeriesWithSamples(
 
 	startTMillis := tsMillis
 	samples := make([]writev2.Sample, numSamples)
-	for i := 0; i < numSamples; i++ {
+	for i := range numSamples {
 		scrapeJitter := rand.Int63n(10) + 1 // add a jitter to simulate real-world scenarios, refer to: https://github.com/prometheus/prometheus/issues/13213
 		samples[i] = writev2.Sample{
 			Timestamp: startTMillis + scrapeJitter,

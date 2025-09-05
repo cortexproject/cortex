@@ -18,7 +18,7 @@ const (
 )
 
 var (
-	Buffers = sync.Pool{New: func() interface{} {
+	Buffers = sync.Pool{New: func() any {
 		b := make([]byte, 0, 100)
 		return &b
 	}}

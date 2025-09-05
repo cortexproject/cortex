@@ -18,7 +18,7 @@ func TestUnarySigningHandler(t *testing.T) {
 	w := &cortexpb.WriteRequest{}
 
 	// Sign Request
-	err := UnarySigningClientInterceptor(ctx, "", w, w, nil, func(c context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+	err := UnarySigningClientInterceptor(ctx, "", w, w, nil, func(c context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
 		ctx = c
 		return nil
 	})
@@ -34,14 +34,14 @@ func TestUnarySigningHandler(t *testing.T) {
 	ctx = metadata.NewIncomingContext(ctx, md)
 
 	// Verify signature on the server side
-	_, err = UnarySigningServerInterceptor(ctx, w, nil, func(ctx context.Context, req interface{}) (interface{}, error) {
+	_, err = UnarySigningServerInterceptor(ctx, w, nil, func(ctx context.Context, req any) (any, error) {
 		return nil, nil
 	})
 	require.NoError(t, err)
 
 	// Change user id and make sure the request signature mismatch
 	ctx = user.InjectOrgID(ctx, "user-2")
-	_, err = UnarySigningServerInterceptor(ctx, w, nil, func(ctx context.Context, req interface{}) (interface{}, error) {
+	_, err = UnarySigningServerInterceptor(ctx, w, nil, func(ctx context.Context, req any) (any, error) {
 		return nil, nil
 	})
 
@@ -50,7 +50,7 @@ func TestUnarySigningHandler(t *testing.T) {
 	// Return error when signature is not present
 	ctx = user.InjectOrgID(context.Background(), "user-")
 
-	_, err = UnarySigningServerInterceptor(ctx, w, nil, func(ctx context.Context, req interface{}) (interface{}, error) {
+	_, err = UnarySigningServerInterceptor(ctx, w, nil, func(ctx context.Context, req any) (any, error) {
 		return nil, nil
 	})
 
@@ -59,7 +59,7 @@ func TestUnarySigningHandler(t *testing.T) {
 	// Return error when multiples signatures are present
 	md[reqSignHeaderName] = append(md[reqSignHeaderName], "sig1", "sig2")
 	ctx = metadata.NewOutgoingContext(ctx, md)
-	err = UnarySigningClientInterceptor(ctx, "", w, w, nil, func(c context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+	err = UnarySigningClientInterceptor(ctx, "", w, w, nil, func(c context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
 		ctx = c
 		return nil
 	})

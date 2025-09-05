@@ -32,10 +32,7 @@ func SendLabelNamesStream(s Ingester_LabelNamesStreamServer, l *LabelNamesStream
 
 func SendAsBatchToStream(totalItems int, streamBatchSize int, fn func(start, end int) error) error {
 	for i := 0; i < totalItems; i += streamBatchSize {
-		j := i + streamBatchSize
-		if j > totalItems {
-			j = totalItems
-		}
+		j := min(i+streamBatchSize, totalItems)
 		if err := fn(i, j); err != nil {
 			return err
 		}

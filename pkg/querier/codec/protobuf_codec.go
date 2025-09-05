@@ -100,7 +100,7 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 	sampleStreamsLen := len(data.Result.(promql.Matrix))
 	sampleStreams := make([]tripperware.SampleStream, sampleStreamsLen)
 
-	for i := 0; i < sampleStreamsLen; i++ {
+	for i := range sampleStreamsLen {
 		sampleStream := data.Result.(promql.Matrix)[i]
 		labelsLen := sampleStream.Metric.Len()
 		var lbls []cortexpb.LabelAdapter
@@ -120,7 +120,7 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 		var samples []cortexpb.Sample
 		if samplesLen > 0 {
 			samples = make([]cortexpb.Sample, samplesLen)
-			for j := 0; j < samplesLen; j++ {
+			for j := range samplesLen {
 				samples[j] = cortexpb.Sample{
 					Value:       sampleStream.Floats[j].F,
 					TimestampMs: sampleStream.Floats[j].T,
@@ -132,7 +132,7 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 		var histograms []tripperware.SampleHistogramPair
 		if histogramsLen > 0 {
 			histograms = make([]tripperware.SampleHistogramPair, histogramsLen)
-			for j := 0; j < histogramsLen; j++ {
+			for j := range histogramsLen {
 				bucketsLen := len(sampleStream.Histograms[j].H.NegativeBuckets) + len(sampleStream.Histograms[j].H.PositiveBuckets)
 				if sampleStream.Histograms[j].H.ZeroCount > 0 {
 					bucketsLen = len(sampleStream.Histograms[j].H.NegativeBuckets) + len(sampleStream.Histograms[j].H.PositiveBuckets) + 1
@@ -157,7 +157,7 @@ func getVectorSamples(data *v1.QueryData, cortexInternal bool) *[]tripperware.Sa
 	vectorSamplesLen := len(data.Result.(promql.Vector))
 	vectorSamples := make([]tripperware.Sample, vectorSamplesLen)
 
-	for i := 0; i < vectorSamplesLen; i++ {
+	for i := range vectorSamplesLen {
 		sample := data.Result.(promql.Vector)[i]
 		labelsLen := sample.Metric.Len()
 		var lbls []cortexpb.LabelAdapter
@@ -243,7 +243,7 @@ func getBuckets(bucketsLen int, it histogram.BucketIterator[float64]) []*tripper
 func getStats(builtin *stats.BuiltinStats) *tripperware.PrometheusResponseSamplesStats {
 	queryableSamplesStatsPerStepLen := len(builtin.Samples.TotalQueryableSamplesPerStep)
 	queryableSamplesStatsPerStep := make([]*tripperware.PrometheusResponseQueryableSamplesStatsPerStep, queryableSamplesStatsPerStepLen)
-	for i := 0; i < queryableSamplesStatsPerStepLen; i++ {
+	for i := range queryableSamplesStatsPerStepLen {
 		queryableSamplesStatsPerStep[i] = &tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
 			Value:       builtin.Samples.TotalQueryableSamplesPerStep[i].V,
 			TimestampMs: builtin.Samples.TotalQueryableSamplesPerStep[i].T,

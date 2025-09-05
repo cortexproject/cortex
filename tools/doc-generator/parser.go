@@ -73,7 +73,7 @@ func parseFlags(cfg flagext.Registerer) map[uintptr]*flag.Flag {
 	return flags
 }
 
-func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Flag, addedRootBlocks map[string]struct{}) ([]*configBlock, error) {
+func parseConfig(block *configBlock, cfg any, flags map[uintptr]*flag.Flag, addedRootBlocks map[string]struct{}) ([]*configBlock, error) {
 	blocks := []*configBlock{}
 
 	// If the input block is nil it means we're generating the doc for the top-level block
@@ -517,7 +517,7 @@ func parseDocTag(f reflect.StructField) map[string]string {
 		return cfg
 	}
 
-	for _, entry := range strings.Split(tag, "|") {
+	for entry := range strings.SplitSeq(tag, "|") {
 		parts := strings.SplitN(entry, "=", 2)
 
 		switch len(parts) {

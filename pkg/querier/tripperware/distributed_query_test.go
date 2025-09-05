@@ -118,7 +118,6 @@ func TestLogicalPlanGeneration(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		tc := tc
 		t.Run(strconv.Itoa(i)+"_"+tc.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -36,7 +36,7 @@ func TestTimeFromMillis(t *testing.T) {
 func TestDurationWithJitter(t *testing.T) {
 	const numRuns = 1000
 
-	for i := 0; i < numRuns; i++ {
+	for range numRuns {
 		actual := DurationWithJitter(time.Minute, 0.5)
 		assert.GreaterOrEqual(t, int64(actual), int64(30*time.Second))
 		assert.LessOrEqual(t, int64(actual), int64(90*time.Second))
@@ -50,7 +50,7 @@ func TestDurationWithJitter_ZeroInputDuration(t *testing.T) {
 func TestDurationWithPositiveJitter(t *testing.T) {
 	const numRuns = 1000
 
-	for i := 0; i < numRuns; i++ {
+	for range numRuns {
 		actual := DurationWithPositiveJitter(time.Minute, 0.5)
 		assert.GreaterOrEqual(t, int64(actual), int64(60*time.Second))
 		assert.LessOrEqual(t, int64(actual), int64(90*time.Second))
@@ -230,7 +230,7 @@ func TestSlottedTicker(t *testing.T) {
 			slotSize := tc.duration.Milliseconds() / int64(tc.totalSlots)
 			successCount := 0
 
-			test.Poll(t, 5*time.Second, true, func() interface{} {
+			test.Poll(t, 5*time.Second, true, func() any {
 				tTime := <-ticker.C
 				slotShiftInMs := tTime.UnixMilli() % tc.duration.Milliseconds()
 				slot := slotShiftInMs / slotSize
@@ -255,13 +255,13 @@ func TestSlottedTicker(t *testing.T) {
 
 		ticker := NewSlottedTicker(infoFunc, d, 0)
 
-		test.Poll(t, 5*time.Second, true, func() interface{} {
+		test.Poll(t, 5*time.Second, true, func() any {
 			tTime := <-ticker.C
 			slotShiftInMs := tTime.UnixMilli() % d.Milliseconds()
 			return slotShiftInMs >= 60 && slotShiftInMs <= 90
 		})
 		slotSize.Store(5)
-		test.Poll(t, 2*time.Second, true, func() interface{} {
+		test.Poll(t, 2*time.Second, true, func() any {
 			tTime := <-ticker.C
 			slotShiftInMs := tTime.UnixMilli() % d.Milliseconds()
 			return slotShiftInMs >= 120 && slotShiftInMs <= 180

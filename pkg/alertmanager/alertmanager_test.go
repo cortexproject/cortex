@@ -48,7 +48,7 @@ func TestSilencesLimits(t *testing.T) {
 		}
 
 		// create silences up to maxSilencesCount
-		for i := 0; i < maxSilencesCount; i++ {
+		for range maxSilencesCount {
 			err := am.silences.Set(createSilences())
 			require.NoError(t, err)
 		}
@@ -136,7 +136,7 @@ route:
 
 	now := time.Now()
 
-	for i := 0; i < alertGroups; i++ {
+	for i := range alertGroups {
 		alertName := model.LabelValue(fmt.Sprintf("Alert-%d", i))
 
 		inputAlerts := []*types.Alert{
@@ -174,7 +174,7 @@ route:
 	}
 
 	// Give it some time, as alerts are sent to dispatcher asynchronously.
-	test.Poll(t, 3*time.Second, nil, func() interface{} {
+	test.Poll(t, 3*time.Second, nil, func() any {
 		return testutil.GatherAndCompare(reg, strings.NewReader(fmt.Sprintf(`
 		# HELP alertmanager_dispatcher_aggregation_group_limit_reached_total Number of times when dispatcher failed to create new aggregation group due to limit.
 		# TYPE alertmanager_dispatcher_aggregation_group_limit_reached_total counter

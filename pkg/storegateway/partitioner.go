@@ -41,7 +41,7 @@ func newGapBasedPartitioner(maxGapBytes uint64, reg prometheus.Registerer) *gapB
 func (p *gapBasedPartitioner) Partition(length int, rng func(int) (uint64, uint64)) []store.Part {
 	// Calculate the size of requested ranges.
 	requestedBytes := uint64(0)
-	for i := 0; i < length; i++ {
+	for i := range length {
 		start, end := rng(i)
 		requestedBytes += end - start
 	}

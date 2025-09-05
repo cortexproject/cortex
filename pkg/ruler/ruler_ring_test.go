@@ -262,7 +262,7 @@ func TestGetReplicationSetForListRule(t *testing.T) {
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), rulerRing))
 			t.Cleanup(rulerRing.StopAsync)
 
-			err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+			err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 				d, _ := in.(*ring.Desc)
 				if d == nil {
 					d = ring.NewDesc()

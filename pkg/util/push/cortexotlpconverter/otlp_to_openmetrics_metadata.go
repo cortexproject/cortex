@@ -1,8 +1,9 @@
 package cortexotlpconverter
 
 import (
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func otelMetricTypeToPromMetricType(otelMetric pmetric.Metric) cortexpb.MetricMetadata_MetricType {

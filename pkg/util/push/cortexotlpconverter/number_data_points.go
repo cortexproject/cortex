@@ -4,12 +4,12 @@ import (
 	"context"
 	"math"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/value"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
-	"github.com/prometheus/prometheus/model/value"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func (c *CortexConverter) addGaugeNumberDataPoints(ctx context.Context, dataPoints pmetric.NumberDataPointSlice,

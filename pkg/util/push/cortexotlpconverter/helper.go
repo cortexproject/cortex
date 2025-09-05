@@ -14,15 +14,15 @@ import (
 	"unicode/utf8"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/otlptranslator"
+	"github.com/prometheus/prometheus/model/timestamp"
+	"github.com/prometheus/prometheus/model/value"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 
-	"github.com/prometheus/prometheus/model/timestamp"
-	"github.com/prometheus/prometheus/model/value"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 const (
@@ -548,20 +548,6 @@ func createLabels(name string, baseLabels []cortexpb.LabelAdapter, extras ...str
 	}
 
 	labels = append(labels, cortexpb.LabelAdapter{Name: model.MetricNameLabel, Value: name})
-	return labels
-}
-
-// addTypeAndUnitLabels appends type and unit labels to the given labels slice.
-func addTypeAndUnitLabels(labels []cortexpb.LabelAdapter, metadata cortexpb.MetricMetadata, settings Settings) []cortexpb.LabelAdapter {
-	unitNamer := otlptranslator.UnitNamer{UTF8Allowed: settings.AllowUTF8}
-
-	labels = slices.DeleteFunc(labels, func(l cortexpb.LabelAdapter) bool {
-		return l.Name == "__type__" || l.Name == "__unit__"
-	})
-
-	labels = append(labels, cortexpb.LabelAdapter{Name: "__type__", Value: strings.ToLower(metadata.Type.String())})
-	labels = append(labels, cortexpb.LabelAdapter{Name: "__unit__", Value: unitNamer.Build(metadata.Unit)})
-
 	return labels
 }
 

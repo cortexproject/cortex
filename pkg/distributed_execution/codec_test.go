@@ -34,7 +34,7 @@ func TestUnmarshalWithLogicalPlan(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				plan, _, err := CreateTestLogicalPlan(tc.query, start, end, step)
+				plan, err := CreateTestLogicalPlan(tc.query, start, end, step)
 				require.NoError(t, err)
 				require.NotNil(t, plan)
 

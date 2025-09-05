@@ -778,16 +778,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	d.receivedExemplars.WithLabelValues(userID).Add(float64(validatedExemplars))
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
-	if !d.nativeHistogramIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples) {
-		level.Warn(d.log).Log("msg", "native histogram ingestion rate limit (%v) exceeded while adding %d native histogram samples", d.nativeHistogramIngestionRateLimiter.Limit(now, userID), validatedHistogramSamples)
-		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, userID).Add(float64(validatedHistogramSamples))
-		validatedHistogramSamples = 0
-	} else {
-		seriesKeys = append(seriesKeys, nhSeriesKeys...)
-		validatedTimeseries = append(validatedTimeseries, nhValidatedTimeseries...)
-	}
-
-	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
+	if len(seriesKeys) == 0 && len(nhSeriesKeys) == 0 && len(metadataKeys) == 0 {
 		// Ensure the request slice is reused if there's no series or metadata passing the validation.
 		cortexpb.ReuseSlice(req.Timeseries)
 
@@ -812,6 +803,17 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	// totalN included samples and metadata. Ingester follows this pattern when computing its ingestion rate.
 	d.ingestionRate.Add(int64(totalN))
 
+	var nativeHistogramErr error
+
+	if !d.nativeHistogramIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples) {
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, userID).Add(float64(validatedHistogramSamples))
+		nativeHistogramErr = httpgrpc.Errorf(http.StatusTooManyRequests, "native histogram ingestion rate limit (%v) exceeded while adding %d native histogram samples", d.nativeHistogramIngestionRateLimiter.Limit(now, userID), validatedHistogramSamples)
+		validatedHistogramSamples = 0
+	} else {
+		seriesKeys = append(seriesKeys, nhSeriesKeys...)
+		validatedTimeseries = append(validatedTimeseries, nhValidatedTimeseries...)
+	}
+
 	subRing := d.ingestersRing
 
 	// Obtain a subring if required.
@@ -821,6 +823,10 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	keys := append(seriesKeys, metadataKeys...)
 	initialMetadataIndex := len(seriesKeys)
+
+	if len(keys) == 0 && nativeHistogramErr != nil {
+		return nil, nativeHistogramErr
+	}
 
 	err = d.doBatch(ctx, req, subRing, keys, initialMetadataIndex, validatedMetadata, validatedTimeseries, userID)
 	if err != nil {
@@ -835,6 +841,10 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		resp.Samples = int64(validatedFloatSamples)
 		resp.Histograms = int64(validatedHistogramSamples)
 		resp.Exemplars = int64(validatedExemplars)
+	}
+
+	if nativeHistogramErr != nil {
+		return resp, nativeHistogramErr
 	}
 
 	return resp, firstPartialErr

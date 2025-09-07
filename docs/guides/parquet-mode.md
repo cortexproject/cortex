@@ -84,7 +84,7 @@ parquet_converter:
   file_buffer_enabled: true
 
   # Defines additional sort columns applied during Parquet file generation.
-  sort_columns: ["label1", "label2"]
+  additional_sort_columns: ["label1", "label2"]
 
   # Ring configuration for distributed conversion
   ring:

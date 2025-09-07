@@ -385,9 +385,9 @@ func TestConverter_SortColumns(t *testing.T) {
 		{
 			desc: "additional sort columns are added",
 			cfg: Config{
-				MetaSyncConcurrency: 1,
-				DataDir:             t.TempDir(),
-				SortColumns:         []string{"cluster", "namespace"},
+				MetaSyncConcurrency:   1,
+				DataDir:               t.TempDir(),
+				AdditionalSortColumns: []string{"cluster", "namespace"},
 			},
 			expectedSortColumns: []string{labels.MetricName, "cluster", "namespace"},
 		},
@@ -395,7 +395,7 @@ func TestConverter_SortColumns(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			c, _, _ := prepare(t, tC.cfg, objstore.WithNoopInstr(bucketClient), limits, nil)
-			assert.Equal(t, tC.expectedSortColumns, c.cfg.SortColumns,
+			assert.Equal(t, tC.expectedSortColumns, c.cfg.AdditionalSortColumns,
 				"Converter should be created with the expected sort columns")
 		})
 	}

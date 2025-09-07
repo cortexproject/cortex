@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-
 	"log/slog"
 	"net/http"
 	"runtime"
@@ -414,6 +413,9 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 	t.Cfg.Worker.TargetHeaders = t.Cfg.API.HTTPRequestHeadersToLog
+
+	t.Cfg.Worker.ListenPort = t.Cfg.Server.GRPCListenPort
+
 	return querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(internalQuerierRouter), util_log.Logger, prometheus.DefaultRegisterer)
 }
 
@@ -541,6 +543,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		t.Cfg.Querier.LookbackDelta,
 		t.Cfg.Querier.DefaultEvaluationInterval,
 		t.Cfg.Querier.DistributedExecEnabled,
+		t.Cfg.Querier.ThanosEngine.LogicalOptimizers,
 	)
 	if err != nil {
 		return nil, err
@@ -553,7 +556,8 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryAnalyzer,
 		t.Cfg.Querier.LookbackDelta,
 		t.Cfg.Querier.DefaultEvaluationInterval,
-		t.Cfg.Querier.DistributedExecEnabled)
+		t.Cfg.Querier.DistributedExecEnabled,
+		t.Cfg.Querier.ThanosEngine.LogicalOptimizers)
 	if err != nil {
 		return nil, err
 	}
@@ -813,7 +817,7 @@ func (t *Cortex) initQueryScheduler() (services.Service, error) {
 		tenant.WithDefaultResolver(tenantfederation.NewRegexValidator())
 	}
 
-	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.Querier.DistributedExecEnabled)
 	if err != nil {
 		return nil, errors.Wrap(err, "query-scheduler init")
 	}

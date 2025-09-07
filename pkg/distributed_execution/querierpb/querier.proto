@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package querierpb;
+
+option go_package = "querierpb";
+
+import "gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+// Querier service facilitates inter-querier communication for distributed query execution.
+// It supports two types of streaming:
+// 1. Series: For discovering the shape of incoming data
+// 2. Next: For retrieving the actual data
+service Querier {
+  rpc Series(SeriesRequest) returns (stream SeriesBatch) {}
+  rpc Next(NextRequest) returns (stream StepVectorBatch) {}
+}
+
+// SeriesRequest contains parameters for series streaming
+message SeriesRequest {
+  uint64 queryID = 1;     // Unique identifier for the query
+  uint64 fragmentID = 2;  // Identifier for the specific query fragment
+  int64 batchsize = 3;    // Number of batches to send during streaming
+}
+
+// NextRequest contains parameters for data streaming
+message NextRequest {
+  uint64 queryID = 1;     // Unique identifier for the query
+  uint64 fragmentID = 2;  // Identifier for the specific query fragment
+  int64 batchsize = 3;    // Number of batches to send during streaming
+}
+
+// SeriesBatch contains a collection of series metadata
+message SeriesBatch {
+  repeated OneSeries OneSeries = 1;  // Array of series metadata
+}
+
+// OneSeries represents a single time series with its labels
+// Used to describe the shape of incoming data
+message OneSeries {
+  repeated Label labels = 1;  // Labels defining the series
+}
+
+// StepVectorBatch contains a collection of step vectors
+message StepVectorBatch {
+  repeated StepVector step_vectors = 1;  // Array of step vectors
+}
+
+// StepVector represents data points at a specific timestamp
+message StepVector {
+  int64 t = 1;                                    // Timestamp
+  repeated uint64 sample_IDs = 2;                 // IDs for sample data
+  repeated double samples = 3;                    // Sample values
+  repeated uint64 histogram_IDs = 4;              // IDs for histogram data
+  repeated cortexpb.Histogram histograms = 5
+  [(gogoproto.nullable) = false];                 // Histogram values
+}
+
+// Label represents a key-value pair for series metadata
+message Label {
+  string name = 1;   // Label name
+  string value = 2;  // Label value
+}

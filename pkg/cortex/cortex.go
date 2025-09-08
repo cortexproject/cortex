@@ -127,7 +127,6 @@ type Config struct {
 	RuntimeConfig       runtimeconfig.Config                       `yaml:"runtime_config"`
 	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
 	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
-	Overrides           overrides.Config                           `yaml:"overrides"`
 
 	Tracing tracing.Config `yaml:"tracing"`
 }
@@ -177,7 +176,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
-	c.Overrides.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 }
 

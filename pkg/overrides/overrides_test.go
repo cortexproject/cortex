@@ -17,28 +17,26 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestConfig_Validate(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
-		initConfig func(*Config)
+		initConfig func(*runtimeconfig.Config)
 		expected   error
 	}{
 		"default config should pass": {
-			initConfig: func(_ *Config) {},
-			expected:   nil,
-		},
-		"disabled config should pass": {
-			initConfig: func(cfg *Config) {
-
+			initConfig: func(cfg *runtimeconfig.Config) {
+				// Set default values for bucket config
+				flagext.DefaultValues(&cfg.StorageConfig)
 			},
 			expected: nil,
 		},
-		"enabled config should pass": {
-			initConfig: func(cfg *Config) {
-				cfg.Config = bucket.Config{
+		"s3 config should pass": {
+			initConfig: func(cfg *runtimeconfig.Config) {
+				cfg.StorageConfig = bucket.Config{
 					Backend: bucket.S3,
 					S3: s3.Config{
 						AccessKeyID:     "test-access-key",
@@ -48,6 +46,8 @@ func TestConfig_Validate(t *testing.T) {
 						Insecure:        true,
 					},
 				}
+				// Set default values before validation
+				flagext.DefaultValues(&cfg.StorageConfig.S3)
 			},
 			expected: nil,
 		},
@@ -56,21 +56,21 @@ func TestConfig_Validate(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
-			cfg := Config{}
+			cfg := runtimeconfig.Config{}
 
 			testData.initConfig(&cfg)
 
 			if testData.expected == nil {
-				assert.NoError(t, cfg.Validate())
+				assert.NoError(t, cfg.StorageConfig.Validate())
 			} else {
-				assert.ErrorIs(t, cfg.Validate(), testData.expected)
+				assert.ErrorIs(t, cfg.StorageConfig.Validate(), testData.expected)
 			}
 		})
 	}
 }
 
 func TestConfig_RegisterFlags(t *testing.T) {
-	cfg := Config{}
+	cfg := runtimeconfig.Config{}
 
 	// Test that flags are registered without panicking
 	require.NotPanics(t, func() {
@@ -81,22 +81,27 @@ func TestConfig_RegisterFlags(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	tests := map[string]struct {
-		cfg         Config
+		cfg         runtimeconfig.Config
 		expectError bool
 	}{
 		"valid config should create API": {
-			cfg: Config{
-				Config: bucket.Config{
-					Backend: bucket.S3,
-					S3: s3.Config{
-						AccessKeyID:     "test-access-key",
-						SecretAccessKey: flagext.Secret{Value: "test-secret-key"},
-						BucketName:      "test-bucket",
-						Endpoint:        "localhost:9000",
-						Insecure:        true,
+			cfg: func() runtimeconfig.Config {
+				cfg := runtimeconfig.Config{
+					StorageConfig: bucket.Config{
+						Backend: bucket.S3,
+						S3: s3.Config{
+							AccessKeyID:     "test-access-key",
+							SecretAccessKey: flagext.Secret{Value: "test-secret-key"},
+							BucketName:      "test-bucket",
+							Endpoint:        "localhost:9000",
+							Insecure:        true,
+						},
 					},
-				},
-			},
+				}
+				// Set default values before validation
+				flagext.DefaultValues(&cfg.StorageConfig.S3)
+				return cfg
+			}(),
 			expectError: false,
 		},
 	}
@@ -111,8 +116,6 @@ func TestNew(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, api)
-				// Don't compare the entire config since defaults may modify it
-				// Just verify the API was created successfully
 			}
 		})
 	}
@@ -120,8 +123,8 @@ func TestNew(t *testing.T) {
 
 func TestOverridesModuleServiceInterface(t *testing.T) {
 	// Create the API instance with proper configuration
-	cfg := Config{
-		Config: bucket.Config{
+	cfg := runtimeconfig.Config{
+		StorageConfig: bucket.Config{
 			Backend: bucket.S3,
 			S3: s3.Config{
 				AccessKeyID:     "test-access-key",
@@ -132,6 +135,8 @@ func TestOverridesModuleServiceInterface(t *testing.T) {
 			},
 		},
 	}
+	// Set default values before validation
+	flagext.DefaultValues(&cfg.StorageConfig.S3)
 	api, err := New(cfg, log.Logger, prometheus.DefaultRegisterer)
 	require.NoError(t, err)
 	require.NotNil(t, api)
@@ -205,16 +210,16 @@ func TestAPIEndpoints(t *testing.T) {
 			},
 		},
 		{
-			name:           "PUT overrides - no tenant ID",
-			method:         "PUT",
+			name:           "POST overrides - no tenant ID",
+			method:         "POST",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "",
 			requestBody:    map[string]interface{}{"ingestion_rate": 5000},
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:           "PUT overrides - valid tenant ID, valid overrides",
-			method:         "PUT",
+			name:           "POST overrides - valid tenant ID, valid overrides",
+			method:         "POST",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user789",
 			requestBody:    map[string]interface{}{"ingestion_rate": 5000, "ruler_max_rules_per_rule_group": 10},
@@ -226,8 +231,8 @@ func TestAPIEndpoints(t *testing.T) {
 			},
 		},
 		{
-			name:           "PUT overrides - invalid limit name",
-			method:         "PUT",
+			name:           "POST overrides - invalid limit name",
+			method:         "POST",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user999",
 			requestBody:    map[string]interface{}{"invalid_limit": 5000},
@@ -235,16 +240,16 @@ func TestAPIEndpoints(t *testing.T) {
 		},
 
 		{
-			name:           "PUT overrides - invalid JSON",
-			method:         "PUT",
+			name:           "POST overrides - invalid JSON",
+			method:         "POST",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user999",
 			requestBody:    "invalid json",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:           "PUT overrides - exceeding hard limit from runtime config",
-			method:         "PUT",
+			name:           "POST overrides - exceeding hard limit from runtime config",
+			method:         "POST",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user999",
 			requestBody:    map[string]interface{}{"ingestion_rate": 1500000}, // Exceeds hard limit of 1000000
@@ -294,8 +299,8 @@ hard_overrides:
 			}
 
 			// Create the API instance with proper configuration
-			cfg := Config{
-				Config: bucket.Config{
+			cfg := runtimeconfig.Config{
+				StorageConfig: bucket.Config{
 					Backend: bucket.S3,
 					S3: s3.Config{
 						AccessKeyID:     "test-access-key",
@@ -306,6 +311,8 @@ hard_overrides:
 					},
 				},
 			}
+			// Set default values before validation
+			flagext.DefaultValues(&cfg.StorageConfig.S3)
 			api, err := New(cfg, log.Logger, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			require.NotNil(t, api)
@@ -341,7 +348,7 @@ hard_overrides:
 			switch tt.method {
 			case "GET":
 				api.GetOverrides(recorder, req)
-			case "PUT":
+			case "POST":
 				api.SetOverrides(recorder, req)
 			case "DELETE":
 				api.DeleteOverrides(recorder, req)
@@ -402,8 +409,8 @@ func TestAPITenantExtraction(t *testing.T) {
 			}
 
 			// Create the API instance with proper configuration
-			cfg := Config{
-				Config: bucket.Config{
+			cfg := runtimeconfig.Config{
+				StorageConfig: bucket.Config{
 					Backend: bucket.S3,
 					S3: s3.Config{
 						AccessKeyID:     "test-access-key",
@@ -414,6 +421,8 @@ func TestAPITenantExtraction(t *testing.T) {
 					},
 				},
 			}
+			// Set default values before validation
+			flagext.DefaultValues(&cfg.StorageConfig.S3)
 			api, err := New(cfg, log.Logger, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			require.NotNil(t, api)
@@ -463,8 +472,8 @@ func TestAPIBucketErrors(t *testing.T) {
 			expectedStatus: http.StatusOK, // Current implementation treats errors as "not found"
 		},
 		{
-			name:     "PUT overrides - bucket upload error",
-			method:   "PUT",
+			name:     "POST overrides - bucket upload error",
+			method:   "POST",
 			tenantID: "user456",
 			setupMock: func(mock *bucket.ClientMock) {
 				// First read succeeds, then upload fails
@@ -493,8 +502,8 @@ func TestAPIBucketErrors(t *testing.T) {
 			tt.setupMock(mockBucket)
 
 			// Create the API instance with proper configuration
-			cfg := Config{
-				Config: bucket.Config{
+			cfg := runtimeconfig.Config{
+				StorageConfig: bucket.Config{
 					Backend: bucket.S3,
 					S3: s3.Config{
 						AccessKeyID:     "test-access-key",
@@ -505,6 +514,8 @@ func TestAPIBucketErrors(t *testing.T) {
 					},
 				},
 			}
+			// Set default values before validation
+			flagext.DefaultValues(&cfg.StorageConfig.S3)
 			api, err := New(cfg, log.Logger, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			require.NotNil(t, api)
@@ -515,7 +526,7 @@ func TestAPIBucketErrors(t *testing.T) {
 
 			// Create the request
 			var req *http.Request
-			if tt.method == "PUT" {
+			if tt.method == "POST" {
 				requestBody := map[string]interface{}{"ingestion_rate": 5000}
 				body, err := json.Marshal(requestBody)
 				require.NoError(t, err)
@@ -534,7 +545,7 @@ func TestAPIBucketErrors(t *testing.T) {
 			switch tt.method {
 			case "GET":
 				api.GetOverrides(recorder, req)
-			case "PUT":
+			case "POST":
 				api.SetOverrides(recorder, req)
 			case "DELETE":
 				api.DeleteOverrides(recorder, req)

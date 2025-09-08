@@ -211,7 +211,7 @@ func (t *Cortex) initOverridesConfig() (services.Service, error) {
 
 func (t *Cortex) initOverrides() (services.Service, error) {
 
-	overridesAPI, err := overrides.New(t.Cfg.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	overridesAPI, err := overrides.New(t.Cfg.RuntimeConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overrides API: %w", err)
 	}

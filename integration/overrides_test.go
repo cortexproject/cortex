@@ -52,13 +52,13 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 	flags := map[string]string{
 		"-target": "overrides",
 
-		"-overrides.runtime-config-file":  "runtime.yaml",
-		"-overrides.backend":              "s3",
-		"-overrides.s3.access-key-id":     e2edb.MinioAccessKey,
-		"-overrides.s3.secret-access-key": e2edb.MinioSecretKey,
-		"-overrides.s3.bucket-name":       "cortex",
-		"-overrides.s3.endpoint":          minio.NetworkHTTPEndpoint(),
-		"-overrides.s3.insecure":          "true",
+		"-runtime-config.file":                 "runtime.yaml",
+		"-runtime-config.backend":              "s3",
+		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-runtime-config.s3.bucket-name":       "cortex",
+		"-runtime-config.s3.endpoint":          minio.NetworkHTTPEndpoint(),
+		"-runtime-config.s3.insecure":          "true",
 	}
 
 	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides", flags, "")
@@ -100,7 +100,7 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 		assert.Empty(t, overrides)
 	})
 
-	t.Run("PUT overrides for new user", func(t *testing.T) {
+	t.Run("POST overrides for new user", func(t *testing.T) {
 		newOverrides := map[string]interface{}{
 			"ingestion_rate":       6000,
 			"ingestion_burst_size": 7000,
@@ -108,7 +108,7 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 		requestBody, err := json.Marshal(newOverrides)
 		require.NoError(t, err)
 
-		req, err := http.NewRequest("PUT", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", bytes.NewReader(requestBody))
+		req, err := http.NewRequest("POST", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", bytes.NewReader(requestBody))
 		require.NoError(t, err)
 		req.Header.Set("X-Scope-OrgID", "user3")
 		req.Header.Set("Content-Type", "application/json")
@@ -137,14 +137,14 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 		assert.Equal(t, float64(7000), savedOverrides["ingestion_burst_size"])
 	})
 
-	t.Run("PUT overrides with invalid limit", func(t *testing.T) {
+	t.Run("POST overrides with invalid limit", func(t *testing.T) {
 		invalidOverrides := map[string]interface{}{
 			"invalid_limit": 5000,
 		}
 		requestBody, err := json.Marshal(invalidOverrides)
 		require.NoError(t, err)
 
-		req, err := http.NewRequest("PUT", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", bytes.NewReader(requestBody))
+		req, err := http.NewRequest("POST", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", bytes.NewReader(requestBody))
 		require.NoError(t, err)
 		req.Header.Set("X-Scope-OrgID", "user4")
 		req.Header.Set("Content-Type", "application/json")
@@ -156,8 +156,8 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 
-	t.Run("PUT overrides with invalid JSON", func(t *testing.T) {
-		req, err := http.NewRequest("PUT", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", bytes.NewReader([]byte("invalid json")))
+	t.Run("POST overrides with invalid JSON", func(t *testing.T) {
+		req, err := http.NewRequest("POST", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", bytes.NewReader([]byte("invalid json")))
 		require.NoError(t, err)
 		req.Header.Set("X-Scope-OrgID", "user5")
 		req.Header.Set("Content-Type", "application/json")
@@ -208,16 +208,34 @@ func TestOverridesAPITenantExtraction(t *testing.T) {
 	minio := e2edb.NewMinio(9010, "cortex")
 	require.NoError(t, s.StartAndWaitReady(minio))
 
+	// Upload an empty runtime config file to S3
+	runtimeConfig := map[string]interface{}{
+		"overrides": map[string]interface{}{},
+	}
+	runtimeConfigData, err := yaml.Marshal(runtimeConfig)
+	require.NoError(t, err)
+
+	s3Client, err := s3.NewBucketWithConfig(nil, s3.Config{
+		Endpoint:  minio.HTTPEndpoint(),
+		Insecure:  true,
+		Bucket:    "cortex",
+		AccessKey: e2edb.MinioAccessKey,
+		SecretKey: e2edb.MinioSecretKey,
+	}, "overrides-test-tenant", nil)
+	require.NoError(t, err)
+
+	require.NoError(t, s3Client.Upload(context.Background(), "runtime.yaml", bytes.NewReader(runtimeConfigData)))
+
 	flags := map[string]string{
 		"-target": "overrides",
 
-		"-overrides.runtime-config-file":  "runtime.yaml",
-		"-overrides.backend":              "s3",
-		"-overrides.s3.access-key-id":     e2edb.MinioAccessKey,
-		"-overrides.s3.secret-access-key": e2edb.MinioSecretKey,
-		"-overrides.s3.bucket-name":       "cortex",
-		"-overrides.s3.endpoint":          minio.NetworkHTTPEndpoint(),
-		"-overrides.s3.insecure":          "true",
+		"-runtime-config.file":                 "runtime.yaml",
+		"-runtime-config.backend":              "s3",
+		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-runtime-config.s3.bucket-name":       "cortex",
+		"-runtime-config.s3.endpoint":          minio.NetworkHTTPEndpoint(),
+		"-runtime-config.s3.insecure":          "true",
 	}
 
 	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-tenant", flags, "")
@@ -247,45 +265,4 @@ func TestOverridesAPITenantExtraction(t *testing.T) {
 	})
 
 	require.NoError(t, s.Stop(cortexSvc))
-}
-
-func TestOverridesAPIFilesystemBackendRejected(t *testing.T) {
-	s, err := e2e.NewScenario(networkName)
-	require.NoError(t, err)
-	defer s.Close()
-
-	t.Run("filesystem backend should be rejected", func(t *testing.T) {
-		flags := map[string]string{
-			"-target":                        "overrides",
-			"-overrides.runtime-config-file": "runtime.yaml",
-			"-overrides.backend":             "filesystem",
-		}
-
-		cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-filesystem", flags, "")
-
-		err = s.StartAndWaitReady(cortexSvc)
-		if err == nil {
-			t.Error("Expected Cortex to fail to start with filesystem backend, but it started successfully")
-			require.NoError(t, s.Stop(cortexSvc))
-		} else {
-			t.Logf("Expected failure with filesystem backend: %v", err)
-		}
-	})
-
-	t.Run("no backend specified should be rejected", func(t *testing.T) {
-		flags := map[string]string{
-			"-target":                        "overrides",
-			"-overrides.runtime-config-file": "runtime.yaml",
-		}
-
-		cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-no-backend", flags, "")
-
-		err = s.StartAndWaitReady(cortexSvc)
-		if err == nil {
-			t.Error("Expected Cortex to fail to start with no backend specified, but it started successfully")
-			require.NoError(t, s.Stop(cortexSvc))
-		} else {
-			t.Logf("Expected failure with no backend specified: %v", err)
-		}
-	})
 }

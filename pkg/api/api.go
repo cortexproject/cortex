@@ -390,7 +390,7 @@ func (a *API) RegisterRulerAPI(r *ruler.API) {
 func (a *API) RegisterOverrides(o *overrides.API) {
 	// Register individual overrides API routes with the main API
 	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.GetOverrides), true, "GET")
-	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.SetOverrides), true, "PUT")
+	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.SetOverrides), true, "POST")
 	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.DeleteOverrides), true, "DELETE")
 
 	// Add link to the index page

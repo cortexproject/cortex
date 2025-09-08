@@ -225,8 +225,21 @@ func TestAPIEndpoints(t *testing.T) {
 			requestBody:    map[string]interface{}{"ingestion_rate": 5000, "ruler_max_rules_per_rule_group": 10},
 			expectedStatus: http.StatusOK,
 			setupMock: func(mock *bucket.ClientMock) {
-				// First read succeeds, then upload succeeds
-				mock.MockGet("runtime.yaml", "overrides:\n  user789:\n    ingestion_rate: 5000\n    ruler_max_rules_per_rule_group: 10\n", nil)
+				// Mock runtime config with allowed limits
+				runtimeConfig := `overrides:
+  user789:
+    ingestion_rate: 5000
+    ruler_max_rules_per_rule_group: 10
+api_allowed_limits:
+  - ingestion_rate
+  - ruler_max_rules_per_rule_group
+  - max_global_series_per_user
+  - max_global_series_per_metric
+  - ingestion_burst_size
+  - ruler_max_rule_groups_per_tenant`
+				// Mock both reads: one for getAllowedLimitsFromBucket, one for setOverridesToBucket
+				mock.MockGet("runtime.yaml", runtimeConfig, nil)
+				mock.MockGet("runtime.yaml", runtimeConfig, nil)
 				mock.MockUpload("runtime.yaml", nil)
 			},
 		},
@@ -237,6 +250,17 @@ func TestAPIEndpoints(t *testing.T) {
 			tenantID:       "user999",
 			requestBody:    map[string]interface{}{"invalid_limit": 5000},
 			expectedStatus: http.StatusBadRequest,
+			setupMock: func(mock *bucket.ClientMock) {
+				// Mock runtime config with allowed limits (invalid_limit not included)
+				runtimeConfig := `api_allowed_limits:
+  - ingestion_rate
+  - ruler_max_rules_per_rule_group
+  - max_global_series_per_user
+  - max_global_series_per_metric
+  - ingestion_burst_size
+  - ruler_max_rule_groups_per_tenant`
+				mock.MockGet("runtime.yaml", runtimeConfig, nil)
+			},
 		},
 
 		{
@@ -255,15 +279,19 @@ func TestAPIEndpoints(t *testing.T) {
 			requestBody:    map[string]interface{}{"ingestion_rate": 1500000}, // Exceeds hard limit of 1000000
 			expectedStatus: http.StatusBadRequest,
 			setupMock: func(mock *bucket.ClientMock) {
-				// Mock runtime config with per-user hard limits
+				// Mock runtime config with per-user hard limits and allowed limits
 				runtimeConfig := `overrides:
   user999:
     ingestion_rate: 1000
 hard_overrides:
   user999:
     ingestion_rate: 1000000
-    max_global_series_per_user: 5000000`
-				// Mock both reads: one for validateHardLimits, one for setOverridesToBucket
+    max_global_series_per_user: 5000000
+api_allowed_limits:
+  - ingestion_rate
+  - max_global_series_per_user`
+				// Mock all reads: one for getAllowedLimitsFromBucket, one for validateHardLimits, one for setOverridesToBucket
+				mock.MockGet("runtime.yaml", runtimeConfig, nil)
 				mock.MockGet("runtime.yaml", runtimeConfig, nil)
 				mock.MockGet("runtime.yaml", runtimeConfig, nil)
 				mock.MockUpload("runtime.yaml", nil)
@@ -476,8 +504,16 @@ func TestAPIBucketErrors(t *testing.T) {
 			method:   "POST",
 			tenantID: "user456",
 			setupMock: func(mock *bucket.ClientMock) {
-				// First read succeeds, then upload fails
-				mock.MockGet("runtime.yaml", "overrides:\n  user456:\n    ingestion_rate: 1000", nil)
+				// Mock runtime config with allowed limits
+				runtimeConfig := `overrides:
+  user456:
+    ingestion_rate: 1000
+api_allowed_limits:
+  - ingestion_rate
+  - max_global_series_per_user`
+				// First read succeeds (for allowed limits), then upload fails
+				mock.MockGet("runtime.yaml", runtimeConfig, nil)
+				mock.MockGet("runtime.yaml", runtimeConfig, nil)
 				mock.MockUpload("runtime.yaml", fmt.Errorf("upload error"))
 			},
 			expectedStatus: http.StatusInternalServerError,

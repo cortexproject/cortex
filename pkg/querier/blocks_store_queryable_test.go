@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"sort"
 	"strings"
 	"testing"
@@ -31,6 +32,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -1526,7 +1528,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{
 						remoteAddr:      "1.1.1.1",
-						mockedSeriesErr: &limiter.ResourceLimitReachedError{},
+						mockedSeriesErr: limiter.ErrResourceLimitReached,
 					}: {block1},
 				},
 				map[BlocksStoreClient][]ulid.ULID{
@@ -2496,6 +2498,20 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestBlocksStoreQuerier_isRetryableError(t *testing.T) {
+	require.True(t, isRetryableError(status.Error(codes.Unavailable, "")))
+	require.True(t, isRetryableError(storegateway.ErrTooManyInflightRequests))
+	require.True(t, isRetryableError(limiter.ErrResourceLimitReached))
+	require.True(t, isRetryableError(status.Error(codes.Canceled, "grpc: the client connection is closing")))
+	require.True(t, isRetryableError(errors.New("pool exhausted")))
+
+	require.False(t, isRetryableError(status.Error(codes.ResourceExhausted, "some other error")))
+	require.False(t, isRetryableError(status.Error(codes.Canceled, "some other error")))
+	require.False(t, isRetryableError(errors.New("some other error")))
+	require.False(t, isRetryableError(fmt.Errorf("some other error")))
+	require.False(t, isRetryableError(httpgrpc.Errorf(http.StatusServiceUnavailable, "some other error")))
 }
 
 type blocksStoreSetMock struct {

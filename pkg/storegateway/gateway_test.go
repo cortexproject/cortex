@@ -1239,8 +1239,9 @@ func TestStoreGateway_SeriesThrottledByResourceMonitor(t *testing.T) {
 	srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
 	err = g.Series(req, srv)
 	require.Error(t, err)
-	exhaustedErr := util_limiter.ResourceLimitReachedError{}
-	require.ErrorContains(t, err, exhaustedErr.Error())
+
+	// Expected error from isRetryableError in blocks_store_queryable.go
+	require.ErrorIs(t, err, util_limiter.ErrResourceLimitReached)
 }
 
 func mockGatewayConfig() Config {

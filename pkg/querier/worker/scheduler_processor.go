@@ -31,7 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
+func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer, querierAddress string) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
@@ -47,6 +47,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 			Help:    "Time spend doing requests to frontend.",
 			Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
 		}, []string{"operation", "status_code"}),
+		querierAddress: querierAddress,
 	}
 
 	frontendClientsGauge := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
@@ -71,6 +72,7 @@ type schedulerProcessor struct {
 	grpcConfig     grpcclient.Config
 	maxMessageSize int
 	querierID      string
+	querierAddress string
 
 	frontendPool                  *client.Pool
 	frontendClientRequestDuration *prometheus.HistogramVec
@@ -97,7 +99,7 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(ctx context.Context, 
 	for backoff.Ongoing() {
 		c, err := schedulerClient.QuerierLoop(ctx)
 		if err == nil {
-			err = c.Send(&schedulerpb.QuerierToScheduler{QuerierID: sp.querierID})
+			err = c.Send(&schedulerpb.QuerierToScheduler{QuerierID: sp.querierID, QuerierAddress: sp.querierAddress})
 		}
 
 		if err != nil {

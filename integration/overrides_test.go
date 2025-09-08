@@ -34,6 +34,14 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 				"ingestion_rate": 5000,
 			},
 		},
+		"api_allowed_limits": []string{
+			"ingestion_rate",
+			"max_global_series_per_user",
+			"max_global_series_per_metric",
+			"ingestion_burst_size",
+			"ruler_max_rules_per_rule_group",
+			"ruler_max_rule_groups_per_tenant",
+		},
 	}
 	runtimeConfigData, err := yaml.Marshal(runtimeConfig)
 	require.NoError(t, err)

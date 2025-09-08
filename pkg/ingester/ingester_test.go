@@ -3230,8 +3230,9 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 	s := &mockQueryStreamServer{ctx: ctx}
 	err = i.QueryStream(rreq, s)
 	require.Error(t, err)
-	exhaustedErr := limiter.ResourceLimitReachedError{}
-	require.ErrorContains(t, err, exhaustedErr.Error())
+
+	// Expected error from isRetryableError in blocks_store_queryable.go
+	require.ErrorIs(t, err, limiter.ErrResourceLimitReached)
 }
 
 func TestIngester_LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {

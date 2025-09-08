@@ -11,6 +11,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -27,9 +29,20 @@ const (
 	ErrRuntimeConfig = "runtime config read error"
 )
 
-type RuntimeConfigFile struct {
-	Overrides     map[string]map[string]interface{} `yaml:"overrides"`
-	HardOverrides map[string]map[string]interface{} `yaml:"hard_overrides"`
+// getAllowedLimitsFromBucket reads allowed limits from the runtime config file
+func (a *API) getAllowedLimitsFromBucket(ctx context.Context) ([]string, error) {
+	reader, err := a.bucketClient.Get(ctx, a.runtimeConfigPath)
+	if err != nil {
+		return []string{}, nil // No allowed limits if config doesn't exist
+	}
+	defer reader.Close()
+
+	var config runtimeconfig.RuntimeConfigValues
+	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
+		return []string{}, nil // No allowed limits if config can't be decoded
+	}
+
+	return config.APIAllowedLimits, nil
 }
 
 // GetOverrides retrieves overrides for a specific tenant
@@ -69,8 +82,15 @@ func (a *API) SetOverrides(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get allowed limits from runtime config
+	allowedLimits, err := a.getAllowedLimitsFromBucket(r.Context())
+	if err != nil {
+		http.Error(w, "Failed to read allowed limits", StatusInternalServerError)
+		return
+	}
+
 	// Validate that only allowed limits are being changed
-	if err := ValidateOverrides(overrides); err != nil {
+	if err := ValidateOverrides(overrides, allowedLimits); err != nil {
 		http.Error(w, err.Error(), StatusBadRequest)
 		return
 	}
@@ -114,14 +134,26 @@ func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[st
 	}
 	defer reader.Close()
 
-	var config RuntimeConfigFile
+	var config runtimeconfig.RuntimeConfigValues
 	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
 		return nil, fmt.Errorf("%s: %w", ErrRuntimeConfig, err)
 	}
 
-	if config.Overrides != nil {
-		if tenantOverrides, exists := config.Overrides[userID]; exists {
-			return tenantOverrides, nil
+	if config.TenantLimits != nil {
+		if tenantLimits, exists := config.TenantLimits[userID]; exists {
+			// Use YAML marshaling to convert validation.Limits to map[string]interface{}
+			// This follows the same pattern as the existing runtime config handler
+			yamlData, err := yaml.Marshal(tenantLimits)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal limits: %w", err)
+			}
+
+			var result map[string]interface{}
+			if err := yaml.Unmarshal(yamlData, &result); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal limits: %w", err)
+			}
+
+			return result, nil
 		}
 	}
 
@@ -130,7 +162,7 @@ func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[st
 
 // setOverridesToBucket writes overrides for a specific tenant to the runtime config file
 func (a *API) setOverridesToBucket(ctx context.Context, userID string, overrides map[string]interface{}) error {
-	var config RuntimeConfigFile
+	var config runtimeconfig.RuntimeConfigValues
 	reader, err := a.bucketClient.Get(ctx, a.runtimeConfigPath)
 	if err == nil {
 		defer reader.Close()
@@ -139,11 +171,21 @@ func (a *API) setOverridesToBucket(ctx context.Context, userID string, overrides
 		}
 	}
 
-	if config.Overrides == nil {
-		config.Overrides = make(map[string]map[string]interface{})
+	yamlData, err := yaml.Marshal(overrides)
+	if err != nil {
+		return fmt.Errorf("failed to marshal overrides: %w", err)
 	}
 
-	config.Overrides[userID] = overrides
+	var limits validation.Limits
+	if err := yaml.Unmarshal(yamlData, &limits); err != nil {
+		return fmt.Errorf("invalid overrides format: %w", err)
+	}
+
+	if config.TenantLimits == nil {
+		config.TenantLimits = make(map[string]*validation.Limits)
+	}
+
+	config.TenantLimits[userID] = &limits
 
 	data, err := yaml.Marshal(config)
 	if err != nil {
@@ -161,13 +203,13 @@ func (a *API) deleteOverridesFromBucket(ctx context.Context, userID string) erro
 	}
 	defer reader.Close()
 
-	var config RuntimeConfigFile
+	var config runtimeconfig.RuntimeConfigValues
 	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
 		return fmt.Errorf("%s: %w", ErrRuntimeConfig, err)
 	}
 
-	if config.Overrides != nil {
-		delete(config.Overrides, userID)
+	if config.TenantLimits != nil {
+		delete(config.TenantLimits, userID)
 	}
 
 	data, err := yaml.Marshal(config)

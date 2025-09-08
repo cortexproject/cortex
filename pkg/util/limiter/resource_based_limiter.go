@@ -5,17 +5,15 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/util/resource"
 )
 
 const ErrResourceLimitReachedStr = "resource limit reached"
 
-type ResourceLimitReachedError struct{}
-
-func (e *ResourceLimitReachedError) Error() string {
-	return ErrResourceLimitReachedStr
-}
+var ErrResourceLimitReached = status.Error(codes.ResourceExhausted, ErrResourceLimitReachedStr)
 
 type ResourceBasedLimiter struct {
 	resourceMonitor    resource.IMonitor
@@ -64,9 +62,22 @@ func (l *ResourceBasedLimiter) AcceptNewRequest() error {
 
 		if utilization >= limit {
 			l.limitBreachedCount.WithLabelValues(string(resType)).Inc()
-			return fmt.Errorf("%s utilization limit reached (limit: %.3f, utilization: %.3f)", resType, limit, utilization)
+			return fmt.Errorf("%s utilization limit reached (limit: %.3f, utilization: %.3f): %s", resType, limit, utilization, ErrResourceLimitReachedStr)
 		}
 	}
 
 	return nil
+}
+
+type MockMonitor struct {
+	CpuUtilization  float64
+	HeapUtilization float64
+}
+
+func (m *MockMonitor) GetCPUUtilization() float64 {
+	return m.CpuUtilization
+}
+
+func (m *MockMonitor) GetHeapUtilization() float64 {
+	return m.HeapUtilization
 }

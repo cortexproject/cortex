@@ -32,6 +32,7 @@ import (
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 const (
@@ -247,11 +248,11 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := tenant.JoinTenantIDs(tenantIDs)
+	source := tripperware.GetSource(r)
 
 	if f.tenantFederationCfg.Enabled {
 		maxTenant := f.tenantFederationCfg.MaxTenant
 		if maxTenant > 0 && len(tenantIDs) > maxTenant {
-			source := tripperware.GetSource(r.Header.Get("User-Agent"))
 			if f.cfg.QueryStatsEnabled {
 				f.rejectedQueries.WithLabelValues(reasonTooManyTenants, source, userID).Inc()
 			}
@@ -291,7 +292,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			http.Error(w, err.Error(), statusCode)
 			if f.cfg.QueryStatsEnabled && util.IsRequestBodyTooLarge(err) {
-				source := tripperware.GetSource(r.Header.Get("User-Agent"))
 				f.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, source, userID).Inc()
 			}
 			return
@@ -299,7 +299,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(&buf)
 	}
 
-	source := tripperware.GetSource(r.Header.Get("User-Agent"))
 	// Log request
 	if f.cfg.QueryStatsEnabled {
 		queryString = f.parseRequestQueryString(r, buf)
@@ -411,7 +410,7 @@ func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values, sourc
 		logMessage = append(logMessage, "accept_encoding", acceptEncoding)
 	}
 
-	shouldLog := source == tripperware.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == tripperware.SourceRuler)
+	shouldLog := source == requestmeta.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == requestmeta.SourceRuler)
 	if shouldLog {
 		logMessage = append(logMessage, formatQueryString(queryString)...)
 		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
@@ -547,7 +546,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		}
 	}
 
-	shouldLog := source == tripperware.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == tripperware.SourceRuler)
+	shouldLog := source == requestmeta.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == requestmeta.SourceRuler)
 	if shouldLog {
 		logMessage = append(logMessage, formatQueryString(queryString)...)
 		if error != nil {
@@ -585,7 +584,10 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonChunksLimitStoreGateway
 		} else if strings.Contains(errMsg, limitBytesStoreGateway) {
 			reason = reasonBytesLimitStoreGateway
-		} else if strings.Contains(errMsg, limiter.ErrResourceLimitReachedStr) {
+		}
+	} else if statusCode == http.StatusServiceUnavailable && error != nil {
+		errMsg := error.Error()
+		if strings.Contains(errMsg, limiter.ErrResourceLimitReachedStr) {
 			reason = reasonResourceExhausted
 		}
 	}

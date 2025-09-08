@@ -57,9 +57,6 @@ const (
 	QueryResponseCortexMIMEType    = "application/" + QueryResponseCortexMIMESubType
 	QueryResponseCortexMIMESubType = "x-cortex-query+proto"
 	RulerUserAgent                 = "CortexRuler"
-
-	SourceRuler = "ruler"
-	SourceAPI   = "api"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.

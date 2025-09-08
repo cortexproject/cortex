@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 )
 
 const (
@@ -14,22 +16,14 @@ const (
 	ErrInvalidLimits = "the following limits cannot be modified via the overrides API"
 )
 
-// AllowedLimits defines the limits that can be modified via the overrides API
-var AllowedLimits = []string{
-	"max_global_series_per_user",
-	"max_global_series_per_metric",
-	"ingestion_rate",
-	"ingestion_burst_size",
-	"ruler_max_rules_per_rule_group",
-	"ruler_max_rule_groups_per_tenant",
-}
+// No default allowed limits - these must be configured via runtime config
 
 // ValidateOverrides checks if the provided overrides only contain allowed limits
-func ValidateOverrides(overrides map[string]interface{}) error {
+func ValidateOverrides(overrides map[string]interface{}, allowedLimits []string) error {
 	var invalidLimits []string
 
 	for limitName := range overrides {
-		if !IsLimitAllowed(limitName) {
+		if !IsLimitAllowed(limitName, allowedLimits) {
 			invalidLimits = append(invalidLimits, limitName)
 		}
 	}
@@ -41,14 +35,15 @@ func ValidateOverrides(overrides map[string]interface{}) error {
 	return nil
 }
 
-// GetAllowedLimits returns a list of all allowed limit names
-func GetAllowedLimits() []string {
-	return AllowedLimits
+// GetAllowedLimits returns the allowed limits from runtime config
+// If no allowed limits are configured, returns empty slice (no limits allowed)
+func GetAllowedLimits(allowedLimits []string) []string {
+	return allowedLimits
 }
 
 // IsLimitAllowed checks if a specific limit can be modified
-func IsLimitAllowed(limitName string) bool {
-	for _, allowed := range AllowedLimits {
+func IsLimitAllowed(limitName string, allowedLimits []string) bool {
+	for _, allowed := range allowedLimits {
 		if allowed == limitName {
 			return true
 		}
@@ -66,26 +61,36 @@ func (a *API) validateHardLimits(overrides map[string]interface{}, userID string
 	}
 	defer reader.Close()
 
-	var config RuntimeConfigFile
+	var config runtimeconfig.RuntimeConfigValues
 	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
 		// If we can't decode the config, skip hard limit validation
 		return nil
 	}
 
 	// If no hard overrides are defined, skip validation
-	if config.HardOverrides == nil {
+	if config.HardTenantLimits == nil {
 		return nil
 	}
 
 	// Get hard limits for this specific user
-	userHardLimits, exists := config.HardOverrides[userID]
+	userHardLimits, exists := config.HardTenantLimits[userID]
 	if !exists {
 		return nil // No hard limits defined for this user
 	}
 
+	yamlData, err := yaml.Marshal(userHardLimits)
+	if err != nil {
+		return nil // Skip validation if we can't marshal
+	}
+
+	var hardLimitsMap map[string]interface{}
+	if err := yaml.Unmarshal(yamlData, &hardLimitsMap); err != nil {
+		return nil // Skip validation if we can't unmarshal
+	}
+
 	// Validate each override against the user's hard limits
 	for limitName, value := range overrides {
-		if hardLimit, exists := userHardLimits[limitName]; exists {
+		if hardLimit, exists := hardLimitsMap[limitName]; exists {
 			if err := a.validateSingleHardLimit(limitName, value, hardLimit); err != nil {
 				return err
 			}

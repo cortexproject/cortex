@@ -5,6 +5,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/util/resource"
 )
@@ -15,16 +17,17 @@ func Test_ResourceBasedLimiter(t *testing.T) {
 		resource.Heap: 0.5,
 	}
 
-	_, err := NewResourceBasedLimiter(&mockMonitor{}, limits, prometheus.DefaultRegisterer, "ingester")
+	limiter, err := NewResourceBasedLimiter(&MockMonitor{
+		CpuUtilization:  0.2,
+		HeapUtilization: 0.2,
+	}, limits, prometheus.DefaultRegisterer, "ingester")
+	require.NoError(t, err)
+
+	err = limiter.AcceptNewRequest()
 	require.NoError(t, err)
 }
 
-type mockMonitor struct{}
-
-func (m *mockMonitor) GetCPUUtilization() float64 {
-	return 0
-}
-
-func (m *mockMonitor) GetHeapUtilization() float64 {
-	return 0
+func Test_ResourceBasedLimiter_ErrResourceLimitReached(t *testing.T) {
+	// Expected error code from isRetryableError in blocks_store_queryable.go
+	require.Equal(t, codes.ResourceExhausted, status.Code(ErrResourceLimitReached))
 }

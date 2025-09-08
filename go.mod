@@ -84,7 +84,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/parquet-go/parquet-go v0.25.1
-	github.com/prometheus-community/parquet-common v0.0.0-20250807102632-2aeeceacebf0
+	github.com/prometheus-community/parquet-common v0.0.0-20250827225610-65f0b68d35e6
 	github.com/prometheus/procfs v0.16.1
 	github.com/sercand/kuberesolver/v5 v5.1.1
 	github.com/tjhop/slog-gokit v0.1.4
@@ -148,7 +148,7 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-chi/chi/v5 v5.0.7 // indirect
+	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -161,7 +161,7 @@ require (
 	github.com/go-openapi/runtime v0.28.0 // indirect
 	github.com/go-openapi/spec v0.21.0 // indirect
 	github.com/go-openapi/validate v0.24.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
@@ -298,7 +298,7 @@ require (
 )
 
 // Using cortex fork of weaveworks/common
-replace github.com/weaveworks/common => github.com/cortexproject/weaveworks-common v0.0.0-20250806170222-876764c695f2
+replace github.com/weaveworks/common => github.com/cortexproject/weaveworks-common v0.0.0-20250902164925-0315015a8b9f
 
 // Override since git.apache.org is down.  The docs say to fetch from github.
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999

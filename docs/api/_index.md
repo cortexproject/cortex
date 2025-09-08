@@ -37,7 +37,8 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Instant query](#instant-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query` |
 | [Range query](#range-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query_range` |
 | [Exemplar query](#exemplar-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query_exemplars` |
-| [Format query](#format-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/format-query` |
+| [Format query](#format-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/format_query` |
+| [Parse query](#parse-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/parse_query` |
 | [Get series by label matchers](#get-series-by-label-matchers) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/series` |
 | [Get label names](#get-label-names) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/labels` |
 | [Get label values](#get-label-values) | Querier, Query-frontend || `GET <prometheus-http-prefix>/api/v1/label/{name}/values` |
@@ -67,7 +68,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Tenant delete request](#tenant-delete-request) | Purger || `POST /purger/delete_tenant` |
 | [Tenant delete status](#tenant-delete-status) | Purger || `GET /purger/delete_tenant_status` |
 | [Get user overrides](#get-user-overrides) | Overrides || `GET /api/v1/user-overrides` |
-| [Set user overrides](#set-user-overrides) | Overrides || `PUT /api/v1/user-overrides` |
+| [Set user overrides](#set-user-overrides) | Overrides || `POST /api/v1/user-overrides` |
 | [Delete user overrides](#delete-user-overrides) | Overrides || `DELETE /api/v1/user-overrides` |
 | [Store-gateway ring status](#store-gateway-ring-status) | Store-gateway || `GET /store-gateway/ring` |
 | [Compactor ring status](#compactor-ring-status) | Compactor || `GET /compactor/ring` |
@@ -384,6 +385,21 @@ GET,POST <legacy-http-prefix>/api/v1/format_query
 Prometheus-compatible format query endpoint. The endpoint formats a PromQL expression in a prettified way.
 
 _For more information, please check out the Prometheus [fomatting query expressions](https://prometheus.io/docs/prometheus/latest/querying/api/#formatting-query-expressions) documentation._
+
+_Requires [authentication](#authentication)._
+
+### Parse query
+
+```
+GET,POST <prometheus-http-prefix>/api/v1/parse_query
+
+# Legacy
+GET,POST <legacy-http-prefix>/api/v1/parse_query
+```
+
+Prometheus-compatible parse query endpoint. This endpoint is **experimental**, it parses a PromQL expression and returns it as a JSON-formatted AST (abstract syntax tree) representation.
+
+_For more information, please check out the Prometheus [Parsing query expressions](https://prometheus.io/docs/prometheus/latest/querying/api/#parsing-a-promql-expressions-into-a-abstract-syntax-tree-ast) documentation._
 
 _Requires [authentication](#authentication)._
 
@@ -892,7 +908,7 @@ _Requires [authentication](#authentication)._
 ### Set user overrides
 
 ```
-PUT /api/v1/user-overrides
+POST /api/v1/user-overrides
 ```
 
 Set or update overrides for the authenticated tenant. The request body should contain a JSON object with the override values.

@@ -276,7 +276,7 @@ func (s *ParquetShardOpener) ChunksFile() ParquetFileView {
 func (s *ParquetShardOpener) TSDBSchema() (*schema.TSDBSchema, error) {
 	var err error
 	s.o.Do(func() {
-		s.schema, err = schema.FromLabelsFile(s.labelsFile.File)
+		s.schema, err = schema.FromLabelsFile(s.labelsFile)
 	})
 	return s.schema, err
 }

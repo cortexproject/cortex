@@ -24,6 +24,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -112,6 +114,16 @@ func TestApiStatusCodes(t *testing.T) {
 			err:            errors.Wrap(httpgrpc.Errorf(http.StatusBadRequest, "test string"), "wrapped error"),
 			expectedString: "test string",
 			expectedCode:   422,
+		},
+		{
+			err:            storegateway.ErrTooManyInflightRequests,
+			expectedString: "too many inflight requests in store gateway",
+			expectedCode:   500,
+		},
+		{
+			err:            limiter.ErrResourceLimitReached,
+			expectedString: limiter.ErrResourceLimitReachedStr,
+			expectedCode:   500,
 		},
 	} {
 		for k, q := range map[string]storage.SampleAndChunkQueryable{

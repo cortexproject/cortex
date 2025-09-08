@@ -23,6 +23,8 @@
 * [FEATURE] Querier: Allow choosing PromQL engine via header. #6777
 * [FEATURE] Querier: Support for configuring query optimizers and enabling XFunctions in the Thanos engine. #6873
 * [FEATURE] Query Frontend: Add support /api/v1/format_query API for formatting queries. #6893
+* [FEATURE] Query Frontend: Add support for /api/v1/parse_query API (experimental) to parse a PromQL expression and return it as a JSON-formatted AST (abstract syntax tree). #6978
+* [ENHANCEMENT] Overrides Exporter: Expose all fields that can be converted to float64. Also, the label value `max_local_series_per_metric` got renamed to `max_series_per_metric`, and `max_local_series_per_user` got renamed to `max_series_per_user`. #6979
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_tsdb_wal_replay_unknown_refs_total` and `cortex_ingester_tsdb_wbl_replay_unknown_refs_total` metrics to track unknown series references during wal/wbl replaying. #6945
 * [ENHANCEMENT] Ruler: Emit an error message when the rule synchronization fails. #6902
 * [ENHANCEMENT] Querier: Support snappy and zstd response compression for `-querier.response-compression` flag. #6848
@@ -50,7 +52,7 @@
 * [ENHANCEMENT] Distributor: Add min/max schema validation for Native Histogram. #6766
 * [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
 * [ENHANCEMENT] Compactor: Support metadata caching bucket for Cleaner. Can be enabled via `-compactor.cleaner-caching-bucket-enabled` flag. #6778
-* [ENHANCEMENT] Distributor: Add ingestion rate limit for Native Histogram. #6794
+* [ENHANCEMENT] Distributor: Add ingestion rate limit for Native Histogram. #6794 and #6994
 * [ENHANCEMENT] Ingester: Add active series limit specifically for Native Histogram. #6796
 * [ENHANCEMENT] Compactor, Store Gateway: Introduce user scanner strategy and user index. #6780
 * [ENHANCEMENT] Querier: Support chunks cache for parquet queryable. #6805
@@ -68,9 +70,12 @@
 * [ENHANCEMENT] Ingester: Add new metric `cortex_ingester_push_errors_total` to track reasons for ingester request failures. #6901
 * [ENHANCEMENT] Ring: Expose `detailed_metrics_enabled` for all rings. Default true. #6926
 * [ENHANCEMENT] Parquet Storage: Allow Parquet Queryable to disable fallback to Store Gateway. #6920
-* [ENHANCEMENT] Query Frontend: Add a `format_query` label value to the `op` label at `cortex_query_frontend_queries_total` metric. #6925
+* [ENHANCEMENT] Query Frontend: Add a `format_query` and `parse_query` labels value to the `op` label at `cortex_query_frontend_queries_total` metric. #6925 #6990
 * [ENHANCEMENT] API: add request ID injection to context to enable tracking requests across downstream services. #6895
 * [ENHANCEMENT] gRPC: Add gRPC Channelz monitoring. #6950
+* [ENHANCEMENT] Upgrade build image and Go version to 1.24.6. #6970 #6976
+* [ENHANCEMENT] Implement versioned transactions for writes to DynamoDB ring. #6986
+* [ENHANCEMENT] Add source metadata to requests(api vs ruler) #6947
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576

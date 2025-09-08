@@ -208,8 +208,7 @@ func (l *Limiter) formatMaxMetadataPerMetricError(userID string, metric string) 
 }
 
 func (l *Limiter) formatMaxSeriesPerLabelSetError(err errMaxSeriesPerLabelSetLimitExceeded) error {
-	// per labelset limit does not have a configurable local limit like per user max series, so local limit is always zero.
-	return fmt.Errorf("per-labelset series limit of %d exceeded (labelSet: %s, local limit: 0 global limit: %d actual local limit: %d)",
+	return fmt.Errorf("per-labelset series limit of %d exceeded (labelSet: %s, global limit: %d actual local limit: %d)",
 		minNonZero(err.globalLimit, err.actualLocalLimit), err.id, err.globalLimit, err.actualLocalLimit)
 }
 

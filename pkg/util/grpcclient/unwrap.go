@@ -25,7 +25,7 @@ type unwrapErrorClientStream struct {
 	grpc.ClientStream
 }
 
-func (s *unwrapErrorClientStream) RecvMsg(m interface{}) error {
+func (s *unwrapErrorClientStream) RecvMsg(m any) error {
 	err := s.ClientStream.RecvMsg(m)
 	if err != nil {
 		// Try to unwrap the error to get the original error

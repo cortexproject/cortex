@@ -2,6 +2,7 @@ package alertstore
 
 import (
 	"flag"
+	"slices"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/configdb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
@@ -28,10 +29,5 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // IsFullStateSupported returns if the given configuration supports access to FullState objects.
 func (cfg *Config) IsFullStateSupported() bool {
-	for _, backend := range bucket.SupportedBackends {
-		if cfg.Backend == backend {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(bucket.SupportedBackends, cfg.Backend)
 }

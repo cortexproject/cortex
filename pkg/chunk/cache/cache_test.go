@@ -22,7 +22,7 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunkenc.Chunk) {
 	keys := []string{}
 	bufs := [][]byte{}
 	chunks := []chunkenc.Chunk{}
-	for i := 0; i < 111; i++ {
+	for i := range 111 {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
 		promChunk := chunkenc.NewXORChunk()
 		appender, err := promChunk.Appender()
@@ -41,7 +41,7 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunkenc.Chunk) {
 }
 
 func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []chunkenc.Chunk) {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		index := rand.Intn(len(keys))
 		key := keys[index]
 
@@ -73,7 +73,7 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 }
 
 func testCacheMiss(t *testing.T, cache cache.Cache) {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		key := strconv.Itoa(rand.Int()) // arbitrary key which should fail: no chunk key is a single integer
 		found, bufs, missing := cache.Fetch(context.Background(), []string{key})
 		require.Empty(t, found)

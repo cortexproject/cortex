@@ -130,7 +130,7 @@ func TestDefaultResultTracker(t *testing.T) {
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				assert.Equal(t, []interface{}{1, 2, 3}, tracker.getResults())
+				assert.Equal(t, []any{1, 2, 3}, tracker.getResults())
 			},
 		},
 		"record and getResults2": {
@@ -152,7 +152,7 @@ func TestDefaultResultTracker(t *testing.T) {
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				assert.Equal(t, []interface{}{[]int{1, 1, 1}, []int{2, 2, 2}, []int{3, 3, 3}}, tracker.getResults())
+				assert.Equal(t, []any{[]int{1, 1, 1}, []int{2, 2, 2}, []int{3, 3, 3}}, tracker.getResults())
 			},
 		},
 		"failedCompletely() should return true only if all instances have failed, regardless of max errors": {
@@ -249,7 +249,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				assert.Equal(t, []interface{}{1, 1, 1}, tracker.getResults())
+				assert.Equal(t, []any{1, 1, 1}, tracker.getResults())
 			},
 		},
 		"should succeed once all 6 instances succeed on max unavailable zones = 0": {
@@ -283,7 +283,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				assert.Equal(t, []interface{}{1, 1, 1, 1, 1, 1}, tracker.getResults())
+				assert.Equal(t, []any{1, 1, 1, 1, 1, 1}, tracker.getResults())
 			},
 		},
 		"should succeed once all 5 instances succeed on max unavailable zones = 1, zone results quorum disabled": {
@@ -314,7 +314,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				assert.Equal(t, []interface{}{1, 1, 1, 1, 1}, tracker.getResults())
+				assert.Equal(t, []any{1, 1, 1, 1, 1}, tracker.getResults())
 			},
 		},
 		"should succeed once all 5 instances succeed on max unavailable zones = 1, zone results quorum enabled": {
@@ -345,7 +345,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				assert.Equal(t, []interface{}{1, 1, 1, 1}, tracker.getResults())
+				assert.Equal(t, []any{1, 1, 1, 1}, tracker.getResults())
 			},
 		},
 		"should fail on 1st failing instance on max unavailable zones = 0": {

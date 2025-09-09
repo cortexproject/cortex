@@ -110,7 +110,6 @@ http:
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			cfg := Config{}

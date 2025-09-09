@@ -89,7 +89,7 @@ func TestConverter(t *testing.T) {
 
 	blocksConverted := []ulid.ULID{}
 
-	test.Poll(t, 3*time.Minute, 1, func() interface{} {
+	test.Poll(t, 3*time.Minute, 1, func() any {
 		blocksConverted = blocksConverted[:0]
 		for _, bIds := range blocks {
 			m, err := parquet.ReadConverterMark(ctx, bIds, userBucket, logger)
@@ -128,12 +128,12 @@ func TestConverter(t *testing.T) {
 	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucketClient), user, cortex_tsdb.NewTenantDeletionMark(time.Now())))
 
 	// Should clean sync folders
-	test.Poll(t, time.Minute, 0, func() interface{} {
+	test.Poll(t, time.Minute, 0, func() any {
 		return len(c.listTenantsWithMetaSyncDirectories())
 	})
 
 	// Verify metrics after user deletion
-	test.Poll(t, time.Minute*10, true, func() interface{} {
+	test.Poll(t, time.Minute*10, true, func() any {
 		if testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)) != 0.0 {
 			return false
 		}

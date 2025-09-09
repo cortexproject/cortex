@@ -2,6 +2,7 @@ package modules
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/go-kit/log"
@@ -210,11 +211,8 @@ func (m *Manager) findInverseDependencies(mod string, mods []string) []string {
 	result := []string(nil)
 
 	for _, n := range mods {
-		for _, d := range m.modules[n].deps {
-			if d == mod {
-				result = append(result, n)
-				break
-			}
+		if slices.Contains(m.modules[n].deps, mod) {
+			result = append(result, n)
 		}
 	}
 

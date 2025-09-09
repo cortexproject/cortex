@@ -163,7 +163,7 @@ func (s *Scenario) shutdown() {
 		"--filter",
 		fmt.Sprintf("network=%s", s.networkName),
 	); err == nil {
-		for _, containerID := range strings.Split(string(out), "\n") {
+		for containerID := range strings.SplitSeq(string(out), "\n") {
 			containerID = strings.TrimSpace(containerID)
 			if containerID == "" {
 				continue

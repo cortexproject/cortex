@@ -213,7 +213,7 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem
 	}
 
 	writeRequestsSlices := make([][]*dynamodb.TransactWriteItem, int(math.Ceil(float64(writeRequestSize)/float64(DdbBatchSizeLimit))))
-	for i := 0; i < len(writeRequestsSlices); i++ {
+	for i := range writeRequestsSlices {
 		writeRequestsSlices[i] = make([]*dynamodb.TransactWriteItem, 0, DdbBatchSizeLimit)
 	}
 	currIdx := 0

@@ -184,7 +184,7 @@ func TestSchedulerEnqueueWithFrontendDisconnect(t *testing.T) {
 	})
 
 	// Wait until the frontend has connected to the scheduler.
-	test.Poll(t, time.Second, float64(1), func() interface{} {
+	test.Poll(t, time.Second, float64(1), func() any {
 		return promtest.ToFloat64(scheduler.connectedFrontendClients)
 	})
 
@@ -192,7 +192,7 @@ func TestSchedulerEnqueueWithFrontendDisconnect(t *testing.T) {
 	require.NoError(t, frontendLoop.CloseSend())
 
 	// Wait until the frontend has disconnected.
-	test.Poll(t, time.Second, float64(0), func() interface{} {
+	test.Poll(t, time.Second, float64(0), func() any {
 		return promtest.ToFloat64(scheduler.connectedFrontendClients)
 	})
 
@@ -322,7 +322,7 @@ func TestSchedulerShutdown_QuerierLoop(t *testing.T) {
 func TestSchedulerMaxOutstandingRequests(t *testing.T) {
 	_, frontendClient, _ := setupScheduler(t, nil, false)
 
-	for i := 0; i < testMaxOutstandingPerTenant; i++ {
+	for i := range testMaxOutstandingPerTenant {
 		// coming from different frontends
 		fl := initFrontendLoop(t, frontendClient, fmt.Sprintf("frontend-%d", i))
 		require.NoError(t, fl.Send(&schedulerpb.FrontendToScheduler{
@@ -400,7 +400,7 @@ func TestSchedulerForwardsErrorToFrontend(t *testing.T) {
 	require.NoError(t, querierLoop.CloseSend())
 
 	// Verify that frontend was notified about request.
-	test.Poll(t, 2*time.Second, true, func() interface{} {
+	test.Poll(t, 2*time.Second, true, func() any {
 		resp := fm.getRequest(100)
 		if resp == nil {
 			return false
@@ -592,7 +592,7 @@ func frontendToScheduler(t *testing.T, frontendLoop schedulerpb.SchedulerForFron
 
 // If this verification succeeds, there will be leaked goroutine left behind. It will be cleaned once grpc server is shut down.
 func verifyQuerierDoesntReceiveRequest(t *testing.T, querierLoop schedulerpb.SchedulerForQuerier_QuerierLoopClient, timeout time.Duration) {
-	ch := make(chan interface{}, 1)
+	ch := make(chan any, 1)
 
 	go func() {
 		m, e := querierLoop.Recv()
@@ -612,7 +612,7 @@ func verifyQuerierDoesntReceiveRequest(t *testing.T, querierLoop schedulerpb.Sch
 }
 
 func verifyNoPendingRequestsLeft(t *testing.T, scheduler *Scheduler) {
-	test.Poll(t, 1*time.Second, 0, func() interface{} {
+	test.Poll(t, 1*time.Second, 0, func() any {
 		scheduler.pendingRequestsMu.Lock()
 		defer scheduler.pendingRequestsMu.Unlock()
 		return len(scheduler.pendingRequests)

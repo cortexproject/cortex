@@ -43,7 +43,6 @@ func TestUserExternalLabels(t *testing.T) {
 
 	const userID = "test-user"
 	for _, data := range tests {
-		data := data
 		t.Run(data.name, func(t *testing.T) {
 			if data.removeBeforeTest {
 				e.remove(userID)

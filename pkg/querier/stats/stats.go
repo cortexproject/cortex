@@ -101,7 +101,7 @@ func (s *QueryStats) AddFetchedSeries(series uint64) {
 	atomic.AddUint64(&s.FetchedSeriesCount, series)
 }
 
-func (s *QueryStats) AddExtraFields(fieldsVals ...interface{}) {
+func (s *QueryStats) AddExtraFields(fieldsVals ...any) {
 	if s == nil {
 		return
 	}
@@ -124,15 +124,15 @@ func (s *QueryStats) AddExtraFields(fieldsVals ...interface{}) {
 	}
 }
 
-func (s *QueryStats) LoadExtraFields() []interface{} {
+func (s *QueryStats) LoadExtraFields() []any {
 	if s == nil {
-		return []interface{}{}
+		return []any{}
 	}
 
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	r := make([]interface{}, 0, len(s.ExtraFields))
+	r := make([]any, 0, len(s.ExtraFields))
 	for k, v := range s.ExtraFields {
 		r = append(r, k, v)
 	}

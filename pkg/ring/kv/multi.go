@@ -290,7 +290,7 @@ func (m *MultiClient) List(ctx context.Context, prefix string) ([]string, error)
 }
 
 // Get is a part of kv.Client interface.
-func (m *MultiClient) Get(ctx context.Context, key string) (interface{}, error) {
+func (m *MultiClient) Get(ctx context.Context, key string) (any, error) {
 	_, kv := m.getPrimaryClient()
 	return kv.client.Get(ctx, key)
 }
@@ -302,11 +302,11 @@ func (m *MultiClient) Delete(ctx context.Context, key string) error {
 }
 
 // CAS is a part of kv.Client interface.
-func (m *MultiClient) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (m *MultiClient) CAS(ctx context.Context, key string, f func(in any) (out any, retry bool, err error)) error {
 	_, kv := m.getPrimaryClient()
 
-	updatedValue := interface{}(nil)
-	err := kv.client.CAS(ctx, key, func(in interface{}) (interface{}, bool, error) {
+	updatedValue := any(nil)
+	err := kv.client.CAS(ctx, key, func(in any) (any, bool, error) {
 		out, retry, err := f(in)
 		updatedValue = out
 		return out, retry, err
@@ -320,7 +320,7 @@ func (m *MultiClient) CAS(ctx context.Context, key string, f func(in interface{}
 }
 
 // WatchKey is a part of kv.Client interface.
-func (m *MultiClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+func (m *MultiClient) WatchKey(ctx context.Context, key string, f func(any) bool) {
 	_ = m.runWithPrimaryClient(ctx, func(newCtx context.Context, primary kvclient) error {
 		primary.client.WatchKey(newCtx, key, f)
 		return newCtx.Err()
@@ -328,7 +328,7 @@ func (m *MultiClient) WatchKey(ctx context.Context, key string, f func(interface
 }
 
 // WatchPrefix is a part of kv.Client interface.
-func (m *MultiClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+func (m *MultiClient) WatchPrefix(ctx context.Context, prefix string, f func(string, any) bool) {
 	_ = m.runWithPrimaryClient(ctx, func(newCtx context.Context, primary kvclient) error {
 		primary.client.WatchPrefix(newCtx, prefix, f)
 		return newCtx.Err()
@@ -340,7 +340,7 @@ func (m *MultiClient) LastUpdateTime(key string) time.Time {
 	return kv.client.LastUpdateTime(key)
 }
 
-func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, key string, newValue interface{}) {
+func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, key string, newValue any) {
 	if m.mirrorTimeout > 0 {
 		var cfn context.CancelFunc
 		ctx, cfn = context.WithTimeout(ctx, m.mirrorTimeout)
@@ -354,7 +354,7 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 		}
 
 		m.mirrorWritesCounter.Inc()
-		err := kvc.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+		err := kvc.client.CAS(ctx, key, func(in any) (out any, retry bool, err error) {
 			// try once
 			return newValue, false, nil
 		})

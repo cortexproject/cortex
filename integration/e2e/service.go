@@ -503,7 +503,7 @@ type LinePrefixLogger struct {
 }
 
 func (w *LinePrefixLogger) Write(p []byte) (n int, err error) {
-	for _, line := range strings.Split(string(p), "\n") {
+	for line := range strings.SplitSeq(string(p), "\n") {
 		// Skip empty lines
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -698,7 +698,7 @@ func (s *HTTPService) WaitRemovedMetric(metricName string, opts ...MetricsOption
 func parseDockerIPv4Port(out string) (int, error) {
 	// The "docker port" output may be multiple lines if both IPv4 and IPv6 are supported,
 	// so we need to parse each line.
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		matches := dockerIPv4PortPattern.FindStringSubmatch(strings.TrimSpace(line))
 		if len(matches) != 2 {
 			continue

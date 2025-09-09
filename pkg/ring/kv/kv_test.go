@@ -52,14 +52,14 @@ var (
 func TestCAS(t *testing.T) {
 	withFixtures(t, func(t *testing.T, client Client) {
 		// Blindly set key to "0".
-		err := client.CAS(ctx, key, func(in interface{}) (interface{}, bool, error) {
+		err := client.CAS(ctx, key, func(in any) (any, bool, error) {
 			return "0", true, nil
 		})
 		require.NoError(t, err)
 
 		// Swap key to i+1 iff its i.
-		for i := 0; i < 10; i++ {
-			err = client.CAS(ctx, key, func(in interface{}) (interface{}, bool, error) {
+		for i := range 10 {
+			err = client.CAS(ctx, key, func(in any) (any, bool, error) {
 				require.EqualValues(t, strconv.Itoa(i), in)
 				return strconv.Itoa(i + 1), true, nil
 			})
@@ -78,13 +78,13 @@ func TestCAS(t *testing.T) {
 func TestNilCAS(t *testing.T) {
 	withFixtures(t, func(t *testing.T, client Client) {
 		// Blindly set key to "0".
-		err := client.CAS(ctx, key, func(in interface{}) (interface{}, bool, error) {
+		err := client.CAS(ctx, key, func(in any) (any, bool, error) {
 			return "0", true, nil
 		})
 		require.NoError(t, err)
 
 		// Ensure key is "0" and don't set it.
-		err = client.CAS(ctx, key, func(in interface{}) (interface{}, bool, error) {
+		err = client.CAS(ctx, key, func(in any) (any, bool, error) {
 			require.EqualValues(t, "0", in)
 			return nil, false, nil
 		})
@@ -113,7 +113,7 @@ func TestWatchKey(t *testing.T) {
 			// Start watching before we even start generating values.
 			// Values will be buffered in the channel.
 			t.Log("Watching in background", "key", key)
-			client.WatchKey(ctx, key, func(value interface{}) bool {
+			client.WatchKey(ctx, key, func(value any) bool {
 				observedValuesCh <- value.(string)
 				return true
 			})
@@ -121,11 +121,11 @@ func TestWatchKey(t *testing.T) {
 
 		// update value for the key
 		go func() {
-			for i := 0; i < max; i++ {
+			for i := range max {
 				// Start with sleeping, so that watching client see empty KV store at the beginning.
 				time.Sleep(sleep)
 
-				err := client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := client.CAS(ctx, key, func(in any) (out any, retry bool, err error) {
 					return fmt.Sprintf("%d", i), true, nil
 				})
 
@@ -193,7 +193,7 @@ func TestWatchPrefix(t *testing.T) {
 			defer wg.Done()
 
 			// start watching before we even start generating values. values will be buffered
-			client.WatchPrefix(ctx, prefix, func(key string, val interface{}) bool {
+			client.WatchPrefix(ctx, prefix, func(key string, val any) bool {
 				observedKeysCh <- key
 				return true
 			})
@@ -208,7 +208,7 @@ func TestWatchPrefix(t *testing.T) {
 				time.Sleep(sleep)
 
 				key := fmt.Sprintf("%s%d", p, i)
-				err := client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := client.CAS(ctx, key, func(in any) (out any, retry bool, err error) {
 					return key, true, nil
 				})
 
@@ -247,7 +247,7 @@ func TestWatchPrefix(t *testing.T) {
 		wg.Wait()
 
 		// verify that each key was reported once, and keys outside prefix were not reported
-		for i := 0; i < max; i++ {
+		for i := range max {
 			key := fmt.Sprintf("%s%d", prefix, i)
 
 			if observedKeys[key] != 1 {
@@ -268,7 +268,7 @@ func TestList(t *testing.T) {
 
 	withFixtures(t, func(t *testing.T, client Client) {
 		for _, key := range keysToCreate {
-			err := client.CAS(context.Background(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+			err := client.CAS(context.Background(), key, func(in any) (out any, retry bool, err error) {
 				return key, false, nil
 			})
 			require.NoError(t, err)

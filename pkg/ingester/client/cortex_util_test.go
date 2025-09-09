@@ -117,7 +117,7 @@ func TestStreamingSends(t *testing.T) {
 				clientCancel()
 
 				// Wait until the cancelling has been propagated to the server.
-				test.Poll(t, time.Second, context.Canceled, func() interface{} {
+				test.Poll(t, time.Second, context.Canceled, func() any {
 					return stream.Context().Err()
 				})
 

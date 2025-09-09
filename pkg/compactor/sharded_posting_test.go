@@ -44,7 +44,7 @@ func TestShardPostingAndSymbolBasedOnPartitionID(t *testing.T) {
 	expectedSymbols[ConstLabelName] = false
 	expectedSymbols[ConstLabelValue] = false
 	expectedSeriesCount := 10
-	for i := 0; i < expectedSeriesCount; i++ {
+	for range expectedSeriesCount {
 		labelValue := strconv.Itoa(r.Int())
 		series = append(series, labels.FromStrings(metricName.Name, metricName.Value, ConstLabelName, ConstLabelValue, TestLabelName, labelValue))
 		expectedSymbols[TestLabelName] = false
@@ -60,7 +60,7 @@ func TestShardPostingAndSymbolBasedOnPartitionID(t *testing.T) {
 		}
 	}()
 	seriesCount := 0
-	for partitionID := 0; partitionID < partitionCount; partitionID++ {
+	for partitionID := range partitionCount {
 		ir, err := index.NewFileReader(filepath.Join(tmpdir, blockID.String(), "index"), index.DecodePostingsRaw)
 		closers = append(closers, ir)
 		require.NoError(t, err)

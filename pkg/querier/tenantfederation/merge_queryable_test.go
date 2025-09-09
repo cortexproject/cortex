@@ -654,11 +654,9 @@ func TestMergeQueryable_Select(t *testing.T) {
 			}},
 		},
 	} {
-		scenario := scenario
 		t.Run(scenario.name, func(t *testing.T) {
 			for _, useRegexResolver := range []bool{true, false} {
 				for _, tc := range scenario.selectTestCases {
-					tc := tc
 					t.Run(fmt.Sprintf("%s, useRegexResolver: %v", tc.name, useRegexResolver), func(t *testing.T) {
 						ctx := context.Background()
 						if useRegexResolver {
@@ -686,7 +684,7 @@ func TestMergeQueryable_Select(t *testing.T) {
 							require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 							// wait update knownUsers
-							test.Poll(t, time.Second*10, true, func() interface{} {
+							test.Poll(t, time.Second*10, true, func() any {
 								return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(scenario.tenants))
 							})
 
@@ -857,7 +855,6 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 			},
 		},
 	} {
-		scenario := scenario
 		for _, useRegexResolver := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s, useRegexResolver: %v", scenario.mergeQueryableScenario.name, useRegexResolver), func(t *testing.T) {
 				ctx := context.Background()
@@ -885,7 +882,7 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 					// wait update knownUsers
-					test.Poll(t, time.Second*10, true, func() interface{} {
+					test.Poll(t, time.Second*10, true, func() any {
 						return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(scenario.tenants))
 					})
 
@@ -1093,7 +1090,6 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 			}},
 		},
 	} {
-		scenario := scenario
 		t.Run(scenario.name, func(t *testing.T) {
 			for _, useRegexResolver := range []bool{true, false} {
 				for _, tc := range scenario.labelValuesTestCases {
@@ -1123,7 +1119,7 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 							require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 							// wait update knownUsers
-							test.Poll(t, time.Second*10, true, func() interface{} {
+							test.Poll(t, time.Second*10, true, func() any {
 								return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(scenario.tenants))
 							})
 
@@ -1263,7 +1259,7 @@ func containsTags(span *mocktracer.MockSpan, expectedTag expectedTag) bool {
 
 type spanWithTags struct {
 	name string
-	tags map[string]interface{}
+	tags map[string]any
 }
 
 type expectedTag struct {

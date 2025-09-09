@@ -10,11 +10,11 @@ import (
 
 // Codec allows KV clients to serialise and deserialise values.
 type Codec interface {
-	Decode([]byte) (interface{}, error)
-	Encode(interface{}) ([]byte, error)
+	Decode([]byte) (any, error)
+	Encode(any) ([]byte, error)
 
-	DecodeMultiKey(map[string][]byte) (interface{}, error)
-	EncodeMultiKey(interface{}) (map[string][]byte, error)
+	DecodeMultiKey(map[string][]byte) (any, error)
+	EncodeMultiKey(any) (map[string][]byte, error)
 
 	// CodecID is a short identifier to communicate what codec should be used to decode the value.
 	// Once in use, this should be stable to avoid confusing other clients.
@@ -36,12 +36,12 @@ func (p Proto) CodecID() string {
 }
 
 // Decode implements Codec
-func (p Proto) Decode(bytes []byte) (interface{}, error) {
+func (p Proto) Decode(bytes []byte) (any, error) {
 	return p.decode(bytes, p.factory())
 }
 
 // DecodeMultiKey implements Codec
-func (p Proto) DecodeMultiKey(data map[string][]byte) (interface{}, error) {
+func (p Proto) DecodeMultiKey(data map[string][]byte) (any, error) {
 	msg := p.factory()
 	// Don't even try
 	out, ok := msg.(MultiKey)
@@ -50,7 +50,7 @@ func (p Proto) DecodeMultiKey(data map[string][]byte) (interface{}, error) {
 	}
 
 	if len(data) > 0 {
-		res := make(map[string]interface{}, len(data))
+		res := make(map[string]any, len(data))
 		for key, bytes := range data {
 			decoded, err := p.decode(bytes, out.GetItemFactory())
 			if err != nil {
@@ -64,7 +64,7 @@ func (p Proto) DecodeMultiKey(data map[string][]byte) (interface{}, error) {
 	return out, nil
 }
 
-func (p Proto) decode(bytes []byte, out proto.Message) (interface{}, error) {
+func (p Proto) decode(bytes []byte, out proto.Message) (any, error) {
 	bytes, err := snappy.Decode(nil, bytes)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (p Proto) decode(bytes []byte, out proto.Message) (interface{}, error) {
 }
 
 // Encode implements Codec
-func (p Proto) Encode(msg interface{}) ([]byte, error) {
+func (p Proto) Encode(msg any) ([]byte, error) {
 	bytes, err := proto.Marshal(msg.(proto.Message))
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func (p Proto) Encode(msg interface{}) ([]byte, error) {
 }
 
 // EncodeMultiKey implements Codec
-func (p Proto) EncodeMultiKey(msg interface{}) (map[string][]byte, error) {
+func (p Proto) EncodeMultiKey(msg any) (map[string][]byte, error) {
 	// Don't even try
 	r, ok := msg.(MultiKey)
 	if !ok || r == nil {
@@ -112,19 +112,19 @@ func (String) CodecID() string {
 }
 
 // Decode implements Codec.
-func (String) Decode(bytes []byte) (interface{}, error) {
+func (String) Decode(bytes []byte) (any, error) {
 	return string(bytes), nil
 }
 
 // Encode implements Codec.
-func (String) Encode(msg interface{}) ([]byte, error) {
+func (String) Encode(msg any) ([]byte, error) {
 	return []byte(msg.(string)), nil
 }
 
-func (String) EncodeMultiKey(msg interface{}) (map[string][]byte, error) {
+func (String) EncodeMultiKey(msg any) (map[string][]byte, error) {
 	return nil, errors.New("String codec does not support EncodeMultiKey")
 }
 
-func (String) DecodeMultiKey(map[string][]byte) (interface{}, error) {
+func (String) DecodeMultiKey(map[string][]byte) (any, error) {
 	return nil, errors.New("String codec does not support DecodeMultiKey")
 }

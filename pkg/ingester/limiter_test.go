@@ -521,7 +521,7 @@ func TestLimiter_AssertMaxSeriesPerLabelSet(t *testing.T) {
 			ringIngesterCount:     10,
 			series:                200,
 			shardByAllLabels:      true,
-			expected:              errMaxSeriesPerLabelSetLimitExceeded{globalLimit: 10, localLimit: 3},
+			expected:              errMaxSeriesPerLabelSetLimitExceeded{globalLimit: 10, actualLocalLimit: 3},
 			limits: validation.Limits{
 				LimitsPerLabelSet: []validation.LimitsPerLabelSet{
 					{

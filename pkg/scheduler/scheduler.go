@@ -26,7 +26,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/distributed_execution"
 	"github.com/cortexproject/cortex/pkg/distributed_execution/plan_fragments"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	//lint:ignore faillint scheduler needs to retrieve priority from the context
 	"github.com/cortexproject/cortex/pkg/querier/stats" //lint:ignore faillint scheduler needs to retrieve priority from the context
 	"github.com/cortexproject/cortex/pkg/scheduler/fragment_table"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"

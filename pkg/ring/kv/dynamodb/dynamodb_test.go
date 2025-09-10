@@ -8,17 +8,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_TTLDisabled(t *testing.T) {
 	ddbClientMock := &mockDynamodb{
 		putItem: func(input *dynamodb.PutItemInput) *dynamodb.PutItemOutput {
-			require.Nil(t, input.Item["ttl"])
+			// ttl must be absent
+			_, hasTTL := input.Item["ttl"]
+			require.False(t, hasTTL)
 			return &dynamodb.PutItemOutput{}
 		},
 	}
@@ -26,23 +27,28 @@ func Test_TTLDisabled(t *testing.T) {
 	ddb := newDynamodbClientMock("TEST", ddbClientMock, 0)
 	_, err := ddb.Put(context.TODO(), dynamodbKey{primaryKey: "test", sortKey: "test1"}, []byte("TEST"))
 	require.NoError(t, err)
-
 }
 
 func Test_newDynamodbKV(t *testing.T) {
+	// Just ensures construction doesn’t error (no API call happens here)
 	_, err := newDynamodbKV(Config{Region: "us-west-2", TableName: "TEST"}, TestLogger{})
-
 	require.NoError(t, err)
 }
 
 func Test_TTL(t *testing.T) {
 	ddbClientMock := &mockDynamodb{
 		putItem: func(input *dynamodb.PutItemInput) *dynamodb.PutItemOutput {
-			require.NotNil(t, input.Item["ttl"].N)
-			parsedTime, err := strconv.ParseInt(*input.Item["ttl"].N, 10, 64)
+			av, ok := input.Item["ttl"]
+			require.True(t, ok, "ttl attribute missing")
+			num, ok := av.(*types.AttributeValueMemberN)
+			require.True(t, ok, "ttl should be a number")
+
+			parsedTime, err := strconv.ParseInt(num.Value, 10, 64)
 			require.NoError(t, err)
-			require.Greater(t, time.Unix(parsedTime, 0), time.Now().UTC().Add(4*time.Hour), 10)
-			require.LessOrEqual(t, time.Unix(parsedTime, 0), time.Now().UTC().Add(6*time.Hour), 10)
+
+			ts := time.Unix(parsedTime, 0)
+			require.True(t, ts.After(time.Now().UTC().Add(4*time.Hour)))
+			require.True(t, !ts.After(time.Now().UTC().Add(6*time.Hour)))
 			return &dynamodb.PutItemOutput{}
 		},
 	}
@@ -68,7 +74,7 @@ func Test_Batch(t *testing.T) {
 			version: 0,
 		},
 	}
-	delete := []dynamodbKey{ddbKeyDelete}
+	toDelete := []dynamodbKey{ddbKeyDelete}
 
 	ddbClientMock := &mockDynamodb{
 		transactWriteItem: func(input *dynamodb.TransactWriteItemsInput) (*dynamodb.TransactWriteItemsOutput, error) {
@@ -76,14 +82,14 @@ func Test_Batch(t *testing.T) {
 			require.EqualValues(t, 2, len(input.TransactItems))
 			require.True(t,
 				(checkPutForItem(input.TransactItems[0].Put, ddbKeyUpdate)) &&
-					(checkPutForConditionalExpression(input.TransactItems[0].Put, ddbKeyUpdate)) &&
+					(checkPutForConditionalExpression(input.TransactItems[0].Put)) &&
 					(checkDeleteForItem(input.TransactItems[1].Delete, ddbKeyDelete)))
 			return &dynamodb.TransactWriteItemsOutput{}, nil
 		},
 	}
 
 	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
-	_, _, err := ddb.Batch(context.TODO(), update, delete)
+	_, _, err := ddb.Batch(context.TODO(), update, toDelete)
 	require.NoError(t, err)
 }
 
@@ -107,7 +113,6 @@ func Test_BatchSlices(t *testing.T) {
 		numOfExecutions int
 		expectedCalls   int
 	}{
-		// These tests follow each other (end state of KV in state is starting point in the next state).
 		{
 			name:            "Test slice on lower bound",
 			numOfExecutions: 24,
@@ -126,18 +131,16 @@ func Test_BatchSlices(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			numOfCalls = 0
-			delete := make([]dynamodbKey, 0, tc.numOfExecutions)
+			toDelete := make([]dynamodbKey, 0, tc.numOfExecutions)
 			for i := 0; i < tc.numOfExecutions; i++ {
-				delete = append(delete, ddbKeyDelete)
+				toDelete = append(toDelete, ddbKeyDelete)
 			}
 
-			_, _, err := ddb.Batch(context.TODO(), nil, delete)
+			_, _, err := ddb.Batch(context.TODO(), nil, toDelete)
 			require.NoError(t, err)
 			require.EqualValues(t, tc.expectedCalls, numOfCalls)
-
 		})
 	}
-
 }
 
 func Test_EmptyBatch(t *testing.T) {
@@ -164,7 +167,7 @@ func Test_Batch_Error(t *testing.T) {
 		},
 		{
 			name:          "conditional_check_failed_should_retry",
-			mockError:     &dynamodb.ConditionalCheckFailedException{},
+			mockError:     &types.ConditionalCheckFailedException{},
 			expectedRetry: true,
 		},
 	}
@@ -179,8 +182,8 @@ func Test_Batch_Error(t *testing.T) {
 
 			ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
 
-			delete := []dynamodbKey{{primaryKey: "PKDelete", sortKey: "SKDelete"}}
-			_, retry, err := ddb.Batch(context.TODO(), nil, delete)
+			toDelete := []dynamodbKey{{primaryKey: "PKDelete", sortKey: "SKDelete"}}
+			_, retry, err := ddb.Batch(context.TODO(), nil, toDelete)
 
 			require.Error(t, err)
 			require.Equal(t, tc.expectedRetry, retry)
@@ -188,51 +191,82 @@ func Test_Batch_Error(t *testing.T) {
 	}
 }
 
-func checkPutForItem(request *dynamodb.Put, key dynamodbKey) bool {
-	return request != nil &&
-		request.Item != nil &&
-		request.Item[primaryKey] != nil &&
-		request.Item[sortKey] != nil &&
-		*request.Item[primaryKey].S == key.primaryKey &&
-		*request.Item[sortKey].S == key.sortKey
+func checkPutForItem(request *types.Put, key dynamodbKey) bool {
+	if request == nil || request.Item == nil {
+		return false
+	}
+	pk, ok := request.Item[primaryKey].(*types.AttributeValueMemberS)
+	if !ok {
+		return false
+	}
+	sk, ok := request.Item[sortKey].(*types.AttributeValueMemberS)
+	if !ok {
+		return false
+	}
+	return pk.Value == key.primaryKey && sk.Value == key.sortKey
 }
 
-func checkDeleteForItem(request *dynamodb.Delete, key dynamodbKey) bool {
-	return request != nil &&
-		request.Key[primaryKey] != nil &&
-		request.Key[sortKey] != nil &&
-		*request.Key[primaryKey].S == key.primaryKey &&
-		*request.Key[sortKey].S == key.sortKey
+func checkDeleteForItem(request *types.Delete, key dynamodbKey) bool {
+	if request == nil || request.Key == nil {
+		return false
+	}
+	pk, ok := request.Key[primaryKey].(*types.AttributeValueMemberS)
+	if !ok {
+		return false
+	}
+	sk, ok := request.Key[sortKey].(*types.AttributeValueMemberS)
+	if !ok {
+		return false
+	}
+	return pk.Value == key.primaryKey && sk.Value == key.sortKey
 }
 
-func checkPutForConditionalExpression(request *dynamodb.Put, key dynamodbKey) bool {
+func checkPutForConditionalExpression(request *types.Put) bool {
 	return request != nil &&
 		request.ConditionExpression != nil &&
 		strings.Contains(*request.ConditionExpression, "version = :v")
 }
 
+// ---- v2 mock ----
+
 type mockDynamodb struct {
 	putItem           func(input *dynamodb.PutItemInput) *dynamodb.PutItemOutput
 	transactWriteItem func(input *dynamodb.TransactWriteItemsInput) (*dynamodb.TransactWriteItemsOutput, error)
-
-	dynamodbiface.DynamoDBAPI
+	query             func(input *dynamodb.QueryInput) (*dynamodb.QueryOutput, error)
 }
 
-func (m *mockDynamodb) PutItemWithContext(_ aws.Context, input *dynamodb.PutItemInput, _ ...request.Option) (*dynamodb.PutItemOutput, error) {
+// Implement the minimal methods our code calls (v2 signatures).
+func (m *mockDynamodb) PutItem(_ context.Context, input *dynamodb.PutItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error) {
+	if m.putItem == nil {
+		return &dynamodb.PutItemOutput{}, nil
+	}
 	return m.putItem(input), nil
 }
 
-func (m *mockDynamodb) TransactWriteItemsWithContext(_ aws.Context, input *dynamodb.TransactWriteItemsInput, _ ...request.Option) (*dynamodb.TransactWriteItemsOutput, error) {
+func (m *mockDynamodb) DeleteItem(_ context.Context, _ *dynamodb.DeleteItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.DeleteItemOutput, error) {
+	// Not used in these tests; return empty success.
+	return &dynamodb.DeleteItemOutput{}, nil
+}
+
+func (m *mockDynamodb) TransactWriteItems(_ context.Context, input *dynamodb.TransactWriteItemsInput, _ ...func(*dynamodb.Options)) (*dynamodb.TransactWriteItemsOutput, error) {
+	if m.transactWriteItem == nil {
+		return &dynamodb.TransactWriteItemsOutput{}, nil
+	}
 	return m.transactWriteItem(input)
 }
 
+func (m *mockDynamodb) Query(_ context.Context, input *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+	if m.query == nil {
+		return &dynamodb.QueryOutput{}, nil
+	}
+	return m.query(input)
+}
+
 func newDynamodbClientMock(tableName string, mock *mockDynamodb, ttl time.Duration) *dynamodbKV {
-	ddbKV := &dynamodbKV{
-		ddbClient: mock,
+	return &dynamodbKV{
+		ddbClient: mock, // satisfies our dynamodbAPI interface
 		logger:    TestLogger{},
 		tableName: aws.String(tableName),
 		ttlValue:  ttl,
 	}
-
-	return ddbKV
 }

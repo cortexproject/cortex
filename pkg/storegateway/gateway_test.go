@@ -84,7 +84,6 @@ func TestConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			cfg := &Config{}
@@ -131,7 +130,6 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
@@ -146,7 +144,7 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 
 			// Setup the initial instance state in the ring.
 			if testData.initialExists {
-				require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+				require.NoError(t, ringStore.CAS(ctx, RingKey, func(in any) (any, bool, error) {
 					ringDesc := ring.GetOrCreateRingDesc(in)
 					ringDesc.AddIngester(gatewayCfg.ShardingRing.InstanceID, gatewayCfg.ShardingRing.InstanceAddr, "", testData.initialTokens, testData.initialState, time.Now())
 					return ringDesc, true, nil
@@ -532,7 +530,7 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 	// store-gateways behaves with regards to blocks syncing while other replicas are JOINING.
 
 	// Wait until all the initial store-gateways sees all new store-gateways too.
-	test.Poll(t, 5*time.Second, float64(numAllGateways*numInitialGateways), func() interface{} {
+	test.Poll(t, 5*time.Second, float64(numAllGateways*numInitialGateways), func() any {
 		metrics := initialRegistries.BuildMetricFamiliesPerUser()
 		return metrics.GetSumOfGauges("cortex_ring_members")
 	})
@@ -568,7 +566,7 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 
 	// At this point the new store-gateways are expected to be ACTIVE in the ring and all the initial
 	// store-gateways should unload blocks they don't own anymore.
-	test.Poll(t, 5*time.Second, float64(expectedBlocksLoaded), func() interface{} {
+	test.Poll(t, 5*time.Second, float64(expectedBlocksLoaded), func() any {
 		metrics := allRegistries.BuildMetricFamiliesPerUser()
 		return metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded")
 	})
@@ -596,7 +594,6 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			tokensFile, err := os.CreateTemp(os.TempDir(), "tokens-*")
@@ -812,7 +809,6 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
@@ -835,7 +831,7 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			require.NoError(t, err)
 
 			// Store the initial ring state before starting the gateway.
-			require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+			require.NoError(t, ringStore.CAS(ctx, RingKey, func(in any) (any, bool, error) {
 				ringDesc := ring.GetOrCreateRingDesc(in)
 				testData.setupRing(ringDesc)
 				return ringDesc, true, nil
@@ -851,7 +847,7 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_storegateway_bucket_sync_total"))
 
 			// Change the ring topology.
-			require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+			require.NoError(t, ringStore.CAS(ctx, RingKey, func(in any) (any, bool, error) {
 				ringDesc := ring.GetOrCreateRingDesc(in)
 				testData.updateRing(ringDesc)
 				return ringDesc, true, nil
@@ -859,7 +855,7 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 
 			// Assert whether the sync triggered or not.
 			if testData.expectedSync {
-				test.Poll(t, time.Second, float64(2), func() interface{} {
+				test.Poll(t, time.Second, float64(2), func() any {
 					metrics := regs.BuildMetricFamiliesPerUser()
 					return metrics.GetSumOfCounters("cortex_storegateway_bucket_sync_total")
 				})
@@ -900,7 +896,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 
 	// Add an unhealthy instance to the ring.
-	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in any) (any, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
 		tg := ring.NewRandomTokenGenerator()
 		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", tg.GenerateTokens(ringDesc, unhealthyInstanceID, "", RingNumTokens, true), ring.ACTIVE, time.Now())
@@ -911,7 +907,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	}))
 
 	// Ensure the unhealthy instance is removed from the ring.
-	test.Poll(t, time.Second, false, func() interface{} {
+	test.Poll(t, time.Second, false, func() any {
 		d, err := ringStore.Get(ctx, RingKey)
 		if err != nil {
 			return err
@@ -969,7 +965,6 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 	}
 
 	for _, bucketIndexEnabled := range []bool{true, false} {
-		bucketIndexEnabled := bucketIndexEnabled
 		t.Run(fmt.Sprintf("bucket index enabled = %v", bucketIndexEnabled), func(t *testing.T) {
 			t.Parallel()
 			// Create a store-gateway used to query back the series from the blocks.
@@ -998,7 +993,7 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 			assert.Empty(t, srv.Warnings)
 			assert.Len(t, srv.SeriesSet, numSeries)
 
-			for seriesID := 0; seriesID < numSeries; seriesID++ {
+			for seriesID := range numSeries {
 				actual := srv.SeriesSet[seriesID]
 
 				// Ensure Cortex external labels have been removed.
@@ -1239,8 +1234,9 @@ func TestStoreGateway_SeriesThrottledByResourceMonitor(t *testing.T) {
 	srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
 	err = g.Series(req, srv)
 	require.Error(t, err)
-	exhaustedErr := util_limiter.ResourceLimitReachedError{}
-	require.ErrorContains(t, err, exhaustedErr.Error())
+
+	// Expected error from isRetryableError in blocks_store_queryable.go
+	require.ErrorIs(t, err, util_limiter.ErrResourceLimitReached)
 }
 
 func mockGatewayConfig() Config {
@@ -1315,7 +1311,7 @@ func mockTSDB(t *testing.T, dir string, numSeries, numBlocks int, minT, maxT int
 			i++
 		}
 	} else {
-		for i := 0; i < numSeries; i++ {
+		for i := range numSeries {
 			addSample(i)
 		}
 	}

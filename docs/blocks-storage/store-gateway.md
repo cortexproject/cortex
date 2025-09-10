@@ -210,14 +210,19 @@ store_gateway:
     # This option needs be set both on the store-gateway and querier when
     # running in microservices mode.
     kvstore:
-      # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, memberlist, multi.
+      # Backend storage to use for the ring. Supported values are: consul,
+      # dynamodb, etcd, inmemory, memberlist, multi.
       # CLI flag: -store-gateway.sharding-ring.store
       [store: <string> | default = "consul"]
 
       # The prefix for the keys in the store. Should end with a /.
       # CLI flag: -store-gateway.sharding-ring.prefix
       [prefix: <string> | default = "collectors/"]
+
+      # The consul_config configures the consul client.
+      # The CLI flags prefix for this block config is:
+      # store-gateway.sharding-ring
+      [consul: <consul_config>]
 
       dynamodb:
         # Region to access dynamodb.
@@ -243,11 +248,6 @@ store_gateway:
         # Timeout of dynamoDbClient requests. Default is 2m.
         # CLI flag: -store-gateway.sharding-ring.dynamodb.timeout
         [timeout: <duration> | default = 2m]
-
-      # The consul_config configures the consul client.
-      # The CLI flags prefix for this block config is:
-      # store-gateway.sharding-ring
-      [consul: <consul_config>]
 
       # The etcd_config configures the etcd client.
       # The CLI flags prefix for this block config is:
@@ -357,12 +357,6 @@ store_gateway:
 
   query_protection:
     rejection:
-      # EXPERIMENTAL: Enable query rejection feature, where the component return
-      # 503 to all incoming query requests when the configured thresholds are
-      # breached.
-      # CLI flag: -store-gateway.query-protection.rejection.enabled
-      [enabled: <boolean> | default = false]
-
       threshold:
         # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
         # rejecting new query request (across all tenants) in percentage,

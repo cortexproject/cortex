@@ -293,11 +293,9 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 // shouldCacheResponse says whether the response should be cached or not.
 func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.Request, r tripperware.Response, maxCacheTime int64) bool {
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
-	for _, v := range headerValues {
-		if v == noStoreValue {
-			level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
-			return false
-		}
+	if slices.Contains(headerValues, noStoreValue) {
+		level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
+		return false
 	}
 
 	if !s.isAtModifierCachable(ctx, req, maxCacheTime) {

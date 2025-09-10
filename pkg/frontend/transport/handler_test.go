@@ -388,9 +388,9 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
 			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				resourceLimitReachedErr := &limiter.ResourceLimitReachedError{}
+				resourceLimitReachedErr := limiter.ErrResourceLimitReached
 				return &http.Response{
-					StatusCode: http.StatusUnprocessableEntity,
+					StatusCode: http.StatusServiceUnavailable,
 					Body:       io.NopCloser(strings.NewReader(resourceLimitReachedErr.Error())),
 				}, nil
 			}),
@@ -398,7 +398,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResourceExhausted, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
-			expectedStatusCode: http.StatusUnprocessableEntity,
+			expectedStatusCode: http.StatusServiceUnavailable,
 		},
 		{
 			name:            "test cortex_slow_queries_total",

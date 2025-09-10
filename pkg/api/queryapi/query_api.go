@@ -16,9 +16,9 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/httputil"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
-	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/distributed_execution"
 	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -110,7 +110,7 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 
 	byteLP := []byte(r.PostFormValue("plan"))
 	if len(byteLP) != 0 {
-		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+		logicalPlan, err := distributed_execution.Unmarshal(byteLP)
 		if err != nil {
 			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
 		}
@@ -183,7 +183,7 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 
 	byteLP := []byte(r.PostFormValue("plan"))
 	if len(byteLP) != 0 {
-		logicalPlan, err := logicalplan.Unmarshal(byteLP)
+		logicalPlan, err := distributed_execution.Unmarshal(byteLP)
 		if err != nil {
 			return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("invalid logical plan: %v", err)}, nil, nil}
 		}
@@ -250,7 +250,7 @@ func (q *QueryAPI) Wrap(f apiFunc) http.HandlerFunc {
 	}.ServeHTTP
 }
 
-func (q *QueryAPI) respond(w http.ResponseWriter, req *http.Request, data interface{}, warnings annotations.Annotations, query string) {
+func (q *QueryAPI) respond(w http.ResponseWriter, req *http.Request, data any, warnings annotations.Annotations, query string) {
 	warn, info := warnings.AsStrings(query, 10, 10)
 
 	resp := &v1.Response{

@@ -867,7 +867,7 @@ receivers:
 
 func TestValidateAlertmanagerConfig(t *testing.T) {
 	tests := map[string]struct {
-		input    interface{}
+		input    any
 		expected error
 	}{
 		"*HTTPClientConfig": {

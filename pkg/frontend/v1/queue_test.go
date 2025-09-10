@@ -61,7 +61,7 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	cancel()
 
 	good := 0
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		var err error
 		if i%5 == 0 {
 			good++
@@ -101,7 +101,7 @@ func TestRoundRobinQueues(t *testing.T) {
 	f, err := setupFrontend(t, requests, config)
 	require.NoError(t, err)
 
-	for i := 0; i < requests; i++ {
+	for i := range requests {
 		userID := fmt.Sprint(i / tenants)
 		ctx := user.InjectOrgID(context.Background(), userID)
 
@@ -167,5 +167,5 @@ func (p *processServerMock) SetHeader(_ metadata.MD) error  { return nil }
 func (p *processServerMock) SendHeader(_ metadata.MD) error { return nil }
 func (p *processServerMock) SetTrailer(md metadata.MD)      {}
 func (p *processServerMock) Context() context.Context       { return p.ctx }
-func (p *processServerMock) SendMsg(m interface{}) error    { return nil }
-func (p *processServerMock) RecvMsg(m interface{}) error    { return nil }
+func (p *processServerMock) SendMsg(m any) error            { return nil }
+func (p *processServerMock) RecvMsg(m any) error            { return nil }

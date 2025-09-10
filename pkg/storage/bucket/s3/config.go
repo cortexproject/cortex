@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
@@ -12,7 +13,6 @@ import (
 	"github.com/thanos-io/objstore/providers/s3"
 
 	bucket_http "github.com/cortexproject/cortex/pkg/storage/bucket/http"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -103,14 +103,14 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
+	if !slices.Contains(supportedSignatureVersions, cfg.SignatureVersion) {
 		return errUnsupportedSignatureVersion
 	}
-	if !util.StringsContain(supportedBucketLookupTypes, cfg.BucketLookupType) {
+	if !slices.Contains(supportedBucketLookupTypes, cfg.BucketLookupType) {
 		return errInvalidBucketLookupType
 	}
 	if cfg.ListObjectsVersion != "" {
-		if !util.StringsContain(supportedListObjectsVersion, cfg.ListObjectsVersion) {
+		if !slices.Contains(supportedListObjectsVersion, cfg.ListObjectsVersion) {
 			return errInvalidListObjectsVersion
 		}
 	}
@@ -155,7 +155,7 @@ func (cfg *SSEConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 func (cfg *SSEConfig) Validate() error {
-	if cfg.Type != "" && !util.StringsContain(supportedSSETypes, cfg.Type) {
+	if cfg.Type != "" && !slices.Contains(supportedSSETypes, cfg.Type) {
 		return errUnsupportedSSEType
 	}
 

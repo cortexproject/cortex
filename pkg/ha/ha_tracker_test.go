@@ -39,7 +39,7 @@ func checkReplicaTimestamp(t *testing.T, duration time.Duration, c *HATracker, u
 	// to match "received at" precision
 	expected = expected.Truncate(time.Millisecond)
 
-	test.Poll(t, duration, nil, func() interface{} {
+	test.Poll(t, duration, nil, func() any {
 		c.electedLock.RLock()
 		r := c.elected[key]
 		c.electedLock.RUnlock()
@@ -120,7 +120,6 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, testData.expectedErr, testData.cfg.Validate())
@@ -455,7 +454,6 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			// Init HA tracker
@@ -573,7 +571,7 @@ func TestHAClustersLimit(t *testing.T) {
 
 func waitForClustersUpdate(t *testing.T, expected int, tr *HATracker, userID string) {
 	t.Helper()
-	test.Poll(t, 2*time.Second, expected, func() interface{} {
+	test.Poll(t, 2*time.Second, expected, func() any {
 		tr.electedLock.RLock()
 		defer tr.electedLock.RUnlock()
 
@@ -762,7 +760,7 @@ func TestCheckReplicaCleanup(t *testing.T) {
 
 func checkUserReplicaGroups(t *testing.T, duration time.Duration, c *HATracker, user string, expectedReplicaGroups int) {
 	t.Helper()
-	test.Poll(t, duration, nil, func() interface{} {
+	test.Poll(t, duration, nil, func() any {
 		c.electedLock.RLock()
 		cl := len(c.replicaGroups[user])
 		c.electedLock.RUnlock()
@@ -778,7 +776,7 @@ func checkUserReplicaGroups(t *testing.T, duration time.Duration, c *HATracker, 
 func checkReplicaDeletionState(t *testing.T, duration time.Duration, c *HATracker, user, replicaGroup string, expectedExistsInMemory, expectedExistsInKV, expectedMarkedForDeletion bool) {
 	key := fmt.Sprintf("%s/%s", user, replicaGroup)
 
-	test.Poll(t, duration, nil, func() interface{} {
+	test.Poll(t, duration, nil, func() any {
 		c.electedLock.RLock()
 		_, exists := c.elected[key]
 		c.electedLock.RUnlock()

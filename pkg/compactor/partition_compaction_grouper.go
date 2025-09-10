@@ -409,7 +409,7 @@ func (g *PartitionCompactionGrouper) partitionBlockGroup(group blocksGroupWithPa
 	}
 
 	partitions := make([]Partition, partitionCount)
-	for partitionID := 0; partitionID < partitionCount; partitionID++ {
+	for partitionID := range partitionCount {
 		partitionedGroup := partitionedGroups[partitionID]
 		blockIDs := make([]ulid.ULID, len(partitionedGroup.blocks))
 		for i, m := range partitionedGroup.blocks {
@@ -468,10 +468,7 @@ func (g *PartitionCompactionGrouper) calculatePartitionCount(group blocksGroupWi
 	if seriesCountLimit > 0 && totalSeriesCount > seriesCountLimit {
 		partitionNumberBasedOnSeries = g.findNearestPartitionNumber(float64(totalSeriesCount), float64(seriesCountLimit))
 	}
-	partitionNumber := partitionNumberBasedOnIndex
-	if partitionNumberBasedOnSeries > partitionNumberBasedOnIndex {
-		partitionNumber = partitionNumberBasedOnSeries
-	}
+	partitionNumber := max(partitionNumberBasedOnSeries, partitionNumberBasedOnIndex)
 	level.Info(g.logger).Log("msg", "calculated partition number for group", "partitioned_group_id", groupHash, "partition_number", partitionNumber, "total_index_size", totalIndexSizeInBytes, "index_size_limit", indexSizeLimit, "total_series_count", totalSeriesCount, "series_count_limit", seriesCountLimit, "group", group.String())
 	return partitionNumber
 }

@@ -215,7 +215,7 @@ func TestPartitionCompactor_SkipCompactionWhenCmkError(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -236,7 +236,7 @@ func TestPartitionCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -312,7 +312,7 @@ func TestPartitionCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersF
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
@@ -411,7 +411,7 @@ func TestPartitionCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASing
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
@@ -479,7 +479,7 @@ func TestPartitionCompactor_ShouldCompactAndRemoveUserFolder(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -557,7 +557,7 @@ func TestPartitionCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -693,7 +693,7 @@ func TestPartitionCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -834,7 +834,7 @@ func TestPartitionCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testin
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -902,7 +902,7 @@ func TestPartitionCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *t
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -1013,7 +1013,7 @@ func TestPartitionCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, true, func() any {
 		if _, err := os.Stat(path.Join(dir, "no-compact-mark.json")); err == nil {
 			return true
 		}
@@ -1109,7 +1109,7 @@ func TestPartitionCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInst
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -1214,7 +1214,7 @@ func TestPartitionCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEn
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 60*time.Second, true, func() interface{} {
+		cortex_testutil.Poll(t, 60*time.Second, true, func() any {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
 		})
 	}
@@ -1365,7 +1365,7 @@ func TestPartitionCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingE
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 60*time.Second, 1.0, func() interface{} {
+		cortex_testutil.Poll(t, 60*time.Second, 1.0, func() any {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 		})
 	}
@@ -1594,7 +1594,7 @@ func TestPartitionCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c1))
 
 	// Wait until a run has been completed on first compactor. This happens as soon as compactor starts.
-	cortex_testutil.Poll(t, 20*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, true, func() any {
 		return prom_testutil.ToFloat64(c1.CompactionRunsCompleted) >= 1
 	})
 
@@ -1605,7 +1605,7 @@ func TestPartitionCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Now start second compactor, and wait until it runs compaction.
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c2.CompactionRunsCompleted)
 	})
 
@@ -1712,7 +1712,7 @@ func TestPartitionCompactor_ShouldNotHangIfPlannerReturnNothing(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -1766,7 +1766,7 @@ func TestPartitionCompactor_ShouldNotFailCompactionIfAccessDeniedErrDuringMetaSy
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -1820,7 +1820,7 @@ func TestPartitionCompactor_ShouldNotFailCompactionIfAccessDeniedErrReturnedFrom
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 

@@ -96,7 +96,8 @@ type Config struct {
 	ParquetQueryableShardCacheSize    int    `yaml:"parquet_queryable_shard_cache_size"`
 	ParquetQueryableDefaultBlockStore string `yaml:"parquet_queryable_default_block_store"`
 	ParquetQueryableFallbackDisabled  bool   `yaml:"parquet_queryable_fallback_disabled"`
-	DistributedExecEnabled            bool   `yaml:"distributed_exec_enabled" doc:"hidden"`
+
+	DistributedExecEnabled bool `yaml:"distributed_exec_enabled" doc:"hidden"`
 }
 
 var (
@@ -499,7 +500,6 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 
 	for _, querier := range queriers {
 		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
-		querier := querier
 		g.Go(func() error {
 			// NB: Values are sorted in Cortex already.
 			myValues, myWarnings, err := querier.LabelValues(ctx, name, hints, matchers...)
@@ -568,7 +568,6 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 
 	for _, querier := range queriers {
 		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
-		querier := querier
 		g.Go(func() error {
 			// NB: Names are sorted in Cortex already.
 			myNames, myWarnings, err := querier.LabelNames(ctx, hints, matchers...)

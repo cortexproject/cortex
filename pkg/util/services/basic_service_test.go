@@ -318,8 +318,7 @@ func TestServiceName(t *testing.T) {
 	s := NewIdleService(nil, nil).WithName("test name")
 	require.Equal(t, "test name", DescribeService(s))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	require.NoError(t, s.StartAsync(ctx))
 
 	// once service has started, BasicService will not allow changing the name

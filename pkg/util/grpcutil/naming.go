@@ -21,7 +21,7 @@ type Update struct {
 	Addr string
 	// Metadata is the updated metadata. It is nil if there is no metadata update.
 	// Metadata is not required for a custom naming implementation.
-	Metadata interface{}
+	Metadata any
 }
 
 // Watcher watches for SRV updates on the specified target.

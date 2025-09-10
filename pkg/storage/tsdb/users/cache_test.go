@@ -69,7 +69,6 @@ func TestCachedScanner_ScanUsers(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
@@ -132,7 +131,7 @@ func TestCachedScanner_ConcurrentAccess(t *testing.T) {
 	const goroutines = 10
 	done := make(chan struct{})
 
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer func() { done <- struct{}{} }()
 
@@ -145,7 +144,7 @@ func TestCachedScanner_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		<-done
 	}
 

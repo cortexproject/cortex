@@ -70,12 +70,12 @@ func (c *mergeIterator) Reset(size int) *mergeIterator {
 		c.batchesBuf = make(batchStream, len(c.its))
 	} else {
 		c.batchesBuf = c.batchesBuf[:size]
-		for i := 0; i < size; i++ {
+		for i := range size {
 			c.batchesBuf[i] = promchunk.Batch{}
 		}
 	}
 
-	for i := 0; i < len(c.nextBatchBuf); i++ {
+	for i := range len(c.nextBatchBuf) {
 		c.nextBatchBuf[i] = promchunk.Batch{}
 	}
 
@@ -192,11 +192,11 @@ func (h *iteratorHeap) Less(i, j int) bool {
 	return iT < jT
 }
 
-func (h *iteratorHeap) Push(x interface{}) {
+func (h *iteratorHeap) Push(x any) {
 	*h = append(*h, x.(iterator))
 }
 
-func (h *iteratorHeap) Pop() interface{} {
+func (h *iteratorHeap) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]

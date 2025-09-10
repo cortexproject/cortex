@@ -89,7 +89,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 
 			// Add an initial instance to the ring.
 			if testData.initialInstanceDesc != nil {
-				require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				require.NoError(t, store.CAS(ctx, testRingKey, func(in any) (out any, retry bool, err error) {
 					desc := testData.initialInstanceDesc
 
 					ringDesc := GetOrCreateRingDesc(in)
@@ -244,7 +244,7 @@ func TestBasicLifecycler_HeartbeatWhileRunning(t *testing.T) {
 	desc, _ := getInstanceFromStore(t, store, testInstanceID)
 	initialTimestamp := desc.GetTimestamp()
 
-	test.Poll(t, time.Second*5, true, func() interface{} {
+	test.Poll(t, time.Second*5, true, func() any {
 		desc, _ := getInstanceFromStore(t, store, testInstanceID)
 		currTimestamp := desc.GetTimestamp()
 
@@ -269,7 +269,7 @@ func TestBasicLifecycler_HeartbeatWhileStopping(t *testing.T) {
 		// Since the hearbeat timestamp is in seconds we would have to wait 1s before we can assert
 		// on it being changed, regardless the heartbeat period. To speed up this test, we're going
 		// to reset the timestamp to 0 and then assert it has been updated.
-		require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		require.NoError(t, store.CAS(ctx, testRingKey, func(in any) (out any, retry bool, err error) {
 			ringDesc := GetOrCreateRingDesc(in)
 			instanceDesc := ringDesc.Ingesters[testInstanceID]
 			instanceDesc.Timestamp = 0
@@ -278,7 +278,7 @@ func TestBasicLifecycler_HeartbeatWhileStopping(t *testing.T) {
 		}))
 
 		// Wait until the timestamp has been updated.
-		test.Poll(t, time.Second, true, func() interface{} {
+		test.Poll(t, time.Second, true, func() any {
 			desc, _ := getInstanceFromStore(t, store, testInstanceID)
 			currTimestamp := desc.GetTimestamp()
 
@@ -313,11 +313,11 @@ func TestBasicLifecycler_HeartbeatAfterBackendRest(t *testing.T) {
 
 	// Now we delete it from the ring to simulate a ring storage reset and we expect the next heartbeat
 	// will restore it.
-	require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	require.NoError(t, store.CAS(ctx, testRingKey, func(in any) (out any, retry bool, err error) {
 		return NewDesc(), true, nil
 	}))
 
-	test.Poll(t, time.Second, true, func() interface{} {
+	test.Poll(t, time.Second, true, func() any {
 		desc, ok := getInstanceFromStore(t, store, testInstanceID)
 		return ok &&
 			desc.GetTimestamp() > 0 &&
@@ -371,7 +371,7 @@ func TestBasicLifecycler_TokensObservePeriod(t *testing.T) {
 	// While the lifecycler is starting we poll the ring. As soon as the instance
 	// is registered, we remove some tokens to simulate how gossip memberlist
 	// reconciliation works in case of clashing tokens.
-	test.Poll(t, time.Second, true, func() interface{} {
+	test.Poll(t, time.Second, true, func() any {
 		// Ensure the instance has been registered in the ring.
 		desc, ok := getInstanceFromStore(t, store, testInstanceID)
 		if !ok {
@@ -379,7 +379,7 @@ func TestBasicLifecycler_TokensObservePeriod(t *testing.T) {
 		}
 
 		// Remove some tokens.
-		return store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		return store.CAS(ctx, testRingKey, func(in any) (out any, retry bool, err error) {
 			ringDesc := GetOrCreateRingDesc(in)
 			ringDesc.AddIngester(testInstanceID, desc.Addr, desc.Zone, Tokens{4, 5}, desc.State, time.Now())
 			return ringDesc, true, nil
@@ -413,7 +413,7 @@ func TestBasicLifecycler_updateInstance_ShouldAddInstanceToTheRingIfDoesNotExist
 	expectedRegisteredAt := lifecycler.GetRegisteredAt()
 
 	// Now we delete it from the ring to simulate a ring storage reset.
-	require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	require.NoError(t, store.CAS(ctx, testRingKey, func(in any) (out any, retry bool, err error) {
 		return NewDesc(), true, nil
 	}))
 

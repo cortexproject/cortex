@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 func TestLogicalPlanGeneration(t *testing.T) {
@@ -117,11 +118,10 @@ func TestLogicalPlanGeneration(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		tc := tc
 		t.Run(strconv.Itoa(i)+"_"+tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			middleware := DistributedQueryMiddleware(time.Minute, 5*time.Minute)
+			middleware := DistributedQueryMiddleware(time.Minute, 5*time.Minute, logicalplan.DefaultOptimizers)
 
 			handler := middleware.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 				return nil, nil

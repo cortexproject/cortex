@@ -300,7 +300,7 @@ require (
 )
 
 // Using cortex fork of weaveworks/common
-replace github.com/weaveworks/common => github.com/cortexproject/weaveworks-common v0.0.0-20250806170222-876764c695f2
+replace github.com/weaveworks/common => github.com/cortexproject/weaveworks-common v0.0.0-20250902164925-0315015a8b9f
 
 // Override since git.apache.org is down.  The docs say to fetch from github.
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999

@@ -22,9 +22,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/distributed_execution"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -104,6 +106,7 @@ func Middlewares(
 	lookbackDelta time.Duration,
 	defaultEvaluationInterval time.Duration,
 	distributedExecEnabled bool,
+	localOptimizers []logicalplan.Optimizer,
 ) ([]tripperware.Middleware, cache.Cache, error) {
 	// Metric used to keep track of each middleware execution duration.
 	metrics := tripperware.NewInstrumentMiddlewareMetrics(registerer)
@@ -142,7 +145,8 @@ func Middlewares(
 	if distributedExecEnabled {
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			tripperware.InstrumentMiddleware("range_logical_plan_gen", metrics),
-			tripperware.DistributedQueryMiddleware(defaultEvaluationInterval, lookbackDelta))
+			tripperware.DistributedQueryMiddleware(defaultEvaluationInterval, lookbackDelta,
+				append(localOptimizers, &distributed_execution.DistributedOptimizer{})))
 	}
 
 	return queryRangeMiddleware, c, nil

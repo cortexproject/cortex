@@ -52,10 +52,10 @@ func TestActiveSeries_Purge(t *testing.T) {
 	}
 
 	// Run the same test for increasing TTL values
-	for ttl := 0; ttl < len(series); ttl++ {
+	for ttl := range series {
 		c := NewActiveSeries()
 
-		for i := 0; i < len(series); i++ {
+		for i := range series {
 			c.UpdateSeries(fromLabelToLabels(series[i]), fromLabelToLabels(series[i]).Hash(), time.Unix(int64(i), 0), true, copyFn)
 		}
 
@@ -117,7 +117,7 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 	start := make(chan struct{})
 	max := int(math.Ceil(float64(b.N) / float64(goroutines)))
 	labelhash := series.Hash()
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -125,7 +125,7 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 
 			now := time.Now()
 
-			for ix := 0; ix < max; ix++ {
+			for ix := range max {
 				now = now.Add(time.Duration(ix) * time.Millisecond)
 				c.UpdateSeries(series, labelhash, now, false, copyFn)
 			}
@@ -142,22 +142,21 @@ func BenchmarkActiveSeries_UpdateSeries(b *testing.B) {
 
 	// Prepare series
 	nameBuf := bytes.Buffer{}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		nameBuf.WriteString("abcdefghijklmnopqrstuvzyx")
 	}
 	name := nameBuf.String()
 
 	series := make([]labels.Labels, b.N)
 	labelhash := make([]uint64, b.N)
-	for s := 0; s < b.N; s++ {
+	for s := 0; b.Loop(); s++ {
 		series[s] = labels.FromStrings(name, name+strconv.Itoa(s))
 		labelhash[s] = series[s].Hash()
 	}
 
 	now := time.Now().UnixNano()
 
-	b.ResetTimer()
-	for ix := 0; ix < b.N; ix++ {
+	for ix := 0; b.Loop(); ix++ {
 		c.UpdateSeries(series[ix], labelhash[ix], time.Unix(0, now+int64(ix)), false, copyFn)
 	}
 }
@@ -179,12 +178,12 @@ func benchmarkPurge(b *testing.B, twice bool) {
 
 	series := [numSeries]labels.Labels{}
 	labelhash := [numSeries]uint64{}
-	for s := 0; s < numSeries; s++ {
+	for s := range numSeries {
 		series[s] = labels.FromStrings("a", strconv.Itoa(s))
 		labelhash[s] = series[s].Hash()
 	}
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		b.StopTimer()
 
 		// Prepare series

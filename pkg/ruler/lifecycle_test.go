@@ -36,7 +36,7 @@ func TestRulerShutdown(t *testing.T) {
 	defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
 
 	// Wait until the tokens are registered in the ring
-	test.Poll(t, 100*time.Millisecond, config.Ring.NumTokens, func() interface{} {
+	test.Poll(t, 100*time.Millisecond, config.Ring.NumTokens, func() any {
 		return numTokens(ringStore, "localhost", ringKey)
 	})
 
@@ -45,7 +45,7 @@ func TestRulerShutdown(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), r))
 
 	// Wait until the tokens are unregistered from the ring
-	test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
+	test.Poll(t, 100*time.Millisecond, 0, func() any {
 		return numTokens(ringStore, "localhost", ringKey)
 	})
 }
@@ -73,7 +73,7 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 
 	// Add an unhealthy instance to the ring.
 	tg := ring.NewRandomTokenGenerator()
-	require.NoError(t, ringStore.CAS(ctx, ringKey, func(in interface{}) (interface{}, bool, error) {
+	require.NoError(t, ringStore.CAS(ctx, ringKey, func(in any) (any, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
 
 		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", tg.GenerateTokens(ringDesc, unhealthyInstanceID, "", config.Ring.NumTokens, true), ring.ACTIVE, time.Now())
@@ -84,7 +84,7 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	}))
 
 	// Ensure the unhealthy instance is removed from the ring.
-	test.Poll(t, time.Second*5, false, func() interface{} {
+	test.Poll(t, time.Second*5, false, func() any {
 		d, err := ringStore.Get(ctx, ringKey)
 		if err != nil {
 			return err

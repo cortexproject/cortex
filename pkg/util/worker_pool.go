@@ -51,7 +51,7 @@ func NewWorkerPool(name string, numWorkers int, reg prometheus.Registerer) Async
 		}),
 	}
 
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		go wp.run()
 	}
 
@@ -74,7 +74,7 @@ func (s *workerPoolExecutor) Submit(f func()) {
 }
 
 func (s *workerPoolExecutor) run() {
-	for completed := 0; completed < serverWorkerResetThreshold; completed++ {
+	for range serverWorkerResetThreshold {
 		f, ok := <-s.serverWorkerChannel
 		if !ok {
 			return

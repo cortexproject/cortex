@@ -192,14 +192,18 @@ parquet_converter:
 
   ring:
     kvstore:
-      # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, memberlist, multi.
+      # Backend storage to use for the ring. Supported values are: consul,
+      # dynamodb, etcd, inmemory, memberlist, multi.
       # CLI flag: -parquet-converter.ring.store
       [store: <string> | default = "consul"]
 
       # The prefix for the keys in the store. Should end with a /.
       # CLI flag: -parquet-converter.ring.prefix
       [prefix: <string> | default = "collectors/"]
+
+      # The consul_config configures the consul client.
+      # The CLI flags prefix for this block config is: parquet-converter.ring
+      [consul: <consul_config>]
 
       dynamodb:
         # Region to access dynamodb.
@@ -225,10 +229,6 @@ parquet_converter:
         # Timeout of dynamoDbClient requests. Default is 2m.
         # CLI flag: -parquet-converter.ring.dynamodb.timeout
         [timeout: <duration> | default = 2m]
-
-      # The consul_config configures the consul client.
-      # The CLI flags prefix for this block config is: parquet-converter.ring
-      [consul: <consul_config>]
 
       # The etcd_config configures the etcd client.
       # The CLI flags prefix for this block config is: parquet-converter.ring
@@ -451,14 +451,18 @@ The `alertmanager_config` configures the Cortex alertmanager.
 sharding_ring:
   # The key-value store used to share the hash ring across multiple instances.
   kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
+    # Backend storage to use for the ring. Supported values are: consul,
+    # dynamodb, etcd, inmemory, memberlist, multi.
     # CLI flag: -alertmanager.sharding-ring.store
     [store: <string> | default = "consul"]
 
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -alertmanager.sharding-ring.prefix
     [prefix: <string> | default = "alertmanagers/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: alertmanager.sharding-ring
+    [consul: <consul_config>]
 
     dynamodb:
       # Region to access dynamodb.
@@ -484,10 +488,6 @@ sharding_ring:
       # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -alertmanager.sharding-ring.dynamodb.timeout
       [timeout: <duration> | default = 2m]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: alertmanager.sharding-ring
-    [consul: <consul_config>]
 
     # The etcd_config configures the etcd client.
     # The CLI flags prefix for this block config is: alertmanager.sharding-ring
@@ -2710,14 +2710,18 @@ The `compactor_config` configures the compactor for the blocks storage.
 
 sharding_ring:
   kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
+    # Backend storage to use for the ring. Supported values are: consul,
+    # dynamodb, etcd, inmemory, memberlist, multi.
     # CLI flag: -compactor.ring.store
     [store: <string> | default = "consul"]
 
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -compactor.ring.prefix
     [prefix: <string> | default = "collectors/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: compactor.ring
+    [consul: <consul_config>]
 
     dynamodb:
       # Region to access dynamodb.
@@ -2743,10 +2747,6 @@ sharding_ring:
       # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -compactor.ring.dynamodb.timeout
       [timeout: <duration> | default = 2m]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: compactor.ring
-    [consul: <consul_config>]
 
     # The etcd_config configures the etcd client.
     # The CLI flags prefix for this block config is: compactor.ring
@@ -3039,14 +3039,18 @@ ha_tracker:
   # supported by the HA tracker since gossip propagation is too slow for HA
   # purposes.
   kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
+    # Backend storage to use for the ring. Supported values are: consul,
+    # dynamodb, etcd, inmemory, memberlist, multi.
     # CLI flag: -distributor.ha-tracker.store
     [store: <string> | default = "consul"]
 
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -distributor.ha-tracker.prefix
     [prefix: <string> | default = "ha-tracker/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: distributor.ha-tracker
+    [consul: <consul_config>]
 
     dynamodb:
       # Region to access dynamodb.
@@ -3072,10 +3076,6 @@ ha_tracker:
       # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -distributor.ha-tracker.dynamodb.timeout
       [timeout: <duration> | default = 2m]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: distributor.ha-tracker
-    [consul: <consul_config>]
 
     # The etcd_config configures the etcd client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
@@ -3147,14 +3147,18 @@ ha_tracker:
 
 ring:
   kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
+    # Backend storage to use for the ring. Supported values are: consul,
+    # dynamodb, etcd, inmemory, memberlist, multi.
     # CLI flag: -distributor.ring.store
     [store: <string> | default = "consul"]
 
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -distributor.ring.prefix
     [prefix: <string> | default = "collectors/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: distributor.ring
+    [consul: <consul_config>]
 
     dynamodb:
       # Region to access dynamodb.
@@ -3180,10 +3184,6 @@ ring:
       # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -distributor.ring.dynamodb.timeout
       [timeout: <duration> | default = 2m]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: distributor.ring
-    [consul: <consul_config>]
 
     # The etcd_config configures the etcd client.
     # The CLI flags prefix for this block config is: distributor.ring
@@ -3485,6 +3485,10 @@ grpc_client_config:
   # using default gRPC client connect timeout 20s.
   # CLI flag: -querier.frontend-client.connect-timeout
   [connect_timeout: <duration> | default = 5s]
+
+# Name of network interface to read address from.
+# CLI flag: -querier.instance-interface-names
+[instance_interface_names: <list of string> | default = [eth0 en0]]
 ```
 
 ### `ingester_config`
@@ -3495,14 +3499,17 @@ The `ingester_config` configures the Cortex ingester.
 lifecycler:
   ring:
     kvstore:
-      # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, memberlist, multi.
+      # Backend storage to use for the ring. Supported values are: consul,
+      # dynamodb, etcd, inmemory, memberlist, multi.
       # CLI flag: -ring.store
       [store: <string> | default = "consul"]
 
       # The prefix for the keys in the store. Should end with a /.
       # CLI flag: -ring.prefix
       [prefix: <string> | default = "collectors/"]
+
+      # The consul_config configures the consul client.
+      [consul: <consul_config>]
 
       dynamodb:
         # Region to access dynamodb.
@@ -3528,9 +3535,6 @@ lifecycler:
         # Timeout of dynamoDbClient requests. Default is 2m.
         # CLI flag: -dynamodb.timeout
         [timeout: <duration> | default = 2m]
-
-      # The consul_config configures the consul client.
-      [consul: <consul_config>]
 
       # The etcd_config configures the etcd client.
       [etcd: <etcd_config>]
@@ -3731,12 +3735,6 @@ instance_limits:
 
 query_protection:
   rejection:
-    # EXPERIMENTAL: Enable query rejection feature, where the component return
-    # 503 to all incoming query requests when the configured thresholds are
-    # breached.
-    # CLI flag: -ingester.query-protection.rejection.enabled
-    [enabled: <boolean> | default = false]
-
     threshold:
       # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
       # rejecting new query request (across all tenants) in percentage, between
@@ -5306,14 +5304,18 @@ alertmanager_client:
 
 ring:
   kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
+    # Backend storage to use for the ring. Supported values are: consul,
+    # dynamodb, etcd, inmemory, memberlist, multi.
     # CLI flag: -ruler.ring.store
     [store: <string> | default = "consul"]
 
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -ruler.ring.prefix
     [prefix: <string> | default = "rulers/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: ruler.ring
+    [consul: <consul_config>]
 
     dynamodb:
       # Region to access dynamodb.
@@ -5339,10 +5341,6 @@ ring:
       # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -ruler.ring.dynamodb.timeout
       [timeout: <duration> | default = 2m]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: ruler.ring
-    [consul: <consul_config>]
 
     # The etcd_config configures the etcd client.
     # The CLI flags prefix for this block config is: ruler.ring
@@ -6329,14 +6327,18 @@ sharding_ring:
   # This option needs be set both on the store-gateway and querier when running
   # in microservices mode.
   kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
+    # Backend storage to use for the ring. Supported values are: consul,
+    # dynamodb, etcd, inmemory, memberlist, multi.
     # CLI flag: -store-gateway.sharding-ring.store
     [store: <string> | default = "consul"]
 
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -store-gateway.sharding-ring.prefix
     [prefix: <string> | default = "collectors/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: store-gateway.sharding-ring
+    [consul: <consul_config>]
 
     dynamodb:
       # Region to access dynamodb.
@@ -6362,10 +6364,6 @@ sharding_ring:
       # Timeout of dynamoDbClient requests. Default is 2m.
       # CLI flag: -store-gateway.sharding-ring.dynamodb.timeout
       [timeout: <duration> | default = 2m]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: store-gateway.sharding-ring
-    [consul: <consul_config>]
 
     # The etcd_config configures the etcd client.
     # The CLI flags prefix for this block config is: store-gateway.sharding-ring
@@ -6472,12 +6470,6 @@ sharding_ring:
 
 query_protection:
   rejection:
-    # EXPERIMENTAL: Enable query rejection feature, where the component return
-    # 503 to all incoming query requests when the configured thresholds are
-    # breached.
-    # CLI flag: -store-gateway.query-protection.rejection.enabled
-    [enabled: <boolean> | default = false]
-
     threshold:
       # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
       # rejecting new query request (across all tenants) in percentage, between

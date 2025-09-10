@@ -72,7 +72,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 	})
 
 	// Wait for frontend to connect to scheduler.
-	test.Poll(t, 1*time.Second, 1, func() interface{} {
+	test.Poll(t, 1*time.Second, 1, func() any {
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 
@@ -206,7 +206,7 @@ func TestFrontendCancellation(t *testing.T) {
 	require.Nil(t, resp)
 
 	// We wait a bit to make sure scheduler receives the cancellation request.
-	test.Poll(t, time.Second, 2, func() interface{} {
+	test.Poll(t, time.Second, 2, func() any {
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 

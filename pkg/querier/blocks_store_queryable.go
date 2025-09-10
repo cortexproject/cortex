@@ -637,8 +637,6 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 	// Concurrently fetch series from all clients.
 	for c, blockIDs := range clients {
 		// Change variables scope since it will be used in a goroutine.
-		c := c
-		blockIDs := blockIDs
 
 		g.Go(func() error {
 			// See: https://github.com/prometheus/prometheus/pull/8050
@@ -860,8 +858,6 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 	// Concurrently fetch series from all clients.
 	for c, blockIDs := range clients {
 		// Change variables scope since it will be used in a goroutine.
-		c := c
-		blockIDs := blockIDs
 
 		g.Go(func() error {
 			req, err := createLabelNamesRequest(minT, maxT, limit, blockIDs, matchers)
@@ -967,8 +963,6 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 	// Concurrently fetch series from all clients.
 	for c, blockIDs := range clients {
 		// Change variables scope since it will be used in a goroutine.
-		c := c
-		blockIDs := blockIDs
 
 		g.Go(func() error {
 			req, err := createLabelValuesRequest(minT, maxT, limit, name, blockIDs, matchers...)
@@ -1204,17 +1198,11 @@ func countSamplesAndChunks(series ...*storepb.Series) (samplesCount, chunksCount
 
 // only retry connection issues
 func isRetryableError(err error) bool {
-	// retry upon resource exhaustion error from resource monitor
-	var resourceExhaustedErr *limiter.ResourceLimitReachedError
-	if errors.As(err, &resourceExhaustedErr) {
-		return true
-	}
-
 	switch status.Code(err) {
 	case codes.Unavailable:
 		return true
 	case codes.ResourceExhausted:
-		return errors.Is(err, storegateway.ErrTooManyInflightRequests)
+		return errors.Is(err, storegateway.ErrTooManyInflightRequests) || errors.Is(err, limiter.ErrResourceLimitReached)
 	// Client side connection closing, this error happens during store gateway deployment.
 	// https://github.com/grpc/grpc-go/blob/03172006f5d168fc646d87928d85cb9c4a480291/clientconn.go#L67
 	case codes.Canceled:

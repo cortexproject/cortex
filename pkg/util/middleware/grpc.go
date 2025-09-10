@@ -15,7 +15,7 @@ import (
 
 // PrometheusGRPCUnaryInstrumentation records duration of gRPC requests client side.
 func PrometheusGRPCUnaryInstrumentation(metric *prometheus.HistogramVec) grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, resp interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return func(ctx context.Context, method string, req, resp any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		start := time.Now()
 		err := invoker(ctx, method, req, resp, cc, opts...)
 		metric.WithLabelValues(method, errorCode(err)).Observe(time.Since(start).Seconds())
@@ -46,7 +46,7 @@ type instrumentedClientStream struct {
 	grpc.ClientStream
 }
 
-func (s *instrumentedClientStream) SendMsg(m interface{}) error {
+func (s *instrumentedClientStream) SendMsg(m any) error {
 	err := s.ClientStream.SendMsg(m)
 	if err == nil {
 		return err
@@ -61,7 +61,7 @@ func (s *instrumentedClientStream) SendMsg(m interface{}) error {
 	return err
 }
 
-func (s *instrumentedClientStream) RecvMsg(m interface{}) error {
+func (s *instrumentedClientStream) RecvMsg(m any) error {
 	err := s.ClientStream.RecvMsg(m)
 	if err == nil {
 		return err
@@ -104,7 +104,7 @@ type instrumentedReusableClientStream struct {
 	grpc.ClientStream
 }
 
-func (s *instrumentedReusableClientStream) SendMsg(m interface{}) error {
+func (s *instrumentedReusableClientStream) SendMsg(m any) error {
 	start := time.Now()
 	err := s.ClientStream.SendMsg(m)
 	if err != nil && err != io.EOF {
@@ -115,7 +115,7 @@ func (s *instrumentedReusableClientStream) SendMsg(m interface{}) error {
 	return err
 }
 
-func (s *instrumentedReusableClientStream) RecvMsg(m interface{}) error {
+func (s *instrumentedReusableClientStream) RecvMsg(m any) error {
 	start := time.Now()
 	err := s.ClientStream.RecvMsg(m)
 	if err != nil && err != io.EOF {

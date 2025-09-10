@@ -38,7 +38,7 @@ func TestExpandedCachePostings_Race(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until the ingester is ACTIVE
-	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -48,10 +48,10 @@ func TestExpandedCachePostings_Race(t *testing.T) {
 	labelNames := 100
 	seriesPerLabelName := 200
 
-	for j := 0; j < labelNames; j++ {
+	for j := range labelNames {
 		metricName := fmt.Sprintf("test_metric_%d", j)
 		wg.Add(seriesPerLabelName * 2)
-		for k := 0; k < seriesPerLabelName; k++ {
+		for k := range seriesPerLabelName {
 			go func() {
 				defer wg.Done()
 				_, err := i.Push(ctx, cortexpb.ToWriteRequest(

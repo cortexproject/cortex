@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
-	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
 
 	"github.com/cortexproject/cortex/pkg/configs"
@@ -89,7 +89,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate the Config.
 func (cfg *Config) Validate(limits validation.Limits, monitoredResources flagext.StringSliceCSV) error {
 	if cfg.ShardingEnabled {
-		if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+		if !slices.Contains(supportedShardingStrategies, cfg.ShardingStrategy) {
 			return errInvalidShardingStrategy
 		}
 
@@ -437,7 +437,7 @@ func (g *StoreGateway) checkResourceUtilization() error {
 
 	if err := g.resourceBasedLimiter.AcceptNewRequest(); err != nil {
 		level.Warn(g.logger).Log("msg", "failed to accept request", "err", err)
-		return httpgrpc.Errorf(http.StatusServiceUnavailable, "failed to query: %s", util_limiter.ErrResourceLimitReachedStr)
+		return util_limiter.ErrResourceLimitReached
 	}
 
 	return nil

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -127,9 +128,7 @@ func (m *multiLevelBucketCache) Fetch(ctx context.Context, keys []string) map[st
 			return nil
 		}
 		if data := c.Fetch(ctx, missingKeys); len(data) > 0 {
-			for k, d := range data {
-				hits[k] = d
-			}
+			maps.Copy(hits, data)
 
 			if i > 0 && len(hits) > 0 {
 				// lets fetch only the mising keys
@@ -142,9 +141,7 @@ func (m *multiLevelBucketCache) Fetch(ctx context.Context, keys []string) map[st
 
 				missingKeys = m
 
-				for k, b := range hits {
-					backfillItems[i-1][k] = b
-				}
+				maps.Copy(backfillItems[i-1], hits)
 			}
 
 			if len(hits) == len(keys) {

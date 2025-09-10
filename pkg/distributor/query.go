@@ -162,7 +162,7 @@ func mergeExemplarSets(a, b []cortexpb.Exemplar) []cortexpb.Exemplar {
 func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.ExemplarQueryRequest) (*ingester_client.ExemplarQueryResponse, error) {
 	// Fetch exemplars from multiple ingesters in parallel, using the replicationSet
 	// to deal with consistency.
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, false, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, false, func(ctx context.Context, ing *ring.InstanceDesc) (any, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
@@ -190,7 +190,7 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 	return mergeExemplarQueryResponses(results), nil
 }
 
-func mergeExemplarQueryResponses(results []interface{}) *ingester_client.ExemplarQueryResponse {
+func mergeExemplarQueryResponses(results []any) *ingester_client.ExemplarQueryResponse {
 	var keys []string
 	exemplarResults := make(map[string]cortexpb.TimeSeries)
 	buf := make([]byte, 0, 1024)
@@ -229,7 +229,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	)
 
 	// Fetch samples from multiple ingesters
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, partialDataEnabled, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, partialDataEnabled, func(ctx context.Context, ing *ring.InstanceDesc) (any, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err

@@ -1334,7 +1334,7 @@ github.com/vimeo/galaxycache/http
 github.com/vimeo/galaxycache/lru
 github.com/vimeo/galaxycache/promoter
 github.com/vimeo/galaxycache/singleflight
-# github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5 => github.com/cortexproject/weaveworks-common v0.0.0-20250806170222-876764c695f2
+# github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5 => github.com/cortexproject/weaveworks-common v0.0.0-20250902164925-0315015a8b9f
 ## explicit; go 1.22
 github.com/weaveworks/common/errors
 github.com/weaveworks/common/grpc
@@ -1989,7 +1989,7 @@ k8s.io/utils/clock
 # sigs.k8s.io/yaml v1.4.0
 ## explicit; go 1.12
 sigs.k8s.io/yaml/goyaml.v3
-# github.com/weaveworks/common => github.com/cortexproject/weaveworks-common v0.0.0-20250806170222-876764c695f2
+# github.com/weaveworks/common => github.com/cortexproject/weaveworks-common v0.0.0-20250902164925-0315015a8b9f
 # git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe

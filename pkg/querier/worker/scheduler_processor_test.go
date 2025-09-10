@@ -92,12 +92,12 @@ func (m *mockQuerierLoopClient) Context() context.Context {
 	return args.Get(0).(context.Context)
 }
 
-func (m *mockQuerierLoopClient) SendMsg(msg interface{}) error {
+func (m *mockQuerierLoopClient) SendMsg(msg any) error {
 	args := m.Called(msg)
 	return args.Error(0)
 }
 
-func (m *mockQuerierLoopClient) RecvMsg(msg interface{}) error {
+func (m *mockQuerierLoopClient) RecvMsg(msg any) error {
 	args := m.Called(msg)
 	return args.Error(0)
 }
@@ -144,7 +144,7 @@ func Test_ToShowNotPanic_RelatedIssue6599(t *testing.T) {
 		go stat.AddFetchedChunkBytes(10)
 	}).Return(&httpgrpc.HTTPResponse{}, nil)
 
-	sp, _ := newSchedulerProcessor(cfg, requestHandler, log.NewNopLogger(), nil)
+	sp, _ := newSchedulerProcessor(cfg, requestHandler, log.NewNopLogger(), nil, "")
 	schedulerClient := &mockSchedulerForQuerierClient{}
 	schedulerClient.On("QuerierLoop", mock.Anything, mock.Anything).Return(querierLoopClient, nil)
 

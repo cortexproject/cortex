@@ -21,7 +21,7 @@ import (
 // Adapted from Prometheus model/histogram/test_utils.go GenerateBigTestHistograms.
 func GenerateTestHistograms(from, step, numHistograms int) []*histogram.Histogram {
 	var histograms []*histogram.Histogram
-	for i := 0; i < numHistograms; i++ {
+	for i := range numHistograms {
 		v := int64(from + i*step)
 		histograms = append(histograms, tsdbutil.GenerateTestGaugeHistogram(v))
 	}

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -18,7 +19,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/swift"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -90,7 +90,7 @@ func (cfg *Config) RegisterFlagsWithPrefixAndBackend(prefix string, f *flag.Flag
 }
 
 func (cfg *Config) Validate() error {
-	if !util.StringsContain(cfg.supportedBackends(), cfg.Backend) {
+	if !slices.Contains(cfg.supportedBackends(), cfg.Backend) {
 		return ErrUnsupportedStorageBackend
 	}
 

@@ -23,7 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/util/testutil"
 )
 
 func TestUpdater_UpdateIndex(t *testing.T) {

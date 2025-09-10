@@ -36,7 +36,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -44,6 +43,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -341,7 +341,7 @@ type Ruler struct {
 	rulerGetRulesFailures      *prometheus.CounterVec
 	ruleGroupMetrics           *RuleGroupMetrics
 
-	allowedTenants *util.AllowedTenants
+	allowedTenants *users.AllowedTenants
 
 	registry prometheus.Registerer
 	logger   log.Logger
@@ -361,7 +361,7 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		logger:         logger,
 		limits:         limits,
 		clientsPool:    clientPool,
-		allowedTenants: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		allowedTenants: users.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",
@@ -1028,7 +1028,7 @@ func (r *Ruler) filterBackupRuleGroups(userID string, ruleGroups []*rulespb.Rule
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
 func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) (*RulesResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
@@ -1448,7 +1448,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 
 // Rules implements the rules service
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
@@ -1502,7 +1502,7 @@ func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
 func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), r.logger)
 
-	userID, err := tenant.TenantID(req.Context())
+	userID, err := users.TenantID(req.Context())
 	if err != nil {
 		// When Cortex is running, it uses Auth Middleware for checking X-Scope-OrgID and injecting tenant into context.
 		// Auth Middleware sends http.StatusUnauthorized if X-Scope-OrgID is missing, so we do too here, for consistency.

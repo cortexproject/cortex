@@ -21,10 +21,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/merger"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // Distributor forwards requests to individual alertmanagers.
@@ -97,11 +97,11 @@ func (d *Distributor) isQuorumReadPath(p string) (bool, merger.Merger) {
 // In case of reads, it proxies the request to one of the alertmanagers.
 // DistributeRequest assumes that the caller has verified IsPathSupported returns
 // true for the route.
-func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request, allowedTenants *util.AllowedTenants) {
+func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request, allowedTenants *users.AllowedTenants) {
 	d.requestsInFlight.Add(1)
 	defer d.requestsInFlight.Done()
 
-	userID, err := tenant.TenantID(r.Context())
+	userID, err := users.TenantID(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return

@@ -27,11 +27,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestDistributor_DistributeRequest(t *testing.T) {
@@ -262,9 +262,9 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 				req.Method = http.MethodDelete
 			}
 			req.RequestURI = url
-			var allowedTenants *util.AllowedTenants
+			var allowedTenants *users.AllowedTenants
 			if c.isTenantDisabled {
-				allowedTenants = util.NewAllowedTenants(nil, []string{"1"})
+				allowedTenants = users.NewAllowedTenants(nil, []string{"1"})
 			}
 
 			w := httptest.NewRecorder()

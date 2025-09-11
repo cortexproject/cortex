@@ -1259,22 +1259,27 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			switch cause := errors.Cause(err); {
 			case errors.Is(cause, storage.ErrOutOfBounds):
 				sampleOutOfBoundsCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfBounds, userID, &copiedLabels)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrOutOfOrderSample):
 				sampleOutOfOrderCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfOrder, userID, &copiedLabels)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrDuplicateSampleForTimestamp):
 				newValueForTimestampCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(newValueForTimestamp, userID, &copiedLabels)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrTooOldSample):
 				sampleTooOldCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(sampleTooOld, userID, &copiedLabels)
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(perUserSeriesLimit, userID, &copiedLabels)
 				updateFirstPartial(func() error {
 					return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
@@ -1287,12 +1292,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
 				perMetricSeriesLimitCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(perMetricSeriesLimit, userID, &copiedLabels)
 				updateFirstPartial(func() error {
 					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
 
 			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
 				perLabelSetSeriesLimitCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(perLabelsetSeriesLimit, userID, &copiedLabels)
 				// We only track per labelset discarded samples for throttling by labelset limit.
 				reasonCounter.increment(matchedLabelSetLimits, perLabelsetSeriesLimit)
 				updateFirstPartial(func() error {

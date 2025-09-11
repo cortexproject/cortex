@@ -108,15 +108,12 @@ func (t *DiscardedSeriesTracker) UpdateMetrics() {
 			seriesCounter.Lock()
 			for hash, labelCounter := range seriesCounter.seriesCountMap {
 				labelCounter.Lock()
-				val := 0.0
 				if labelCounter.inCurrentCycle {
-					val = 1.0
-				}
-				t.discardedSeriesGauge.WithLabelValues(reason, user, labelCounter.Labels.String()).Set(val)
-				if !labelCounter.inCurrentCycle {
-					delete(seriesCounter.seriesCountMap, hash)
-				} else {
+					t.discardedSeriesGauge.WithLabelValues(reason, user, labelCounter.Labels.String()).Set(1.0)
 					labelCounter.inCurrentCycle = false
+				} else {
+					t.discardedSeriesGauge.DeleteLabelValues(reason, user, labelCounter.Labels.String())
+					delete(seriesCounter.seriesCountMap, hash)
 				}
 				labelCounter.Unlock()
 			}

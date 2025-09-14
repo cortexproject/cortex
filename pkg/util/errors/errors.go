@@ -2,8 +2,6 @@ package errors
 
 import (
 	"errors"
-
-	"github.com/thanos-io/objstore"
 )
 
 type errWithCause struct {
@@ -52,16 +50,5 @@ func ErrorIs(err error, f func(err error) bool) bool {
 		if err = errors.Unwrap(err); err == nil {
 			return false
 		}
-	}
-}
-
-func IsOneOfTheExpectedErrors(f ...objstore.IsOpFailureExpectedFunc) objstore.IsOpFailureExpectedFunc {
-	return func(err error) bool {
-		for _, f := range f {
-			if f(err) {
-				return true
-			}
-		}
-		return false
 	}
 }

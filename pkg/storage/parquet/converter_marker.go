@@ -13,7 +13,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
-	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 const (
@@ -28,7 +28,7 @@ type ConverterMark struct {
 
 func ReadConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.InstrumentedBucket, logger log.Logger) (*ConverterMark, error) {
 	markerPath := path.Join(id.String(), ConverterMarkerFileName)
-	reader, err := userBkt.WithExpectedErrs(cortex_errors.IsOneOfTheExpectedErrors(userBkt.IsAccessDeniedErr, userBkt.IsObjNotFoundErr)).Get(ctx, markerPath)
+	reader, err := userBkt.WithExpectedErrs(bucket.IsOneOfTheExpectedErrors(userBkt.IsAccessDeniedErr, userBkt.IsObjNotFoundErr)).Get(ctx, markerPath)
 	if err != nil {
 		if userBkt.IsObjNotFoundErr(err) || userBkt.IsAccessDeniedErr(err) {
 			return &ConverterMark{}, nil

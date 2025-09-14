@@ -18,7 +18,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
-	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
 	"github.com/cortexproject/cortex/pkg/util/users"
 )
@@ -229,5 +228,5 @@ func (s *BucketAlertStore) getUserBucket(userID string) objstore.Bucket {
 
 func (s *BucketAlertStore) getAlertmanagerUserBucket(userID string) objstore.Bucket {
 	uBucket := bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider)
-	return uBucket.WithExpectedErrs(cortex_errors.IsOneOfTheExpectedErrors(uBucket.IsAccessDeniedErr, uBucket.IsObjNotFoundErr))
+	return uBucket.WithExpectedErrs(bucket.IsOneOfTheExpectedErrors(uBucket.IsAccessDeniedErr, uBucket.IsObjNotFoundErr))
 }

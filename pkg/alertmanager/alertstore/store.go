@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 var (
@@ -53,6 +54,9 @@ type AlertStore interface {
 	// DeleteFullState deletes the alertmanager state for an user.
 	// If state for the user doesn't exist, no error is reported.
 	DeleteFullState(ctx context.Context, user string) error
+
+	// GetUserIndexUpdater is getter for UserIndexUpdater
+	GetUserIndexUpdater() *users.UserIndexUpdater
 }
 
 // NewAlertStore returns a alertmanager store backend client based on the provided cfg.

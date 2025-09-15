@@ -46,23 +46,39 @@ type BucketRuleStore struct {
 	cfgProvider bucket.TenantConfigProvider
 	logger      log.Logger
 
-	usersScanner users.Scanner
+	usersScanner     users.Scanner
+	userIndexUpdater *users.UserIndexUpdater
 }
 
 func NewBucketRuleStore(bkt objstore.Bucket, userScannerCfg users.UsersScannerConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (*BucketRuleStore, error) {
 	rulesBucket := bucket.NewPrefixedBucketClient(bkt, rulesPrefix)
 
-	usersScanner, err := users.NewScanner(userScannerCfg, rulesBucket, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "ruler"}, reg))
+	regWithComponent := extprom.WrapRegistererWith(prometheus.Labels{"component": "ruler"}, reg)
+	usersScanner, err := users.NewScanner(userScannerCfg, rulesBucket, logger, regWithComponent)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to initialize ruler users scanner")
 	}
 
+	var userIndexUpdater *users.UserIndexUpdater
+	if userScannerCfg.Strategy == users.UserScanStrategyUserIndex {
+		// We hardcode strategy to be list so can ignore error.
+		baseScanner, _ := users.NewScanner(users.UsersScannerConfig{
+			Strategy: users.UserScanStrategyList,
+		}, rulesBucket, logger, regWithComponent)
+		userIndexUpdater = users.NewUserIndexUpdater(rulesBucket, userScannerCfg.CleanUpInterval, baseScanner, regWithComponent)
+	}
+
 	return &BucketRuleStore{
-		bucket:       rulesBucket,
-		cfgProvider:  cfgProvider,
-		logger:       logger,
-		usersScanner: usersScanner,
+		bucket:           rulesBucket,
+		cfgProvider:      cfgProvider,
+		logger:           logger,
+		usersScanner:     usersScanner,
+		userIndexUpdater: userIndexUpdater,
 	}, nil
+}
+
+func (b *BucketRuleStore) GetUserIndexUpdater() *users.UserIndexUpdater {
+	return b.userIndexUpdater
 }
 
 // getRuleGroup loads and return a rules group. If existing rule group is supplied, it is Reset and reused. If nil, new RuleGroupDesc is allocated.
@@ -123,6 +139,11 @@ func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 
 	// List rule groups for all tenants.
 	err := b.bucket.Iter(ctx, "", func(key string) error {
+		if key == users.UserIndexCompressedFilename {
+			// skip user-index.json.gz
+			return nil
+		}
+
 		userID, namespace, group, err := parseRuleGroupObjectKeyWithUser(key)
 		if err != nil {
 			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "key", key, "err", err)

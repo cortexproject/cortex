@@ -48,23 +48,41 @@ type BucketAlertStore struct {
 	cfgProvider  bucket.TenantConfigProvider
 	logger       log.Logger
 
-	usersScanner users.Scanner
+	usersScanner     users.Scanner
+	userIndexUpdater *users.UserIndexUpdater
 }
 
 func NewBucketAlertStore(bkt objstore.InstrumentedBucket, userScannerCfg users.UsersScannerConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (*BucketAlertStore, error) {
 	alertBucket := bucket.NewPrefixedBucketClient(bkt, alertsPrefix)
 
-	usersScanner, err := users.NewScanner(userScannerCfg, alertBucket, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "alertmanager"}, reg))
+	regWithComponent := extprom.WrapRegistererWith(prometheus.Labels{"component": "alertmanager"}, reg)
+	usersScanner, err := users.NewScanner(userScannerCfg, alertBucket, logger, regWithComponent)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to initialize alertmanager users scanner")
 	}
+
+	var userIndexUpdater *users.UserIndexUpdater
+	if userScannerCfg.Strategy == users.UserScanStrategyUserIndex {
+		// We hardcode strategy to be list so can ignore error.
+		baseScanner, _ := users.NewScanner(users.UsersScannerConfig{
+			Strategy: users.UserScanStrategyList,
+		}, alertBucket, logger, regWithComponent)
+		userIndexUpdater = users.NewUserIndexUpdater(alertBucket, userScannerCfg.CleanUpInterval, baseScanner, regWithComponent)
+	}
+
 	return &BucketAlertStore{
-		usersScanner: usersScanner,
-		alertsBucket: alertBucket,
-		amBucket:     bucket.NewPrefixedBucketClient(bkt, alertmanagerPrefix),
-		cfgProvider:  cfgProvider,
-		logger:       logger,
+		alertsBucket:     alertBucket,
+		amBucket:         bucket.NewPrefixedBucketClient(bkt, alertmanagerPrefix),
+		cfgProvider:      cfgProvider,
+		logger:           logger,
+		usersScanner:     usersScanner,
+		userIndexUpdater: userIndexUpdater,
 	}, nil
+}
+
+// GetUserIndexUpdater implements alertstore.AlertStore.
+func (s *BucketAlertStore) GetUserIndexUpdater() *users.UserIndexUpdater {
+	return s.userIndexUpdater
 }
 
 // ListAllUsers implements alertstore.AlertStore.

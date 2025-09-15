@@ -150,7 +150,7 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 	registerCollector(r, labelSizeBytes)
 	discardedSeries := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cortex_discarded_series",
+			Name: "cortex_discarded_series_per_labelset",
 			Help: "The number of series that include discarded samples.",
 		},
 		[]string{discardReasonLabel, "user", "labelset"},

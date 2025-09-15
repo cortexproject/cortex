@@ -146,10 +146,9 @@ func (t *DiscardedSeriesTracker) StartVendDiscardedSeriesMetricGoroutine() {
 
 // only used in testing
 func (t *DiscardedSeriesTracker) getSeriesCount(reason string, user string) int {
-	count := -1
+	count := 0
 	if userCounter, ok := t.reasonUserMap[reason]; ok {
 		if seriesCounter, ok := userCounter.userSeriesMap[user]; ok {
-			count = 0
 			for _, label := range seriesCounter.seriesCountMap {
 				if label.inCurrentCycle {
 					count++

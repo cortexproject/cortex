@@ -37,7 +37,7 @@ func TestLabelSetTracker(t *testing.T) {
 
 	require.Equal(t, tracker.getSeriesCount(reason1, user1), 1)
 	require.Equal(t, tracker.getSeriesCount(reason2, user1), 1)
-	require.Equal(t, tracker.getSeriesCount(reason3, user1), -1)
+	require.Equal(t, tracker.getSeriesCount(reason3, user1), 0)
 
 	compareSeriesVendedCount(t, gauge, reason1, user1, &series1, 0)
 	compareSeriesVendedCount(t, gauge, reason1, user1, &series2, 0)
@@ -47,8 +47,8 @@ func TestLabelSetTracker(t *testing.T) {
 	compareSeriesVendedCount(t, gauge, reason3, user1, &series2, 0)
 
 	require.Equal(t, tracker.getSeriesCount(reason1, user2), 2)
-	require.Equal(t, tracker.getSeriesCount(reason2, user2), -1)
-	require.Equal(t, tracker.getSeriesCount(reason3, user2), -1)
+	require.Equal(t, tracker.getSeriesCount(reason2, user2), 0)
+	require.Equal(t, tracker.getSeriesCount(reason3, user2), 0)
 
 	compareSeriesVendedCount(t, gauge, reason1, user2, &series1, 0)
 	compareSeriesVendedCount(t, gauge, reason1, user2, &series2, 0)
@@ -64,7 +64,7 @@ func TestLabelSetTracker(t *testing.T) {
 
 	require.Equal(t, tracker.getSeriesCount(reason1, user1), 1)
 	require.Equal(t, tracker.getSeriesCount(reason2, user1), 0)
-	require.Equal(t, tracker.getSeriesCount(reason3, user1), -1)
+	require.Equal(t, tracker.getSeriesCount(reason3, user1), 0)
 
 	compareSeriesVendedCount(t, gauge, reason1, user1, &series1, 1)
 	compareSeriesVendedCount(t, gauge, reason1, user1, &series2, 0)
@@ -74,8 +74,8 @@ func TestLabelSetTracker(t *testing.T) {
 	compareSeriesVendedCount(t, gauge, reason3, user1, &series2, 0)
 
 	require.Equal(t, tracker.getSeriesCount(reason1, user2), 0)
-	require.Equal(t, tracker.getSeriesCount(reason2, user2), -1)
-	require.Equal(t, tracker.getSeriesCount(reason3, user2), -1)
+	require.Equal(t, tracker.getSeriesCount(reason2, user2), 0)
+	require.Equal(t, tracker.getSeriesCount(reason3, user2), 0)
 
 	compareSeriesVendedCount(t, gauge, reason1, user2, &series1, 1)
 	compareSeriesVendedCount(t, gauge, reason1, user2, &series2, 1)
@@ -87,8 +87,8 @@ func TestLabelSetTracker(t *testing.T) {
 	tracker.UpdateMetrics()
 
 	require.Equal(t, tracker.getSeriesCount(reason1, user1), 0)
-	require.Equal(t, tracker.getSeriesCount(reason2, user1), -1)
-	require.Equal(t, tracker.getSeriesCount(reason3, user1), -1)
+	require.Equal(t, tracker.getSeriesCount(reason2, user1), 0)
+	require.Equal(t, tracker.getSeriesCount(reason3, user1), 0)
 
 	compareSeriesVendedCount(t, gauge, reason1, user1, &series1, 1)
 	compareSeriesVendedCount(t, gauge, reason1, user1, &series2, 0)
@@ -97,9 +97,9 @@ func TestLabelSetTracker(t *testing.T) {
 	compareSeriesVendedCount(t, gauge, reason3, user1, &series1, 0)
 	compareSeriesVendedCount(t, gauge, reason3, user1, &series2, 0)
 
-	require.Equal(t, tracker.getSeriesCount(reason1, user2), -1)
-	require.Equal(t, tracker.getSeriesCount(reason2, user2), -1)
-	require.Equal(t, tracker.getSeriesCount(reason3, user2), -1)
+	require.Equal(t, tracker.getSeriesCount(reason1, user2), 0)
+	require.Equal(t, tracker.getSeriesCount(reason2, user2), 0)
+	require.Equal(t, tracker.getSeriesCount(reason3, user2), 0)
 
 	compareSeriesVendedCount(t, gauge, reason1, user2, &series1, 0)
 	compareSeriesVendedCount(t, gauge, reason1, user2, &series2, 0)
@@ -110,9 +110,9 @@ func TestLabelSetTracker(t *testing.T) {
 
 	tracker.UpdateMetrics()
 
-	require.Equal(t, tracker.getSeriesCount(reason1, user1), -1)
-	require.Equal(t, tracker.getSeriesCount(reason2, user1), -1)
-	require.Equal(t, tracker.getSeriesCount(reason3, user1), -1)
+	require.Equal(t, tracker.getSeriesCount(reason1, user1), 0)
+	require.Equal(t, tracker.getSeriesCount(reason2, user1), 0)
+	require.Equal(t, tracker.getSeriesCount(reason3, user1), 0)
 
 	compareSeriesVendedCount(t, gauge, reason1, user1, &series1, 0)
 	compareSeriesVendedCount(t, gauge, reason1, user1, &series2, 0)
@@ -121,9 +121,9 @@ func TestLabelSetTracker(t *testing.T) {
 	compareSeriesVendedCount(t, gauge, reason3, user1, &series1, 0)
 	compareSeriesVendedCount(t, gauge, reason3, user1, &series2, 0)
 
-	require.Equal(t, tracker.getSeriesCount(reason1, user2), -1)
-	require.Equal(t, tracker.getSeriesCount(reason2, user2), -1)
-	require.Equal(t, tracker.getSeriesCount(reason3, user2), -1)
+	require.Equal(t, tracker.getSeriesCount(reason1, user2), 0)
+	require.Equal(t, tracker.getSeriesCount(reason2, user2), 0)
+	require.Equal(t, tracker.getSeriesCount(reason3, user2), 0)
 
 	compareSeriesVendedCount(t, gauge, reason1, user2, &series1, 0)
 	compareSeriesVendedCount(t, gauge, reason1, user2, &series2, 0)

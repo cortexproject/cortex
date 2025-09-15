@@ -776,13 +776,6 @@ func (r *Ruler) isUserOwned(userID string) bool {
 	return rulers.Includes(r.lifecycler.GetInstanceAddr())
 }
 
-func shardByUser(userID string) uint32 {
-	ringHasher := fnv.New32a()
-	// Hasher never returns err.
-	_, _ = ringHasher.Write([]byte(userID))
-	return ringHasher.Sum32()
-}
-
 func (r *Ruler) syncRules(ctx context.Context, reason string) error {
 	level.Info(r.logger).Log("msg", "syncing rules", "reason", reason)
 	r.rulerSync.WithLabelValues(reason).Inc()

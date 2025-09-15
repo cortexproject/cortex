@@ -12,8 +12,8 @@ import (
 func TestLabelSetTracker(t *testing.T) {
 	gauge := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cortex_discarded_series_total",
-			Help: "The total number of series that include discarded samples.",
+			Name: "cortex_discarded_series_per_labelset",
+			Help: "The number of series that include discarded samples for each labelset.",
 		},
 		[]string{"reason", "user", "labelset"},
 	)

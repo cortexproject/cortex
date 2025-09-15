@@ -151,7 +151,7 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 	discardedSeries := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "cortex_discarded_series_per_labelset",
-			Help: "The number of series that include discarded samples.",
+			Help: "The number of series that include discarded samples for each labelset.",
 		},
 		[]string{discardReasonLabel, "user", "labelset"},
 	)
@@ -168,7 +168,7 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		DiscardedSeries:                   discardedSeries,
 		DiscardedSeriesTracker:            discardedseries.NewDiscardedSeriesTracker(discardedSeries),
 	}
-	m.DiscardedSeriesTracker.StartDiscardedSeriesGoroutine()
+	m.DiscardedSeriesTracker.StartVendDiscardedSeriesMetricGoroutine()
 
 	return m
 }

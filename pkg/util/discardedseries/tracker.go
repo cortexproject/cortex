@@ -135,7 +135,7 @@ func (t *DiscardedSeriesTracker) UpdateMetrics() {
 	t.RUnlock()
 }
 
-func (t *DiscardedSeriesTracker) StartDiscardedSeriesGoroutine() {
+func (t *DiscardedSeriesTracker) StartVendDiscardedSeriesMetricGoroutine() {
 	go func() {
 		ticker := time.NewTicker(vendMetricsInterval)
 		for range ticker.C {

@@ -345,6 +345,8 @@ type Ruler struct {
 
 	registry prometheus.Registerer
 	logger   log.Logger
+
+	userIndexUpdater *users.UserIndexUpdater
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
@@ -354,14 +356,15 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 
 func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
 	ruler := &Ruler{
-		cfg:            cfg,
-		store:          ruleStore,
-		manager:        manager,
-		registry:       reg,
-		logger:         logger,
-		limits:         limits,
-		clientsPool:    clientPool,
-		allowedTenants: users.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		cfg:              cfg,
+		userIndexUpdater: ruleStore.GetUserIndexUpdater(),
+		store:            ruleStore,
+		manager:          manager,
+		registry:         reg,
+		logger:           logger,
+		limits:           limits,
+		clientsPool:      clientPool,
+		allowedTenants:   users.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",
@@ -694,6 +697,10 @@ func (r *Ruler) run(ctx context.Context) error {
 		ringTickerChan = ringTicker.C
 	}
 
+	if r.cfg.EnableSharding && r.userIndexUpdater != nil {
+		go r.userIndexUpdateLoop(ctx)
+	}
+
 	syncRuleErrMsg := func(syncRulesErr error) {
 		level.Error(r.logger).Log("msg", "failed to sync rules", "err", syncRulesErr)
 	}
@@ -725,6 +732,55 @@ func (r *Ruler) run(ctx context.Context) error {
 			syncRuleErrMsg(syncRulesErr)
 		}
 	}
+}
+
+func (r *Ruler) userIndexUpdateLoop(ctx context.Context) {
+	// Hardcode ID to check which ruler owns updating user index.
+	userID := users.UserIndexCompressedFilename
+	// Align with clean up interval.
+	ticker := time.NewTicker(util.DurationWithJitter(r.store.GetUserIndexUpdater().GetCleanUpInterval(), 0.1))
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			level.Error(r.logger).Log("msg", "context timeout, exit user index update loop", "err", ctx.Err())
+			return
+		case <-ticker.C:
+			owned := r.isUserOwned(userID)
+			if !owned {
+				continue
+			}
+			if err := r.userIndexUpdater.UpdateUserIndex(ctx); err != nil {
+				level.Error(r.logger).Log("msg", "failed to update user index", "err", err)
+				// Wait for next interval. Worst case, the user index scanner will fallback to list strategy.
+				continue
+			}
+		}
+	}
+}
+
+func (r *Ruler) isUserOwned(userID string) bool {
+	// If sharding is disabled, any ruler instance owns all users.
+	if !r.cfg.EnableSharding {
+		return true
+	}
+
+	rulers, err := r.ring.Get(users.ShardByUser(userID), RingOp, nil, nil, nil)
+	if err != nil {
+		r.ringCheckErrors.Inc()
+		level.Error(r.logger).Log("msg", "failed to get rulers from ring", "user", userID, "err", err)
+		return false
+	}
+
+	return rulers.Includes(r.lifecycler.GetInstanceAddr())
+}
+
+func shardByUser(userID string) uint32 {
+	ringHasher := fnv.New32a()
+	// Hasher never returns err.
+	_, _ = ringHasher.Write([]byte(userID))
+	return ringHasher.Sum32()
 }
 
 func (r *Ruler) syncRules(ctx context.Context, reason string) error {

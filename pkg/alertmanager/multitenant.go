@@ -91,6 +91,8 @@ type MultitenantAlertmanagerConfig struct {
 
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
+
+	CleanUpInterval time.Duration `yaml:"-"`
 }
 
 type ClusterConfig struct {
@@ -292,6 +294,8 @@ type MultitenantAlertmanager struct {
 	tenantsDiscovered prometheus.Gauge
 	syncTotal         *prometheus.CounterVec
 	syncFailures      *prometheus.CounterVec
+
+	userIndexUpdater *users.UserIndexUpdater
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
@@ -374,6 +378,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		multitenantMetrics:  newMultitenantAlertmanagerMetrics(registerer),
 		peer:                peer,
 		store:               store,
+		userIndexUpdater:    store.GetUserIndexUpdater(),
 		logger:              log.With(logger, "component", "MultiTenantAlertmanager"),
 		registry:            registerer,
 		limits:              limits,
@@ -667,6 +672,10 @@ func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 		ringTickerChan = ringTicker.C
 	}
 
+	if am.cfg.ShardingEnabled && am.userIndexUpdater != nil {
+		go am.userIndexUpdateLoop(ctx)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -688,6 +697,32 @@ func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 				if err := am.loadAndSyncConfigs(ctx, reasonRingChange); err != nil {
 					level.Warn(am.logger).Log("msg", "error while synchronizing alertmanager configs", "err", err)
 				}
+			}
+		}
+	}
+}
+
+func (am *MultitenantAlertmanager) userIndexUpdateLoop(ctx context.Context) {
+	// Hardcode ID to check which alertmanager owns updating user index.
+	userID := users.UserIndexCompressedFilename
+	// Align with clean up interval.
+	ticker := time.NewTicker(util.DurationWithJitter(am.userIndexUpdater.GetCleanUpInterval(), 0.1))
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			level.Error(am.logger).Log("msg", "context timeout, exit user index update loop", "err", ctx.Err())
+			return
+		case <-ticker.C:
+			owned := am.isUserOwned(userID)
+			if !owned {
+				continue
+			}
+			if err := am.userIndexUpdater.UpdateUserIndex(ctx); err != nil {
+				level.Error(am.logger).Log("msg", "failed to update user index", "err", err)
+				// Wait for next interval. Worst case, the user index scanner will fallback to list strategy.
+				continue
 			}
 		}
 	}
@@ -795,7 +830,7 @@ func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {
 		return true
 	}
 
-	alertmanagers, err := am.ring.Get(shardByUser(userID), SyncRingOp, nil, nil, nil)
+	alertmanagers, err := am.ring.Get(users.ShardByUser(userID), SyncRingOp, nil, nil, nil)
 	if err != nil {
 		am.ringCheckErrors.Inc()
 		level.Error(am.logger).Log("msg", "failed to load alertmanager configuration", "user", userID, "err", err)
@@ -1005,7 +1040,7 @@ func (am *MultitenantAlertmanager) GetPositionForUser(userID string) int {
 		return 0
 	}
 
-	set, err := am.ring.Get(shardByUser(userID), RingOp, nil, nil, nil)
+	set, err := am.ring.Get(users.ShardByUser(userID), RingOp, nil, nil, nil)
 	if err != nil {
 		level.Error(am.logger).Log("msg", "unable to read the ring while trying to determine the alertmanager position", "err", err)
 		// If we're  unable to determine the position, we don't want a tenant to miss out on the notification - instead,
@@ -1106,7 +1141,7 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 	level.Debug(am.logger).Log("msg", "message received for replication", "user", userID, "key", part.Key)
 
 	selfAddress := am.ringLifecycler.GetInstanceAddr()
-	err := ring.DoBatch(ctx, RingOp, am.ring, nil, []uint32{shardByUser(userID)}, func(desc ring.InstanceDesc, _ []int) error {
+	err := ring.DoBatch(ctx, RingOp, am.ring, nil, []uint32{users.ShardByUser(userID)}, func(desc ring.InstanceDesc, _ []int) error {
 		if desc.GetAddr() == selfAddress {
 			return nil
 		}
@@ -1137,7 +1172,7 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 // state from all replicas, but will consider it a success if state is obtained from at least one replica.
 func (am *MultitenantAlertmanager) ReadFullStateForUser(ctx context.Context, userID string) ([]*clusterpb.FullState, error) {
 	// Only get the set of replicas which contain the specified user.
-	key := shardByUser(userID)
+	key := users.ShardByUser(userID)
 	replicationSet, err := am.ring.Get(key, RingOp, nil, nil, nil)
 	if err != nil {
 		return nil, err

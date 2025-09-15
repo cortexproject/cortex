@@ -1568,6 +1568,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Instrument
 	flagext.DefaultValues(&storageCfg)
 	storageCfg.BucketStore.BlockDiscoveryStrategy = string(cortex_tsdb.RecursiveDiscovery)
 	storageCfg.UsersScanner.Strategy = users.UserScanStrategyUserIndex
+	storageCfg.UsersScanner.CleanUpInterval = 100 * time.Millisecond // Short interval for testing
 
 	// Create a temporary directory for compactor data.
 	compactorCfg.DataDir = t.TempDir()
@@ -2422,7 +2423,6 @@ func TestCompactor_UserIndexUpdateLoop(t *testing.T) {
 	cfg.ShardingRing.InstanceID = "compactor-1"
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
 	cfg.ShardingRing.KVStore.Mock = ringStore
-	cfg.CleanupInterval = 100 * time.Millisecond // Short interval for testing
 
 	compactor, _, _, _, _ := prepare(t, cfg, bucketClient, &validation.Limits{})
 

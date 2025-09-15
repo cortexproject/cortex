@@ -762,7 +762,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		baseScanner, _ := users.NewScanner(users.UsersScannerConfig{
 			Strategy: users.UserScanStrategyList,
 		}, c.bucketClient, c.logger, c.registerer)
-		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, baseScanner, c.registerer)
+		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, c.storageCfg.UsersScanner.CleanUpInterval, baseScanner, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
 	}
 
 	return nil
@@ -1202,7 +1202,7 @@ func (c *Compactor) userIndexUpdateLoop(ctx context.Context) {
 	// Hardcode ID to check which compactor owns updating user index.
 	userID := users.UserIndexCompressedFilename
 	// Align with clean up interval.
-	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1))
+	ticker := time.NewTicker(util.DurationWithJitter(c.storageCfg.UsersScanner.CleanUpInterval, 0.1))
 	defer ticker.Stop()
 
 	for {

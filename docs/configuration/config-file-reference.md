@@ -997,6 +997,11 @@ users_scanner:
   # CLI flag: -alertmanager-storage.users-scanner.user-index.max-stale-period
   [max_stale_period: <duration> | default = 1h]
 
+  # How frequently user index file is updated, it only take effect when user
+  # scan stratehy is user_index.
+  # CLI flag: -alertmanager-storage.users-scanner.user-index.cleanup-interval
+  [clean_up_interval: <duration> | default = 15m]
+
   # TTL of the cached users. 0 disables caching and relies on caching at bucket
   # client level.
   # CLI flag: -alertmanager-storage.users-scanner.cache-ttl
@@ -2612,6 +2617,11 @@ users_scanner:
   # base scanner if stale. Only valid when strategy is user_index.
   # CLI flag: -blocks-storage.users-scanner.user-index.max-stale-period
   [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated, it only take effect when user
+  # scan stratehy is user_index.
+  # CLI flag: -blocks-storage.users-scanner.user-index.cleanup-interval
+  [clean_up_interval: <duration> | default = 15m]
 
   # TTL of the cached users. 0 disables caching and relies on caching at bucket
   # client level.
@@ -5833,6 +5843,11 @@ users_scanner:
   # base scanner if stale. Only valid when strategy is user_index.
   # CLI flag: -ruler-storage.users-scanner.user-index.max-stale-period
   [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated, it only take effect when user
+  # scan stratehy is user_index.
+  # CLI flag: -ruler-storage.users-scanner.user-index.cleanup-interval
+  [clean_up_interval: <duration> | default = 15m]
 
   # TTL of the cached users. 0 disables caching and relies on caching at bucket
   # client level.

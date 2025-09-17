@@ -60,7 +60,7 @@ func BenchmarkMarshallWriteRequestV2(b *testing.B) {
 	lbs := labels.FromStrings(labels.MetricName, "foo", "labelName1", "labelValue1", "labelName2", "labelValue2", "labelName3", "labelValue3")
 	st.SymbolizeLabels(lbs, nil)
 	symbols := st.Symbols()
-	for i := 0; i < numOfSeries; i++ {
+	for i := range numOfSeries {
 		ts = append(ts, PreallocTimeseriesV2{TimeSeriesV2: TimeseriesV2FromPool()})
 		ts[i].LabelsRefs = []uint32{1, 2, 3, 4, 5, 6, 7, 8}
 		ts[i].Samples = []Sample{{Value: 1, TimestampMs: 2}}
@@ -69,14 +69,14 @@ func BenchmarkMarshallWriteRequestV2(b *testing.B) {
 	tests := []struct {
 		name                string
 		writeRequestFactory func() proto.Marshaler
-		clean               func(in interface{})
+		clean               func(in any)
 	}{
 		{
 			name: "no-pool",
 			writeRequestFactory: func() proto.Marshaler {
 				return &WriteRequestV2{Symbols: symbols, Timeseries: ts}
 			},
-			clean: func(in interface{}) {},
+			clean: func(in any) {},
 		},
 		{
 			name: "byte pool",
@@ -86,7 +86,7 @@ func BenchmarkMarshallWriteRequestV2(b *testing.B) {
 				w.Symbols = symbols
 				return w
 			},
-			clean: func(in interface{}) {
+			clean: func(in any) {
 				ReuseWriteRequestV2(in.(*PreallocWriteRequestV2))
 			},
 		},
@@ -98,7 +98,7 @@ func BenchmarkMarshallWriteRequestV2(b *testing.B) {
 				w.Symbols = symbols
 				return w
 			},
-			clean: func(in interface{}) {
+			clean: func(in any) {
 				ReuseWriteRequestV2(in.(*PreallocWriteRequestV2))
 			},
 		},
@@ -106,7 +106,7 @@ func BenchmarkMarshallWriteRequestV2(b *testing.B) {
 
 	for _, tc := range tests {
 		b.Run(tc.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				w := tc.writeRequestFactory()
 				_, err := w.Marshal()
 				require.NoError(b, err)

@@ -155,12 +155,3 @@ func spansPromProtoToSpansProto(s []prompb.BucketSpan) []BucketSpan {
 
 	return spans
 }
-
-func spansWriteV2ProtoToSpansProto(s []writev2.BucketSpan) []BucketSpan {
-	spans := make([]BucketSpan, len(s))
-	for i := range s {
-		spans[i] = BucketSpan{Offset: s[i].Offset, Length: s[i].Length}
-	}
-
-	return spans
-}

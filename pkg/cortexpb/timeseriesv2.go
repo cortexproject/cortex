@@ -8,13 +8,13 @@ var (
 	expectedSymbols = 20
 
 	slicePoolV2 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return make([]PreallocTimeseriesV2, 0, expectedTimeseries)
 		},
 	}
 
 	timeSeriesPoolV2 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &TimeSeriesV2{
 				LabelsRefs: make([]uint32, 0, expectedLabels),
 				Samples:    make([]Sample, 0, expectedSamplesPerSeries),
@@ -26,7 +26,7 @@ var (
 	}
 
 	writeRequestPoolV2 = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &PreallocWriteRequestV2{
 				WriteRequestV2: WriteRequestV2{
 					Symbols: make([]string, 0, expectedSymbols),

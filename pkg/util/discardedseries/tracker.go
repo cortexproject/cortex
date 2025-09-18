@@ -5,22 +5,17 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 const (
-	vendMetricsInterval = 30 * time.Second
+	vendMetricsInterval    = 30 * time.Second
+	perLabelsetSeriesLimit = "per_labelset_series_limit"
 )
-
-type labelCounterStruct struct {
-	*sync.RWMutex
-	*labels.Labels
-	inCurrentCycle bool
-}
 
 type seriesCounterStruct struct {
 	*sync.RWMutex
-	seriesCountMap map[uint64]*labelCounterStruct
+	seriesCountMap map[uint64]struct{}
+	labelsetId     string
 }
 
 type userCounterStruct struct {
@@ -28,10 +23,21 @@ type userCounterStruct struct {
 	userSeriesMap map[string]*seriesCounterStruct
 }
 
+type labelsetCounterStruct struct {
+	*sync.RWMutex
+	labelsetSeriesMap map[uint64]*seriesCounterStruct
+}
+
 type DiscardedSeriesTracker struct {
 	*sync.RWMutex
 	reasonUserMap        map[string]*userCounterStruct
 	discardedSeriesGauge *prometheus.GaugeVec
+}
+
+type DiscardedSeriesPerLabelsetTracker struct {
+	*sync.RWMutex
+	userLabelsetMap                 map[string]*labelsetCounterStruct
+	discardedSeriesPerLabelsetGauge *prometheus.GaugeVec
 }
 
 func NewDiscardedSeriesTracker(discardedSeriesGauge *prometheus.GaugeVec) *DiscardedSeriesTracker {
@@ -43,8 +49,7 @@ func NewDiscardedSeriesTracker(discardedSeriesGauge *prometheus.GaugeVec) *Disca
 	return tracker
 }
 
-func (t *DiscardedSeriesTracker) Track(reason string, user string, labels *labels.Labels) {
-	series := labels.Hash()
+func (t *DiscardedSeriesTracker) Track(reason string, user string, series uint64) {
 	t.RLock()
 	userCounter, ok := t.reasonUserMap[reason]
 	t.RUnlock()
@@ -70,7 +75,7 @@ func (t *DiscardedSeriesTracker) Track(reason string, user string, labels *label
 		if !ok {
 			seriesCounter = &seriesCounterStruct{
 				RWMutex:        &sync.RWMutex{},
-				seriesCountMap: make(map[uint64]*labelCounterStruct),
+				seriesCountMap: make(map[uint64]struct{}),
 			}
 			userCounter.userSeriesMap[user] = seriesCounter
 		}
@@ -78,25 +83,16 @@ func (t *DiscardedSeriesTracker) Track(reason string, user string, labels *label
 	}
 
 	seriesCounter.RLock()
-	labelCounter, ok := seriesCounter.seriesCountMap[series]
+	_, ok = seriesCounter.seriesCountMap[series]
 	seriesCounter.RUnlock()
 	if !ok {
 		seriesCounter.Lock()
-		labelCounter, ok = seriesCounter.seriesCountMap[series]
+		_, ok = seriesCounter.seriesCountMap[series]
 		if !ok {
-			labelCounter = &labelCounterStruct{
-				Labels:         labels,
-				RWMutex:        &sync.RWMutex{},
-				inCurrentCycle: true,
-			}
-			seriesCounter.seriesCountMap[series] = labelCounter
+			seriesCounter.seriesCountMap[series] = struct{}{}
 		}
 		seriesCounter.Unlock()
 	}
-
-	labelCounter.Lock()
-	labelCounter.inCurrentCycle = true
-	labelCounter.Unlock()
 }
 
 func (t *DiscardedSeriesTracker) UpdateMetrics() {
@@ -106,31 +102,25 @@ func (t *DiscardedSeriesTracker) UpdateMetrics() {
 		userCounter.RLock()
 		for user, seriesCounter := range userCounter.userSeriesMap {
 			seriesCounter.Lock()
-			for hash, labelCounter := range seriesCounter.seriesCountMap {
-				labelCounter.Lock()
-				if labelCounter.inCurrentCycle {
-					t.discardedSeriesGauge.WithLabelValues(reason, user, labelCounter.String()).Set(1.0)
-					labelCounter.inCurrentCycle = false
-				} else {
-					t.discardedSeriesGauge.DeleteLabelValues(reason, user, labelCounter.String())
-					delete(seriesCounter.seriesCountMap, hash)
-				}
-				labelCounter.Unlock()
-			}
-			if len(seriesCounter.seriesCountMap) == 0 {
+			count := len(seriesCounter.seriesCountMap)
+			t.discardedSeriesGauge.WithLabelValues(reason, user).Set(float64(count))
+			clear(seriesCounter.seriesCountMap)
+			if count == 0 {
 				usersToDelete = append(usersToDelete, user)
 			}
 			seriesCounter.Unlock()
 		}
 		userCounter.RUnlock()
-		userCounter.Lock()
-		for _, user := range usersToDelete {
-			_, ok := userCounter.userSeriesMap[user]
-			if ok && userCounter.userSeriesMap[user].seriesCountMap != nil {
-				delete(userCounter.userSeriesMap, user)
+		if len(usersToDelete) > 0 {
+			userCounter.Lock()
+			for _, user := range usersToDelete {
+				if _, ok := userCounter.userSeriesMap[user]; ok {
+					t.discardedSeriesGauge.DeleteLabelValues(reason, user)
+					delete(userCounter.userSeriesMap, user)
+				}
 			}
+			userCounter.Unlock()
 		}
-		userCounter.Unlock()
 	}
 	t.RUnlock()
 }
@@ -144,17 +134,118 @@ func (t *DiscardedSeriesTracker) StartVendDiscardedSeriesMetricGoroutine() {
 	}()
 }
 
-// only used in testing
-func (t *DiscardedSeriesTracker) getSeriesCount(reason string, user string) int {
-	count := 0
-	if userCounter, ok := t.reasonUserMap[reason]; ok {
-		if seriesCounter, ok := userCounter.userSeriesMap[user]; ok {
-			for _, label := range seriesCounter.seriesCountMap {
-				if label.inCurrentCycle {
-					count++
+func NewDiscardedSeriesPerLabelsetTracker(discardedSeriesPerLabelsetGauge *prometheus.GaugeVec) *DiscardedSeriesPerLabelsetTracker {
+	tracker := &DiscardedSeriesPerLabelsetTracker{
+		RWMutex:                         &sync.RWMutex{},
+		userLabelsetMap:                 make(map[string]*labelsetCounterStruct),
+		discardedSeriesPerLabelsetGauge: discardedSeriesPerLabelsetGauge,
+	}
+	return tracker
+}
+
+func (t *DiscardedSeriesPerLabelsetTracker) Track(user string, series uint64, matchedLabelsetHash uint64, matchedLabelsetId string) {
+	t.RLock()
+	labelsetCounter, ok := t.userLabelsetMap[user]
+	t.RUnlock()
+	if !ok {
+		t.Lock()
+		labelsetCounter, ok = t.userLabelsetMap[user]
+		if !ok {
+			labelsetCounter = &labelsetCounterStruct{
+				RWMutex:           &sync.RWMutex{},
+				labelsetSeriesMap: make(map[uint64]*seriesCounterStruct),
+			}
+			t.userLabelsetMap[user] = labelsetCounter
+		}
+		t.Unlock()
+	}
+
+	labelsetCounter.RLock()
+	seriesCounter, ok := labelsetCounter.labelsetSeriesMap[matchedLabelsetHash]
+	labelsetCounter.RUnlock()
+	if !ok {
+		labelsetCounter.Lock()
+		seriesCounter, ok = labelsetCounter.labelsetSeriesMap[matchedLabelsetHash]
+		if !ok {
+			seriesCounter = &seriesCounterStruct{
+				RWMutex:        &sync.RWMutex{},
+				seriesCountMap: make(map[uint64]struct{}),
+				labelsetId:     matchedLabelsetId,
+			}
+			labelsetCounter.labelsetSeriesMap[matchedLabelsetHash] = seriesCounter
+		}
+		labelsetCounter.Unlock()
+	}
+
+	seriesCounter.RLock()
+	_, ok = seriesCounter.seriesCountMap[series]
+	seriesCounter.RUnlock()
+	if !ok {
+		seriesCounter.Lock()
+		_, ok = seriesCounter.seriesCountMap[series]
+		if !ok {
+			seriesCounter.seriesCountMap[series] = struct{}{}
+		}
+		seriesCounter.Unlock()
+	}
+}
+
+func (t *DiscardedSeriesPerLabelsetTracker) UpdateMetrics() {
+	usersToDelete := make([]string, 0)
+	labelsetsToDelete := make([]uint64, 0)
+	t.RLock()
+	for user, labelsetCounter := range t.userLabelsetMap {
+		labelsetCounter.RLock()
+		if len(labelsetCounter.labelsetSeriesMap) == 0 {
+			usersToDelete = append(usersToDelete, user)
+		}
+		for labelsetHash, seriesCounter := range labelsetCounter.labelsetSeriesMap {
+			seriesCounter.Lock()
+			count := len(seriesCounter.seriesCountMap)
+			t.discardedSeriesPerLabelsetGauge.WithLabelValues(perLabelsetSeriesLimit, user, seriesCounter.labelsetId).Set(float64(count))
+			clear(seriesCounter.seriesCountMap)
+			if count == 0 {
+				labelsetsToDelete = append(labelsetsToDelete, labelsetHash)
+			}
+			seriesCounter.Unlock()
+		}
+		labelsetCounter.RUnlock()
+		if len(labelsetsToDelete) > 0 {
+			labelsetCounter.Lock()
+			for _, labelsetHash := range labelsetsToDelete {
+				if _, ok := labelsetCounter.labelsetSeriesMap[labelsetHash]; ok {
+					labelsetId := labelsetCounter.labelsetSeriesMap[labelsetHash].labelsetId
+					t.discardedSeriesPerLabelsetGauge.DeleteLabelValues(perLabelsetSeriesLimit, user, labelsetId)
+					delete(labelsetCounter.labelsetSeriesMap, labelsetHash)
 				}
 			}
+			labelsetCounter.Unlock()
 		}
 	}
-	return count
+	t.RUnlock()
+	if len(usersToDelete) > 0 {
+		t.Lock()
+		for _, user := range usersToDelete {
+			delete(t.userLabelsetMap, user)
+		}
+		t.Unlock()
+	}
+}
+
+func (t *DiscardedSeriesPerLabelsetTracker) StartVendDiscardedSeriesMetricGoroutine() {
+	go func() {
+		ticker := time.NewTicker(vendMetricsInterval)
+		for range ticker.C {
+			t.UpdateMetrics()
+		}
+	}()
+}
+
+func (t *DiscardedSeriesTracker) getSeriesCount(reason string, user string) int {
+	if userCounter, ok := t.reasonUserMap[reason]; ok {
+		if seriesCounter, ok := userCounter.userSeriesMap[user]; ok {
+			return len(seriesCounter.seriesCountMap)
+		}
+	}
+	return 0
 }

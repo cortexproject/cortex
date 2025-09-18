@@ -88,8 +88,11 @@ type ValidateMetrics struct {
 
 	DiscardedSamplesPerLabelSet *prometheus.CounterVec
 	LabelSetTracker             *labelset.LabelSetTracker
-	DiscardedSeries             *prometheus.GaugeVec
-	DiscardedSeriesTracker      *discardedseries.DiscardedSeriesTracker
+
+	DiscardedSeries                   *prometheus.GaugeVec
+	DiscardedSeriesPerLabelset        *prometheus.GaugeVec
+	DiscardedSeriesTracker            *discardedseries.DiscardedSeriesTracker
+	DiscardedSeriesPerLabelsetTracker *discardedseries.DiscardedSeriesPerLabelsetTracker
 }
 
 func registerCollector(r prometheus.Registerer, c prometheus.Collector) {
@@ -150,12 +153,20 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 	registerCollector(r, labelSizeBytes)
 	discardedSeries := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
+			Name: "cortex_discarded_series",
+			Help: "The number of series that include discarded samples.",
+		},
+		[]string{discardReasonLabel, "user"},
+	)
+	registerCollector(r, discardedSeries)
+	discardedSeriesPerLabelset := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
 			Name: "cortex_discarded_series_per_labelset",
 			Help: "The number of series that include discarded samples for each labelset.",
 		},
 		[]string{discardReasonLabel, "user", "labelset"},
 	)
-	registerCollector(r, discardedSeries)
+	registerCollector(r, discardedSeriesPerLabelset)
 
 	m := &ValidateMetrics{
 		DiscardedSamples:                  discardedSamples,
@@ -166,9 +177,12 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		LabelSizeBytes:                    labelSizeBytes,
 		LabelSetTracker:                   labelset.NewLabelSetTracker(),
 		DiscardedSeries:                   discardedSeries,
+		DiscardedSeriesPerLabelset:        discardedSeriesPerLabelset,
 		DiscardedSeriesTracker:            discardedseries.NewDiscardedSeriesTracker(discardedSeries),
+		DiscardedSeriesPerLabelsetTracker: discardedseries.NewDiscardedSeriesPerLabelsetTracker(discardedSeriesPerLabelset),
 	}
 	m.DiscardedSeriesTracker.StartVendDiscardedSeriesMetricGoroutine()
+	m.DiscardedSeriesPerLabelsetTracker.StartVendDiscardedSeriesMetricGoroutine()
 
 	return m
 }
@@ -447,8 +461,5 @@ func DeletePerUserValidationMetrics(validateMetrics *ValidateMetrics, userID str
 	}
 	if err := util.DeleteMatchingLabels(validateMetrics.LabelSizeBytes, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_label_size_bytes metric for user", "user", userID, "err", err)
-	}
-	if err := util.DeleteMatchingLabels(validateMetrics.DiscardedSeries, filter); err != nil {
-		level.Warn(log).Log("msg", "failed to remove cortex_discarded_series metric for user", "user", userID, "err", err)
 	}
 }

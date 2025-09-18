@@ -191,7 +191,20 @@ func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, 
 		ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceRuler)
 
 		if frontendClient != nil {
-			v, err := frontendClient.InstantQuery(ctx, qs, t)
+			// query parameters sent to the Query Frontend to leave rule information logs on query stats
+			queryParams := map[string]string{}
+
+			if origin := ctx.Value(promql.QueryOrigin{}); origin != nil {
+				queryLabels := origin.(map[string]interface{})
+				rgMap := queryLabels["ruleGroup"].(map[string]string)
+				queryParams["rule_group"] = rgMap["name"]
+				queryParams["rule_namespace"] = rgMap["file"]
+			}
+			ruleDetail := rules.FromOriginContext(ctx)
+			queryParams["rule"] = ruleDetail.Name
+			queryParams["rule_kind"] = ruleDetail.Kind
+
+			v, err := frontendClient.InstantQuery(ctx, qs, t, queryParams)
 			if err != nil {
 				return nil, err
 			}
@@ -340,7 +353,9 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		totalWrites := evalMetrics.TotalWritesVec.WithLabelValues(userID)
 		failedWrites := evalMetrics.FailedWritesVec.WithLabelValues(userID)
 
-		if cfg.FrontendAddress != "" {
+		shouldEvalFromQFE := cfg.FrontendAddress != ""
+		if shouldEvalFromQFE {
+			// evaluate rules via Query-Frontend
 			c, err := frontendPool.GetClientFor(cfg.FrontendAddress)
 			if err != nil {
 				return nil, err
@@ -350,7 +365,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		var queryFunc rules.QueryFunc
 		engineQueryFunc := EngineQueryFunc(engine, client, q, overrides, userID, cfg.LookbackDelta)
 		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)
-		if cfg.EnableQueryStats {
+		if cfg.EnableQueryStats && !shouldEvalFromQFE {
 			queryFunc = RecordAndReportRuleQueryMetrics(metricsQueryFunc, userID, evalMetrics, logger)
 		} else {
 			queryFunc = metricsQueryFunc

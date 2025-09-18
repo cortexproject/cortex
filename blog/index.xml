@@ -1,4 +1,66 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Blog</title><link>/blog/</link><description>Recent content in Blog on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: Efficient Query Parallelism in Cortex with Dynamic Query Splitting</title><link>/blog/2025/08/12/efficient-query-parallelism-in-cortex-with-dynamic-query-splitting/</link><pubDate>Tue, 12 Aug 2025 00:00:00 +0000</pubDate><guid>/blog/2025/08/12/efficient-query-parallelism-in-cortex-with-dynamic-query-splitting/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Blog</title><link>/blog/</link><description>Recent content in Blog on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: Query Priority in Cortex</title><link>/blog/2025/09/08/query-priority-in-cortex/</link><pubDate>Mon, 08 Sep 2025 00:00:00 +0000</pubDate><guid>/blog/2025/09/08/query-priority-in-cortex/</guid><description>
+&lt;h2 id="introduction">Introduction&lt;/h2>
+&lt;p>In high-scale monitoring environments, not all queries are created equal. Some queries power critical dashboards that need sub-second response times, while others are exploratory analytics that can tolerate delays. However, the queries from a tenant is handled FIFO (first-in-first-out), which could lead to a noisy-neighbor problem within the user.&lt;/p>
+&lt;p>&lt;img src="/images/blog/2025/query-fifo.png" alt="Query FIFO">&lt;/p>
+&lt;p>Cortex&amp;rsquo;s query priority feature addresses this challenge by allowing operators to reserve querier resources for high-priority queries.&lt;/p>
+&lt;h2 id="what-is-query-priority">What is Query Priority?&lt;/h2>
+&lt;p>Query priority in Cortex enables you to classify queries based on various attributes and allocate dedicated querier resources to different priority levels. The system works by:&lt;/p>
+&lt;ol>
+&lt;li>Matching queries against configurable attributes (regex patterns, time ranges, API types, user agents, dashboard UIDs)&lt;/li>
+&lt;li>Assigning priority levels to matched queries&lt;/li>
+&lt;li>Reserving querier capacity as a percentage for each priority level&lt;/li>
+&lt;/ol>
+&lt;p>&lt;img src="/images/blog/2025/query-priority.png" alt="Query Priority">&lt;/p>
+&lt;h3 id="configuration-example">Configuration Example&lt;/h3>
+&lt;pre tabindex="0">&lt;code>query_priority:
+enabled: true
+default_priority: 0
+priorities:
+- priority: 100
+reserved_queriers: 0.1 # Reserve 10% of queriers
+query_attributes:
+- regex: &amp;#34;.*alert.*&amp;#34; # Alert queries
+- priority: 50
+reserved_queriers: 0.05 # Reserve 5% of queriers
+query_attributes:
+- api_type: &amp;#34;query_range&amp;#34;
+time_range_limit:
+max: &amp;#34;1h&amp;#34; # Dashboard queries (short range)
+user_agent_regex: &amp;#34;Grafana.*&amp;#34;
+&lt;/code>&lt;/pre>&lt;h2 id="benefits">Benefits&lt;/h2>
+&lt;h3 id="1-preventing-resource-starvation">1. Preventing Resource Starvation&lt;/h3>
+&lt;p>The most compelling use case is protecting critical queries from resource-hungry analytical workloads. Without priority, a few expensive queries scanning months of data can starve dashboard queries, causing user-facing alerts to timeout.&lt;/p>
+&lt;h3 id="2-sla-differentiation">2. SLA Differentiation&lt;/h3>
+&lt;p>Organizations can offer different service levels:&lt;/p>
+&lt;ul>
+&lt;li>Tier 1: Real-time dashboards and alerts (high priority)&lt;/li>
+&lt;li>Tier 2: Business intelligence queries (medium priority)&lt;/li>
+&lt;li>Tier 3: Ad-hoc exploration and data exports (low priority)&lt;/li>
+&lt;/ul>
+&lt;h2 id="drawbacks">Drawbacks&lt;/h2>
+&lt;h3 id="1-resource-underutilization">1. Resource Underutilization&lt;/h3>
+&lt;p>Reserved queriers sit idle when high-priority queries aren&amp;rsquo;t running. If you reserve 30% capacity for dashboard queries that only use 10% during off-peak hours, you&amp;rsquo;re wasting 20% of your infrastructure.&lt;/p>
+&lt;h3 id="2-configuration-complexity">2. Configuration Complexity&lt;/h3>
+&lt;p>Query attributes require careful tuning:&lt;/p>
+&lt;ul>
+&lt;li>Regex patterns can be brittle and hard to maintain&lt;/li>
+&lt;li>Time window matching needs constant adjustment as usage patterns evolve&lt;/li>
+&lt;li>Dashboard UID matching breaks when dashboards are recreated&lt;/li>
+&lt;/ul>
+&lt;h2 id="best-practices">Best Practices&lt;/h2>
+&lt;p>When to use query priority&lt;/p>
+&lt;ul>
+&lt;li>High query volume with mixed workload types&lt;/li>
+&lt;li>Clear SLA requirements that justify the complexity&lt;/li>
+&lt;li>Stable query patterns that won&amp;rsquo;t require frequent reconfiguration&lt;/li>
+&lt;/ul>
+&lt;p>When to avoid it:&lt;/p>
+&lt;ul>
+&lt;li>Homogeneous workloads where all queries have similar requirements&lt;/li>
+&lt;li>Unstable environments where query patterns change frequently&lt;/li>
+&lt;/ul>
+&lt;h2 id="conclusion">Conclusion&lt;/h2>
+&lt;p>If your users have different SLA requirements depending on their query patterns that’s consistent, this is a power feature that helps towards meeting expected availability and performance for queries. There is also plenty of room for this logic to be improved in the future, such that it self-adapts to the query pattern of the users and dynamically assign priorities to balance SLAs with fairness across different query patterns.&lt;/p></description></item><item><title>Blog: Efficient Query Parallelism in Cortex with Dynamic Query Splitting</title><link>/blog/2025/08/12/efficient-query-parallelism-in-cortex-with-dynamic-query-splitting/</link><pubDate>Tue, 12 Aug 2025 00:00:00 +0000</pubDate><guid>/blog/2025/08/12/efficient-query-parallelism-in-cortex-with-dynamic-query-splitting/</guid><description>
 &lt;h2 id="introduction">Introduction&lt;/h2>
 &lt;p>Cortex traditionally relied on &lt;strong>static query splitting&lt;/strong> and &lt;strong>static vertical sharding&lt;/strong> to optimize the execution of long-range PromQL queries. Static query splitting divides a query into fixed time intervals, while vertical sharding—when applicable—splits the query across subsets of time series. These techniques offered improved parallelism and reduced query latency but were limited by their one-size-fits-all approach. They did not account for differences in query range, lookback behavior, and cardinality—leading to inefficiencies like over-sharding, redundant data fetches, and storage pressure in large or complex queries.&lt;/p>
 &lt;p>To address those gaps, Cortex introduced &lt;strong>dynamic query splitting&lt;/strong> and &lt;strong>dynamic vertical sharding&lt;/strong>—two adaptive mechanisms that intelligently adjust how queries are broken down based on query semantics.&lt;/p>

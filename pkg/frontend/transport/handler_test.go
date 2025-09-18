@@ -841,3 +841,41 @@ func TestHandlerMetricsCleanup(t *testing.T) {
 		"cortex_query_samples_scanned_total", "cortex_query_peak_samples", "cortex_query_fetched_chunks_bytes_total",
 		"cortex_query_fetched_data_bytes_total", "cortex_rejected_queries_total", "cortex_slow_queries_total"))
 }
+
+func TestHandler_RemoteReadRequest_DoesNotParseQueryString(t *testing.T) {
+	// Create a mock round tripper that captures the request
+	var capturedRequest *http.Request
+	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		capturedRequest = req
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("{}")),
+		}, nil
+	})
+
+	// Use a larger MaxBodySize to avoid the "request body too large" error
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, MaxBodySize: 10 * 1024 * 1024}, tenantfederation.Config{}, roundTripper, log.NewNopLogger(), nil)
+	handlerWithAuth := middleware.Merge(middleware.AuthenticateUser).Wrap(handler)
+
+	// Create a remote read request with a body that would be corrupted by parseRequestQueryString
+	originalBody := "snappy-compressed-data"
+	req := httptest.NewRequest("POST", "http://fake/api/v1/read", strings.NewReader(originalBody))
+	req.Header.Set("X-Scope-OrgId", "user-1")
+	req.Header.Set("Content-Type", "application/x-protobuf")
+	req.Header.Set("Content-Encoding", "snappy")
+
+	resp := httptest.NewRecorder()
+	handlerWithAuth.ServeHTTP(resp, req)
+
+	// Verify the request was successful
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	// Verify that the original request body was preserved and not corrupted
+	require.NotNil(t, capturedRequest)
+	bodyBytes, err := io.ReadAll(capturedRequest.Body)
+	require.NoError(t, err)
+	require.Equal(t, originalBody, string(bodyBytes))
+
+	// Verify that the request body is still readable (not replaced with empty buffer)
+	require.NotEmpty(t, string(bodyBytes))
+}

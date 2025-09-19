@@ -17,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/discardedseries"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/labelset"
 )
@@ -87,6 +88,11 @@ type ValidateMetrics struct {
 
 	DiscardedSamplesPerLabelSet *prometheus.CounterVec
 	LabelSetTracker             *labelset.LabelSetTracker
+
+	DiscardedSeries                   *prometheus.GaugeVec
+	DiscardedSeriesPerLabelset        *prometheus.GaugeVec
+	DiscardedSeriesTracker            *discardedseries.DiscardedSeriesTracker
+	DiscardedSeriesPerLabelsetTracker *discardedseries.DiscardedSeriesPerLabelsetTracker
 }
 
 func registerCollector(r prometheus.Registerer, c prometheus.Collector) {
@@ -145,6 +151,22 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		NativeHistogramMinResetDuration: 1 * time.Hour,
 	}, []string{"user"})
 	registerCollector(r, labelSizeBytes)
+	discardedSeries := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cortex_discarded_series",
+			Help: "The number of series that include discarded samples.",
+		},
+		[]string{discardReasonLabel, "user"},
+	)
+	registerCollector(r, discardedSeries)
+	discardedSeriesPerLabelset := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cortex_discarded_series_per_labelset",
+			Help: "The number of series that include discarded samples for each labelset.",
+		},
+		[]string{discardReasonLabel, "user", "labelset"},
+	)
+	registerCollector(r, discardedSeriesPerLabelset)
 
 	m := &ValidateMetrics{
 		DiscardedSamples:                  discardedSamples,
@@ -154,7 +176,13 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		HistogramSamplesReducedResolution: histogramSamplesReducedResolution,
 		LabelSizeBytes:                    labelSizeBytes,
 		LabelSetTracker:                   labelset.NewLabelSetTracker(),
+		DiscardedSeries:                   discardedSeries,
+		DiscardedSeriesPerLabelset:        discardedSeriesPerLabelset,
+		DiscardedSeriesTracker:            discardedseries.NewDiscardedSeriesTracker(discardedSeries),
+		DiscardedSeriesPerLabelsetTracker: discardedseries.NewDiscardedSeriesPerLabelsetTracker(discardedSeriesPerLabelset),
 	}
+	m.DiscardedSeriesTracker.StartVendDiscardedSeriesMetricGoroutine()
+	m.DiscardedSeriesPerLabelsetTracker.StartVendDiscardedSeriesMetricGoroutine()
 
 	return m
 }

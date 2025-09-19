@@ -285,7 +285,8 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// We parse form here so that we can use buf as body, in order to
 	// prevent https://github.com/cortexproject/cortex/issues/5201.
 	// Exclude remote read here as we don't have to buffer its body.
-	if !strings.Contains(r.URL.Path, "api/v1/read") {
+	isRemoteRead := strings.Contains(r.URL.Path, "api/v1/read")
+	if !isRemoteRead {
 		if err := r.ParseForm(); err != nil {
 			statusCode := http.StatusBadRequest
 			if util.IsRequestBodyTooLarge(err) {
@@ -300,8 +301,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(&buf)
 	}
 
-	// Log request
-	if f.cfg.QueryStatsEnabled {
+	// Log request if the request is not remote read.
+	// We need to parse remote read proto to be properly log it so skip it.
+	if f.cfg.QueryStatsEnabled && !isRemoteRead {
 		queryString = f.parseRequestQueryString(r, buf)
 		f.logQueryRequest(r, queryString, source)
 	}

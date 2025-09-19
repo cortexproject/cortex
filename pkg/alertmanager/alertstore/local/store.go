@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/alertmanager/config"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -41,6 +42,11 @@ type Store struct {
 // NewStore returns a new file alert store.
 func NewStore(cfg StoreConfig) (*Store, error) {
 	return &Store{cfg}, nil
+}
+
+// GetUserIndexUpdater implements alertstore.AlertStore.
+func (f *Store) GetUserIndexUpdater() *users.UserIndexUpdater {
+	return nil
 }
 
 // ListAllUsers implements alertstore.AlertStore.

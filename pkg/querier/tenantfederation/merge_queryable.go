@@ -15,9 +15,9 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -44,7 +44,7 @@ func NewQueryable(upstream storage.Queryable, maxConcurrent int, byPassWithSingl
 
 func tenantQuerierCallback(queryable storage.Queryable) MergeQuerierCallback {
 	return func(ctx context.Context, mint int64, maxt int64) ([]string, []storage.Querier, error) {
-		tenantIDs, err := tenant.TenantIDs(ctx)
+		tenantIDs, err := users.TenantIDs(ctx)
 		if err != nil {
 			return nil, nil, err
 		}

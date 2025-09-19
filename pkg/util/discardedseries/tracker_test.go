@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLabelSetTracker(t *testing.T) {
+func TestDiscardedSeriesTracker(t *testing.T) {
 	gauge := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "cortex_discarded_series",

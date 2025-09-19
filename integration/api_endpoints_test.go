@@ -15,6 +15,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/integration/e2e"
+	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
@@ -84,4 +85,33 @@ func TestConfigAPIEndpoint(t *testing.T) {
 	configOverrides["-alertmanager.cluster.peers"] = cortex1.HTTPEndpoint()
 	cortex2 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-2", cortexConfigFile, configOverrides, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex2))
+}
+
+func Test_AllUserStats_WhenIngesterRollingUpdate(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	flags := BlocksStorageFlags()
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Start Cortex components.
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester1 := e2ecortex.NewIngester("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester2 := e2ecortex.NewIngester("ingester-2", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester3 := e2ecortex.NewIngester("ingester-3", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester1, ingester2, ingester3))
+
+	// stop ingester1 to emulate rolling update
+	require.NoError(t, s.Stop(ingester1))
+
+	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)
+	require.NoError(t, err)
+
+	resp, err := client.AllUserStats()
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }

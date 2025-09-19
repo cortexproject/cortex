@@ -1609,7 +1609,6 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 
 	req := &ingester_client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
-	// Not using d.ForReplicationSet(), so we can fail after first error.
 	replicationSet, err := d.ingestersRing.GetAllHealthy(ring.Read)
 	if err != nil {
 		return nil, err
@@ -1621,7 +1620,11 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 		}
 		resp, err := client.(ingester_client.IngesterClient).AllUserStats(ctx, req)
 		if err != nil {
-			return nil, err
+			// During an ingester rolling update, an ingester might be temporarily
+			// in stopping or starting state. Therefore, returning an error would
+			// cause the API to fail during the update. This is an expected error in
+			// that scenario, we continue the loop to work API.
+			continue
 		}
 		for _, u := range resp.Stats {
 			s := perUserTotals[u.UserId]

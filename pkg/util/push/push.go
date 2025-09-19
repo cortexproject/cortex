@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/client_golang/exp/api/remote"
 	"github.com/prometheus/prometheus/model/labels"
 	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/prometheus/prometheus/util/compression"
@@ -125,14 +124,14 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 				contentType = appProtoContentType
 			}
 
-			msgType, err := parseProtoMsg(contentType)
+			msgType, err := remote.ParseProtoMsg(contentType)
 			if err != nil {
 				level.Error(logger).Log("Error decoding remote write request", "err", err)
 				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 				return
 			}
 
-			if msgType != config.RemoteWriteProtoMsgV1 && msgType != config.RemoteWriteProtoMsgV2 {
+			if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
 				level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
 				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 				return
@@ -148,9 +147,9 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 			}
 
 			switch msgType {
-			case config.RemoteWriteProtoMsgV1:
+			case remote.WriteV1MessageType:
 				handlePRW1()
-			case config.RemoteWriteProtoMsgV2:
+			case remote.WriteV2MessageType:
 				handlePRW2()
 			}
 		} else {
@@ -163,32 +162,6 @@ func setPRW2RespHeader(w http.ResponseWriter, samples, histograms, exemplars int
 	w.Header().Set(rw20WrittenSamplesHeader, strconv.FormatInt(samples, 10))
 	w.Header().Set(rw20WrittenHistogramsHeader, strconv.FormatInt(histograms, 10))
 	w.Header().Set(rw20WrittenExemplarsHeader, strconv.FormatInt(exemplars, 10))
-}
-
-// Refer to parseProtoMsg in https://github.com/prometheus/prometheus/blob/main/storage/remote/write_handler.go
-func parseProtoMsg(contentType string) (config.RemoteWriteProtoMsg, error) {
-	contentType = strings.TrimSpace(contentType)
-
-	parts := strings.Split(contentType, ";")
-	if parts[0] != appProtoContentType {
-		return "", fmt.Errorf("expected %v as the first (media) part, got %v content-type", appProtoContentType, contentType)
-	}
-	// Parse potential https://www.rfc-editor.org/rfc/rfc9110#parameter
-	for _, p := range parts[1:] {
-		pair := strings.Split(p, "=")
-		if len(pair) != 2 {
-			return "", fmt.Errorf("as per https://www.rfc-editor.org/rfc/rfc9110#parameter expected parameters to be key-values, got %v in %v content-type", p, contentType)
-		}
-		if pair[0] == "proto" {
-			ret := config.RemoteWriteProtoMsg(pair[1])
-			if err := ret.Validate(); err != nil {
-				return "", fmt.Errorf("got %v content type; %w", contentType, err)
-			}
-			return ret, nil
-		}
-	}
-	// No "proto=" parameter, assuming v1.
-	return config.RemoteWriteProtoMsgV1, nil
 }
 
 func convertV2RequestToV1(req *writev2.Request) (cortexpb.PreallocWriteRequest, error) {

@@ -16,14 +16,9 @@ import (
 )
 
 const (
-	// HTTP status codes
-	StatusOK                  = 200
-	StatusBadRequest          = 400
-	StatusUnauthorized        = 401
-	StatusInternalServerError = 500
-
 	// Error messages
-	ErrInvalidJSON = "Invalid JSON"
+	ErrInvalidJSON  = "Invalid JSON"
+	ErrUserNotFound = "User not found"
 
 	// Runtime config errors
 	ErrRuntimeConfig = "runtime config read error"
@@ -39,7 +34,8 @@ func (a *API) getAllowedLimitsFromBucket(ctx context.Context) ([]string, error) 
 
 	var config runtimeconfig.RuntimeConfigValues
 	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
-		return []string{}, nil // No allowed limits if config can't be decoded
+		level.Error(a.logger).Log("msg", "failed to decode runtime config", "err", err)
+		return []string{}, fmt.Errorf("failed to decode runtime config")
 	}
 
 	return config.APIAllowedLimits, nil
@@ -49,14 +45,19 @@ func (a *API) getAllowedLimitsFromBucket(ctx context.Context) ([]string, error) 
 func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
-		http.Error(w, err.Error(), StatusUnauthorized)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	// Read overrides from bucket storage
 	overrides, err := a.getOverridesFromBucket(r.Context(), userID)
 	if err != nil {
-		http.Error(w, err.Error(), StatusInternalServerError)
+		if err.Error() == ErrUserNotFound {
+			http.Error(w, "User not found", http.StatusBadRequest)
+		} else {
+			level.Error(a.logger).Log("msg", "failed to get overrides from bucket", "userID", userID, "err", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -72,65 +73,70 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 func (a *API) SetOverrides(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
-		http.Error(w, err.Error(), StatusUnauthorized)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	var overrides map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&overrides); err != nil {
-		http.Error(w, ErrInvalidJSON, StatusBadRequest)
+		http.Error(w, ErrInvalidJSON, http.StatusBadRequest)
 		return
 	}
 
 	// Get allowed limits from runtime config
 	allowedLimits, err := a.getAllowedLimitsFromBucket(r.Context())
 	if err != nil {
-		http.Error(w, "Failed to read allowed limits", StatusInternalServerError)
+		level.Error(a.logger).Log("msg", "failed to get allowed limits from bucket", "userID", userID, "err", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	// Validate that only allowed limits are being changed
 	if err := ValidateOverrides(overrides, allowedLimits); err != nil {
-		http.Error(w, err.Error(), StatusBadRequest)
+		level.Error(a.logger).Log("msg", "invalid overrides validation", "userID", userID, "err", err)
+		http.Error(w, "Invalid overrides", http.StatusBadRequest)
 		return
 	}
 
 	// Validate that values don't exceed hard limits from runtime config
 	if err := a.validateHardLimits(overrides, userID); err != nil {
-		http.Error(w, err.Error(), StatusBadRequest)
+		level.Error(a.logger).Log("msg", "hard limits validation failed", "userID", userID, "err", err)
+		http.Error(w, "Invalid overrides", http.StatusBadRequest)
 		return
 	}
 
 	// Write overrides to bucket storage
 	if err := a.setOverridesToBucket(r.Context(), userID, overrides); err != nil {
-		http.Error(w, err.Error(), StatusInternalServerError)
+		level.Error(a.logger).Log("msg", "failed to set overrides to bucket", "userID", userID, "err", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(StatusOK)
+	w.WriteHeader(http.StatusOK)
 }
 
 // DeleteOverrides removes tenant-specific overrides
 func (a *API) DeleteOverrides(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
-		http.Error(w, err.Error(), StatusUnauthorized)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	if err := a.deleteOverridesFromBucket(r.Context(), userID); err != nil {
-		http.Error(w, err.Error(), StatusInternalServerError)
+		level.Error(a.logger).Log("msg", "failed to delete overrides from bucket", "userID", userID, "err", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(StatusOK)
+	w.WriteHeader(http.StatusOK)
 }
 
 // getOverridesFromBucket reads overrides for a specific tenant from the runtime config file
 func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[string]interface{}, error) {
 	reader, err := a.bucketClient.Get(ctx, a.runtimeConfigPath)
 	if err != nil {
-		return map[string]interface{}{}, nil
+		return nil, fmt.Errorf("failed to get runtime config: %w", err)
 	}
 	defer reader.Close()
 
@@ -155,8 +161,11 @@ func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[st
 
 			return result, nil
 		}
+		// User does not exist in config - return error
+		return nil, fmt.Errorf(ErrUserNotFound)
 	}
 
+	// No tenant limits configured - return empty map (no overrides)
 	return map[string]interface{}{}, nil
 }
 

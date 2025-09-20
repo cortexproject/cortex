@@ -3,9 +3,11 @@ package overrides
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/go-kit/log/level"
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -23,7 +25,7 @@ func ValidateOverrides(overrides map[string]interface{}, allowedLimits []string)
 	var invalidLimits []string
 
 	for limitName := range overrides {
-		if !IsLimitAllowed(limitName, allowedLimits) {
+		if !slices.Contains(allowedLimits, limitName) {
 			invalidLimits = append(invalidLimits, limitName)
 		}
 	}
@@ -35,39 +37,23 @@ func ValidateOverrides(overrides map[string]interface{}, allowedLimits []string)
 	return nil
 }
 
-// GetAllowedLimits returns the allowed limits from runtime config
-// If no allowed limits are configured, returns empty slice (no limits allowed)
-func GetAllowedLimits(allowedLimits []string) []string {
-	return allowedLimits
-}
-
-// IsLimitAllowed checks if a specific limit can be modified
-func IsLimitAllowed(limitName string, allowedLimits []string) bool {
-	for _, allowed := range allowedLimits {
-		if allowed == limitName {
-			return true
-		}
-	}
-	return false
-}
-
 // validateHardLimits checks if the provided overrides exceed any hard limits from the runtime config
 func (a *API) validateHardLimits(overrides map[string]interface{}, userID string) error {
 	// Read the runtime config to get hard limits
 	reader, err := a.bucketClient.Get(context.Background(), a.runtimeConfigPath)
 	if err != nil {
-		// If we can't read the config, skip hard limit validation
-		return nil
+		level.Error(a.logger).Log("msg", "failed to read hard limits configuration", "userID", userID, "err", err)
+		return fmt.Errorf("failed to validate hard limits")
 	}
 	defer reader.Close()
 
 	var config runtimeconfig.RuntimeConfigValues
 	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
-		// If we can't decode the config, skip hard limit validation
-		return nil
+		level.Error(a.logger).Log("msg", "failed to decode hard limits configuration", "userID", userID, "err", err)
+		return fmt.Errorf("failed to validate hard limits")
 	}
 
-	// If no hard overrides are defined, skip validation
+	// If no hard overrides are defined, allow the request
 	if config.HardTenantLimits == nil {
 		return nil
 	}
@@ -80,12 +66,14 @@ func (a *API) validateHardLimits(overrides map[string]interface{}, userID string
 
 	yamlData, err := yaml.Marshal(userHardLimits)
 	if err != nil {
-		return nil // Skip validation if we can't marshal
+		level.Error(a.logger).Log("msg", "failed to marshal hard limits", "userID", userID, "err", err)
+		return fmt.Errorf("failed to validate hard limits")
 	}
 
 	var hardLimitsMap map[string]interface{}
 	if err := yaml.Unmarshal(yamlData, &hardLimitsMap); err != nil {
-		return nil // Skip validation if we can't unmarshal
+		level.Error(a.logger).Log("msg", "failed to unmarshal hard limits", "userID", userID, "err", err)
+		return fmt.Errorf("failed to validate hard limits")
 	}
 
 	// Validate each override against the user's hard limits

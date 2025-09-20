@@ -210,6 +210,20 @@ func TestAPIEndpoints(t *testing.T) {
 			},
 		},
 		{
+			name:           "GET overrides - valid tenant ID, user does not exist",
+			method:         "GET",
+			path:           "/api/v1/user-overrides",
+			tenantID:       "nonexistent_user",
+			expectedStatus: http.StatusBadRequest,
+			setupMock: func(mock *bucket.ClientMock) {
+				// Mock runtime config with different user
+				overridesData := `overrides:
+  other_user:
+    ingestion_rate: 5000`
+				mock.MockGet("runtime.yaml", overridesData, nil)
+			},
+		},
+		{
 			name:           "POST overrides - no tenant ID",
 			method:         "POST",
 			path:           "/api/v1/user-overrides",
@@ -491,13 +505,13 @@ func TestAPIBucketErrors(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name:     "GET overrides - bucket error treated as not found",
+			name:     "GET overrides - bucket error returns internal server error",
 			method:   "GET",
 			tenantID: "user123",
 			setupMock: func(mock *bucket.ClientMock) {
 				mock.MockGet("runtime.yaml", "", fmt.Errorf("bucket error"))
 			},
-			expectedStatus: http.StatusOK, // Current implementation treats errors as "not found"
+			expectedStatus: http.StatusInternalServerError,
 		},
 		{
 			name:     "POST overrides - bucket upload error",

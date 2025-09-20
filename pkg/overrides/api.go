@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -162,7 +163,7 @@ func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[st
 			return result, nil
 		}
 		// User does not exist in config - return error
-		return nil, fmt.Errorf(ErrUserNotFound)
+		return nil, errors.New(ErrUserNotFound)
 	}
 
 	// No tenant limits configured - return empty map (no overrides)

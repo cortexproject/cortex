@@ -159,7 +159,7 @@ func TestAPIEndpoints(t *testing.T) {
 		method           string
 		path             string
 		tenantID         string
-		requestBody      interface{}
+		requestBody      any
 		expectedStatus   int
 		setupMock        func(*bucket.ClientMock)
 		validateResponse func(*testing.T, *httptest.ResponseRecorder)
@@ -182,7 +182,7 @@ func TestAPIEndpoints(t *testing.T) {
 				mock.MockGet("runtime.yaml", "overrides:\n", nil)
 			},
 			validateResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				var response map[string]interface{}
+				var response map[string]any
 				err := json.Unmarshal(recorder.Body.Bytes(), &response)
 				require.NoError(t, err)
 				assert.Empty(t, response)
@@ -202,7 +202,7 @@ func TestAPIEndpoints(t *testing.T) {
 				mock.MockGet("runtime.yaml", overridesData, nil)
 			},
 			validateResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				var response map[string]interface{}
+				var response map[string]any
 				err := json.Unmarshal(recorder.Body.Bytes(), &response)
 				require.NoError(t, err)
 				assert.Equal(t, float64(5000), response["ingestion_rate"])
@@ -228,7 +228,7 @@ func TestAPIEndpoints(t *testing.T) {
 			method:         "POST",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "",
-			requestBody:    map[string]interface{}{"ingestion_rate": 5000},
+			requestBody:    map[string]any{"ingestion_rate": 5000},
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
@@ -236,7 +236,7 @@ func TestAPIEndpoints(t *testing.T) {
 			method:         "POST",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user789",
-			requestBody:    map[string]interface{}{"ingestion_rate": 5000, "ruler_max_rules_per_rule_group": 10},
+			requestBody:    map[string]any{"ingestion_rate": 5000, "ruler_max_rules_per_rule_group": 10},
 			expectedStatus: http.StatusOK,
 			setupMock: func(mock *bucket.ClientMock) {
 				// Mock runtime config with allowed limits
@@ -262,7 +262,7 @@ api_allowed_limits:
 			method:         "POST",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user999",
-			requestBody:    map[string]interface{}{"invalid_limit": 5000},
+			requestBody:    map[string]any{"invalid_limit": 5000},
 			expectedStatus: http.StatusBadRequest,
 			setupMock: func(mock *bucket.ClientMock) {
 				// Mock runtime config with allowed limits (invalid_limit not included)
@@ -290,7 +290,7 @@ api_allowed_limits:
 			method:         "POST",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user999",
-			requestBody:    map[string]interface{}{"ingestion_rate": 1500000}, // Exceeds hard limit of 1000000
+			requestBody:    map[string]any{"ingestion_rate": 1500000}, // Exceeds hard limit of 1000000
 			expectedStatus: http.StatusBadRequest,
 			setupMock: func(mock *bucket.ClientMock) {
 				// Mock runtime config with per-user hard limits and allowed limits
@@ -577,7 +577,7 @@ api_allowed_limits:
 			// Create the request
 			var req *http.Request
 			if tt.method == "POST" {
-				requestBody := map[string]interface{}{"ingestion_rate": 5000}
+				requestBody := map[string]any{"ingestion_rate": 5000}
 				body, err := json.Marshal(requestBody)
 				require.NoError(t, err)
 				req = httptest.NewRequest(tt.method, "/api/v1/user-overrides", bytes.NewReader(body))

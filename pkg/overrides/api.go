@@ -78,7 +78,7 @@ func (a *API) SetOverrides(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var overrides map[string]interface{}
+	var overrides map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&overrides); err != nil {
 		http.Error(w, ErrInvalidJSON, http.StatusBadRequest)
 		return
@@ -134,7 +134,7 @@ func (a *API) DeleteOverrides(w http.ResponseWriter, r *http.Request) {
 }
 
 // getOverridesFromBucket reads overrides for a specific tenant from the runtime config file
-func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[string]interface{}, error) {
+func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[string]any, error) {
 	reader, err := a.bucketClient.Get(ctx, a.runtimeConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get runtime config: %w", err)
@@ -155,7 +155,7 @@ func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[st
 				return nil, fmt.Errorf("failed to marshal limits: %w", err)
 			}
 
-			var result map[string]interface{}
+			var result map[string]any
 			if err := yaml.Unmarshal(yamlData, &result); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal limits: %w", err)
 			}
@@ -167,11 +167,11 @@ func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[st
 	}
 
 	// No tenant limits configured - return empty map (no overrides)
-	return map[string]interface{}{}, nil
+	return map[string]any{}, nil
 }
 
 // setOverridesToBucket writes overrides for a specific tenant to the runtime config file
-func (a *API) setOverridesToBucket(ctx context.Context, userID string, overrides map[string]interface{}) error {
+func (a *API) setOverridesToBucket(ctx context.Context, userID string, overrides map[string]any) error {
 	var config runtimeconfig.RuntimeConfigValues
 	reader, err := a.bucketClient.Get(ctx, a.runtimeConfigPath)
 	if err == nil {

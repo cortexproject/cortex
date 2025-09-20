@@ -21,7 +21,7 @@ const (
 // No default allowed limits - these must be configured via runtime config
 
 // ValidateOverrides checks if the provided overrides only contain allowed limits
-func ValidateOverrides(overrides map[string]interface{}, allowedLimits []string) error {
+func ValidateOverrides(overrides map[string]any, allowedLimits []string) error {
 	var invalidLimits []string
 
 	for limitName := range overrides {
@@ -38,7 +38,7 @@ func ValidateOverrides(overrides map[string]interface{}, allowedLimits []string)
 }
 
 // validateHardLimits checks if the provided overrides exceed any hard limits from the runtime config
-func (a *API) validateHardLimits(overrides map[string]interface{}, userID string) error {
+func (a *API) validateHardLimits(overrides map[string]any, userID string) error {
 	// Read the runtime config to get hard limits
 	reader, err := a.bucketClient.Get(context.Background(), a.runtimeConfigPath)
 	if err != nil {
@@ -70,7 +70,7 @@ func (a *API) validateHardLimits(overrides map[string]interface{}, userID string
 		return fmt.Errorf("failed to validate hard limits")
 	}
 
-	var hardLimitsMap map[string]interface{}
+	var hardLimitsMap map[string]any
 	if err := yaml.Unmarshal(yamlData, &hardLimitsMap); err != nil {
 		level.Error(a.logger).Log("msg", "failed to unmarshal hard limits", "userID", userID, "err", err)
 		return fmt.Errorf("failed to validate hard limits")
@@ -89,7 +89,7 @@ func (a *API) validateHardLimits(overrides map[string]interface{}, userID string
 }
 
 // validateSingleHardLimit validates a single limit against its hard limit
-func (a *API) validateSingleHardLimit(limitName string, value, hardLimit interface{}) error {
+func (a *API) validateSingleHardLimit(limitName string, value, hardLimit any) error {
 	// Convert both values to float64 for comparison
 	valueFloat, err := convertToFloat64(value)
 	if err != nil {
@@ -109,7 +109,7 @@ func (a *API) validateSingleHardLimit(limitName string, value, hardLimit interfa
 }
 
 // convertToFloat64 converts any value to float64
-func convertToFloat64(v interface{}) (float64, error) {
+func convertToFloat64(v any) (float64, error) {
 	switch val := v.(type) {
 	case float64:
 		return val, nil

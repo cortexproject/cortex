@@ -18,8 +18,8 @@ import (
 
 const (
 	// Error messages
-	ErrInvalidJSON  = "Invalid JSON"
-	ErrUserNotFound = "User not found"
+	ErrInvalidJSON  = "invalid JSON"
+	ErrUserNotFound = "user not found"
 
 	// Runtime config errors
 	ErrRuntimeConfig = "runtime config read error"
@@ -54,7 +54,7 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 	overrides, err := a.getOverridesFromBucket(r.Context(), userID)
 	if err != nil {
 		if err.Error() == ErrUserNotFound {
-			http.Error(w, "User not found", http.StatusBadRequest)
+			http.Error(w, "user not found", http.StatusBadRequest)
 		} else {
 			level.Error(a.logger).Log("msg", "failed to get overrides from bucket", "userID", userID, "err", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)

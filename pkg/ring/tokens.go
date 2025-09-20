@@ -21,7 +21,7 @@ func (t Tokens) Equals(other Tokens) bool {
 	sort.Sort(mine)
 	sort.Sort(other)
 
-	for i := 0; i < len(mine); i++ {
+	for i := range mine {
 		if mine[i] != other[i] {
 			return false
 		}

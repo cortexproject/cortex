@@ -3,6 +3,7 @@ package ring
 import (
 	"container/heap"
 	"fmt"
+	"maps"
 	"sort"
 	"sync"
 	"time"
@@ -355,7 +356,7 @@ func tokensEqual(lhs, rhs []uint32) bool {
 	if len(lhs) != len(rhs) {
 		return false
 	}
-	for i := 0; i < len(lhs); i++ {
+	for i := range lhs {
 		if lhs[i] != rhs[i] {
 			return false
 		}
@@ -363,7 +364,7 @@ func tokensEqual(lhs, rhs []uint32) bool {
 	return true
 }
 
-var tokenMapPool = sync.Pool{New: func() interface{} { return make(map[uint32]struct{}) }}
+var tokenMapPool = sync.Pool{New: func() any { return make(map[uint32]struct{}) }}
 
 func conflictingTokensExist(normalizedIngesters map[string]InstanceDesc) bool {
 	tokensMap := tokenMapPool.Get().(map[uint32]struct{})
@@ -472,7 +473,7 @@ func (d *Desc) RemoveTombstones(limit time.Time) (total, removed int) {
 }
 
 // Clone returns a deep copy of the ring state.
-func (d *Desc) Clone() interface{} {
+func (d *Desc) Clone() any {
 	return proto.Clone(d).(*Desc)
 }
 
@@ -626,7 +627,7 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 	return Equal
 }
 
-func GetOrCreateRingDesc(d interface{}) *Desc {
+func GetOrCreateRingDesc(d any) *Desc {
 	if d == nil {
 		return NewDesc()
 	}
@@ -649,11 +650,11 @@ func (h TokensHeap) Less(i, j int) bool {
 	return h[i][0] < h[j][0]
 }
 
-func (h *TokensHeap) Push(x interface{}) {
+func (h *TokensHeap) Push(x any) {
 	*h = append(*h, x.([]uint32))
 }
 
-func (h *TokensHeap) Pop() interface{} {
+func (h *TokensHeap) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]
@@ -709,8 +710,8 @@ func MergeTokensByZone(zones map[string][][]uint32) map[string][]uint32 {
 	return out
 }
 
-func (d *Desc) SplitByID() map[string]interface{} {
-	out := make(map[string]interface{}, len(d.Ingesters))
+func (d *Desc) SplitByID() map[string]any {
+	out := make(map[string]any, len(d.Ingesters))
 	for key := range d.Ingesters {
 		in := d.Ingesters[key]
 		out[key] = &in
@@ -718,7 +719,7 @@ func (d *Desc) SplitByID() map[string]interface{} {
 	return out
 }
 
-func (d *Desc) JoinIds(in map[string]interface{}) {
+func (d *Desc) JoinIds(in map[string]any) {
 	for key, value := range in {
 		d.Ingesters[key] = *(value.(*InstanceDesc))
 	}
@@ -728,7 +729,7 @@ func (d *Desc) GetItemFactory() proto.Message {
 	return &InstanceDesc{}
 }
 
-func (d *Desc) FindDifference(o codec.MultiKey) (interface{}, []string, error) {
+func (d *Desc) FindDifference(o codec.MultiKey) (any, []string, error) {
 	out, ok := o.(*Desc)
 	if !ok {
 		// This method only deals with non-nil rings.
@@ -754,9 +755,7 @@ func (d *Desc) FindDifference(o codec.MultiKey) (interface{}, []string, error) {
 
 	//If existent data is empty
 	if d == nil {
-		for key, value := range out.Ingesters {
-			toUpdated.Ingesters[key] = value
-		}
+		maps.Copy(toUpdated.Ingesters, out.Ingesters)
 		return toUpdated, toDelete, nil
 	}
 

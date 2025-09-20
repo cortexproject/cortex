@@ -18,7 +18,7 @@ func genLabels(
 	l := labelSet[0]
 	rest := genLabels(labelSet[1:], labelBuckets)
 
-	for i := 0; i < labelBuckets; i++ {
+	for i := range labelBuckets {
 		x := labels.Label{
 			Name:  l,
 			Value: fmt.Sprintf("%d", i),

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -284,7 +285,8 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// We parse form here so that we can use buf as body, in order to
 	// prevent https://github.com/cortexproject/cortex/issues/5201.
 	// Exclude remote read here as we don't have to buffer its body.
-	if !strings.Contains(r.URL.Path, "api/v1/read") {
+	isRemoteRead := strings.Contains(r.URL.Path, "api/v1/read")
+	if !isRemoteRead {
 		if err := r.ParseForm(); err != nil {
 			statusCode := http.StatusBadRequest
 			if util.IsRequestBodyTooLarge(err) {
@@ -299,8 +301,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(&buf)
 	}
 
-	// Log request
-	if f.cfg.QueryStatsEnabled {
+	// Log request if the request is not remote read.
+	// We need to parse remote read proto to be properly log it so skip it.
+	if f.cfg.QueryStatsEnabled && !isRemoteRead {
 		queryString = f.parseRequestQueryString(r, buf)
 		f.logQueryRequest(r, queryString, source)
 	}
@@ -352,9 +355,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for h, vs := range resp.Header {
-		hs[h] = vs
-	}
+	maps.Copy(hs, resp.Header)
 
 	w.WriteHeader(resp.StatusCode)
 	// log copy response body error so that we will know even though success response code returned
@@ -364,10 +365,10 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func formatGrafanaStatsFields(r *http.Request) []interface{} {
+func formatGrafanaStatsFields(r *http.Request) []any {
 	// NOTE(GiedriusS): see https://github.com/grafana/grafana/pull/60301 for more info.
 
-	fields := make([]interface{}, 0, 4)
+	fields := make([]any, 0, 4)
 	if dashboardUID := r.Header.Get("X-Dashboard-Uid"); dashboardUID != "" {
 		fields = append(fields, "X-Dashboard-Uid", dashboardUID)
 	}
@@ -379,7 +380,7 @@ func formatGrafanaStatsFields(r *http.Request) []interface{} {
 
 // logQueryRequest logs query request before query execution.
 func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values, source string) {
-	logMessage := []interface{}{
+	logMessage := []any{
 		"msg", "query request",
 		"component", "query-frontend",
 		"method", r.Method,
@@ -419,7 +420,7 @@ func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values, sourc
 
 // reportSlowQuery reports slow queries.
 func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
-	logMessage := []interface{}{
+	logMessage := []any{
 		"msg", "slow query detected",
 		"method", r.Method,
 		"host", r.Host,
@@ -473,7 +474,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	}
 
 	// Log stats.
-	logMessage := append([]interface{}{
+	logMessage := append([]any{
 		"msg", "query stats",
 		"component", "query-frontend",
 		"method", r.Method,
@@ -611,12 +612,12 @@ func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer)
 	return r.Form
 }
 
-func formatQueryString(queryString url.Values) (fields []interface{}) {
-	var queryFields []interface{}
+func formatQueryString(queryString url.Values) (fields []any) {
+	var queryFields []any
 	for k, v := range queryString {
 		// If `query` or `match[]` field exists, we always put it as the last field.
 		if k == "query" || k == "match[]" {
-			queryFields = []interface{}{fmt.Sprintf("param_%s", k), strings.Join(v, ",")}
+			queryFields = []any{fmt.Sprintf("param_%s", k), strings.Join(v, ",")}
 			continue
 		}
 		fields = append(fields, fmt.Sprintf("param_%s", k), strings.Join(v, ","))

@@ -195,7 +195,7 @@ receivers:
 	reg := prometheus.NewPedanticRegistry()
 	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 		require.NoError(t, err)
 		require.Len(t, am.alertmanagers, 2)
@@ -1128,7 +1128,7 @@ func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 
 			// Setup the initial instance state in the ring.
 			if tt.existing {
-				require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+				require.NoError(t, ringStore.CAS(ctx, RingKey, func(in any) (any, bool, error) {
 					ringDesc := ring.GetOrCreateRingDesc(in)
 					ringDesc.AddIngester(amConfig.ShardingRing.InstanceID, amConfig.ShardingRing.InstanceAddr, "", tt.initialTokens, tt.initialState, time.Now())
 					return ringDesc, true, nil
@@ -1529,7 +1529,7 @@ func TestMultitenantAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 			am, err := createMultitenantAlertmanager(amConfig, nil, nil, alertStore, ringStore, nil, log.NewNopLogger(), reg)
 			require.NoError(t, err)
 
-			require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+			require.NoError(t, ringStore.CAS(ctx, RingKey, func(in any) (any, bool, error) {
 				ringDesc := ring.GetOrCreateRingDesc(in)
 				tt.setupRing(ringDesc)
 				return ringDesc, true, nil
@@ -1545,7 +1545,7 @@ func TestMultitenantAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 			assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total"))
 
 			// Change the ring topology.
-			require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+			require.NoError(t, ringStore.CAS(ctx, RingKey, func(in any) (any, bool, error) {
 				ringDesc := ring.GetOrCreateRingDesc(in)
 				tt.updateRing(ringDesc)
 				return ringDesc, true, nil
@@ -1556,7 +1556,7 @@ func TestMultitenantAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 			if tt.expected {
 				expectedSyncs++
 			}
-			test.Poll(t, 3*time.Second, float64(expectedSyncs), func() interface{} {
+			test.Poll(t, 3*time.Second, float64(expectedSyncs), func() any {
 				metrics := regs.BuildMetricFamiliesPerUser()
 				return metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total")
 			})
@@ -1584,7 +1584,7 @@ func TestMultitenantAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstance
 	defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
 	tg := ring.NewRandomTokenGenerator()
-	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in any) (any, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
 		instance := ringDesc.AddIngester(unhealthyInstanceID, "127.0.0.1", "", tg.GenerateTokens(ringDesc, unhealthyInstanceID, "", RingNumTokens, true), ring.ACTIVE, time.Now())
 		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
@@ -1593,7 +1593,7 @@ func TestMultitenantAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstance
 		return ringDesc, true, nil
 	}))
 
-	test.Poll(t, time.Second, false, func() interface{} {
+	test.Poll(t, time.Second, false, func() any {
 		d, err := ringStore.Get(ctx, RingKey)
 		if err != nil {
 			return err
@@ -2066,7 +2066,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 			}
 			// 2.c. Wait for the silence replication to be attempted; note this is asynchronous.
 			{
-				test.Poll(t, 5*time.Second, float64(1), func() interface{} {
+				test.Poll(t, 5*time.Second, float64(1), func() any {
 					metrics := registries.BuildMetricFamiliesPerUser()
 					return metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total")
 				})

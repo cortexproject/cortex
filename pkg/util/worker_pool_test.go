@@ -61,7 +61,7 @@ func TestWorkerPool_ShouldFallbackWhenAllWorkersAreBusy(t *testing.T) {
 	// Lets lock all submited jobs
 	m.Lock()
 
-	for i := 0; i < numberOfWorkers; i++ {
+	for range numberOfWorkers {
 		workerPool.Submit(func() {
 			defer blockerWg.Done()
 			m.Lock()

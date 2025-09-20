@@ -270,7 +270,7 @@ func (r *DefaultMultiTenantManager) createRulesManager(user string, ctx context.
 }
 
 func defaultRuleGroupIterationFunc(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
-	logMessage := []interface{}{
+	logMessage := []any{
 		"component", "ruler",
 		"rule_group", g.Name(),
 		"namespace", g.File(),

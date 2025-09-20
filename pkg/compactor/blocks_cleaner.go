@@ -475,7 +475,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	}
 	c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
 
-	var blocksToDelete []interface{}
+	var blocksToDelete []any
 	err := userBucket.Iter(ctx, "", func(name string) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -492,7 +492,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	}
 
 	var deletedBlocks, failed atomic.Int64
-	err = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job interface{}) error {
+	err = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job any) error {
 		blockID := job.(ulid.ULID)
 		err := block.Delete(ctx, userLogger, userBucket, blockID)
 		if err != nil {
@@ -697,7 +697,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 	// Delete blocks marked for deletion. We iterate over a copy of deletion marks because
 	// we'll need to manipulate the index (removing blocks which get deleted).
 	begin = time.Now()
-	blocksToDelete := make([]interface{}, 0, len(idx.BlockDeletionMarks))
+	blocksToDelete := make([]any, 0, len(idx.BlockDeletionMarks))
 	var mux sync.Mutex
 	for _, mark := range idx.BlockDeletionMarks.Clone() {
 		if time.Since(mark.GetDeletionTime()).Seconds() <= c.cfg.DeletionDelay.Seconds() {
@@ -709,7 +709,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 
 	// Concurrently deletes blocks marked for deletion, and removes blocks from index.
 	begin = time.Now()
-	_ = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job interface{}) error {
+	_ = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job any) error {
 		blockID := job.(ulid.ULID)
 
 		if err := block.Delete(ctx, userLogger, userBucket, blockID); err != nil {
@@ -884,7 +884,7 @@ func (c *BlocksCleaner) iterPartitionGroups(ctx context.Context, userBucket objs
 // and index are updated accordingly.
 func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, userID string, partials map[ulid.ULID]error, idx *bucketindex.Index, userBucket objstore.InstrumentedBucket, userLogger log.Logger) {
 	// Collect all blocks with missing meta.json into buffered channel.
-	blocks := make([]interface{}, 0, len(partials))
+	blocks := make([]any, 0, len(partials))
 
 	for blockID, blockErr := range partials {
 		// We can safely delete only blocks which are partial because the meta.json is missing.
@@ -896,7 +896,7 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, userID strin
 
 	var mux sync.Mutex
 
-	_ = concurrency.ForEach(ctx, blocks, defaultDeleteBlocksConcurrency, func(ctx context.Context, job interface{}) error {
+	_ = concurrency.ForEach(ctx, blocks, defaultDeleteBlocksConcurrency, func(ctx context.Context, job any) error {
 		blockID := job.(ulid.ULID)
 		// We can safely delete only partial blocks with a deletion mark.
 		err := metadata.ReadMarker(ctx, userLogger, userBucket, blockID.String(), &metadata.DeletionMark{})

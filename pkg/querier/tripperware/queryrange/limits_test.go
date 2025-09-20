@@ -71,7 +71,6 @@ func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			req := &tripperware.PrometheusRequest{
@@ -190,7 +189,6 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			req := &tripperware.PrometheusRequest{

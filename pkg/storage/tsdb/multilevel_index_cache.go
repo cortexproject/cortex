@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 
 	"github.com/oklog/ulid/v2"
@@ -54,9 +55,7 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 		h, mi := c.FetchMultiPostings(ctx, blockID, misses, tenant)
 		misses = mi
 
-		for label, bytes := range h {
-			hits[label] = bytes
-		}
+		maps.Copy(hits, h)
 
 		if i > 0 {
 			backfillItems[i-1] = h
@@ -71,8 +70,6 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 		backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(storecache.CacheTypePostings))
 		defer backFillTimer.ObserveDuration()
 		for i, values := range backfillItems {
-			i := i
-			values := values
 			if len(values) == 0 {
 				continue
 			}
@@ -160,9 +157,7 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 		h, miss := c.FetchMultiSeries(ctx, blockID, misses, tenant)
 		misses = miss
 
-		for label, bytes := range h {
-			hits[label] = bytes
-		}
+		maps.Copy(hits, h)
 
 		if i > 0 && len(h) > 0 {
 			backfillItems[i-1] = h
@@ -177,8 +172,6 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 		backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(storecache.CacheTypeSeries))
 		defer backFillTimer.ObserveDuration()
 		for i, values := range backfillItems {
-			i := i
-			values := values
 			if len(values) == 0 {
 				continue
 			}

@@ -21,7 +21,7 @@ var (
 )
 
 func TestAlertStore_ListAllUsers(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client any) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -46,7 +46,7 @@ func TestAlertStore_ListAllUsers(t *testing.T) {
 }
 
 func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client any) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -84,7 +84,7 @@ func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
 }
 
 func TestStore_GetAlertConfigs(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client any) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -129,7 +129,7 @@ func TestStore_GetAlertConfigs(t *testing.T) {
 }
 
 func TestAlertStore_DeleteAlertConfig(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client any) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -169,14 +169,14 @@ func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 	})
 }
 
-func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, b *mockBucket, client interface{})) {
+func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, b *mockBucket, client any)) {
 	bucketClient := objstore.NewInMemBucket()
 	mBucketClient := &mockBucket{Bucket: bucketClient}
 	bucketStore := bucketclient.NewBucketAlertStore(mBucketClient, nil, log.NewNopLogger())
 
 	stores := map[string]struct {
 		store  AlertStore
-		client interface{}
+		client any
 	}{
 		"bucket": {store: bucketStore, client: mBucketClient},
 	}
@@ -188,7 +188,7 @@ func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertSto
 	}
 }
 
-func objectExists(bucketClient interface{}, key string) (bool, error) {
+func objectExists(bucketClient any, key string) (bool, error) {
 	if typed, ok := bucketClient.(objstore.Bucket); ok {
 		return typed.Exists(context.Background(), key)
 	}

@@ -30,16 +30,15 @@ func TestMergeIter(t *testing.T) {
 
 func BenchmarkMergeIterator(b *testing.B) {
 	chunks := make([]GenericChunk, 0, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		chunks = append(chunks, mkGenericChunk(b, model.Time(i*25), 120, encoding.PrometheusXorChunk))
 	}
 	iter := newMergeIterator(nil, chunks)
 
 	for _, r := range []bool{true, false} {
 		b.Run(fmt.Sprintf("reuse-%t", r), func(b *testing.B) {
-			b.ResetTimer()
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				if r {
 					iter = newMergeIterator(iter, chunks)
 				} else {
@@ -64,7 +63,7 @@ func TestMergeHarder(t *testing.T) {
 			offset    = 30
 			samples   = 100
 		)
-		for i := 0; i < numChunks; i++ {
+		for range numChunks {
 			chunks = append(chunks, mkGenericChunk(t, from, samples, enc))
 			from = from.Add(time.Duration(offset) * time.Second)
 		}

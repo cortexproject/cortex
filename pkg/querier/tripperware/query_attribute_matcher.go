@@ -2,6 +2,7 @@ package tripperware
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -159,13 +160,7 @@ func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, op stri
 	if attribute.Regex != "" {
 		matched = true
 		if attribute.Regex != ".*" && attribute.CompiledRegex != nil {
-			atLeastOneMatched := false
-			for _, matcher := range r.Form["match[]"] {
-				if attribute.CompiledRegex.MatchString(matcher) {
-					atLeastOneMatched = true
-					break
-				}
-			}
+			atLeastOneMatched := slices.ContainsFunc(r.Form["match[]"], attribute.CompiledRegex.MatchString)
 			if !atLeastOneMatched {
 				return false
 			}

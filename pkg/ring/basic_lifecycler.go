@@ -271,7 +271,7 @@ heartbeatLoop:
 func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 	var instanceDesc InstanceDesc
 
-	err := l.store.CAS(ctx, l.ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := l.store.CAS(ctx, l.ringKey, func(in any) (out any, retry bool, err error) {
 		ringDesc := GetOrCreateRingDesc(in)
 
 		var exists bool
@@ -392,7 +392,7 @@ func (l *BasicLifecycler) verifyTokens(ctx context.Context) bool {
 func (l *BasicLifecycler) unregisterInstance(ctx context.Context) error {
 	level.Info(l.logger).Log("msg", "unregistering instance from ring", "ring", l.ringName)
 
-	err := l.store.CAS(ctx, l.ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := l.store.CAS(ctx, l.ringKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
 		}
@@ -418,7 +418,7 @@ func (l *BasicLifecycler) unregisterInstance(ctx context.Context) error {
 func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(*Desc, *InstanceDesc) bool) error {
 	var instanceDesc InstanceDesc
 
-	err := l.store.CAS(ctx, l.ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := l.store.CAS(ctx, l.ringKey, func(in any) (out any, retry bool, err error) {
 		ringDesc := GetOrCreateRingDesc(in)
 
 		var ok bool

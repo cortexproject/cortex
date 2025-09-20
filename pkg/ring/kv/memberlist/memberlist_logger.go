@@ -30,7 +30,7 @@ func newMemberlistLoggerAdapter(logger log.Logger, logTimestamp bool) io.Writer 
 
 func (a loggerAdapter) Write(p []byte) (int, error) {
 	result := subexps(p)
-	keyvals := []interface{}{}
+	keyvals := []any{}
 	var timestamp string
 	if date, ok := result["date"]; ok && date != "" {
 		timestamp = date

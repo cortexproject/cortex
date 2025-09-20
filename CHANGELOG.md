@@ -25,6 +25,7 @@
 * [FEATURE] Query Frontend: Add support /api/v1/format_query API for formatting queries. #6893
 * [FEATURE] Query Frontend: Add support for /api/v1/parse_query API (experimental) to parse a PromQL expression and return it as a JSON-formatted AST (abstract syntax tree). #6978
 * [ENHANCEMENT] Parquet Storage: Add support for additional sort columns during Parquet file generation #7003
+* [ENHANCEMENT] Modernizes the entire codebase by using go modernize tool. #7005
 * [ENHANCEMENT] Overrides Exporter: Expose all fields that can be converted to float64. Also, the label value `max_local_series_per_metric` got renamed to `max_series_per_metric`, and `max_local_series_per_user` got renamed to `max_series_per_user`. #6979
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_tsdb_wal_replay_unknown_refs_total` and `cortex_ingester_tsdb_wbl_replay_unknown_refs_total` metrics to track unknown series references during wal/wbl replaying. #6945
 * [ENHANCEMENT] Ruler: Emit an error message when the rule synchronization fails. #6902
@@ -96,6 +97,7 @@
 * [BUGFIX] Compactor: Delete the prefix `blocks_meta` from the metadata fetcher metrics. #6832
 * [BUGFIX] Store Gateway: Avoid race condition by deduplicating entries in bucket stores user scan. #6863
 * [BUGFIX] Runtime-config: Change to check tenant limit validation when loading runtime config only for `all`, `distributor`, `querier`, and `ruler` targets. #6880
+* [BUGFIX] Frontend: Fix remote read snappy input due to request string logging when query stats enabled. #7025
 
 ## 1.19.0 2025-02-27
 

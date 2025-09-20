@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"math/rand"
 	"net/http"
@@ -116,7 +117,7 @@ func TestConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData // Needed for t.Parallel to work correctly
+		// Needed for t.Parallel to work correctly
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			cfg := Config{}
@@ -390,7 +391,7 @@ func TestDistributor_Push(t *testing.T) {
 					// yet. To avoid flaky test we retry metrics assertion until we hit the desired state (no error)
 					// within a reasonable timeout.
 					if tc.expectedMetrics != "" {
-						test.Poll(t, time.Second, nil, func() interface{} {
+						test.Poll(t, time.Second, nil, func() any {
 							return testutil.GatherAndCompare(regs[0], strings.NewReader(tc.expectedMetrics), tc.metricNames...)
 						})
 					}
@@ -527,13 +528,13 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 
 	d.cleanupInactiveUser("userA")
 
-	err := r.KVClient.CAS(context.Background(), ingester.RingKey, func(in interface{}) (interface{}, bool, error) {
+	err := r.KVClient.CAS(context.Background(), ingester.RingKey, func(in any) (any, bool, error) {
 		r := in.(*ring.Desc)
 		delete(r.Ingesters, "ingester-0")
 		return in, true, nil
 	})
 
-	test.Poll(t, time.Second, true, func() interface{} {
+	test.Poll(t, time.Second, true, func() any {
 		ings, _, _ := r.GetAllInstanceDescs(ring.Write)
 		return len(ings) == 1
 	})
@@ -637,10 +638,8 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		for _, enableHistogram := range []bool{false, true} {
-			enableHistogram := enableHistogram
 			t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(enableHistogram)), func(t *testing.T) {
 				t.Parallel()
 				limits := &validation.Limits{}
@@ -805,7 +804,6 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
@@ -882,7 +880,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[1].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
 	ingesters[2].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 
-	for i := 0; i < numberOfWrites; i++ {
+	for range numberOfWrites {
 		request := makeWriteRequest(0, 30, 20, 10)
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
@@ -895,7 +893,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[1].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 	ingesters[2].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
 
-	for i := 0; i < numberOfWrites; i++ {
+	for range numberOfWrites {
 		request := makeWriteRequest(0, 300, 200, 10)
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
@@ -908,7 +906,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[1].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 	ingesters[2].happy.Store(true)
 
-	for i := 0; i < numberOfWrites; i++ {
+	for range numberOfWrites {
 		request := makeWriteRequest(0, 30, 20, 10)
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
@@ -921,7 +919,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[1].happy.Store(true)
 	ingesters[2].happy.Store(true)
 
-	for i := 0; i < 1; i++ {
+	for range 1 {
 		request := makeWriteRequest(0, 30, 20, 10)
 		_, err := d.Push(ctx, request)
 		require.NoError(t, err)
@@ -932,7 +930,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[1].happy.Store(true)
 	ingesters[2].happy.Store(true)
 
-	err := r.KVClient.CAS(context.Background(), ingester.RingKey, func(in interface{}) (interface{}, bool, error) {
+	err := r.KVClient.CAS(context.Background(), ingester.RingKey, func(in any) (any, bool, error) {
 		r := in.(*ring.Desc)
 		ingester2 := r.Ingesters["ingester-2"]
 		ingester2.State = ring.LEFT
@@ -944,12 +942,12 @@ func TestPush_QuorumError(t *testing.T) {
 	require.NoError(t, err)
 
 	// Give time to the ring get updated with the KV value
-	test.Poll(t, 15*time.Second, true, func() interface{} {
+	test.Poll(t, 15*time.Second, true, func() any {
 		replicationSet, _ := r.GetAllHealthy(ring.Read)
 		return len(replicationSet.Instances) == 2
 	})
 
-	for i := 0; i < numberOfWrites; i++ {
+	for range numberOfWrites {
 		request := makeWriteRequest(0, 30, 20, 10)
 		_, err := d.Push(ctx, request)
 		require.Error(t, err)
@@ -1096,10 +1094,8 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		for _, enableHistogram := range []bool{true, false} {
-			enableHistogram := enableHistogram
 			t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(enableHistogram)), func(t *testing.T) {
 				t.Parallel()
 				limits := &validation.Limits{}
@@ -1204,7 +1200,6 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 			tc := tc
 			shardByAllLabels := shardByAllLabels
 			for _, enableHistogram := range []bool{true, false} {
-				enableHistogram := enableHistogram
 				t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v, histogram=%v)", i, shardByAllLabels, enableHistogram), func(t *testing.T) {
 					t.Parallel()
 					var limits validation.Limits
@@ -1267,7 +1262,6 @@ func TestDistributor_PushMixedHAInstances(t *testing.T) {
 			tc := tc
 			shardByAllLabels := shardByAllLabels
 			for _, enableHistogram := range []bool{false} {
-				enableHistogram := enableHistogram
 				t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v, histogram=%v)", i, shardByAllLabels, enableHistogram), func(t *testing.T) {
 					t.Parallel()
 					var limits validation.Limits
@@ -1454,7 +1448,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 					})
 
 					// And reading each sample individually.
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						testcases = append(testcases, testcase{
 							name:                fmt.Sprintf("ReadOne(%s, sample=%d)", scenario, i),
 							numIngesters:        numIngesters,
@@ -1473,7 +1467,6 @@ func TestDistributor_PushQuery(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ds, ingesters, _, _ := prepare(t, prepConfig{
@@ -1559,7 +1552,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 
 		// Push more series to exceed the limit once we'll query back all series.
 		writeReq = &cortexpb.WriteRequest{}
-		for i := 0; i < maxChunksLimit; i++ {
+		for i := range maxChunksLimit {
 			writeReq.Timeseries = append(writeReq.Timeseries,
 				makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: fmt.Sprintf("another_series_%d", i)}}, 0, 0, histogram),
 			)
@@ -2039,7 +2032,6 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 	limits.AcceptHASamples = true
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			ds, ingesters, _, _ := prepare(t, prepConfig{
@@ -2099,9 +2091,7 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	}
 
 	for testName, tc := range tests {
-		tc := tc
 		for _, histogram := range []bool{true, false} {
-			histogram := histogram
 			t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(histogram)), func(t *testing.T) {
 				t.Parallel()
 				ds, _, _, _ := prepare(t, prepConfig{
@@ -2167,7 +2157,6 @@ func TestDistributor_Push_ExemplarValidation(t *testing.T) {
 	}
 
 	for testName, tc := range tests {
-		tc := tc
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			ds, _, _, _ := prepare(t, prepConfig{
@@ -2237,9 +2226,8 @@ func BenchmarkDistributor_GetLabelsValues(b *testing.B) {
 			lblValuesDuplicateRatio: tc.lblValuesDuplicateRatio,
 		})
 		b.Run(name, func(b *testing.B) {
-			b.ResetTimer()
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := ds[0].LabelValuesForLabelName(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__", nil, false)
 				require.NoError(b, err)
 			}
@@ -2265,8 +2253,8 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
 				lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
-				for i := 0; i < numSeriesPerRequest; i++ {
-					for i := 0; i < 10; i++ {
+				for i := range numSeriesPerRequest {
+					for i := range 10 {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
@@ -2290,9 +2278,9 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
-				for i := 0; i < numSeriesPerRequest; i++ {
+				for i := range numSeriesPerRequest {
 					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
@@ -2315,7 +2303,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
-				for i := 0; i < numSeriesPerRequest; i++ {
+				for i := range numSeriesPerRequest {
 					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
 					for i := 1; i < 31; i++ {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
@@ -2340,9 +2328,9 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
-				for i := 0; i < numSeriesPerRequest; i++ {
+				for i := range numSeriesPerRequest {
 					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
@@ -2368,9 +2356,9 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
-				for i := 0; i < numSeriesPerRequest; i++ {
+				for i := range numSeriesPerRequest {
 					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
@@ -2396,9 +2384,9 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
-				for i := 0; i < numSeriesPerRequest; i++ {
+				for i := range numSeriesPerRequest {
 					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
@@ -2425,9 +2413,9 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
-				for i := 0; i < numSeriesPerRequest; i++ {
+				for i := range numSeriesPerRequest {
 					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
@@ -2450,9 +2438,9 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
-				for i := 0; i < numSeriesPerRequest; i++ {
+				for i := range numSeriesPerRequest {
 					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, "foo"))
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
@@ -2479,7 +2467,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			b.Cleanup(func() { assert.NoError(b, closer.Close()) })
 
 			err := kvStore.CAS(context.Background(), ingester.RingKey,
-				func(_ interface{}) (interface{}, bool, error) {
+				func(_ any) (any, bool, error) {
 					d := &ring.Desc{}
 					d.AddIngester("ingester-1", "127.0.0.1", "", tg.GenerateTokens(d, "ingester-1", "", 128, true), ring.ACTIVE, time.Now())
 					return d, true, nil
@@ -2498,7 +2486,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				require.NoError(b, services.StopAndAwaitTerminated(context.Background(), ingestersRing))
 			})
 
-			test.Poll(b, time.Second, 1, func() interface{} {
+			test.Poll(b, time.Second, 1, func() any {
 				return ingestersRing.InstancesCount()
 			})
 
@@ -2533,9 +2521,8 @@ func BenchmarkDistributor_Push(b *testing.B) {
 
 			// Run the benchmark.
 			b.ReportAllocs()
-			b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				_, err := distributor.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 				if testData.expectedErr == "" && err != nil {
 					b.Fatalf("no error expected but got %v", err)
@@ -2599,14 +2586,14 @@ func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
 
 		now := model.Now()
 
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 
 			req := mockWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "test", "app", "m", "uniq8", strconv.Itoa(i))}, 1, now.Unix(), histogram)
 			_, err := ds[0].Push(ctx, req)
 			require.NoError(t, err)
 		}
 
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			_, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, false, mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test"))
 			require.NoError(t, err)
 		}
@@ -2768,9 +2755,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		for _, histogram := range []bool{true, false} {
-			histogram := histogram
 			t.Run(fmt.Sprintf("%s, histogram=%s", testName, strconv.FormatBool(histogram)), func(t *testing.T) {
 				t.Parallel()
 				now := model.Now()
@@ -2849,9 +2834,9 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
 				samples := make([]cortexpb.Sample, numSeriesPerRequest)
 
-				for i := 0; i < numSeriesPerRequest; i++ {
+				for i := range numSeriesPerRequest {
 					lbls := labels.NewBuilder(labels.FromStrings(model.MetricNameLabel, fmt.Sprintf("foo_%d", i)))
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
@@ -2897,9 +2882,8 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 
 			// Run the benchmark.
 			b.ReportAllocs()
-			b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				now := model.Now()
 				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, nil, false, testData.matchers...)
 
@@ -2947,7 +2931,6 @@ func TestDistributor_MetricsMetadata(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			// Create distributor
@@ -3092,7 +3075,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 	tb.Cleanup(func() { assert.NoError(tb, closer.Close()) })
 
 	err := kvStore.CAS(context.Background(), ingester.RingKey,
-		func(_ interface{}) (interface{}, bool, error) {
+		func(_ any) (any, bool, error) {
 			return &ring.Desc{
 				Ingesters: ingesterDescs,
 			}, true, nil
@@ -3116,7 +3099,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 	require.NoError(tb, err)
 	require.NoError(tb, services.StartAndAwaitRunning(context.Background(), ingestersRing))
 
-	test.Poll(tb, time.Second, cfg.numIngesters, func() interface{} {
+	test.Poll(tb, time.Second, cfg.numIngesters, func() any {
 		return ingestersRing.InstancesCount()
 	})
 
@@ -3184,7 +3167,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 	// If the distributors ring is setup, wait until the first distributor
 	// updates to the expected size
 	if distributors[0].distributorsRing != nil {
-		test.Poll(tb, time.Second, cfg.numDistributors, func() interface{} {
+		test.Poll(tb, time.Second, cfg.numDistributors, func() any {
 			return distributors[0].distributorsLifeCycler.HealthyInstancesCount()
 		})
 	}
@@ -3205,7 +3188,7 @@ func stopAll(ds []*Distributor, r *ring.Ring) {
 
 func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histograms int) *cortexpb.WriteRequest {
 	request := &cortexpb.WriteRequest{}
-	for i := 0; i < samples; i++ {
+	for i := range samples {
 		request.Timeseries = append(request.Timeseries, makeWriteRequestTimeseries(
 			[]cortexpb.LabelAdapter{
 				{Name: model.MetricNameLabel, Value: "foo"},
@@ -3214,7 +3197,7 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histogr
 			}, startTimestampMs+int64(i), int64(i), false))
 	}
 
-	for i := 0; i < histograms; i++ {
+	for i := range histograms {
 		request.Timeseries = append(request.Timeseries, makeWriteRequestTimeseries(
 			[]cortexpb.LabelAdapter{
 				{Name: model.MetricNameLabel, Value: "foo"},
@@ -3223,7 +3206,7 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histogr
 			}, startTimestampMs+int64(i), int64(i), true))
 	}
 
-	for i := 0; i < metadata; i++ {
+	for i := range metadata {
 		m := &cortexpb.MetricMetadata{
 			MetricFamilyName: fmt.Sprintf("metric_%d", i),
 			Type:             cortexpb.COUNTER,
@@ -3254,7 +3237,7 @@ func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts, value int64,
 
 func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *cortexpb.WriteRequest {
 	request := &cortexpb.WriteRequest{}
-	for i := 0; i < samples; i++ {
+	for i := range samples {
 		ts := cortexpb.PreallocTimeseries{
 			TimeSeries: &cortexpb.TimeSeries{
 				Labels: []cortexpb.LabelAdapter{
@@ -3369,7 +3352,7 @@ func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.Write
 			}
 		} else {
 			var s = make([]cortexpb.Sample, 0)
-			for i := 0; i < samples; i++ {
+			for i := range samples {
 				sample := cortexpb.Sample{
 					Value:       float64(i),
 					TimestampMs: int64(i),
@@ -3475,9 +3458,7 @@ func (i *mockIngester) series() map[uint32]*cortexpb.PreallocTimeseries {
 	defer i.Unlock()
 
 	result := map[uint32]*cortexpb.PreallocTimeseries{}
-	for k, v := range i.timeseries {
-		result[k] = v
-	}
+	maps.Copy(result, i.timeseries)
 	return result
 }
 
@@ -3939,7 +3920,6 @@ func TestDistributorValidation(t *testing.T) {
 			err: httpgrpc.Errorf(http.StatusBadRequest, `timestamp too new: %d metric: "testmetric"`, future),
 		},
 	} {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			var limits validation.Limits
@@ -4108,9 +4088,7 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		for _, enableHistogram := range []bool{false, true} {
-			enableHistogram := enableHistogram
 			t.Run(fmt.Sprintf("%s, histogram=%s", tc.name, strconv.FormatBool(enableHistogram)), func(t *testing.T) {
 				t.Parallel()
 				var err error
@@ -4166,7 +4144,6 @@ func TestDistributor_Push_EmptyLabel(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var err error
@@ -4368,7 +4345,7 @@ func TestDistributor_PushLabelSetMetrics(t *testing.T) {
 
 func countMockIngestersCalls(ingesters []*mockIngester, name string) int {
 	count := 0
-	for i := 0; i < len(ingesters); i++ {
+	for i := range ingesters {
 		if ingesters[i].countCalls(name) > 0 {
 			count++
 		}

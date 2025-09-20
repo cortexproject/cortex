@@ -45,7 +45,7 @@ func (v *DayValue) IsSet() bool {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (v *DayValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (v *DayValue) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
@@ -54,6 +54,6 @@ func (v *DayValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (v DayValue) MarshalYAML() (interface{}, error) {
+func (v DayValue) MarshalYAML() (any, error) {
 	return v.Time.Time().UTC().Format("2006-01-02"), nil
 }

@@ -64,7 +64,7 @@ func Test_createClient_singleBackend_mustContainRoleAndTypeLabels(t *testing.T) 
 	reg := prometheus.NewPedanticRegistry()
 	client, err := createClient("mock", "/test1", storeCfg, testCodec, Primary, reg, testLogger{})
 	require.NoError(t, err)
-	require.NoError(t, client.CAS(context.Background(), "/test", func(_ interface{}) (out interface{}, retry bool, err error) {
+	require.NoError(t, client.CAS(context.Background(), "/test", func(_ any) (out any, retry bool, err error) {
 		out = &mockMessage{id: "inCAS"}
 		retry = false
 		return
@@ -82,7 +82,7 @@ func Test_createClient_multiBackend_mustContainRoleAndTypeLabels(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	client, err := createClient("multi", "/test1", storeCfg, testCodec, Primary, reg, testLogger{})
 	require.NoError(t, err)
-	require.NoError(t, client.CAS(context.Background(), "/test", func(_ interface{}) (out interface{}, retry bool, err error) {
+	require.NoError(t, client.CAS(context.Background(), "/test", func(_ any) (out any, retry bool, err error) {
 		out = &mockMessage{id: "inCAS"}
 		retry = false
 		return
@@ -154,6 +154,6 @@ func (m *mockMessage) ProtoMessage() {
 type testLogger struct {
 }
 
-func (l testLogger) Log(keyvals ...interface{}) error {
+func (l testLogger) Log(keyvals ...any) error {
 	return nil
 }

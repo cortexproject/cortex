@@ -26,7 +26,7 @@ func (v *URLValue) Set(s string) error {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (v *URLValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (v *URLValue) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
@@ -42,7 +42,7 @@ func (v *URLValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (v URLValue) MarshalYAML() (interface{}, error) {
+func (v URLValue) MarshalYAML() (any, error) {
 	if v.URL == nil {
 		return "", nil
 	}

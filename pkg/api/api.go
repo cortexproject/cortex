@@ -45,7 +45,7 @@ import (
 
 // DistributorPushWrapper wraps around a push. It is similar to middleware.Interface.
 type DistributorPushWrapper func(next push.Func) push.Func
-type ConfigHandler func(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc
+type ConfigHandler func(actualCfg any, defaultCfg any) http.HandlerFunc
 
 type Config struct {
 	ResponseCompression bool `yaml:"response_compression_enabled"`
@@ -262,7 +262,7 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 }
 
 // RegisterAPI registers the standard endpoints associated with a running Cortex.
-func (a *API) RegisterAPI(httpPathPrefix string, actualCfg interface{}, defaultCfg interface{}) {
+func (a *API) RegisterAPI(httpPathPrefix string, actualCfg any, defaultCfg any) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/config", "Current Config (including the default values)")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/config?mode=diff", "Current Config (show only values that differ from the defaults)")
 

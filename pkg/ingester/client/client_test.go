@@ -22,7 +22,7 @@ func TestMarshall(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	{
 		req := cortexpb.WriteRequest{}
-		for i := 0; i < numSeries; i++ {
+		for i := range numSeries {
 			req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseries{
 				TimeSeries: &cortexpb.TimeSeries{
 					Labels: []cortexpb.LabelAdapter{

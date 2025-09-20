@@ -28,7 +28,7 @@ func Test_EncodeMultikey(t *testing.T) {
 	codec := NewProtoCodec("test", newProtoDescMock)
 	descMock := &DescMock{}
 	expectedSplitKeys := []string{"t1", "t2"}
-	expectedSplit := map[string]interface{}{
+	expectedSplit := map[string]any{
 		expectedSplitKeys[0]: descMock,
 		expectedSplitKeys[1]: descMock,
 	}
@@ -94,17 +94,17 @@ func newProtoDescMock() proto.Message {
 	return &DescMock{}
 }
 
-func (m *DescMock) Clone() interface{} {
+func (m *DescMock) Clone() any {
 	args := m.Called()
 	return args.Get(0)
 }
 
-func (m *DescMock) SplitByID() map[string]interface{} {
+func (m *DescMock) SplitByID() map[string]any {
 	args := m.Called()
-	return args.Get(0).(map[string]interface{})
+	return args.Get(0).(map[string]any)
 }
 
-func (m *DescMock) JoinIds(map[string]interface{}) {
+func (m *DescMock) JoinIds(map[string]any) {
 	m.Called()
 }
 
@@ -113,7 +113,7 @@ func (m *DescMock) GetItemFactory() proto.Message {
 	return args.Get(0).(proto.Message)
 }
 
-func (m *DescMock) FindDifference(that MultiKey) (interface{}, []string, error) {
+func (m *DescMock) FindDifference(that MultiKey) (any, []string, error) {
 	args := m.Called(that)
 	var err error
 	if args.Get(2) != nil {

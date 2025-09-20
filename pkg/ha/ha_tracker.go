@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -109,10 +110,8 @@ func (cfg *HATrackerConfig) Validate() error {
 
 	// Tracker kv store only supports consul and etcd.
 	storeAllowedList := []string{"consul", "etcd"}
-	for _, as := range storeAllowedList {
-		if cfg.KVStore.Store == as {
-			return nil
-		}
+	if slices.Contains(storeAllowedList, cfg.KVStore.Store) {
+		return nil
 	}
 	return fmt.Errorf("invalid HATracker KV store type: %s", cfg.KVStore.Store)
 }
@@ -260,7 +259,7 @@ func (c *HATracker) loop(ctx context.Context) error {
 
 	// The KVStore config we gave when creating c should have contained a prefix,
 	// which would have given us a prefixed KVStore client. So, we can pass empty string here.
-	c.client.WatchPrefix(ctx, "", func(key string, value interface{}) bool {
+	c.client.WatchPrefix(ctx, "", func(key string, value any) bool {
 		replica := value.(*ReplicaDesc)
 		user, cluster, keyHasSeparator := strings.Cut(key, "/")
 
@@ -383,7 +382,7 @@ func (c *HATracker) cleanupOldReplicas(ctx context.Context, deadline time.Time) 
 
 		// Not marked as deleted yet.
 		if desc.DeletedAt == 0 && timestamp.Time(desc.ReceivedAt).Before(deadline) {
-			err := c.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+			err := c.client.CAS(ctx, key, func(in any) (out any, retry bool, err error) {
 				d, ok := in.(*ReplicaDesc)
 				if !ok || d == nil || d.DeletedAt > 0 || !timestamp.Time(desc.ReceivedAt).Before(deadline) {
 					return nil, false, nil
@@ -452,7 +451,7 @@ func (c *HATracker) CheckReplica(ctx context.Context, userID, replicaGroup, repl
 }
 
 func (c *HATracker) checkKVStore(ctx context.Context, key, replica string, now time.Time) error {
-	return c.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+	return c.client.CAS(ctx, key, func(in any) (out any, retry bool, err error) {
 		if desc, ok := in.(*ReplicaDesc); ok && desc.DeletedAt == 0 {
 			// We don't need to CAS and update the timestamp in the KV store if the timestamp we've received
 			// this sample at is less than updateTimeout amount of time since the timestamp in the KV store.

@@ -39,7 +39,7 @@ type testOverrides struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (l *TestLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *TestLimits) UnmarshalYAML(unmarshal func(any) error) error {
 	if defaultTestLimits != nil {
 		*l = *defaultTestLimits
 	}
@@ -47,7 +47,7 @@ func (l *TestLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return unmarshal((*plain)(l))
 }
 
-func testLoadOverrides(r io.Reader) (interface{}, error) {
+func testLoadOverrides(r io.Reader) (any, error) {
 	var overrides = &testOverrides{}
 
 	decoder := yaml.NewDecoder(r)
@@ -74,7 +74,7 @@ func newTestOverridesManagerConfig(t *testing.T, i int32) (*atomic.Int32, Config
 	return config, Config{
 		ReloadPeriod: 5 * time.Second,
 		LoadPath:     tempFile.Name(),
-		Loader: func(_ io.Reader) (i interface{}, err error) {
+		Loader: func(_ io.Reader) (i any, err error) {
 			val := int(config.Load())
 			return val, nil
 		},
@@ -181,7 +181,7 @@ func TestManager_ListenerWithDefaultLimits(t *testing.T) {
 	err = overridesManager.loadConfig(context.TODO())
 	require.NoError(t, err)
 
-	var newValue interface{}
+	var newValue any
 	select {
 	case newValue = <-ch:
 		// ok

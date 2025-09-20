@@ -15,7 +15,7 @@ type traced struct {
 	d DB
 }
 
-func (t traced) trace(name string, args ...interface{}) {
+func (t traced) trace(name string, args ...any) {
 	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("%s: %#v", name, args))
 }
 

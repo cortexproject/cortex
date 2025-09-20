@@ -24,7 +24,7 @@ import (
 type BucketClientFactory func(ctx context.Context) (objstore.Bucket, error)
 
 // Loader loads the configuration from file.
-type Loader func(r io.Reader) (interface{}, error)
+type Loader func(r io.Reader) (any, error)
 
 // Config holds the config for an Manager instance.
 // It holds config related to loading per-tenant config.
@@ -55,10 +55,10 @@ type Manager struct {
 	logger log.Logger
 
 	listenersMtx sync.Mutex
-	listeners    []chan interface{}
+	listeners    []chan any
 
 	configMtx sync.RWMutex
-	config    interface{}
+	config    any
 
 	configLoadSuccess prometheus.Gauge
 	configHash        *prometheus.GaugeVec
@@ -115,8 +115,8 @@ func (om *Manager) starting(ctx context.Context) error {
 //
 // When config manager is stopped, it closes all channels to notify receivers that they will
 // not receive any more updates.
-func (om *Manager) CreateListenerChannel(buffer int) <-chan interface{} {
-	ch := make(chan interface{}, buffer)
+func (om *Manager) CreateListenerChannel(buffer int) <-chan any {
+	ch := make(chan any, buffer)
 
 	om.listenersMtx.Lock()
 	defer om.listenersMtx.Unlock()
@@ -126,7 +126,7 @@ func (om *Manager) CreateListenerChannel(buffer int) <-chan interface{} {
 }
 
 // CloseListenerChannel removes given channel from list of channels to send notifications to and closes channel.
-func (om *Manager) CloseListenerChannel(listener <-chan interface{}) {
+func (om *Manager) CloseListenerChannel(listener <-chan any) {
 	om.listenersMtx.Lock()
 	defer om.listenersMtx.Unlock()
 
@@ -205,13 +205,13 @@ func (om *Manager) loadConfigFromBucket(ctx context.Context) ([]byte, error) {
 	return buf, err
 }
 
-func (om *Manager) setConfig(config interface{}) {
+func (om *Manager) setConfig(config any) {
 	om.configMtx.Lock()
 	defer om.configMtx.Unlock()
 	om.config = config
 }
 
-func (om *Manager) callListeners(newValue interface{}) {
+func (om *Manager) callListeners(newValue any) {
 	om.listenersMtx.Lock()
 	defer om.listenersMtx.Unlock()
 
@@ -238,7 +238,7 @@ func (om *Manager) stopping(_ error) error {
 }
 
 // GetConfig returns last loaded config value, possibly nil.
-func (om *Manager) GetConfig() interface{} {
+func (om *Manager) GetConfig() any {
 	om.configMtx.RLock()
 	defer om.configMtx.RUnlock()
 

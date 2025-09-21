@@ -186,11 +186,6 @@ parquet_converter:
   # CLI flag: -parquet-converter.file-buffer-enabled
   [file_buffer_enabled: <boolean> | default = true]
 
-  # Configure the additional sort columns, in order of precedence, to improve query performance. 
-  # These will be applied during Parquet file generation.
-  # CLI flag: -parquet-converter.sort-columns
-  [additional_sort_columns: <list of string> | default = []]
-
   # Local directory path for caching TSDB blocks during parquet conversion.
   # CLI flag: -parquet-converter.data-dir
   [data_dir: <string> | default = "./data"]

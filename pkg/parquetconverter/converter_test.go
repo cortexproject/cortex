@@ -362,45 +362,6 @@ func TestConverter_ShouldNotFailOnAccessDenyError(t *testing.T) {
 	assert.Equal(t, 0.0, testutil.ToFloat64(converter.metrics.convertBlockFailures.WithLabelValues(userID)))
 }
 
-func TestConverter_SortColumns(t *testing.T) {
-	bucketClient, err := filesystem.NewBucket(t.TempDir())
-	require.NoError(t, err)
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
-	limits.ParquetConverterEnabled = true
-
-	testCases := []struct {
-		desc                string
-		cfg                 Config
-		expectedSortColumns []string
-	}{
-		{
-			desc: "no additional sort columns are added",
-			cfg: Config{
-				MetaSyncConcurrency: 1,
-				DataDir:             t.TempDir(),
-			},
-			expectedSortColumns: []string{labels.MetricName},
-		},
-		{
-			desc: "additional sort columns are added",
-			cfg: Config{
-				MetaSyncConcurrency:   1,
-				DataDir:               t.TempDir(),
-				AdditionalSortColumns: []string{"cluster", "namespace"},
-			},
-			expectedSortColumns: []string{labels.MetricName, "cluster", "namespace"},
-		},
-	}
-	for _, tC := range testCases {
-		t.Run(tC.desc, func(t *testing.T) {
-			c, _, _ := prepare(t, tC.cfg, objstore.WithNoopInstr(bucketClient), limits, nil)
-			assert.Equal(t, tC.expectedSortColumns, c.cfg.AdditionalSortColumns,
-				"Converter should be created with the expected sort columns")
-		})
-	}
-}
-
 // mockBucket implements objstore.Bucket for testing
 type mockBucket struct {
 	objstore.Bucket

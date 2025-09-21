@@ -189,9 +189,9 @@ type Limits struct {
 	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Parquet Queryable enforced limits.
-	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count" doc:"hidden"`
-	ParquetMaxFetchedChunkBytes int `yaml:"parquet_max_fetched_chunk_bytes" json:"parquet_max_fetched_chunk_bytes" doc:"hidden"`
-	ParquetMaxFetchedDataBytes  int `yaml:"parquet_max_fetched_data_bytes" json:"parquet_max_fetched_data_bytes" doc:"hidden"`
+	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count"`
+	ParquetMaxFetchedChunkBytes int `yaml:"parquet_max_fetched_chunk_bytes" json:"parquet_max_fetched_chunk_bytes"`
+	ParquetMaxFetchedDataBytes  int `yaml:"parquet_max_fetched_data_bytes" json:"parquet_max_fetched_data_bytes"`
 
 	// Query Frontend / Scheduler enforced limits.
 	MaxOutstandingPerTenant     int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
@@ -220,8 +220,8 @@ type Limits struct {
 	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
 
 	// Parquet converter
-	ParquetConverterEnabled         bool    `yaml:"parquet_converter_enabled" json:"parquet_converter_enabled" doc:"hidden"`
-	ParquetConverterTenantShardSize float64 `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size" doc:"hidden"`
+	ParquetConverterEnabled         bool    `yaml:"parquet_converter_enabled" json:"parquet_converter_enabled"`
+	ParquetConverterTenantShardSize float64 `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.

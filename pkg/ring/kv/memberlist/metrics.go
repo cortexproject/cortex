@@ -3,9 +3,9 @@ package memberlist
 import (
 	"time"
 
-	armonmetrics "github.com/armon/go-metrics"
-	armonprometheus "github.com/armon/go-metrics/prometheus"
 	"github.com/go-kit/log/level"
+	armonmetrics "github.com/hashicorp/go-metrics"
+	armonprometheus "github.com/hashicorp/go-metrics/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 

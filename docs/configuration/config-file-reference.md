@@ -4126,6 +4126,22 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # zones are not available.
 [query_partial_data: <boolean> | default = false]
 
+# The maximum number of rows that can be fetched when querying parquet storage.
+# Each row maps to a series in a parquet file. This limit applies before
+# materializing chunks. 0 to disable.
+# CLI flag: -querier.parquet-queryable.max-fetched-row-count
+[parquet_max_fetched_row_count: <int> | default = 0]
+
+# The maximum number of bytes that can be used to fetch chunk column pages when
+# querying parquet storage. 0 to disable.
+# CLI flag: -querier.parquet-queryable.max-fetched-chunk-bytes
+[parquet_max_fetched_chunk_bytes: <int> | default = 0]
+
+# The maximum number of bytes that can be used to fetch all column pages when
+# querying parquet storage. 0 to disable.
+# CLI flag: -querier.parquet-queryable.max-fetched-data-bytes
+[parquet_max_fetched_data_bytes: <int> | default = 0]
+
 # Maximum number of outstanding requests per tenant per request queue (either
 # query frontend or query scheduler); requests beyond this error with HTTP 429.
 # CLI flag: -frontend.max-outstanding-requests-per-tenant
@@ -4223,6 +4239,18 @@ query_rejection:
 # Time series count limit for each compaction partition. 0 means no limit
 # CLI flag: -compactor.partition-series-count
 [compactor_partition_series_count: <int> | default = 0]
+
+# If set, enables the Parquet converter to create the parquet files.
+# CLI flag: -parquet-converter.enabled
+[parquet_converter_enabled: <boolean> | default = false]
+
+# The default tenant's shard size when the shuffle-sharding strategy is used by
+# the parquet converter. When this setting is specified in the per-tenant
+# overrides, a value of 0 disables shuffle sharding for the tenant. If the value
+# is < 1 and > 0 the shard size will be a percentage of the total parquet
+# converters.
+# CLI flag: -parquet-converter.tenant-shard-size
+[parquet_converter_tenant_shard_size: <float> | default = 0]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

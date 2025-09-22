@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// TODO: if we change per labelset series limit from one reasoning to many, we can remove the hardcoded reasoning and add an extra reasoning map
 const (
 	perLabelsetSeriesLimit = "per_labelset_series_limit"
 )

@@ -1603,20 +1603,21 @@ func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error
 
 // AllUserStats returns statistics about all users.
 // Note it does not divide by the ReplicationFactor like UserStats()
-func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats, error) {
+func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats, int, error) {
 	// Add up by user, across all responses from ingesters
 	perUserTotals := make(map[string]ingester.UserStats)
+	queriedIngesterNum := 0
 
 	req := &ingester_client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
 	replicationSet, err := d.ingestersRing.GetAllHealthy(ring.Read)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	for _, ingester := range replicationSet.Instances {
 		client, err := d.ingesterPool.GetClientFor(ingester.Addr)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		resp, err := client.(ingester_client.IngesterClient).AllUserStats(ctx, req)
 		if err != nil {
@@ -1626,6 +1627,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 			// that scenario, we continue the loop to work API.
 			continue
 		}
+		queriedIngesterNum++
 		for _, u := range resp.Stats {
 			s := perUserTotals[u.UserId]
 			s.IngestionRate += u.Data.IngestionRate
@@ -1634,6 +1636,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 			s.NumSeries += u.Data.NumSeries
 			s.ActiveSeries += u.Data.ActiveSeries
 			s.LoadedBlocks += u.Data.LoadedBlocks
+			s.QueriedIngesters += 1
 			perUserTotals[u.UserId] = s
 		}
 	}
@@ -1650,22 +1653,23 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 				NumSeries:         stats.NumSeries,
 				ActiveSeries:      stats.ActiveSeries,
 				LoadedBlocks:      stats.LoadedBlocks,
+				QueriedIngesters:  stats.QueriedIngesters,
 			},
 		})
 	}
 
-	return response, nil
+	return response, queriedIngesterNum, nil
 }
 
 // AllUserStatsHandler shows stats for all users.
 func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {
-	stats, err := d.AllUserStats(r.Context())
+	stats, queriedIngesterNum, err := d.AllUserStats(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	ingester.AllUserStatsRender(w, r, stats, d.ingestersRing.ReplicationFactor())
+	ingester.AllUserStatsRender(w, r, stats, d.ingestersRing.ReplicationFactor(), queriedIngesterNum)
 }
 
 func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {

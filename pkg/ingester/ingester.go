@@ -2133,7 +2133,7 @@ func (i *Ingester) userStats() []UserIDStats {
 func (i *Ingester) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {
 	stats := i.userStats()
 
-	AllUserStatsRender(w, r, stats, 0)
+	AllUserStatsRender(w, r, stats, 0, 0)
 }
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.

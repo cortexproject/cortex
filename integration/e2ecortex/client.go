@@ -33,6 +33,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 
+	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
@@ -113,6 +114,40 @@ func NewPromQueryClient(address string) (*Client, error) {
 	}
 
 	return c, nil
+}
+
+func (c *Client) AllUserStats() ([]ingester.UserIDStats, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/distributor/all_user_stats", c.distributorAddress), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, err
+	}
+
+	bodyBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	userStats := make([]ingester.UserIDStats, 0)
+	err = json.Unmarshal(bodyBytes, &userStats)
+	if err != nil {
+		return nil, err
+	}
+
+	return userStats, nil
 }
 
 // Push the input timeseries to the remote endpoint

@@ -55,6 +55,8 @@ func hashMatchers(matchers []*labels.Matcher, mint, maxt int64, hints storage.Se
 	writeString(sb, hints.Func)
 	writeString(sb, strings.Join(hints.Grouping, ";"))
 	writeBool(sb, hints.By)
+	writeString(sb, strings.Join(hints.ProjectionLabels, ";"))
+	writeBool(sb, hints.ProjectionInclude)
 
 	key := sb.Sum64()
 	return key

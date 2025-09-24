@@ -106,7 +106,7 @@ limits:
 
   # Shard size for shuffle sharding (0 = disabled)
   parquet_converter_tenant_shard_size: 0.8
-  
+
   # Defines sort columns applied during Parquet file generation for specific tenants
   parquet_converter_sort_columns: ["label1", "label2"]
 ```

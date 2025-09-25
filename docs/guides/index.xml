@@ -1116,11 +1116,15 @@ promote_resource_attributes: [&amp;#34;attr1&amp;#34;, &amp;#34;attr2&amp;#34;]
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Shard size for shuffle sharding (0 = disabled)&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_tenant_shard_size&lt;/span>: &lt;span style="color:#ae81ff">0.8&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Defines sort columns applied during Parquet file generation for specific tenants&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_sort_columns&lt;/span>: [&lt;span style="color:#e6db74">&amp;#34;label1&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">&amp;#34;label2&amp;#34;&lt;/span>]
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can also configure per-tenant settings using runtime configuration:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">overrides&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant-1&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_enabled&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_tenant_shard_size&lt;/span>: &lt;span style="color:#ae81ff">2&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_sort_columns&lt;/span>: [&lt;span style="color:#e6db74">&amp;#34;cluster&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">&amp;#34;namespace&amp;#34;&lt;/span>]
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant-2&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">parquet_converter_enabled&lt;/span>: &lt;span style="color:#66d9ef">false&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="enabling-parquet-queryable">Enabling Parquet Queryable&lt;/h3>
@@ -1259,6 +1263,7 @@ promote_resource_attributes: [&amp;#34;attr1&amp;#34;, &amp;#34;attr2&amp;#34;]
 &lt;li>&lt;strong>Row Group Size&lt;/strong>: Adjust &lt;code>max_rows_per_row_group&lt;/code> based on your query patterns&lt;/li>
 &lt;li>&lt;strong>Cache Size&lt;/strong>: Tune &lt;code>parquet_queryable_shard_cache_size&lt;/code> based on available memory&lt;/li>
 &lt;li>&lt;strong>Concurrency&lt;/strong>: Adjust &lt;code>meta_sync_concurrency&lt;/code> based on object storage performance&lt;/li>
+&lt;li>&lt;strong>Sort Columns&lt;/strong>: Configure &lt;code>parquet_converter_sort_columns&lt;/code> based on your most common query filters to improve query performance&lt;/li>
 &lt;/ol>
 &lt;h3 id="fallback-configuration">Fallback Configuration&lt;/h3>
 &lt;ol>

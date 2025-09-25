@@ -539,9 +539,7 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	defer q.engine.activeQueryTracker.Delete(idx)
 
 	ctx = warnings.NewContext(ctx)
-	defer func() {
-		ret.Warnings = ret.Warnings.Merge(warnings.FromContext(ctx))
-	}()
+	warnings.MergeToContext(q.warns, ctx)
 
 	// Handle case with strings early on as this does not need us to process samples.
 	switch e := q.plan.Root().(type) {
@@ -549,8 +547,7 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 		return &promql.Result{Value: promql.String{V: e.Val, T: q.ts.UnixMilli()}}
 	}
 	ret = &promql.Result{
-		Value:    promql.Vector{},
-		Warnings: q.warns,
+		Value: promql.Vector{},
 	}
 	defer recoverEngine(q.engine.logger, q.plan, &ret.Err)
 
@@ -626,6 +623,7 @@ loop:
 		}
 		sort.Sort(matrix)
 		ret.Value = matrix
+		ret.Warnings = warnings.FromContext(ctx)
 		if matrix.ContainsSameLabelset() {
 			return newErrResult(ret, extlabels.ErrDuplicateLabelSet)
 		}
@@ -679,6 +677,7 @@ loop:
 	}
 
 	ret.Value = result
+	ret.Warnings = warnings.FromContext(ctx)
 	return ret
 }
 

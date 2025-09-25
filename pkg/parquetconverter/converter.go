@@ -139,7 +139,6 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 		metrics:        newMetrics(registerer),
 		bkt:            bkt,
 		baseConverterOptions: []convert.ConvertOption{
-			convert.WithSortBy(labels.MetricName),
 			convert.WithColDuration(time.Hour * 8),
 			convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
 		},
@@ -429,6 +428,11 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		start := time.Now()
 
 		converterOpts := append(c.baseConverterOptions, convert.WithName(b.ULID.String()))
+
+		sortColumns := []string{labels.MetricName}
+		userConfiguredSortColumns := c.limits.ParquetConverterSortColumns(userID)
+		sortColumns = append(sortColumns, userConfiguredSortColumns...)
+		converterOpts = append(converterOpts, convert.WithSortBy(sortColumns...))
 
 		if c.cfg.FileBufferEnabled {
 			converterOpts = append(converterOpts, convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")))

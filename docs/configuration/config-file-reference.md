@@ -4252,6 +4252,11 @@ query_rejection:
 # CLI flag: -parquet-converter.tenant-shard-size
 [parquet_converter_tenant_shard_size: <float> | default = 0]
 
+# Additional label names for specific tenants to sort by after metric name, in
+# order of precedence. These are applied during Parquet file generation.
+# CLI flag: -parquet-converter.sort-columns
+[parquet_converter_sort_columns: <list of string> | default = []]
+
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
 # are used.

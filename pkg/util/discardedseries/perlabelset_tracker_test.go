@@ -114,5 +114,5 @@ func TestPerLabelsetDiscardedSeriesTracker(t *testing.T) {
 
 func comparePerLabelsetSeriesVendedCount(t *testing.T, gaugeVec *prometheus.GaugeVec, user string, labelsetLimitId string, val int) {
 	gauge, _ := gaugeVec.GetMetricWithLabelValues("per_labelset_series_limit", user, labelsetLimitId)
-	require.Equal(t, testutil.ToFloat64(gauge), float64(val))
+	require.Equal(t, float64(val), testutil.ToFloat64(gauge))
 }

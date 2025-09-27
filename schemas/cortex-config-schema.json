@@ -1,5 +1,5 @@
 {
-  "$id": "https://cortexmetrics.io/schemas/cortex-config.json",
+  "$id": "https://raw.githubusercontent.com/cortexproject/cortex/master/schemas/cortex-config-schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "definitions": {
     "DisabledRuleGroup": {
@@ -475,7 +475,7 @@
                 },
                 "store": {
                   "default": "consul",
-                  "description": "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.",
+                  "description": "Backend storage to use for the ring. Supported values are: consul, dynamodb, etcd, inmemory, memberlist, multi.",
                   "type": "string",
                   "x-cli-flag": "alertmanager.sharding-ring.store"
                 }
@@ -2223,6 +2223,345 @@
               },
               "type": "object"
             },
+            "parquet_labels_cache": {
+              "properties": {
+                "attributes_ttl": {
+                  "default": "168h0m0s",
+                  "description": "TTL for caching object attributes for parquet labels file.",
+                  "type": "string",
+                  "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.attributes-ttl",
+                  "x-format": "duration"
+                },
+                "backend": {
+                  "description": "The parquet labels cache backend type. Single or Multiple cache backend can be provided. Supported values in single cache: memcached, redis, inmemory, and '' (disable). Supported values in multi level cache: a comma-separated list of (inmemory, memcached, redis)",
+                  "type": "string",
+                  "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.backend"
+                },
+                "inmemory": {
+                  "properties": {
+                    "max_size_bytes": {
+                      "default": 1073741824,
+                      "description": "Maximum size in bytes of in-memory parquet-labels cache used (shared between all tenants).",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.inmemory.max-size-bytes"
+                    }
+                  },
+                  "type": "object"
+                },
+                "max_get_range_requests": {
+                  "default": 3,
+                  "description": "Maximum number of sub-GetRange requests that a single GetRange request can be split into when fetching parquet labels file. Zero or negative value = unlimited number of sub-requests.",
+                  "type": "number",
+                  "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.max-get-range-requests"
+                },
+                "memcached": {
+                  "properties": {
+                    "addresses": {
+                      "description": "Comma separated list of memcached addresses. Supported prefixes are: dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after that).",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.addresses"
+                    },
+                    "auto_discovery": {
+                      "default": false,
+                      "description": "Use memcached auto-discovery mechanism provided by some cloud provider like GCP and AWS",
+                      "type": "boolean",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.auto-discovery"
+                    },
+                    "max_async_buffer_size": {
+                      "default": 10000,
+                      "description": "The maximum number of enqueued asynchronous operations allowed.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.max-async-buffer-size"
+                    },
+                    "max_async_concurrency": {
+                      "default": 3,
+                      "description": "The maximum number of concurrent asynchronous operations can occur.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.max-async-concurrency"
+                    },
+                    "max_get_multi_batch_size": {
+                      "default": 0,
+                      "description": "The maximum number of keys a single underlying get operation should run. If more keys are specified, internally keys are split into multiple batches and fetched concurrently, honoring the max concurrency. If set to 0, the max batch size is unlimited.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.max-get-multi-batch-size"
+                    },
+                    "max_get_multi_concurrency": {
+                      "default": 100,
+                      "description": "The maximum number of concurrent connections running get operations. If set to 0, concurrency is unlimited.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.max-get-multi-concurrency"
+                    },
+                    "max_idle_connections": {
+                      "default": 16,
+                      "description": "The maximum number of idle connections that will be maintained per address.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.max-idle-connections"
+                    },
+                    "max_item_size": {
+                      "default": 1048576,
+                      "description": "The maximum size of an item stored in memcached. Bigger items are not stored. If set to 0, no maximum size is enforced.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.max-item-size"
+                    },
+                    "set_async_circuit_breaker_config": {
+                      "properties": {
+                        "consecutive_failures": {
+                          "default": 5,
+                          "description": "Consecutive failures to determine if the circuit breaker should open.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.consecutive-failures"
+                        },
+                        "enabled": {
+                          "default": false,
+                          "description": "If true, enable circuit breaker.",
+                          "type": "boolean",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.enabled"
+                        },
+                        "failure_percent": {
+                          "default": 0.05,
+                          "description": "Failure percentage to determine if the circuit breaker should open.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.failure-percent"
+                        },
+                        "half_open_max_requests": {
+                          "default": 10,
+                          "description": "Maximum number of requests allowed to pass through when the circuit breaker is half-open. If set to 0, by default it allows 1 request.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.half-open-max-requests"
+                        },
+                        "min_requests": {
+                          "default": 50,
+                          "description": "Minimal requests to trigger the circuit breaker.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.min-requests"
+                        },
+                        "open_duration": {
+                          "default": "5s",
+                          "description": "Period of the open state after which the state of the circuit breaker becomes half-open. If set to 0, by default open duration is 60 seconds.",
+                          "type": "string",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.set-async.circuit-breaker.open-duration",
+                          "x-format": "duration"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "timeout": {
+                      "default": "100ms",
+                      "description": "The socket read/write timeout.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.memcached.timeout",
+                      "x-format": "duration"
+                    }
+                  },
+                  "type": "object"
+                },
+                "multilevel": {
+                  "properties": {
+                    "max_async_buffer_size": {
+                      "default": 10000,
+                      "description": "The maximum number of enqueued asynchronous operations allowed when backfilling cache items.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.multilevel.max-async-buffer-size"
+                    },
+                    "max_async_concurrency": {
+                      "default": 3,
+                      "description": "The maximum number of concurrent asynchronous operations can occur when backfilling cache items.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.multilevel.max-async-concurrency"
+                    },
+                    "max_backfill_items": {
+                      "default": 10000,
+                      "description": "The maximum number of items to backfill per asynchronous operation.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.multilevel.max-backfill-items"
+                    }
+                  },
+                  "type": "object"
+                },
+                "redis": {
+                  "properties": {
+                    "addresses": {
+                      "description": "Comma separated list of redis addresses. Supported prefixes are: dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after that).",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.addresses"
+                    },
+                    "cache_size": {
+                      "default": 0,
+                      "description": "If not zero then client-side caching is enabled. Client-side caching is when data is stored in memory instead of fetching data each time. See https://redis.io/docs/manual/client-side-caching/ for more info.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.cache-size"
+                    },
+                    "db": {
+                      "default": 0,
+                      "description": "Database to be selected after connecting to the server.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.db"
+                    },
+                    "dial_timeout": {
+                      "default": "5s",
+                      "description": "Client dial timeout.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.dial-timeout",
+                      "x-format": "duration"
+                    },
+                    "get_multi_batch_size": {
+                      "default": 100,
+                      "description": "The maximum size per batch for mget.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.get-multi-batch-size"
+                    },
+                    "master_name": {
+                      "description": "Specifies the master's name. Must be not empty for Redis Sentinel.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.master-name"
+                    },
+                    "max_async_buffer_size": {
+                      "default": 10000,
+                      "description": "The maximum number of enqueued asynchronous operations allowed.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.max-async-buffer-size"
+                    },
+                    "max_async_concurrency": {
+                      "default": 3,
+                      "description": "The maximum number of concurrent asynchronous operations can occur.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.max-async-concurrency"
+                    },
+                    "max_get_multi_concurrency": {
+                      "default": 100,
+                      "description": "The maximum number of concurrent GetMulti() operations. If set to 0, concurrency is unlimited.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.max-get-multi-concurrency"
+                    },
+                    "max_set_multi_concurrency": {
+                      "default": 100,
+                      "description": "The maximum number of concurrent SetMulti() operations. If set to 0, concurrency is unlimited.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.max-set-multi-concurrency"
+                    },
+                    "password": {
+                      "description": "Redis password.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.password"
+                    },
+                    "read_timeout": {
+                      "default": "3s",
+                      "description": "Client read timeout.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.read-timeout",
+                      "x-format": "duration"
+                    },
+                    "set_async_circuit_breaker_config": {
+                      "properties": {
+                        "consecutive_failures": {
+                          "default": 5,
+                          "description": "Consecutive failures to determine if the circuit breaker should open.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.consecutive-failures"
+                        },
+                        "enabled": {
+                          "default": false,
+                          "description": "If true, enable circuit breaker.",
+                          "type": "boolean",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.enabled"
+                        },
+                        "failure_percent": {
+                          "default": 0.05,
+                          "description": "Failure percentage to determine if the circuit breaker should open.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.failure-percent"
+                        },
+                        "half_open_max_requests": {
+                          "default": 10,
+                          "description": "Maximum number of requests allowed to pass through when the circuit breaker is half-open. If set to 0, by default it allows 1 request.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.half-open-max-requests"
+                        },
+                        "min_requests": {
+                          "default": 50,
+                          "description": "Minimal requests to trigger the circuit breaker.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.min-requests"
+                        },
+                        "open_duration": {
+                          "default": "5s",
+                          "description": "Period of the open state after which the state of the circuit breaker becomes half-open. If set to 0, by default open duration is 60 seconds.",
+                          "type": "string",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.set-async.circuit-breaker.open-duration",
+                          "x-format": "duration"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "set_multi_batch_size": {
+                      "default": 100,
+                      "description": "The maximum size per batch for pipeline set.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.set-multi-batch-size"
+                    },
+                    "tls_ca_path": {
+                      "description": "Path to the CA certificates file to validate server certificate against. If not set, the host's root CA certificates are used.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.tls-ca-path"
+                    },
+                    "tls_cert_path": {
+                      "description": "Path to the client certificate file, which will be used for authenticating with the server. Also requires the key path to be configured.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.tls-cert-path"
+                    },
+                    "tls_enabled": {
+                      "default": false,
+                      "description": "Whether to enable tls for redis connection.",
+                      "type": "boolean",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.tls-enabled"
+                    },
+                    "tls_insecure_skip_verify": {
+                      "default": false,
+                      "description": "Skip validating server certificate.",
+                      "type": "boolean",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.tls-insecure-skip-verify"
+                    },
+                    "tls_key_path": {
+                      "description": "Path to the key file for the client certificate. Also requires the client certificate to be configured.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.tls-key-path"
+                    },
+                    "tls_server_name": {
+                      "description": "Override the expected name on the server certificate.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.tls-server-name"
+                    },
+                    "username": {
+                      "description": "Redis username.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.username"
+                    },
+                    "write_timeout": {
+                      "default": "3s",
+                      "description": "Client write timeout.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.redis.write-timeout",
+                      "x-format": "duration"
+                    }
+                  },
+                  "type": "object"
+                },
+                "subrange_size": {
+                  "default": 16000,
+                  "description": "Size of each subrange that bucket object is split into for better caching.",
+                  "type": "number",
+                  "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.subrange-size"
+                },
+                "subrange_ttl": {
+                  "default": "24h0m0s",
+                  "description": "TTL for caching individual subranges.",
+                  "type": "string",
+                  "x-cli-flag": "blocks-storage.bucket-store.parquet-labels-cache.subrange-ttl",
+                  "x-format": "duration"
+                }
+              },
+              "type": "object"
+            },
             "series_batch_size": {
               "default": 10000,
               "description": "Controls how many series to fetch per batch in Store Gateway. Default value is 10000.",
@@ -3049,7 +3388,7 @@
                 },
                 "store": {
                   "default": "consul",
-                  "description": "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.",
+                  "description": "Backend storage to use for the ring. Supported values are: consul, dynamodb, etcd, inmemory, memberlist, multi.",
                   "type": "string",
                   "x-cli-flag": "compactor.ring.store"
                 }
@@ -3413,7 +3752,7 @@
                 },
                 "store": {
                   "default": "consul",
-                  "description": "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.",
+                  "description": "Backend storage to use for the ring. Supported values are: consul, dynamodb, etcd, inmemory, memberlist, multi.",
                   "type": "string",
                   "x-cli-flag": "distributor.ha-tracker.store"
                 }
@@ -3477,6 +3816,12 @@
               "description": "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)",
               "type": "boolean",
               "x-cli-flag": "distributor.otlp.disable-target-info"
+            },
+            "enable_type_and_unit_labels": {
+              "default": false,
+              "description": "EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for the OTLP metrics.",
+              "type": "boolean",
+              "x-cli-flag": "distributor.otlp.enable-type-and-unit-labels"
             }
           },
           "type": "object"
@@ -3511,6 +3856,12 @@
           "type": "string",
           "x-cli-flag": "distributor.remote-timeout",
           "x-format": "duration"
+        },
+        "remote_writev2_enabled": {
+          "default": false,
+          "description": "EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push request.",
+          "type": "boolean",
+          "x-cli-flag": "distributor.remote-writev2-enabled"
         },
         "ring": {
           "properties": {
@@ -3629,7 +3980,7 @@
                 },
                 "store": {
                   "default": "consul",
-                  "description": "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.",
+                  "description": "Backend storage to use for the ring. Supported values are: consul, dynamodb, etcd, inmemory, memberlist, multi.",
                   "type": "string",
                   "x-cli-flag": "distributor.ring.store"
                 }
@@ -3907,6 +4258,15 @@
           "description": "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.",
           "type": "string",
           "x-cli-flag": "querier.id"
+        },
+        "instance_interface_names": {
+          "default": "[eth0 en0]",
+          "description": "Name of network interface to read address from.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-cli-flag": "querier.instance-interface-names"
         },
         "match_max_concurrent": {
           "default": false,
@@ -4321,7 +4681,7 @@
                     },
                     "store": {
                       "default": "consul",
-                      "description": "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.",
+                      "description": "Backend storage to use for the ring. Supported values are: consul, dynamodb, etcd, inmemory, memberlist, multi.",
                       "type": "string",
                       "x-cli-flag": "ring.store"
                     }
@@ -4380,12 +4740,6 @@
           "properties": {
             "rejection": {
               "properties": {
-                "enabled": {
-                  "default": false,
-                  "description": "EXPERIMENTAL: Enable query rejection feature, where the component return 503 to all incoming query requests when the configured thresholds are breached.",
-                  "type": "boolean",
-                  "x-cli-flag": "ingester.query-protection.rejection.enabled"
-                },
                 "threshold": {
                   "properties": {
                     "cpu_utilization": {
@@ -4849,6 +5203,45 @@
           "x-cli-flag": "ingester.out-of-order-time-window",
           "x-format": "duration"
         },
+        "parquet_converter_enabled": {
+          "default": false,
+          "description": "If set, enables the Parquet converter to create the parquet files.",
+          "type": "boolean",
+          "x-cli-flag": "parquet-converter.enabled"
+        },
+        "parquet_converter_sort_columns": {
+          "default": [],
+          "description": "Additional label names for specific tenants to sort by after metric name, in order of precedence. These are applied during Parquet file generation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-cli-flag": "parquet-converter.sort-columns"
+        },
+        "parquet_converter_tenant_shard_size": {
+          "default": 0,
+          "description": "The default tenant's shard size when the shuffle-sharding strategy is used by the parquet converter. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is \u003c 1 and \u003e 0 the shard size will be a percentage of the total parquet converters.",
+          "type": "number",
+          "x-cli-flag": "parquet-converter.tenant-shard-size"
+        },
+        "parquet_max_fetched_chunk_bytes": {
+          "default": 0,
+          "description": "The maximum number of bytes that can be used to fetch chunk column pages when querying parquet storage. 0 to disable.",
+          "type": "number",
+          "x-cli-flag": "querier.parquet-queryable.max-fetched-chunk-bytes"
+        },
+        "parquet_max_fetched_data_bytes": {
+          "default": 0,
+          "description": "The maximum number of bytes that can be used to fetch all column pages when querying parquet storage. 0 to disable.",
+          "type": "number",
+          "x-cli-flag": "querier.parquet-queryable.max-fetched-data-bytes"
+        },
+        "parquet_max_fetched_row_count": {
+          "default": 0,
+          "description": "The maximum number of rows that can be fetched when querying parquet storage. Each row maps to a series in a parquet file. This limit applies before materializing chunks. 0 to disable.",
+          "type": "number",
+          "x-cli-flag": "querier.parquet-queryable.max-fetched-row-count"
+        },
         "promote_resource_attributes": {
           "description": "Comma separated list of resource attributes that should be converted to labels.",
           "items": {
@@ -4907,6 +5300,12 @@
             }
           },
           "type": "object"
+        },
+        "query_vertical_shard_size": {
+          "default": 0,
+          "description": "[Experimental] Number of shards to use when distributing shardable PromQL queries.",
+          "type": "number",
+          "x-cli-flag": "frontend.query-vertical-shard-size"
         },
         "reject_old_samples": {
           "default": false,
@@ -6367,7 +6766,7 @@
                 },
                 "store": {
                   "default": "consul",
-                  "description": "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.",
+                  "description": "Backend storage to use for the ring. Supported values are: consul, dynamodb, etcd, inmemory, memberlist, multi.",
                   "type": "string",
                   "x-cli-flag": "ruler.ring.store"
                 }
@@ -7367,6 +7766,12 @@
     "server_config": {
       "description": "The server_config configures the HTTP and gRPC server of the launched service(s).",
       "properties": {
+        "enable_channelz": {
+          "default": false,
+          "description": "Enable Channelz for gRPC server. A web UI will be also exposed on the HTTP server at /channelz",
+          "type": "boolean",
+          "x-cli-flag": "server.enable-channelz"
+        },
         "graceful_shutdown_timeout": {
           "default": "30s",
           "description": "Timeout for graceful shutdowns",
@@ -7684,12 +8089,6 @@
           "properties": {
             "rejection": {
               "properties": {
-                "enabled": {
-                  "default": false,
-                  "description": "EXPERIMENTAL: Enable query rejection feature, where the component return 503 to all incoming query requests when the configured thresholds are breached.",
-                  "type": "boolean",
-                  "x-cli-flag": "store-gateway.query-protection.rejection.enabled"
-                },
                 "threshold": {
                   "properties": {
                     "cpu_utilization": {
@@ -7856,7 +8255,7 @@
                 },
                 "store": {
                   "default": "consul",
-                  "description": "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.",
+                  "description": "Backend storage to use for the ring. Supported values are: consul, dynamodb, etcd, inmemory, memberlist, multi.",
                   "type": "string",
                   "x-cli-flag": "store-gateway.sharding-ring.store"
                 }
@@ -8240,7 +8639,7 @@
                 },
                 "store": {
                   "default": "consul",
-                  "description": "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.",
+                  "description": "Backend storage to use for the ring. Supported values are: consul, dynamodb, etcd, inmemory, memberlist, multi.",
                   "type": "string",
                   "x-cli-flag": "parquet-converter.ring.store"
                 }

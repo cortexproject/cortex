@@ -23,19 +23,19 @@ func (w *JSONSchemaWriter) WriteSchema(blocks []*configBlock) error {
 	return encoder.Encode(schema)
 }
 
-func (w *JSONSchemaWriter) generateJSONSchema(blocks []*configBlock) map[string]interface{} {
-	schema := map[string]interface{}{
+func (w *JSONSchemaWriter) generateJSONSchema(blocks []*configBlock) map[string]any {
+	schema := map[string]any{
 		"$schema":     "https://json-schema.org/draft/2020-12/schema",
 		"$id":         "https://raw.githubusercontent.com/cortexproject/cortex/master/schemas/cortex-config-schema.json",
 		"title":       "Cortex Configuration Schema",
 		"description": "JSON Schema for Cortex configuration file",
 		"type":        "object",
-		"properties":  map[string]interface{}{},
-		"definitions": map[string]interface{}{},
+		"properties":  map[string]any{},
+		"definitions": map[string]any{},
 	}
 
-	properties := schema["properties"].(map[string]interface{})
-	definitions := schema["definitions"].(map[string]interface{})
+	properties := schema["properties"].(map[string]any)
+	definitions := schema["definitions"].(map[string]any)
 
 	// Process each config block
 	for _, block := range blocks {
@@ -51,7 +51,7 @@ func (w *JSONSchemaWriter) generateJSONSchema(blocks []*configBlock) map[string]
 	return schema
 }
 
-func (w *JSONSchemaWriter) processBlockEntries(block *configBlock, properties map[string]interface{}, definitions map[string]interface{}) {
+func (w *JSONSchemaWriter) processBlockEntries(block *configBlock, properties map[string]any, definitions map[string]any) {
 	for _, entry := range block.entries {
 		switch entry.kind {
 		case "field":
@@ -59,7 +59,7 @@ func (w *JSONSchemaWriter) processBlockEntries(block *configBlock, properties ma
 		case "block":
 			if entry.root {
 				// Root blocks are referenced via $ref
-				properties[entry.name] = map[string]interface{}{
+				properties[entry.name] = map[string]any{
 					"$ref": fmt.Sprintf("#/definitions/%s", entry.block.name),
 				}
 				// Add the block to definitions if not already there
@@ -74,17 +74,17 @@ func (w *JSONSchemaWriter) processBlockEntries(block *configBlock, properties ma
 	}
 }
 
-func (w *JSONSchemaWriter) generateBlockSchema(block *configBlock) map[string]interface{} {
-	obj := map[string]interface{}{
+func (w *JSONSchemaWriter) generateBlockSchema(block *configBlock) map[string]any {
+	obj := map[string]any{
 		"type":       "object",
-		"properties": map[string]interface{}{},
+		"properties": map[string]any{},
 	}
 
 	if block.desc != "" {
 		obj["description"] = block.desc
 	}
 
-	properties := obj["properties"].(map[string]interface{})
+	properties := obj["properties"].(map[string]any)
 
 	for _, entry := range block.entries {
 		switch entry.kind {
@@ -93,7 +93,7 @@ func (w *JSONSchemaWriter) generateBlockSchema(block *configBlock) map[string]in
 		case "block":
 			if entry.root {
 				// Reference to another root block
-				properties[entry.name] = map[string]interface{}{
+				properties[entry.name] = map[string]any{
 					"$ref": fmt.Sprintf("#/definitions/%s", entry.block.name),
 				}
 			} else {
@@ -106,8 +106,8 @@ func (w *JSONSchemaWriter) generateBlockSchema(block *configBlock) map[string]in
 	return obj
 }
 
-func (w *JSONSchemaWriter) generateFieldSchema(entry *configEntry) map[string]interface{} {
-	prop := map[string]interface{}{
+func (w *JSONSchemaWriter) generateFieldSchema(entry *configEntry) map[string]any {
+	prop := map[string]any{
 		"type": w.getJSONType(entry.fieldType),
 	}
 
@@ -143,7 +143,7 @@ func (w *JSONSchemaWriter) generateFieldSchema(entry *configEntry) map[string]in
 	if strings.HasPrefix(entry.fieldType, "list of ") {
 		prop["type"] = "array"
 		itemType := strings.TrimPrefix(entry.fieldType, "list of ")
-		prop["items"] = map[string]interface{}{
+		prop["items"] = map[string]any{
 			"type": w.getJSONType(itemType),
 		}
 	}
@@ -185,7 +185,7 @@ func (w *JSONSchemaWriter) getJSONType(goType string) string {
 	}
 }
 
-func (w *JSONSchemaWriter) parseDefaultValue(defaultStr, goType string) interface{} {
+func (w *JSONSchemaWriter) parseDefaultValue(defaultStr, goType string) any {
 	if defaultStr == "" {
 		return nil
 	}
@@ -206,11 +206,11 @@ func (w *JSONSchemaWriter) parseDefaultValue(defaultStr, goType string) interfac
 	default:
 		// Handle special cases
 		if defaultStr == "[]" {
-			return []interface{}{}
+			return []any{}
 		}
 		if strings.HasPrefix(defaultStr, "[") && strings.HasSuffix(defaultStr, "]") {
 			// Try to parse as JSON array
-			var arr []interface{}
+			var arr []any
 			if err := json.Unmarshal([]byte(defaultStr), &arr); err == nil {
 				return arr
 			}

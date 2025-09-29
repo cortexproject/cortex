@@ -81,9 +81,9 @@ func (t *DiscardedSeriesPerLabelsetTracker) Track(user string, series uint64, ma
 
 func (t *DiscardedSeriesPerLabelsetTracker) UpdateMetrics() {
 	usersToDelete := make([]string, 0)
-	labelsetsToDelete := make([]uint64, 0)
 	t.RLock()
 	for user, labelsetCounter := range t.userLabelsetMap {
+		labelsetsToDelete := make([]uint64, 0)
 		labelsetCounter.RLock()
 		if len(labelsetCounter.labelsetSeriesMap) == 0 {
 			usersToDelete = append(usersToDelete, user)

@@ -20,7 +20,7 @@
 &lt;h2 id="matching-criteria">Matching Criteria&lt;/h2>
 &lt;p>Heavy queries often share identifiable traits. Query rejection lets you match on a variety of attributes and reject only those requests. You can combine as many of these as needed:&lt;/p>
 &lt;ul>
-&lt;li>&lt;strong>API type:&lt;/strong> &lt;code>query&lt;/code>, &lt;code>query_range&lt;/code>, &lt;code>series&lt;/code>, etc.&lt;/li>
+&lt;li>&lt;strong>API type:&lt;/strong> &lt;code>query&lt;/code>, &lt;code>query_range&lt;/code>. For now, query rejection only applies to these two API types.&lt;/li>
 &lt;li>&lt;strong>Query string (regex):&lt;/strong> Match by pattern, e.g., any query containing “ALERT”.&lt;/li>
 &lt;li>&lt;strong>Time range:&lt;/strong> Match queries whose range falls between a configured &lt;strong>min&lt;/strong> and &lt;strong>max&lt;/strong>.&lt;/li>
 &lt;li>&lt;strong>Time window:&lt;/strong> Match queries based on how far their time window is from now by specifying relative &lt;strong>min&lt;/strong> and &lt;strong>max&lt;/strong> boundaries. This is often used to distinguish queries that hit hot storage versus cold storage.&lt;/li>

@@ -64,10 +64,13 @@ func ExtractNumericalValues(l *Limits) map[string]float64 {
 
 		switch field.Kind() {
 		case reflect.Int, reflect.Int64:
-			if field.Type().String() == "model.Duration" {
+			switch fieldType.Type.String() {
+			case "model.Duration":
 				// we export the model.Duration in seconds
 				metrics[tag] = time.Duration(field.Int()).Seconds()
-			} else {
+			case "model.ValidationScheme":
+				// skip
+			default:
 				metrics[tag] = float64(field.Int())
 			}
 		case reflect.Uint, reflect.Uint64:

@@ -21,6 +21,69 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
+func TestValidateLabels_UTF8(t *testing.T) {
+	cfg := new(Limits)
+	userID := "testUser"
+
+	reg := prometheus.NewRegistry()
+	validateMetrics := NewValidateMetrics(reg)
+
+	cfg.MaxLabelValueLength = 25
+	cfg.MaxLabelNameLength = 25
+	cfg.MaxLabelNamesPerSeries = 2
+	cfg.MaxLabelsSizeBytes = 90
+	cfg.EnforceMetricName = true
+	cfg.NameValidationScheme = model.UTF8Validation
+
+	tests := []struct {
+		description             string
+		metric                  model.Metric
+		skipLabelNameValidation bool
+		expectedErr             error
+	}{
+		{
+			description:             "empty metric name",
+			metric:                  map[model.LabelName]model.LabelValue{},
+			skipLabelNameValidation: false,
+			expectedErr:             newNoMetricNameError(),
+		},
+		{
+			description:             "utf8 metric name",
+			metric:                  map[model.LabelName]model.LabelValue{model.MetricNameLabel: "test.utf8.metric"},
+			skipLabelNameValidation: false,
+			expectedErr:             nil,
+		},
+		{
+			description:             "invalid utf8 metric name",
+			metric:                  map[model.LabelName]model.LabelValue{model.MetricNameLabel: "test.\xc5.metric"},
+			skipLabelNameValidation: false,
+			expectedErr:             newInvalidMetricNameError("test.\xc5.metric"),
+		},
+		{
+			description:             "invalid utf8 label name, but skipLabelNameValidation is true",
+			metric:                  map[model.LabelName]model.LabelValue{model.MetricNameLabel: "test.utf8.metric", "label1": "test.\xc5.label"},
+			skipLabelNameValidation: true,
+			expectedErr:             nil,
+		},
+		{
+			description:             "invalid utf8 label name, but skipLabelNameValidation is false",
+			metric:                  map[model.LabelName]model.LabelValue{model.MetricNameLabel: "test.utf8.metric", "test.\xc5.label": "value"},
+			skipLabelNameValidation: false,
+			expectedErr: newInvalidLabelError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "test.utf8.metric"},
+				{Name: "test.\xc5.label", Value: "value"},
+			}, "test.\xc5.label"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.description, func(t *testing.T) {
+			err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(test.metric), test.skipLabelNameValidation)
+			assert.Equal(t, test.expectedErr, err, "wrong error")
+		})
+	}
+}
+
 func TestValidateLabels(t *testing.T) {
 	cfg := new(Limits)
 	userID := "testUser"
@@ -33,6 +96,7 @@ func TestValidateLabels(t *testing.T) {
 	cfg.MaxLabelNamesPerSeries = 2
 	cfg.MaxLabelsSizeBytes = 90
 	cfg.EnforceMetricName = true
+	cfg.NameValidationScheme = model.LegacyValidation
 	cfg.LimitsPerLabelSet = []LimitsPerLabelSet{
 		{
 			Limits: LimitsPerLabelSetEntry{MaxSeries: 0},
@@ -271,6 +335,7 @@ func TestValidateLabelOrder(t *testing.T) {
 	cfg.MaxLabelNameLength = 10
 	cfg.MaxLabelNamesPerSeries = 10
 	cfg.MaxLabelValueLength = 10
+	cfg.NameValidationScheme = model.LegacyValidation
 	reg := prometheus.NewRegistry()
 	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"
@@ -299,6 +364,7 @@ func TestValidateLabelDuplication(t *testing.T) {
 	cfg.MaxLabelNameLength = 10
 	cfg.MaxLabelNamesPerSeries = 10
 	cfg.MaxLabelValueLength = 10
+	cfg.NameValidationScheme = model.LegacyValidation
 	reg := prometheus.NewRegistry()
 	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"

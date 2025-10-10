@@ -264,7 +264,7 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	))
 
 	thanosStores := stores.(*ThanosBucketStores)
-	assert.Greater(t, testutil.ToFloat64(thanosStores.syncLastSuccess), float64(0))
+	assert.Greater(t, testutil.ToFloat64(thanosStores.cortexBucketStoreMetrics.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
@@ -325,7 +325,7 @@ func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
 	))
 
 	thanosStores := stores.(*ThanosBucketStores)
-	assert.Greater(t, testutil.ToFloat64(thanosStores.syncLastSuccess), float64(0))
+	assert.Greater(t, testutil.ToFloat64(thanosStores.cortexBucketStoreMetrics.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_SyncBlocks(t *testing.T) {
@@ -396,7 +396,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	))
 
 	thanosStores := stores.(*ThanosBucketStores)
-	assert.Greater(t, testutil.ToFloat64(thanosStores.syncLastSuccess), float64(0))
+	assert.Greater(t, testutil.ToFloat64(thanosStores.cortexBucketStoreMetrics.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_syncUsersBlocks(t *testing.T) {
@@ -583,7 +583,7 @@ func TestBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *t
 
 	thanosStores := stores.(*ThanosBucketStores)
 	// Set inflight requests to the limit
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		thanosStores.inflightRequests.Inc()
 	}
 	series, warnings, err := querySeries(stores, "user_id", "series_1", 0, 100)
@@ -606,7 +606,7 @@ func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabl
 
 	thanosStores := stores.(*ThanosBucketStores)
 	// Set inflight requests to the limit (max_inflight_request is set to 0 by default = disabled)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		thanosStores.inflightRequests.Inc()
 	}
 	series, _, err := querySeries(stores, "user_id", "series_1", 0, 100)
@@ -727,25 +727,6 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 }
 
 func querySeries(stores BucketStores, userID, metricName string, minT, maxT int64) ([]*storepb.Series, annotations.Annotations, error) {
-	req := &storepb.SeriesRequest{
-		MinTime: minT,
-		MaxTime: maxT,
-		Matchers: []storepb.LabelMatcher{{
-			Type:  storepb.LabelMatcher_EQ,
-			Name:  labels.MetricName,
-			Value: metricName,
-		}},
-		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
-	}
-
-	ctx := setUserIDToGRPCContext(context.Background(), userID)
-	srv := newBucketStoreSeriesServer(ctx)
-	err := stores.Series(req, srv)
-
-	return srv.SeriesSet, srv.Warnings, err
-}
-
-func querySeriesWithBlockIDs(stores BucketStores, userID, metricName string, minT, maxT int64, blocks []string) ([]*storepb.Series, annotations.Annotations, error) {
 	req := &storepb.SeriesRequest{
 		MinTime: minT,
 		MaxTime: maxT,

@@ -3,13 +3,14 @@ package storegateway
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/gogo/protobuf/types"
 	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus-community/parquet-common/convert"
@@ -21,11 +22,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
-	"github.com/thanos-io/thanos/pkg/block"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
-	"github.com/thanos-io/thanos/pkg/store/hintspb"
-	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"golang.org/x/sync/errgroup"
@@ -35,7 +34,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -60,22 +61,18 @@ type ParquetBucketStores struct {
 	matcherCache storecache.MatchersCache
 
 	inflightRequests *cortex_util.InflightRequestTracker
-}
 
-// parquetBucketStore represents a single tenant's parquet store
-type parquetBucketStore struct {
-	logger      log.Logger
-	bucket      objstore.Bucket
-	limits      *validation.Overrides
-	concurrency int
+	parquetBucketStoreMetrics *ParquetBucketStoreMetrics
+	cortexBucketStoreMetrics  *CortexBucketStoreMetrics
+	userScanner               users.Scanner
+	shardingStrategy          ShardingStrategy
 
-	chunksDecoder *schema.PrometheusParquetChunksDecoder
-
-	matcherCache storecache.MatchersCache
+	userTokenBucketsMu sync.RWMutex
+	userTokenBuckets   map[string]*cortex_util.TokenBucket
 }
 
 // newParquetBucketStores creates a new multi-tenant parquet bucket stores
-func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logger log.Logger, reg prometheus.Registerer) (*ParquetBucketStores, error) {
+func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logger log.Logger, reg prometheus.Registerer) (*ParquetBucketStores, error) {
 	// Create caching bucket client for parquet bucket stores
 	cachingBucket, err := createCachingBucketClientForParquet(cfg, bucketClient, "parquet-storegateway", logger, reg)
 	if err != nil {
@@ -83,14 +80,22 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.
 	}
 
 	u := &ParquetBucketStores{
-		logger:           logger,
-		cfg:              cfg,
-		limits:           limits,
-		bucket:           cachingBucket,
-		stores:           map[string]*parquetBucketStore{},
-		storesErrors:     map[string]error{},
-		chunksDecoder:    schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
-		inflightRequests: cortex_util.NewInflightRequestTracker(),
+		logger:                    logger,
+		cfg:                       cfg,
+		limits:                    limits,
+		bucket:                    cachingBucket,
+		stores:                    map[string]*parquetBucketStore{},
+		storesErrors:              map[string]error{},
+		chunksDecoder:             schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
+		inflightRequests:          cortex_util.NewInflightRequestTracker(),
+		cortexBucketStoreMetrics:  NewCortexBucketStoreMetrics(reg),
+		shardingStrategy:          shardingStrategy,
+		userTokenBuckets:          make(map[string]*cortex_util.TokenBucket),
+		parquetBucketStoreMetrics: NewParquetBucketStoreMetrics(),
+	}
+	u.userScanner, err = users.NewScanner(cfg.UsersScanner, bucketClient, logger, reg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create users scanner")
 	}
 
 	if cfg.BucketStore.MatchersCacheMaxItems > 0 {
@@ -200,12 +205,243 @@ func (u *ParquetBucketStores) LabelValues(ctx context.Context, req *storepb.Labe
 
 // SyncBlocks implements BucketStores
 func (u *ParquetBucketStores) SyncBlocks(ctx context.Context) error {
-	return nil
+	return u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, p *parquetBucketStore) error {
+		return p.SyncBlocks(ctx)
+	})
 }
 
 // InitialSync implements BucketStores
 func (u *ParquetBucketStores) InitialSync(ctx context.Context) error {
+	level.Info(u.logger).Log("msg", "synchronizing Parquet blocks for all users")
+
+	if err := u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, p *parquetBucketStore) error {
+		return p.InitialSync(ctx)
+	}); err != nil {
+		level.Warn(u.logger).Log("msg", "failed to synchronize Parquet blocks", "err", err)
+		return err
+	}
+
+	level.Info(u.logger).Log("msg", "successfully synchronized Parquet blocks for all users")
 	return nil
+}
+
+func (u *ParquetBucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *parquetBucketStore) error) error {
+	retries := backoff.New(ctx, backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 3,
+	})
+
+	var lastErr error
+	for retries.Ongoing() {
+		lastErr = u.syncUsersBlocks(ctx, f)
+		if lastErr == nil {
+			return nil
+		}
+
+		retries.Wait()
+	}
+
+	if lastErr == nil {
+		return retries.Err()
+	}
+
+	return lastErr
+}
+
+func (u *ParquetBucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *parquetBucketStore) error) (returnErr error) {
+	defer func(start time.Time) {
+		u.cortexBucketStoreMetrics.syncTimes.Observe(time.Since(start).Seconds())
+		if returnErr == nil {
+			u.cortexBucketStoreMetrics.syncLastSuccess.SetToCurrentTime()
+		}
+	}(time.Now())
+
+	type job struct {
+		userID string
+		store  *parquetBucketStore
+	}
+
+	wg := &sync.WaitGroup{}
+	jobs := make(chan job)
+	errs := tsdb_errors.NewMulti()
+	errsMx := sync.Mutex{}
+
+	// Scan users in the bucket.
+	userIDs, err := u.scanUsers(ctx)
+	if err != nil {
+		return err
+	}
+
+	includeUserIDs := make(map[string]struct{})
+	for _, userID := range u.shardingStrategy.FilterUsers(ctx, userIDs) {
+		includeUserIDs[userID] = struct{}{}
+	}
+
+	u.cortexBucketStoreMetrics.tenantsDiscovered.Set(float64(len(userIDs)))
+	u.cortexBucketStoreMetrics.tenantsSynced.Set(float64(len(includeUserIDs)))
+
+	// Create a pool of workers which will synchronize blocks. The pool size
+	// is limited in order to avoid to concurrently sync a lot of tenants in
+	// a large cluster.
+	for i := 0; i < u.cfg.BucketStore.TenantSyncConcurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for job := range jobs {
+				if err := f(ctx, job.store); err != nil {
+					if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
+						u.storesErrorsMu.Lock()
+						u.storesErrors[job.userID] = httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+						u.storesErrorsMu.Unlock()
+					} else {
+						errsMx.Lock()
+						errs.Add(errors.Wrapf(err, "failed to synchronize Parquet blocks for user %s", job.userID))
+						errsMx.Unlock()
+					}
+				} else {
+					u.storesErrorsMu.Lock()
+					delete(u.storesErrors, job.userID)
+					u.storesErrorsMu.Unlock()
+				}
+			}
+		}()
+	}
+
+	// Lazily create a bucket store for each new user found
+	// and submit a sync job for each user.
+	for _, userID := range userIDs {
+		// If we don't have a store for the tenant yet, then we should skip it if it's not
+		// included in the store-gateway shard. If we already have it, we need to sync it
+		// anyway to make sure all its blocks are unloaded and metrics updated correctly
+		// (but bucket API calls are skipped thanks to the objstore client adapter).
+		if _, included := includeUserIDs[userID]; !included && u.getStore(userID) == nil {
+			continue
+		}
+
+		bs, err := u.getOrCreateStore(userID)
+		if err != nil {
+			errsMx.Lock()
+			errs.Add(err)
+			errsMx.Unlock()
+
+			continue
+		}
+
+		select {
+		case jobs <- job{userID: userID, store: bs}:
+			// Nothing to do. Will loop to push more jobs.
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	// Wait until all workers completed.
+	close(jobs)
+	wg.Wait()
+
+	u.deleteLocalFilesForExcludedTenants(includeUserIDs)
+
+	return errs.Err()
+}
+
+// deleteLocalFilesForExcludedTenants removes local "sync" directories for tenants that are not included in the current
+// shard.
+func (u *ParquetBucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[string]struct{}) {
+	files, err := os.ReadDir(u.cfg.BucketStore.SyncDir)
+	if err != nil {
+		return
+	}
+
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+
+		userID := f.Name()
+		if _, included := includeUserIDs[userID]; included {
+			// Preserve directory for users owned by this shard.
+			continue
+		}
+
+		err := u.closeEmptyBucketStore(userID)
+		switch {
+		case errors.Is(err, errBucketStoreNotEmpty):
+			continue
+		case errors.Is(err, errBucketStoreNotFound):
+			// This is OK, nothing was closed.
+		case err == nil:
+			level.Info(u.logger).Log("msg", "closed bucket store for user", "user", userID)
+		default:
+			level.Warn(u.logger).Log("msg", "failed to close bucket store for user", "user", userID, "err", err)
+		}
+
+		userSyncDir := u.syncDirForUser(userID)
+		err = os.RemoveAll(userSyncDir)
+		if err == nil {
+			level.Info(u.logger).Log("msg", "deleted user sync directory", "dir", userSyncDir)
+		} else {
+			level.Warn(u.logger).Log("msg", "failed to delete user sync directory", "dir", userSyncDir, "err", err)
+		}
+	}
+}
+
+// closeEmptyBucketStore closes bucket store for given user, if it is empty,
+// and removes it from bucket stores map and metrics.
+// If bucket store doesn't exist, returns errBucketStoreNotFound.
+// Otherwise returns error from closing the bucket store.
+func (u *ParquetBucketStores) closeEmptyBucketStore(userID string) error {
+	u.storesMu.Lock()
+	unlockInDefer := true
+	defer func() {
+		if unlockInDefer {
+			u.storesMu.Unlock()
+		}
+	}()
+
+	bs := u.stores[userID]
+	if bs == nil {
+		return errBucketStoreNotFound
+	}
+
+	delete(u.stores, userID)
+	unlockInDefer = false
+	u.storesMu.Unlock()
+
+	if u.cfg.BucketStore.TokenBucketBytesLimiter.Mode != string(tsdb.TokenBucketBytesLimiterDisabled) {
+		u.userTokenBucketsMu.Lock()
+		delete(u.userTokenBuckets, userID)
+		u.userTokenBucketsMu.Unlock()
+	}
+
+	u.parquetBucketStoreMetrics.RemoveUserRegistry(userID)
+	return bs.Close()
+}
+
+func (u *ParquetBucketStores) syncDirForUser(userID string) string {
+	return filepath.Join(u.cfg.BucketStore.SyncDir, userID)
+}
+
+// scanUsers in the bucket and return the list of found users. It includes active and deleting users
+// but not deleted users.
+func (u *ParquetBucketStores) scanUsers(ctx context.Context) ([]string, error) {
+	activeUsers, deletingUsers, _, err := u.userScanner.ScanUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	users := make([]string, 0, len(activeUsers)+len(deletingUsers))
+	users = append(users, activeUsers...)
+	users = append(users, deletingUsers...)
+	users = deduplicateUsers(users)
+
+	return users, err
+}
+
+func (u *ParquetBucketStores) getStore(userID string) *parquetBucketStore {
+	u.storesMu.RLock()
+	defer u.storesMu.RUnlock()
+	return u.stores[userID]
 }
 
 func (u *ParquetBucketStores) getStoreError(userID string) error {
@@ -246,6 +482,8 @@ func (u *ParquetBucketStores) getOrCreateStore(userID string) (*parquetBucketSto
 	}
 
 	u.stores[userID] = store
+	reg := prometheus.NewRegistry()
+	u.parquetBucketStoreMetrics.AddUserRegistry(userID, reg)
 	return store, nil
 }
 
@@ -266,221 +504,6 @@ func (u *ParquetBucketStores) createParquetBucketStore(userID string, userLogger
 	}
 
 	return store, nil
-}
-
-// findParquetBlocks finds parquet shards for the given user and time range
-func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatchers []storepb.LabelMatcher) ([]*parquetBlock, error) {
-	if len(blockMatchers) != 1 || blockMatchers[0].Type != storepb.LabelMatcher_RE || blockMatchers[0].Name != block.BlockIDLabel {
-		return nil, status.Error(codes.InvalidArgument, "only one block matcher is supported")
-	}
-
-	blockIDs := strings.Split(blockMatchers[0].Value, "|")
-	blocks := make([]*parquetBlock, 0, len(blockIDs))
-	bucketOpener := parquet_storage.NewParquetBucketOpener(p.bucket)
-	noopQuota := search.NewQuota(search.NoopQuotaLimitFunc(ctx))
-	for _, blockID := range blockIDs {
-		block, err := p.newParquetBlock(ctx, blockID, bucketOpener, bucketOpener, p.chunksDecoder, noopQuota, noopQuota, noopQuota)
-		if err != nil {
-			return nil, err
-		}
-		blocks = append(blocks, block)
-	}
-
-	return blocks, nil
-}
-
-// Series implements the store interface for a single parquet bucket store
-func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) (err error) {
-	matchers, err := storecache.MatchersToPromMatchersCached(p.matcherCache, req.Matchers...)
-	if err != nil {
-		return status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	ctx := srv.Context()
-	resHints := &hintspb.SeriesResponseHints{}
-	var anyHints *types.Any
-
-	var blockMatchers []storepb.LabelMatcher
-	if req.Hints != nil {
-		reqHints := &hintspb.SeriesRequestHints{}
-		if err := types.UnmarshalAny(req.Hints, reqHints); err != nil {
-			return status.Error(codes.InvalidArgument, errors.Wrap(err, "unmarshal series request hints").Error())
-		}
-		blockMatchers = reqHints.BlockMatchers
-	}
-
-	ctx = injectShardInfoIntoContext(ctx, req.ShardInfo)
-
-	// Find parquet shards for the time range
-	shards, err := p.findParquetBlocks(ctx, blockMatchers)
-	if err != nil {
-		return fmt.Errorf("failed to find parquet shards: %w", err)
-	}
-
-	seriesSet := make([]prom_storage.ChunkSeriesSet, len(shards))
-	errGroup, ctx := errgroup.WithContext(srv.Context())
-	errGroup.SetLimit(p.concurrency)
-
-	for i, shard := range shards {
-		resHints.QueriedBlocks = append(resHints.QueriedBlocks, hintspb.Block{
-			Id: shard.name,
-		})
-		errGroup.Go(func() error {
-			ss, err := shard.Query(ctx, req.MinTime, req.MaxTime, req.SkipChunks, matchers)
-			seriesSet[i] = ss
-			return err
-		})
-	}
-
-	if err = errGroup.Wait(); err != nil {
-		return err
-	}
-
-	ss := convert.NewMergeChunkSeriesSet(seriesSet, labels.Compare, prom_storage.NewConcatenatingChunkSeriesMerger())
-	for ss.Next() {
-		cs := ss.At()
-		cIter := cs.Iterator(nil)
-		chunks := make([]storepb.AggrChunk, 0)
-		for cIter.Next() {
-			chunk := cIter.At()
-			chunks = append(chunks, storepb.AggrChunk{
-				MinTime: chunk.MinTime,
-				MaxTime: chunk.MaxTime,
-				Raw: &storepb.Chunk{
-					Type: chunkToStoreEncoding(chunk.Chunk.Encoding()),
-					Data: chunk.Chunk.Bytes(),
-				},
-			})
-		}
-		if err = srv.Send(storepb.NewSeriesResponse(&storepb.Series{
-			Labels: labelpb.ZLabelsFromPromLabels(cs.Labels()),
-			Chunks: chunks,
-		})); err != nil {
-			err = status.Error(codes.Unknown, errors.Wrap(err, "send series response").Error())
-			return
-		}
-	}
-
-	if anyHints, err = types.MarshalAny(resHints); err != nil {
-		err = status.Error(codes.Unknown, errors.Wrap(err, "marshal series response hints").Error())
-		return
-	}
-
-	if err = srv.Send(storepb.NewHintsSeriesResponse(anyHints)); err != nil {
-		err = status.Error(codes.Unknown, errors.Wrap(err, "send series response hints").Error())
-		return
-	}
-
-	return nil
-}
-
-// LabelNames implements the store interface for a single parquet bucket store
-func (p *parquetBucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
-	matchers, err := storecache.MatchersToPromMatchersCached(p.matcherCache, req.Matchers...)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	resHints := &hintspb.LabelNamesResponseHints{}
-
-	var blockMatchers []storepb.LabelMatcher
-	if req.Hints != nil {
-		reqHints := &hintspb.LabelNamesRequestHints{}
-		if err := types.UnmarshalAny(req.Hints, reqHints); err != nil {
-			return nil, status.Error(codes.InvalidArgument, errors.Wrap(err, "unmarshal label names request hints").Error())
-		}
-		blockMatchers = reqHints.BlockMatchers
-	}
-
-	// Find parquet shards for the time range
-	shards, err := p.findParquetBlocks(ctx, blockMatchers)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find parquet shards: %w", err)
-	}
-
-	resNameSets := make([][]string, len(shards))
-	errGroup, ctx := errgroup.WithContext(ctx)
-	errGroup.SetLimit(p.concurrency)
-
-	for i, s := range shards {
-		resHints.QueriedBlocks = append(resHints.QueriedBlocks, hintspb.Block{
-			Id: s.name,
-		})
-		errGroup.Go(func() error {
-			r, err := s.LabelNames(ctx, req.Limit, matchers)
-			resNameSets[i] = r
-			return err
-		})
-	}
-
-	if err := errGroup.Wait(); err != nil {
-		return nil, err
-	}
-
-	anyHints, err := types.MarshalAny(resHints)
-	if err != nil {
-		return nil, status.Error(codes.Unknown, errors.Wrap(err, "marshal label names response hints").Error())
-	}
-	result := util.MergeUnsortedSlices(int(req.Limit), resNameSets...)
-
-	return &storepb.LabelNamesResponse{
-		Names: result,
-		Hints: anyHints,
-	}, nil
-}
-
-// LabelValues implements the store interface for a single parquet bucket store
-func (p *parquetBucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
-	matchers, err := storecache.MatchersToPromMatchersCached(p.matcherCache, req.Matchers...)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	resHints := &hintspb.LabelValuesResponseHints{}
-	var blockMatchers []storepb.LabelMatcher
-	if req.Hints != nil {
-		reqHints := &hintspb.LabelValuesRequestHints{}
-		if err := types.UnmarshalAny(req.Hints, reqHints); err != nil {
-			return nil, status.Error(codes.InvalidArgument, errors.Wrap(err, "unmarshal label values request hints").Error())
-		}
-		blockMatchers = reqHints.BlockMatchers
-	}
-
-	// Find parquet shards for the time range
-	shards, err := p.findParquetBlocks(ctx, blockMatchers)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find parquet shards: %w", err)
-	}
-
-	resNameValues := make([][]string, len(shards))
-	errGroup, ctx := errgroup.WithContext(ctx)
-	errGroup.SetLimit(p.concurrency)
-
-	for i, s := range shards {
-		resHints.QueriedBlocks = append(resHints.QueriedBlocks, hintspb.Block{
-			Id: s.name,
-		})
-		errGroup.Go(func() error {
-			r, err := s.LabelValues(ctx, req.Label, req.Limit, matchers)
-			resNameValues[i] = r
-			return err
-		})
-	}
-
-	if err := errGroup.Wait(); err != nil {
-		return nil, err
-	}
-
-	anyHints, err := types.MarshalAny(resHints)
-	if err != nil {
-		return nil, status.Error(codes.Unknown, errors.Wrap(err, "marshal label values response hints").Error())
-	}
-	result := util.MergeUnsortedSlices(int(req.Limit), resNameValues...)
-
-	return &storepb.LabelValuesResponse{
-		Values: result,
-		Hints:  anyHints,
-	}, nil
 }
 
 type parquetBlock struct {

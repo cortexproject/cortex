@@ -2401,6 +2401,10 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
   [block_discovery_strategy: <string> | default = "concurrent"]
 
+  # Type of bucket store to use (tsdb or parquet).
+  # CLI flag: -blocks-storage.bucket-store.bucket-store-type
+  [bucket_store_type: <string> | default = "tsdb"]
+
   # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
   # The pool is shared across all tenants. 0 to disable the limit.
   # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
@@ -6469,13 +6473,13 @@ sharding_ring:
 
   # Minimum time to wait for ring stability at startup. 0 to disable.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
-  [wait_stability_min_duration: <duration> | default = 1m]
+  [wait_stability_min_duration: <duration> | default = 0s]
 
   # Maximum time to wait for ring stability at startup. If the store-gateway
   # ring keeps changing after this period of time, the store-gateway will start
   # anyway.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
-  [wait_stability_max_duration: <duration> | default = 5m]
+  [wait_stability_max_duration: <duration> | default = 5s]
 
   # Timeout for waiting on store-gateway to become desired state in the ring.
   # CLI flag: -store-gateway.sharding-ring.wait-instance-state-timeout

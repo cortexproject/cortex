@@ -418,7 +418,7 @@ func (cfg *BucketStoreConfig) Validate() error {
 	if !slices.Contains(supportedTokenBucketBytesLimiterModes, cfg.TokenBucketBytesLimiter.Mode) {
 		return ErrInvalidTokenBucketBytesLimiterMode
 	}
-	if !util.StringsContain(supportedBucketStoreTypes, cfg.BucketStoreType) {
+	if !slices.Contains(supportedBucketStoreTypes, cfg.BucketStoreType) {
 		return ErrInvalidBucketStoreType
 	}
 	if cfg.LazyExpandedPostingGroupMaxKeySeriesRatio < 0 {

@@ -204,6 +204,41 @@ func NewIngesterWithConfigFile(name string, store RingStore, address, configFile
 	)
 }
 
+func NewParquetConverter(name string, store RingStore, address string, flags map[string]string, image string) *CortexService {
+	return NewParquetConverterWithConfigFile(name, store, address, "", flags, image)
+}
+
+func NewParquetConverterWithConfigFile(name string, store RingStore, address, configFile string, flags map[string]string, image string) *CortexService {
+	if configFile != "" {
+		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
+	}
+
+	// Configure the ingesters ring backend
+	flags["-ring.store"] = string(store)
+	switch store {
+	case RingStoreConsul:
+		flags["-consul.hostname"] = address
+	case RingStoreEtcd:
+		flags["-etcd.endpoints"] = address
+	}
+
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return NewCortexService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"-target":    "parquet-converter",
+			"-log.level": "warn",
+		}, flags))...),
+		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
+		httpPort,
+		grpcPort,
+	)
+}
+
 func NewQueryFrontend(name string, flags map[string]string, image string) *CortexService {
 	return NewQueryFrontendWithConfigFile(name, "", flags, image)
 }

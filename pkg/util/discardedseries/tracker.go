@@ -84,9 +84,9 @@ func (t *DiscardedSeriesTracker) Track(reason string, user string, series uint64
 }
 
 func (t *DiscardedSeriesTracker) UpdateMetrics() {
-	usersToDelete := make([]string, 0)
 	t.RLock()
 	for reason, userCounter := range t.reasonUserMap {
+		usersToDelete := make([]string, 0)
 		userCounter.RLock()
 		for user, seriesCounter := range userCounter.userSeriesMap {
 			seriesCounter.Lock()

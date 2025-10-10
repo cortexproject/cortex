@@ -456,7 +456,6 @@ func TestParquetGatewayWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) 
 				BlocksStorageFlags(),
 				AlertmanagerLocalFlags(),
 				map[string]string{
-					"-target": "all,parquet-converter",
 					"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
 					"-blocks-storage.tsdb.ship-interval":                "1s",
 					"-blocks-storage.bucket-store.sync-interval":        "1s",
@@ -502,14 +501,16 @@ func TestParquetGatewayWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) 
 			cluster := e2ecortex.NewCompositeCortexService(cortex1, cortex2)
 			require.NoError(t, s.StartAndWaitReady(cortex1, cortex2))
 
+			parquetConverter := e2ecortex.NewParquetConverter("parquet-converter", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+			require.NoError(t, s.StartAndWaitReady(parquetConverter))
+
 			// Wait until Cortex replicas have updated the ring state.
 			for _, replica := range cluster.Instances() {
-				numTokensPerInstance := 512      // Ingesters ring.
-				parquetConverterRingToken := 512 // Parquet converter ring.
+				numTokensPerInstance := 512 // Ingesters ring.
 				if testCfg.blocksShardingEnabled {
 					numTokensPerInstance += 512 * 2 // Store-gateway ring (read both by the querier and store-gateway).
 				}
-				require.NoError(t, replica.WaitSumMetrics(e2e.Equals(float64((parquetConverterRingToken+numTokensPerInstance)*cluster.NumInstances())), "cortex_ring_tokens_total"))
+				require.NoError(t, replica.WaitSumMetrics(e2e.Equals(float64((numTokensPerInstance)*cluster.NumInstances())), "cortex_ring_tokens_total"))
 			}
 
 			c, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1")
@@ -551,8 +552,7 @@ func TestParquetGatewayWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) 
 			require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_ingester_memory_series_removed_total"))
 
 			// Wait until the parquet-converter convert blocks
-			time.Sleep(time.Second * 5)
-			require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Equals(float64(2*cluster.NumInstances())), []string{"cortex_parquet_converter_blocks_converted_total"}, e2e.WaitMissingMetrics))
+			require.NoError(t, parquetConverter.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_parquet_converter_blocks_converted_total"))
 
 			// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).
 			result, err := c.Query("series_1", series1Timestamp)

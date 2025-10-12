@@ -153,7 +153,10 @@ func (u *ParquetBucketStores) Series(req *storepb.SeriesRequest, srv storepb.Sto
 
 // LabelNames implements BucketStores
 func (u *ParquetBucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
-	userID := getUserIDFromGRPCContext(ctx)
+	spanLog, spanCtx := spanlogger.New(ctx, "ParquetBucketStores.LabelNames")
+	defer spanLog.Finish()
+
+	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
 		return nil, fmt.Errorf("no userID")
 	}
@@ -178,7 +181,10 @@ func (u *ParquetBucketStores) LabelNames(ctx context.Context, req *storepb.Label
 
 // LabelValues implements BucketStores
 func (u *ParquetBucketStores) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
-	userID := getUserIDFromGRPCContext(ctx)
+	spanLog, spanCtx := spanlogger.New(ctx, "ParquetBucketStores.LabelValues")
+	defer spanLog.Finish()
+
+	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
 		return nil, fmt.Errorf("no userID")
 	}

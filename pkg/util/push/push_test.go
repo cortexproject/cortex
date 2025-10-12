@@ -231,7 +231,7 @@ func TestHandler_remoteWrite(t *testing.T) {
 		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
 		resp := httptest.NewRecorder()
 		handler.ServeHTTP(resp, req)
-		assert.Equal(t, http.StatusOK, resp.Code)
+		assert.Equal(t, http.StatusNoContent, resp.Code)
 
 		// test header value
 		respHeader := resp.Header()
@@ -258,7 +258,7 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "snappy",
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusOK,
+			expectedCode: http.StatusNoContent,
 			isV2:         true,
 		},
 		{
@@ -321,7 +321,7 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Type":           appProtoV2ContentType,
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusOK,
+			expectedCode: http.StatusNoContent,
 			isV2:         true,
 		},
 		{
@@ -330,7 +330,7 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Type":     appProtoV2ContentType,
 				"Content-Encoding": "snappy",
 			},
-			expectedCode: http.StatusOK,
+			expectedCode: http.StatusNoContent,
 			isV2:         true,
 		},
 		{
@@ -375,7 +375,7 @@ func TestHandler_cortexWriteRequest(t *testing.T) {
 		req := createRequest(t, createCortexRemoteWriteV2Protobuf(t, false, cortexpb.API), true)
 		resp := httptest.NewRecorder()
 		handler.ServeHTTP(resp, req)
-		assert.Equal(t, 200, resp.Code)
+		assert.Equal(t, http.StatusNoContent, resp.Code)
 	})
 }
 

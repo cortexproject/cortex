@@ -4344,6 +4344,11 @@ query_rejection:
 
 # list of rule groups to disable
 [disabled_rule_groups: <list of DisabledRuleGroup> | default = []]
+
+# Name validation scheme for metric names and label names, Support values are:
+# legacy, utf8.
+# CLI flag: -validation.name-validation-scheme
+[name_validation_scheme: <int> | default = legacy]
 ```
 
 ### `memberlist_config`

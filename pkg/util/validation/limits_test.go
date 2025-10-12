@@ -123,6 +123,18 @@ func TestLimits_Validate(t *testing.T) {
 			limits:   Limits{RulerExternalLabels: labels.FromStrings("good", string([]byte{0xff, 0xfe, 0xfd}))},
 			expected: errInvalidLabelValue,
 		},
+		"utf8: external-labels utf8 label name and value": {
+			limits:   Limits{NameValidationScheme: model.UTF8Validation, RulerExternalLabels: labels.FromStrings("test.utf8.metric", "😄")},
+			expected: nil,
+		},
+		"utf8: external-labels invalid label name": {
+			limits:   Limits{NameValidationScheme: model.UTF8Validation, RulerExternalLabels: labels.FromStrings("test.\xc5.metric", "😄")},
+			expected: errInvalidLabelName,
+		},
+		"utf8: external-labels invalid label value": {
+			limits:   Limits{NameValidationScheme: model.UTF8Validation, RulerExternalLabels: labels.FromStrings("test.utf8.metric", "test.\xc5.value")},
+			expected: errInvalidLabelValue,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -245,7 +257,7 @@ limits_per_label_set:
 	err := yaml.Unmarshal([]byte(inputYAML), &limitsYAML)
 	require.NoError(t, err)
 	require.Len(t, limitsYAML.LimitsPerLabelSet, 1)
-	require.Len(t, limitsYAML.LimitsPerLabelSet[0].LabelSet, 1)
+	require.Equal(t, 1, limitsYAML.LimitsPerLabelSet[0].LabelSet.Len())
 	require.Equal(t, limitsYAML.LimitsPerLabelSet[0].Limits.MaxSeries, 10)
 
 	duplicatedInputYAML := `

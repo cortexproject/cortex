@@ -285,7 +285,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 			return newNoMetricNameError()
 		}
 
-		if !model.IsValidMetricName(model.LabelValue(unsafeMetricName)) {
+		if !limits.NameValidationScheme.IsValidLabelName(unsafeMetricName) {
 			validateMetrics.DiscardedSamples.WithLabelValues(invalidMetricName, userID).Inc()
 			return newInvalidMetricNameError(unsafeMetricName)
 		}
@@ -304,7 +304,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 	labelsSizeBytes := 0
 
 	for _, l := range ls {
-		if !skipLabelNameValidation && !model.LabelName(l.Name).IsValid() {
+		if !skipLabelNameValidation && !limits.NameValidationScheme.IsValidLabelName(l.Name) {
 			validateMetrics.DiscardedSamples.WithLabelValues(invalidLabel, userID).Inc()
 			return newInvalidLabelError(ls, l.Name)
 		} else if len(l.Name) > maxLabelNameLength {

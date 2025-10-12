@@ -5184,6 +5184,12 @@
           "description": "List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs.",
           "type": "string"
         },
+        "name_validation_scheme": {
+          "default": "legacy",
+          "description": "Name validation scheme for metric names and label names, Support values are: legacy, utf8.",
+          "type": "number",
+          "x-cli-flag": "validation.name-validation-scheme"
+        },
         "native_histogram_ingestion_burst_size": {
           "default": 0,
           "description": "Per-user allowed native histogram ingestion burst size (in number of samples)",

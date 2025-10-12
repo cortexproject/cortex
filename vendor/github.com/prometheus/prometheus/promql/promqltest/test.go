@@ -314,7 +314,7 @@ func validateExpectedCmds(cmd *evalCmd) error {
 	return nil
 }
 
-func (*test) parseEval(lines []string, i int) (int, *evalCmd, error) {
+func (t *test) parseEval(lines []string, i int) (int, *evalCmd, error) {
 	instantParts := patEvalInstant.FindStringSubmatch(lines[i])
 	rangeParts := patEvalRange.FindStringSubmatch(lines[i])
 
@@ -532,7 +532,7 @@ func newLoadCmd(gap time.Duration, withNHCB bool) *loadCmd {
 	}
 }
 
-func (loadCmd) String() string {
+func (cmd loadCmd) String() string {
 	return "load"
 }
 
@@ -795,7 +795,7 @@ func newRangeEvalCmd(expr string, start, end time.Time, step time.Duration, line
 	}
 }
 
-func (*evalCmd) String() string {
+func (ev *evalCmd) String() string {
 	return "eval"
 }
 
@@ -1195,7 +1195,7 @@ func HistogramTestExpression(h *histogram.FloatHistogram) string {
 // clearCmd is a command that wipes the test's storage state.
 type clearCmd struct{}
 
-func (clearCmd) String() string {
+func (cmd clearCmd) String() string {
 	return "clear"
 }
 

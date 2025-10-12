@@ -44,12 +44,10 @@ func (p *parquetBucketStore) Close() error {
 }
 
 func (p *parquetBucketStore) SyncBlocks(ctx context.Context) error {
-	// TODO: Implement it
 	return nil
 }
 
 func (p *parquetBucketStore) InitialSync(ctx context.Context) error {
-	// TODO: Implement it
 	return nil
 }
 

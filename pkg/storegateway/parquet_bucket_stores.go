@@ -62,10 +62,9 @@ type ParquetBucketStores struct {
 
 	inflightRequests *cortex_util.InflightRequestTracker
 
-	parquetBucketStoreMetrics *ParquetBucketStoreMetrics
-	cortexBucketStoreMetrics  *CortexBucketStoreMetrics
-	userScanner               users.Scanner
-	shardingStrategy          ShardingStrategy
+	cortexBucketStoreMetrics *CortexBucketStoreMetrics
+	userScanner              users.Scanner
+	shardingStrategy         ShardingStrategy
 
 	userTokenBucketsMu sync.RWMutex
 	userTokenBuckets   map[string]*cortex_util.TokenBucket
@@ -80,18 +79,17 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy Shard
 	}
 
 	u := &ParquetBucketStores{
-		logger:                    logger,
-		cfg:                       cfg,
-		limits:                    limits,
-		bucket:                    cachingBucket,
-		stores:                    map[string]*parquetBucketStore{},
-		storesErrors:              map[string]error{},
-		chunksDecoder:             schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
-		inflightRequests:          cortex_util.NewInflightRequestTracker(),
-		cortexBucketStoreMetrics:  NewCortexBucketStoreMetrics(reg),
-		shardingStrategy:          shardingStrategy,
-		userTokenBuckets:          make(map[string]*cortex_util.TokenBucket),
-		parquetBucketStoreMetrics: NewParquetBucketStoreMetrics(),
+		logger:                   logger,
+		cfg:                      cfg,
+		limits:                   limits,
+		bucket:                   cachingBucket,
+		stores:                   map[string]*parquetBucketStore{},
+		storesErrors:             map[string]error{},
+		chunksDecoder:            schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
+		inflightRequests:         cortex_util.NewInflightRequestTracker(),
+		cortexBucketStoreMetrics: NewCortexBucketStoreMetrics(reg),
+		shardingStrategy:         shardingStrategy,
+		userTokenBuckets:         make(map[string]*cortex_util.TokenBucket),
 	}
 	u.userScanner, err = users.NewScanner(cfg.UsersScanner, bucketClient, logger, reg)
 	if err != nil {
@@ -415,7 +413,6 @@ func (u *ParquetBucketStores) closeEmptyBucketStore(userID string) error {
 		u.userTokenBucketsMu.Unlock()
 	}
 
-	u.parquetBucketStoreMetrics.RemoveUserRegistry(userID)
 	return bs.Close()
 }
 
@@ -482,8 +479,6 @@ func (u *ParquetBucketStores) getOrCreateStore(userID string) (*parquetBucketSto
 	}
 
 	u.stores[userID] = store
-	reg := prometheus.NewRegistry()
-	u.parquetBucketStoreMetrics.AddUserRegistry(userID, reg)
 	return store, nil
 }
 

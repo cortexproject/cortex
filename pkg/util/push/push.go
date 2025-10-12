@@ -114,6 +114,7 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 				http.Error(w, string(resp.Body), int(resp.Code))
 			} else {
 				setPRW2RespHeader(w, resp.Samples, resp.Histograms, resp.Exemplars)
+				w.WriteHeader(http.StatusNoContent)
 			}
 		}
 

@@ -17,40 +17,40 @@ For the first version, basic authentication will be supported.
 However, as the project grows, it is planned to support different authentication mechanisms according to the needs of the users.&lt;/p>
 &lt;p>We would like to have a simple configuration format.
 The following is the proposed configuration:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">server&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">address&lt;/span>: &lt;span style="color:#ae81ff">localhost&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">port&lt;/span>: &lt;span style="color:#ae81ff">8080&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">debug&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">address&lt;/span>: &lt;span style="color:#ae81ff">localhost&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">port&lt;/span>: &lt;span style="color:#ae81ff">8090&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">tenants&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">authentication&lt;/span>: &lt;span style="color:#ae81ff">basic&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">username&lt;/span>: &lt;span style="color:#ae81ff">username1&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">password&lt;/span>: &lt;span style="color:#ae81ff">password1&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">id&lt;/span>: &lt;span style="color:#ae81ff">orgid&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">authentication&lt;/span>: &lt;span style="color:#ae81ff">basic&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">username&lt;/span>: &lt;span style="color:#ae81ff">username2&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">password&lt;/span>: &lt;span style="color:#ae81ff">password2&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">id&lt;/span>: &lt;span style="color:#ae81ff">orgid&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">distributor&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">dns_refresh_interval&lt;/span>: &lt;span style="color:#ae81ff">3s&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">url&lt;/span>: &lt;span style="color:#ae81ff">http://distributor:9009&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">paths&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#ae81ff">/api/v1/push&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#ae81ff">/api/prom/push&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">http_client_timeout&lt;/span>: &lt;span style="color:#ae81ff">20&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">read_timeout&lt;/span>: &lt;span style="color:#ae81ff">5&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">write_timeout&lt;/span>: &lt;span style="color:#ae81ff">5&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">idle_timeout&lt;/span>: &lt;span style="color:#ae81ff">7&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">frontend&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">url&lt;/span>: &lt;span style="color:#ae81ff">http://frontend:9010&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">read_timeout&lt;/span>: &lt;span style="color:#ae81ff">5&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">write_timeout&lt;/span>: &lt;span style="color:#ae81ff">5&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">idle_timeout&lt;/span>: &lt;span style="color:#ae81ff">7&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>...
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>debug&lt;/code> will be used for endpoints that do not require authentication, ie. /metrics, /ready, /pprof.
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">server&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">address&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">localhost&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">port&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">8080&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">debug&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">address&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">localhost&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">port&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">8090&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">tenants&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">authentication&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">basic&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">username&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">username1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">password&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">password1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">id&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">orgid&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">authentication&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">basic&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">username&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">username2&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">password&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">password2&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">id&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">orgid&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">distributor&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">dns_refresh_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">3s&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">http://distributor:9009&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">paths&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">/api/v1/push&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">/api/prom/push&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">http_client_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">20&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">read_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">5&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">write_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">5&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">idle_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">7&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">frontend&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">http://frontend:9010&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">read_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">5&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">write_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">5&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">idle_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">7&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>debug&lt;/code> will be used for endpoints that do not require authentication, ie. /metrics, /ready, /pprof.
 If no paths are given in the component, such as &lt;code>frontend&lt;/code>, the default API paths of that component will be registered.
 If paths are provided, then the provided API paths will override the default API paths.
 Additionally, the users will be able to specify custom timeouts for each component similar to &lt;a href="https://github.com/cortexproject/cortex-helm-chart/blob/571fc2a5f184b6b7c243bac3727503264249bfd1/templates/nginx/nginx-config.yaml#L50-L55">NGINX&lt;/a>.&lt;/p>
@@ -404,128 +404,7 @@ This must be done in external authorization proxy.&lt;/strong>&lt;/p>
 &lt;p>To perform the last step, Alertmanagers need to find other alertmanager instances. This will be implemented by using the ring, which will (likely) be added as per &lt;a href="https://github.com/cortexproject/cortex/pull/3574">Alertmanager scaling proposal&lt;/a>.&lt;/p>
 &lt;p>Access to Alertmanager API must be disabled for tenant that is going to be deleted.&lt;/p>
 &lt;h2 id="alternatives-considered">Alternatives Considered&lt;/h2>
-&lt;p>Another possibility how to deal with tenant data deletion is to make purger component actively communicate with ingester, compactor, ruler and alertmanagers to make data deletion faster. In this case purger would need to understand how to reach out to all those components (with multiple ring configurations, one for each component type), and internal API calls would need to have strict semantics around when the data deletion is complete. This alternative has been rejected due to additional complexity and only small benefit in terms of how fast data would be deleted.&lt;/p></description></item><item><title>Docs: Distributed Query Execution</title><link>/docs/proposals/distributed-query-execution/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/distributed-query-execution/</guid><description>
-&lt;ul>
-&lt;li>Author: &lt;a href="https://github.com/harry671003">Harry John&lt;/a>&lt;/li>
-&lt;li>Date: June 2025&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
-&lt;/ul>
-&lt;h2 id="overview">Overview&lt;/h2>
-&lt;h3 id="background">Background&lt;/h3>
-&lt;p>Cortex currently implements distributed query execution by rewriting queries into multiple subqueries, handled through middlewares in the query-frontend. These split queries are scheduled via the query-scheduler, evaluated by queriers, and merged back in the query-frontend. This proposal introduces a new distributed query execution model based on Thanos PromQL engine.&lt;/p>
-&lt;h3 id="terminology">Terminology&lt;/h3>
-&lt;ul>
-&lt;li>Logical plan - Parsed PromQL expression represented as a tree of logical operators.&lt;/li>
-&lt;li>Query Plan - The logical query plan.&lt;/li>
-&lt;li>Optimization - Selecting the most efficient logical plan.&lt;/li>
-&lt;li>Planner/Optimizer - Component that performs optimization.&lt;/li>
-&lt;li>Fragment - A portion of the query plan.&lt;/li>
-&lt;li>Scheduling - Assigning fragments to queriers&lt;/li>
-&lt;/ul>
-&lt;h2 id="problem">Problem&lt;/h2>
-&lt;h4 id="scalability">Scalability&lt;/h4>
-&lt;p>The current model struggles with high-cardinality queries scanning millions of series. Ingesters are not well-partitioned, and store-gateways don’t leverage partitioning during query execution. As a result, queriers often pull all data to a single node, creating bottlenecks.&lt;/p>
-&lt;h4 id="inefficient-merging">Inefficient Merging&lt;/h4>
-&lt;p>Merging results in the query-frontend—which isn’t shuffle-sharded — makes it a single point of failure. Poison queries with large responses can OOM all query-frontends, impacting availability.&lt;/p>
-&lt;h4 id="limited-query-rewriting">Limited Query Rewriting&lt;/h4>
-&lt;p>Today, queries are split via string manipulation. For example:&lt;/p>
-&lt;pre tabindex="0">&lt;code>sum by (pod) (rate(http_req_total[5m])) over 2d
-=&amp;gt; MERGE(sum by (pod) (rate(http_req_total{shard=&amp;#34;1&amp;#34;}[5m])), sum by (pod) (rate(http_req_total{shard=&amp;#34;2&amp;#34;}[5m])))
-&lt;/code>&lt;/pre>&lt;p>This is fragile and not scalable. Modern databases instead create a physical plan and split it into executable fragments assigned across nodes.&lt;/p>
-&lt;h4 id="lack-of-optimizations">Lack of Optimizations&lt;/h4>
-&lt;p>Cortex currently supports only basic optimizations (e.g., time and by/without clause-based splitting). Mature DBMS systems explore multiple execution strategies and pick the optimal one — something currently missing in Cortex.&lt;/p>
-&lt;h2 id="solution">Solution&lt;/h2>
-&lt;h3 id="architecture-overview">Architecture Overview&lt;/h3>
-&lt;p>This proposal introduces a new query execution model that will be implemented using the volcano-iterator model from the Thanos PromQL query engine. Here is a high level overview of the proposal of implementing query optimization and distributed query execution in Cortex:&lt;/p>
-&lt;ul>
-&lt;li>&lt;strong>Query Frontend&lt;/strong>: Converts the logical plan into an optimized plan and sends the plan to the query-scheduler.&lt;/li>
-&lt;li>&lt;strong>Query Scheduler&lt;/strong>: Fragments the plan and assigns plan fragments to queriers.&lt;/li>
-&lt;li>&lt;strong>Queriers&lt;/strong>: Pull fragments, execute them, and return results. The root-fragment querier acts as coordinator, merging final results before notifying the frontend.&lt;/li>
-&lt;/ul>
-&lt;p>&lt;img src="/images/proposals/distributed-execution-arch.png" alt="Architecture">&lt;/p>
-&lt;h3 id="query-frontend">Query Frontend&lt;/h3>
-&lt;p>The &lt;strong>Query Frontend&lt;/strong> continues to act as the entry point for &lt;code>query_range&lt;/code> and &lt;code>query&lt;/code> APIs. The existing API layer is reused, but a new &lt;strong>distributed query engine&lt;/strong> is introduced under the hood. This engine is responsible for generating and optimizing the query plan, and coordinating with the query scheduler.&lt;/p>
-&lt;h4 id="logical-plan">Logical Plan&lt;/h4>
-&lt;p>When a query request is received, the PromQL expression is first parsed into a &lt;strong>logical query plan&lt;/strong>, represented as a tree of logical operators. This logical plan is then passed through a series of &lt;strong>optimizers&lt;/strong> that aim to transform the query into a more efficient structure. Consider the PromQL query &lt;code>sum(rate(req_total[5m]))&lt;/code> to be run over 2 days. The query is parsed into the following basic logical plan.&lt;/p>
-&lt;p>&lt;img src="/images/proposals/distributed-execution-logical-plan.png" alt="LogicalPlan">&lt;/p>
-&lt;h4 id="distributed-optimizer">Distributed Optimizer&lt;/h4>
-&lt;p>A special optimizer, the &lt;strong>Distributed Optimizer&lt;/strong>, analyzes the logical plan to determine where and how the query can be split and executed in parallel. This is done by inserting &lt;strong>&lt;code>Remote&lt;/code> logical nodes&lt;/strong> at appropriate points in the plan tree.
-These &lt;code>Remote&lt;/code> nodes act as placeholders indicating plan fragments that can be offloaded to remote queriers. This enables sharding both over time and across data partitions.&lt;/p>
-&lt;p>&lt;img src="/images/proposals/distributed-execution-optimized-plan.png" alt="OptimizedLogicalPlan">&lt;/p>
-&lt;h3 id="query-scheduler">Query Scheduler&lt;/h3>
-&lt;p>The &lt;strong>Query Scheduler&lt;/strong> receives the optimized logical plan, including the &lt;code>Remote&lt;/code> nodes introduced by the optimizer. It is responsible for &lt;strong>fragmenting&lt;/strong> the plan and orchestrating its execution across multiple queriers.&lt;/p>
-&lt;h4 id="fragmentation">Fragmentation&lt;/h4>
-&lt;p>Fragmentation involves splitting the query plan into &lt;strong>multiple fragments&lt;/strong>, where each fragment is a sub-tree of the overall plan that can be evaluated independently. Fragments are created by cutting the plan at &lt;code>Remote&lt;/code> nodes. In the below diagram the coloured tiles mark the same fragment.&lt;/p>
-&lt;p>&lt;img src="/images/proposals/distributed-execution-plan-fragments.png" alt="PlanFragments">&lt;/p>
-&lt;h4 id="enqueuing-fragments">Enqueuing fragments&lt;/h4>
-&lt;p>Fragmentation respects dependencies: &lt;strong>child fragments are enqueued before parent fragments&lt;/strong>, ensuring data is available before dependent operations are scheduled.
-These fragments are then &lt;strong>enqueued&lt;/strong> into the scheduler’s internal queue system, ready to be picked up by queriers.&lt;/p>
-&lt;p>&lt;img src="/images/proposals/distributed-execution-scheduler-queue.png" alt="SchedulerQueue">&lt;/p>
-&lt;h4 id="assigning-query-fragments-to-queriers">Assigning query fragments to queriers&lt;/h4>
-&lt;p>The fragment include the plan and the remote fragment IDs it depends on. Queriers pull fragments from the scheduler. After child fragments are assigned to a particular querier, it’s parent fragment is updated with the location of the querier from which to read the results from.&lt;/p>
-&lt;p>At execution time, a &lt;code>Remote&lt;/code> operator acts as a placeholder within the querier&amp;rsquo;s execution engine to &lt;strong>pull results from other queriers&lt;/strong> running dependent fragments.&lt;/p>
-&lt;p>&lt;img src="/images/proposals/distributed-execution-assigned-fragments.png" alt="AssignedFragments">&lt;/p>
-&lt;h3 id="querier">Querier&lt;/h3>
-&lt;p>The &lt;strong>Querier&lt;/strong> is enhanced to support both &lt;strong>executing&lt;/strong> query fragments and &lt;strong>serving&lt;/strong> results to other queriers. In the distributed query model, a querier may either evaluate a plan fragment or provide intermediate results to other queriers that depend on its output.&lt;/p>
-&lt;p>To support this, the querier now implements two interfaces:&lt;/p>
-&lt;ul>
-&lt;li>&lt;strong>QueryExecutor&lt;/strong> – Executes assigned query plan root fragment.&lt;/li>
-&lt;li>&lt;strong>QueryServer&lt;/strong> – Serves results to other queriers via streaming gRPC endpoints. (i.e., acts as a remote data source for &lt;code>Remote&lt;/code> operators).&lt;/li>
-&lt;/ul>
-&lt;h4 id="queryexecutor">QueryExecutor&lt;/h4>
-&lt;p>The QueryExecutor interface enables a querier to execute the root fragment of the distributed query plan.&lt;/p>
-&lt;pre tabindex="0">&lt;code>type QueryExecutor interface {
-ExecuteQuery(p LogicalPlan) (QueryResult, error)
-}
-&lt;/code>&lt;/pre>&lt;h4 id="queryserver">QueryServer&lt;/h4>
-&lt;p>The QueryServer interface enables a querier to expose query results to other queriers via a gRPC API. This is used when another querier is executing a fragment that depends on the results of this one (i.e., the child in the execution tree).&lt;/p>
-&lt;pre tabindex="0">&lt;code>type QueryServer interface {
-Enqueue(context.Context, p LogicalPlan) error
-Series(SeriesRequest, querierpb.QueryServer_SeriesServer) error
-Next(*executionpb.NextRequest, querierpb.QueryServer_NextServer) error
-}
-&lt;/code>&lt;/pre>&lt;ul>
-&lt;li>&lt;strong>Enqueue&lt;/strong> - Schedules the provided logical plan fragment for execution on the querier. Enqueuing a plan on a quereir will block a concurrency until the query finishes, or times out if it exceeds the configured limit. It respects the querier’s concurrency limits and queue capacity.&lt;/li>
-&lt;li>&lt;strong>Series&lt;/strong> - Streams the metadata (labels) for the series produced by the fragment, allowing parent queriers to understand the shape of incoming data.&lt;/li>
-&lt;li>&lt;strong>Next&lt;/strong> - Streams the actual step vector results of the fragment, returning time-step-wise computed samples and histograms.&lt;/li>
-&lt;/ul>
-&lt;p>These methods are implemented as streaming gRPC endpoints and used by &lt;code>Remote&lt;/code> operators to pull data on-demand during execution.&lt;/p>
-&lt;h5 id="grpc-service-definition">gRPC Service Definition&lt;/h5>
-&lt;pre tabindex="0">&lt;code>service QueryServer {
-rpc Series(SeriesRequest) returns (stream OneSeries);
-rpc Next(NextRequest) returns (stream StepVectorBatch);
-}
-message OneSeries {
-repeated Label labels = 1;
-}
-message StepVectorBatch {
-repeated StepVector step_vectors = 1;
-}
-message StepVector {
-int64 t = 1;
-repeated uint64 sample_IDs = 2;
-repeated double samples = 3;
-repeated uint64 histogram_IDs = 4;
-repeated FloatHistogram histograms = 5;
-}
-&lt;/code>&lt;/pre>&lt;p>Together, the QueryExecutor and QueryServer roles allow each querier to act as both a compute node and a data provider, enabling true parallel and distributed evaluation of PromQL queries across Cortex&amp;rsquo;s infrastructure.&lt;/p>
-&lt;h4 id="fragment-execution">Fragment Execution&lt;/h4>
-&lt;p>Each fragment is evaluated using the &lt;strong>Thanos PromQL engine’s volcano iterator model&lt;/strong>, where operators are chained and lazily pulled for evaluation. If a fragment includes a &lt;code>RemoteOperator&lt;/code>, it fetches the intermediate result from the peer querier serving the dependent fragment. Leaf operators such as &lt;code>MatrixSelector&lt;/code> and &lt;code>VectorSelector&lt;/code> read data from storage layer.&lt;/p>
-&lt;h4 id="co-ordinated-execution">Co-ordinated Execution&lt;/h4>
-&lt;p>The querier assigned the &lt;strong>root fragment&lt;/strong> also plays the role of &lt;strong>coordinator&lt;/strong>. The co-ordinator will&lt;/p>
-&lt;ul>
-&lt;li>Trigger dependent fragment execution by invoking Next() on the child queriers&lt;/li>
-&lt;li>Wait for remote fragment results&lt;/li>
-&lt;li>Assemble the final result&lt;/li>
-&lt;li>Notify the QueryFrontend&lt;/li>
-&lt;/ul>
-&lt;p>This keeps the query execution tree distributed and parallelized, but the final result is merged and returned by a single coordinator node for consistency and simplicity.&lt;/p>
-&lt;h4 id="fallback">Fallback&lt;/h4>
-&lt;p>Not all types of queries are supported by Thanos PromQL engine. If any plan fragment is not supported by Thanos engine, the plan is converted back into a query string and evaluated by the Prometheus PromQL engine.&lt;/p>
-&lt;h3 id="error-handling">Error Handling&lt;/h3>
-&lt;p>If any individual fragment fails or if a querier handling a fragment is restarted during execution, the entire query is considered failed. No retries or partial results are supported in the initial version. The root querier reports the error back to the QueryFrontend, which returns it to the client.&lt;/p>
-&lt;h2 id="conclusion">Conclusion&lt;/h2>
-&lt;p>This proposal lays the groundwork for a robust and scalable distributed query execution in Cortex. By leveraging Thanos PromQL&amp;rsquo;s iterator engine and explicit fragmentation, it avoids string-based rewriting and unlocks deep query optimization and better fault isolation. Future iterations can explore support for retries, cost-based optimization, and fine-grained resource scheduling.&lt;/p></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
+&lt;p>Another possibility how to deal with tenant data deletion is to make purger component actively communicate with ingester, compactor, ruler and alertmanagers to make data deletion faster. In this case purger would need to understand how to reach out to all those components (with multiple ring configurations, one for each component type), and internal API calls would need to have strict semantics around when the data deletion is complete. This alternative has been rejected due to additional complexity and only small benefit in terms of how fast data would be deleted.&lt;/p></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/jaybatra26">Jay Batra&lt;/a>&lt;/li>
 &lt;li>Date: March 2020&lt;/li>
@@ -845,323 +724,7 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;h4 id="consistency">Consistency&lt;/h4>
 &lt;p>On resharding of compactor schedulers, a tenant might move to a different scheduler. We can either drop the current compactor job in order to prevent duplicate compaction jobs, or continue compaction. I propose that the compactor drops the compaction job if the compaction group no longer belongs to the original compactor scheduler. This way, we do not have duplicate compactions happening, and we can minimize work wasted.&lt;/p>
 &lt;h3 id="contribute-to-thanos-for-a-more-scalable-compactor">Contribute to Thanos for a more scalable compactor&lt;/h3>
-&lt;p>Instead of introducing parallelism on the Cortex compactor level, we move the parallelism to the Thanos compactor itself. Thanos has a &lt;a href="https://docs.google.com/document/d/1xi0V8DB0hE54XgkogJRnNL6yH7C5JThJywlLFoC6dCQ/">proposal to make compactor more scalable&lt;/a>, and a &lt;a href="https://github.com/thanos-io/thanos/pull/3807">PR&lt;/a>. Cortex will enjoy higher throughput per tenant if Thanos is able to speed up the compaction, and we can keep the Cortex architecture the same. However, this approach means that a single tenant is still sharded to a single compactor. In order to compact more groups at once, we must scale up compactor vertically. Although vertical scaling can get us far, we should scale horizontally where we can.&lt;/p></description></item><item><title>Docs: Parquet-based Storage</title><link>/docs/proposals/parquet-storage/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/parquet-storage/</guid><description>
-&lt;ul>
-&lt;li>Author: &lt;a href="https://github.com/alanprot">Alan Protasio&lt;/a>, &lt;a href="https://github.com/yeya24">Ben Ye&lt;/a>&lt;/li>
-&lt;li>Date: April 2025&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
-&lt;/ul>
-&lt;h2 id="background">Background&lt;/h2>
-&lt;p>Since the introduction of Block Storage in Cortex, TSDB format and Store Gateway is the de-facto way to query long term data on object storage. However, it presents several significant challenges:&lt;/p>
-&lt;h3 id="tsdb-format-limitations">TSDB Format Limitations&lt;/h3>
-&lt;p>TSDB format, while efficient for write-heavy workloads on local SSDs, is not designed for object storage:&lt;/p>
-&lt;ul>
-&lt;li>Index relies heavily on random reads to serve queries, where each random read becomes a request to object store&lt;/li>
-&lt;li>In order to reduce requests to object store, requests needs to be merged, leading to higher overfetch&lt;/li>
-&lt;li>Index relies on postings, which can be a huge bottleneck for high cardinality data&lt;/li>
-&lt;/ul>
-&lt;h3 id="store-gateway-operational-challenges">Store Gateway Operational Challenges&lt;/h3>
-&lt;p>Store Gateway is originally introduced in &lt;a href="https://thanos.io/">Thanos&lt;/a>. Both Cortex and Thanos community have been collaborating to add a lot of optimizations to Store Gateway. However, it has its own problems related to the design.&lt;/p>
-&lt;ol>
-&lt;li>
-&lt;p>Resource Intensive&lt;/p>
-&lt;ul>
-&lt;li>Requires significant local disk space to store index headers&lt;/li>
-&lt;li>High memory utilization due to index header mmap&lt;/li>
-&lt;li>Often needs over-provisioning to handle query spikes&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>
-&lt;p>State Management and Scaling Difficulties&lt;/p>
-&lt;ul>
-&lt;li>Requires complex data sharding when scaling. Often causing issues such as consistency check failure. Hard to configure for users&lt;/li>
-&lt;li>Initial sync causes long startup time. This affects service availability on both scaling and failure recovery scenario&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>
-&lt;p>Query Inefficiencies&lt;/p>
-&lt;ul>
-&lt;li>Attempts to minimize storage requests often lead to overfetching, causing high bandwidth usage&lt;/li>
-&lt;li>Complex caching logic with varying effectiveness. Latency varies a lot when cache miss&lt;/li>
-&lt;li>Processes single block with one goroutine, leading to high latency for large blocks and cannot scale without complex data partitioning&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;/ol>
-&lt;h3 id="why-parquet">Why Parquet?&lt;/h3>
-&lt;p>&lt;a href="https://parquet.apache.org/">Apache Parquet&lt;/a> is a columnar storage format designed specifically for efficient data storage and retrieval from object storage systems. It offers several key advantages that directly address the problems we face with TSDB and Store Gateway:&lt;/p>
-&lt;ul>
-&lt;li>Data organized by columns rather than rows, reduces number of requests to object storage as only limited IO is required to fetch the whole column&lt;/li>
-&lt;li>Rich file metadata and index, no local state like index header required to query the data, making it stateless&lt;/li>
-&lt;li>Advanced compression techniques reduce storage costs and improve query performance&lt;/li>
-&lt;li>Parallel processing friendly using Parquet Row Group&lt;/li>
-&lt;/ul>
-&lt;p>There are other benefits of Parquet formats, but they are not directly related to the proposal:&lt;/p>
-&lt;ul>
-&lt;li>Wide ecosystem and tooling support&lt;/li>
-&lt;li>Column pruning opportunity using projection pushdown&lt;/li>
-&lt;/ul>
-&lt;h2 id="out-of-scope">Out of Scope&lt;/h2>
-&lt;ul>
-&lt;li>Allow Ingester and Compactor to create Parquet files instead of TSDB blocks directly. This could be in the future roadmap but this proposal only focuses on converting and querying Parquet files.&lt;/li>
-&lt;/ul>
-&lt;h2 id="proposed-design">Proposed Design&lt;/h2>
-&lt;h3 id="components">Components&lt;/h3>
-&lt;p>There are 2 new Cortex components/modules introduced in this design.&lt;/p>
-&lt;h4 id="1-parquet-converter">1. Parquet Converter&lt;/h4>
-&lt;p>Parquet Converter is a new component that converts TSDB blocks on object store to Parquet file format.&lt;/p>
-&lt;p>It is similar to compactor, however, it only converts single block. The converted Parquet files will be stored in the same TSDB block folder so that the lifecycle of Parquet file will be managed together with the block.&lt;/p>
-&lt;p>Only certain blocks can be configured to convert to Parquet file and it can be block duration based, for example we only convert if block duration is &amp;gt;= 12h.&lt;/p>
-&lt;h4 id="2-parquet-queryable">2. Parquet Queryable&lt;/h4>
-&lt;p>Similar to the existing &lt;code>distributorQueryable&lt;/code> and &lt;code>blockStorageQueryable&lt;/code>, Parquet queryable is a queryable implementation which allows Cortex to query parquet files and can be used in both Cortex Querier and Ruler.&lt;/p>
-&lt;p>If Parquet queryable is enabled, block storage queryable will be disabled and Cortex querier will not query Store Gateway anymore. &lt;code>distributorQueryable&lt;/code> remains unchanged so it still queries Ingesters.&lt;/p>
-&lt;p>Parquet queryable uses bucket index to discovers parquet files in object storage. The bucket index is the same as the existing TSDB bucket index file, but using a different name &lt;code>bucket-index-parquet.json.gz&lt;/code>. It is updated periodically by Cortex Compactor/Parquet Converter if parquet storage is enabled.&lt;/p>
-&lt;p>Cortex querier remains a stateless component when Parquet queryable is enabled.&lt;/p>
-&lt;h3 id="architecture">Architecture&lt;/h3>
-&lt;pre tabindex="0">&lt;code>┌──────────┐ ┌─────────────┐ ┌──────────────┐
-│ Ingester │───&amp;gt;│ TSDB │───&amp;gt;│ Parquet │
-└──────────┘ │ Blocks │ │ Converter │
-└─────────────┘ └──────────────┘
-│
-v
-┌──────────┐ ┌─────────────┐ ┌──────────────┐
-│ Query │───&amp;gt;│ Parquet │───&amp;gt;│ Parquet │
-│ Frontend │ │ Querier │ │ Files │
-└──────────┘ └─────────────┘ └──────────────┘
-&lt;/code>&lt;/pre>&lt;h3 id="data-format">Data Format&lt;/h3>
-&lt;p>Parquet file is converted from TSDB block so it follows the same time range constraint.&lt;/p>
-&lt;p>If the largest block is 1 day then parquet file can go up to 1 day. Max block range is configurable in Cortex but default value is 24h. So following schema will use 24h as example.&lt;/p>
-&lt;h4 id="schema-overview">Schema Overview&lt;/h4>
-&lt;p>The Parquet format consists of two types of files:&lt;/p>
-&lt;ol>
-&lt;li>
-&lt;p>&lt;strong>Labels Parquet File&lt;/strong>&lt;/p>
-&lt;ul>
-&lt;li>Each row represents a unique time series&lt;/li>
-&lt;li>Each column corresponds to a label name (e.g., &lt;code>__name__&lt;/code>, &lt;code>label1&lt;/code>, &amp;hellip;, &lt;code>labelN&lt;/code>)&lt;/li>
-&lt;li>Row groups are sorted by &lt;code>__name__&lt;/code> alphabetically in ascending order&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>
-&lt;p>&lt;strong>Chunks Parquet File&lt;/strong>&lt;/p>
-&lt;ul>
-&lt;li>Maintains row and row group order matching the Labels file&lt;/li>
-&lt;li>Contains multiple chunk columns for time-series data ordered by time. With 3 chunk columns for example, each column covers 8h of chunks: 0-8h, 8h-16h, 16-24h. It is possible that a single TSDB chunk spans over time ranges of 2 columns and Parquet file writer needs to split and re-encode chunks for each chunk column.&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;/ol>
-&lt;h4 id="column-specifications">Column Specifications&lt;/h4>
-&lt;table>
-&lt;thead>
-&lt;tr>
-&lt;th>Column Name&lt;/th>
-&lt;th>Description&lt;/th>
-&lt;th>Type&lt;/th>
-&lt;th>Encoding/Compression/skipPageBounds&lt;/th>
-&lt;th>Required&lt;/th>
-&lt;/tr>
-&lt;/thead>
-&lt;tbody>
-&lt;tr>
-&lt;td>&lt;code>s_hash&lt;/code>&lt;/td>
-&lt;td>Hash of all labels&lt;/td>
-&lt;td>INT64&lt;/td>
-&lt;td>None/Zstd/Yes&lt;/td>
-&lt;td>No&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>&lt;code>s_col_indexes&lt;/code>&lt;/td>
-&lt;td>Bitmap indicating which columns store the label set for this row (series)&lt;/td>
-&lt;td>ByteArray (bitmap)&lt;/td>
-&lt;td>DeltaByteArray/Zstd/Yes&lt;/td>
-&lt;td>Yes&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>&lt;code>s_lbl_{labelName}&lt;/code>&lt;/td>
-&lt;td>Values for a given label name. Rows are sorted by metric name&lt;/td>
-&lt;td>ByteArray (string)&lt;/td>
-&lt;td>RLE_DICTIONARY/Zstd/No&lt;/td>
-&lt;td>Yes&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>&lt;code>s_data_{n}&lt;/code>&lt;/td>
-&lt;td>Chunks columns (0 to data_cols_count). Each column contains data from &lt;code>[n*duration, (n+1)*duration]&lt;/code> where duration is &lt;code>24h/data_cols_count&lt;/code>&lt;/td>
-&lt;td>ByteArray (encoded chunks)&lt;/td>
-&lt;td>DeltaByteArray/Zstd/Yes&lt;/td>
-&lt;td>Yes&lt;/td>
-&lt;/tr>
-&lt;/tbody>
-&lt;/table>
-&lt;p>data_cols_count will be a parquet file metadata and its value is default to 3 but it can be configurable to adjust for different usecases.&lt;/p>
-&lt;h2 id="open-questions">Open Questions&lt;/h2>
-&lt;ol>
-&lt;li>Should we use Parquet Gateway to replace Store Gateway
-&lt;ul>
-&lt;li>Separate query engine and storage&lt;/li>
-&lt;li>We can make Parquet Gateway semi-stateful like data locality for better performance&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;/ol>
-&lt;h2 id="acknowledgement">Acknowledgement&lt;/h2>
-&lt;p>We&amp;rsquo;d like to give huge credits for people from the Thanos community who started this initiative.&lt;/p>
-&lt;ul>
-&lt;li>&lt;a href="https://github.com/fpetkovski">Filip Petkovski&lt;/a> and his initial &lt;a href="https://www.youtube.com/watch?v=V8Y4VuUwg8I">talk about Parquet&lt;/a>&lt;/li>
-&lt;li>&lt;a href="https://github.com/MichaHoffmann">Michael Hoffmann&lt;/a> and his great work of &lt;a href="https://github.com/cloudflare/parquet-tsdb-poc">parquet poc&lt;/a>&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Partition Ring with Multi-AZ Replication</title><link>/docs/proposals/partition-ring-multi-az-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/partition-ring-multi-az-replication/</guid><description>
-&lt;ul>
-&lt;li>Author: &lt;a href="https://github.com/danielblando">Daniel Blando&lt;/a>&lt;/li>
-&lt;li>Date: July 2025&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
-&lt;/ul>
-&lt;h2 id="background">Background&lt;/h2>
-&lt;p>Distributors use a token-based ring to shard data across ingesters. Each ingester owns random tokens (32-bit numbers) in a hash ring. For each incoming series, the distributor:&lt;/p>
-&lt;ol>
-&lt;li>Hashes the series labels to get a hash value&lt;/li>
-&lt;li>Finds the primary ingester (smallest token &amp;gt; hash value)&lt;/li>
-&lt;li>When replication is enabled, selects additional replicas by moving clockwise around the ring&lt;/li>
-&lt;li>Ensures replicas are distributed across different availability zones&lt;/li>
-&lt;/ol>
-&lt;p>The issue arises when replication is enabled: each series in a request is hashed independently, causing each series to route to different groups of ingesters.&lt;/p>
-&lt;pre tabindex="0">&lt;code class="language-mermaid" data-lang="mermaid">graph TD
-A[Write Request] --&amp;gt; B[Distributor]
-B --&amp;gt; C[Hash Series 1] --&amp;gt; D[Ingesters: 5,7,9]
-B --&amp;gt; E[Hash Series 2] --&amp;gt; F[Ingesters: 5,3,10]
-B --&amp;gt; G[Hash Series 3] --&amp;gt; H[Ingesters: 7,27,28]
-B --&amp;gt; I[...] --&amp;gt; J[Different ingester sets&amp;lt;br/&amp;gt;for each series]
-&lt;/code>&lt;/pre>&lt;h2 id="problem">Problem&lt;/h2>
-&lt;h3 id="limited-az-failure-tolerance-with-replication-factor">Limited AZ Failure Tolerance with replication factor&lt;/h3>
-&lt;p>While the token ring effectively distributes load across the ingester fleet, the independent hashing and routing of each series creates an amplification effect where a single ingester failure can impact a large number of write requests.&lt;/p>
-&lt;p>Consider a ring with 30 ingesters, each series gets distributed to three different ingesters:&lt;/p>
-&lt;pre tabindex="0">&lt;code>Sample 1: {name=&amp;#34;http_request_latency&amp;#34;,api=&amp;#34;/push&amp;#34;, status=&amp;#34;2xx&amp;#34;}
-→ Ingesters: ing-5, ing-7, ing-9
-Sample 2: {name=&amp;#34;http_request_latency&amp;#34;,api=&amp;#34;/push&amp;#34;, status=&amp;#34;4xx&amp;#34;}
-→ Ingesters: ing-5, ing-3, ing-10
-Sample 3: {name=&amp;#34;http_request_latency&amp;#34;,api=&amp;#34;/push&amp;#34;, status=&amp;#34;2xx&amp;#34;}
-→ Ingesters: ing-7, ing-27, ing-28
-...
-&lt;/code>&lt;/pre>&lt;p>If ingesters &lt;code>ing-15&lt;/code> and &lt;code>ing-18&lt;/code> (in different AZs) are offline, any request containing a series that needs to write to both these ingesters will fail completely:&lt;/p>
-&lt;pre tabindex="0">&lt;code>Sample 15: {name=&amp;#34;http_request_latency&amp;#34;,api=&amp;#34;/push&amp;#34;, status=&amp;#34;5xx&amp;#34;}
-→ Ingesters: ing-10, ing-15, ing-18 // Request fails
-&lt;/code>&lt;/pre>&lt;p>With requests increasing their batch size, the probability of request failure becomes critical in replicated deployments. Given two failed ingesters in different AZs, each individual series has a small chance of requiring both failed ingesters. However, as request batch sizes increase, the probability that at least one series in the batch will hash to both failed ingesters approaches certainty.&lt;/p>
-&lt;p>&lt;strong>Note&lt;/strong>: This problem specifically affects Cortex using replication. Replication as 1 are not impacted by this availability amplification issue.&lt;/p>
-&lt;h2 id="proposed-solution">Proposed Solution&lt;/h2>
-&lt;h3 id="partition-ring-architecture">Partition Ring Architecture&lt;/h3>
-&lt;p>A new Partition Ring is proposed where the ring is divided into partitions, with each partition containing a set of tokens and a group of ingesters. Ingesters are allocated to partitions based on their order in the zonal StatefulSet, ensuring that scaling operations align with StatefulSet&amp;rsquo;s LIFO behavior. Each partition contains a number of ingesters equal to the replication factor, with exactly one ingester per availability zone.&lt;/p>
-&lt;p>This approach provides &lt;strong>reduced failure probability&lt;/strong> where the chances of getting two ingesters in the same partition down decreases significantly compared to random ingester failures affecting multiple series. It also enables &lt;strong>deterministic replication&lt;/strong> where data sent to &lt;code>ing-az1-1&lt;/code> always replicates to &lt;code>ing-az2-1&lt;/code> and &lt;code>ing-az3-1&lt;/code>, making the system behavior more predictable and easier to troubleshoot.&lt;/p>
-&lt;pre tabindex="0">&lt;code class="language-mermaid" data-lang="mermaid">graph TD
-subgraph &amp;#34;Partition Ring&amp;#34;
-subgraph &amp;#34;Partition 3&amp;#34;
-P1A[ing-az1-3]
-P1B[ing-az2-3]
-P1C[ing-az3-3]
-end
-subgraph &amp;#34;Partition 2&amp;#34;
-P2A[ing-az1-2]
-P2B[ing-az2-2]
-P2C[ing-az3-2]
-end
-subgraph &amp;#34;Partition 1&amp;#34;
-P3A[ing-az1-1]
-P3B[ing-az2-1]
-P3C[ing-az3-1]
-end
-end
-T1[Tokens 34] --&amp;gt; P1A
-T2[Tokens 56] --&amp;gt; P2A
-T3[Tokens 12] --&amp;gt; P3A
-&lt;/code>&lt;/pre>&lt;p>Within each partition, ingesters maintain identical data, acting as true replicas of each other. Distributors maintain similar hashing logic but select a partition instead of individual ingesters. Data is then forwarded to all ingesters within the selected partition, making the replication pattern deterministic.&lt;/p>
-&lt;h3 id="protocol-buffer-definitions">Protocol Buffer Definitions&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">PartitionRingDesc&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> map&amp;lt;&lt;span style="color:#66d9ef">string&lt;/span>, PartitionDesc&amp;gt; partitions &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">PartitionDesc&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> PartitionState state &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">repeated&lt;/span> &lt;span style="color:#66d9ef">uint32&lt;/span> tokens &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">2&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> map&amp;lt;&lt;span style="color:#66d9ef">string&lt;/span>, InstanceDesc&amp;gt; instances &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">3&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">int64&lt;/span> registered_timestamp &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">4&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>&lt;span style="color:#75715e">// Unchanged from current implementation
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">InstanceDesc&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">string&lt;/span> addr &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">int64&lt;/span> timestamp &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">2&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> InstanceState state &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">3&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">string&lt;/span> zone &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">7&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">int64&lt;/span> registered_timestamp &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">8&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="partition-states">Partition States&lt;/h3>
-&lt;p>Partitions maintain a simplified state model that provides &lt;strong>clear ownership&lt;/strong> where each series belongs to exactly one partition, but requires &lt;strong>additional state management&lt;/strong> for partition states and lifecycle management:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">type&lt;/span> &lt;span style="color:#a6e22e">PartitionState&lt;/span> &lt;span style="color:#66d9ef">int&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">const&lt;/span> (
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">NON_READY&lt;/span> &lt;span style="color:#a6e22e">PartitionState&lt;/span> = &lt;span style="color:#66d9ef">iota&lt;/span> &lt;span style="color:#75715e">// Insufficient ingesters
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span> &lt;span style="color:#a6e22e">ACTIVE&lt;/span> &lt;span style="color:#75715e">// Fully operational
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span> &lt;span style="color:#a6e22e">READONLY&lt;/span> &lt;span style="color:#75715e">// Scale-down in progress
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span>)
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>State transitions:&lt;/p>
-&lt;pre tabindex="0">&lt;code class="language-mermaid" data-lang="mermaid">stateDiagram-v2
-[*] --&amp;gt; NON_READY
-NON_READY --&amp;gt; ACTIVE : Required ingesters joined&amp;lt;br/&amp;gt;across all AZs
-ACTIVE --&amp;gt; READONLY : Scale-down initiated
-ACTIVE --&amp;gt; NON_READY : Ingester removed
-READONLY --&amp;gt; NON_READY : Ingesters removed
-NON_READY --&amp;gt; [*] : Partition deleted
-&lt;/code>&lt;/pre>&lt;h3 id="partition-lifecycle-management">Partition Lifecycle Management&lt;/h3>
-&lt;h4 id="creating-partitions">Creating Partitions&lt;/h4>
-&lt;p>When a new ingester joins the ring:&lt;/p>
-&lt;ol>
-&lt;li>Check if a suitable partition exists with available slots&lt;/li>
-&lt;li>If no partition exists, create a new partition in &lt;code>NON_READY&lt;/code> state&lt;/li>
-&lt;li>Add partition&amp;rsquo;s tokens to the ring&lt;/li>
-&lt;li>Add the ingester to the partition&lt;/li>
-&lt;li>Wait for required number of ingesters across all AZs (one per AZ)&lt;/li>
-&lt;li>Once all AZs are represented, transition partition to &lt;code>ACTIVE&lt;/code>&lt;/li>
-&lt;/ol>
-&lt;h4 id="removing-partitions">Removing Partitions&lt;/h4>
-&lt;p>The scale-down process follows these steps:&lt;/p>
-&lt;ol>
-&lt;li>&lt;strong>Mark READONLY&lt;/strong>: Partition stops accepting new writes but continues serving reads&lt;/li>
-&lt;li>&lt;strong>Data Transfer&lt;/strong>: Wait for all ingesters in partition to transfer data and become empty&lt;/li>
-&lt;li>&lt;strong>Coordinated Removal&lt;/strong>: Remove one ingester from each AZ simultaneously&lt;/li>
-&lt;li>&lt;strong>State Transition&lt;/strong>: Partition automatically transitions to &lt;code>NON_READY&lt;/code> (insufficient replicas)&lt;/li>
-&lt;li>&lt;strong>Cleanup&lt;/strong>: Remove remaining ingesters and delete partition from ring&lt;/li>
-&lt;/ol>
-&lt;p>If not using READONLY mode, removing an ingester will make the partition as NON_READY. When all ingesters are removed, the last will delete the partition if configuration &lt;code>unregister_on_shutdown&lt;/code> is true&lt;/p>
-&lt;h3 id="multi-ring-migration-strategy">Multi-Ring Migration Strategy&lt;/h3>
-&lt;p>To address the migration challenge for production clusters currently running token-based rings, this proposal also introduces a multi-ring infrastructure that allows gradual traffic shifting from token-based to partition-based rings:&lt;/p>
-&lt;pre tabindex="0">&lt;code class="language-mermaid" data-lang="mermaid">sequenceDiagram
-participant C as Client
-participant D as Distributor
-participant MR as Multi-Ring Router
-participant TR as Token Ring
-participant PR as Partition Ring
-C-&amp;gt;&amp;gt;D: Write Request (1000 series)
-D-&amp;gt;&amp;gt;MR: Route request
-MR-&amp;gt;&amp;gt;MR: Check percentage config&amp;lt;br/&amp;gt;(e.g., 80% token, 20% partition)
-MR-&amp;gt;&amp;gt;TR: Route 800 series to Token Ring
-MR-&amp;gt;&amp;gt;PR: Route 200 series to Partition Ring
-Note over TR,PR: Both rings process their portion
-TR-&amp;gt;&amp;gt;D: Response for 800 series
-PR-&amp;gt;&amp;gt;D: Response for 200 series
-D-&amp;gt;&amp;gt;C: Combined response
-&lt;/code>&lt;/pre>&lt;p>Migration phases for production clusters:&lt;/p>
-&lt;ol>
-&lt;li>&lt;strong>Phase 1&lt;/strong>: Deploy partition ring alongside existing token ring (0% traffic)&lt;/li>
-&lt;li>&lt;strong>Phase 2&lt;/strong>: Route 10% traffic to partition ring&lt;/li>
-&lt;li>&lt;strong>Phase 3&lt;/strong>: Gradually increase to 50% traffic&lt;/li>
-&lt;li>&lt;strong>Phase 4&lt;/strong>: Route 90% traffic to partition ring&lt;/li>
-&lt;li>&lt;strong>Phase 5&lt;/strong>: Complete migration (100% partition ring)&lt;/li>
-&lt;/ol>
-&lt;p>This multi-ring approach solves the migration problem for existing production deployments that cannot afford downtime during the transition from token-based to partition-based rings. It provides &lt;strong>zero downtime migration&lt;/strong> with &lt;strong>rollback capability&lt;/strong> and &lt;strong>incremental validation&lt;/strong> at each step. However, it requires &lt;strong>dual ring participation&lt;/strong> where ingesters must participate in both rings during migration, &lt;strong>increased memory usage&lt;/strong> and &lt;strong>migration coordination&lt;/strong> requiring careful percentage management and monitoring.&lt;/p>
-&lt;h4 id="read-path-considerations">Read Path Considerations&lt;/h4>
-&lt;p>During migration, the read path (queriers and rulers) must have visibility into both rings to ensure all functionality works correctly:&lt;/p>
-&lt;ul>
-&lt;li>&lt;strong>Queriers&lt;/strong> must check both token and partition rings to locate series data, as data may be distributed across both ring types during migration&lt;/li>
-&lt;li>&lt;strong>Rulers&lt;/strong> must evaluate rules against data from both rings to ensure complete rule evaluation&lt;/li>
-&lt;li>&lt;strong>Ring-aware components&lt;/strong> (like shuffle sharding) must operate correctly across both ring types&lt;/li>
-&lt;li>&lt;strong>Metadata operations&lt;/strong> (like label queries) must aggregate results from both rings&lt;/li>
-&lt;/ul>
-&lt;p>All existing Cortex functionality must continue to work seamlessly during the migration period, requiring components to transparently handle the dual-ring architecture.&lt;/p></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
+&lt;p>Instead of introducing parallelism on the Cortex compactor level, we move the parallelism to the Thanos compactor itself. Thanos has a &lt;a href="https://docs.google.com/document/d/1xi0V8DB0hE54XgkogJRnNL6yH7C5JThJywlLFoC6dCQ/">proposal to make compactor more scalable&lt;/a>, and a &lt;a href="https://github.com/thanos-io/thanos/pull/3807">PR&lt;/a>. Cortex will enjoy higher throughput per tenant if Thanos is able to speed up the compaction, and we can keep the Cortex architecture the same. However, this approach means that a single tenant is still sharded to a single compactor. In order to compact more groups at once, we must scale up compactor vertically. Although vertical scaling can get us far, we should scale horizontally where we can.&lt;/p></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/Allenzhli">Allenzhli&lt;/a>&lt;/li>
 &lt;li>Date: January 2021&lt;/li>
@@ -1551,19 +1114,19 @@ The difference is that after Ruler HA, the replicas could potentially return pro
 &lt;p>To prevent this we will add “flow control” information to the &lt;a href="https://github.com/cortexproject/cortex/blob/master/pkg/querier/frontend/frontend.proto#L21">ProcessResponse message&lt;/a> that is used to return query results from the querier to the query frontend. In an active system this message is passed multiple times per second from the queriers to the query frontends and would be a reliable way for the frontends to track the state of queriers and balance load.&lt;/p>
 &lt;p>There are a lot of options for an exact implementation of this idea. An effective solution should be determined and chosen by modeling a set of alternatives. The details of this would be included in another design doc. A simple implementation would look something like the following:&lt;/p>
 &lt;p>Add two new fields to &lt;a href="https://github.com/cortexproject/cortex/blob/master/pkg/querier/frontend/frontend.proto#L21">ProcessResponse&lt;/a>:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">ProcessResponse&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> httpgrpc.HTTPResponse httpResponse &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> currentConcurrency int &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">2&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> desiredConcurrency int &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">3&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">message&lt;/span> &lt;span style="color:#000">ProcessResponse&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>&lt;span style="color:#a40000">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span> &lt;span style="color:#000">httpgrpc.HTTPResponse&lt;/span> &lt;span style="color:#000">httpResponse&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#000;font-weight:bold">;&lt;/span>&lt;span style="color:#a40000">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span> &lt;span style="color:#000">currentConcurrency&lt;/span> &lt;span style="color:#000">int&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">2&lt;/span>&lt;span style="color:#000;font-weight:bold">;&lt;/span>&lt;span style="color:#a40000">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span> &lt;span style="color:#000">desiredConcurrency&lt;/span> &lt;span style="color:#000">int&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>&lt;span style="color:#000;font-weight:bold">;&lt;/span>&lt;span style="color:#a40000">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#000;font-weight:bold">}&lt;/span>&lt;span style="color:#a40000">
 &lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>currentConcurrency&lt;/strong> - The current number of queries being executed by the querier.&lt;/p>
 &lt;p>&lt;strong>desiredConcurrency&lt;/strong> - The total number of queries that a querier is capable of executing.&lt;/p>
 &lt;p>Add a short backoff to the main frontend &lt;a href="https://github.com/cortexproject/cortex/blob/8fb86155a7c7c155b8c4d31b91b267f9631b60ba/pkg/querier/frontend/frontend.go#L288-L331">processing loop&lt;/a>. This would cause the frontend to briefly back off of any querier that was overloaded but continue to send queries to those that were capable of doing work.&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">if&lt;/span> &lt;span style="color:#a6e22e">current&lt;/span> &amp;gt; &lt;span style="color:#a6e22e">desired&lt;/span> {
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">zzz&lt;/span> &lt;span style="color:#f92672">:=&lt;/span> (&lt;span style="color:#a6e22e">current&lt;/span> &lt;span style="color:#f92672">-&lt;/span> &lt;span style="color:#a6e22e">desired&lt;/span>) &lt;span style="color:#f92672">*&lt;/span> &lt;span style="color:#a6e22e">backoffDuration&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">zzz&lt;/span> &lt;span style="color:#f92672">*=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span> &lt;span style="color:#f92672">+&lt;/span> &lt;span style="color:#a6e22e">rand&lt;/span>.&lt;span style="color:#a6e22e">Float64&lt;/span>() &lt;span style="color:#f92672">*&lt;/span> &lt;span style="color:#ae81ff">.1&lt;/span> &lt;span style="color:#75715e">// jitter
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span> &lt;span style="color:#a6e22e">time&lt;/span>.&lt;span style="color:#a6e22e">Sleep&lt;/span>(&lt;span style="color:#a6e22e">zzz&lt;/span>)
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>}
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">if&lt;/span> &lt;span style="color:#000">current&lt;/span> &lt;span style="color:#000;font-weight:bold">&amp;gt;&lt;/span> &lt;span style="color:#000">desired&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">zzz&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">:=&lt;/span> &lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">current&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">-&lt;/span> &lt;span style="color:#000">desired&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">*&lt;/span> &lt;span style="color:#000">backoffDuration&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">zzz&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">*=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">1&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">+&lt;/span> &lt;span style="color:#000">rand&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Float64&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">*&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">.1&lt;/span> &lt;span style="color:#8f5902;font-style:italic">// jitter
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic">&lt;/span> &lt;span style="color:#000">time&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Sleep&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">zzz&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#000;font-weight:bold">}&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Passing flow control information from the querier to the frontend would also open up additional future work for more sophisticated load balancing across queriers. For example by simply comparing and choosing &lt;a href="https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/">the least congested of two&lt;/a> queriers we could dramatically improve how well work is distributed.&lt;/p>
 &lt;h3 id="increased-time-to-failure">Increased Time To Failure&lt;/h3>
 &lt;h4 id="challenge-2">Challenge&lt;/h4>
@@ -1911,30 +1474,30 @@ Likewise, ShardingMetadataFilter will first build a &lt;strong>tenant’s subrin
 &lt;h4 id="scenario-ingester-scale-up">Scenario: ingester scale up&lt;/h4>
 &lt;p>When a new ingester is added to the ring, there will be a set of user subrings that see a change: an ingester being removed, and a new one being added. We need to guarantee that for some time period (the block flush interval), the ingester removed is also consulted for queries.&lt;/p>
 &lt;p>To do this, during the subring selection if we encounters an ingester added within the time period, we will add this to the subring but continue node selection as before - in effect, selecting an extra ingester:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">var&lt;/span> (
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">subringSize&lt;/span> &lt;span style="color:#66d9ef">int&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">selectedNodes&lt;/span> []&lt;span style="color:#a6e22e">Node&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">deadline&lt;/span> = &lt;span style="color:#a6e22e">time&lt;/span>.&lt;span style="color:#a6e22e">Now&lt;/span>().&lt;span style="color:#a6e22e">Add&lt;/span>(&lt;span style="color:#f92672">-&lt;/span>&lt;span style="color:#a6e22e">flushWindow&lt;/span>)
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>)
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">var&lt;/span> &lt;span style="color:#000;font-weight:bold">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">subringSize&lt;/span> &lt;span style="color:#204a87;font-weight:bold">int&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">selectedNodes&lt;/span> &lt;span style="color:#000;font-weight:bold">[]&lt;/span>&lt;span style="color:#000">Node&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">deadline&lt;/span> &lt;span style="color:#000;font-weight:bold">=&lt;/span> &lt;span style="color:#000">time&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Now&lt;/span>&lt;span style="color:#000;font-weight:bold">().&lt;/span>&lt;span style="color:#000">Add&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">-&lt;/span>&lt;span style="color:#000">flushWindow&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> len(&lt;span style="color:#a6e22e">selectedNodes&lt;/span>) &amp;lt; &lt;span style="color:#a6e22e">subringSize&lt;/span> {
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">token&lt;/span> &lt;span style="color:#f92672">:=&lt;/span> &lt;span style="color:#a6e22e">random&lt;/span>.&lt;span style="color:#a6e22e">Next&lt;/span>()
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">node&lt;/span> &lt;span style="color:#f92672">:=&lt;/span> &lt;span style="color:#a6e22e">getNodeByToken&lt;/span>(&lt;span style="color:#a6e22e">token&lt;/span>)
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">for&lt;/span> {
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">if&lt;/span> &lt;span style="color:#a6e22e">node&lt;/span> &lt;span style="color:#a6e22e">in&lt;/span> &lt;span style="color:#a6e22e">selectedNodes&lt;/span> {
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">node&lt;/span> = &lt;span style="color:#a6e22e">node&lt;/span>.&lt;span style="color:#a6e22e">Next&lt;/span>()
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">continue&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> }
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">if&lt;/span> &lt;span style="color:#a6e22e">node&lt;/span>.&lt;span style="color:#a6e22e">Added&lt;/span>.&lt;span style="color:#a6e22e">After&lt;/span>(&lt;span style="color:#a6e22e">deadline&lt;/span>) {
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">subringSize&lt;/span>&lt;span style="color:#f92672">++&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">selectedNodes&lt;/span>.&lt;span style="color:#a6e22e">Add&lt;/span>(&lt;span style="color:#a6e22e">node&lt;/span>)
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">node&lt;/span> = &lt;span style="color:#a6e22e">node&lt;/span>.&lt;span style="color:#a6e22e">Next&lt;/span>()
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">continue&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> )
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">selectedNodes&lt;/span>.&lt;span style="color:#a6e22e">Add&lt;/span>(&lt;span style="color:#a6e22e">node&lt;/span>)
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">break&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> )
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>}
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">for&lt;/span> &lt;span style="color:#204a87">len&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">selectedNodes&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span> &lt;span style="color:#000;font-weight:bold">&amp;lt;&lt;/span> &lt;span style="color:#000">subringSize&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">token&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">:=&lt;/span> &lt;span style="color:#000">random&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Next&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">node&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">:=&lt;/span> &lt;span style="color:#000">getNodeByToken&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">token&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">for&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">if&lt;/span> &lt;span style="color:#000">node&lt;/span> &lt;span style="color:#000">in&lt;/span> &lt;span style="color:#000">selectedNodes&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">node&lt;/span> &lt;span style="color:#000;font-weight:bold">=&lt;/span> &lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Next&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">continue&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">}&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">if&lt;/span> &lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Added&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">After&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">deadline&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">subringSize&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">++&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">selectedNodes&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Add&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">node&lt;/span> &lt;span style="color:#000;font-weight:bold">=&lt;/span> &lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Next&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">continue&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">selectedNodes&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Add&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">break&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#000;font-weight:bold">}&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="scenario-ingester-scale-down">Scenario: ingester scale down&lt;/h4>
 &lt;p>When an ingester is permanently removed from the ring it will flush its data to the object store and the subrings containing the removed ingester will gain a “new” ingester. Queries consult the store and merge the results with those from the ingesters, so no data will be missed.&lt;/p>
 &lt;p>Queriers and store-gateways will discover newly flushed blocks on next sync (&lt;code>-blocks-storage.bucket-store.sync-interval&lt;/code>, default 5 minutes).
@@ -2666,72 +2229,4 @@ Blocks: B1, B2, B4, B6&lt;/li>
 &lt;li>Partition ID: 1 &lt;br>
 Number of Partitions: 2 &lt;br>
 Blocks: B1, B3, B5, B7&lt;/li>
-&lt;/ul></description></item><item><title>Docs: User Overrides API</title><link>/docs/proposals/overrides-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/overrides-api/</guid><description>
-&lt;ul>
-&lt;li>Author: Bogdan Stancu&lt;/li>
-&lt;li>Date: June 2025&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
-&lt;/ul>
-&lt;h2 id="overview">Overview&lt;/h2>
-&lt;p>This proposal outlines the design for a new API endpoint that will allow users to modify their current limits in Cortex. Currently, overrides can only be changed by administrators modifying the runtime configuration file and waiting for it to be reloaded.&lt;/p>
-&lt;h2 id="problem">Problem&lt;/h2>
-&lt;p>Currently, when users need limit adjustments, they must:&lt;/p>
-&lt;ol>
-&lt;li>Manually editing the runtime configuration file&lt;/li>
-&lt;li>Coordinate with users to verify the changes&lt;/li>
-&lt;li>Potentially repeating this process multiple times to find the right balance&lt;/li>
-&lt;/ol>
-&lt;p>This manual process is time-consuming, error-prone, and doesn&amp;rsquo;t scale well with a large number of users. By offering a self-service API, users can adjust their own limits within predefined boundaries, reducing the administrative overhead and improving the user experience.&lt;/p>
-&lt;h2 id="proposed-api-design">Proposed API Design&lt;/h2>
-&lt;h3 id="endpoints">Endpoints&lt;/h3>
-&lt;h4 id="1-get-apiv1user-overrides">1. GET /api/v1/user-overrides&lt;/h4>
-&lt;p>Returns the current overrides configuration for a specific tenant.&lt;/p>
-&lt;p>Response format:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-json" data-lang="json">&lt;span style="display:flex;">&lt;span>{
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;ingestion_rate&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">10000&lt;/span>,
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;ingestion_burst_size&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">20000&lt;/span>,
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;max_global_series_per_user&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">1000000&lt;/span>,
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;max_global_series_per_metric&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">200000&lt;/span>,
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#960050;background-color:#1e0010">...&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>}
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="2-put-apiv1user-overrides">2. PUT /api/v1/user-overrides&lt;/h4>
-&lt;p>Updates overrides for a specific tenant. The request body should contain only the overrides that need to be updated.&lt;/p>
-&lt;p>Request body:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-json" data-lang="json">&lt;span style="display:flex;">&lt;span>{
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;ingestion_rate&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">10000&lt;/span>,
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;max_series_per_metric&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>}
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="3-delete-apiv1user-overrides">3. DELETE /api/v1/user-overrides&lt;/h4>
-&lt;p>Removes tenant-specific overrides, reverting to default overrides.&lt;/p>
-&lt;h3 id="implementation-details">Implementation Details&lt;/h3>
-&lt;ol>
-&lt;li>
-&lt;p>The API will be integrated into the cortex-overrides component to:&lt;/p>
-&lt;ul>
-&lt;li>Read the current runtime config from the configured storage backend&lt;/li>
-&lt;li>Persist changes back to the storage backend&lt;/li>
-&lt;li>The API will only work with configurations stored in block storage backends.&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>
-&lt;p>Security:&lt;/p>
-&lt;ul>
-&lt;li>Rate limiting will be implemented to prevent abuse&lt;/li>
-&lt;li>Changes will be validated before being applied&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>
-&lt;p>Error Handling:&lt;/p>
-&lt;ul>
-&lt;li>Invalid limit values will return 400 Bad Request&lt;/li>
-&lt;li>Storage backend errors will return 500 Internal Server Error&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;/ol>
-&lt;h3 id="open-questions">Open Questions:&lt;/h3>
-&lt;ul>
-&lt;li>How do we implement a hard-limit configuration to avoid users
-setting unreasonable limits?&lt;/li>
-&lt;li>What set of overrides can be configurable through this API?
-Limits like &lt;code>shard_size&lt;/code> should only be modified by the admin.&lt;/li>
 &lt;/ul></description></item></channel></rss>

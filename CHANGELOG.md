@@ -2,7 +2,11 @@
 
 ## master / unreleased
 
-## 1.19.0 in progress
+## 1.19.1 2025-09-20
+
+* [BUGFIX] Frontend: Fix remote read snappy input due to request string logging when query stats enabled. #7025
+
+## 1.19.0 2025-02-27
 
 * [CHANGE] Deprecate `-blocks-storage.tsdb.wal-compression-enabled` flag (use `blocks-storage.tsdb.wal-compression-type` instead). #6529
 * [CHANGE] OTLP: Change OTLP handler to be consistent with the Prometheus OTLP handler. #6272

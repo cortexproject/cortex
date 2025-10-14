@@ -849,6 +849,69 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 
 }
 
+func TestPush_EmptyLabels(t *testing.T) {
+	t.Parallel()
+
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+
+	limits.IngestionRate = math.MaxFloat64
+
+	dists, _, _, _ := prepare(t, prepConfig{
+		numDistributors: 1,
+		numIngesters:    3,
+		happyIngesters:  3,
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	d := dists[0]
+	ts := time.Now().UnixMilli()
+
+	tests := []struct {
+		desc    string
+		request *cortexpb.WriteRequest
+		isErr   bool
+	}{
+		{
+			desc: "1 series, a series has empty labels",
+			request: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					makeWriteRequestTimeseries(
+						[]cortexpb.LabelAdapter{}, ts, 3, false),
+				},
+			},
+			isErr: true,
+		},
+		{
+			desc: "2 series, one series has empty labels",
+			request: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					makeWriteRequestTimeseries(
+						[]cortexpb.LabelAdapter{}, ts, 3, false),
+					makeWriteRequestTimeseries(
+						[]cortexpb.LabelAdapter{
+							{Name: model.MetricNameLabel, Value: "foo"},
+							{Name: "bar", Value: "baz"},
+						}, ts, 3, false),
+				},
+			},
+			isErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			_, err := d.Push(ctx, test.request)
+			require.Error(t, err)
+			s, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, codes.Code(400), s.Code())
+			require.Equal(t, "empty labels found", s.Message())
+		})
+	}
+}
+
 func TestPush_QuorumError(t *testing.T) {
 	t.Parallel()
 

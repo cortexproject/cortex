@@ -1012,6 +1012,10 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	// check each sample and discard if outside limits.
 	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
 	for _, ts := range req.Timeseries {
+		if len(ts.Labels) == 0 {
+			return nil, nil, nil, nil, 0, 0, 0, nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", "empty labels found")
+		}
+
 		if limits.AcceptHASamples && limits.AcceptMixedHASamples {
 			cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, ts.Labels)
 			if cluster != "" && replica != "" {

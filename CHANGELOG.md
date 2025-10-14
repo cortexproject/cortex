@@ -24,6 +24,7 @@
 * [FEATURE] Querier: Support for configuring query optimizers and enabling XFunctions in the Thanos engine. #6873
 * [FEATURE] Query Frontend: Add support /api/v1/format_query API for formatting queries. #6893
 * [FEATURE] Query Frontend: Add support for /api/v1/parse_query API (experimental) to parse a PromQL expression and return it as a JSON-formatted AST (abstract syntax tree). #6978
+* [ENHANCEMENT] Distributor: Emit an error with a 400 status code when empty labels are found before the relabelling or label dropping process. #7052
 * [ENHANCEMENT] Parquet Storage: Add support for additional sort columns during Parquet file generation #7003
 * [ENHANCEMENT] Modernizes the entire codebase by using go modernize tool. #7005
 * [ENHANCEMENT] Overrides Exporter: Expose all fields that can be converted to float64. Also, the label value `max_local_series_per_metric` got renamed to `max_series_per_metric`, and `max_local_series_per_user` got renamed to `max_series_per_user`. #6979

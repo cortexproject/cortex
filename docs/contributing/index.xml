@@ -1,5 +1,6 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Contributing</title><link>/docs/contributing/</link><description>Recent content in Contributing on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/contributing/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Governance</title><link>/docs/contributing/governance/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/governance/</guid><description>
-&lt;p>This document defines project governance for the project.&lt;/p>
+&lt;p>This document defines project governance for the cortex project. Its purpose is to describe how decisions are made on the project and how anyone can influence these decisions.&lt;/p>
+&lt;p>This governance charter applies to every project under the cortex GitHub organization. The term &amp;ldquo;cortex project&amp;rdquo; refers to any work done under the cortexproject GitHub organization and includes the cortexproject/cortex repository itself as well as cortexproject/cortex-tools, cortexproject/cortex-jsonnet and all the other repositories under the cortexproject GitHub organization.&lt;/p>
 &lt;h2 id="voting">Voting&lt;/h2>
 &lt;p>The Cortex project employs voting to ensure no single member can dominate the project. Any maintainer may cast a vote. To avoid having a single company dominate the project, at most two votes from maintainers working for the same company will count.&lt;/p>
 &lt;p>For formal votes, a specific statement of what is being voted on should be added to the relevant github issue or PR, and a link to that issue or PR added to the maintainers meeting agenda document.&lt;/p>
@@ -55,7 +56,7 @@ listed in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/RE
 &lt;/tr>
 &lt;tr>
 &lt;td>Charlie Le&lt;/td>
-&lt;td>&lt;a href="mailto:chtle4@gmail.com">chtle4@gmail.com&lt;/a>&amp;gt;&lt;/td>
+&lt;td>&lt;a href="mailto:chtle4@gmail.com">chtle4@gmail.com&lt;/a>&lt;/td>
 &lt;td>@CharlieTLe&lt;/td>
 &lt;td>Apple&lt;/td>
 &lt;/tr>
@@ -69,11 +70,17 @@ listed in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/RE
 &lt;td>Friedrich Gonzalez&lt;/td>
 &lt;td>&lt;a href="mailto:friedrichg@gmail.com">friedrichg@gmail.com&lt;/a>&lt;/td>
 &lt;td>@friedrichg&lt;/td>
-&lt;td>Adobe&lt;/td>
+&lt;td>Apple&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Sungjin Lee&lt;/td>
+&lt;td>&lt;a href="mailto:tjdwls1201@gmail.com">tjdwls1201@gmail.com&lt;/a>&lt;/td>
+&lt;td>@SungJin1212&lt;/td>
+&lt;td>KakaoEnterprise&lt;/td>
 &lt;/tr>
 &lt;/tbody>
 &lt;/table>
-&lt;h3 id="triaggers">Triaggers&lt;/h3>
+&lt;h3 id="triagers">Triagers&lt;/h3>
 &lt;table>
 &lt;thead>
 &lt;tr>
@@ -85,16 +92,16 @@ listed in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/RE
 &lt;/thead>
 &lt;tbody>
 &lt;tr>
-&lt;td>Sungjin Lee&lt;/td>
-&lt;td>&lt;a href="mailto:tjdwls1201@gmail.com">tjdwls1201@gmail.com&lt;/a>&lt;/td>
-&lt;td>@SungJin1212&lt;/td>
-&lt;td>KakaoEnterprise&lt;/td>
-&lt;/tr>
-&lt;tr>
 &lt;td>Anand Rajagopal&lt;/td>
 &lt;td>&lt;a href="mailto:anand.rajagopal@icloud.com">anand.rajagopal@icloud.com&lt;/a>&lt;/td>
 &lt;td>@rajagopalanand&lt;/td>
 &lt;td>Amazon Web Services&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Daniel Sabsay&lt;/td>
+&lt;td>&lt;a href="mailto:danielsabsay.sofware@gmail.com">danielsabsay.sofware@gmail.com&lt;/a>&lt;/td>
+&lt;td>@dsabsay&lt;/td>
+&lt;td>Adobe&lt;/td>
 &lt;/tr>
 &lt;/tbody>
 &lt;/table>
@@ -150,12 +157,12 @@ Additionally, any maintainer may request that any change require a 2/3 majority 
 &lt;/ol>
 &lt;h2 id="run-it">Run it&lt;/h2>
 &lt;p>Once the initial setup is completed, you can run the website with the following command. The local website will run at &lt;a href="http://localhost:1313/">&lt;code>http://localhost:1313/&lt;/code>&lt;/a>&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic"># Keep this running&lt;/span>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Keep this running&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>make web-serve
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Whenever you change the content of &lt;code>docs/&lt;/code> or markdown files in the repository root &lt;code>/&lt;/code> you should run:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make &lt;span style="color:#000">BUILD_IN_CONTAINER&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#204a87">false&lt;/span> web-pre
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make BUILD_IN_CONTAINER&lt;span style="color:#f92672">=&lt;/span>false web-pre
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Whenever you change the config file or CLI flags in the Cortex code, you should rebuild the config file reference documentation:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make &lt;span style="color:#000">BUILD_IN_CONTAINER&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#204a87">false&lt;/span> doc web-pre
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make BUILD_IN_CONTAINER&lt;span style="color:#f92672">=&lt;/span>false doc web-pre
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
 &lt;p>To upgrade the Go&amp;rsquo;s runtime version:&lt;/p>
 &lt;ol>

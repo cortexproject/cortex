@@ -253,7 +253,7 @@ jobs:
 
   deploy_website:
     needs: [build, test]
-    if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
+    if: github.ref == 'refs/heads/master' && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:
       image: quay.io/cortexproject/build-image:master-59491e9aae

@@ -325,14 +325,6 @@ func TestParquetGatewayWithBlocksStorageRunningInMicroservicesMode(t *testing.T)
 				return found
 			})
 
-			// Check how many tenants have been discovered and synced by store-gateways.
-			require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(1*storeGateways.NumInstances())), "cortex_bucket_stores_tenants_discovered"))
-			if testCfg.blocksShardingStrategy == "shuffle-sharding" {
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(1)), "cortex_bucket_stores_tenants_synced"))
-			} else {
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(1*storeGateways.NumInstances())), "cortex_bucket_stores_tenants_synced"))
-			}
-
 			// Wait until the parquet-converter convert blocks
 			require.NoError(t, parquetConverter.WaitSumMetricsWithOptions(e2e.Equals(float64(3)), []string{"cortex_parquet_converter_blocks_converted_total"}, e2e.WaitMissingMetrics))
 

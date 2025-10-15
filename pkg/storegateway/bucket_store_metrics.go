@@ -7,6 +7,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
+// CortexBucketStoreMetrics common metrics in thanos and parquet block stores (in future)
 type CortexBucketStoreMetrics struct {
 	syncTimes         prometheus.Histogram
 	syncLastSuccess   prometheus.Gauge

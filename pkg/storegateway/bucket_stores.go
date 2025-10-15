@@ -103,7 +103,7 @@ var ErrTooManyInflightRequests = status.Error(codes.ResourceExhausted, "too many
 func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (BucketStores, error) {
 	switch cfg.BucketStore.BucketStoreType {
 	case string(tsdb.ParquetBucketStore):
-		return newParquetBucketStores(cfg, shardingStrategy, bucketClient, limits, logger, reg)
+		return newParquetBucketStores(cfg, bucketClient, limits, logger, reg)
 	case string(tsdb.TSDBBucketStore):
 		return newThanosBucketStores(cfg, shardingStrategy, bucketClient, limits, logLevel, logger, reg)
 	default:

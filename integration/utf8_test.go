@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/require"
 
@@ -105,16 +106,16 @@ overrides:
 	require.NoError(t, s.StartAndWaitReady(cortex))
 
 	// user-1 uses legacy validation
-	user1Client, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), "", "", "", "user-1")
+	user1Client, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
 	// user-2 uses utf8 validation
-	user2Client, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), "", "", "", "user-2")
+	user2Client, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-2")
 	require.NoError(t, err)
 
 	now := time.Now()
 
-	utf8Series, _ := generateSeries("series_1", now, prompb.Label{Name: "test.utf8.metric", Value: "😄"})
+	utf8Series, _ := generateSeries("series.1", now, prompb.Label{Name: "test.utf8.metric", Value: "😄"})
 	legacySeries, _ := generateSeries("series_2", now, prompb.Label{Name: "job", Value: "test"})
 
 	res, err := user1Client.Push(legacySeries)
@@ -134,4 +135,15 @@ overrides:
 	res, err = user2Client.Push(utf8Series)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
+
+	// utf8 querying
+	// c.f. https://prometheus.io/docs/guides/utf8/#querying
+	query := `{"series.1", "test.utf8.metric"="😄"}`
+	queryResult, err := user2Client.Query(query, now)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	require.Equal(t, model.ValVector, queryResult.Type())
+	vec := queryResult.(model.Vector)
+	require.Equal(t, 1, len(vec))
+
 }

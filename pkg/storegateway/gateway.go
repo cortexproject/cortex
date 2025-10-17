@@ -118,7 +118,7 @@ type StoreGateway struct {
 	gatewayCfg Config
 	storageCfg cortex_tsdb.BlocksStorageConfig
 	logger     log.Logger
-	stores     *BucketStores
+	stores     BucketStores
 
 	// Ring used for sharding blocks.
 	ringLifecycler *ring.BasicLifecycler

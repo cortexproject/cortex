@@ -427,7 +427,7 @@ func TestGetOrAddQueueShouldUpdateProperties(t *testing.T) {
 	limits.QueryPriorityVal = validation.QueryPriority{Enabled: true, Priorities: []validation.PriorityDef{
 		{
 			Priority:         1,
-			ReservedQueriers: 10,
+			ReservedQueriers: float64(q.userQueues["userID"].maxQueriers),
 		},
 	}}
 	q.limits = limits
@@ -674,9 +674,14 @@ func TestGetPriorityList(t *testing.T) {
 	assert.EqualValues(t, []int64{1, 1, 2, 2, 2}, getPriorityList(queryPriority, 10))
 	assert.EqualValues(t, []int64{}, getPriorityList(queryPriority, 1))
 
+	queryPriority.Priorities[0].ReservedQueriers = 0.3
+	queryPriority.Priorities[1].ReservedQueriers = 0.6
+	assert.EqualValues(t, []int64{1, 1, 1, 2, 2, 2, 2, 2, 2}, getPriorityList(queryPriority, 10))
+
+	// Cannot reserve all queriers for prioritized requests, remote read and metadata queries also need capacity.
 	queryPriority.Priorities[0].ReservedQueriers = 0.4
 	queryPriority.Priorities[1].ReservedQueriers = 0.6
-	assert.EqualValues(t, []int64{1, 1, 1, 1, 2, 2, 2, 2, 2, 2}, getPriorityList(queryPriority, 10))
+	assert.EqualValues(t, []int64{}, getPriorityList(queryPriority, 10))
 
 	queryPriority.Enabled = false
 	assert.Nil(t, getPriorityList(queryPriority, 10))

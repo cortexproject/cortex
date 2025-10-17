@@ -1,5 +1,5 @@
 ---
-date: 2025-01-14
+date: 2025-10-17
 title: "Introducing READONLY State: Gradual and Safe Ingester Scaling"
 linkTitle: READONLY Ingester Scaling
 tags: [ "blog", "cortex", "ingester", "scaling" ]
@@ -7,7 +7,7 @@ categories: [ "blog" ]
 projects: [ "cortex" ]
 description: >
   Learn about Cortex's new READONLY state for ingesters introduced in version 1.19.0 that enables gradual, safe scaling down operations without data loss or performance impact.
-author: Cortex Team
+author: Daniel Blando ([@danielblando](https://github.com/danielblando))
 ---
 
 ## Introduction

@@ -284,6 +284,60 @@ func TestRulerSharding(t *testing.T) {
 	assert.ElementsMatch(t, expectedNames, actualNames)
 }
 
+func TestRulerAPIUTF8(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	rulerFlags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+	)
+
+	// Start ruler.
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	require.NoError(t, s.StartAndWaitReady(ruler))
+
+	c, err := e2ecortex.NewClient("", "", "", ruler.HTTPEndpoint(), "user-1")
+	require.NoError(t, err)
+
+	groupLabels := map[string]string{
+		"group.label.🙂": "val.🙂",
+	}
+	ruleLabels := map[string]string{
+		"rule.label.🙂": "val.🙂",
+	}
+
+	interval, _ := model.ParseDuration("1s")
+
+	ruleGroup := rulefmt.RuleGroup{
+		Name:     "utf8Rule",
+		Interval: interval,
+		Rules: []rulefmt.Rule{{
+			Alert:  "alert.rule",
+			Expr:   "up",
+			Labels: ruleLabels,
+		}, {
+			Record: "record.rule",
+			Expr:   "up",
+			Labels: ruleLabels,
+		}},
+		Labels: groupLabels,
+	}
+
+	// Set rule group
+	err = c.SetRuleGroup(ruleGroup, "namespace")
+	require.NoError(t, err)
+
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_rule_groups_in_store"))
+}
+
 func TestRulerAPISharding(t *testing.T) {
 	testRulerAPIWithSharding(t, false)
 }

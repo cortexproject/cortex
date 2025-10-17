@@ -32,6 +32,64 @@ const simpleAlertmanagerConfig = `route:
 receivers:
   - name: dummy`
 
+const utf8AlertmanagerConfig = `route:
+  receiver: dummy
+  group_by: [group.test.🙂]
+receivers:
+  - name: dummy`
+
+func TestAlertmanager_UTF8(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags())
+
+	minio := e2edb.NewMinio(9000, alertsBucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	alertmanager := e2ecortex.NewAlertmanager(
+		"alertmanager",
+		flags,
+		"",
+	)
+
+	require.NoError(t, s.StartAndWaitReady(alertmanager))
+
+	c, err := e2ecortex.NewClient("", "", alertmanager.HTTPEndpoint(), "", "user-1")
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	err = c.SetAlertmanagerConfig(ctx, utf8AlertmanagerConfig, map[string]string{})
+	require.NoError(t, err)
+
+	require.NoError(t, alertmanager.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_alertmanager_config_last_reload_successful"}, e2e.WaitMissingMetrics))
+	require.NoError(t, alertmanager.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_alertmanager_config_hash"}, e2e.WaitMissingMetrics))
+
+	silenceId, err := c.CreateSilence(ctx, types.Silence{
+		Matchers: amlabels.Matchers{
+			{Name: "silences.name.🙂", Value: "silences.value.🙂"},
+		},
+		Comment:  "test silences",
+		StartsAt: time.Now(),
+		EndsAt:   time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, silenceId)
+	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Equals(1), "cortex_alertmanager_silences"))
+
+	err = c.SendAlertToAlermanager(ctx, &model.Alert{
+		Labels: model.LabelSet{
+			"alert.name.🙂": "alert.value.🙂",
+		},
+		StartsAt: time.Now(),
+		EndsAt:   time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Equals(1), "cortex_alertmanager_alerts_received_total"))
+}
+
 func TestAlertmanager(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)

@@ -1,4 +1,132 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – blog</title><link>/tags/blog/</link><description>Recent content in blog on Cortex</description><generator>Hugo -- gohugo.io</generator><lastBuildDate>Mon, 08 Sep 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: Query Priority in Cortex</title><link>/blog/2025/09/08/query-priority-in-cortex/</link><pubDate>Mon, 08 Sep 2025 00:00:00 +0000</pubDate><guid>/blog/2025/09/08/query-priority-in-cortex/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – blog</title><link>/tags/blog/</link><description>Recent content in blog on Cortex</description><generator>Hugo -- gohugo.io</generator><lastBuildDate>Fri, 17 Oct 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: Introducing READONLY State: Gradual and Safe Ingester Scaling</title><link>/blog/2025/10/17/introducing-readonly-state-gradual-and-safe-ingester-scaling/</link><pubDate>Fri, 17 Oct 2025 00:00:00 +0000</pubDate><guid>/blog/2025/10/17/introducing-readonly-state-gradual-and-safe-ingester-scaling/</guid><description>
+&lt;h2 id="introduction">Introduction&lt;/h2>
+&lt;p>Scaling down ingesters in Cortex has traditionally been a complex and risky operation. The conventional approach required setting &lt;code>querier.query-store-after=0s&lt;/code>, which forces all queries to hit storage directly, significantly impacting performance. With Cortex 1.19.0, we introduced a new &lt;strong>READONLY state&lt;/strong> for ingesters that changes how you can safely scale down your Cortex clusters.&lt;/p>
+&lt;h2 id="why-traditional-scaling-falls-short">Why Traditional Scaling Falls Short&lt;/h2>
+&lt;p>The legacy approach to ingester scaling had several issues:&lt;/p>
+&lt;p>&lt;strong>Performance Impact&lt;/strong>: Setting &lt;code>querier.query-store-after=0s&lt;/code> forces all queries to bypass ingesters entirely, increasing query latency and storage load.&lt;/p>
+&lt;p>&lt;strong>Operational Complexity&lt;/strong>: Traditional scaling required coordinating configuration changes across multiple components, precise timing, manual monitoring of bucket scanning intervals, and scaling ingesters one by one with waiting periods between each shutdown.&lt;/p>
+&lt;p>&lt;strong>Risk of Data Loss&lt;/strong>: Without proper coordination, scaling down could result in data loss if in-memory data wasn&amp;rsquo;t properly flushed to storage before ingester termination.&lt;/p>
+&lt;h2 id="what-is-the-readonly-state">What is the READONLY State?&lt;/h2>
+&lt;p>The READONLY state addresses these challenges. When an ingester transitions to READONLY state:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Stops accepting new writes&lt;/strong> - Push requests are rejected and redistributed to ACTIVE ingesters&lt;/li>
+&lt;li>&lt;strong>Continues serving queries&lt;/strong> - Existing data remains available, maintaining query performance&lt;/li>
+&lt;li>&lt;strong>Gradually ages out data&lt;/strong> - Data naturally expires according to your retention settings&lt;/li>
+&lt;li>&lt;strong>Enables safe removal&lt;/strong> - Ingesters can be terminated once data has aged out&lt;/li>
+&lt;/ul>
+&lt;h2 id="how-to-use-readonly-state">How to Use READONLY State&lt;/h2>
+&lt;h3 id="step-1-transition-to-readonly">Step 1: Transition to READONLY&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Set multiple ingesters to READONLY simultaneously&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-1:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-2:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-3:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="step-2-monitor-data-status-optional">Step 2: Monitor Data Status (Optional)&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Check user statistics and loaded blocks on the ingester&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl http://ingester-1:8080/ingester/all_user_stats
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="step-3-choose-removal-strategy">Step 3: Choose Removal Strategy&lt;/h3>
+&lt;p>You have three options:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Immediate removal&lt;/strong>: Safe for service availability but may impact query performance&lt;/li>
+&lt;li>&lt;strong>Conservative removal&lt;/strong>: Wait for &lt;code>querier.query-ingesters-within&lt;/code> duration (recommended)&lt;/li>
+&lt;li>&lt;strong>Complete data aging&lt;/strong>: Wait for full retention period&lt;/li>
+&lt;/ul>
+&lt;h3 id="step-4-remove-ingesters">Step 4: Remove Ingesters&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Terminate the ingester processes&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl delete pod ingester-1 ingester-2 ingester-3
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="timeline-example">Timeline Example&lt;/h2>
+&lt;p>For a cluster with &lt;code>querier.query-ingesters-within=5h&lt;/code>:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>T0&lt;/strong>: Set ingesters to READONLY state&lt;/li>
+&lt;li>&lt;strong>T1&lt;/strong>: Ingesters stop receiving new data but continue serving queries&lt;/li>
+&lt;li>&lt;strong>T2 (T0 + 5h)&lt;/strong>: Ingesters no longer receive query requests (safe to remove)&lt;/li>
+&lt;li>&lt;strong>T3 (T0 + retention_period)&lt;/strong>: All blocks naturally removed from ingesters&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Any time after T2 is safe for removal without service impact.&lt;/strong>&lt;/p>
+&lt;h2 id="benefits">Benefits&lt;/h2>
+&lt;h3 id="performance-preservation">Performance Preservation&lt;/h3>
+&lt;p>Unlike the traditional approach, READONLY ingesters continue serving queries, maintaining performance during the scaling transition.&lt;/p>
+&lt;h3 id="operational-simplicity">Operational Simplicity&lt;/h3>
+&lt;ul>
+&lt;li>No configuration changes required across multiple components&lt;/li>
+&lt;li>Batch operations supported - multiple ingesters can transition simultaneously (no more &amp;ldquo;one by one&amp;rdquo; requirement)&lt;/li>
+&lt;li>No waiting periods between ingester transitions&lt;/li>
+&lt;li>Flexible timing - remove ingesters when convenient&lt;/li>
+&lt;li>Reversible operations - ingesters can return to ACTIVE state if needed&lt;/li>
+&lt;/ul>
+&lt;h3 id="enhanced-safety">Enhanced Safety&lt;/h3>
+&lt;ul>
+&lt;li>Gradual data aging without manual intervention&lt;/li>
+&lt;li>Data remains available during transition&lt;/li>
+&lt;li>Monitoring capabilities with &lt;code>/ingester/all_user_stats&lt;/code> endpoint&lt;/li>
+&lt;/ul>
+&lt;h2 id="practical-examples">Practical Examples&lt;/h2>
+&lt;h3 id="basic-readonly-scaling">Basic READONLY Scaling&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">#!/bin/bash
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span>INGESTERS_TO_SCALE&lt;span style="color:#f92672">=(&lt;/span>&lt;span style="color:#e6db74">&amp;#34;ingester-1&amp;#34;&lt;/span> &lt;span style="color:#e6db74">&amp;#34;ingester-2&amp;#34;&lt;/span> &lt;span style="color:#e6db74">&amp;#34;ingester-3&amp;#34;&lt;/span>&lt;span style="color:#f92672">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>WAIT_DURATION&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#e6db74">&amp;#34;5h&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Set ingesters to READONLY&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> ingester in &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#e6db74">${&lt;/span>INGESTERS_TO_SCALE[@]&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Setting &lt;/span>$ingester&lt;span style="color:#e6db74"> to READONLY...&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> curl -X POST http://$ingester:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Wait for safe removal window&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>echo &lt;span style="color:#e6db74">&amp;#34;Waiting &lt;/span>$WAIT_DURATION&lt;span style="color:#e6db74"> for safe removal...&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>sleep $WAIT_DURATION
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Remove ingesters&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> ingester in &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#e6db74">${&lt;/span>INGESTERS_TO_SCALE[@]&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Removing &lt;/span>$ingester&lt;span style="color:#e6db74">...&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> kubectl delete pod $ingester
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="advanced-check-for-empty-users-before-removal">Advanced: Check for Empty Users Before Removal&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">#!/bin/bash
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span>check_ingester_ready&lt;span style="color:#f92672">()&lt;/span> &lt;span style="color:#f92672">{&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> local ingester&lt;span style="color:#f92672">=&lt;/span>$1
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> local response&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#66d9ef">$(&lt;/span>curl -s http://$ingester:8080/ingester/all_user_stats&lt;span style="color:#66d9ef">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Empty array &amp;#34;[]&amp;#34; indicates no users/data remaining&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">if&lt;/span> &lt;span style="color:#f92672">[[&lt;/span> &lt;span style="color:#e6db74">&amp;#34;&lt;/span>$response&lt;span style="color:#e6db74">&amp;#34;&lt;/span> &lt;span style="color:#f92672">==&lt;/span> &lt;span style="color:#e6db74">&amp;#34;[]&amp;#34;&lt;/span> &lt;span style="color:#f92672">]]&lt;/span>; &lt;span style="color:#66d9ef">then&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">return&lt;/span> &lt;span style="color:#ae81ff">0&lt;/span> &lt;span style="color:#75715e"># Ready for removal&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">else&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">return&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span> &lt;span style="color:#75715e"># Still has user data&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">fi&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">}&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>INGESTERS_TO_SCALE&lt;span style="color:#f92672">=(&lt;/span>&lt;span style="color:#e6db74">&amp;#34;ingester-1&amp;#34;&lt;/span> &lt;span style="color:#e6db74">&amp;#34;ingester-2&amp;#34;&lt;/span> &lt;span style="color:#e6db74">&amp;#34;ingester-3&amp;#34;&lt;/span>&lt;span style="color:#f92672">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Set ingesters to READONLY&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> ingester in &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#e6db74">${&lt;/span>INGESTERS_TO_SCALE[@]&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Setting &lt;/span>$ingester&lt;span style="color:#e6db74"> to READONLY...&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> curl -X POST http://$ingester:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Wait and check for data removal&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> ingester in &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#e6db74">${&lt;/span>INGESTERS_TO_SCALE[@]&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Waiting for &lt;/span>$ingester&lt;span style="color:#e6db74"> to be ready for removal...&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">while&lt;/span> ! check_ingester_ready $ingester; &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;&lt;/span>$ingester&lt;span style="color:#e6db74"> still has user data, waiting 30s...&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> sleep &lt;span style="color:#ae81ff">30&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">done&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Removing &lt;/span>$ingester&lt;span style="color:#e6db74"> (no user data remaining)...&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> kubectl delete pod $ingester
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="best-practices">Best Practices&lt;/h2>
+&lt;ul>
+&lt;li>&lt;strong>Test in non-production first&lt;/strong> to validate the process with your configuration&lt;/li>
+&lt;li>&lt;strong>Scale gradually&lt;/strong> - don&amp;rsquo;t remove too many ingesters simultaneously&lt;/li>
+&lt;li>&lt;strong>Monitor throughout&lt;/strong> - watch metrics during the entire process&lt;/li>
+&lt;li>&lt;strong>Understand your query patterns&lt;/strong> - know your &lt;code>querier.query-ingesters-within&lt;/code> setting&lt;/li>
+&lt;/ul>
+&lt;h2 id="emergency-rollback">Emergency Rollback&lt;/h2>
+&lt;p>If issues arise, return ingesters to ACTIVE state:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Revert to ACTIVE state&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-1:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;ACTIVE&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="conclusion">Conclusion&lt;/h2>
+&lt;p>The READONLY state improves Cortex&amp;rsquo;s operational capabilities. This feature makes scaling operations safer, simpler, more flexible, and more performant than the traditional approach. Configuration changes across multiple components are no longer required - set ingesters to READONLY and remove them when convenient.&lt;/p>
+&lt;p>For detailed information and examples, check out our &lt;a href="../../docs/guides/ingesters-scaling-up-and-down/">Ingesters Scaling Guide&lt;/a>.&lt;/p></description></item><item><title>Blog: Query Priority in Cortex</title><link>/blog/2025/09/08/query-priority-in-cortex/</link><pubDate>Mon, 08 Sep 2025 00:00:00 +0000</pubDate><guid>/blog/2025/09/08/query-priority-in-cortex/</guid><description>
 &lt;h2 id="introduction">Introduction&lt;/h2>
 &lt;p>In high-scale monitoring environments, not all queries are created equal. Some queries power critical dashboards that need sub-second response times, while others are exploratory analytics that can tolerate delays. However, the queries from a tenant is handled FIFO (first-in-first-out), which could lead to a noisy-neighbor problem within the user.&lt;/p>
 &lt;p>&lt;img src="/images/blog/2025/query-fifo.png" alt="Query FIFO">&lt;/p>
@@ -462,132 +590,4 @@ This blog will be another space for us to connect, learn from each other, and pu
 &lt;p>Stay tuned — the first technical post is coming soon!&lt;/p>
 &lt;p>If there&amp;rsquo;s a topic you’d love to see covered, feel free to reach out or open a discussion in our &lt;a href="https://github.com/cortexproject/cortex/discussions">Cortex community forums&lt;/a>.&lt;/p>
 &lt;p>Thanks for being part of the journey! 🚀&lt;/p>
-&lt;p>— The Cortex Team&lt;/p></description></item><item><title>Blog: Introducing READONLY State: Gradual and Safe Ingester Scaling</title><link>/blog/2025/01/14/introducing-readonly-state-gradual-and-safe-ingester-scaling/</link><pubDate>Tue, 14 Jan 2025 00:00:00 +0000</pubDate><guid>/blog/2025/01/14/introducing-readonly-state-gradual-and-safe-ingester-scaling/</guid><description>
-&lt;h2 id="introduction">Introduction&lt;/h2>
-&lt;p>Scaling down ingesters in Cortex has traditionally been a complex and risky operation. The conventional approach required setting &lt;code>querier.query-store-after=0s&lt;/code>, which forces all queries to hit storage directly, significantly impacting performance. With Cortex 1.19.0, we introduced a new &lt;strong>READONLY state&lt;/strong> for ingesters that changes how you can safely scale down your Cortex clusters.&lt;/p>
-&lt;h2 id="why-traditional-scaling-falls-short">Why Traditional Scaling Falls Short&lt;/h2>
-&lt;p>The legacy approach to ingester scaling had several issues:&lt;/p>
-&lt;p>&lt;strong>Performance Impact&lt;/strong>: Setting &lt;code>querier.query-store-after=0s&lt;/code> forces all queries to bypass ingesters entirely, increasing query latency and storage load.&lt;/p>
-&lt;p>&lt;strong>Operational Complexity&lt;/strong>: Traditional scaling required coordinating configuration changes across multiple components, precise timing, manual monitoring of bucket scanning intervals, and scaling ingesters one by one with waiting periods between each shutdown.&lt;/p>
-&lt;p>&lt;strong>Risk of Data Loss&lt;/strong>: Without proper coordination, scaling down could result in data loss if in-memory data wasn&amp;rsquo;t properly flushed to storage before ingester termination.&lt;/p>
-&lt;h2 id="what-is-the-readonly-state">What is the READONLY State?&lt;/h2>
-&lt;p>The READONLY state addresses these challenges. When an ingester transitions to READONLY state:&lt;/p>
-&lt;ul>
-&lt;li>&lt;strong>Stops accepting new writes&lt;/strong> - Push requests are rejected and redistributed to ACTIVE ingesters&lt;/li>
-&lt;li>&lt;strong>Continues serving queries&lt;/strong> - Existing data remains available, maintaining query performance&lt;/li>
-&lt;li>&lt;strong>Gradually ages out data&lt;/strong> - Data naturally expires according to your retention settings&lt;/li>
-&lt;li>&lt;strong>Enables safe removal&lt;/strong> - Ingesters can be terminated once data has aged out&lt;/li>
-&lt;/ul>
-&lt;h2 id="how-to-use-readonly-state">How to Use READONLY State&lt;/h2>
-&lt;h3 id="step-1-transition-to-readonly">Step 1: Transition to READONLY&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Set multiple ingesters to READONLY simultaneously&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-1:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-2:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-3:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="step-2-monitor-data-status-optional">Step 2: Monitor Data Status (Optional)&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Check user statistics and loaded blocks on the ingester&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl http://ingester-1:8080/ingester/all_user_stats
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="step-3-choose-removal-strategy">Step 3: Choose Removal Strategy&lt;/h3>
-&lt;p>You have three options:&lt;/p>
-&lt;ul>
-&lt;li>&lt;strong>Immediate removal&lt;/strong>: Safe for service availability but may impact query performance&lt;/li>
-&lt;li>&lt;strong>Conservative removal&lt;/strong>: Wait for &lt;code>querier.query-ingesters-within&lt;/code> duration (recommended)&lt;/li>
-&lt;li>&lt;strong>Complete data aging&lt;/strong>: Wait for full retention period&lt;/li>
-&lt;/ul>
-&lt;h3 id="step-4-remove-ingesters">Step 4: Remove Ingesters&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Terminate the ingester processes&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl delete pod ingester-1 ingester-2 ingester-3
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="timeline-example">Timeline Example&lt;/h2>
-&lt;p>For a cluster with &lt;code>querier.query-ingesters-within=5h&lt;/code>:&lt;/p>
-&lt;ul>
-&lt;li>&lt;strong>T0&lt;/strong>: Set ingesters to READONLY state&lt;/li>
-&lt;li>&lt;strong>T1&lt;/strong>: Ingesters stop receiving new data but continue serving queries&lt;/li>
-&lt;li>&lt;strong>T2 (T0 + 5h)&lt;/strong>: Ingesters no longer receive query requests (safe to remove)&lt;/li>
-&lt;li>&lt;strong>T3 (T0 + retention_period)&lt;/strong>: All blocks naturally removed from ingesters&lt;/li>
-&lt;/ul>
-&lt;p>&lt;strong>Any time after T2 is safe for removal without service impact.&lt;/strong>&lt;/p>
-&lt;h2 id="benefits">Benefits&lt;/h2>
-&lt;h3 id="performance-preservation">Performance Preservation&lt;/h3>
-&lt;p>Unlike the traditional approach, READONLY ingesters continue serving queries, maintaining performance during the scaling transition.&lt;/p>
-&lt;h3 id="operational-simplicity">Operational Simplicity&lt;/h3>
-&lt;ul>
-&lt;li>No configuration changes required across multiple components&lt;/li>
-&lt;li>Batch operations supported - multiple ingesters can transition simultaneously (no more &amp;ldquo;one by one&amp;rdquo; requirement)&lt;/li>
-&lt;li>No waiting periods between ingester transitions&lt;/li>
-&lt;li>Flexible timing - remove ingesters when convenient&lt;/li>
-&lt;li>Reversible operations - ingesters can return to ACTIVE state if needed&lt;/li>
-&lt;/ul>
-&lt;h3 id="enhanced-safety">Enhanced Safety&lt;/h3>
-&lt;ul>
-&lt;li>Gradual data aging without manual intervention&lt;/li>
-&lt;li>Data remains available during transition&lt;/li>
-&lt;li>Monitoring capabilities with &lt;code>/ingester/all_user_stats&lt;/code> endpoint&lt;/li>
-&lt;/ul>
-&lt;h2 id="practical-examples">Practical Examples&lt;/h2>
-&lt;h3 id="basic-readonly-scaling">Basic READONLY Scaling&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">#!/bin/bash
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span>INGESTERS_TO_SCALE&lt;span style="color:#f92672">=(&lt;/span>&lt;span style="color:#e6db74">&amp;#34;ingester-1&amp;#34;&lt;/span> &lt;span style="color:#e6db74">&amp;#34;ingester-2&amp;#34;&lt;/span> &lt;span style="color:#e6db74">&amp;#34;ingester-3&amp;#34;&lt;/span>&lt;span style="color:#f92672">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>WAIT_DURATION&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#e6db74">&amp;#34;5h&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Set ingesters to READONLY&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> ingester in &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#e6db74">${&lt;/span>INGESTERS_TO_SCALE[@]&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Setting &lt;/span>$ingester&lt;span style="color:#e6db74"> to READONLY...&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> curl -X POST http://$ingester:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Wait for safe removal window&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>echo &lt;span style="color:#e6db74">&amp;#34;Waiting &lt;/span>$WAIT_DURATION&lt;span style="color:#e6db74"> for safe removal...&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>sleep $WAIT_DURATION
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Remove ingesters&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> ingester in &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#e6db74">${&lt;/span>INGESTERS_TO_SCALE[@]&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Removing &lt;/span>$ingester&lt;span style="color:#e6db74">...&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> kubectl delete pod $ingester
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="advanced-check-for-empty-users-before-removal">Advanced: Check for Empty Users Before Removal&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">#!/bin/bash
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span>check_ingester_ready&lt;span style="color:#f92672">()&lt;/span> &lt;span style="color:#f92672">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> local ingester&lt;span style="color:#f92672">=&lt;/span>$1
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> local response&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#66d9ef">$(&lt;/span>curl -s http://$ingester:8080/ingester/all_user_stats&lt;span style="color:#66d9ef">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Empty array &amp;#34;[]&amp;#34; indicates no users/data remaining&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">if&lt;/span> &lt;span style="color:#f92672">[[&lt;/span> &lt;span style="color:#e6db74">&amp;#34;&lt;/span>$response&lt;span style="color:#e6db74">&amp;#34;&lt;/span> &lt;span style="color:#f92672">==&lt;/span> &lt;span style="color:#e6db74">&amp;#34;[]&amp;#34;&lt;/span> &lt;span style="color:#f92672">]]&lt;/span>; &lt;span style="color:#66d9ef">then&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">return&lt;/span> &lt;span style="color:#ae81ff">0&lt;/span> &lt;span style="color:#75715e"># Ready for removal&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">else&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">return&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span> &lt;span style="color:#75715e"># Still has user data&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">fi&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">}&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>INGESTERS_TO_SCALE&lt;span style="color:#f92672">=(&lt;/span>&lt;span style="color:#e6db74">&amp;#34;ingester-1&amp;#34;&lt;/span> &lt;span style="color:#e6db74">&amp;#34;ingester-2&amp;#34;&lt;/span> &lt;span style="color:#e6db74">&amp;#34;ingester-3&amp;#34;&lt;/span>&lt;span style="color:#f92672">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Set ingesters to READONLY&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> ingester in &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#e6db74">${&lt;/span>INGESTERS_TO_SCALE[@]&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Setting &lt;/span>$ingester&lt;span style="color:#e6db74"> to READONLY...&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> curl -X POST http://$ingester:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Wait and check for data removal&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> ingester in &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#e6db74">${&lt;/span>INGESTERS_TO_SCALE[@]&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Waiting for &lt;/span>$ingester&lt;span style="color:#e6db74"> to be ready for removal...&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">while&lt;/span> ! check_ingester_ready $ingester; &lt;span style="color:#66d9ef">do&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;&lt;/span>$ingester&lt;span style="color:#e6db74"> still has user data, waiting 30s...&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> sleep &lt;span style="color:#ae81ff">30&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">done&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Removing &lt;/span>$ingester&lt;span style="color:#e6db74"> (no user data remaining)...&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> kubectl delete pod $ingester
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="best-practices">Best Practices&lt;/h2>
-&lt;ul>
-&lt;li>&lt;strong>Test in non-production first&lt;/strong> to validate the process with your configuration&lt;/li>
-&lt;li>&lt;strong>Scale gradually&lt;/strong> - don&amp;rsquo;t remove too many ingesters simultaneously&lt;/li>
-&lt;li>&lt;strong>Monitor throughout&lt;/strong> - watch metrics during the entire process&lt;/li>
-&lt;li>&lt;strong>Understand your query patterns&lt;/strong> - know your &lt;code>querier.query-ingesters-within&lt;/code> setting&lt;/li>
-&lt;/ul>
-&lt;h2 id="emergency-rollback">Emergency Rollback&lt;/h2>
-&lt;p>If issues arise, return ingesters to ACTIVE state:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Revert to ACTIVE state&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-1:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;ACTIVE&amp;#34;}&amp;#39;&lt;/span>
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="conclusion">Conclusion&lt;/h2>
-&lt;p>The READONLY state improves Cortex&amp;rsquo;s operational capabilities. This feature makes scaling operations safer, simpler, more flexible, and more performant than the traditional approach. Configuration changes across multiple components are no longer required - set ingesters to READONLY and remove them when convenient.&lt;/p>
-&lt;p>For detailed information and examples, check out our &lt;a href="../../docs/guides/ingesters-scaling-up-and-down/">Ingesters Scaling Guide&lt;/a>.&lt;/p></description></item></channel></rss>
+&lt;p>— The Cortex Team&lt;/p></description></item></channel></rss>

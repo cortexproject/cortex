@@ -146,4 +146,22 @@ overrides:
 	vec := queryResult.(model.Vector)
 	require.Equal(t, 1, len(vec))
 
+	// label names
+	start := now
+	end := now.Add(time.Minute * 5)
+	labelNames, err := user2Client.LabelNames(start, end)
+	require.NoError(t, err)
+	require.Equal(t, []string{"__name__", "job", "test.utf8.metric"}, labelNames)
+
+	// series
+	series, err := user2Client.Series([]string{`{"test.utf8.metric"="😄"}`}, start, end)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(series))
+	require.Equal(t, `{__name__="series.1", test.utf8.metric="😄"}`, series[0].String())
+
+	// label values
+	labelValues, err := user2Client.LabelValues("test.utf8.metric", start, end, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(labelValues))
+	require.Equal(t, model.LabelValue("😄"), labelValues[0])
 }

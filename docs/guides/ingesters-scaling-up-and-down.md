@@ -81,7 +81,7 @@ For a cluster with `querier.query-ingesters-within=5h`:
 
 ### Legacy Approach (For Older Versions)
 
-If you're running an older version of Cortex that doesn't support the READONLY state, you'll need to follow the legacy approach.
+If you’re running an older version of Cortex that doesn’t support the READONLY state, you’ll need to follow the legacy approach.
 
 The ingesters scale down is deemed an infrequent operation and no automation is currently provided. However, if you need to scale down ingesters, please be aware of the following:
 

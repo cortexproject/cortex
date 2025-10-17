@@ -125,7 +125,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		connectedFrontends: map[string]*connectedFrontend{},
 
 		fragmentTable:          fragment_table.NewFragmentTable(2 * time.Minute),
-		fragmenter:             plan_fragments.NewDummyFragmenter(),
+		fragmenter:             plan_fragments.NewPlanFragmenter(),
 		distributedExecEnabled: distributedExecEnabled,
 		queryFragmentRegistry:  map[queryKey][]uint64{},
 	}
@@ -351,7 +351,7 @@ func (s *Scheduler) fragmentAndEnqueueRequest(frontendContext context.Context, f
 		return err
 	}
 
-	fragments, err := s.fragmenter.Fragment(lpNode)
+	fragments, err := s.fragmenter.Fragment(msg.QueryID, lpNode)
 	if err != nil {
 		return err
 	}

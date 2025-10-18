@@ -399,7 +399,7 @@ func getPriorityList(queryPriority validation.QueryPriority, totalQuerierCount i
 		}
 	}
 
-	if len(priorityList) > totalQuerierCount {
+	if len(priorityList) >= totalQuerierCount {
 		return []int64{}
 	}
 

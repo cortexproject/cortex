@@ -1065,6 +1065,12 @@
               },
               "type": "object"
             },
+            "bucket_store_type": {
+              "default": "tsdb",
+              "description": "Type of bucket store to use (tsdb or parquet).",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.bucket-store.bucket-store-type"
+            },
             "chunks_cache": {
               "properties": {
                 "attributes_ttl": {
@@ -8287,14 +8293,14 @@
               "x-format": "duration"
             },
             "wait_stability_max_duration": {
-              "default": "5m0s",
+              "default": "5s",
               "description": "Maximum time to wait for ring stability at startup. If the store-gateway ring keeps changing after this period of time, the store-gateway will start anyway.",
               "type": "string",
               "x-cli-flag": "store-gateway.sharding-ring.wait-stability-max-duration",
               "x-format": "duration"
             },
             "wait_stability_min_duration": {
-              "default": "1m0s",
+              "default": "0s",
               "description": "Minimum time to wait for ring stability at startup. 0 to disable.",
               "type": "string",
               "x-cli-flag": "store-gateway.sharding-ring.wait-stability-min-duration",

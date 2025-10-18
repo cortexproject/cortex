@@ -44,16 +44,24 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-// BucketStores is a multi-tenant wrapper of Thanos BucketStore.
-type BucketStores struct {
-	logger             log.Logger
-	cfg                tsdb.BlocksStorageConfig
-	limits             *validation.Overrides
-	bucket             objstore.Bucket
-	logLevel           logging.Level
-	bucketStoreMetrics *BucketStoreMetrics
-	metaFetcherMetrics *MetadataFetcherMetrics
-	shardingStrategy   ShardingStrategy
+// BucketStores defines the methods that any bucket stores implementation must provide
+type BucketStores interface {
+	storepb.StoreServer
+	SyncBlocks(ctx context.Context) error
+	InitialSync(ctx context.Context) error
+}
+
+// ThanosBucketStores is a multi-tenant wrapper of Thanos BucketStore.
+type ThanosBucketStores struct {
+	logger                   log.Logger
+	cfg                      tsdb.BlocksStorageConfig
+	limits                   *validation.Overrides
+	bucket                   objstore.Bucket
+	logLevel                 logging.Level
+	bucketStoreMetrics       *BucketStoreMetrics
+	cortexBucketStoreMetrics *CortexBucketStoreMetrics
+	metaFetcherMetrics       *MetadataFetcherMetrics
+	shardingStrategy         ShardingStrategy
 
 	// Index cache shared across all tenants.
 	indexCache storecache.IndexCache
@@ -74,7 +82,7 @@ type BucketStores struct {
 	storesMu sync.RWMutex
 	stores   map[string]*store.BucketStore
 
-	// Keeps the last sync error for the  bucket store for each tenant.
+	// Keeps the last sync error for the bucket store for each tenant.
 	storesErrorsMu sync.RWMutex
 	storesErrors   map[string]error
 
@@ -86,20 +94,25 @@ type BucketStores struct {
 	userScanner users.Scanner
 
 	// Keeps number of inflight requests
-	inflightRequestCnt int
-	inflightRequestMu  sync.RWMutex
-
-	// Metrics.
-	syncTimes         prometheus.Histogram
-	syncLastSuccess   prometheus.Gauge
-	tenantsDiscovered prometheus.Gauge
-	tenantsSynced     prometheus.Gauge
+	inflightRequests *util.InflightRequestTracker
 }
 
 var ErrTooManyInflightRequests = status.Error(codes.ResourceExhausted, "too many inflight requests in store gateway")
 
 // NewBucketStores makes a new BucketStores.
-func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
+func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (BucketStores, error) {
+	switch cfg.BucketStore.BucketStoreType {
+	case string(tsdb.ParquetBucketStore):
+		return newParquetBucketStores(cfg, bucketClient, limits, logger, reg)
+	case string(tsdb.TSDBBucketStore):
+		return newThanosBucketStores(cfg, shardingStrategy, bucketClient, limits, logLevel, logger, reg)
+	default:
+		return nil, fmt.Errorf("unsupported bucket store type: %s", cfg.BucketStore.BucketStoreType)
+	}
+}
+
+// newThanosBucketStores creates a new TSDB-based bucket stores
+func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*ThanosBucketStores, error) {
 	matchers := tsdb.NewMatchers()
 	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, tsdb.ParquetLabelsCacheConfig{}, matchers, bucketClient, logger, reg)
 	if err != nil {
@@ -114,37 +127,22 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		Help: "Number of maximum concurrent queries allowed.",
 	}).Set(float64(cfg.BucketStore.MaxConcurrent))
 
-	u := &BucketStores{
-		logger:             logger,
-		cfg:                cfg,
-		limits:             limits,
-		bucket:             cachingBucket,
-		shardingStrategy:   shardingStrategy,
-		stores:             map[string]*store.BucketStore{},
-		storesErrors:       map[string]error{},
-		logLevel:           logLevel,
-		bucketStoreMetrics: NewBucketStoreMetrics(),
-		metaFetcherMetrics: NewMetadataFetcherMetrics(),
-		queryGate:          queryGate,
-		partitioner:        newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
-		userTokenBuckets:   make(map[string]*util.TokenBucket),
-		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_bucket_stores_blocks_sync_seconds",
-			Help:    "The total time it takes to perform a sync stores",
-			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
-		}),
-		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_bucket_stores_blocks_last_successful_sync_timestamp_seconds",
-			Help: "Unix timestamp of the last successful blocks sync.",
-		}),
-		tenantsDiscovered: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_bucket_stores_tenants_discovered",
-			Help: "Number of tenants discovered in the bucket.",
-		}),
-		tenantsSynced: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_bucket_stores_tenants_synced",
-			Help: "Number of tenants synced.",
-		}),
+	u := &ThanosBucketStores{
+		logger:                   logger,
+		cfg:                      cfg,
+		limits:                   limits,
+		bucket:                   cachingBucket,
+		shardingStrategy:         shardingStrategy,
+		stores:                   map[string]*store.BucketStore{},
+		storesErrors:             map[string]error{},
+		logLevel:                 logLevel,
+		bucketStoreMetrics:       NewBucketStoreMetrics(),
+		cortexBucketStoreMetrics: NewCortexBucketStoreMetrics(reg),
+		metaFetcherMetrics:       NewMetadataFetcherMetrics(),
+		queryGate:                queryGate,
+		partitioner:              newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
+		userTokenBuckets:         make(map[string]*util.TokenBucket),
+		inflightRequests:         util.NewInflightRequestTracker(),
 	}
 	u.userScanner, err = users.NewScanner(cfg.UsersScanner, bucketClient, logger, reg)
 	if err != nil {
@@ -187,7 +185,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 }
 
 // InitialSync does an initial synchronization of blocks for all users.
-func (u *BucketStores) InitialSync(ctx context.Context) error {
+func (u *ThanosBucketStores) InitialSync(ctx context.Context) error {
 	level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
 
 	if err := u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
@@ -202,13 +200,13 @@ func (u *BucketStores) InitialSync(ctx context.Context) error {
 }
 
 // SyncBlocks synchronizes the stores state with the Bucket store for every user.
-func (u *BucketStores) SyncBlocks(ctx context.Context) error {
+func (u *ThanosBucketStores) SyncBlocks(ctx context.Context) error {
 	return u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.SyncBlocks(ctx)
 	})
 }
 
-func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
+func (u *ThanosBucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
 	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Second,
@@ -232,11 +230,11 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(co
 	return lastErr
 }
 
-func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {
+func (u *ThanosBucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {
 	defer func(start time.Time) {
-		u.syncTimes.Observe(time.Since(start).Seconds())
+		u.cortexBucketStoreMetrics.syncTimes.Observe(time.Since(start).Seconds())
 		if returnErr == nil {
-			u.syncLastSuccess.SetToCurrentTime()
+			u.cortexBucketStoreMetrics.syncLastSuccess.SetToCurrentTime()
 		}
 	}(time.Now())
 
@@ -261,8 +259,8 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 		includeUserIDs[userID] = struct{}{}
 	}
 
-	u.tenantsDiscovered.Set(float64(len(userIDs)))
-	u.tenantsSynced.Set(float64(len(includeUserIDs)))
+	u.cortexBucketStoreMetrics.tenantsDiscovered.Set(float64(len(userIDs)))
+	u.cortexBucketStoreMetrics.tenantsSynced.Set(float64(len(includeUserIDs)))
 
 	// Create a pool of workers which will synchronize blocks. The pool size
 	// is limited in order to avoid to concurrently sync a lot of tenants in
@@ -330,7 +328,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 }
 
 // Series makes a series request to the underlying user bucket store.
-func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
+func (u *ThanosBucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
 	spanLog, spanCtx := spanlogger.New(srv.Context(), "BucketStores.Series")
 	defer spanLog.Finish()
 
@@ -356,12 +354,12 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 
 	maxInflightRequests := u.cfg.BucketStore.MaxInflightRequests
 	if maxInflightRequests > 0 {
-		if u.getInflightRequestCnt() >= maxInflightRequests {
+		if u.inflightRequests.Count() >= maxInflightRequests {
 			return ErrTooManyInflightRequests
 		}
 
-		u.incrementInflightRequestCnt()
-		defer u.decrementInflightRequestCnt()
+		u.inflightRequests.Inc()
+		defer u.inflightRequests.Dec()
 	}
 
 	err = store.Series(req, spanSeriesServer{
@@ -372,26 +370,8 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	return err
 }
 
-func (u *BucketStores) getInflightRequestCnt() int {
-	u.inflightRequestMu.RLock()
-	defer u.inflightRequestMu.RUnlock()
-	return u.inflightRequestCnt
-}
-
-func (u *BucketStores) incrementInflightRequestCnt() {
-	u.inflightRequestMu.Lock()
-	u.inflightRequestCnt++
-	u.inflightRequestMu.Unlock()
-}
-
-func (u *BucketStores) decrementInflightRequestCnt() {
-	u.inflightRequestMu.Lock()
-	u.inflightRequestCnt--
-	u.inflightRequestMu.Unlock()
-}
-
 // LabelNames implements the Storegateway proto service.
-func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+func (u *ThanosBucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
 	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelNames")
 	defer spanLog.Finish()
 
@@ -421,7 +401,7 @@ func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 }
 
 // LabelValues implements the Storegateway proto service.
-func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+func (u *ThanosBucketStores) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
 	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelValues")
 	defer spanLog.Finish()
 
@@ -450,7 +430,7 @@ func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValues
 
 // scanUsers in the bucket and return the list of found users. It includes active and deleting users
 // but not deleted users.
-func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {
+func (u *ThanosBucketStores) scanUsers(ctx context.Context) ([]string, error) {
 	activeUsers, deletingUsers, _, err := u.userScanner.ScanUsers(ctx)
 	if err != nil {
 		return nil, err
@@ -477,13 +457,13 @@ func deduplicateUsers(users []string) []string {
 	return uniqueUsers
 }
 
-func (u *BucketStores) getStore(userID string) *store.BucketStore {
+func (u *ThanosBucketStores) getStore(userID string) *store.BucketStore {
 	u.storesMu.RLock()
 	defer u.storesMu.RUnlock()
 	return u.stores[userID]
 }
 
-func (u *BucketStores) getStoreError(userID string) error {
+func (u *ThanosBucketStores) getStoreError(userID string) error {
 	u.storesErrorsMu.RLock()
 	defer u.storesErrorsMu.RUnlock()
 	return u.storesErrors[userID]
@@ -499,7 +479,7 @@ var (
 // If bucket store doesn't exist, returns errBucketStoreNotFound.
 // If bucket store is not empty, returns errBucketStoreNotEmpty.
 // Otherwise returns error from closing the bucket store.
-func (u *BucketStores) closeEmptyBucketStore(userID string) error {
+func (u *ThanosBucketStores) closeEmptyBucketStore(userID string) error {
 	u.storesMu.Lock()
 	unlockInDefer := true
 	defer func() {
@@ -537,11 +517,11 @@ func isEmptyBucketStore(bs *store.BucketStore) bool {
 	return min == math.MaxInt64 && max == math.MinInt64
 }
 
-func (u *BucketStores) syncDirForUser(userID string) string {
+func (u *ThanosBucketStores) syncDirForUser(userID string) string {
 	return filepath.Join(u.cfg.BucketStore.SyncDir, userID)
 }
 
-func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, error) {
+func (u *ThanosBucketStores) getOrCreateStore(userID string) (*store.BucketStore, error) {
 	// Check if the store already exists.
 	bs := u.getStore(userID)
 	if bs != nil {
@@ -721,7 +701,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 
 // deleteLocalFilesForExcludedTenants removes local "sync" directories for tenants that are not included in the current
 // shard.
-func (u *BucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[string]struct{}) {
+func (u *ThanosBucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[string]struct{}) {
 	files, err := os.ReadDir(u.cfg.BucketStore.SyncDir)
 	if err != nil {
 		return
@@ -760,13 +740,13 @@ func (u *BucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[str
 	}
 }
 
-func (u *BucketStores) getUserTokenBucket(userID string) *util.TokenBucket {
+func (u *ThanosBucketStores) getUserTokenBucket(userID string) *util.TokenBucket {
 	u.userTokenBucketsMu.RLock()
 	defer u.userTokenBucketsMu.RUnlock()
 	return u.userTokenBuckets[userID]
 }
 
-func (u *BucketStores) getTokensToRetrieve(tokens uint64, dataType store.StoreDataType) int64 {
+func (u *ThanosBucketStores) getTokensToRetrieve(tokens uint64, dataType store.StoreDataType) int64 {
 	tokensToRetrieve := float64(tokens)
 	switch dataType {
 	case store.PostingsFetched:
